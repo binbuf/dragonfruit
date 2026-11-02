@@ -30,11 +30,23 @@ FocusScope {
     signal opened()
     signal closed()
 
-    readonly property int rowCount: groups.length
+    readonly property int rowCount:
+        groups !== undefined && groups !== null ? groups.length : 0
     readonly property int visibleRows: Math.min(rowCount, maxRows)
     readonly property real listHeight: visibleRows * rowHeight
     readonly property real emptyHeight: rowCount === 0 ? rowHeight : 0
     readonly property bool scrolls: rowCount > maxRows
+
+    // The hidden-group list can shrink while the popover is open; keep the
+    // keyboard highlight on a real row.
+    onRowCountChanged: {
+        if (root.rowCount === 0)
+            root.currentIndex = -1;
+        else if (root.currentIndex >= root.rowCount)
+            root.currentIndex = root.rowCount - 1;
+        if (root.currentIndex >= 0)
+            root.keepSelectionVisible();
+    }
 
     readonly property real padding: Theme.controls.contextMenu.padding
     readonly property real rowHeight: Theme.controls.contextMenu.rowHeight
@@ -58,7 +70,7 @@ FocusScope {
     }
 
     function activateGroup(index) {
-        if (index < 0 || index >= root.groups.length)
+        if (index < 0 || !root.groups || index >= root.groups.length)
             return;
         root.groupActivated(root.groups[index]);
     }

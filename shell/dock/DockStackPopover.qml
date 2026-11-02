@@ -31,7 +31,8 @@ FocusScope {
     signal opened()
     signal closed()
 
-    readonly property int rowCount: items.length
+    readonly property int rowCount:
+        items !== undefined && items !== null ? items.length : 0
     readonly property bool isEmpty: rowCount === 0
     readonly property int overflowCount: Math.max(0, rowCount - maxItems)
     readonly property int visibleRows: Math.min(rowCount, maxItems)
@@ -40,6 +41,17 @@ FocusScope {
     // The empty state is a real row, so the surface must reserve room for it.
     readonly property real emptyHeight: isEmpty ? rowHeight : 0
     readonly property bool scrolls: rowCount > maxItems
+
+    // The listing can shrink while the popover is open (a file is deleted or
+    // moved). Keep the keyboard highlight on a real row.
+    onRowCountChanged: {
+        if (root.rowCount === 0)
+            root.currentIndex = -1;
+        else if (root.currentIndex >= root.rowCount)
+            root.currentIndex = root.rowCount - 1;
+        if (root.currentIndex >= 0)
+            root.keepSelectionVisible();
+    }
 
     readonly property real padding: Theme.controls.contextMenu.padding
     readonly property real rowHeight: Theme.controls.contextMenu.rowHeight
@@ -50,7 +62,8 @@ FocusScope {
     function hide() { root.open = false; }
 
     function activateItem(index) {
-        var row = root.items[index];
+        var row = root.items !== undefined && root.items !== null
+                  ? root.items[index] : null;
         if (!row || row.path === undefined)
             return;
         root.itemActivated(row.path);

@@ -32,7 +32,7 @@ use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
 use crate::window::{
     backdrop_elements, is_backdrop_panel, shadow_elements, BlurSpec, MaterialRole, SceneTransform,
-    ShadowLevel, WindowState,
+    ShadowLevel, ShadowSpec, WindowState,
 };
 
 // The two kinds of wallpaper element a backend can composite (T-05.4): a
@@ -389,28 +389,22 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
     panels
 }
 
-/// Build the client-surface render elements for the windows composited on
-/// `output`, applying each window's lifecycle motion (T-02.1b/T-02.2).
+/// Build the **complete** window stack for `output`: each window's SSD
+/// titlebar, client surface, and drop shadow, interleaved in the window
+/// stacking order.
 ///
-/// This is the per-window replacement for the window half of
-/// `smithay::desktop::space::render_output`: it walks the [`Space`] in the
-/// same front-to-back order and resolves the same locations/scale, but wraps
-/// a window that is mid-appear/restore/zoom/fullscreen in a
-/// `Rescale`+`Relocate` pair and fades it through the surface-tree alpha when
-/// the motion has a fade, so the window scales/fades from its origin. A window
-/// with no in-flight motion produces byte-identical elements to the space
-/// path.
+/// The compositor used to emit every titlebar as one global layer above every
+/// client surface, and every shadow as another global layer below them. That
+/// splits one decorated window across two z-planes: a background window's
+/// titlebar painted over a foreground window's body, and a foreground window's
+/// shadow painted under a background window. This walk keeps each window's
+/// three pieces together (titlebar above its own content, shadow below it and
+/// above the windows underneath), which is the stacking order the `Space`
+/// itself defines.
 ///
-/// A **minimizing** window is unmapped from the `Space` (input-inert) but its
-/// surface is held as a ghost until the motion completes; those are rendered
-/// from the window model after the space walk with the same transform.
-///
-/// Every in-flight window contributes to the reusable scene-transform pass
-/// (T-04.3): the output composes at most one transform per frame, recorded via
-/// [`DfState::scene_pass`], so the scene is never transformed twice.
-///
-/// [`Space`]: smithay::desktop::Space
-pub fn window_render_elements<R, E>(
+/// The open window menu is still a separate layer above this stack: it is a
+/// transient popup, not part of any window.
+pub fn window_scene_render_elements<R, E>(
     renderer: &mut R,
     state: &mut DfState,
     output: &Output,
@@ -420,18 +414,18 @@ where
     R: Renderer + ImportAll,
     R::TextureId: Clone + 'static,
     E: From<WaylandSurfaceRenderElement<R>>
-        + From<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
+        + From<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>
+        + From<SolidColorRenderElement>,
 {
     let Some(output_geometry) = state.space.output_geometry(output) else {
         return Vec::new();
     };
     let now = state.now_msec();
+    let shadow_spec = resolved_shadow_spec(state);
     let mut elements: Vec<E> = Vec::new();
-    // The union of the transformed window rects (global logical) this output
-    // composed; `None` when every window draws untransformed.
     let mut scene_region: Option<Rectangle<i32, Logical>> = None;
     // `Space::elements` is bottom-to-top; the damage tracker consumes
-    // front-to-back, so iterate in reverse (exactly like the space path).
+    // front-to-back, so iterate in reverse.
     for window in state.space.elements().rev() {
         if !state.space.outputs_for_element(window).contains(output) {
             continue;
@@ -439,9 +433,6 @@ where
         let Some(location) = state.space.element_location(window) else {
             continue;
         };
-        // The surface origin is the element location minus the window's own
-        // geometry offset (mirrors `InnerElement::render_location`). The bbox
-        // is shifted the same way for the output-overlap test.
         let render_location = location - window.geometry().loc;
         let mut bbox = window.bbox_with_popups();
         bbox.loc += render_location;
@@ -450,25 +441,40 @@ where
         }
         let location = render_location - output_geometry.loc;
         let location_phys = location.to_physical_precise_round(scale);
-        match state.window_render_frame(window, now) {
-            Some(frame) => {
-                let transformed = push_motion_elements(
-                    renderer,
-                    &mut elements,
-                    window,
-                    location_phys,
-                    scale,
-                    frame,
-                );
-                merge_region(&mut scene_region, transformed);
-            }
-            None => {
-                elements.extend(window.render_elements::<E>(renderer, location_phys, scale, 1.0));
-            }
+        let motion = state.window_render_frame(window, now);
+
+        // The titlebar belongs to this window and sits above its content.
+        if let Some(titlebar) = state.titlebar_element(window) {
+            elements.extend(
+                titlebar
+                    .render_elements(scale, output_geometry.loc, motion)
+                    .into_iter()
+                    .map(E::from),
+            );
         }
+        if let Some(transformed) = push_window_content(
+            renderer,
+            &mut elements,
+            window,
+            location_phys,
+            scale,
+            motion,
+        ) {
+            merge_region(&mut scene_region, transformed);
+        }
+        // The shadow sits below its own content, but above the windows it
+        // covers — not in a global layer under the whole stack.
+        push_window_shadow(
+            &mut elements,
+            state,
+            window,
+            output_geometry,
+            scale,
+            shadow_spec,
+            motion,
+        );
     }
-    // Minimizing/closing ghosts: unmapped from `Space` but still drawn until
-    // the motion completes.
+    // Minimizing/closing ghosts keep their complete decoration stack too.
     for (window, motion) in state.windows.active_motions() {
         if !motion.kind.is_ghost() {
             continue;
@@ -479,7 +485,6 @@ where
         if state.space.element_location(window).is_some() {
             continue;
         }
-        // A window on an inactive Space is not visible at all, ghost included.
         if !state.window_on_active_space(window) {
             continue;
         }
@@ -494,20 +499,116 @@ where
         }
         let location = render_location - output_geometry.loc;
         let location_phys = location.to_physical_precise_round(scale);
-        if let Some(frame) = state.window_render_frame(window, now) {
-            let transformed =
-                push_motion_elements(renderer, &mut elements, window, location_phys, scale, frame);
-            merge_region(&mut scene_region, transformed);
+        let frame = state.window_render_frame(window, now);
+        if let Some(titlebar) = state.titlebar_element_for_motion(window) {
+            elements.extend(
+                titlebar
+                    .render_elements(scale, output_geometry.loc, frame)
+                    .into_iter()
+                    .map(E::from),
+            );
         }
+        if let Some(frame) = frame {
+            if let Some(transformed) = push_window_content(
+                renderer,
+                &mut elements,
+                window,
+                location_phys,
+                scale,
+                Some(frame),
+            ) {
+                merge_region(&mut scene_region, transformed);
+            }
+        }
+        push_window_shadow(
+            &mut elements,
+            state,
+            window,
+            output_geometry,
+            scale,
+            shadow_spec,
+            frame,
+        );
     }
-    // Open the reusable scene-transform pass for this output at most once per
-    // frame (T-04.3). The damage is the union of the interpolated window
-    // rects, converted to output-local logical coordinates.
     if let Some(mut region) = scene_region {
         region.loc -= output_geometry.loc;
         state.scene_pass.apply(output.name().as_str(), region);
     }
     elements
+}
+
+/// Push one window's client surface elements, transformed by its lifecycle
+/// motion when one is live. Returns the transform's target rect (global
+/// logical) for the scene pass's damage union.
+fn push_window_content<R, E>(
+    renderer: &mut R,
+    elements: &mut Vec<E>,
+    window: &smithay::desktop::Window,
+    location_phys: smithay::utils::Point<i32, smithay::utils::Physical>,
+    scale: Scale<f64>,
+    motion: Option<crate::window::MotionFrame>,
+) -> Option<Rectangle<i32, Logical>>
+where
+    R: Renderer + ImportAll,
+    R::TextureId: Clone + 'static,
+    E: From<WaylandSurfaceRenderElement<R>>
+        + From<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
+{
+    match motion {
+        Some(frame) => Some(push_motion_elements(
+            renderer,
+            elements,
+            window,
+            location_phys,
+            scale,
+            frame,
+        )),
+        None => {
+            elements.extend(window.render_elements::<E>(renderer, location_phys, scale, 1.0));
+            None
+        }
+    }
+}
+
+/// Push one window's elevation-token shadow into `elements`.
+fn push_window_shadow<E>(
+    elements: &mut Vec<E>,
+    state: &DfState,
+    window: &smithay::desktop::Window,
+    output_geometry: Rectangle<i32, Logical>,
+    scale: Scale<f64>,
+    spec: ShadowSpec,
+    motion: Option<crate::window::MotionFrame>,
+) where
+    E: From<SolidColorRenderElement>,
+{
+    // A fullscreen window is the whole output; it casts no shadow.
+    if state.windows.state(window) == Some(WindowState::Fullscreen) {
+        return;
+    }
+    let Some(geometry) = state.windows.geometry(window) else {
+        return;
+    };
+    let window_rect = state.insets_for(window).outset(geometry);
+    elements.extend(
+        shadow_elements(window_rect, spec, scale, output_geometry.loc, motion)
+            .into_iter()
+            .map(E::from),
+    );
+}
+
+/// Resolve the active scheme/degrade shadow geometry once per output frame.
+fn resolved_shadow_spec(state: &DfState) -> ShadowSpec {
+    match state
+        .overview_grid_material()
+        .or_else(|| state.switcher_material())
+    {
+        Some(material) => material.shadow,
+        None => state
+            .degrade
+            .tier()
+            .shadow(ShadowLevel::High.spec(state.color_scheme)),
+    }
 }
 
 /// Extend `region` with `rect`, or set it when empty. The scene-transform
@@ -569,163 +670,10 @@ where
     transform.target
 }
 
-/// Build the elevation-token-driven drop shadows for the windows composited
-/// on `output` (T-04.1a), which composite *below* their client surface.
-///
-/// A shadow is a custom element like the SSD titlebar, but it must sit behind
-/// its window: callers append these **after** [`window_render_elements`] in
-/// the front-to-back list. The whole decorated window (the SSD titlebar strip
-/// included) is shadowed, from `component.elevation.high` and the active
-/// scheme's `material.shadowOpacity`/`color.shadowColor`, and a window
-/// mid-motion carries the same lifecycle transform as its content. Fullscreen
-/// windows are not shadowed; a minimizing/closing ghost is.
-pub fn window_shadow_render_elements(
-    state: &DfState,
-    output: &Output,
-    scale: Scale<f64>,
-) -> Vec<SolidColorRenderElement> {
-    let Some(output_geometry) = state.space.output_geometry(output) else {
-        return Vec::new();
-    };
-    let now = state.now_msec();
-    // The live scheme follows desktop settings (T-08); dark is the default
-    // that reads over arbitrary application pixels, matching the titlebar.
-    // The elevation geometry is mapped through the material degrade tier
-    // (T-04.4a): budget pressure tightens the spread/layers while keeping the
-    // scheme tone, so windows stay legible at every tier. While Mission
-    // Control is open the grid material (T-05.1b) is the single source, so the
-    // tier the overview composes with is exactly the one `query grid` reports.
-    let spec = match state
-        .overview_grid_material()
-        .or_else(|| state.switcher_material())
-    {
-        Some(material) => material.shadow,
-        None => state
-            .degrade
-            .tier()
-            .shadow(ShadowLevel::High.spec(state.color_scheme)),
-    };
-    let mut elements = Vec::new();
-    for window in state.space.elements() {
-        if !state.space.outputs_for_element(window).contains(output) {
-            continue;
-        }
-        // A fullscreen window is the whole output; it casts no shadow.
-        if state.windows.state(window) == Some(WindowState::Fullscreen) {
-            continue;
-        }
-        let Some(geometry) = state.windows.geometry(window) else {
-            continue;
-        };
-        let window_rect = state.insets_for(window).outset(geometry);
-        elements.extend(shadow_elements(
-            window_rect,
-            spec,
-            scale,
-            output_geometry.loc,
-            state.window_render_frame(window, now),
-        ));
-    }
-    // Minimizing/closing ghosts carry the same shadow as their titlebar and
-    // surface, even though the window is already unmapped from `Space`.
-    for (window, motion) in state.windows.active_motions() {
-        if !motion.kind.is_ghost() {
-            continue;
-        }
-        if !window.alive() {
-            continue;
-        }
-        if state.space.element_location(window).is_some() {
-            continue;
-        }
-        if !state.window_on_active_space(window) {
-            continue;
-        }
-        let Some(geometry) = state.windows.geometry(window) else {
-            continue;
-        };
-        if !output_geometry.overlaps(geometry) {
-            continue;
-        }
-        let window_rect = state.insets_for(window).outset(geometry);
-        elements.extend(shadow_elements(
-            window_rect,
-            spec,
-            scale,
-            output_geometry.loc,
-            state.window_render_frame(window, now),
-        ));
-    }
-    elements
-}
-
-/// Build the solid-fill SSD titlebar elements for the windows composited on
-/// `output` (T-01.1). These are custom elements, so they composite *above*
-/// the window [`Space`](smithay::desktop::Space) — the titlebar sits above
-/// its own client surface. A window mid-motion carries the same scale/fade as
-/// its content (T-02.1b/T-02.2), including a minimizing ghost whose window is
-/// already unmapped.
-pub fn titlebar_render_elements(
-    state: &DfState,
-    output: &Output,
-    scale: Scale<f64>,
-) -> Vec<SolidColorRenderElement> {
-    let Some(output_geometry) = state.space.output_geometry(output) else {
-        return Vec::new();
-    };
-    let now = state.now_msec();
-    let mut elements = Vec::new();
-    for window in state.space.elements() {
-        if !state.space.outputs_for_element(window).contains(output) {
-            continue;
-        }
-        if let Some(titlebar) = state.titlebar_element(window) {
-            elements.extend(titlebar.render_elements(
-                scale,
-                output_geometry.loc,
-                state.window_render_frame(window, now),
-            ));
-        }
-    }
-    // Titlebars for minimizing/closing ghosts (unmapped from `Space` but
-    // still drawn).
-    for (window, motion) in state.windows.active_motions() {
-        if !motion.kind.is_ghost() {
-            continue;
-        }
-        if !window.alive() {
-            continue;
-        }
-        if state.space.element_location(window).is_some() {
-            continue;
-        }
-        // A ghost on an inactive Space is not visible.
-        if !state.window_on_active_space(window) {
-            continue;
-        }
-        // A ghost is not in `Space`, so the per-output ownership test is the
-        // model geometry's overlap with this output.
-        let Some(geometry) = state.windows.geometry(window) else {
-            continue;
-        };
-        if !output_geometry.overlaps(geometry) {
-            continue;
-        }
-        if let Some(titlebar) = state.titlebar_element_for_motion(window) {
-            elements.extend(titlebar.render_elements(
-                scale,
-                output_geometry.loc,
-                state.window_render_frame(window, now),
-            ));
-        }
-    }
-    elements
-}
-
 /// Build the solid-fill elements for the open window menu (T-01.4), if any.
 ///
-/// The menu is compositor chrome drawn above the titlebars on the output it
-/// was opened on. The panel geometry is clamped to that output when it opens,
+/// The menu is compositor chrome drawn above the complete window stack
+/// (titlebars, client surfaces, and shadows) on the output it was opened on. The panel geometry is clamped to that output when it opens,
 /// so the anchor's output is the one that draws it.
 pub fn window_menu_render_elements(
     state: &DfState,

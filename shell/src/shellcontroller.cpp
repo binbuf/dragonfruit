@@ -70,6 +70,13 @@ const QString kWallpaperService = QStringLiteral("org.dragonfruit.Wallpaper1");
 const QString kWallpaperPath = QStringLiteral("/org/dragonfruit/Wallpaper1");
 const QString kWallpaperInterface = QStringLiteral("org.dragonfruit.Wallpaper1");
 
+// Application identity (T-14.1a): the shell watches the well-known name so a
+// service that starts after the shell (the session target starts both in
+// parallel) still reaches the Dock without waiting for a user action.
+const QString kAppIndexService = QStringLiteral("org.dragonfruit.AppIndex1");
+const QString kAppIndexPath = QStringLiteral("/org/dragonfruit/AppIndex1");
+const QString kAppIndexInterface = QStringLiteral("org.dragonfruit.AppIndex1");
+
 // The Dock's offscreen buffer reserves a fixed popover headroom (above a
 // bottom Dock / beside a vertical one) and side gutters so opening a
 // menu/chooser/stack never resizes the render target on the open frame
@@ -337,18 +344,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // `.desktop` corpus, themed icons, and resolution. T-14.7 retired the
     // shell's local `.desktop` scan, so the service is the only source; a
     // session without it shows an empty Dock rather than a divergent corpus.
-    // T-14.7e keeps the client alive and subscribes to the T-14.1c coalesced
-    // `Changed` signal so the Add Application picker tracks installs.
-    m_index.loadFromAppIndex(m_appIndexClient);
-    if (m_appIndexClient.available()
-        && !m_appIndexClient.subscribe(QStringLiteral("identity")).isEmpty()) {
-        m_appIndexSubscribed = true;
-        QDBusConnection::sessionBus().connect(
-            QStringLiteral("org.dragonfruit.AppIndex1"),
-            QStringLiteral("/org/dragonfruit/AppIndex1"),
-            QStringLiteral("org.dragonfruit.AppIndex1"), QStringLiteral("Changed"),
-            this, SLOT(onAppIndexChanged(QString)));
-    }
+    // The shell and app-index start in parallel from the session target, so
+    // the service may not own its bus name yet when this process starts. The
+    // initial load and the restart/reappearance resync both go through
+    // `connectAppIndex()` once the settings client exists.
     // T-08.2a: settingsd is the single Dock-settings owner. The client is the
     // live `org.dragonfruit.Settings1` client; it is seeded with the schema
     // defaults so the Dock works when the daemon is absent (the dev tool does
@@ -359,9 +358,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_settingsClient, &SettingsClient::changed, this,
             &ShellController::onSettingsChanged);
     // A daemon snapshot (or the initial mock refresh) re-seeds defaults if the
-    // persisted pinned set is empty.
-    connect(m_settingsClient, &SettingsClient::refreshed, this,
-            &ShellController::seedDefaultDockPins);
+    // persisted pinned set is empty. Mark the snapshot applied first so an
+    // app-index resync that lands during startup does not seed before the
+    // daemon's persisted `dock.pinned` has been read.
+    connect(m_settingsClient, &SettingsClient::refreshed, this, [this]() {
+        m_settingsSnapshotReceived = true;
+        seedDefaultDockPins();
+    });
     // T-08.2c: the compositor's motion/input policy is a separate view of the
     // same client (it is not part of DockConfig), so it is applied on every
     // settings change and on a fresh daemon snapshot.
@@ -403,6 +406,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         // pins; when the daemon later appears, its `dock.pinned` wins.
         seedDefaultDockPins();
     }
+    // Load the app-index corpus now if it is already up, and watch the
+    // well-known name so a later start (or a restart) re-syncs the Dock,
+    // picker, and drawer instead of leaving the startup race visible.
+    connectAppIndex();
 
     if (!m_protocol->connectToCompositor(socketName))
         return false;
@@ -4802,12 +4809,27 @@ void ShellController::seedDefaultDockPins()
 {
     if (m_defaultPinsSeeded)
         return;
-    m_defaultPinsSeeded = true;
-    if (!m_dockConfig.pinned.isEmpty())
+    // When settingsd is up, wait for its first snapshot: seeding before the
+    // persisted `dock.pinned` is read would overwrite the user's pins.
+    if (m_settingsClient && m_settingsClient->isAvailable()
+        && !m_settingsSnapshotReceived) {
         return;
+    }
+    if (!m_dockConfig.pinned.isEmpty()) {
+        m_defaultPinsSeeded = true;
+        return;
+    }
     const QStringList defaults = resolveDefaultDockPins(m_index);
-    if (defaults.isEmpty())
+    if (defaults.isEmpty()) {
+        // An empty corpus means app-index has not answered yet (the shell and
+        // the service start in parallel); leave the seed armed so the
+        // registration resync can resolve the defaults. Once a real corpus
+        // has no default apps, there is nothing to retry.
+        if (!m_index.isEmpty())
+            m_defaultPinsSeeded = true;
         return;
+    }
+    m_defaultPinsSeeded = true;
     writeDockSetting(QStringLiteral("dock.pinned"), defaults);
     rebuildDockEntries();
 }
@@ -4970,6 +4992,58 @@ void ShellController::applyWallpaperPolicy()
             "dragonfruit-shell: wallpaper applied (fit=%s allSpaces=%d source=%s)\n",
             qPrintable(settings.fit), settings.showOnAllSpaces ? 1 : 0,
             effective.isEmpty() ? "(solid)" : qPrintable(effective));
+}
+
+void ShellController::connectAppIndex()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    // The coalesced `Changed` signal is registered once and follows the
+    // well-known name across service restarts (the settingsd client uses the
+    // same pattern). It is safe to register before app-index owns the name.
+    bus.connect(kAppIndexService, kAppIndexPath, kAppIndexInterface,
+                QStringLiteral("Changed"), this, SLOT(onAppIndexChanged(QString)));
+    auto *watcher = new QDBusServiceWatcher(
+        kAppIndexService, bus,
+        QDBusServiceWatcher::WatchForRegistration
+            | QDBusServiceWatcher::WatchForUnregistration,
+        this);
+    connect(watcher, &QDBusServiceWatcher::serviceRegistered, this,
+            [this](const QString &) { syncAppIndex(); });
+    connect(watcher, &QDBusServiceWatcher::serviceUnregistered, this,
+            [this](const QString &) {
+                // Drop the subscription so the next owner gets a fresh one.
+                // Keep the last corpus while the service restarts so the Dock
+                // does not lose its icons for the gap.
+                m_appIndexSubscribed = false;
+                syncAppIndex();
+            });
+    syncAppIndex();
+}
+
+void ShellController::syncAppIndex()
+{
+    const bool available = m_appIndexClient.available();
+    if (available) {
+        // Subscribe before the snapshot so a change that lands between the
+        // two cannot be missed; the reload then has the latest corpus.
+        if (!m_appIndexSubscribed)
+            m_appIndexSubscribed =
+                !m_appIndexClient.subscribe(QStringLiteral("identity")).isEmpty();
+        m_index.loadFromAppIndex(m_appIndexClient);
+        seedDefaultDockPins();
+    } else {
+        m_appIndexSubscribed = false;
+    }
+    if (m_dockItem) {
+        rebuildDockEntries();
+        refreshAppPicker(false);
+        if (m_appsDrawerOpen)
+            refreshAppsDrawer(false);
+    }
+    if (available)
+        refreshTrayItems();
 }
 
 void ShellController::connectWallpaperProvider()

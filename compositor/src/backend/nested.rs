@@ -425,23 +425,13 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 // inside this render pass — never a screenshot or screencopy.
                 let mut scene_elements: Vec<NestedOutputElements<GlowRenderer>> = Vec::new();
                 scene_elements.extend(
-                    crate::render::titlebar_render_elements(state, &output, scale)
-                        .into_iter()
-                        .map(NestedOutputElements::Decoration),
-                );
-                scene_elements.extend(
                     crate::render::window_menu_render_elements(state, &output, scale)
                         .into_iter()
                         .map(NestedOutputElements::Decoration),
                 );
-                scene_elements.extend(crate::render::window_render_elements(
+                scene_elements.extend(crate::render::window_scene_render_elements(
                     renderer, state, &output, scale,
                 ));
-                scene_elements.extend(
-                    crate::render::window_shadow_render_elements(state, &output, scale)
-                        .into_iter()
-                        .map(NestedOutputElements::Decoration),
-                );
                 scene_elements.extend(crate::render::desktop_render_elements(
                     renderer, state, &output, scale,
                 ));
@@ -506,23 +496,13 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                         .map(NestedOutputElements::Decoration),
                 );
                 custom_elements.extend(
-                    crate::render::titlebar_render_elements(state, &output, scale)
-                        .into_iter()
-                        .map(NestedOutputElements::Decoration),
-                );
-                custom_elements.extend(
                     crate::render::window_menu_render_elements(state, &output, scale)
                         .into_iter()
                         .map(NestedOutputElements::Decoration),
                 );
-                custom_elements.extend(crate::render::window_render_elements(
+                custom_elements.extend(crate::render::window_scene_render_elements(
                     renderer, state, &output, scale,
                 ));
-                custom_elements.extend(
-                    crate::render::window_shadow_render_elements(state, &output, scale)
-                        .into_iter()
-                        .map(NestedOutputElements::Decoration),
-                );
                 custom_elements.extend(crate::render::desktop_render_elements(
                     renderer, state, &output, scale,
                 ));

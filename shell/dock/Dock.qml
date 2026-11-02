@@ -34,11 +34,34 @@ Rectangle {
     // [{ id, appId, name, kind, running, minimized, launch, attention,
     //    badge, pinned, trashFull }]
     property var entries: []
-    // A new projection arrived (T-14.7m): keep the open window chooser bound
-    // to its app's fresh entry/rows (or dismiss it when the app is gone). The
-    // dependent `items` binding and the entry Repeater settle after this
-    // signal, so refresh on the next event-loop turn.
-    onEntriesChanged: Qt.callLater(refreshPopoversAfterProjection)
+    // A new projection arrived (T-14.7m): interaction state that cannot
+    // survive a delegate rebuild is reconciled immediately, before a stale
+    // DragHandler/divider can leave `dragging`/`resizing` latched on. The
+    // popover anchors are refreshed from the `items` change below, which also
+    // covers non-`entries` rebuilds (a badge clear, Trash state, folder pins).
+    onEntriesChanged: reconcileInteractionAfterProjection()
+    // The ordered item model was rebuilt. The dependent Repeater settles after
+    // this signal, so re-resolve every open popover on the next event-loop turn.
+    // Coalesce a burst (an external-drag insertion index changes per pointer
+    // sample) into one refresh.
+    property bool popoverRefreshPending: false
+    onItemsChanged: {
+        // A non-`entries` rebuild (a folder listing, Trash state, external
+        // gap) also recreates delegates, so reconcile the gesture state here
+        // as well as on a projection change.
+        reconcileInteractionAfterProjection()
+        dock.schedulePopoverRefresh()
+    }
+
+    function schedulePopoverRefresh() {
+        if (popoverRefreshPending)
+            return;
+        popoverRefreshPending = true;
+        Qt.callLater(function() {
+            dock.popoverRefreshPending = false;
+            dock.refreshPopoversAfterProjection();
+        });
+    }
     property string position: "bottom"          // bottom | left | right
     property real iconSize: Theme.controls.dock.iconSize
     // The `dock.size` mapping range, read by the shell (section 19).
@@ -242,6 +265,9 @@ Rectangle {
         } else {
             dock.dragSettling = true;
             dragSettleTimer.restart();
+            // A cancelled or completed drag no longer holds the Dock open.
+            if (dock.autoHide)
+                dock.scheduleHide();
         }
     }
     Timer {
@@ -297,10 +323,12 @@ Rectangle {
     // How long a duplicate-pin highlight stays visible (T-14.7f).
     readonly property int duplicateFlashMs: 700
     // The double-click window for a folder stack (T-14.7h). The first tap
-    // opens the popover immediately; a second tap inside this window opens the
-    // folder in Files.
+    // opens the popover immediately; a second tap on the *same* stack inside
+    // this window opens the folder in Files. The id is tracked with the time so
+    // tapping stack A then stack B within the window cannot open B in Files.
     readonly property int stackDoubleClickMs: 400
     property real lastStackTapTime: 0
+    property string lastStackTapId: ""
 
     // The app entry whose context menu / window chooser is open, plus the
     // entry item each is anchored to. Only one popover is open at a time.
@@ -319,14 +347,17 @@ Rectangle {
     readonly property var stackPopoverItems: {
         if (stackEntryRef !== null && stackEntryRef.id !== undefined
                 && stackEntryRef.id !== "__downloads__")
-            return stackEntryRef.items !== undefined ? stackEntryRef.items : [];
-        return downloadsItems;
+            return stackEntryRef.items !== undefined && stackEntryRef.items !== null
+                   ? stackEntryRef.items : [];
+        return downloadsItems !== undefined && downloadsItems !== null
+               ? downloadsItems : [];
     }
     readonly property string stackPopoverTitle: {
         if (stackEntryRef !== null && stackEntryRef.id !== undefined
                 && stackEntryRef.id !== "__downloads__"
-                && stackEntryRef.name !== undefined && stackEntryRef.name.length > 0)
-            return stackEntryRef.name;
+                && stackEntryRef.name !== undefined && stackEntryRef.name !== null
+                && String(stackEntryRef.name).length > 0)
+            return String(stackEntryRef.name);
         return downloadsName;
     }
     // The Add Application picker (T-14.7e, ADR 0090): the app-index corpus the
@@ -346,6 +377,7 @@ Rectangle {
     property Item overflowAnchor: null
     readonly property var overflowGroups:
         overflowEntryRef !== null && overflowEntryRef.groups !== undefined
+            && overflowEntryRef.groups !== null
             ? overflowEntryRef.groups : []
 
     // --- Hover name label (T-14.7i, ADR 0093) ---------------------------
@@ -446,6 +478,110 @@ Rectangle {
         }
     }
 
+    // Geometry snapshots for the popovers that anchor to a live entry delegate
+    // (T-14.7c stability). The shell rebuilds `entries` whenever the compositor
+    // projection changes (a window opens/closes, a badge clears, a pin toggles),
+    // which destroys and recreates every Repeater delegate. A popover that
+    // held the old delegate would lose its anchor and jump to the surface
+    // origin, so each popover snapshots the delegate's rect into one of these
+    // invisible Items (the chooser/Trash pattern) and re-captures it after the
+    // projection settles. They are geometry proxies only: no surface, no input.
+    Item {
+        id: menuAnchorProxy
+        objectName: "menuAnchorProxy"
+        visible: false
+        width: 0
+        height: 0
+
+        function capture(entryItem) {
+            if (!entryItem)
+                return;
+            var topLeft = entryItem.mapToItem(dock, 0, 0);
+            menuAnchorProxy.x = topLeft.x;
+            menuAnchorProxy.y = topLeft.y;
+            menuAnchorProxy.width = entryItem.width;
+            menuAnchorProxy.height = entryItem.height;
+        }
+
+        function reposition() {
+            var previous = menuAnchorProxy.parent;
+            menuAnchorProxy.parent = null;
+            menuAnchorProxy.parent = previous;
+        }
+    }
+
+    Item {
+        id: stackAnchorProxy
+        objectName: "stackAnchorProxy"
+        visible: false
+        width: 0
+        height: 0
+
+        function capture(entryItem) {
+            if (!entryItem)
+                return;
+            var topLeft = entryItem.mapToItem(dock, 0, 0);
+            stackAnchorProxy.x = topLeft.x;
+            stackAnchorProxy.y = topLeft.y;
+            stackAnchorProxy.width = entryItem.width;
+            stackAnchorProxy.height = entryItem.height;
+        }
+
+        function reposition() {
+            var previous = stackAnchorProxy.parent;
+            stackAnchorProxy.parent = null;
+            stackAnchorProxy.parent = previous;
+        }
+    }
+
+    Item {
+        id: appPickerAnchorProxy
+        objectName: "appPickerAnchorProxy"
+        visible: false
+        width: 0
+        height: 0
+
+        function capture(entryItem) {
+            if (!entryItem)
+                return;
+            var topLeft = entryItem.mapToItem(dock, 0, 0);
+            appPickerAnchorProxy.x = topLeft.x;
+            appPickerAnchorProxy.y = topLeft.y;
+            appPickerAnchorProxy.width = entryItem.width;
+            appPickerAnchorProxy.height = entryItem.height;
+        }
+
+        function reposition() {
+            var previous = appPickerAnchorProxy.parent;
+            appPickerAnchorProxy.parent = null;
+            appPickerAnchorProxy.parent = previous;
+        }
+    }
+
+    Item {
+        id: overflowAnchorProxy
+        objectName: "overflowAnchorProxy"
+        visible: false
+        width: 0
+        height: 0
+
+        function capture(entryItem) {
+            if (!entryItem)
+                return;
+            var topLeft = entryItem.mapToItem(dock, 0, 0);
+            overflowAnchorProxy.x = topLeft.x;
+            overflowAnchorProxy.y = topLeft.y;
+            overflowAnchorProxy.width = entryItem.width;
+            overflowAnchorProxy.height = entryItem.height;
+        }
+
+        function reposition() {
+            var previous = overflowAnchorProxy.parent;
+            overflowAnchorProxy.parent = null;
+            overflowAnchorProxy.parent = previous;
+        }
+    }
+
     Timer {
         id: chooserHoverTimer
         interval: dock.chooserHoverDwell
@@ -463,7 +599,8 @@ Rectangle {
     function chooserEligible(entry) {
         return dock.chooserOnHover && entry
             && entry.running === true && entry.kind !== "minimized"
-            && entry.windowList !== undefined && entry.windowList.length > 1;
+            && entry.windowList !== undefined && entry.windowList !== null
+            && entry.windowList.length > 1;
     }
 
     function stopChooserHover() {
@@ -512,6 +649,16 @@ Rectangle {
         }
         if (chooserOpen)
             return;
+        // The same entry's delegate may be recreated by a projection while the
+        // pointer never moved. Keep the label and re-bind it instead of
+        // restarting the dwell and flashing the capsule off.
+        if (tooltipEntry && entry && tooltipEntry.id !== undefined
+                && tooltipEntry.id === entry.id
+                && (tooltipOpen || tooltipDwellTimer.running)) {
+            tooltipEntry = entry;
+            tooltipAnchor = entryItem;
+            return;
+        }
         if (tooltipAnchor === entryItem && (tooltipOpen || tooltipDwellTimer.running))
             return;
         hideTooltip();
@@ -528,6 +675,14 @@ Rectangle {
             chooserCloseTimer.restart();
         if (entryItem !== undefined && entryItem !== tooltipAnchor)
             return;
+        // A Repeater rebuild reports hover-ended as the old delegate dies. If
+        // the entry still exists under a different delegate, keep the label;
+        // `refreshTooltipAfterProjection` re-binds it to the fresh delegate.
+        if (tooltipEntry && tooltipEntry.id !== undefined) {
+            var idx = indexOfItemId(tooltipEntry.id);
+            if (idx >= 0 && entryRepeater.itemAt(idx) !== entryItem)
+                return;
+        }
         hideTooltip();
     }
 
@@ -562,7 +717,9 @@ Rectangle {
         if (!chooserOpen || !entry)
             return;
         var idx = indexOfItemId(entry.id);
-        chooserAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+        if (idx < 0)
+            return;
+        chooserAnchorProxy.capture(entryRepeater.itemAt(idx));
         chooserAnchorProxy.reposition();
         chooserEntry = entry;
         chooserHoverEntry = entry;
@@ -758,13 +915,16 @@ Rectangle {
     }
 
     // Re-report the remembered tile when a settled layout moved it. Suppressed
-    // while magnifying (the continuous follow would be a stream); the rest
-    // state republishes once magnification ends.
+    // while magnifying (the continuous follow would be a stream) and while the
+    // entry is bouncing (a launch/attention/minimize hop also moves the layout
+    // every committed frame); the settled state republishes once motion ends.
     function republishEntryTile() {
         if (tileEntryId === "" || lastTileRect === null || magnifying || dragging)
             return;
         var idx = indexOfItemId(tileEntryId);
         if (idx < 0 || idx >= layout.length)
+            return;
+        if (entryBounce(items[idx]) > 0)
             return;
         var r = layout[idx];
         var nx = outputOriginX + r.x;
@@ -872,7 +1032,11 @@ Rectangle {
     // --- Entry regions ---------------------------------------------------
     readonly property var appEntries: {
         var out = [];
+        if (!entries)
+            return out;
         for (var i = 0; i < entries.length; ++i) {
+            if (!entries[i])
+                continue;
             var k = entries[i].kind;
             if (k === "pinned" || k === "temporary" || k === "recent" || k === "overflow")
                 out.push(entries[i]);
@@ -881,10 +1045,10 @@ Rectangle {
     }
     readonly property var minimizedEntries: {
         var out = [];
-        if (minimizeIntoTileIcon)
+        if (minimizeIntoTileIcon || !entries)
             return out;
         for (var i = 0; i < entries.length; ++i) {
-            if (entries[i].kind === "minimized")
+            if (entries[i] && entries[i].kind === "minimized")
                 out.push(entries[i]);
         }
         return out;
@@ -909,6 +1073,8 @@ Rectangle {
     // unlike the built-in Downloads member.
     readonly property var folderEntries: {
         var out = [];
+        if (!folderPins)
+            return out;
         for (var i = 0; i < folderPins.length; ++i) {
             var p = folderPins[i];
             if (!p || p.path === undefined)
@@ -1145,7 +1311,17 @@ Rectangle {
         menuOpen || chooserOpen || stackOpen || appPickerOpen || overflowOpen
         || trashEmptyOpen
     // A tooltip never shares the stage with a context menu/chooser/stack.
-    onPopoverOpenChanged: if (popoverOpen) hideTooltip()
+    // Closing the last popover must return active focus to the Dock when the
+    // compositor handed it the keyboard: every popover takes focus while open,
+    // and a hidden FocusScope does not give it back, which would silently stop
+    // the Dock's arrow/Return handling after Escape (T-10 section 20).
+    onPopoverOpenChanged: {
+        if (popoverOpen) {
+            hideTooltip();
+        } else if (keyboardFocused) {
+            dock.forceActiveFocus()
+        }
+    }
 
     // --- Keyboard navigation (T-10 section 20) ---------------------------
     // The entries the arrow keys traverse: every entry except the divider.
@@ -1268,6 +1444,9 @@ Rectangle {
     function activateEntry(entry) {
         if (!entry)
             return;
+        // Dividers and drop placeholders are layout only, never activatable.
+        if (entry.kind === "divider" || entry.kind === "external")
+            return;
         // An unavailable Trash is inert: the entry is dimmed and its menu is
         // disabled (T-10 section 16 lifecycle).
         if (entry.kind === "trash" && entry.available === false)
@@ -1296,7 +1475,8 @@ Rectangle {
         if (entry.kind !== "trash")
             publishEntryTile(entry);
         if (entry.running === true && entry.kind !== "minimized"
-                && entry.windowList !== undefined && entry.windowList.length > 1) {
+                && entry.windowList !== undefined && entry.windowList !== null
+                && entry.windowList.length > 1) {
             openChooser(entry);
             return;
         }
@@ -1328,19 +1508,28 @@ Rectangle {
             return;
         // A click is never a hover: cancel a pending dwell so it cannot open a
         // chooser after the click has committed (T-14.7p), and the name label
-        // goes away as the action commits (T-14.7i).
+        // goes away as the action commits (T-14.7i). An entry click also
+        // dismisses any other open popover, so a menu cannot outlive the action
+        // it was covering.
         chooserHoverTimer.stop();
+        closePopovers();
         hideTooltip();
         if (entry.kind !== "stack") {
+            // Any other entry ends a pending stack double-click.
+            lastStackTapTime = 0;
+            lastStackTapId = "";
             activateEntry(entry);
             return;
         }
         var now = Date.now();
-        if (lastStackTapTime > 0 && now - lastStackTapTime < stackDoubleClickMs) {
+        if (lastStackTapTime > 0 && now - lastStackTapTime < stackDoubleClickMs
+                && lastStackTapId === entry.id) {
             lastStackTapTime = 0;
+            lastStackTapId = "";
             doubleActivateEntry(entry);
         } else {
             lastStackTapTime = now;
+            lastStackTapId = entry.id;
             activateEntry(entry);
         }
     }
@@ -1353,7 +1542,8 @@ Rectangle {
         var lower = text.toLowerCase();
         var list = navigableItems;
         for (var i = 0; i < list.length; ++i) {
-            var name = list[i].name !== undefined ? String(list[i].name) : "";
+            var name = list[i].name !== undefined && list[i].name !== null
+                       ? String(list[i].name) : "";
             if (name.toLowerCase().indexOf(lower) === 0) {
                 focusedItemId = list[i].id;
                 return;
@@ -1437,7 +1627,6 @@ Rectangle {
         if (trashEmptyPhase !== "emptying")
             trashEmptyPopover.hide();
         trashConfirming = false;
-        overflowEntryRef = null;
         chooserHoverTimer.stop();
         chooserCloseTimer.stop();
         chooserHoverEntry = null;
@@ -1506,7 +1695,8 @@ Rectangle {
         trashEmptyError = "";
         trashBusyVisible = false;
         trashBusyDelayTimer.restart();
-        announceTrashEmpty(qsTr("Emptying the Trash"));
+        // The open popover's `onPhaseChanged` announces the restart; do not
+        // announce the same state twice.
         menuActionRequested("empty_trash", ({}));
     }
 
@@ -1559,7 +1749,12 @@ Rectangle {
         hideTooltip();
         hideTimer.stop();
         var idx = indexOfItemId(entry.id);
-        menuAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        // The entry can vanish between the press and this call (a projection
+        // rebuild). Never open a menu with no anchor: it would sit at (0, 0).
+        if (idx < 0)
+            return;
+        menuAnchorProxy.capture(entryRepeater.itemAt(idx));
+        menuAnchor = menuAnchorProxy;
         menuEntry = entry;
         entryMenu.open = true;
     }
@@ -1569,11 +1764,15 @@ Rectangle {
     // (T-14.7p). The anchor is the snapshot proxy, captured from the live
     // delegate, so a later Repeater rebuild cannot orphan the popover.
     function openChooser(entry, fromHover) {
+        if (!entry)
+            return;
         closePopovers();
         hideTooltip();
         hideTimer.stop();
         var idx = indexOfItemId(entry.id);
-        chooserAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+        if (idx < 0)
+            return;
+        chooserAnchorProxy.capture(entryRepeater.itemAt(idx));
         chooserAnchor = chooserAnchorProxy;
         chooserEntry = entry;
         chooserHoverOpened = fromHover === true;
@@ -1600,7 +1799,9 @@ Rectangle {
                 windowChooser.hide();
                 return;
             }
-            var groups = items[oidx].groups !== undefined ? items[oidx].groups : [];
+            var groups = items[oidx].groups !== undefined
+                         && items[oidx].groups !== null
+                         ? items[oidx].groups : [];
             var gid = chooserEntry.id !== undefined ? chooserEntry.id : "";
             var found = null;
             for (var g = 0; g < groups.length; ++g) {
@@ -1618,8 +1819,9 @@ Rectangle {
             chooserAnchorProxy.reposition();
             return;
         }
-        var id = chooserEntry && chooserEntry.id !== undefined ? chooserEntry.id : "";
-        var idx = id.length > 0 ? indexOfItemId(id) : -1;
+        var id = chooserEntry && chooserEntry.id !== undefined
+                 && chooserEntry.id !== null ? chooserEntry.id : "";
+        var idx = id !== "" ? indexOfItemId(id) : -1;
         if (idx < 0) {
             windowChooser.hide();
             return;
@@ -1629,6 +1831,102 @@ Rectangle {
             chooserHoverEntry = items[idx];
         chooserAnchorProxy.capture(entryRepeater.itemAt(idx));
         chooserAnchorProxy.reposition();
+    }
+
+    // Keep the open context menu bound to its fresh entry (and its delegate's
+    // geometry), or dismiss it when the entry is gone. Without this a window
+    // open/close while the menu is up rebuilds the delegate and the menu jumps
+    // to the surface origin (T-14.7c stability).
+    function refreshMenuAfterProjection() {
+        if (!menuOpen)
+            return;
+        var id = menuEntry && menuEntry.id !== undefined && menuEntry.id !== null
+                 ? menuEntry.id : "";
+        var idx = id !== "" ? indexOfItemId(id) : -1;
+        if (idx < 0) {
+            entryMenu.hide();
+            return;
+        }
+        menuEntry = items[idx];
+        menuAnchorProxy.capture(entryRepeater.itemAt(idx));
+        menuAnchorProxy.reposition();
+    }
+
+    // Keep the open folder stack bound to its fresh listing, or dismiss it when
+    // the stack is gone. Opening a stack clears its badge, which rebuilds the
+    // entry model on the very next projection; the proxy is what keeps the
+    // popover anchored across that rebuild (T-14.7c stability).
+    function refreshStackAfterProjection() {
+        if (!stackOpen)
+            return;
+        var id = stackEntryRef && stackEntryRef.id !== undefined
+                 && stackEntryRef.id !== null ? stackEntryRef.id : "";
+        var idx = id !== "" ? indexOfItemId(id) : -1;
+        if (idx < 0) {
+            stackPopover.hide();
+            return;
+        }
+        stackEntryRef = items[idx];
+        stackAnchorProxy.capture(entryRepeater.itemAt(idx));
+        stackAnchorProxy.reposition();
+    }
+
+    // Keep the Add Application picker anchored while pinning rebuilds the
+    // entry model. The picker is a management surface, so a row toggle is the
+    // common case, not an edge case (T-14.7e stability).
+    function refreshAppPickerAfterProjection() {
+        if (!appPickerOpen)
+            return;
+        var idx = indexOfItemId(dividerEntry.id);
+        if (idx < 0) {
+            appPicker.hide();
+            return;
+        }
+        appPickerAnchorProxy.capture(entryRepeater.itemAt(idx));
+        appPickerAnchorProxy.reposition();
+    }
+
+    // Keep the hover label on the fresh delegate after a rebuild, or dismiss it
+    // when the entry is gone. The Tooltip reads the delegate geometry directly
+    // (so it follows magnification), which is exactly why it must be re-bound
+    // rather than held across a Repeater reset.
+    function refreshTooltipAfterProjection() {
+        if (!tooltipOpen && !tooltipDwellTimer.running)
+            return;
+        // The pointer may have left while the rebuild was queued; a re-bound
+        // anchor must not resurrect a label for a pointer that is gone.
+        if (pointerAlong < 0) {
+            hideTooltip();
+            tooltipAnchor = null;
+            tooltipEntry = null;
+            return;
+        }
+        var id = tooltipEntry && tooltipEntry.id !== undefined
+                 && tooltipEntry.id !== null ? tooltipEntry.id : "";
+        var idx = id !== "" ? indexOfItemId(id) : -1;
+        if (idx < 0) {
+            hideTooltip();
+            tooltipAnchor = null;
+            tooltipEntry = null;
+            return;
+        }
+        tooltipEntry = items[idx];
+        tooltipAnchor = entryRepeater.itemAt(idx);
+    }
+
+    // Keep the Empty Trash popover anchored while the right region reflows
+    // (a folder pin or stack is added/removed). The Trash entry is permanent,
+    // but its slot can move; the proxy follows the fresh delegate.
+    function refreshTrashEmptyAfterProjection() {
+        if (!trashEmptyOpen)
+            return;
+        var idx = indexOfItemId("__trash__");
+        if (idx < 0) {
+            trashEmptyPopover.hide();
+            return;
+        }
+        trashEmptyAnchorProxy.capture(entryRepeater.itemAt(idx));
+        trashEmptyAnchorProxy.reposition();
     }
 
     // Keep the overflow list bound to its fresh entry, or dismiss it when the
@@ -1642,12 +1940,54 @@ Rectangle {
             return;
         }
         overflowEntryRef = items[idx];
-        overflowAnchor = entryRepeater.itemAt(idx);
+        overflowAnchorProxy.capture(entryRepeater.itemAt(idx));
+        overflowAnchorProxy.reposition();
     }
 
     function refreshPopoversAfterProjection() {
         refreshChooserAfterProjection();
+        refreshMenuAfterProjection();
+        refreshStackAfterProjection();
+        refreshAppPickerAfterProjection();
         refreshOverflowAfterProjection();
+        refreshTrashEmptyAfterProjection();
+        refreshTooltipAfterProjection();
+    }
+
+    // The entry model is rebuilt whenever the compositor projection changes.
+    // A live DragHandler/divider delegate can be destroyed mid-gesture, which
+    // would otherwise leave `dragging` or `resizing` latched on forever and
+    // disable magnification/auto-hide for the rest of the session. Cancel the
+    // gesture before that state can stick. An external drag belongs to the
+    // shell, so only its resolved target is cleared.
+    function reconcileInteractionAfterProjection() {
+        if (dragging)
+            resetDrag();
+        if (resizing)
+            endDividerResize();
+        if (externalDragActive) {
+            var externalChanged = false;
+            if (externalTargetId !== "" && indexOfItemId(externalTargetId) < 0) {
+                externalTargetId = "";
+                springLoadTargetId = "";
+                springLoadTimer.stop();
+                externalChanged = true;
+            }
+            if (externalInsertIndex > appEntries.length) {
+                externalInsertIndex = appEntries.length;
+                externalChanged = true;
+            }
+            if (externalChanged)
+                externalDragChanged();
+        }
+        if (keyboardFocused && focusedItemId !== ""
+                && indexOfItemId(focusedItemId) < 0) {
+            var list = navigableItems;
+            focusedItemId = list.length > 0 ? list[0].id : "";
+        }
+        // A cancelled gesture must not leave an auto-hidden Dock stuck open.
+        if (autoHide)
+            scheduleHide();
     }
 
     // Open the "More Windows" list anchored to the overflow cell (T-14.7q).
@@ -1657,9 +1997,12 @@ Rectangle {
         closePopovers();
         hideTooltip();
         hideTimer.stop();
-        overflowEntryRef = entry;
         var idx = indexOfItemId(entry.id);
-        overflowAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        if (idx < 0)
+            return;
+        overflowEntryRef = entry;
+        overflowAnchorProxy.capture(entryRepeater.itemAt(idx));
+        overflowAnchor = overflowAnchorProxy;
         overflowPopover.open = true;
     }
 
@@ -1695,7 +2038,9 @@ Rectangle {
         hideTooltip();
         hideTimer.stop();
         var idx = indexOfItemId("__overflow__");
-        chooserAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+        if (idx < 0)
+            return;
+        chooserAnchorProxy.capture(entryRepeater.itemAt(idx));
         chooserAnchor = chooserAnchorProxy;
         chooserEntry = group;
         chooserHoverOpened = false;
@@ -1715,7 +2060,8 @@ Rectangle {
         for (var i = 0; i < items.length; ++i) {
             var e = items[i];
             if (e.running === true && e.kind !== "minimized"
-                    && e.windowList !== undefined && e.windowList.length > 1) {
+                    && e.windowList !== undefined && e.windowList !== null
+                    && e.windowList.length > 1) {
                 openChooser(e);
                 windowChooser.fixtureHoverIndex = 0;
                 return true;
@@ -1794,9 +2140,12 @@ Rectangle {
         closePopovers();
         hideTooltip();
         hideTimer.stop();
-        stackEntryRef = entry;
         var idx = indexOfItemId(entry.id);
-        stackAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        if (idx < 0)
+            return;
+        stackEntryRef = entry;
+        stackAnchorProxy.capture(entryRepeater.itemAt(idx));
+        stackAnchor = stackAnchorProxy;
         stackPopover.open = true;
         if (entry.id === stackEntry.id)
             downloadsViewed();
@@ -1813,7 +2162,10 @@ Rectangle {
         hideTooltip();
         hideTimer.stop();
         var idx = indexOfItemId(dividerEntry.id);
-        appPickerAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        if (idx < 0)
+            return;
+        appPickerAnchorProxy.capture(entryRepeater.itemAt(idx));
+        appPickerAnchor = appPickerAnchorProxy;
         appPicker.open = true;
         appPickerRequested();
     }
@@ -2054,8 +2406,11 @@ Rectangle {
 
     function beginDividerResize(sceneX, sceneY) {
         closePopovers();
+        hideTooltip();
         hideTimer.stop();
         revealTimer.stop();
+        dragSettleTimer.stop();
+        dragSettling = false;
         var local = dock.mapFromItem(null, sceneX, sceneY);
         var along = axisIsX ? local.x : local.y;
         resizing = true;
@@ -2093,6 +2448,8 @@ Rectangle {
             return;
         resizing = false;
         dockSizeChanged(iconSizeFraction(iconSize));
+        if (autoHide)
+            scheduleHide();
     }
 
     // --- External drops (T-10 section 12) --------------------------------
@@ -2116,6 +2473,12 @@ Rectangle {
         var best = -1;
         var bestDistance = Number.MAX_VALUE;
         for (var i = 0; i < items.length; ++i) {
+            // The model and its computed layout can be observed on opposite
+            // sides of an entry change for one evaluation (see `inputRects`);
+            // skip the frame instead of aborting the whole drag with a
+            // TypeError.
+            if (i >= l.length || !items[i])
+                continue;
             var center = axisIsX ? (l[i].x + l[i].w / 2) : (l[i].y + l[i].h / 2);
             var d = Math.abs(center - along);
             if (d < bestDistance) {
@@ -2138,6 +2501,10 @@ Rectangle {
                 continue;
             if (k === "trash" || k === "minimized" || k === "stack" || k === "overflow")
                 break;
+            // See `itemIndexAtLocal`: a model/layout mismatch for one
+            // evaluation must not abort the drag.
+            if (i >= l.length)
+                continue;
             var center = axisIsX ? (l[i].x + l[i].w / 2) : (l[i].y + l[i].h / 2);
             if (localAlong < center)
                 return appIdx;
@@ -2151,6 +2518,8 @@ Rectangle {
         hideTooltip();
         hideTimer.stop();
         revealTimer.stop();
+        dragSettleTimer.stop();
+        dragSettling = false;
         externalDragActive = true;
         externalPayloadIsApp = payloadIsApp;
         externalPayloadIsFolder = false;
@@ -2261,6 +2630,8 @@ Rectangle {
         springLoadTargetId = "";
         springLoadTimer.stop();
         externalDragChanged();
+        if (autoHide)
+            scheduleHide();
     }
 
     // The hover affordance for the current external-drag target (T-14.7f):
@@ -2305,7 +2676,7 @@ Rectangle {
         if (!externalDragActive || externalTargetIndex < 0)
             return "";
         var e = items[externalTargetIndex];
-        var nm = e.name !== undefined ? e.name : "";
+        var nm = e.name !== undefined && e.name !== null ? String(e.name) : "";
         return externalAffordanceFor(e.kind, nm);
     }
 
@@ -2381,14 +2752,15 @@ Rectangle {
             return appsLauncherMenuModel();
         var running = e.running === true;
         var minimized = e.kind === "minimized";
-        var list = e.windowList !== undefined ? e.windowList : [];
+        var list = e.windowList !== undefined && e.windowList !== null
+                   ? e.windowList : [];
         // The window list (T-10 sections 9/13): shown for any entry that
         // carries an app's windows, including a minimized-window entry (its
         // owning app's full list). The frontmost window is checked and each
         // minimized row is marked.
         if (list.length > 0) {
             for (var i = 0; i < list.length; ++i) {
-                var w = list[i];
+                var w = list[i] || {};
                 var label = w.title !== undefined ? w.title : qsTr("Window");
                 if (w.minimized === true)
                     label += qsTr(" (minimized)");
@@ -2640,24 +3012,37 @@ Rectangle {
     // with an open submenu reports the union of both panels so the nested
     // panel is not clipped (`ContextMenu.contentRect`).
     readonly property var activePopoverRect: {
-        // `open` keeps the rect valid while the popover fades in/out (the
-        // shell captures the animation); `visible` covers the close tail.
-        var popup = (entryMenu.open || entryMenu.visible) ? entryMenu
-                 : ((windowChooser.open || windowChooser.visible) ? windowChooser
-                 : ((stackPopover.open || stackPopover.visible) ? stackPopover
-                 : ((appPicker.open || appPicker.visible) ? appPicker
-                 : ((overflowPopover.open || overflowPopover.visible) ? overflowPopover
-                 : ((trashEmptyPopover.open || trashEmptyPopover.visible) ? trashEmptyPopover
-                 : null)))));
+        // An `open` popover owns the overlay. A closing popover can still be
+        // `visible` for its fade tail; if it were preferred, opening a second
+        // popover would keep committing the old one's rect until the fade
+        // ended, leaving the new popover invisible. Fall back to the visible
+        // tail only when nothing is open (so the close animation is captured).
+        var popup = entryMenu.open ? entryMenu
+                 : (windowChooser.open ? windowChooser
+                 : (stackPopover.open ? stackPopover
+                 : (appPicker.open ? appPicker
+                 : (overflowPopover.open ? overflowPopover
+                 : (trashEmptyPopover.open ? trashEmptyPopover
+                 : (entryMenu.visible ? entryMenu
+                 : (windowChooser.visible ? windowChooser
+                 : (stackPopover.visible ? stackPopover
+                 : (appPicker.visible ? appPicker
+                 : (overflowPopover.visible ? overflowPopover
+                 : (trashEmptyPopover.visible ? trashEmptyPopover
+                 : null)))))))))));
         if (!popup || popup.width <= 0 || popup.height <= 0)
             return { x: 0, y: 0, w: 0, h: 0 };
+        // Use the untransformed rect: the popover scales *down* while opening
+        // (0.97 -> 1.0) and closing (1.0 -> 0.97) around its bottom edge, so the
+        // untransformed box always covers the drawn content. Mapping through
+        // `mapToItem` would bake the scale at evaluation time but would not
+        // re-evaluate as the Behavior animates, leaving a stale overlay rect.
         if (popup.contentRect !== undefined) {
             var content = popup.contentRect;
-            var origin = popup.mapToItem(dock, content.x, content.y);
-            return { x: origin.x, y: origin.y, w: content.w, h: content.h };
+            return { x: popup.x + content.x, y: popup.y + content.y,
+                     w: content.w, h: content.h };
         }
-        var topLeft = popup.mapToItem(dock, 0, 0);
-        return { x: topLeft.x, y: topLeft.y, w: popup.width, h: popup.height };
+        return { x: popup.x, y: popup.y, w: popup.width, h: popup.height };
     }
 
     // The hover label's rectangle in Dock-scene coordinates, or an empty rect
@@ -2668,9 +3053,11 @@ Rectangle {
         if (!dockTooltip.visible
                 || dockTooltip.width <= 0 || dockTooltip.height <= 0)
             return { x: 0, y: 0, w: 0, h: 0 };
-        var topLeft = dockTooltip.mapToItem(dock, 0, 0);
-        var x = topLeft.x;
-        var y = topLeft.y;
+        // Direct child coordinates: the capsule scales down while opening and
+        // closing around its centre, so the untransformed box covers the drawn
+        // content and does not go stale as the scale Behavior animates.
+        var x = dockTooltip.x;
+        var y = dockTooltip.y;
         var w = dockTooltip.width;
         var h = dockTooltip.height;
         // The pointer tail paints beyond the capsule on the anchor side
@@ -2695,7 +3082,11 @@ Rectangle {
 
     // The union of the open popover and the hover label; the shell commits it
     // to the Dock's overlay surface (T-10 section 5, T-14.7i). They never show
-    // together, but the union keeps the close tail of either covered.
+    // together, but the union keeps the close tail of either covered. The rect
+    // is clamped into the pre-sized buffer's real image bounds: a menu taller
+    // than the headroom is pinned to the buffer top, and reporting its full
+    // height would make the shell's `QImage::copy` return a null image (no
+    // overlay at all). The visible part is committed instead.
     readonly property var popoverRect: {
         var a = activePopoverRect;
         var b = tooltipRect;
@@ -2704,14 +3095,14 @@ Rectangle {
         if (!aValid && !bValid)
             return { x: 0, y: 0, w: 0, h: 0 };
         if (!aValid)
-            return b;
+            return clampPopoverRect(b);
         if (!bValid)
-            return a;
+            return clampPopoverRect(a);
         var x0 = Math.min(a.x, b.x);
         var y0 = Math.min(a.y, b.y);
         var x1 = Math.max(a.x + a.w, b.x + b.w);
         var y1 = Math.max(a.y + a.h, b.y + b.h);
-        return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+        return clampPopoverRect({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
     }
 
     function scaledGap(a, b, aDivider, bDivider) {
@@ -2741,6 +3132,24 @@ Rectangle {
         return Math.max(minY, Math.min(maxY, py));
     }
 
+    // Clamp a popover rect to the part of the offscreen image that actually
+    // exists. `clampPopoverX/Y` place the popover; this bounds its *size* for
+    // the overlay commit, so a content-taller-than-headroom menu still produces
+    // a valid copy instead of a null image (the scene clips the rest anyway).
+    function clampPopoverRect(r) {
+        if (popoverGutter <= 0 && popoverHeadroom <= 0)
+            return r;
+        var minX = popoverGutter > 0 ? -popoverGutter : r.x;
+        var maxX = popoverGutter > 0 ? width + popoverGutter : r.x + r.w;
+        var minY = popoverHeadroom > 0 ? -popoverHeadroom : r.y;
+        var maxY = popoverHeadroom > 0 ? height : r.y + r.h;
+        var x0 = Math.max(minX, Math.min(maxX, r.x));
+        var x1 = Math.max(x0, Math.min(maxX, r.x + r.w));
+        var y0 = Math.max(minY, Math.min(maxY, r.y));
+        var y1 = Math.max(y0, Math.min(maxY, r.y + r.h));
+        return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+
     // The launch/attention phase for an entry. The shell publishes phases in
     // `bouncePhases` keyed by entry id so the entry model is never rebuilt for
     // a bounce; a phase embedded in the entry itself still wins so existing
@@ -2750,7 +3159,7 @@ Rectangle {
             return -1;
         if (entry.bounce !== undefined && entry.bounce >= 0)
             return entry.bounce;
-        var info = bouncePhases[entry.id];
+        var info = bouncePhases ? bouncePhases[entry.id] : undefined;
         return info !== undefined && info.phase !== undefined ? info.phase : -1;
     }
 
@@ -2759,7 +3168,7 @@ Rectangle {
             return false;
         if (entry.attention === true)
             return true;
-        var info = bouncePhases[entry.id];
+        var info = bouncePhases ? bouncePhases[entry.id] : undefined;
         return info !== undefined && info.attention === true;
     }
 
@@ -2773,7 +3182,7 @@ Rectangle {
             return -1;
         if (entry.minimizeBounce !== undefined && entry.minimizeBounce >= 0)
             return entry.minimizeBounce;
-        var info = bouncePhases[entry.id];
+        var info = bouncePhases ? bouncePhases[entry.id] : undefined;
         return info !== undefined && info.minimize === true
                && info.minimizePhase !== undefined ? info.minimizePhase : -1;
     }
@@ -2783,7 +3192,7 @@ Rectangle {
             return false;
         if (entry.minimizeBounce !== undefined && entry.minimizeBounce >= 0)
             return true;
-        var info = bouncePhases[entry.id];
+        var info = bouncePhases ? bouncePhases[entry.id] : undefined;
         return info !== undefined && info.minimize === true;
     }
 
@@ -2905,6 +3314,12 @@ Rectangle {
                 if (appIdx < 0)
                     continue;
                 var targetItem = appItemIndices[appSlot(appIdx)];
+                // A model rebuild can shrink the app region before the
+                // reconcile handler cancels the drag; skip the stale slot for
+                // this frame instead of writing undefined geometry.
+                if (targetItem === undefined
+                        || targetItem >= base.positions.length)
+                    continue;
                 positions[a] = base.positions[targetItem];
                 sizes[a] = base.sizes[targetItem];
             }
@@ -3090,7 +3505,8 @@ Rectangle {
         if (strokeWidth === undefined)
             strokeWidth = Theme.controls.dock.plate.rimHeight;
         var d = strokeWidth / 2;
-        var r = Math.max(0, Theme.controls.dock.radius - d);
+        var r = Math.max(0, Math.min(Theme.controls.dock.radius - d,
+                                      Math.min(w, h) / 2));
         if (position === "right")
             return "M " + r + " 0 A " + r + " " + r + " 0 0 0 0 " + r
                  + " L 0 " + (h - r) + " A " + r + " " + r + " 0 0 0 " + r + " " + h;
@@ -3425,6 +3841,8 @@ Rectangle {
             dock.scheduleHide();
         }
         onTriggered: (index, item) => {
+            if (!item)
+                return;
             if (item.action === "empty_trash_confirmation") {
                 // Swap in the confirmation step; `keepOpen` on the menu item
                 // keeps the menu up while the model changes.

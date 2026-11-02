@@ -577,8 +577,9 @@ Item {
     TapHandler {
         acceptedButtons: Qt.LeftButton
         // The generic tap handles app/temporary/minimized/trash entries. A
-        // folder stack has its own handler below (single vs double click).
-        enabled: !root.isExternal && !root.isStack
+        // folder stack has its own handler below (single vs double click); a
+        // divider is only a resize handle and must never activate.
+        enabled: !root.isExternal && !root.isStack && !root.isDivider
         // A click activates while the pointer stays within `dragSlop`; the
         // DragHandler below takes over at the same threshold, so a slop-drag
         // lifts instead (T-14.7g). Both handlers share the value so a

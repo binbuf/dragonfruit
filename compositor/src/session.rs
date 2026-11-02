@@ -142,8 +142,19 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         if ticking {
             state.needs_redraw = true;
         }
-        let timeout =
-            (ticking || render_failures > 0).then(|| std::time::Duration::from_millis(16));
+        // Drive the short post-input frame cadence at the output's real
+        // refresh, not a hard-coded 60 Hz. On a 144 Hz panel this is what lets
+        // a client that is waiting on its frame callback paint at 144 instead
+        // of being capped at 60.
+        let refresh_interval = state
+            .space
+            .outputs()
+            .next()
+            .and_then(|output| output.current_mode())
+            .filter(|mode| mode.refresh > 0)
+            .map(|mode| std::time::Duration::from_secs_f64(1_000.0 / f64::from(mode.refresh)))
+            .unwrap_or_else(|| std::time::Duration::from_millis(16));
+        let timeout = (ticking || render_failures > 0).then_some(refresh_interval);
         event_loop
             .dispatch(timeout, &mut state)
             .map_err(|e| format!("event loop error: {e}"))?;
