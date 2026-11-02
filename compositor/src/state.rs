@@ -675,10 +675,24 @@ impl DfState {
         let mut dmabuf_state = DmabufState::new();
         let global = match main_device {
             Some(dev) => {
-                let feedback = smithay::wayland::dmabuf::DmabufFeedbackBuilder::new(dev, formats)
+                // A driver can reject the default feedback (for example when
+                // it exposes no usable modifier set). The global is still
+                // valid with the plain format list, so degrade instead of
+                // taking the compositor down at startup.
+                match smithay::wayland::dmabuf::DmabufFeedbackBuilder::new(dev, formats.clone())
                     .build()
-                    .expect("failed to build default dmabuf feedback");
-                dmabuf_state.create_global_with_default_feedback::<DfState>(&dh, &feedback)
+                {
+                    Ok(feedback) => {
+                        dmabuf_state.create_global_with_default_feedback::<DfState>(&dh, &feedback)
+                    }
+                    Err(err) => {
+                        eprintln!(
+                            "dragonfruit-compositor: default dmabuf feedback unavailable \
+                             ({err}); advertising formats without feedback"
+                        );
+                        dmabuf_state.create_global::<DfState>(&dh, formats)
+                    }
+                }
             }
             None => dmabuf_state.create_global::<DfState>(&dh, formats),
         };

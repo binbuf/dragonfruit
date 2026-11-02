@@ -50,7 +50,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-return native-recover native-restart native-status native-logs demo soak e2e \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-return native-recover native-restart native-status native-capture native-logs demo soak e2e \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
@@ -97,6 +97,7 @@ help:
 	@echo "  make native-recover — from a TTY/SSH: undo preselect/runtime env, restore the host login"
 	@echo "  make native-restart — rebuild and restart native units (NATIVE_UNITS=shell|all|...)"
 	@echo "  make native-status — show the native session state and unit activity"
+	@echo "  make native-capture — write a diagnostics snapshot from the running native session"
 	@echo "  make native-logs — follow a native unit's journal (NATIVE_UNITS=shell)"
 	@echo "  make install  — lay out session units + shipped wallpaper under DESTDIR/PREFIX"
 	@echo "  make soak     — teardown hygiene: N clean cycles (default 100)"
@@ -670,6 +671,9 @@ native-restart:
 
 native-status:
 	bash scripts/native-session.sh status
+
+native-capture:
+	bash scripts/native-session.sh capture
 
 native-logs:
 	bash scripts/native-session.sh logs $(NATIVE_UNITS)

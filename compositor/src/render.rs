@@ -16,7 +16,7 @@ use smithay::backend::renderer::element::surface::{
 use smithay::backend::renderer::element::utils::{
     Relocate, RelocateRenderElement, RescaleRenderElement,
 };
-use smithay::backend::renderer::element::{AsRenderElements, Id, Kind, RenderElementStates};
+use smithay::backend::renderer::element::{AsRenderElements, Kind, RenderElementStates};
 use smithay::backend::renderer::utils::{with_renderer_surface_state, CommitCounter};
 use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer};
 use smithay::desktop::utils::{
@@ -98,11 +98,13 @@ where
         if let Some(image) = image {
             elements.push(WallpaperRenderElement::Image(image));
         }
+        let physical = target.to_physical_precise_round(scale);
+        let fill = Color32F::new(color[0], color[1], color[2], color[3]);
         elements.push(WallpaperRenderElement::Solid(SolidColorRenderElement::new(
-            Id::new(),
-            target.to_physical_precise_round(scale),
+            crate::window::stable_solid_id(0x7761_6c6c_7061_7065, physical, fill),
+            physical,
             CommitCounter::default(),
-            Color32F::new(color[0], color[1], color[2], color[3]),
+            fill,
             Kind::Unspecified,
         )));
     }

@@ -31,6 +31,53 @@ pub mod scene_transform;
 pub mod shadow;
 pub mod state;
 
+use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+use smithay::backend::renderer::element::Id;
+use smithay::backend::renderer::Color32F;
+use smithay::utils::Physical;
+
+/// A render-element id that stays stable while an effect's geometry and colour
+/// stay the same.
+///
+/// Compositor-drawn effects (titlebars, backdrops, shadows, the wallpaper
+/// fill) are rebuilt into render elements on every frame. Giving each rebuild
+/// a fresh [`Id::new`] tells Smithay's damage tracker that every element moved
+/// or changed on every frame, which forces a full-output repaint at the
+/// display refresh rate forever. That saturates the main loop (and is what
+/// makes input lag/freeze on a 4K output). Keying the id by the element's
+/// visible inputs lets the tracker skip an unchanged frame while still
+/// treating a real geometry/colour change as damage.
+pub(crate) fn stable_solid_id(salt: u64, rect: Rectangle<i32, Physical>, color: Color32F) -> Id {
+    thread_local! {
+        static IDS: RefCell<HashMap<u64, Id>> = RefCell::new(HashMap::new());
+    }
+
+    let mut hasher = DefaultHasher::new();
+    salt.hash(&mut hasher);
+    rect.loc.x.hash(&mut hasher);
+    rect.loc.y.hash(&mut hasher);
+    rect.size.w.hash(&mut hasher);
+    rect.size.h.hash(&mut hasher);
+    for component in color.components() {
+        component.to_bits().hash(&mut hasher);
+    }
+    let key = hasher.finish();
+
+    IDS.with(|ids| {
+        let mut ids = ids.borrow_mut();
+        // An animation produces a new key per frame; bound the cache so a
+        // long-running session cannot grow it without limit. Settled geometry
+        // immediately re-populates and is stable again.
+        if ids.len() > 8192 {
+            ids.clear();
+        }
+        ids.entry(key).or_insert_with(Id::new).clone()
+    })
+}
+
 #[allow(unused_imports)]
 pub use backdrop::{
     backdrop_bounds, backdrop_elements, backdrop_layers, explicit_panel_bounds, is_backdrop_panel,
@@ -524,6 +571,22 @@ mod tests {
 
     fn rect(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
         Rectangle::new(Point::from((x, y)), Size::from((w, h)))
+    }
+
+    #[test]
+    fn solid_effect_ids_are_stable_until_the_effect_changes() {
+        let physical: Rectangle<i32, Physical> =
+            Rectangle::new(Point::from((10, 20)), Size::from((30, 40)));
+        let color = Color32F::new(0.1, 0.2, 0.3, 0.4);
+        let first = stable_solid_id(7, physical, color);
+        let again = stable_solid_id(7, physical, color);
+        assert_eq!(first, again, "an unchanged effect must not look damaged");
+
+        let moved = Rectangle::new(Point::from((11, 20)), Size::from((30, 40)));
+        assert_ne!(first, stable_solid_id(7, moved, color));
+        let recolored = Color32F::new(0.1, 0.2, 0.3, 0.5);
+        assert_ne!(first, stable_solid_id(7, physical, recolored));
+        assert_ne!(first, stable_solid_id(8, physical, color));
     }
 
     // `WindowModel` is keyed by Smithay `Window`, which needs a live
