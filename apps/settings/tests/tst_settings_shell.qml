@@ -67,7 +67,7 @@ Item {
             verify(checked >= 20,
                    "the shipped categories must be mapped (got " + checked + ")");
 
-            // A pane with no Phosphor mapping keeps the original Icon fallback.
+            // A pane with no Phosphor mapping keeps the Tabler-backed Icon fallback.
             compare(SettingsPanes.categoryStyle(SettingsPanes.paneById("trackpad")), null);
             verify(SettingsPanes.categoryStyle(SettingsPanes.paneById("general")) !== null);
             verify(SettingsPanes.categoryStyle(null) === null);

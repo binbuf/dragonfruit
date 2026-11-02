@@ -6,7 +6,6 @@
 
 #include <QDir>
 #include <QFileInfo>
-#include <QProcess>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QUrl>
@@ -174,7 +173,7 @@ void FilesBridge::buildLocations()
     m_volumes.clear();
     if (m_fixture) {
         m_volumes.append(location(QStringLiteral("volume-/media/Data"),
-                                  QStringLiteral("Data"), QStringLiteral("volume"),
+                                  QStringLiteral("Data"), QStringLiteral("drive-harddisk"),
                                   QStringLiteral("file:///media/Data")));
         return;
     }
@@ -194,7 +193,7 @@ void FilesBridge::buildLocations()
         if (label.isEmpty())
             label = root;
         m_volumes.append(location(QStringLiteral("volume-") + root, label,
-                                  QStringLiteral("volume"), fileUri(root)));
+                                  QStringLiteral("drive-harddisk"), fileUri(root)));
     }
 }
 
@@ -267,11 +266,5 @@ QVariantMap FilesBridge::resolveOpenTarget(const QString &argument) const
 
 bool FilesBridge::open(const QString &uri) const
 {
-    const QStringList command = filesOpenHandlerCommand(uri);
-    if (command.isEmpty())
-        return false;
-    QProcess opener;
-    opener.setProgram(command.first());
-    opener.setArguments(command.mid(1));
-    return opener.startDetached();
+    return filesOpen(uri);
 }

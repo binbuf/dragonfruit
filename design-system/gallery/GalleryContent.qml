@@ -16,7 +16,7 @@ Item {
                                   "Segmented", "ContextMenu", "SearchField",
                                   "SourceList", "Dialog", "Sheet", "Popover",
                                   "ScrollView", "Slider", "Select", "Icons", "Tooltip",
-                                  "Skeleton", "Phosphor", "SettingsCategory"]
+                                  "Skeleton", "Phosphor", "SettingsCategory", "Tabler"]
     property string scheme: "dark"
     property bool reducedMotion: false
 
@@ -68,6 +68,7 @@ Item {
             case 25: return skeletonPageComponent;
             case 26: return phosphorPageComponent;
             case 27: return settingsCategoryPageComponent;
+            case 28: return tablerPageComponent;
             default: return iconsPageComponent;
             }        }
     }
@@ -100,6 +101,7 @@ Item {
     Component { id: skeletonPageComponent; SkeletonPage { } }
     Component { id: phosphorPageComponent; PhosphorPage { } }
     Component { id: settingsCategoryPageComponent; SettingsCategoryPage { } }
+    Component { id: tablerPageComponent; TablerPage { } }
 
     component Page: Column {
         spacing: Theme.primitive.spacing.lg
@@ -1065,6 +1067,81 @@ Item {
                 SettingsCategoryIcon { source: "gear"; size: 32 }
                 SettingsCategoryIcon { source: "gear"; size: 48 }
                 SettingsCategoryIcon { source: "gear"; size: 48; glow: true }
+            }
+        }
+    }
+
+    // The Tabler line-glyph language (ADR 0185). The outline set is the
+    // monochrome chrome/Files vocabulary; the small filled set is the Dock
+    // launcher and app-artwork weight. `Icon.qml` maps the inherited names onto
+    // the outline set, so the `Icons` page above is the same library.
+    component TablerPage: Page {
+        Section {
+            heading: qsTr("Outline — tinted to textPrimary")
+            Row {
+                spacing: Theme.primitive.spacing.lg
+                Repeater {
+                    model: ["folder", "file-text", "wifi", "battery", "moon",
+                            "settings", "search", "trash", "accessible"]
+                    delegate: Column {
+                        required property string modelData
+                        spacing: Theme.primitive.spacing.xs
+                        TablerIcon {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            name: modelData
+                            size: 28
+                            color: Theme.color.textPrimary
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: modelData
+                            color: Theme.color.textTertiary
+                            font.pixelSize: Theme.primitive.font.sizeXs
+                        }
+                    }
+                }
+            }
+        }
+        Section {
+            heading: qsTr("Filled — tinted to accent")
+            Row {
+                spacing: Theme.primitive.spacing.lg
+                Repeater {
+                    model: ["folder", "settings", "layout-grid", "moon", "bell",
+                            "shield-check"]
+                    delegate: Column {
+                        required property string modelData
+                        spacing: Theme.primitive.spacing.xs
+                        TablerIcon {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            name: modelData
+                            weight: "filled"
+                            size: 28
+                            color: Theme.color.accent
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: modelData + " (filled)"
+                            color: Theme.color.textTertiary
+                            font.pixelSize: Theme.primitive.font.sizeXs
+                        }
+                    }
+                }
+            }
+        }
+        Section {
+            heading: qsTr("Sizes")
+            Row {
+                spacing: Theme.primitive.spacing.lg
+                Repeater {
+                    model: [16, 24, 40, 64]
+                    delegate: TablerIcon {
+                        required property int modelData
+                        name: "settings"
+                        size: modelData
+                        color: Theme.color.textPrimary
+                    }
+                }
             }
         }
     }

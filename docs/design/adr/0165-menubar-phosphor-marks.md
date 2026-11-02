@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted
+accepted; superseded by ADR [0185](0185-tabler-line-icons.md) (the menu-bar
+marks are now Tabler outline glyphs, with the same continuous battery fill).
 
 ## Context
 

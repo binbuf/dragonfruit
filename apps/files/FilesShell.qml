@@ -795,6 +795,16 @@ Item {
         }
     }
 
+    // Clicking anywhere outside the menu dismisses it; the menu itself sits
+    // above this layer, so its rows still receive the click.
+    MouseArea {
+        anchors.fill: parent
+        z: contextMenu.z - 1
+        visible: contextMenu.open
+        acceptedButtons: Qt.AllButtons
+        onPressed: contextMenu.hide()
+    }
+
     // The one context menu (T-10.4c). Its entries come from the node or
     // background model; every action routes back through this shell.
     ContextMenu {

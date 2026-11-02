@@ -73,7 +73,7 @@ Item {
             verify(names.indexOf("Browser") >= 0);
             verify(names.indexOf("Calculator") >= 0);
             verify(names.indexOf("Editor") >= 0);
-            // The themed icon is absent here, so the Phosphor fallback shows.
+            // The themed icon is absent here, so the Tabler fallback shows.
             verify(findChild(list[0], "appsDrawerTileFallback").visible);
         }
 

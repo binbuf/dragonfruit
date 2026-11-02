@@ -93,6 +93,10 @@ Item {
             anchors.centerIn: parent
             name: light.kind === "zoom" ? "zoom" : light.kind
             size: Theme.controls.trafficLights.glyphSize
+            // The traffic-light glyphs are 6 px; a 4-unit Tabler stroke keeps
+            // them at roughly 1 logical pixel, matching the old hand-drawn
+            // optical weight.
+            strokeWidth: 4
             color: Theme.color.trafficGlyph
             opacity: root.reveal ? 1 : 0
 
