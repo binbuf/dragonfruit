@@ -31,7 +31,6 @@
 //! surface's own alpha blends over it instead of being punched out.
 
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
-use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::Color32F;
@@ -474,13 +473,15 @@ pub fn backdrop_elements(
     spec: BackdropSpec,
     scale: Scale<f64>,
 ) -> Vec<SolidColorRenderElement> {
+    const BACKDROP_SALT: u64 = 0x6261_636b_6472_6f70; // "backdrop"
     let mut elements = Vec::new();
-    for layer in backdrop_layers(rect, spec) {
+    for (index, layer) in backdrop_layers(rect, spec).into_iter().enumerate() {
         let radius = layer.radius.round() as i32;
         for span in rounded_rect_spans(layer.rect, radius, RoundedCorners::All) {
+            let physical = span.to_physical_precise_round(scale);
             elements.push(SolidColorRenderElement::new(
-                Id::new(),
-                span.to_physical_precise_round(scale),
+                crate::window::stable_solid_id(BACKDROP_SALT ^ index as u64, physical, layer.color),
+                physical,
                 CommitCounter::default(),
                 layer.color,
                 Kind::Unspecified,

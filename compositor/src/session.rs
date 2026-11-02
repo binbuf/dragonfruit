@@ -121,6 +121,14 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     // Main loop: fully event-driven; backends drive their own frame
     // scheduling (timers/vblank for DRM, redraw flag for nested).
     let mut render = hooks.render;
+    // A single failed frame is not a session-ending event: GPUs lose and
+    // regain contexts, swapchains return `TemporaryFailure`, and a window can
+    // be resizing while the renderer re-binds. Retry at the frame cadence and
+    // only end the session when the failure is clearly persistent (roughly
+    // five seconds at 60 Hz), so systemd/display-manager recovery still has a
+    // clean exit path instead of a panic or a permanently stalled loop.
+    const MAX_CONSECUTIVE_RENDER_FAILURES: u32 = 300;
+    let mut render_failures: u32 = 0;
     while state.running {
         // Fully fd-driven: winit (nested), udev/libinput/DRM event fds,
         // client sockets, and signals all wake the loop; nothing polls.
@@ -134,7 +142,8 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         if ticking {
             state.needs_redraw = true;
         }
-        let timeout = ticking.then(|| std::time::Duration::from_millis(16));
+        let timeout =
+            (ticking || render_failures > 0).then(|| std::time::Duration::from_millis(16));
         event_loop
             .dispatch(timeout, &mut state)
             .map_err(|e| format!("event loop error: {e}"))?;
@@ -154,7 +163,24 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         // the clients, the scene, and the outputs are untouched, so recovery
         // is a repaint, not a restart.
         if !state.suspend.is_suspended() {
-            (render)(&mut state)?;
+            match (render)(&mut state) {
+                Ok(()) => render_failures = 0,
+                Err(err) => {
+                    render_failures = render_failures.saturating_add(1);
+                    eprintln!(
+                        "dragonfruit-compositor: render pass failed \
+                         ({render_failures}/{MAX_CONSECUTIVE_RENDER_FAILURES}): {err}"
+                    );
+                    if render_failures >= MAX_CONSECUTIVE_RENDER_FAILURES {
+                        return Err(format!(
+                            "renderer failed {render_failures} consecutive frames: {err}"
+                        ));
+                    }
+                    // Keep the frame clock alive so the next dispatch retries
+                    // instead of blocking forever on an idle session.
+                    state.needs_redraw = true;
+                }
+            }
         }
         if state.stats.frames_rendered != frames_before {
             let frame_duration = frame_start.elapsed();

@@ -3118,6 +3118,13 @@ Rectangle {
         var out = [plateRect];
         var l = layout;
         for (var i = 0; i < l.length; ++i) {
+            // The model and its computed layout can be observed for one
+            // binding evaluation on opposite sides of an entry change (the
+            // startup pin seed, a folder/trash update). A missing delegate is
+            // not a fatal QML error; skip it for this frame instead of
+            // aborting the whole expression and leaving inputRects undefined.
+            if (i >= items.length || !items[i])
+                continue;
             if (items[i].kind === "divider")
                 continue;
             var magnified = l[i].iconSize > iconSize + 0.5;

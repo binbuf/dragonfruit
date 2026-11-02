@@ -22,7 +22,6 @@
 //! window's shadow shrinks with it.
 
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
-use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::Color32F;
@@ -192,8 +191,9 @@ pub fn shadow_elements(
     output_origin: Point<i32, Logical>,
     motion: Option<MotionFrame>,
 ) -> Vec<SolidColorRenderElement> {
+    const SHADOW_SALT: u64 = 0x7368_6164_6f77_7773; // "shadowws"
     let mut elements = Vec::new();
-    for layer in shadow_layers(rect, spec) {
+    for (index, layer) in shadow_layers(rect, spec).into_iter().enumerate() {
         let radius = layer.radius.round() as i32;
         for span in rounded_rect_spans(layer.rect, radius, RoundedCorners::All) {
             let (span_rect, color) = motion_transform(span, layer.color, rect, motion);
@@ -205,9 +205,10 @@ pub fn shadow_elements(
                     .into(),
                 span_rect.size,
             );
+            let physical = local.to_physical_precise_round(scale);
             elements.push(SolidColorRenderElement::new(
-                Id::new(),
-                local.to_physical_precise_round(scale),
+                crate::window::stable_solid_id(SHADOW_SALT ^ index as u64, physical, color),
+                physical,
                 CommitCounter::default(),
                 color,
                 Kind::Unspecified,

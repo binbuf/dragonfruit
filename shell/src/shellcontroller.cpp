@@ -292,10 +292,16 @@ ShellController::ShellController(QObject *parent)
 ShellController::~ShellController()
 {
     delete m_controlCenterWindow;
+    delete m_osdWindow;
     delete m_bannerWindow;
     delete m_switcherWindow;
     delete m_appsDrawerWindow;
     delete m_overviewWindow;
+    delete m_chooserWindow;
+    delete m_screenshotWindow;
+    delete m_screencastWindow;
+    delete m_polkitWindow;
+    delete m_lockWindow;
     delete m_dockWindow;
     delete m_window;
 }
@@ -310,8 +316,17 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_barHeight = barHeight;
     m_waylandDisplay = socketName;
     m_protocol = new ShellProtocol(this);
-    connect(m_protocol, &ShellProtocol::fatal, this, [](const QString &message) {
+    connect(m_protocol, &ShellProtocol::fatal, this, [this](const QString &message) {
         qWarning() << "shell:" << message;
+        // A dead compositor connection is not recoverable in-process: every
+        // later request would be marshalled onto a broken display and the
+        // QSocketNotifier would spin on a readable-but-dead fd. Exit with a
+        // failure so systemd (Restart=always) starts a fresh shell against
+        // the compositor's reissued launch token. Disable the notifier first
+        // so the fatal signal cannot be re-entered while the exit is queued.
+        if (m_notifier)
+            m_notifier->setEnabled(false);
+        QTimer::singleShot(0, this, []() { QCoreApplication::exit(1); });
     });
     // The observed clipboard selection feeds the history store; the store
     // never writes the selection except when the user picks an entry (T-13.5b).

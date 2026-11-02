@@ -66,6 +66,14 @@ If the session package is installed, the display-manager entry
 --install-session /usr`, then pick **Dragonfruit** at the login screen
 ([testing-ladder.md](testing-ladder.md) rung 2).
 
+A `make native` install also wires a dev-only capture unit. On login it records
+the session units, process tree, DRM connector state, journals, and a
+`SIGUSR1` render-stats dump under
+`~/.local/state/dragonfruit/native-captures/`, then writes a final snapshot
+when the session ends. Take an extra snapshot at any time with
+`make native-capture`; `native-recover`/`native-return` remove the unit but
+leave the reports (the newest 20 are kept).
+
 ## 2. VM (disposable, easiest free seat)
 
 A VM has its own seat by construction, so it is the fastest path:

@@ -85,8 +85,16 @@ scripts/native-session.sh return        # restore the host login (works from a T
 scripts/native-session.sh recover       # same safety path; no Dragonfruit session needed
 scripts/native-session.sh restart       # rebuild + restart the shell
 scripts/native-session.sh status
+scripts/native-session.sh capture       # write a diagnostics snapshot now
 scripts/native-session.sh deps          # print the package command
 ```
+
+The native install also wires a dev-only capture service. On login it records
+units, processes, DRM state, journals, and a render-stats dump under
+`~/.local/state/dragonfruit/native-captures/`, then records a final snapshot
+when the session ends. `native-recover`/`native-return` remove the capture
+unit; the reports stay for comparison. `make native-capture` takes an
+on-demand snapshot.
 
 If the Dragonfruit login does not come up (for example a black screen), switch
 to a text console with `Ctrl+Alt+F3`, log in, and run `make native-recover`

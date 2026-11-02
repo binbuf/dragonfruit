@@ -438,7 +438,8 @@ impl WindowMenu {
                 if self.open_submenu {
                     match self
                         .submenu_highlighted
-                        .and_then(|index| self.submenu[index].row.command())
+                        .and_then(|index| self.submenu.get(index))
+                        .and_then(|row| row.row.command())
                     {
                         Some(command) => MenuKeyOutcome::Command(command),
                         None => MenuKeyOutcome::Ignored,
@@ -451,7 +452,8 @@ impl WindowMenu {
                 } else {
                     match self
                         .highlighted
-                        .and_then(|index| self.rows[index].row.command())
+                        .and_then(|index| self.rows.get(index))
+                        .and_then(|row| row.row.command())
                     {
                         Some(command) => MenuKeyOutcome::Command(command),
                         None => MenuKeyOutcome::Ignored,

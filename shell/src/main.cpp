@@ -11,6 +11,7 @@
 #include <QCommandLineParser>
 #include <QFile>
 #include <QGuiApplication>
+#include <QThread>
 #include <QDebug>
 
 #include <cstdio>
@@ -67,27 +68,44 @@ int main(int argc, char *argv[])
     // systemd user environment is the original (now consumed) token. The
     // environment remains the fallback for a session that has not written
     // the file yet.
-    QString token;
     const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
-    if (!runtime.isEmpty() && !socketName.isEmpty()) {
-        QFile file(runtime + QLatin1Char('/') + socketName
-                   + QStringLiteral(".launch-token"));
-        if (file.open(QIODevice::ReadOnly))
-            token = QString::fromUtf8(file.readAll()).trimmed();
-    }
-    if (token.isEmpty())
-        token = qEnvironmentVariable("DRAGONFRUIT_LAUNCH_TOKEN");
+    auto readToken = [&]() {
+        QString token;
+        if (!runtime.isEmpty() && !socketName.isEmpty()) {
+            QFile file(runtime + QLatin1Char('/') + socketName
+                       + QStringLiteral(".launch-token"));
+            if (file.open(QIODevice::ReadOnly))
+                token = QString::fromUtf8(file.readAll()).trimmed();
+        }
+        if (token.isEmpty())
+            token = qEnvironmentVariable("DRAGONFRUIT_LAUNCH_TOKEN");
+        return token;
+    };
+
+    // A systemd restart can race the compositor's disconnect handler: the new
+    // shell may read the previous (consumed) token just before the compositor
+    // rewrites the hand-off file. Retry a few times with the freshly read
+    // token instead of crash-looping the whole shell service.
+    QString token = readToken();
     if (token.isEmpty()) {
         qWarning("dragonfruit-shell: no launch token (set DRAGONFRUIT_LAUNCH_TOKEN or "
                  "provide the runtime hand-off file)");
         return 1;
     }
 
-    ShellController controller;
-    if (!controller.start(socketName, token, barHeight)) {
-        fprintf(stderr, "dragonfruit-shell: start failed: %s\n",
-                qPrintable(controller.lastError()));
-        return 1;
+    constexpr int kStartAttempts = 4;
+    for (int attempt = 0; attempt < kStartAttempts; ++attempt) {
+        ShellController controller;
+        if (controller.start(socketName, token, barHeight))
+            return app.exec();
+        fprintf(stderr, "dragonfruit-shell: start failed (attempt %d/%d): %s\n",
+                attempt + 1, kStartAttempts, qPrintable(controller.lastError()));
+        if (attempt + 1 == kStartAttempts)
+            break;
+        // Let the compositor observe the closed connection and reissue the
+        // one-time token before re-reading the hand-off file.
+        QThread::msleep(250);
+        token = readToken();
     }
-    return app.exec();
+    return 1;
 }
