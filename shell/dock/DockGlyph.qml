@@ -10,7 +10,7 @@ import Dragonfruit
 //     carrying the application's initial (an original placeholder, never a
 //     bitmap asset).
 //   * a folder stack — a macOS-like folder silhouette (T-14.7h), no text.
-//   * the Applications launcher — a neutral squircle with our Phosphor grid
+//   * the Applications launcher — a neutral squircle with our Tabler grid
 //     mark (T-19.2 follow-up).
 //   * the Trash — our own geometry (lid, handle, bin) with an empty/full
 //     state. No Apple artwork is copied (14-risks.md).
@@ -337,7 +337,7 @@ Item {
 
     // -- Applications launcher (T-19.2 follow-up) ------------------------
     // The permanent Dock tile that opens the Applications drawer: a neutral
-    // squircle carrying our own Phosphor grid mark (the same glyph the drawer
+    // squircle carrying our own Tabler grid mark (the same glyph the drawer
     // title uses), so it reads as a Dock tile without copying vendor artwork.
     Item {
         id: launcher
@@ -356,11 +356,11 @@ Item {
             border.color: Theme.color.border
         }
 
-        PhosphorIcon {
+        TablerIcon {
             objectName: "launcherGlyph"
             anchors.centerIn: parent
-            name: "squares-four"
-            weight: "fill"
+            name: "layout-grid"
+            weight: "filled"
             size: Math.round(root.size * 0.5)
             color: Theme.color.textPrimary
         }

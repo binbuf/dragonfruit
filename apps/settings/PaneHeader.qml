@@ -16,7 +16,7 @@ Item {
     property var pane: null
 
     // The pane's category-tile style (T-19.1b), or null when the icon has no
-    // Phosphor mapping and the original `Icon` glyph is kept.
+    // Phosphor mapping and the Tabler-backed `Icon` glyph is kept.
     readonly property var category: SettingsPanes.categoryStyle(root.pane)
     // The resolved Phosphor name, kept out of the `SettingsCategoryIcon` block
     // so the static glyph-reference scan only ever sees a bound value.

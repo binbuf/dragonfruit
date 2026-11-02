@@ -20,6 +20,14 @@
 | **Depends on** | the inherited foundation (private shell protocols, design system, Files `files-core`) |
 | **Blocks** | — |
 
+> **Post-track update (ADR [0185](../adr/0185-tabler-line-icons.md)).** Tabler
+> 3.50.0 now supplies the line-glyph language used by Files, the menu bar, the
+> Dock, and the shell chrome; the inherited `Icon.qml` names are a compatibility
+> facade over it. Phosphor remains the **filled** set for the System Settings
+> category tile, where a solid near-white mark is required; the first-party app
+> artwork uses Tabler's filled `folders`/`settings` marks. The T-19.1a/c/d text
+> below records the original Phosphor migration and is kept as history.
+
 ## Why now
 
 The premium gate (T-17) verifies the *window loop*; it does not give the user a

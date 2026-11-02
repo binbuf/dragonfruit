@@ -407,6 +407,21 @@ Item {
             shell.contextMenu.hide();
         }
 
+        function test_clicking_away_closes_the_context_menu() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            waitForRendering(stage);
+
+            shell.openBackgroundMenu(80, 120);
+            tryCompare(shell.contextMenu, "open", true);
+
+            // A press outside the menu hits the dismiss layer, not the item
+            // underneath it.
+            mouseClick(shell, shell.width - 40, shell.height - 40);
+            tryCompare(shell.contextMenu, "open", false);
+        }
+
         // -- Opening files and thumbnails ---------------------------------------
 
         function test_double_click_and_context_open_launch_files() {
@@ -494,6 +509,37 @@ Item {
             var textThumb = shell.directory.data(
                     shell.directory.index(textRow, 0), 271).toString();
             compare(textThumb, "");
+        }
+
+        function test_image_thumbnail_actually_loads() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            waitForRendering(stage);
+
+            var grid = shell.iconView.gridView;
+            var tile = null;
+            for (var i = 0; i < grid.count; ++i) {
+                var candidate = grid.itemAtIndex(i);
+                if (candidate && candidate.name === "gamma.png") {
+                    tile = candidate;
+                    break;
+                }
+            }
+            verify(tile !== null);
+
+            var preview = null;
+            for (var child = 0; child < tile.children.length; ++child) {
+                var item = tile.children[child];
+                if (item.source !== undefined
+                        && String(item.source).indexOf("image://files-thumbnail/") === 0) {
+                    preview = item;
+                    break;
+                }
+            }
+            verify(preview !== null, "the image tile exposes its preview");
+            tryCompare(preview, "status", Image.Ready);
+            verify(preview.width > 0 && preview.height > 0);
         }
 
         function test_window_edges_request_resize() {
@@ -848,6 +894,14 @@ Item {
             compare(desktopOpenSpy.signalArguments[0][0], Files.viewFixtureUri);
             compare(desktopOpenSpy.signalArguments[0][1], true);
             surface.contextMenu.hide();
+        }
+
+        function test_desktop_click_away_closes_the_context_menu() {
+            var surface = makeDesktop();
+            surface.openBackgroundMenu(20, 20);
+            tryCompare(surface.contextMenu, "open", true);
+            mouseClick(surface, surface.width - 40, surface.height - 40);
+            tryCompare(surface.contextMenu, "open", false);
         }
 
         function test_desktop_double_click_opens() {

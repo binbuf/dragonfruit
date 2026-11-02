@@ -79,3 +79,24 @@ set_tests_properties(tst_files_thumbnails PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# The default-handler seam: the MIME default is resolved from the desktop
+# database and the file is passed to the handler; a fake desktop entry keeps
+# the test independent of the host's installed applications.
+qt_add_executable(tst_files_open
+    tst_files_open.cpp
+)
+target_include_directories(tst_files_open PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_link_libraries(tst_files_open PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-files-ui
+)
+
+add_test(
+    NAME tst_files_open
+    COMMAND tst_files_open
+)
+set_tests_properties(tst_files_open PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

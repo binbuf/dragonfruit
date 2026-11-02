@@ -247,6 +247,24 @@ Item {
         }
     }
 
+    // A menu closes when something else takes focus, or when its host window
+    // is deactivated (clicking another application). The per-window dismiss
+    // layer below handles clicks on non-focusable background/content.
+    onActiveFocusChanged: {
+        if (root.open && !root.activeFocus)
+            root.hide();
+    }
+
+    readonly property var hostWindow: Window.window
+
+    Connections {
+        target: root.hostWindow
+        function onActiveChanged() {
+            if (root.open && root.hostWindow && !root.hostWindow.active)
+                root.hide();
+        }
+    }
+
     Behavior on opacity {
         NumberAnimation {
             duration: root.open ? Theme.motion.menuOpen.duration : Theme.motion.menuClose.duration

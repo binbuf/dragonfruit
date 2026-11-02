@@ -8,12 +8,13 @@ import Dragonfruit
 // glyph — every category shares the same rounded geometry and elevation and
 // only the gradient changes, so the gradient is never baked into an SVG.
 //
-// This is the *only* surface that gets the container. Everywhere else a
-// migrated Phosphor mark is a bare `PhosphorIcon` sized for its place (ADR
-// 0163). The category -> (glyph, gradient) table lives with the Settings pane
-// catalog (`SettingsPanes.categoryStyle`, apps/settings), keyed by the pane's
-// existing `icon` identity; callers pass the resolved values here and
-// `gradientStart`/`gradientEnd` fall back to a token gradient when used bare.
+// This is the *only* surface that gets the container. Everywhere else the
+// line mark is a bare `TablerIcon` (or the inherited `Icon` facade over it)
+// sized for its place (ADR 0185). The category -> (glyph, gradient) table lives
+// with the Settings pane catalog (`SettingsPanes.categoryStyle`,
+// apps/settings), keyed by the pane's existing `icon` identity; callers pass
+// the resolved values here and `gradientStart`/`gradientEnd` fall back to a
+// token gradient when used bare.
 //
 // Software-renderer friendly by construction: `Rectangle.gradient` and the
 // layered `Shadow` both draw under the headless software scene graph the

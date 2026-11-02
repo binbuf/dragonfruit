@@ -596,7 +596,13 @@ where
                             return;
                         }
                         if let Some((surface, _)) = client_surface {
-                            if let Some(keyboard) = state.seat.get_keyboard() {
+                            let window = state
+                                .space
+                                .element_under(location)
+                                .map(|(window, _)| window.clone());
+                            if let Some(window) = window {
+                                state.activate_window(&window, serial);
+                            } else if let Some(keyboard) = state.seat.get_keyboard() {
                                 keyboard.set_focus(state, Some(surface), serial);
                             }
                         }

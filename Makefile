@@ -55,7 +55,7 @@ endif
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n clean install
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -87,7 +87,9 @@ help:
 	@echo "  make portals-capture — T-13.7 Flatpak portal round-trips + picker still"
 	@echo "  make zoo-run — T-14.6a strange-app zoo matrix + desktop still"
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
-	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
+	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, icon registries, desktop-name gate"
+	@echo "  make check-tabler — Tabler registry, app artwork, and glyph-reference gate"
+	@echo "  make check-phosphor — Phosphor registry and glyph-reference gate"
 	@echo "  make check    — lint + test + teardown soak gate"
 	@echo "  make dev      — dragonfruit dev --nested (daily workflow, thin services)"
 	@echo "  make dev-full — nested session with settingsd/system-status/etc. on a private bus"
@@ -597,10 +599,16 @@ check-tokens:
 # glyph reference must name a vendored file (a typo fails the build).
 check-phosphor:
 	./scripts/gen-phosphor-glyphs.py --check
-	./scripts/gen-app-icons.py --check
 	./scripts/check-phosphor-icons.py
 
-lint: fmt-check clippy qml-test check-tokens check-design-tokens check-desktop-names check-no-capture-grab check-i18n check-phosphor
+# ADR 0185: the Tabler registry must match the vendored SVGs, the first-party
+# app artwork must be current, and every QML glyph reference must resolve.
+check-tabler:
+	./scripts/gen-tabler-glyphs.py --check
+	./scripts/gen-app-icons.py --check
+	./scripts/check-tabler-icons.py
+
+lint: fmt-check clippy qml-test check-tokens check-design-tokens check-desktop-names check-no-capture-grab check-i18n check-phosphor check-tabler
 
 fmt:
 	$(CARGO) fmt --all

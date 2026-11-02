@@ -596,16 +596,16 @@ Item {
                             smooth: true
                         }
 
-                        // The Phosphor fallback while the themed icon loads,
+                        // The Tabler fallback while the themed icon loads,
                         // when app-index has none, or when it failed to load.
-                        PhosphorIcon {
+                        TablerIcon {
                             objectName: "appsDrawerTileFallback"
                             visible: tile.iconUrl.length === 0
                                      || appIcon.status !== Image.Ready
                             name: "app-window"
-                            weight: "fill"
                             size: Theme.controls.appsDrawer.tileSize
                                      * Theme.controls.appsDrawer.fallbackGlyphRatio
+                            strokeWidth: 1.5
                             color: Theme.color.textSecondary
                             anchors.horizontalCenter: parent.horizontalCenter
                             y: (root.tileWidth - height) / 2
@@ -656,10 +656,11 @@ Item {
                     anchors.centerIn: parent
                     spacing: Theme.primitive.spacing.sm
 
-                    PhosphorIcon {
+                    TablerIcon {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        name: "magnifying-glass"
+                        name: "search"
                         size: Theme.controls.appsDrawer.emptyGlyphSize
+                        strokeWidth: 1.5
                         color: Theme.color.textTertiary
                     }
 
@@ -685,11 +686,12 @@ Item {
                     anchors.centerIn: parent
                     spacing: Theme.primitive.spacing.sm
 
-                    PhosphorIcon {
+                    TablerIcon {
                         objectName: "appsDrawerUnavailableGlyph"
                         anchors.horizontalCenter: parent.horizontalCenter
                         name: "app-window"
                         size: Theme.controls.appsDrawer.emptyGlyphSize
+                        strokeWidth: 1.5
                         color: Theme.color.textTertiary
                     }
 

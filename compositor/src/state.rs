@@ -371,6 +371,10 @@ pub struct DfState {
     /// space on first buffer (with T-02's temporary placement policy —
     /// real placement/stacking policy is T-04).
     pub pending_windows: Vec<Window>,
+    /// Windows that asked for activation before their first buffer. The
+    /// request is honored when the window maps, so a launcher's activation
+    /// token is not lost between surface creation and the first commit.
+    pub pending_activation: Vec<Window>,
     /// Surfaces currently inhibiting idle.
     pub idle_inhibitors: Vec<WlSurface>,
     pub cursor_image: smithay::input::pointer::CursorImageStatus,
@@ -620,6 +624,7 @@ impl DfState {
             space: Space::default(),
             popups: PopupManager::default(),
             pending_windows: Vec::new(),
+            pending_activation: Vec::new(),
             idle_inhibitors: Vec::new(),
             cursor_image: smithay::input::pointer::CursorImageStatus::default_named(),
             windows: WindowModel::new(),
@@ -798,6 +803,16 @@ impl DfState {
                 self.space.map_element(window.clone(), geometry.loc, true);
             }
             self.broadcast_window(&window, WindowEventKind::Mapped);
+            if let Some(index) = self
+                .pending_activation
+                .iter()
+                .position(|pending| pending == &window)
+            {
+                self.pending_activation.remove(index);
+                if self.window_on_active_space(&window) {
+                    self.activate_window_id(id);
+                }
+            }
             mapped += 1;
         }
         if switched {
@@ -1430,10 +1445,18 @@ impl DfState {
         }
     }
 
-    /// Focus `window` (titlebar activation, T-01.3). The window's toplevel
-    /// surface takes keyboard focus, which updates `active_window` through
-    /// the seat's focus broadcast.
+    /// Focus `window` (titlebar activation, T-01.3) and raise it to the top of
+    /// its Space. Clicking a visible window must both focus and restack it;
+    /// otherwise a focused window can remain underneath a previously raised
+    /// client (for example Chrome). The window's toplevel surface then takes
+    /// keyboard focus, which updates `active_window` through the seat's focus
+    /// broadcast.
     pub fn activate_window(&mut self, window: &Window, serial: Serial) {
+        if self.window_on_active_space(window) {
+            let geometry = self.windows.geometry(window).unwrap_or_default();
+            self.space.map_element(window.clone(), geometry.loc, true);
+            self.needs_redraw = true;
+        }
         if self.active_window.as_ref() == Some(window) {
             return;
         }
@@ -4082,6 +4105,11 @@ impl XdgShellHandler for DfState {
                 .toplevel()
                 .is_some_and(|t| t.wl_surface() != surface.wl_surface())
         });
+        self.pending_activation.retain(|window| {
+            window
+                .toplevel()
+                .is_some_and(|t| t.wl_surface() != surface.wl_surface())
+        });
 
         let Some(window) = self.window_for_surface(surface.wl_surface()) else {
             return;
@@ -4381,8 +4409,11 @@ impl XdgActivationHandler for DfState {
         // active-Space window below simply supersedes it.
         self.notify_attention(&window);
         let Some(id) = self.windows.id(&window) else {
-            // Still pending (not mapped into the model): nothing to focus
-            // yet; the mapping path owns the rest.
+            // Still pending (not mapped into the model): remember the request
+            // and honor it when the first buffer maps the window.
+            if !self.pending_activation.contains(&window) {
+                self.pending_activation.push(window);
+            }
             return;
         };
         if self.window_on_active_space_id(id) {
