@@ -172,6 +172,7 @@ Item {
                 required property string uri
                 required property bool isDir
                 required property string icon
+                required property string thumbnail
                 required property string sizeText
                 required property string modifiedText
                 required property string kindText
@@ -206,6 +207,28 @@ Item {
                             size: 16
                             color: row.isSelected ? Theme.color.accent
                                                   : Theme.color.textSecondary
+                            visible: row.thumbnail.length === 0
+                                     || rowThumbnail.status !== Image.Ready
+                        }
+
+                        // A small real preview for local image files; the
+                        // provider shares the freedesktop thumbnail cache with
+                        // the icon view.
+                        Image {
+                            id: rowThumbnail
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: -1
+                            width: 18
+                            height: 18
+                            visible: row.thumbnail.length > 0
+                                     && status === Image.Ready
+                            source: row.thumbnail
+                            sourceSize.width: 36
+                            sourceSize.height: 36
+                            asynchronous: true
+                            cache: true
+                            smooth: true
+                            fillMode: Image.PreserveAspectFit
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter

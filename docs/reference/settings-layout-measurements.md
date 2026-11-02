@@ -31,7 +31,7 @@ That is the evidence the rest of the numbers below are read at the same scale.
 
 | Metric | Reference (units) | Our token | Status |
 |---|---|---|---|
-| Window | ~620 × 627 | `900 × 620` | **fixed** → `800 × 640` |
+| Window | ~620 × 627 | `900 × 620` | **default** → `800 × 640`; freely resizable (min `720 × 480`) |
 | Sidebar width | ~191 (31% of window) | `220` token, `240` hardcoded | **fixed** → `192` |
 | Toolbar height | ~52 | `52` | already matches |
 | Sidebar row height | ~27.4 | `28` | already matches |
@@ -44,12 +44,12 @@ That is the evidence the rest of the numbers below are read at the same scale.
 
 ## Applied changes
 
-- `apps/settings/SettingsWindow.qml`: default `800 × 640`, with the width fixed
-  (`minimumWidth`/`maximumWidth` = 800) and `minimumHeight` = 640. macOS only
-  resizes System Settings vertically, growing the height but never shrinking
-  below the size it opens at. Top/bottom edge grips forward to
-  `startSystemResize` (the frameless window owns its own edge input); there are
-  no left/right grips.
+- `apps/settings/SettingsWindow.qml`: default `800 × 640`. The window is freely
+  resizable in both axes (minimum `720 × 480`) using the same shared
+  `WindowResizeGrips` as Files; every edge and corner forwards to
+  `startSystemResize`. The macOS reference resizes System Settings vertically
+  only, but Dragonfruit deliberately keeps one resize behavior across
+  first-party windows.
 - `design-system/Theme.qml` (via `tokens.json`): `controls.sidebar.width`
   `220 → 192`; `controls.select.minWidth` `140 → 80` so popup controls size to
   their value like macOS instead of hogging the row.

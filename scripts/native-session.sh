@@ -146,6 +146,7 @@ Usage:
   scripts/native-session.sh return [--restart-dm|--no-restart-dm] [--force]
   scripts/native-session.sh recover [--restart-dm|--no-restart-dm] [--force]
   scripts/native-session.sh ready
+  scripts/native-session.sh rebuild [--reboot] [--no-build] [--no-deps] [--no-install] [--no-logout] [--force]
   scripts/native-session.sh restart [--no-build] [--no-deps] [--force] [UNIT ...]
   scripts/native-session.sh status
   scripts/native-session.sh capture
@@ -169,6 +170,13 @@ The newer SDDM-derived login manager is preselected through a conf.d drop-in;
 `return`/`recover` remove it again. `--no-logout` stops after
 install/preselect, so you can log out by hand. `--no-deps` skips the
 distribution package bootstrap; `deps` prints the detected package command.
+
+`rebuild` is the full-session cycle for when a change needs a fresh session
+(the compositor, or you just want every app restarted): it rebuilds, refreshes
+the install links/units (skip with `--no-install`), keeps Dragonfruit
+preselected, then ends the current login session so the display manager comes
+back with the new binaries. `--reboot` reboots the machine instead of only
+logging out.
 
 Before arming the login, `start` writes the per-user runtime environment the
 dev build needs (the Qt toolchain and user-space sysroot library paths) and
@@ -1182,6 +1190,67 @@ cmd_return() {
     cmd_recover "$@"
 }
 
+cmd_rebuild() {
+    local reboot=0
+    local no_install=0
+    local no_logout=0
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --reboot) reboot=1 ;;
+            --no-build) NO_BUILD=1 ;;
+            --no-deps) NO_DEPS=1 ;;
+            --no-install) no_install=1 ;;
+            --no-logout) no_logout=1 ;;
+            --force) FORCE=1 ;;
+            -h|--help) usage; return 0 ;;
+            *) die "rebuild: unknown argument: $1" ;;
+        esac
+        shift
+    done
+
+    require_user
+    if [ "${XDG_CURRENT_DESKTOP:-}" != "dragonfruit" ] && [ "$FORCE" -eq 0 ]; then
+        die "rebuild ends the current session; run it inside Dragonfruit (or pass --force)"
+    fi
+
+    build_all
+    write_session_environment
+    if [ "$no_install" -eq 0 ]; then
+        install_native
+        install_native_capture
+        verify_installed_links
+        write_plasma_login_preselect
+    else
+        say "skipping install refresh (--no-install)"
+    fi
+
+    if [ "$no_logout" -eq 1 ]; then
+        say "rebuild complete; not ending the session (--no-logout)"
+        return 0
+    fi
+
+    if [ "$reboot" -eq 1 ]; then
+        say "rebuild complete; rebooting into the updated Dragonfruit session"
+        elevate systemctl reboot
+        return
+    fi
+
+    say "rebuild complete; ending the Dragonfruit session"
+    say "the display manager will return with Dragonfruit preselected; log back in to pick up the new binaries"
+    local session_id="${XDG_SESSION_ID:-}"
+    if command -v loginctl >/dev/null 2>&1 && [ -n "$session_id" ]; then
+        if ! loginctl terminate-session "$session_id"; then
+            say "loginctl could not end the session; stopping the Dragonfruit session target"
+            systemctl --user stop dragonfruit-session.target >/dev/null 2>&1 || true
+        fi
+    else
+        say "no logind session id; stopping the Dragonfruit session target"
+        systemctl --user stop dragonfruit-session.target >/dev/null 2>&1 || true
+        say "if the greeter does not return, switch to a text console and run: make native-recover"
+    fi
+}
+
 cmd_restart() {
     local -a units=()
     local arg unit
@@ -1344,6 +1413,7 @@ case "$command" in
     return|back|down) cmd_return "$@" ;;
     ready) cmd_ready "$@" ;;
     recover) cmd_recover "$@" ;;
+    rebuild) cmd_rebuild "$@" ;;
     restart|reload) cmd_restart "$@" ;;
     status) cmd_status "$@" ;;
     capture|record) cmd_capture "$@" ;;

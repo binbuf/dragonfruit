@@ -11,15 +11,15 @@ Window {
 
     // The macOS reference capture (Desktop & Dock, Accessibility, ...) is
     // ~620x627 in design-system token units, with the sidebar ~31% of the
-    // width. macOS resizes System Settings vertically only and never lets it
-    // shrink below the size it opens at, so the width is fixed at the default
-    // and the minimum height is the default height; see
+    // width. We keep the reference-matched default size, but unlike macOS
+    // System Settings the window is freely resizable in both axes so it
+    // behaves like the rest of the desktop; the minimum keeps the sidebar and
+    // detail pane usable. See
     // docs/reference/settings-layout-measurements.md.
     width: 800
     height: 640
-    minimumWidth: 800
-    maximumWidth: 800
-    minimumHeight: 640
+    minimumWidth: 720
+    minimumHeight: 480
     visible: true
     title: qsTr("Settings")
     color: "transparent"
@@ -36,8 +36,7 @@ Window {
         onMoveRequested: (x, y) => win.startSystemMove()
         // The shell owns the edge hit regions; the window asks the compositor
         // for the interactive resize (`xdg_toplevel.resize`), which honors the
-        // min/max-size hints above: the height can grow but never drops below
-        // the default, and the width stays fixed.
+        // min-size hints above.
         onResizeRequested: (edges) => win.startSystemResize(edges)
     }
 

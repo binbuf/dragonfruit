@@ -51,6 +51,7 @@ qt_add_qml_module(dragonfruit-design-system
         components/Tooltip.qml
         components/Skeleton.qml
         components/ScrollView.qml
+        components/WindowResizeGrips.qml
 )
 target_link_libraries(dragonfruit-design-system PUBLIC Qt6::Core Qt6::Gui Qt6::Quick)
 
@@ -119,6 +120,7 @@ df_qml_lint(design-system
     components/Tooltip.qml
     components/Skeleton.qml
     components/ScrollView.qml
+    components/WindowResizeGrips.qml
 )
 
 add_subdirectory(gallery)

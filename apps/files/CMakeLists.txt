@@ -17,6 +17,8 @@ qt_add_qml_module(dragonfruit-files-ui
         FilesBridge.h
         FilesDirectoryModel.cpp
         FilesDirectoryModel.h
+        FilesThumbnailProvider.cpp
+        FilesThumbnailProvider.h
     QML_FILES
         FilesBrowser.qml
         FilesIconView.qml

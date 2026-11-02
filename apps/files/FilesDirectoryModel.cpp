@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "FilesDirectoryModel.h"
 
+#include "FilesThumbnailProvider.h"
 #include "ffi/files_core.h"
 
 #include <QCoreApplication>
@@ -22,7 +23,9 @@ bool isImage(const QString &suffix)
     static const QStringList kSuffixes = {
         QStringLiteral("png"),  QStringLiteral("jpg"),  QStringLiteral("jpeg"),
         QStringLiteral("gif"),  QStringLiteral("webp"), QStringLiteral("bmp"),
-        QStringLiteral("svg"),  QStringLiteral("tiff"), QStringLiteral("tif"),
+        QStringLiteral("svg"),  QStringLiteral("svgz"), QStringLiteral("tiff"),
+        QStringLiteral("tif"),  QStringLiteral("ico"),  QStringLiteral("avif"),
+        QStringLiteral("heic"), QStringLiteral("heif"), QStringLiteral("jxl"),
     };
     return kSuffixes.contains(suffix);
 }
@@ -108,6 +111,8 @@ QVariant FilesDirectoryModel::data(const QModelIndex &index, int role) const
         return node.modifiedText;
     case SymlinkTargetRole:
         return node.symlinkTarget;
+    case ThumbnailRole:
+        return node.thumbnail;
     default:
         return {};
     }
@@ -130,6 +135,7 @@ QHash<int, QByteArray> FilesDirectoryModel::roleNames() const
         { HasModifiedRole, "hasModified" },
         { ModifiedTextRole, "modifiedText" },
         { SymlinkTargetRole, "symlinkTarget" },
+        { ThumbnailRole, "thumbnail" },
     };
 }
 
@@ -400,6 +406,7 @@ FilesDirectoryModel::Node FilesDirectoryModel::nodeFromFfi(const df_files_node &
     node.symlinkTarget = source.symlink_target
             ? QString::fromUtf8(source.symlink_target)
             : QString();
+    node.thumbnail = thumbnailFor(source.kind, node.uri, node.name);
     return node;
 }
 
@@ -522,6 +529,18 @@ QString FilesDirectoryModel::iconFor(int kind, const QString &name)
     if (isDocument(suffix))
         return QStringLiteral("documents");
     return QStringLiteral("file");
+}
+
+QString FilesDirectoryModel::thumbnailFor(int kind, const QString &uri,
+                                          const QString &name)
+{
+    // Only regular local image files get a preview. Directories, symlinks,
+    // remote/trash URIs, and non-image files keep the kind glyph.
+    if (kind != DF_NODE_FILE)
+        return {};
+    if (!isImage(QFileInfo(name).suffix().toLower()))
+        return {};
+    return FilesThumbnailProvider::sourceFor(uri);
 }
 
 QString FilesDirectoryModel::kindTextFor(int kind)

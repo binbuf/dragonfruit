@@ -27,5 +27,10 @@ Window {
         onZoomRequested: win.visibility === Window.Maximized
                          ? win.showNormal() : win.showMaximized()
         onMoveRequested: (x, y) => win.startSystemMove()
+        onResizeRequested: (edges) => win.startSystemResize(edges)
+        onOpenRequested: (uri) => {
+            if (!Files.open(uri))
+                shell.notice = qsTr("No application can open %1").arg(uri)
+        }
     }
 }
