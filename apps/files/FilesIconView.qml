@@ -2,11 +2,11 @@
 import QtQuick
 import Dragonfruit
 
-// The Files icon view (T-10.4b/T-10.4c): a centered grid of icon tiles (glyph
-// over a two-line label) over the files-core listing. Selection is the set of
-// node ids the shell owns, so it survives the view switch (T-10.4c multi-
-// select); opening is a double click; right-click opens the context menu;
-// Return/`renamingId` swaps the label for an inline editor.
+// The Files icon view (T-10.4b/T-10.4c): a centered grid of icon tiles (a
+// thumbnail or glyph over a two-line label) over the files-core listing.
+// Selection is the set of node ids the shell owns, so it survives the view
+// switch (T-10.4c multi-select); opening is a double click; right-click opens
+// the context menu; Return/`renamingId` swaps the label for an inline editor.
 FocusScope {
     id: root
 
@@ -203,6 +203,7 @@ FocusScope {
             required property string uri
             required property bool isDir
             required property string icon
+            required property string thumbnail
 
             width: grid.cellWidth
             height: grid.cellHeight
@@ -228,6 +229,28 @@ FocusScope {
                 size: root.tileIconSize
                 color: tile.isSelected ? Theme.color.accent
                                        : Theme.color.textPrimary
+                // Keep the kind glyph visible until the async preview is
+                // ready, and permanently when the file has no thumbnail.
+                visible: tile.thumbnail.length === 0
+                         || thumbnail.status !== Image.Ready
+            }
+
+            // A real preview for local image files. The provider caches it in
+            // the freedesktop thumbnail store and loads it off the UI thread.
+            Image {
+                id: thumbnail
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: Theme.primitive.spacing.lg
+                width: root.tileIconSize
+                height: root.tileIconSize
+                visible: tile.thumbnail.length > 0 && status === Image.Ready
+                source: tile.thumbnail
+                sourceSize.width: root.tileIconSize * 2
+                sourceSize.height: root.tileIconSize * 2
+                asynchronous: true
+                cache: true
+                smooth: true
+                fillMode: Image.PreserveAspectFit
             }
 
             Text {

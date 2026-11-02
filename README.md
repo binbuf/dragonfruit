@@ -61,38 +61,35 @@ services, tools) and the CMake/Qt side (design system, shell, apps):
 make build
 ```
 
-## Run it natively
+## Run it
 
-One command provisions, builds, installs, and hands off to the display
-manager:
+Pick the workflow and command that matches what you are doing:
 
-```bash
-make native            # debug build (fast iteration)
-make native-release    # optimized daily-driver build
-```
+| If you want to... | Use | What happens |
+|---|---|---|
+| Keep your current desktop and run Dragonfruit in a window | `make dev` (thin services) or `make dev-full` (full services) | Nested compositor; builds first; no install or logout. Fastest loop for app/QML work. |
+| Install Dragonfruit as the session/compositor instead of your current DE | `make native` (debug) or `make native-release` (daily driver) | Provisions dependencies, builds, installs the session, preselects Dragonfruit, and logs out. One-time setup. |
+| App or shell change | `make native-restart` | Rebuilds and restarts the shell in place; no logout. New app launches use the new binaries. |
+| Service change | `make native-restart NATIVE_UNITS=services` | Rebuilds and restarts the services in place; no logout. |
+| Compositor change, or you want a clean session | `make native-rebuild` | Rebuilds, refreshes the install, then logs out; log back in to Dragonfruit. |
+| Do the same but reboot the machine | `make native-reboot` | Same as `native-rebuild`, then reboots. |
+| Return to your original desktop | `make native-return` | Restores the login configuration and ends Dragonfruit. |
+| Recover from a broken Dragonfruit login | `make native-recover` | Same recovery path from a TTY/SSH; no Dragonfruit session needed. |
+
+The nested loop is the fastest way to work on apps and the compositor without
+touching your login setup. `make dev` starts the compositor inside your
+current Wayland session; `make dev-full` adds the real session services on a
+private bus. Both build first and are safe to rerun.
+
+The native loop replaces your current session. `make native` is the one-time
+provisioning path; after that, use the smaller commands in the table.
+`native-rebuild` also accepts `NATIVE_ARGS=--no-install` for binary-only
+changes or `--no-logout` to build/refresh without ending the session; see
+`make help` for the diagnostics commands.
 
 The release profile matters on high-resolution/high-refresh panels: the 4K
 damage/material path is CPU-bound enough that an unoptimized build can cap
 animated clients well below the panel's refresh rate.
-
-It detects the distribution package manager (`dnf`/`yum`, `apt-get`, `pacman`,
-`zypper`, or `apk`) and installs missing build prerequisites, writes the
-per-user runtime environment the dev build needs, preflights every built
-binary against that environment, builds both halves, installs the Dragonfruit
-session entry, preselects it at the greeter, and asks the current desktop to
-log out. If a binary cannot load at a display-manager login, the preflight
-stops before the preselect/logout. The same script is the single entry point
-afterwards:
-
-```bash
-scripts/native-session.sh --no-logout   # install/preselect only
-scripts/native-session.sh return        # restore the host login (works from a TTY)
-scripts/native-session.sh recover       # same safety path; no Dragonfruit session needed
-scripts/native-session.sh restart       # rebuild + restart the shell
-scripts/native-session.sh status
-scripts/native-session.sh capture       # write a diagnostics snapshot now
-scripts/native-session.sh deps          # print the package command
-```
 
 The native install also wires a dev-only capture service. On login it records
 units, processes, DRM state, journals, and a render-stats dump under
