@@ -95,6 +95,38 @@ journal_for() {
         | tail -n 400 >"$dir/key-$tag.txt" || true
 }
 
+perf_probe() {
+    # Opt-in: this briefly maps an animated test window. It answers the
+    # question the stats cannot: what frame rate does a real client actually
+    # receive from this session?
+    if [ "${DF_CAPTURE_PERF:-0}" != "1" ]; then
+        return
+    fi
+    echo "## Frame-rate probe"
+    if command -v vkcube >/dev/null 2>&1; then
+        local start end elapsed
+        start="$(date +%s%N)"
+        if WAYLAND_DISPLAY="$socket" timeout 8 vkcube --wsi wayland --c 120 \
+            --suppress_popups >/dev/null 2>&1; then
+            end="$(date +%s%N)"
+            elapsed="$(( (end - start) / 1000000 ))"
+            if [ "$elapsed" -gt 0 ]; then
+                awk -v frames=120 -v ms="$elapsed" \
+                    'BEGIN { printf "vkcube: 120 frames in %d ms = %.2f fps\n", ms, frames * 1000 / ms }'
+            fi
+        else
+            echo "vkcube: 120 frames did not complete within 8 s (<15 fps)"
+        fi
+    else
+        echo "vkcube: not installed"
+    fi
+    if command -v glxgears >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
+        echo "glxgears:"
+        DISPLAY="$DISPLAY" timeout 6 glxgears -info 2>&1 \
+            | grep -aE 'Running synchronized|frames in' | tail -n 3 || true
+    fi
+}
+
 snapshot() {
     local tag="$1"
     local out="$dir/snapshot-$tag.txt"
@@ -156,6 +188,8 @@ snapshot() {
         else
             echo "wayland-info not installed"
         fi
+        echo
+        perf_probe
     } >"$out" 2>&1
 
     journal_for "$tag"

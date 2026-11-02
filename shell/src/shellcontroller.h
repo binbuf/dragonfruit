@@ -399,6 +399,12 @@ private slots:
     void onSettingsChanged(const QString &key, const QVariant &value);
 
 private:
+    // T-14.1a/T-14.1c: load the app-index corpus and subscribe to its
+    // coalesced `Changed` signal. The session target starts the shell and
+    // app-index in parallel, so `connectAppIndex()` also watches the
+    // well-known name and re-syncs when the service appears or restarts.
+    void connectAppIndex();
+    void syncAppIndex();
     // T-18.1b: subscribe to `org.dragonfruit.Wallpaper1`'s source properties
     // (with restart resync) so the shipped default and the fetched fallback
     // reach the compositor even when settingsd is absent.
@@ -907,6 +913,10 @@ private:
     bool m_localSettingsWrite = false;
     // One-shot: the installed default pin set is seeded once per session.
     bool m_defaultPinsSeeded = false;
+    // True once settingsd's first `GetAll` snapshot has been applied (or the
+    // daemon is absent). The default-pin seed waits for it so an early
+    // app-index resync cannot overwrite a persisted `dock.pinned`.
+    bool m_settingsSnapshotReceived = false;
     // The Dock's Trash state, read from files-core's one freedesktop Trash
     // store (T-10.6a). It replaced the interim home-trash watcher, so the shell
     // and Files share a single source of truth.
