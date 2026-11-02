@@ -14,11 +14,13 @@
 //! can drive it without a display, a GPU, or sleeping the CI machine.
 //!
 //! The state is applied by [`DfState::suspend_session`] and
-//! [`DfState::resume_session`]; the DRM backend also clears and re-creates its
-//! output surfaces across a logind session pause (FR-6), so the same model
-//! covers both a VT switch and a sleep/wake. The production trigger is the
-//! session manager forwarding logind's `PrepareForSleep`; the headless
-//! synthetic harness ([`crate::input::synthetic`]) is the test trigger.
+//! [`DfState::resume_session`]; the DRM backend pauses the devices and then
+//! re-activates/re-scans them, keeping the output objects (and therefore the
+//! wl_output globals and client scenes) alive across a logind session pause
+//! (FR-6), so the same model covers both a VT switch and a sleep/wake. The
+//! production trigger is the session manager forwarding logind's
+//! `PrepareForSleep`; the headless synthetic harness
+//! ([`crate::input::synthetic`]) is the test trigger.
 
 /// The compositor's suspend/resume state.
 ///

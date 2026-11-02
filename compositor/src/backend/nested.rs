@@ -12,6 +12,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
+use smithay::backend::allocator::Fourcc;
+use smithay::utils::{Buffer as BufferCoord, Size as BufferSize};
+
 use smithay::backend::egl::EGLDevice;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
@@ -256,6 +259,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 *shared_init.borrow_mut() = Some(NestedData {
                     blur_program,
                     glass_program,
+                    material_textures: MaterialTextureCache::default(),
                     backend,
                     damage_tracker: OutputDamageTracker::new(
                         window_size,
@@ -287,6 +291,31 @@ pub fn run(socket_name: &str) -> Result<(), String> {
     result
 }
 
+/// Reusable GPU storage for the two-pass material pass.
+///
+/// The scene texture and every Kawase chain texture used to be allocated with
+/// `create_buffer` on each rendered frame. At output resolution that is tens of
+/// megabytes of GPU allocation per frame; over a long session it fragments the
+/// driver and can end in an allocation failure (or an OOM kill). The textures
+/// are reference-counted, so the render elements can keep a clone while the
+/// cache reuses the backing storage on the next frame.
+#[derive(Default)]
+struct MaterialTextureCache {
+    scene: Option<GlesTexture>,
+    /// One slot per chrome panel; each slot holds the textures for that
+    /// panel's Kawase passes (the last one is the composed result).
+    panels: Vec<Vec<GlesTexture>>,
+}
+
+impl MaterialTextureCache {
+    fn panel_slot(&mut self, index: usize) -> &mut Vec<GlesTexture> {
+        if self.panels.len() <= index {
+            self.panels.resize_with(index + 1, Vec::new);
+        }
+        &mut self.panels[index]
+    }
+}
+
 struct NestedData {
     backend: WinitGraphicsBackend<GlowRenderer>,
     /// The compiled Kawase downsample program (T-20.1), or `None` when the
@@ -297,6 +326,8 @@ struct NestedData {
     /// when the driver refused it; the panel then keeps the plain blurred
     /// compose with no lens, specular rim, or adaptive tint.
     glass_program: Option<GlesTexProgram>,
+    /// Reused scene/blur textures for the two-pass material pass.
+    material_textures: MaterialTextureCache,
     damage_tracker: OutputDamageTracker,
     /// The output scale the tracker was built with. The damage tracker's
     /// static mode supplies the scale every render element's geometry is
@@ -419,8 +450,14 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                         .into_iter()
                         .map(NestedOutputElements::Wallpaper),
                 );
-                let scene_texture =
-                    render_scene_offscreen(renderer, state, &output, scale, &scene_elements)?;
+                let scene_texture = render_scene_offscreen(
+                    renderer,
+                    state,
+                    &output,
+                    scale,
+                    &scene_elements,
+                    &mut data.material_textures.scene,
+                )?;
                 let scene_size = scene_texture.size();
                 // A locked session composites only the lock surface, prepended
                 // so it sits above every window and chrome surface (T-12.3a).
@@ -438,6 +475,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     &blur_panels,
                     &scene_texture,
                     scale,
+                    &mut data.material_textures,
                 )?);
                 // The scene composites below the blur as one texture. Its
                 // corner radius is zero, so it covers the whole output.
@@ -598,19 +636,31 @@ fn render_scene_offscreen(
     output: &smithay::output::Output,
     scale: smithay::utils::Scale<f64>,
     elements: &[NestedOutputElements<GlowRenderer>],
+    cache: &mut Option<GlesTexture>,
 ) -> Result<GlesTexture, String> {
-    use smithay::backend::allocator::Fourcc;
     use smithay::backend::renderer::{Bind, Offscreen};
-    use smithay::utils::{Buffer as BufferCoord, Transform};
+    use smithay::utils::Transform;
 
     let size = output
         .current_mode()
         .map(|mode| mode.size)
         .ok_or_else(|| "output has no mode".to_owned())?;
-    let buffer_size = smithay::utils::Size::<i32, BufferCoord>::from((size.w, size.h));
-    let mut texture: GlesTexture = renderer
-        .create_buffer(Fourcc::Abgr8888, buffer_size)
-        .map_err(|err| format!("scene buffer failed: {err}"))?;
+    let buffer_size = BufferSize::<i32, BufferCoord>::from((size.w, size.h));
+    let needs_alloc = cache
+        .as_ref()
+        .map(|texture| texture.size() != buffer_size)
+        .unwrap_or(true);
+    if needs_alloc {
+        *cache = Some(
+            renderer
+                .create_buffer(Fourcc::Abgr8888, buffer_size)
+                .map_err(|err| format!("scene buffer failed: {err}"))?,
+        );
+    }
+    let mut texture = cache
+        .as_ref()
+        .cloned()
+        .ok_or_else(|| "scene texture cache unexpectedly empty".to_owned())?;
     let clear = state.wallpaper_color_for(output);
     let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
     {
@@ -636,14 +686,16 @@ fn build_blur_elements(
     panels: &[crate::render::BlurPanel],
     scene: &GlesTexture,
     scale: smithay::utils::Scale<f64>,
+    cache: &mut MaterialTextureCache,
 ) -> Result<Vec<NestedOutputElements<GlowRenderer>>, String> {
     let mut elements = Vec::new();
-    for panel in panels {
+    for (index, panel) in panels.iter().enumerate() {
         let src_region = panel.panel.to_physical_precise_round(scale);
         if src_region.size.w <= 0 || src_region.size.h <= 0 {
             continue;
         }
-        let texture = blur_panel_texture(renderer, program, scene, src_region, &panel.spec)?;
+        let slot = cache.panel_slot(index);
+        let texture = blur_panel_texture(renderer, program, scene, src_region, &panel.spec, slot)?;
         let texture_size = texture.size();
         let element = crate::window::BackdropBlurElement::new(
             texture,
@@ -672,11 +724,11 @@ fn blur_panel_texture(
     scene: &GlesTexture,
     src_region: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
     spec: &crate::window::BlurSpec,
+    slot: &mut Vec<GlesTexture>,
 ) -> Result<GlesTexture, String> {
-    use smithay::backend::allocator::Fourcc;
     use smithay::backend::renderer::gles::Uniform;
     use smithay::backend::renderer::{Bind, Offscreen};
-    use smithay::utils::{Buffer as BufferCoord, Physical, Transform};
+    use smithay::utils::{Physical, Transform};
 
     let mut current: GlesTexture = scene.clone();
     // The region of `current` the next pass samples. The first pass samples
@@ -685,14 +737,26 @@ fn blur_panel_texture(
         (src_region.loc.x as f64, src_region.loc.y as f64).into(),
         (src_region.size.w as f64, src_region.size.h as f64).into(),
     );
-    for _ in 0..spec.iterations {
+    for pass in 0..spec.iterations as usize {
         let src_size = current.size();
         let dst_w = (src_size.w / 2).max(1);
         let dst_h = (src_size.h / 2).max(1);
-        let buffer_size = smithay::utils::Size::<i32, BufferCoord>::from((dst_w, dst_h));
-        let mut texture: GlesTexture = renderer
-            .create_buffer(Fourcc::Abgr8888, buffer_size)
-            .map_err(|err| format!("blur buffer failed: {err}"))?;
+        let buffer_size = BufferSize::<i32, BufferCoord>::from((dst_w, dst_h));
+        // Reuse this pass's texture from the previous frame; only allocate
+        // when the panel (or output scale) changed size.
+        while slot.len() <= pass {
+            slot.push(
+                renderer
+                    .create_buffer(Fourcc::Abgr8888, buffer_size)
+                    .map_err(|err| format!("blur buffer failed: {err}"))?,
+            );
+        }
+        if slot[pass].size() != buffer_size {
+            slot[pass] = renderer
+                .create_buffer(Fourcc::Abgr8888, buffer_size)
+                .map_err(|err| format!("blur buffer failed: {err}"))?;
+        }
+        let mut texture: GlesTexture = slot[pass].clone();
         let dst_phys =
             Rectangle::from_size(smithay::utils::Size::<i32, Physical>::from((dst_w, dst_h)));
         {
@@ -787,10 +851,17 @@ where
     let image = match rect {
         None => full,
         Some(rect) => {
-            let x = rect.loc.x.clamp(0, size.w);
-            let y = rect.loc.y.clamp(0, size.h);
-            let width = rect.size.w.clamp(1, size.w - x) as u32;
-            let height = rect.size.h.clamp(1, size.h - y) as u32;
+            // A capture rectangle can arrive at (or past) the exclusive
+            // right/bottom edge (a drag selection, a window against the
+            // screen edge). Clamp to the last drawable pixel before computing
+            // the crop: `clamp(1, 0)` would panic and take the compositor
+            // down on an otherwise valid screenshot request.
+            let max_x = (size.w - 1).max(0);
+            let max_y = (size.h - 1).max(0);
+            let x = rect.loc.x.clamp(0, max_x);
+            let y = rect.loc.y.clamp(0, max_y);
+            let width = rect.size.w.clamp(1, (size.w - x).max(1)) as u32;
+            let height = rect.size.h.clamp(1, (size.h - y).max(1)) as u32;
             image::imageops::crop_imm(&full, x as u32, y as u32, width, height).to_image()
         }
     };

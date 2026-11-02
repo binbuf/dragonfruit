@@ -586,13 +586,19 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
                     if let Some(libinput) = data.libinput.as_mut() {
                         libinput.suspend();
                     }
+                    // Pause the DRM device, but keep every SurfaceData alive.
+                    // Clearing `surfaces` destroys the wl_output globals and
+                    // the DrmOutputs; on resume there is nothing left to
+                    // activate or repaint, which is the black screen after a
+                    // VT switch/suspend. Sessions are quiesced, not torn down.
                     for device in data.devices.values_mut() {
                         device.drm_output_manager.pause();
-                        device.surfaces.clear();
                     }
                 }
                 SessionEvent::ActivateSession => {
-                    // Wake: repaint every output and route input again.
+                    // Wake: reactivate every device, re-scan connectors (the
+                    // user may have docked/undocked while asleep), then repaint
+                    // every surviving output.
                     state.resume_session();
                     let mut guard = shared.borrow_mut();
                     let Some(data) = guard.as_mut() else { return };
@@ -601,15 +607,25 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
                             eprintln!("dragonfruit-compositor: failed to resume libinput: {err:?}");
                         }
                     }
-                    for (node, device) in data.devices.iter_mut() {
-                        // Optimistic re-activation: if connectors were
-                        // re-bound by a foreign master, the queued render
-                        // resets the state instead (see render_surface).
-                        let _ = device.drm_output_manager.activate(false);
-                        let crtcs: Vec<_> = device.surfaces.keys().copied().collect();
+                    let nodes: Vec<DrmNode> = data.devices.keys().copied().collect();
+                    for node in &nodes {
+                        if let Some(device) = data.devices.get_mut(node) {
+                            // Optimistic re-activation: if connectors were
+                            // re-bound by a foreign master, the queued render
+                            // resets the state instead (see render_surface).
+                            if let Err(err) = device.drm_output_manager.activate(false) {
+                                eprintln!(
+                                    "dragonfruit-compositor: failed to reactivate {node:?}: {err}"
+                                );
+                            }
+                        }
+                    }
+                    for node in &nodes {
+                        device_changed(state, data, *node);
+                    }
+                    for (node, device) in data.devices.iter() {
                         let node = *node;
-                        let shared = shared.clone();
-                        for crtc in crtcs {
+                        for crtc in device.surfaces.keys().copied() {
                             let shared = shared.clone();
                             let _ = state.loop_handle.insert_idle(move |state| {
                                 render_surface(state, &shared, node, crtc);
@@ -849,12 +865,19 @@ fn connector_connected(
         return;
     }
 
-    let mode_id = connector
+    let Some(drm_mode) = connector
         .modes()
         .iter()
-        .position(|mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED))
-        .unwrap_or(0);
-    let drm_mode = connector.modes()[mode_id];
+        .find(|mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED))
+        .or_else(|| connector.modes().first())
+        .copied()
+    else {
+        // A connected connector with no advertised mode is unusable (some
+        // drivers report this transiently during hotplug). Skip it instead of
+        // indexing an empty slice.
+        eprintln!("dragonfruit-compositor: skipping connector {output_name}: no modes advertised");
+        return;
+    };
     let wl_mode = WlMode::from(drm_mode);
 
     let (phys_w, phys_h) = connector.size().unwrap_or((0, 0));
@@ -1038,14 +1061,21 @@ fn frame_finish(
                     sequence: seq,
                     time: DrmEventTime::Monotonic(Duration::from(clock) + remaining),
                 };
-                let timer_token = state
-                    .loop_handle
-                    .insert_source(Timer::from_duration(remaining), move |_, _, state| {
+                match state.loop_handle.insert_source(
+                    Timer::from_duration(remaining),
+                    move |_, _, state| {
                         frame_finish(state, dev_id, crtc, &mut Some(throttled_metadata));
                         TimeoutAction::Drop
-                    })
-                    .expect("failed to register vblank throttle timer");
-                surface.vblank_throttle_timer = Some(timer_token);
+                    },
+                ) {
+                    Ok(timer_token) => surface.vblank_throttle_timer = Some(timer_token),
+                    Err(err) => {
+                        // The loop is shutting down; there is no frame to
+                        // throttle. Never panic from the vblank path.
+                        eprintln!("dragonfruit-compositor: vblank throttle unavailable: {err}");
+                        return;
+                    }
+                }
                 return;
             }
         }
@@ -1086,7 +1116,12 @@ fn frame_finish(
                     false
                 }
                 SwapBuffersError::TemporaryFailure(err) => {
-                    matches!(err.downcast_ref::<DrmError>(), Some(DrmError::Access(_)))
+                    // Every temporary failure (not just EACCES/master loss)
+                    // must keep the frame clock alive. Anything else leaves
+                    // the output with no pending frame and looks like a
+                    // frozen desktop until the next input re-arms it.
+                    eprintln!("dragonfruit-compositor: transient swap failure: {err}");
+                    true
                 }
                 SwapBuffersError::ContextLost(err) => {
                     eprintln!("dragonfruit-compositor: rendering loop lost: {err}");
@@ -1140,15 +1175,6 @@ fn render_surface(
         return;
     };
 
-    let mut renderer = match data.gpus.single_renderer(&render_node) {
-        Ok(renderer) => renderer,
-        Err(err) => {
-            eprintln!("dragonfruit-compositor: failed to get renderer: {err:?}");
-            return;
-        }
-    };
-
-    let scale = Scale::from(surface.output.current_scale().fractional_scale());
     // The refresh rate is captured before the render result is handled: the
     // empty/rejected-frame reschedule runs while this `RefCell` borrow is live.
     let refresh = surface
@@ -1156,6 +1182,19 @@ fn render_surface(
         .current_mode()
         .map(|mode| mode.refresh)
         .unwrap_or(60_000);
+
+    let mut renderer = match data.gpus.single_renderer(&render_node) {
+        Ok(renderer) => renderer,
+        Err(err) => {
+            eprintln!("dragonfruit-compositor: failed to get renderer: {err:?}");
+            // A renderer failure must not leave the output with no pending
+            // frame: retry on the frame clock instead of stalling forever.
+            reschedule_probe(state, node, crtc, refresh);
+            return;
+        }
+    };
+
+    let scale = Scale::from(surface.output.current_scale().fractional_scale());
 
     // Open this output's material pass (T-04.2), so the chrome backdrop is
     // applied at most once for it this frame.
@@ -1398,7 +1437,13 @@ fn update_primary_scanout(
     states: &smithay::backend::renderer::element::RenderElementStates,
 ) {
     for window in state.space.elements() {
-        let output = surface_current_output(state, window);
+        // The last output can disappear (unplug/last-GPU removal) while a
+        // window is still winding down. There is no scanout output to update
+        // then; skipping is correct and, unlike the old `expect`, cannot turn
+        // a hotplug into a compositor abort.
+        let Some(output) = surface_current_output(state, window) else {
+            continue;
+        };
         window.with_surfaces(|surface, surface_states| {
             smithay::desktop::utils::update_surface_primary_scanout_output(
                 surface,
@@ -1411,14 +1456,13 @@ fn update_primary_scanout(
     }
 }
 
-fn surface_current_output(state: &crate::state::DfState, window: &Window) -> Output {
+fn surface_current_output(state: &crate::state::DfState, window: &Window) -> Option<Output> {
     state
         .space
         .outputs_for_element(window)
         .into_iter()
         .next()
         .or_else(|| state.space.outputs().next().cloned())
-        .expect("rendering requires at least one output")
 }
 
 // --- helpers -----------------------------------------------------------------

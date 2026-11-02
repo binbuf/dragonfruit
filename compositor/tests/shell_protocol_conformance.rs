@@ -1781,7 +1781,10 @@ fn desktop_client_death_leaves_the_shell_and_session_alive() {
 #[test]
 fn shell_disconnect_reissues_a_usable_token() {
     let token = "55".repeat(32);
-    let proc = CompositorProcess::start("dragonfruit-conformance-reissue", &[token.clone()]);
+    let proc = CompositorProcess::start(
+        "dragonfruit-conformance-reissue",
+        std::slice::from_ref(&token),
+    );
     let initial = proc.read_token();
     assert_eq!(initial, token, "the provisioned token is the hand-off file");
 

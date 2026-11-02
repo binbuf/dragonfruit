@@ -24,7 +24,6 @@
 //! The client's own input regions are untouched: nothing here routes input.
 
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
-use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::Color32F;
 use smithay::utils::{Logical, Point, Rectangle, Scale};
@@ -497,11 +496,13 @@ impl TitlebarElement {
         // geometry).
         let target = self.content;
 
+        const TITLEBAR_SALT: u64 = 0x7469_746c_6562_6172; // "titlebar"
         let mut push = |rect: Rectangle<i32, Logical>, color: Color32F| {
             let (rect, color) = motion_transform(rect, color, target, motion);
+            let physical = to_physical(local(rect));
             elements.push(SolidColorRenderElement::new(
-                Id::new(),
-                to_physical(local(rect)),
+                crate::window::stable_solid_id(TITLEBAR_SALT, physical, color),
+                physical,
                 CommitCounter::default(),
                 color,
                 smithay::backend::renderer::element::Kind::Unspecified,

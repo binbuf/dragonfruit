@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <utility>
@@ -1580,8 +1581,20 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
     const int height = frame.height();
     if (width <= 0 || height <= 0)
         return false;
-    const int stride = width * 4;
-    const size_t size = static_cast<size_t>(stride) * static_cast<size_t>(height);
+    // A first-party QML scene should never produce more than an 8K output,
+    // but a bad geometry property must not overflow the shm/pool arithmetic
+    // or ask the compositor for an absurd allocation.
+    constexpr int kMaxCommittedDimension = 16384;
+    if (width > kMaxCommittedDimension || height > kMaxCommittedDimension)
+        return fail(QStringLiteral("refusing an oversized surface image: %1x%2")
+                        .arg(width)
+                        .arg(height));
+    const size_t stride = static_cast<size_t>(width) * 4u;
+    const size_t size = stride * static_cast<size_t>(height);
+    if (size > static_cast<size_t>(INT32_MAX))
+        return fail(QStringLiteral("surface image is too large for wl_shm: %1x%2")
+                        .arg(width)
+                        .arg(height));
 
     int fd = createShmFile(size);
     if (fd < 0)
@@ -1597,10 +1610,18 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
     munmap(data, size);
 
     wl_shm_pool *pool = wl_shm_create_pool(m_shm, fd, static_cast<int32_t>(size));
-    wl_buffer *buffer =
-        wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_ARGB8888);
+    if (!pool) {
+        ::close(fd);
+        return fail(QStringLiteral("cannot create the shared-memory pool"));
+    }
+    wl_buffer *buffer = wl_shm_pool_create_buffer(
+        pool, 0, width, height, static_cast<int32_t>(stride), WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
     ::close(fd);
+    if (!buffer)
+        return fail(QStringLiteral("cannot create the shared-memory buffer"));
+    if (!m_display)
+        return false;
 
     static const wl_buffer_listener bufferListener = { onBufferRelease };
     wl_buffer_add_listener(buffer, &bufferListener, this);
@@ -1793,17 +1814,21 @@ void ShellProtocol::teardown()
     for (wl_buffer *buffer : std::as_const(m_buffers))
         wl_buffer_destroy(buffer);
     m_buffers.clear();
-    // Session lock (T-12.3a): destroy the lock object only when it is not
-    // locked. A locked lock object cannot be destroyed (protocol error), and
-    // leaving it alive lets the connection drop keep the compositor locked —
-    // the fail-secure path.
-    if (m_sessionLock && !m_sessionLocked)
-        ext_session_lock_v1_destroy(m_sessionLock);
-    m_sessionLock = nullptr;
-    for (auto it = m_lockSurfaces.begin(); it != m_lockSurfaces.end(); ++it) {
-        if (it.value().surface)
-            wl_surface_destroy(it.value().surface);
+    // Session lock (T-12.3a): while locked, neither the lock object nor its
+    // surfaces may be destroyed — that is a protocol error, and leaving them
+    // alive lets the connection drop keep the compositor locked (the
+    // fail-secure path). They are owned by the connection and disappear with
+    // `wl_display_disconnect`. When unlocked, destroy the surfaces first and
+    // the lock object last, which is the order the protocol requires.
+    if (!m_sessionLocked) {
+        for (auto it = m_lockSurfaces.begin(); it != m_lockSurfaces.end(); ++it) {
+            if (it.value().surface)
+                wl_surface_destroy(it.value().surface);
+        }
+        if (m_sessionLock)
+            ext_session_lock_v1_destroy(m_sessionLock);
     }
+    m_sessionLock = nullptr;
     m_lockSurfaces.clear();
     m_lockOutputs.clear();
     m_sessionLocked = false;

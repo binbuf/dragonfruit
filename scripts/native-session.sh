@@ -20,6 +20,7 @@
 #   scripts/native-session.sh ready
 #   scripts/native-session.sh restart [--no-build] [--no-deps] [--force] [UNIT ...]
 #   scripts/native-session.sh status
+#   scripts/native-session.sh capture
 #   scripts/native-session.sh logs [-f] [UNIT]
 #   scripts/native-session.sh install [--force] [--no-deps]
 #   scripts/native-session.sh deps
@@ -73,6 +74,13 @@ BIN_NAMES=(
 
 NATIVE_ENV_FILE="${DF_NATIVE_ENV_FILE:-$HOME/.config/dragonfruit/native.env}"
 
+# Dev-only diagnostics. The unit and target drop-in are per-user, installed by
+# `make native` and removed by `native-recover`/`native-return`; the capture
+# reports themselves stay under the user state directory for later analysis.
+CAPTURE_UNIT="dragonfruit-native-capture.service"
+CAPTURE_TARGET_DROPIN="$HOME/.config/systemd/user/dragonfruit-session.target.d/20-dragonfruit-native-capture.conf"
+CAPTURE_STATE_DIR="${DF_CAPTURE_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/dragonfruit/native-captures}"
+
 # The units that need the dev-build loader path. The Qt shell pulls in the
 # toolchain Qt; the Qt apps it launches inherit this environment. The
 # compositor pulls in the user-space DRM sysroot and the local libxkbcommon.
@@ -117,6 +125,7 @@ Usage:
   scripts/native-session.sh ready
   scripts/native-session.sh restart [--no-build] [--no-deps] [--force] [UNIT ...]
   scripts/native-session.sh status
+  scripts/native-session.sh capture
   scripts/native-session.sh logs [-f] [UNIT]
   scripts/native-session.sh install [--force] [--no-deps]
   scripts/native-session.sh deps
@@ -349,6 +358,57 @@ remove_session_environment() {
     if [ "$removed" -eq 1 ]; then
         systemctl --user daemon-reload >/dev/null 2>&1 || true
         say "removed the native session runtime environment"
+    fi
+}
+
+install_native_capture() {
+    local unit_dir="$HOME/.config/systemd/user"
+    local unit_file="$unit_dir/$CAPTURE_UNIT"
+    local target_dir
+    target_dir="$(dirname "$CAPTURE_TARGET_DROPIN")"
+
+    [ -x "$root/scripts/native-capture.sh" ] || return 0
+    mkdir -p "$unit_dir" "$target_dir"
+    cat >"$unit_file" <<EOF
+[Unit]
+Description=Dragonfruit native session capture (dev)
+Documentation=https://github.com/dragonfruit-desktop/dragonfruit
+After=dragonfruit-compositor.service
+PartOf=dragonfruit-session.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash "$root/scripts/native-capture.sh" --watch
+Restart=no
+Nice=19
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=dragonfruit-session.target
+EOF
+    cat >"$CAPTURE_TARGET_DROPIN" <<EOF
+[Unit]
+Wants=$CAPTURE_UNIT
+EOF
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    say "native capture: reports under $CAPTURE_STATE_DIR"
+}
+
+remove_native_capture() {
+    local unit_file="$HOME/.config/systemd/user/$CAPTURE_UNIT"
+    local removed=0
+
+    if systemctl --user cat "$CAPTURE_UNIT" >/dev/null 2>&1; then
+        systemctl --user stop "$CAPTURE_UNIT" >/dev/null 2>&1 || true
+    fi
+    if [ -e "$unit_file" ] || [ -e "$CAPTURE_TARGET_DROPIN" ]; then
+        rm -f "$unit_file" "$CAPTURE_TARGET_DROPIN"
+        rmdir "$(dirname "$CAPTURE_TARGET_DROPIN")" 2>/dev/null || true
+        removed=1
+    fi
+    if [ "$removed" -eq 1 ]; then
+        systemctl --user daemon-reload >/dev/null 2>&1 || true
+        say "removed the native capture unit"
     fi
 }
 
@@ -957,6 +1017,7 @@ cmd_install() {
     build_all
     write_session_environment
     install_native
+    install_native_capture
     verify_installed_links
 }
 
@@ -987,6 +1048,7 @@ cmd_start() {
     fi
     write_session_environment
     install_native
+    install_native_capture
     verify_installed_links
     write_plasma_login_preselect
 
@@ -1018,6 +1080,11 @@ cmd_ready() {
     exec "$DEV_BIN" dev --real --ready
 }
 
+cmd_capture() {
+    require_user
+    exec "$root/scripts/native-capture.sh" "${1:-once}"
+}
+
 # Undo everything the native loop changed outside the repo: the login-manager
 # preselect, the dev runtime environment, and the saved display-manager files.
 # Safe to run when nothing is armed (idempotent) and from a plain text console.
@@ -1026,6 +1093,7 @@ recover_host() {
     local restore_status=0
 
     remove_plasma_login_preselect
+    remove_native_capture
     remove_session_environment
     clear_login_manager_last_session
     if ! restore_round_trip_state; then
@@ -1169,6 +1237,17 @@ cmd_status() {
             say "login-manager preselect: not installed"
         fi
     fi
+    if [ -e "$HOME/.config/systemd/user/$CAPTURE_UNIT" ]; then
+        say "native capture: installed ($CAPTURE_STATE_DIR)"
+    else
+        say "native capture: not installed"
+    fi
+    if [ -d "$CAPTURE_STATE_DIR" ]; then
+        local latest
+        latest="$(find "$CAPTURE_STATE_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null \
+            | sort -rn | head -n 1 | cut -d' ' -f2-)"
+        [ -n "$latest" ] && say "latest capture: $latest"
+    fi
     say "recovery: bash $root/scripts/native-session.sh recover"
 
     printf '  %-34s %s\n' UNIT STATE
@@ -1238,6 +1317,7 @@ case "$command" in
     recover) cmd_recover "$@" ;;
     restart|reload) cmd_restart "$@" ;;
     status) cmd_status "$@" ;;
+    capture|record) cmd_capture "$@" ;;
     logs|log) cmd_logs "$@" ;;
     install) cmd_install "$@" ;;
     deps|doctor) cmd_deps "$@" ;;
