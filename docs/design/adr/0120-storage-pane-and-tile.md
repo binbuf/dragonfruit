@@ -11,7 +11,7 @@ as one functional unit: a Settings pane and a Control Center tile. It follows
 the Bluetooth pane/tile ([0118](0118-bluetooth-pane-and-tile.md)). The adapter
 is a Rust crate and the two consumers are C++/QML; the project's rule is that
 D-Bus is the services seam and QML never links an adapter ([0029](0029-system-status-bridge-host.md)).
-The Settings app is a consumer, not an owner ([0036](0036-settings-app-consumer-client.md)).
+The Settings app is a consumer, not an owner ([0036](0036-shared-settings-client-and-qml-singleton.md)).
 
 ## Decision
 

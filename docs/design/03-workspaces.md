@@ -79,6 +79,10 @@ overview → activate workspace → raise/focus window → reverse animation
 Because the compositor owns the scene graph, this feels coherent in a way a
 standalone third-party overview program cannot match.
 
+**Implementation note (2026-11):** the live grid, pointer selection/drag, and
+Desktop Reveal are shipped; transforming the **neighbouring** Spaces' surfaces
+and paging the grid at the readable floor are still deferred (STATUS G-15).
+
 ### Gestures
 
 Trackpad Mission Control gestures are compositor/libinput territory:
@@ -107,8 +111,9 @@ opposite of the "every window is one gesture away" goal. A grid is
 deterministic, keeps every surface fully visible, and matches the shell's
 workspace-strip metaphor.
 
-The algorithm (implemented against the transformed live surfaces in B-9;
-the shell's title-card grid is the interim representation):
+The algorithm is implemented against the transformed live surfaces (T-05.1a);
+the shell's title-card grid remains the keyboard/accessible path, not an
+interim stand-in for the live grid:
 
 - **Membership.** Visible windows of the active Space, plus the visible
   windows of neighboring Spaces (revealed by the transition), minus

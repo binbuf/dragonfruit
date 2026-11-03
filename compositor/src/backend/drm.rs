@@ -643,11 +643,11 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
     }
 
     // Scene-texture routing (T-20.4): the chrome material's scene texture is
-    // owned per GPU. Decide, per output, whether the blur composes locally on
-    // the output's GPU or the primary GPU's scene texture is copied across —
-    // the material never samples across GPUs. The DRM rail still composes the
-    // deterministic feather stack (T-20.1 follow-up), so this is the plan the
-    // two-pass composition consumes; it is reported so the decision is
+    // owned per GPU. Decide, per output, whether the blur would compose
+    // locally on the output's GPU or the primary GPU's scene texture would be
+    // copied across — the material never samples across GPUs. The copy route
+    // is not executed yet: a multi-GPU seat disables the sampled path above
+    // and uses the feather stack. The plan is reported so the decision is
     // observable on hardware.
     {
         let mut outputs: Vec<(String, String)> = data
@@ -1449,9 +1449,11 @@ fn render_surface(
 
     // The material path (P2): when the effective material says the sampled
     // pass is active, render the scene into an offscreen texture and compose
-    // the chrome above the per-panel blur. When it is not (default DRM until
-    // `DRAGONFRUIT_DRM_MATERIAL` is enabled, Minimal, or software), keep the
-    // deterministic feather stack and the direct window/desktop elements.
+    // the chrome above the per-panel blur. The sampled path is the default on
+    // the supported boundary (single GPU, normal transform); it is disabled
+    // by `DRAGONFRUIT_DRM_MATERIAL=0`, at Minimal/software, or after a failed
+    // material frame. In those cases keep the deterministic feather stack and
+    // the direct window/desktop elements.
     let material = state.effective_material();
     // The scene texture and the panel SDF are output-local and currently
     // rendered with `Transform::Normal`; a rotated output keeps the feather

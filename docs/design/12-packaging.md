@@ -2,6 +2,12 @@
 
 ## Summary
 
+> **Status (2026-11): design-only.** `packaging/fedora/` and
+> `packaging/debian/` still contain only README placeholders. The package
+> names, contents, and commands below are the target; Fedora packaging/CI
+> (T164), Debian packaging/CI (T165), and the packaged perf re-measure (T166)
+> are OPEN. See [STATUS.md](STATUS.md) G-11.
+
 Fedora 44 is the reference platform, but the desktop is designed so very
 little knows it is running on Fedora. Fedora already treats alternative
 desktops as first-class products (official Sway, COSMIC, Budgie, Xfce spins),
@@ -53,9 +59,10 @@ sudo dnf install dragonfruit-desktop
   same `%version` and the compositor refuses mismatched protocol versions at
   handshake.
 - No package requires, recommends, or obsoletes anything GNOME.
-- **Default handlers:** the packages register `dragonfruit-files.desktop` as
-  the default `inode/directory` handler, so folder-opening from any app or
-  portal routes to Files (see [09-files.md](09-files.md)).
+- **Default handlers:** the packages register `org.dragonfruit.Files.desktop`
+  as the default `inode/directory` handler, so folder-opening from any app or
+  portal routes to Files (see [09-files.md](09-files.md)). The current
+  in-tree desktop file already carries that id.
 - **First-party app icons (T-19.1d):** each app installs its Tabler-derived
   SVG (`org.dragonfruit.Files.svg`, `org.dragonfruit.Settings.svg`, generated
   by `scripts/gen-app-icons.py`) into `share/icons/hicolor/scalable/apps/`, and

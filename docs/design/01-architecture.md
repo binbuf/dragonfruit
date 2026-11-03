@@ -81,11 +81,16 @@ the compositor is special:
 | Process | Language | Access | Crash policy |
 |---|---|---|---|
 | Compositor | Rust / Smithay | Seat, DRM/KMS, input (via logind) | Crash ends the session by design; the display manager returns the user to a login screen |
-| Shell (menu bar, Dock, Control Center, notifications, OSD) | Qt Quick | Wayland client of the compositor | systemd restarts it; windows and the session keep running |
+| Shell (menu bar, Dock, Control Center, notification banners, OSD) | Qt Quick | Wayland client of the compositor | systemd restarts it; windows and the session keep running |
 | `settingsd` | Rust | User session bus | Restartable; clients re-read cached state on reappearance |
 | `menu-broker` | Rust | User session bus | Restartable; menu bar falls back to app-name display |
 | `app-index` | Rust | User session bus | Restartable; consumers re-query on reappearance |
-| Notifications / OSD / idle | Qt or Rust | User session bus | Restartable; transient state may be lost |
+| `wallpaperd` | Rust | User session bus + cache | Restartable; the shipped default keeps first run independent of the network |
+| `system-status` + adapters | Rust | User session bus | Restartable; every absent daemon is a supported state |
+| Notifications | Rust | User session bus | Restartable; transient state may be lost |
+| OSD | Shell surface | Private protocol | Restartable with the shell; transient state may be lost |
+| Idle service | **design-only** | User session bus + `ext-idle-notify` | The engine/inhibitors exist in `services/session`; no production idle process ships yet (G-10) |
+| Files desktop | Qt / Files | Private compositor protocol | Separate crash domain from the browser; not yet provisioned by the systemd session (G-09) |
 | Portal backend | Rust | User session bus + private compositor protocol | Restartable; portals fail soft |
 | Lock screen | Compositor-enforced | Inside the compositor | Fail-secure: no code path, including a crash, unlocks a locked session |
 
@@ -105,6 +110,7 @@ Exactly one process owns each class of state; everything else observes:
 | Desktop settings and their persistence | `settingsd` |
 | Which menu model belongs to the focused window | `menu-broker` |
 | Notification queue, Focus/DND state | Notification service |
+| Desktop items (`~/Desktop` content and selection) | Files desktop process, on a role-scoped compositor background layer |
 | Hardware state (network, audio, power, disks) | Host daemons — we observe and request, never duplicate |
 
 ## Technology choices
@@ -150,11 +156,14 @@ recurring fight against another desktop's design language.
 
 ### Licensing
 
-Smithay's MIT license keeps our options open, and we reciprocate: the
-whole project — compositor, services, private protocol XMLs, design
-system, shell, and apps — is MIT, so any third party may implement or
-reuse it freely. The final call is a blocker for the first public
-release (see [14-risks.md](14-risks.md)).
+Smithay's MIT license keeps our options open, and we reciprocate: our code
+and original assets — compositor, services, private protocol XMLs, design
+system, shell, and apps — are MIT, so any third party may implement or reuse
+them freely. Bundled third-party assets keep their own licenses (Inter under
+OFL, Tabler/Phosphor under MIT, Capitaine cursors under LGPL); see
+[NOTICE](../../NOTICE) and [docs/licensing.md](../licensing.md). The final
+licensing call is a blocker for the first public release (see
+[14-risks.md](14-risks.md)).
 
 ## Repository layout
 
@@ -171,9 +180,15 @@ desktop/
 ├── services/
 │   ├── settingsd/
 │   ├── menu-broker/
-│   ├── app-index/
+│   ├── app-index/           # identity, tray, DBusMenu projection
+│   ├── notifications/
+│   ├── wallpaperd/
 │   ├── files-core/          # Rust browsing/ops library (not a process)
-│   └── session/
+│   ├── session/
+│   ├── system-status/       # bridge host for the concrete adapters
+│   └── *-adapter/           # NetworkManager, BlueZ, UPower, UDisks, …
+├── libs/                    # shared C++/QML support (font, i18n, settings client, chrome pointer)
+├── tools/                   # dragonfruit dev/demo/soak/native helpers
 ├── apps/
 │   ├── settings/
 │   └── files/
@@ -217,7 +232,9 @@ logind session
       → shell                         (after the compositor socket and the
                                        settings bus name, so its first paint
                                        uses the persisted settings)
-      → menu-broker / app-index / notifications   (in parallel)
+      → menu-broker / app-index / notifications / wallpaperd / system-status
+                                       (in parallel)
+      → Files desktop process         (dev tool today; systemd provisioning open)
       → portal backend                (registers with xdg-desktop-portal)
 ```
 

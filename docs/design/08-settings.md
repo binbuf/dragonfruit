@@ -62,7 +62,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Appearance | `settingsd` (design-system themes, dark/light, accent) |
 | Accessibility | live AT-SPI read + `settingsd` (`accessibility.reduceMotion`) ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md)) |
 | Desktop & Dock | `settingsd` → shell + compositor |
-| Displays | Compositor output API (resolution, scaling, rotation, color, night light, VRR) |
+| Displays | Compositor output API — **shipped:** scale and rotation; **design-only:** mode enumeration, brightness (Control Center owns the current slider), color management/HDR, night light, VRR ([STATUS.md](STATUS.md) G-13) |
 | Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures |
 | Menu Bar | `settingsd` → shell |
 | Search | `settingsd` → app-index (Spotlight-equivalent; roadmap "later") |

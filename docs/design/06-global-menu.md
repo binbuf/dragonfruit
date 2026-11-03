@@ -18,9 +18,9 @@ Two menus are always present, before any application-exported model:
 - The **application menu** (the focused app's name, bold) carries the standard
   About / Settings / Hide / Hide Others / Show All / Quit items. On macOS the
   application itself owns these; here the shell synthesizes them from app
-  metadata, and **the menu-broker takes this over in T-22** so enable/disable
+  metadata, and the **menu-broker owns the model** (T-14.2a) so enable/disable
   and per-app state are live. On the empty desktop the application menu is
-  **Files**.
+  **Files**. Hide/Hide Others/Show All are still shell stubs (G-05).
 
 An application's exported menus (File, Edit, View, …) render *after* these
 two. This is what makes an app that exports nothing still feel macOS-like: it
@@ -59,6 +59,15 @@ Contemporary example: GTK applications frequently do not export the expected
 DBusMenu data under Wayland (e.g., Xournal++ under KDE's global menu), so the
 feature cannot work automatically for them. This is an application-cooperation
 problem, not something we can force from the compositor side.
+
+**Current status (2026-11).** The **native** tier is shipped. The **DBusMenu**
+tier is projected by app-index and stored by the broker, but the shell does not
+consume it yet, so a `dbusmenu:<id>` row only logs instead of dispatching. The
+fixed application menu's Hide/Hide Others/Show All rows compute live enabled
+state, but the shell actions are stubs. The tray (StatusNotifier) tier is live
+and re-reads on a timer; live icon/attention signals are not subscribed. These
+are tracked in [STATUS.md](STATUS.md) G-05. Read "compatible Linux apps" in the
+table below as **partial**, not shipped.
 
 ## Interaction and shortcut dispatch
 
@@ -142,7 +151,7 @@ least one fully-hidden app. A publisher's own `applicationMenuItems` is used
 verbatim except for those three rows. The shell mirrors this rule in
 `shell/src/menubrokerpolicy` so the demo bar is live while the service is
 absent; the broker remains the model's owner. Actual hide/hide-others/show-all
-window operations are still to come.
+window operations are still stubs ([STATUS.md](STATUS.md) G-05).
 
 ## Implementation note (T-14.2b)
 
@@ -182,7 +191,9 @@ in ADR [0097](adr/0097-statusnotifier-tray-host-and-dbusmenu-projection.md).
 
 ## Implementation note (T-14.4)
 
-The DBusMenu/AppMenu tier is live. `dragonfruit-app-index` also serves
+The DBusMenu/AppMenu **projection** is live in app-index/menu-broker; the
+shell's consumption and click routing are still open (G-05).
+`dragonfruit-app-index` also serves
 `com.canonical.AppMenu.Registrar` at `/com/canonical/AppMenu/Registrar` (name
 best-effort, like the tray watcher): `RegisterWindow(windowId, path)` maps a
 window to its DBusMenu object, and the additive

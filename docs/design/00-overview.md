@@ -27,7 +27,8 @@ organized by topic:
 | [10-design-system.md](10-design-system.md) | The Qt Quick design system and first-party component library |
 | [11-session-and-dev-workflow.md](11-session-and-dev-workflow.md) | Session model, nested development, and the testing ladder |
 | [12-packaging.md](12-packaging.md) | Fedora packaging, COPR, Spins, and portability |
-| [ROADMAP.md](../ROADMAP.md) | MVP definition, implementation sequence, and timeline |
+| [STATUS.md](STATUS.md) | **What is implemented, partial, or design-only**, plus the gap register and recommended next sequence |
+| [ROADMAP.md](../ROADMAP.md) | Task sequence, definitions of done, and the hardware rail |
 | [14-risks.md](14-risks.md) | Technical risks, hard limits, and IP constraints |
 
 ## Product thesis
@@ -100,7 +101,7 @@ Boundaries declared up front, so scope debates later have an answer:
 | Left-side traffic lights in our apps | Excellent | Design system / apps |
 | Traffic lights in *every* Linux app | Impossible to guarantee | Toolkit/app dependent |
 | Global menu in our apps | Excellent | Our app API / menu broker |
-| Global menu in compatible Linux apps | Good | DBusMenu/AppMenu bridge |
+| Global menu in compatible Linux apps | **Partial today** — native tier shipped; DBusMenu shell consumption/clicks still open | DBusMenu/AppMenu bridge (G-05) |
 | Global menu in *every* Linux app | Impossible to guarantee | Application cooperation required |
 | Wi-Fi/Bluetooth/audio/power UI | Excellent | Existing system daemons + our UI |
 | X11 applications | Good | Xwayland |

@@ -113,7 +113,7 @@ optional — absence is a normal state — so `FIXTURES=1` is the deterministic
 alternative when the hardware is not there.
 
 The split is recorded in
-[ADR 0123](adr/0123-thin-demo-and-full-dev-session.md). `wallpaperd` is never
+[ADR 0188](adr/0188-thin-demo-and-full-dev-session.md). `wallpaperd` is never
 on the thin path, and `make demo`'s headless scripted half starts **no**
 services, so CI never warms the provider's network cache. The per-pane capture
 scripts under `scripts/` still provision their own scratch daemons and
@@ -217,6 +217,7 @@ graphical-session.target (systemd --user)
         ├── dragonfruit-menu-broker.service   # Restart=on-failure
         ├── dragonfruit-app-index.service      # Restart=on-failure
         ├── dragonfruit-notifications.service  # Restart=on-failure
+        ├── dragonfruit-wallpaperd.service     # Restart=on-failure
         └── dragonfruit-portal.service         # Restart=on-failure
 ```
 
@@ -265,6 +266,7 @@ dragonfruit-session.target                 # WantedBy=graphical-session.target
   ├── dragonfruit-menu-broker.service
   ├── dragonfruit-app-index.service
   ├── dragonfruit-notifications.service
+  ├── dragonfruit-wallpaperd.service
   └── dragonfruit-portal.service
 ```
 
@@ -320,7 +322,7 @@ the leader of its own process group, and shutdown signals the whole group
 cannot leak grandchildren past the session. The session binary installs the
 descriptor, script, and the systemd user units under one prefix with
 `dragonfruit-session --install-session DIR` (`entry::install_into`); packaging
-(T-32) passes its build root. The contract is frozen in
+(T164/T165) passes its build root. The contract is frozen in
 [ADR 0066](adr/0066-display-manager-session-entry.md).
 
 ### The lock screen (T-12.3a)
@@ -455,9 +457,12 @@ new `session` group) as `x` whole seconds with `0` disabling a stage:
 exactly the names and parser ADR [0070](adr/0070-idle-timer-engine-and-policy.md)
 freezes; a consumer converts each `Value::Integer` to a string and calls
 `IdlePolicy::from_keys`. The daemon is the one owner of the values; the
-Settings Lock Screen pane (T-15.8b) will write them. There is no production
-idle service yet, so the headless proof that the keys drive lock/idle/suspend
-is `services/session/tests/session_policy.rs` (a fake clock walks the whole
+Settings Lock Screen pane (T-15.8b) writes `idle.blank`/`idle.lock` and the
+`lock.*` display keys. The lock renderer does not yet consume the `lock.*`
+keys (recorded as a follow-up in `LockScreenPane.qml`), and there is still no
+production idle service that binds `ext-idle-notify` and feeds the engine.
+The headless proof that the keys drive lock/idle/suspend is
+`services/session/tests/session_policy.rs` (a fake clock walks the whole
 chain from the settings snapshot, including a live key change and a held
 inhibitor).
 

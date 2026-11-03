@@ -15,25 +15,28 @@ provides its own scene graph and rendering engine.
 ## Component library
 
 ```text
-Window
+AppWindow
 TitleBar
 TrafficLights
+WindowResizeGrips
 Sidebar
 Toolbar
 SplitView
 SettingsRow
 SettingsGroup
 Toggle
+Button
 SegmentedControl
 Slider
 Select
 Popup
 ContextMenu
 MenuBarMenu
+MenuRow
 ShortcutHint
 SearchField
 SourceList
-Icon
+Icon (compatibility facade)
 TablerIcon
 PhosphorIcon
 SettingsCategoryIcon
@@ -42,7 +45,17 @@ Sheet
 Popover
 Tooltip
 ScrollView
+Shadow
+FocusRing
+Skeleton
+DragonfruitLogo
 ```
+
+The inventory is the QML module's actual surface, not a wish list. `MenuRow`
+and `ShortcutHint` are the shared menu anatomy; `Shadow`, `FocusRing`, and
+`Skeleton` are shared primitives rather than app-local copies;
+`WindowResizeGrips` is the shared resize affordance used by first-party
+windows.
 
 `Tooltip` (T-14.7i) is the passive hover label: pointer-anchored,
 non-focusable, token-driven, and used first by the Dock name labels (ADR

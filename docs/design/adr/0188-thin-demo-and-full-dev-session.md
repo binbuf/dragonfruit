@@ -1,8 +1,13 @@
-# 0123 — A thin loop demo and a separate full nested dev session
+# 0188 — A thin loop demo and a separate full nested dev session
 
 ## Status
 
 accepted
+
+> **Numbering note (2026-11-03).** This record was originally filed as `0123`,
+> colliding with `0123-sound-pane-and-tile.md`. It is renumbered to the next
+> free id; the decision and its references are unchanged. The Sound ADR keeps
+> `0123`.
 
 ## Context
 

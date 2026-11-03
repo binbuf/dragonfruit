@@ -1593,8 +1593,10 @@ interface and the second interactive one. Contract frozen in ADR
 
 `org.freedesktop.impl.portal.ScreenCast` (version 3) is the fifth concrete
 interface and the third interactive one. Contract frozen in ADR
-[0080](adr/0080-screencast-portal-and-source-picker.md). The live PipeWire
-stream is deferred to T-13.4b; this slice returns the chosen *source handle*.
+[0080](adr/0080-screencast-portal-and-source-picker.md). This slice returns
+the chosen *source handle*; T-13.4b added the stream negotiation and the
+documented stills fallback. A live PipeWire producer is still open
+([STATUS.md](STATUS.md) G-17).
 
 - **The session lifecycle is the pure model.** `portal::screencast` owns a
   `ScreenCastRegistry` of sessions and picker requests: `CreateSession`
