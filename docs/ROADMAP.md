@@ -552,6 +552,10 @@ just the forward group with
 > presentation path before adding features. Design:
 > [21-presentation-foundation.md](design/tracks/21-presentation-foundation.md).
 > Task files live in [tasks/0.1.1/](tasks/0.1.1/README.md).
+> **Harness task set:** this release is wired as the `0.1.1` set, with its own
+> [executable roadmap](v0.1.1/ROADMAP.md), progress notes and run logs. Run it
+> with `./.symphony/symphony run --set 0.1.1` (see
+> [tasks/0.1.1/README.md](tasks/0.1.1/README.md#harness)).
 
 - [ ] T183 — T-21.1a Chrome transport baseline and decision → [tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md](tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md)
 - [ ] T184 — T-21.1b Chrome HiDPI and fractional scale → [tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md](tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md)

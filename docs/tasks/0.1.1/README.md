@@ -66,3 +66,19 @@ make check                       # lint + test + soak
 New measurement targets added by this track (`make t21-chrome-baseline`,
 `make t21-presentation-bench`) must be documented in the task that adds them
 and must not be wired into `make e2e` if they need a host session or hardware.
+
+## Harness
+
+This directory is the task-file source for the dedicated `0.1.1` symphony task
+set. The set's roadmap, progress notes and run logs live in
+[`docs/v0.1.1/`](../../v0.1.1/ROADMAP.md); the task files stay here.
+
+```bash
+./.symphony/symphony doctor --set 0.1.1   # preflight this release
+./.symphony/symphony lint --set 0.1.1     # check the docs contract
+./.symphony/symphony status --set 0.1.1   # progress for this release
+./.symphony/symphony run --set 0.1.1      # run T183…T193 in order
+```
+
+The harness uses `make e2e` as the independent verify command. Hardware-only
+halves must be committed as explicit `OPEN` evidence, never accepted silently.

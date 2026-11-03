@@ -66,8 +66,11 @@ legacy numbers and do not match this plan.
   (lint + test + 100-cycle soak).
 - Design references live in [design/](design/) and [design/tracks/](design/tracks/);
   a task's reference is inlined into its prompt.
-- Harness install: `.symphony/` (gitignored). Config `.symphony/symphony.config.json`
-  (provider `opencode`, model `openrouter/deepseek/deepseek-v4.1-flash`, jev enabled).
+- Harness install: `.symphony/` (gitignored). Default provider `opencode` ·
+  model `deepinfra/deepseek-ai/DeepSeek-V4.1-Flash-1017#flex-xhigh` (xhigh flex
+  workhorse, `wait` on capacity loss). The base plan remains `docs/`; v0.1.1 is
+  the independent task set `0.1.1` (`./.symphony/symphony run --set 0.1.1`).
+  Jev and escalation are off.
 - Definition of done per task: building, headless test green in `make e2e`,
   reduced-motion/degrade variant where relevant, a capture under `docs/captures/`,
   and an explicit deferred list. Human sign-off is batched at track boundaries.
