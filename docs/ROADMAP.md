@@ -16,6 +16,8 @@ status, including partials and design-only claims, is
 
 ```text
 Tracks T-01…T-20      agent-done (T-10, T-12, T-14, T-16, T-17, T-20 partial)
+Track 21 (v0.1.1)     proposed: shell transport/HiDPI, refresh scheduling,
+                      material cost/floor, native evidence (T183–T193)
 Hardware rail         OPEN: T159–T161, T163–T168 (DRM, input, driver matrix,
                       packaging, packaged perf, DRM full loop, baseline perf)
 Human sign-off        OPEN: T-17 unfamiliar-user verdict, track-boundary reviews
@@ -112,6 +114,7 @@ every task un-completable.
 | [T-18](design/tracks/18-wallpaper-content-provider.md) | Wallpaper content provider | 4 | shipped original default; Featured fills from Wikimedia when the pane is open; offline keeps the shipped default |
 | [T-19](design/tracks/19-desktop-affordances.md) | Desktop affordances — icon system, Apps drawer, desktop items | 6 | Tabler line + Phosphor fill icon language, the Applications overlay, desktop files with mouse multi-select |
 | [T-20](design/tracks/20-tahoe-liquid-glass.md) | Tahoe liquid-glass material | 4 | sampled backdrop blur, glass rim/tint, all chrome roles, DRM two-pass on the supported boundary |
+| [T-21](design/tracks/21-presentation-foundation.md) | Presentation foundation (v0.1.1) | 11 | shell transport/HiDPI, per-output refresh scheduling, material cost/floor, native evidence |
 
 ### Track completion at a glance
 
@@ -141,6 +144,7 @@ evidence is in [`design/STATUS.md`](design/STATUS.md).
 | T-18 wallpaper provider | done | — | batched | — |
 | T-19 desktop affordances | done | — | batched | desktop session token (G-09) |
 | T-20 liquid glass | partial | **OPEN** | batched | native acceptance/multi-GPU/floor (G-03/G-08/G-12) |
+| T-21 presentation foundation | proposed | **OPEN** | batched | transport/HiDPI, refresh scheduling, material floor, native evidence |
 
 ## Work units (strict order)
 
@@ -539,6 +543,27 @@ just the forward group with
 - [ ] T166 — T-16.11 Packaged-build performance re-measure → [tasks/166-t-16.11-packaged-build-performance-re-measure.md](tasks/166-t-16.11-packaged-build-performance-re-measure.md)
 - [ ] T167 — T-17.2 DRM full-loop verification → [tasks/167-t-17.2-drm-full-loop-verification.md](tasks/167-t-17.2-drm-full-loop-verification.md)
 - [ ] T168 — T-17.4 Performance budget verification → [tasks/168-t-17.4-performance-budget-verification.md](tasks/168-t-17.4-performance-budget-verification.md)
+
+## Release v0.1.1 — T-21 Presentation foundation
+
+> **New release track.** The architecture review and the native-rendering audit
+> both put the shell transport and the fixed 60 Hz scheduler ahead of new UI
+> surface area. This track keeps Rust + Smithay + Qt Quick and fixes the
+> presentation path before adding features. Design:
+> [21-presentation-foundation.md](design/tracks/21-presentation-foundation.md).
+> Task files live in [tasks/0.1.1/](tasks/0.1.1/README.md).
+
+- [ ] T183 — T-21.1a Chrome transport baseline and decision → [tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md](tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md)
+- [ ] T184 — T-21.1b Chrome HiDPI and fractional scale → [tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md](tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md)
+- [ ] T185 — T-21.1c Chrome SHM transport hygiene and frame pacing → [tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md](tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md)
+- [ ] T186 — T-21.1d GPU-backed chrome transport → [tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md](tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md)
+- [ ] T187 — T-21.2a Per-output refresh model and animation clock → [tasks/0.1.1/187-t-21.2a-per-output-refresh-clock.md](tasks/0.1.1/187-t-21.2a-per-output-refresh-clock.md)
+- [ ] T188 — T-21.2b Presentation-paced mixed-refresh scheduling → [tasks/0.1.1/188-t-21.2b-presentation-paced-mixed-refresh.md](tasks/0.1.1/188-t-21.2b-presentation-paced-mixed-refresh.md)
+- [ ] T189 — T-21.2c Persistent-chrome material floor and degrade → [tasks/0.1.1/189-t-21.2c-persistent-chrome-material-floor.md](tasks/0.1.1/189-t-21.2c-persistent-chrome-material-floor.md)
+- [ ] T190 — T-21.3 Panel-region material and direct-scanout preservation → [tasks/0.1.1/190-t-21.3-panel-region-material-and-scanout.md](tasks/0.1.1/190-t-21.3-panel-region-material-and-scanout.md)
+- [ ] T191 — T-21.4a Native DRM material acceptance → [tasks/0.1.1/191-t-21.4a-native-material-acceptance.md](tasks/0.1.1/191-t-21.4a-native-material-acceptance.md)
+- [ ] T192 — T-21.4b Presentation benchmark and soak → [tasks/0.1.1/192-t-21.4b-presentation-benchmark-and-soak.md](tasks/0.1.1/192-t-21.4b-presentation-benchmark-and-soak.md)
+- [ ] T193 — T-21.5 Regression matrix and v0.1.1 close-out → [tasks/0.1.1/193-t-21.5-regression-matrix-and-closeout.md](tasks/0.1.1/193-t-21.5-regression-matrix-and-closeout.md)
 
 ## Delivery order (unchanged in intent)
 

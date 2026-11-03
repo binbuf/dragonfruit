@@ -22,6 +22,9 @@ _Maintained from the working tree; reconciled by hand on 2026-11-03. The design 
 - `docs/design/advisor-briefing.md` — Dragonfruit — advisor briefing
 - `docs/design/architecture-audit-native-rendering.md` — Architecture audit — native DRM presentation, material, and shell transport
 
+## Task sets
+- `docs/tasks/0.1.1/README.md` — v0.1.1 presentation-foundation tasks (T183–T193)
+
 ## Tracks
 - `docs/design/tracks/01-loop-v0-window-controls.md` — T-01 — Loop v0: Window Controls and the First End-to-End Demo
 - `docs/design/tracks/02-loop-v1-lifecycle-motion.md` — T-02 — Loop v1: Window Lifecycle Motion
@@ -43,6 +46,7 @@ _Maintained from the working tree; reconciled by hand on 2026-11-03. The design 
 - `docs/design/tracks/18-wallpaper-content-provider.md` — T-18 — Wallpaper content provider (shipped default + Wikimedia Featured Pictures)
 - `docs/design/tracks/19-desktop-affordances.md` — T-19 — Desktop affordances: icon system, Apps drawer, desktop items
 - `docs/design/tracks/20-tahoe-liquid-glass.md` — Track 20 — Tahoe liquid-glass material (GPU backdrop pass)
+- `docs/design/tracks/21-presentation-foundation.md` — Track 21 — Presentation foundation (v0.1.1: shell transport, HiDPI, refresh scheduling, native evidence)
 
 ## Proposals
 - `docs/design/proposals/native-drm-dock-glass.md` — Proposal — Native DRM Dock material: why it does not read as the premium macOS Dock

@@ -18,6 +18,11 @@
 > baseline; do not read them as current. See
 > [`STATUS.md`](STATUS.md) and
 > [ADR 0189](adr/0189-drm-sampled-material-default-and-fallbacks.md).
+>
+> **Execution (v0.1.1).** The open P3/P4/P5/P6 work is cut into
+> [Track 21](tracks/21-presentation-foundation.md) and tasks
+> [T183–T193](../tasks/0.1.1/README.md): shell transport/HiDPI, per-output
+> refresh scheduling, material cost/floor, and native evidence.
 
 This is the report requested before implementation. It does not change the
 renderer. It records what was actually running at the audit point, corrects

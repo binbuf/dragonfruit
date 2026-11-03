@@ -20,6 +20,21 @@ The native two-pass material is now **default-on**:
 Only explicit values are persisted by `scripts/native-session.sh`; an unset
 variable keeps the default.
 
+## v0.1.1 task mapping
+
+The executable v0.1.1 task set is in
+[`docs/tasks/0.1.1/`](tasks/0.1.1/README.md) under
+[Track 21](design/tracks/21-presentation-foundation.md). It maps to this queue:
+
+| Queue item | Task |
+|---|---|
+| R2.1/R2.2/R2.3 shell backend, HiDPI, copies | T183, T184, T185, T186 |
+| R3.1/R3.2/R3.3 refresh deadline, presentation pacing, mixed refresh | T187, T188 |
+| R4.1–R4.4 persistent-chrome floor, hysteresis, fallback coverage | T189 |
+| R1.1–R1.4 panel region, stable IDs, allocations, direct scanout | T190 |
+| R0/R6 native material acceptance and evidence | T191 |
+| R7/R8 benchmark, soak, observability, docs | T192, T193 |
+
 ---
 
 ## Current state

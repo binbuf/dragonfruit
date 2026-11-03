@@ -88,6 +88,7 @@ report already uses that distinction; this file applies it consistently.
 | T-18 Wallpaper content provider | Implemented | wallpaperd, shipped default, provider cache, pane collections/attribution, absence | — |
 | T-19 Desktop affordances | Implemented | Tabler line + Phosphor fill icon split, Settings category tiles, menu-bar/Dock/app icons, Applications drawer, desktop items | desktop process is not provisioned by the systemd session (G-09) |
 | T-20 Tahoe liquid-glass material | **Partial** | scene texture, Kawase blur, glass shader, all chrome roles, DRM sampled path, effective material event, software fallback, tolerance captures | native hardware acceptance, multi-GPU/rotation, quality floor, refresh scheduling (G-08, G-12, G-02) |
+| T-21 Presentation foundation (v0.1.1) | **Proposed** | task set T183–T193: shell transport/HiDPI, per-output refresh scheduling, material cost/floor, native evidence | all rows; see [tasks/0.1.1](../tasks/0.1.1/README.md) |
 
 ## 4. System status by area
 
@@ -298,8 +299,13 @@ before those are fixed would widen the surface without improving the product.
 
 ## 9. Recommended next sequence
 
-This is a proposal, not a set of committed task files. It is ordered by
-architectural leverage.
+This is a proposal, ordered by architectural leverage. The v0.1.1 task files
+are now cut from it.
+
+> **v0.1.1 task set:** the executable form of P0-A/P0-B/P0-C plus the material
+> cost/floor follow-ups is in
+> [`docs/tasks/0.1.1/`](../tasks/0.1.1/README.md) (T183–T193), under
+> [Track 21](tracks/21-presentation-foundation.md).
 
 ### P0 — presentation foundation (next)
 
