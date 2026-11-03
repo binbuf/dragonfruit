@@ -364,6 +364,18 @@ write_session_environment() {
         env_names+=(XCURSOR_PATH XCURSOR_THEME)
         env_values+=("$cursor_search" "capitaine-cursors")
     fi
+    # P2 defaults on. These are opt-outs for diagnostics or a quick rollback:
+    #   DRAGONFRUIT_DRM_MATERIAL=0 make native-rebuild
+    #   DRAGONFRUIT_DRM_GLASS=0 make native-rebuild
+    # Only an explicit value is persisted; unset keeps the compositor default.
+    if [ -n "${DRAGONFRUIT_DRM_MATERIAL:-}" ]; then
+        env_names+=(DRAGONFRUIT_DRM_MATERIAL)
+        env_values+=("$DRAGONFRUIT_DRM_MATERIAL")
+    fi
+    if [ -n "${DRAGONFRUIT_DRM_GLASS:-}" ]; then
+        env_names+=(DRAGONFRUIT_DRM_GLASS)
+        env_values+=("$DRAGONFRUIT_DRM_GLASS")
+    fi
 
     if [ "${#env_names[@]}" -eq 0 ]; then
         remove_session_environment

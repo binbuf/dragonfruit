@@ -144,6 +144,8 @@ pub mod semantic {
             pub const FOLDER_RIM: [u8; 4] = [0x3a, 0x66, 0xe0, 0xff];
             pub const FOLDER_HIGHLIGHT: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
             pub const DOCK_FILL: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+            pub const DOCK_FALLBACK_FILL: [u8; 4] = [0xef, 0xea, 0xf3, 0xff];
+            pub const CHROME_FALLBACK_FILL: [u8; 4] = [0xf8, 0xf6, 0xfa, 0xff];
             pub const DOCK_RIM: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
             pub const DOCK_BORDER: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
             pub const DOCK_SHADOW: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
@@ -161,6 +163,8 @@ pub mod semantic {
             pub const SHADOW_OPACITY: f32 = 0.18_f32;
             pub const DOCK_OPACITY: f32 = 0.5_f32;
             pub const DOCK_BLUR: f32 = 30.0_f32;
+            pub const CHROME_FALLBACK_OPACITY: f32 = 0.86_f32;
+            pub const DOCK_FALLBACK_OPACITY: f32 = 0.88_f32;
             pub const CHROME_REFRACTION: f32 = 6.0_f32;
             pub const POPUP_REFRACTION: f32 = 8.0_f32;
             pub const DOCK_REFRACTION: f32 = 8.0_f32;
@@ -220,6 +224,8 @@ pub mod semantic {
             pub const FOLDER_RIM: [u8; 4] = [0x5b, 0x8d, 0xff, 0xff];
             pub const FOLDER_HIGHLIGHT: [u8; 4] = [0xde, 0xd6, 0xe5, 0xff];
             pub const DOCK_FILL: [u8; 4] = [0x2d, 0x25, 0x34, 0xff];
+            pub const DOCK_FALLBACK_FILL: [u8; 4] = [0x2d, 0x25, 0x34, 0xff];
+            pub const CHROME_FALLBACK_FILL: [u8; 4] = [0x2d, 0x25, 0x34, 0xff];
             pub const DOCK_RIM: [u8; 4] = [0xde, 0xd6, 0xe5, 0xff];
             pub const DOCK_BORDER: [u8; 4] = [0x44, 0x39, 0x4d, 0xff];
             pub const DOCK_SHADOW: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
@@ -237,6 +243,8 @@ pub mod semantic {
             pub const SHADOW_OPACITY: f32 = 0.45_f32;
             pub const DOCK_OPACITY: f32 = 0.42_f32;
             pub const DOCK_BLUR: f32 = 34.0_f32;
+            pub const CHROME_FALLBACK_OPACITY: f32 = 0.82_f32;
+            pub const DOCK_FALLBACK_OPACITY: f32 = 0.84_f32;
             pub const CHROME_REFRACTION: f32 = 8.0_f32;
             pub const POPUP_REFRACTION: f32 = 10.0_f32;
             pub const DOCK_REFRACTION: f32 = 10.0_f32;

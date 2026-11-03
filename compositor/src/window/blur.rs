@@ -24,14 +24,13 @@
 
 use std::borrow::BorrowMut;
 
-use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement};
 use smithay::backend::renderer::gles::{
     GlesError, GlesFrame, GlesTexProgram, GlesTexture, Uniform, UniformName, UniformType,
 };
 use smithay::backend::renderer::glow::{GlowFrame, GlowRenderer};
 use smithay::backend::renderer::utils::CommitCounter;
-use smithay::backend::renderer::Renderer;
+use smithay::backend::renderer::{Renderer, RendererSuper};
 use smithay::utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform};
 
 /// The custom texture shader compiled once per renderer (T-20.1).
@@ -381,16 +380,19 @@ impl GlassSpec {
     }
 }
 
-/// A renderer that can draw a sampled backdrop span. Implemented for the
-/// nested backend's [`GlowRenderer`]; the marker keeps the nested element enum
-/// generic while only the GL path can construct a blur element.
-pub trait BlurRenderer: Renderer<TextureId = GlesTexture> {
+/// A renderer that can draw a `GlesTexture` into its current frame. The
+/// nested backend draws through [`GlowRenderer`]'s borrowed `GlesFrame`; the
+/// DRM backend draws through `MultiFrame`'s `AsMut<GlesFrame>`. Keeping the
+/// trait independent of `Renderer::TextureId` is what lets the same blur and
+/// scene elements serve both paths: `MultiRenderer::TextureId` is
+/// `MultiTexture`, not `GlesTexture`.
+pub trait TextureRenderer: Renderer {
     /// Draw `src` (texture buffer coordinates) into `dst` (output-local
     /// physical), clipped to `damage`. When `program` is set the material uses
     /// the liquid-glass texture program with `uniforms`; otherwise the built-in
     /// texture program does a plain bilinear sample.
-    fn draw_blur_span(
-        frame: &mut Self::Frame<'_, '_>,
+    fn draw_texture_from_to(
+        frame: &mut <Self as RendererSuper>::Frame<'_, '_>,
         texture: &GlesTexture,
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
@@ -400,8 +402,8 @@ pub trait BlurRenderer: Renderer<TextureId = GlesTexture> {
     ) -> Result<(), Self::Error>;
 }
 
-impl BlurRenderer for GlowRenderer {
-    fn draw_blur_span(
+impl TextureRenderer for GlowRenderer {
+    fn draw_texture_from_to(
         frame: &mut GlowFrame<'_, '_>,
         texture: &GlesTexture,
         src: Rectangle<f64, Buffer>,
@@ -510,10 +512,10 @@ impl Element for BackdropBlurElement {
     }
 }
 
-impl<R: BlurRenderer> RenderElement<R> for BackdropBlurElement {
+impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
     fn draw(
         &self,
-        frame: &mut R::Frame<'_, '_>,
+        frame: &mut <R as RendererSuper>::Frame<'_, '_>,
         _src: Rectangle<f64, Buffer>,
         _dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
@@ -547,15 +549,80 @@ impl<R: BlurRenderer> RenderElement<R> for BackdropBlurElement {
                     f64::from(span.size.h) * ratio_y,
                 )),
             );
-            R::draw_blur_span(frame, &self.texture, src, dst, damage, program, &uniforms)?;
+            R::draw_texture_from_to(frame, &self.texture, src, dst, damage, program, &uniforms)?;
         }
         Ok(())
     }
 }
 
-/// A plain texture element for the composed scene, reused from Smithay's
-/// texture element. Kept as a type alias so nested.rs can name it.
-pub type SceneTextureElement = TextureRenderElement<GlesTexture>;
+/// A full-output texture element for the composed scene (P2). The nested
+/// backend draws its scene through [`BackdropBlurElement`]; the DRM backend
+/// needs an element whose `RenderElement` impl works for `MultiRenderer`,
+/// whose `TextureId` is `MultiTexture`. This element therefore draws through
+/// [`TextureRenderer`] instead of `TextureRenderElement<GlesTexture>`.
+pub struct SceneTextureElement {
+    id: Id,
+    texture: GlesTexture,
+    /// Output-local physical geometry the texture covers.
+    geometry: Rectangle<i32, Physical>,
+    /// The texture's buffer size.
+    texture_size: Size<i32, Buffer>,
+}
+
+impl SceneTextureElement {
+    pub fn new(
+        texture: GlesTexture,
+        geometry: Rectangle<i32, Physical>,
+        texture_size: Size<i32, Buffer>,
+    ) -> Self {
+        SceneTextureElement {
+            id: Id::new(),
+            texture,
+            geometry,
+            texture_size,
+        }
+    }
+}
+
+impl Element for SceneTextureElement {
+    fn id(&self) -> &Id {
+        &self.id
+    }
+
+    fn current_commit(&self) -> CommitCounter {
+        CommitCounter::default()
+    }
+
+    fn geometry(&self, _scale: Scale<f64>) -> Rectangle<i32, Physical> {
+        self.geometry
+    }
+
+    fn src(&self) -> Rectangle<f64, Buffer> {
+        Rectangle::from_size(self.texture_size.to_f64())
+    }
+
+    fn alpha(&self) -> f32 {
+        1.0
+    }
+
+    fn kind(&self) -> Kind {
+        Kind::Unspecified
+    }
+}
+
+impl<R: TextureRenderer> RenderElement<R> for SceneTextureElement {
+    fn draw(
+        &self,
+        frame: &mut <R as RendererSuper>::Frame<'_, '_>,
+        _src: Rectangle<f64, Buffer>,
+        _dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        _opaque_regions: &[Rectangle<i32, Physical>],
+    ) -> Result<(), R::Error> {
+        let src = Rectangle::from_size(self.texture_size.to_f64());
+        R::draw_texture_from_to(frame, &self.texture, src, self.geometry, damage, None, &[])
+    }
+}
 
 #[cfg(test)]
 mod tests {

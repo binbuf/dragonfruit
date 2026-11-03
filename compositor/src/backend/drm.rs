@@ -36,11 +36,15 @@ use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::{RelocateRenderElement, RescaleRenderElement};
 use smithay::backend::renderer::element::{AsRenderElements, Kind};
-use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::gles::{
+    GlesFrame, GlesRenderer, GlesTexProgram, GlesTexture, Uniform,
+};
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
 use smithay::backend::renderer::multigpu::{GpuManager, MultiRenderer};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
-use smithay::backend::renderer::{ImportAll, ImportDma, ImportDmaWl, ImportMem, ImportMemWl};
+use smithay::backend::renderer::{
+    ImportAll, ImportDma, ImportDmaWl, ImportMem, ImportMemWl, RendererSuper, Texture,
+};
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::{Event as SessionEvent, Session};
 use smithay::backend::udev::{all_gpus, primary_gpu, UdevBackend, UdevEvent};
@@ -59,13 +63,16 @@ use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_pre
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::render_elements;
-use smithay::utils::{DeviceFd, IsAlive, Logical, Point, Scale, Time, Transform};
+use smithay::utils::{
+    Buffer, DeviceFd, IsAlive, Logical, Physical, Point, Rectangle, Scale, Time, Transform,
+};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::presentation::Refresh;
 use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
 
 use crate::backend::add_seat_capabilities;
 use crate::session::{run_session, BackendHooks};
+use crate::window::{BackdropBlurElement, SceneTextureElement, TextureRenderer};
 use crate::{input, render, LOCKSTEP_VERSION};
 
 type UdevRenderer<'a> = MultiRenderer<
@@ -75,6 +82,61 @@ type UdevRenderer<'a> = MultiRenderer<
     GbmGlesBackend<GlesRenderer, DrmDeviceFd>,
 >;
 
+/// The DRM renderer's `TextureId` is `MultiTexture`, so the nested
+/// `BlurRenderer` (which required `TextureId = GlesTexture`) cannot be used.
+/// The scene and blur elements draw through this trait instead: `MultiFrame`
+/// exposes the underlying `GlesFrame`, which can sample the `GlesTexture`
+/// created by `Offscreen<GlesTexture>` on the render GPU.
+impl<'a> crate::window::TextureRenderer for UdevRenderer<'a> {
+    fn draw_texture_from_to(
+        frame: &mut <Self as RendererSuper>::Frame<'_, '_>,
+        texture: &GlesTexture,
+        src: Rectangle<f64, Buffer>,
+        dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        program: Option<&GlesTexProgram>,
+        uniforms: &[Uniform<'_>],
+    ) -> Result<(), Self::Error> {
+        let gles_frame: &mut GlesFrame<'_, '_> = frame.as_mut();
+        gles_frame
+            .render_texture_from_to(
+                texture,
+                src,
+                dst,
+                damage,
+                &[],
+                Transform::Normal,
+                1.0,
+                program,
+                uniforms,
+            )
+            .map_err(smithay::backend::renderer::multigpu::Error::Render)
+    }
+}
+
+/// The native two-pass material (P2) is the default. Set this to `0` to
+/// disable it for a session and fall back to the feather stack + milky shell
+/// plate.
+pub const ENV_DRM_MATERIAL: &str = "DRAGONFRUIT_DRM_MATERIAL";
+
+/// The Tahoe liquid-glass compose (P2C) is the default once the material
+/// path is active. Set this to `0` to keep the plain Kawase blur (no
+/// refraction/specular/tint).
+pub const ENV_DRM_GLASS: &str = "DRAGONFRUIT_DRM_GLASS";
+
+/// Read a boolean environment flag that defaults to **on**. `0`, `false`,
+/// `off`, `no`, or `disabled` (case-insensitive) turn it off; unset or any
+/// other value keeps the default.
+fn env_flag_default_true(name: &str) -> bool {
+    match std::env::var(name) {
+        Ok(value) => !matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "off" | "no" | "disabled"
+        ),
+        Err(_) => true,
+    }
+}
+
 type GbmAllocatorDrm = GbmAllocator<DrmDeviceFd>;
 type GbmExporterDrm = GbmFramebufferExporter<DrmDeviceFd>;
 
@@ -83,7 +145,8 @@ type GbmExporterDrm = GbmFramebufferExporter<DrmDeviceFd>;
 const SUPPORTED_FORMATS: &[Fourcc] = &[Fourcc::Abgr8888, Fourcc::Argb8888];
 
 render_elements! {
-    pub DrmOutputElements<R, E> where R: ImportAll + ImportMem + ImportMemWl + ImportDmaWl + ImportDma;
+    pub DrmOutputElements<R, E> where R: ImportAll + ImportMem + ImportMemWl + ImportDmaWl
+        + ImportDma + TextureRenderer;
     Pointer=PointerRenderElement<R>,
     Space=SpaceRenderElements<R, E>,
     Chrome=WaylandSurfaceRenderElement<R>,
@@ -94,6 +157,11 @@ render_elements! {
     Appear=RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>,
     // The per-Space wallpaper (T-05.4): behind the windows.
     Wallpaper=crate::render::WallpaperRenderElement<R>,
+    // The two-pass material (P2): the scene texture and the per-panel blurred
+    // backdrop. Both draw through `TextureRenderer`, so they work with the
+    // DRM `MultiRenderer` as well as nested `GlowRenderer`.
+    Blur=crate::window::BackdropBlurElement,
+    Scene=crate::window::SceneTextureElement,
 }
 
 render_elements! {
@@ -270,6 +338,26 @@ where
     }
 }
 
+/// Per-output, per-GPU storage for the two-pass material (P2). The scene
+/// texture is output-sized and reused across frames; each panel owns its
+/// Kawase chain textures. This is the DRM analogue of nested's
+/// `MaterialTextureCache`, kept per output so a mode/scale change reallocates
+/// only the affected output.
+#[derive(Default)]
+struct DrmMaterialCache {
+    scene: Option<GlesTexture>,
+    panels: Vec<Vec<GlesTexture>>,
+}
+
+impl DrmMaterialCache {
+    fn panel_slot(&mut self, index: usize) -> &mut Vec<GlesTexture> {
+        if self.panels.len() <= index {
+            self.panels.resize_with(index + 1, Vec::new);
+        }
+        &mut self.panels[index]
+    }
+}
+
 /// One display output on one DRM device.
 struct SurfaceData {
     dh: smithay::reexports::wayland_server::DisplayHandle,
@@ -279,6 +367,8 @@ struct SurfaceData {
         DrmOutput<GbmAllocatorDrm, GbmExporterDrm, Option<OutputPresentationFeedback>, DrmDeviceFd>,
     last_presentation_time: Option<Time<smithay::utils::Monotonic>>,
     vblank_throttle_timer: Option<RegistrationToken>,
+    /// Reused scene/blur textures for the sampled material path.
+    material: DrmMaterialCache,
 }
 
 impl Drop for SurfaceData {
@@ -300,6 +390,15 @@ struct DeviceData {
     surfaces: HashMap<crtc::Handle, SurfaceData>,
 }
 
+/// The two custom shader programs compiled on one render GPU. GL programs are
+/// context-local, so a multi-GPU seat needs one pair per render node; a single
+/// pair used across devices would be invalid.
+#[derive(Default)]
+struct MaterialPrograms {
+    blur: Option<GlesTexProgram>,
+    glass: Option<GlesTexProgram>,
+}
+
 /// Everything the DRM backend owns; lives in a shared slot that the
 /// calloop source callbacks borrow (single-threaded event loop by design —
 /// see 02-compositor.md).
@@ -311,6 +410,9 @@ struct DrmData {
     devices: HashMap<DrmNode, DeviceData>,
     pointer_element: PointerElement,
     libinput: Option<Libinput>,
+    /// Compiled lazily per render node; `None` keeps the built-in bilinear
+    /// downsample / plain blurred compose.
+    programs: HashMap<DrmNode, MaterialPrograms>,
 }
 
 type SharedData = Rc<RefCell<Option<DrmData>>>;
@@ -374,6 +476,10 @@ fn render_pending(state: &mut crate::state::DfState) -> Result<(), String> {
 }
 
 fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), String> {
+    // The native scene-texture + blur path is the default. A user (or a
+    // diagnostic run) can set `DRAGONFRUIT_DRM_MATERIAL=0` to fall back to the
+    // feather stack and the shell's milky plate.
+    state.material_blur_supported = env_flag_default_true(ENV_DRM_MATERIAL);
     // Session: logind/libseat takes the VT and device access. On a host with
     // no *free* seat (a workstation already running a desktop) this is where
     // bring-up stops: report it as OPEN — the T-03.2 unit is marked open, not
@@ -445,6 +551,7 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
         devices: HashMap::new(),
         pointer_element: PointerElement::default(),
         libinput: Some(libinput_context),
+        programs: HashMap::new(),
     };
 
     // Seat capabilities for all backends (FR-1).
@@ -493,6 +600,18 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
     println!("dragonfruit-compositor: {}", outcome.marker());
     if !outcome.is_ready() {
         return Err("DRM bring-up failed: no connected output".into());
+    }
+
+    // The first native material slice is single-GPU: `single_renderer` gives
+    // a render-only `MultiRenderer` (target None), so the scene texture and
+    // blur never cross devices. A multi-GPU seat keeps the feather path and
+    // the shell fallback until the copy/import route is implemented.
+    if state.material_blur_supported && data.devices.len() != 1 {
+        state.material_blur_supported = false;
+        eprintln!(
+            "dragonfruit-compositor: multi-GPU seat: sampled material disabled; \
+             using the feather stack"
+        );
     }
 
     // Multi-GPU import/fallback classification (T-03.4): one greppable
@@ -980,6 +1099,7 @@ fn connector_connected(
             drm_output,
             last_presentation_time: None,
             vblank_throttle_timer: None,
+            material: DrmMaterialCache::default(),
         },
     );
 
@@ -1086,7 +1206,9 @@ fn frame_finish(
 
     // Guard against displays reporting vblank faster than the mode
     // implies (broken timestamps): throttle to the next expected vblank.
-    {
+    // Capture the actual interval before overwriting the timestamp: it is
+    // recorded only if `frame_submitted` confirms a queued frame below.
+    let (presentation_interval, output_name) = {
         let Some(device) = data.devices.get_mut(&dev_id) else {
             return;
         };
@@ -1118,8 +1240,13 @@ fn frame_finish(
                 return;
             }
         }
+        let interval = surface
+            .last_presentation_time
+            .map(|last| Time::elapsed(&last, clock));
+        let output_name = surface.output.name();
         surface.last_presentation_time = Some(clock);
-    }
+        (interval, output_name)
+    };
 
     let submit_result = {
         let Some(device) = data.devices.get(&dev_id) else {
@@ -1136,6 +1263,15 @@ fn frame_finish(
 
     let retry = match submit_result {
         Ok(user_data) => {
+            // `Some` means a queued frame reached this vblank. Record the
+            // interval only then; an idle vblank is not a presentation.
+            if user_data.is_some() {
+                if let Some(interval) = presentation_interval {
+                    state
+                        .stats
+                        .record_presentation(&output_name, interval, frame_duration);
+                }
+            }
             if let Some(mut feedback) = user_data.flatten() {
                 feedback.presented(clock, Refresh::fixed(frame_duration), seq as u64, flags);
             }
@@ -1311,46 +1447,188 @@ fn render_surface(
         DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
     >(&mut renderer, state, &surface.output, scale));
 
-    // The chrome backdrop sits directly below the chrome and above every
-    // window, titlebar, and menu, so a translucent panel tints/blurs the scene
-    // it covers instead of the raw window content bleeding through (T-04.2).
-    custom_elements.extend(
-        crate::render::chrome_backdrop_render_elements(state, &surface.output, scale)
-            .into_iter()
-            .map(DrmOutputElements::Decoration),
-    );
+    // The material path (P2): when the effective material says the sampled
+    // pass is active, render the scene into an offscreen texture and compose
+    // the chrome above the per-panel blur. When it is not (default DRM until
+    // `DRAGONFRUIT_DRM_MATERIAL` is enabled, Minimal, or software), keep the
+    // deterministic feather stack and the direct window/desktop elements.
+    let material = state.effective_material();
+    // The scene texture and the panel SDF are output-local and currently
+    // rendered with `Transform::Normal`; a rotated output keeps the feather
+    // path until the transform mapping is verified.
+    let blur_panels = if material.blur_active
+        && !state.lock.is_locked()
+        && surface.output.current_transform() == Transform::Normal
+    {
+        crate::render::chrome_blur_panels(state, &surface.output)
+    } else {
+        Vec::new()
+    };
+    let used_material = !blur_panels.is_empty();
 
-    // The open window menu (T-01.4) composites above every window and
-    // titlebar, but below the shell chrome.
-    custom_elements.extend(
-        crate::render::window_menu_render_elements(state, &surface.output, scale)
-            .into_iter()
-            .map(DrmOutputElements::Decoration),
-    );
+    if !blur_panels.is_empty() {
+        let material_output = surface.output.clone();
+        // Compile the two-pass programs once per render GPU (P2). A failure is
+        // non-fatal: the blur chain uses the built-in bilinear downsample and
+        // the glass compose falls back to the plain blurred panel.
+        let programs = data.programs.entry(render_node).or_insert_with(|| {
+            let gles: &mut GlesRenderer = renderer.as_mut();
+            let blur = gles
+                .compile_custom_texture_shader(
+                    crate::window::BLUR_SHADER,
+                    &crate::window::blur_uniform_names(),
+                )
+                .ok();
+            let glass = if env_flag_default_true(ENV_DRM_GLASS) {
+                gles.compile_custom_texture_shader(
+                    crate::window::GLASS_SHADER,
+                    &crate::window::glass_uniform_names(),
+                )
+                .ok()
+            } else {
+                None
+            };
+            MaterialPrograms { blur, glass }
+        });
+        // Pass one: the live scene (window menu, windows/titlebars/shadows,
+        // desktop, wallpaper) into the reusable output-sized texture.
+        let mut scene_elements: Vec<
+            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+        > = Vec::new();
+        scene_elements.extend(
+            crate::render::window_menu_render_elements(state, &material_output, scale)
+                .into_iter()
+                .map(DrmOutputElements::Decoration),
+        );
+        scene_elements.extend(crate::render::window_scene_render_elements::<
+            UdevRenderer<'_>,
+            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+        >(&mut renderer, state, &material_output, scale));
+        scene_elements.extend(crate::render::desktop_render_elements::<
+            _,
+            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+        >(&mut renderer, state, &material_output, scale));
+        scene_elements.extend(
+            crate::render::wallpaper_render_elements(&mut renderer, state, &material_output, scale)
+                .into_iter()
+                .map(DrmOutputElements::Wallpaper),
+        );
 
-    // The window stack: each window's SSD titlebar, client surface, and
-    // shadow stay together in `Space` stacking order. Emitting all titlebars
-    // as one layer above all surfaces (and all shadows below them) put a
-    // background window's titlebar over a foreground window's body.
-    custom_elements.extend(crate::render::window_scene_render_elements::<
-        UdevRenderer<'_>,
-        DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
-    >(&mut renderer, state, &surface.output, scale));
+        let scene_texture = match crate::backend::nested::render_scene_offscreen(
+            &mut renderer,
+            state,
+            &material_output,
+            scale,
+            &scene_elements,
+            &mut surface.material.scene,
+        ) {
+            Ok(texture) => texture,
+            Err(err) => {
+                eprintln!("dragonfruit-compositor: DRM scene pass failed: {err}");
+                state.material_blur_supported = false;
+                reschedule_probe(state, node, crtc, refresh);
+                return;
+            }
+        };
+        let scene_size = scene_texture.size();
 
-    // The Files-owned desktop layer (T-19.3) composites below every window
-    // and above the per-Space wallpaper.
-    custom_elements.extend(crate::render::desktop_render_elements::<
-        _,
-        DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
-    >(&mut renderer, state, &surface.output, scale));
+        // Pass two: one blurred texture per panel, then the scene below it.
+        let mut blur_drawn = 0u64;
+        let mut downsample_max = 0u32;
+        for (index, panel) in blur_panels.iter().enumerate() {
+            let src_region = panel.panel.to_physical_precise_round(scale);
+            if src_region.size.w <= 0 || src_region.size.h <= 0 {
+                continue;
+            }
+            let slot = surface.material.panel_slot(index);
+            let texture = match crate::backend::nested::blur_panel_texture(
+                &mut renderer,
+                programs.blur.as_ref(),
+                &scene_texture,
+                src_region,
+                &panel.spec,
+                slot,
+            ) {
+                Ok(texture) => texture,
+                Err(err) => {
+                    eprintln!("dragonfruit-compositor: DRM blur pass failed: {err}");
+                    state.material_blur_supported = false;
+                    reschedule_probe(state, node, crtc, refresh);
+                    return;
+                }
+            };
+            let texture_size = texture.size();
+            let element = BackdropBlurElement::new(
+                texture,
+                panel.panel,
+                texture_size,
+                panel.spec.corner_radius.round().max(0.0) as i32,
+                scale,
+            );
+            let element = match programs.glass.as_ref() {
+                Some(program) => element.with_glass(panel.glass, program.clone()),
+                None => element,
+            };
+            custom_elements.push(DrmOutputElements::Blur(element));
+            blur_drawn += 1;
+            downsample_max = downsample_max.max(panel.spec.downsample());
+        }
+        if blur_drawn > 0 {
+            state.stats.record_blur_draw(downsample_max, blur_drawn);
+        }
 
-    // The per-Space wallpaper is the bottom-most layer (T-05.4): it fills the
-    // clear color and slides with its Space during a switch.
-    custom_elements.extend(
-        crate::render::wallpaper_render_elements(&mut renderer, state, &surface.output, scale)
-            .into_iter()
-            .map(DrmOutputElements::Wallpaper),
-    );
+        let output_size = material_output
+            .current_mode()
+            .map(|mode| mode.size)
+            .unwrap_or_default();
+        custom_elements.push(DrmOutputElements::Scene(SceneTextureElement::new(
+            scene_texture,
+            Rectangle::from_size(output_size),
+            scene_size,
+        )));
+    } else {
+        // The pre-P2 feather stack: a deterministic tint under the chrome,
+        // above the window space. This remains the fallback when the sampled
+        // pass is unavailable or intentionally off.
+        custom_elements.extend(
+            crate::render::chrome_backdrop_render_elements(state, &surface.output, scale)
+                .into_iter()
+                .map(DrmOutputElements::Decoration),
+        );
+
+        // The open window menu (T-01.4) composites above every window and
+        // titlebar, but below the shell chrome.
+        custom_elements.extend(
+            crate::render::window_menu_render_elements(state, &surface.output, scale)
+                .into_iter()
+                .map(DrmOutputElements::Decoration),
+        );
+
+        // The window stack: each window's SSD titlebar, client surface, and
+        // shadow stay together in `Space` stacking order. Emitting all
+        // titlebars as one layer above all surfaces (and all shadows below
+        // them) put a background window's titlebar over a foreground window's
+        // body.
+        custom_elements.extend(crate::render::window_scene_render_elements::<
+            UdevRenderer<'_>,
+            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+        >(&mut renderer, state, &surface.output, scale));
+
+        // The Files-owned desktop layer (T-19.3) composites below every window
+        // and above the per-Space wallpaper.
+        custom_elements.extend(crate::render::desktop_render_elements::<
+            _,
+            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+        >(&mut renderer, state, &surface.output, scale));
+
+        // The per-Space wallpaper is the bottom-most layer (T-05.4): it fills
+        // the clear color and slides with its Space during a switch.
+        custom_elements.extend(
+            crate::render::wallpaper_render_elements(&mut renderer, state, &surface.output, scale)
+                .into_iter()
+                .map(DrmOutputElements::Wallpaper),
+        );
+    }
 
     let frame_mode = FrameFlags::DEFAULT; // direct scanout where possible
     let wallpaper = state.wallpaper_color_for(&surface.output);
@@ -1418,6 +1696,17 @@ fn render_surface(
         }
         Err(err) => {
             eprintln!("dragonfruit-compositor: render error on {crtc:?}: {err:?}");
+            // A failed sampled-material frame must not loop forever. Disable
+            // the sampled path for the session and let the next frame take the
+            // feather stack; the shell receives the fallback state on the next
+            // broadcast.
+            if used_material {
+                state.material_blur_supported = false;
+                eprintln!(
+                    "dragonfruit-compositor: disabling the sampled material path after a \
+                     DRM render failure; falling back to the feather stack"
+                );
+            }
             // Temporary failures reschedule via the frame clock; context
             // loss ends the session cleanly (FR-6). A rejected frame must
             // never leave the output with no pending frame at all.

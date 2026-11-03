@@ -36,7 +36,7 @@ use crate::shell_protocol::toplevel_protocol::{
     df_output, df_toplevel, df_toplevel_manager, df_workspace,
 };
 use crate::state::DfState;
-use crate::window::{ReservedZones, WindowEventKind, WindowId, WindowState};
+use crate::window::{EffectiveMaterial, ReservedZones, WindowEventKind, WindowId, WindowState};
 use crate::workspace::{SpaceId, Wallpaper, WallpaperFit};
 
 use layer::{aggregate_reserved_for, Edge, KeyboardInteraction, LayerSurfaceState};
@@ -59,10 +59,11 @@ const SHELL_INTERFACE_VERSION: u32 = 2;
 /// [`INTERFACE_VERSION`].
 const MANAGER_INTERFACE_VERSION: u32 = 7;
 
-/// `df_output` is version 2 since `set_brightness` and the `brightness` event
-/// were added (T-11.3a). The other private interfaces stay at
+/// `df_output` is version 3 since the effective `material_state` event was
+/// added (P1). `set_brightness` and the `brightness` event were the v2
+/// additions (T-11.3a). The other private interfaces stay at
 /// [`INTERFACE_VERSION`].
-const DF_OUTPUT_INTERFACE_VERSION: u32 = 2;
+const DF_OUTPUT_INTERFACE_VERSION: u32 = 3;
 
 /// Error code posted when an untrusted client binds a private global.
 const ERROR_ACCESS_DENIED: u32 = 1;
@@ -138,6 +139,10 @@ pub struct ShellProtocolState {
     /// the value; a backend applies it best-effort (headless/nested keep the
     /// value only, DRM is a later task). Keyed by output name; absent = 1.0.
     output_brightness: HashMap<String, f64>,
+    /// Last effective material state broadcast to the shell (P1). The degrade
+    /// tier is global today, so one snapshot covers every output; keeping it
+    /// here makes "emit only on change" cheap.
+    pub last_material_state: Option<EffectiveMaterial>,
 }
 
 impl ShellProtocolState {
@@ -165,6 +170,7 @@ impl ShellProtocolState {
             chrome_focus_output: None,
             attention: Vec::new(),
             output_brightness: HashMap::new(),
+            last_material_state: None,
         }
     }
 
@@ -653,6 +659,21 @@ impl DfState {
             .collect()
     }
 
+    /// Every announced `df_output` resource, keyed by output name, for
+    /// per-output property broadcasts (P1 material state).
+    fn output_sessions(&self) -> Vec<(String, df_output::DfOutput)> {
+        self.shell
+            .sessions
+            .values()
+            .flat_map(|session| {
+                session
+                    .outputs
+                    .iter()
+                    .map(|(name, output)| (name.clone(), output.clone()))
+            })
+            .collect()
+    }
+
     /// Reply to the trusted shell that a capture was rendered and written
     /// (T-13.3b). The path is the one the shell supplied.
     pub fn broadcast_screenshot_saved(&mut self, path: &str) {
@@ -751,6 +772,18 @@ impl DfState {
             if thickness > 0 {
                 resource.reserved_zone(edge_wire(edge), thickness as u32);
             }
+        }
+        // Effective material (P1): the shell uses this to choose the
+        // translucent glass complement or the milky fallback. Send the
+        // initial state with the other output properties; later changes go
+        // through `broadcast_material_state`.
+        if resource.version() >= 3 {
+            let material = self.effective_material();
+            resource.material_state(
+                material.tier.index() as u32,
+                u32::from(material.blur_active),
+                material.fallback.wire(),
+            );
         }
     }
 
@@ -938,6 +971,28 @@ impl DfState {
         self.broadcast_window_events();
         self.broadcast_input_events();
         self.broadcast_attention();
+        self.broadcast_material_state();
+    }
+
+    /// Push the effective material state to every announced output when it
+    /// changes (P1). The tier is global today, so the same snapshot goes to
+    /// each output; the event is per-output so a future role/output policy
+    /// can diverge without a protocol change.
+    fn broadcast_material_state(&mut self) {
+        let effective = self.effective_material();
+        if self.shell.last_material_state == Some(effective) {
+            return;
+        }
+        self.shell.last_material_state = Some(effective);
+        for (_, output) in self.output_sessions() {
+            if output.version() >= 3 {
+                output.material_state(
+                    effective.tier.index() as u32,
+                    u32::from(effective.blur_active),
+                    effective.fallback.wire(),
+                );
+            }
+        }
     }
 
     fn broadcast_workspace_events(&mut self) {
