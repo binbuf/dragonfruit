@@ -147,7 +147,7 @@ QtObject {
             readonly property color dockBorder: "#c3b8cc"
             readonly property color dockShadow: "#000000"
             readonly property color dockHoverFill: "#786a84"
-            readonly property color dockDivider: "#9c8fa8"
+            readonly property color dockDivider: "#786a84"
             readonly property color dockIndicator: "#1d1723"
             readonly property color skeletonBase: "#ded6e5"
             readonly property color skeletonHighlight: "#f8f6fa"
@@ -223,7 +223,7 @@ QtObject {
             readonly property color dockBorder: "#44394d"
             readonly property color dockShadow: "#000000"
             readonly property color dockHoverFill: "#c3b8cc"
-            readonly property color dockDivider: "#786a84"
+            readonly property color dockDivider: "#9c8fa8"
             readonly property color dockIndicator: "#f8f6fa"
             readonly property color skeletonBase: "#2d2534"
             readonly property color skeletonHighlight: "#44394d"
@@ -343,12 +343,14 @@ QtObject {
             readonly property int padding: 15
             readonly property int paddingAlong: 16
             readonly property int gap: 14
-            readonly property int radius: 28
+            readonly property int radius: 27
             readonly property int indicatorSize: 4
             readonly property int indicatorGap: 8
             readonly property real magnifyPeak: 1.25
             readonly property real magnifyPeakMax: 1.5
-            readonly property real magnifyFalloff: 4.1
+            readonly property real magnifyFalloff: 3.0
+            readonly property real magnifyWeightNear: 0.9
+            readonly property real magnifyWeightMiddle: 0.45
             readonly property int labelSize: 12
             readonly property int trashSize: 44
             readonly property int edgeMargin: 8
@@ -381,11 +383,12 @@ QtObject {
             }
             readonly property var indicator: QtObject {
                 readonly property real opacity: 0.9
+                readonly property real inactiveOpacity: 0.45
             }
             readonly property var divider: QtObject {
-                readonly property real opacity: 0.5
+                readonly property real opacity: 0.7
                 readonly property int width: 1
-                readonly property real heightRatio: 0.82
+                readonly property real heightRatio: 0.78
                 readonly property int gap: 22
             }
             readonly property var chooser: QtObject {
@@ -403,6 +406,16 @@ QtObject {
                 readonly property int fontMin: 10
                 readonly property int paddingH: 5
                 readonly property int inset: 2
+                readonly property int borderWidth: 1
+            }
+            readonly property var appBadge: QtObject {
+                readonly property real sizeRatio: 0.42
+                readonly property int sizeMin: 16
+                readonly property int sizeMax: 26
+                readonly property real fontRatio: 0.56
+                readonly property int fontMin: 10
+                readonly property int paddingH: 5
+                readonly property real outsideRatio: 0.18
                 readonly property int borderWidth: 1
             }
             readonly property var overflow: QtObject {
@@ -430,6 +443,12 @@ QtObject {
             readonly property int minWidth: 180
             readonly property int shortcutGap: 24
             readonly property int submenuDelay: 150
+        }
+        readonly property var shortcutHint: QtObject {
+            readonly property int gap: 2
+            readonly property int fontSize: 12
+            readonly property int modifierWeight: 400
+            readonly property int keyWeight: 500
         }
         readonly property var focusRing: QtObject {
             readonly property int width: 2
@@ -525,13 +544,13 @@ QtObject {
             readonly property int shadowBlur: 40
         }
         readonly property var tooltip: QtObject {
-            readonly property int dwell: 600
+            readonly property int dwell: 250
             readonly property int offset: 8
             readonly property int radius: 999
-            readonly property int paddingH: 8
+            readonly property int paddingH: 12
             readonly property int paddingV: 4
             readonly property int maxWidth: 260
-            readonly property int fontSize: 12
+            readonly property int fontSize: 13
             readonly property int tailWidth: 16
             readonly property int tailHeight: 6
             readonly property color rimColor: "#ffffff"
@@ -623,9 +642,6 @@ QtObject {
             readonly property int gridRowGap: 16
             readonly property int labelSize: 12
             readonly property real scrimOpacity: 0.35
-            // The drawer card stays close to a solid frosted surface: the
-            // compositor tint/blur sits behind it, so a low alpha read as raw
-            // see-through on backends without the GPU blur pass (DRM).
             readonly property real panelOpacity: 0.88
             readonly property real fallbackGlyphRatio: 0.6
             readonly property int emptyGlyphSize: 40
@@ -676,7 +692,7 @@ QtObject {
         readonly property QtObject dockMagnify: QtObject {
             readonly property int fullDuration: 160
             readonly property int duration: tokens.reducedMotion ? 0 : 160
-            readonly property var curve: [0.34, 1.56, 0.64, 1.0, 1.0, 1.0]
+            readonly property var curve: [0.22, 1.0, 0.36, 1.0, 1.0, 1.0]
         }
         readonly property QtObject dockHover: QtObject {
             readonly property int fullDuration: 160

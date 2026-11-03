@@ -212,17 +212,21 @@ tying desktop services to session lifetime.
 graphical-session.target (systemd --user)
   └── dragonfruit-session.target
         ├── dragonfruit-compositor.service     # starts first, owns the seat
-        ├── dragonfruit-shell.service          # After=compositor, Restart=always
-        ├── dragonfruit-settingsd.service      # Restart=on-failure
+        ├── dragonfruit-settingsd.service      # Type=dbus, Restart=on-failure
+        ├── dragonfruit-shell.service          # After=compositor + settingsd, Restart=always
         ├── dragonfruit-menu-broker.service   # Restart=on-failure
         ├── dragonfruit-app-index.service      # Restart=on-failure
         ├── dragonfruit-notifications.service  # Restart=on-failure
         └── dragonfruit-portal.service         # Restart=on-failure
 ```
 
-- **Startup order:** compositor first; shell and services start in parallel
-  once the compositor's private protocol socket exists; the portal backend
-  registers with `xdg-desktop-portal` last.
+- **Startup order:** compositor first; the stage-1 services start once the
+  compositor's private protocol socket exists. `settingsd` signals readiness by
+  owning its session-bus name (`Type=dbus`), and the shell starts after that
+  gate so its first paint reads the persisted settings; the ordering is
+  optional (`Wants`), so a missing or failed daemon leaves the shell on the
+  schema defaults. The portal backend registers with `xdg-desktop-portal`
+  last.
 - **Restart policy:** everything but the compositor restarts in place. A
   compositor crash ends the session and GDM returns — that is the display
   server reality, and the failure behavior we want.
@@ -256,8 +260,8 @@ together by `dragonfruit-session.target`:
 ```text
 dragonfruit-session.target                 # WantedBy=graphical-session.target
   ├── dragonfruit-compositor.service       # --backend drm, Restart=no (anchor)
-  ├── dragonfruit-shell.service            # Restart=always
-  ├── dragonfruit-settingsd.service        # Restart=on-failure
+  ├── dragonfruit-settingsd.service        # Type=dbus, Restart=on-failure
+  ├── dragonfruit-shell.service            # After=settingsd, Restart=always
   ├── dragonfruit-menu-broker.service
   ├── dragonfruit-app-index.service
   ├── dragonfruit-notifications.service
@@ -752,7 +756,8 @@ halves, installs the dev session, preselects Dragonfruit, and asks the current
 desktop to log out.
 
 ```bash
-make native                     # or: scripts/native-session.sh
+make native                     # release (default) — or: scripts/native-session.sh
+make native-debug               # opt-in fast iteration build
 scripts/native-session.sh --no-logout   # install/preselect only
 scripts/native-session.sh return        # restore the host login (works from a TTY)
 scripts/native-session.sh recover       # same safe path; no session required
@@ -763,11 +768,17 @@ scripts/native-session.sh logs shell
 scripts/native-session.sh deps          # print the detected package command
 ```
 
-The installer is idempotent: it stages the T-12.2 entry/units, the portal
-discovery files, and the first-party app entries, then copies them under
-`/usr` (sudo is used only for that step). The runtime binaries are **symlinks**
-into `target/debug` and `build/`, so a later `make build` updates what the next
-`restart` runs without reinstalling anything. `--no-deps` skips the package
+The native session defaults to the **release** profile because it is the
+dogfooding/deployment rail; debug is opt-in with `make native-debug`,
+`DF_NATIVE_PROFILE=debug`, or `--debug`. The installer is idempotent: it
+stages the T-12.2 entry/units, the portal discovery files, and the first-party
+app entries, then copies them under `/usr` (sudo is used only for that step).
+The runtime binaries are **symlinks** into `target/release` and
+`build-release/` by default (`target/debug`/`build/` for the debug profile),
+so a later `make build`/`make native-rebuild` updates what the next `restart`
+runs without reinstalling anything. `restart` refuses to cross profiles
+because it cannot replace the running compositor; use
+`native-rebuild`/`native-reboot` for that. `--no-deps` skips the package
 bootstrap when the host is already provisioned.
 
 The native session requires systemd user units. On a non-systemd host the

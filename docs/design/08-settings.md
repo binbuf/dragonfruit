@@ -89,9 +89,13 @@ resolve it through `SettingsPanes.categoryStyle(pane)` and pass the values to
 the component. The literal category hues live in that one table and are never
 baked into an SVG; the container geometry is tokenized
 (`component.settingsCategory.*`, `component.sidebar.categoryIconSize`). The
-tile glyph is a Phosphor `fill` mark because the tile needs a solid near-white
-symbol; a pane whose icon has no category-tile mapping (Trackpad) falls back to
-the Tabler-backed `Icon.qml` vocabulary. See ADR
+tile draws at the size of the slot it is given (a 20 px sidebar row, a 48 px
+hero) rather than its own implicit size, so it cannot overflow the row into the
+label or the next icon. A list that mixes a category tile with a plain fallback
+glyph (Trackpad) reserves the same 20 px glyph column for both, keeping every
+label in one column. The tile glyph is a Phosphor `fill` mark because the tile
+needs a solid near-white symbol; a pane whose icon has no category-tile mapping
+falls back to the Tabler-backed `Icon.qml` vocabulary. See ADR
 [0164](adr/0164-settings-category-tile.md) and ADR
 [0185](adr/0185-tabler-line-icons.md).
 

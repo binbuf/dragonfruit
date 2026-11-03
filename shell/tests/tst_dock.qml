@@ -70,10 +70,15 @@ Item {
             wait(Theme.motion.dockHover.fullDuration + 60);
         }
 
-        function app(id, name, running) {
-            return { id: id, appId: id, name: name, kind: "pinned",
-                     running: running === true, pinned: true,
-                     desktopId: id + ".desktop" };
+        function app(id, name, running, extra) {
+            var entry = { id: id, appId: id, name: name, kind: "pinned",
+                          running: running === true, pinned: true,
+                          desktopId: id + ".desktop" };
+            if (extra !== undefined && extra !== null) {
+                for (var key in extra)
+                    entry[key] = extra[key];
+            }
+            return entry;
         }
 
         function temporary(id, name) {
@@ -365,6 +370,30 @@ Item {
             compare(idleIndicator.visible, false);
         }
 
+        // docs/dock.md §6: a running app that owns the focused window gets the
+        // full-strength dot; a merely running app gets the muted one. The
+        // projection supplies `active`; direct fixtures without it stay full.
+        function test_running_indicator_distinguishes_active_and_inactive() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [
+                    app("active", "Active", true, { active: true }),
+                    app("inactive", "Inactive", true, { active: false }),
+                    app("legacy", "Legacy", true)
+                ]
+            });
+            var active = findChild(dock.itemAt(0), "indicator");
+            var inactive = findChild(dock.itemAt(1), "indicator");
+            var legacy = findChild(dock.itemAt(2), "indicator");
+            fuzzyCompare(active.opacity,
+                         Theme.controls.dock.indicator.opacity, 0.0001);
+            fuzzyCompare(inactive.opacity,
+                         Theme.controls.dock.indicator.inactiveOpacity, 0.0001);
+            fuzzyCompare(legacy.opacity,
+                         Theme.controls.dock.indicator.opacity, 0.0001);
+            verify(inactive.opacity < active.opacity);
+        }
+
         function test_indicators_off_hides_every_dot() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160, showIndicators: false,
@@ -404,11 +433,10 @@ Item {
             verify(layout[0].iconSize < layout[1].iconSize);
         }
 
-        // The reference zoom bubble (Dock_Tile_Mouseover.png, T-14.7aa): a
-        // quadratic falloff that keeps ~90 % of the peak effect one tile away,
-        // ~55-60 % two tiles away, and reaches zero by ~4 icon widths. This
-        // pins the *profile shape*, not a peak value (the peak is the
-        // user-tuned `magnification`).
+        // The reference zoom profile (docs/dock.md §5): distance is measured
+        // in *resting slot pitches*, with knots 1.00 / 0.90 / 0.45 / 0.00 at
+        // 0/1/2/3 pitches. This pins the profile shape, not a peak value (the
+        // peak is the user-tuned `magnification`).
         function test_magnification_profile_matches_the_reference_bubble() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160, magnification: 1.0,
@@ -427,9 +455,85 @@ Item {
             var two = ((layout[0].iconSize - dock.iconSize)
                        + (layout[4].iconSize - dock.iconSize)) / (2 * peak);
             var three = (layout[5].iconSize - dock.iconSize) / peak;
-            verify(one > 0.85 && one < 0.95, "one tile keeps ~90 % of the peak: " + one);
-            verify(two > 0.50 && two < 0.65, "two tiles keep ~60 % of the peak: " + two);
-            verify(three < 0.2, "three tiles are nearly back at rest: " + three);
+            verify(one > 0.88 && one < 0.92, "one pitch keeps ~90 % of the peak: " + one);
+            verify(two > 0.43 && two < 0.47, "two pitches keep ~45 % of the peak: " + two);
+            verify(three < 0.001, "three pitches are back at rest: " + three);
+            // The peak itself is flat at the pointer (the cubic's endpoint
+            // slope is zero), so a tiny pointer move does not change the
+            // anchored tile's size.
+            var peakBefore = dock.layout[2].iconSize;
+            dock.pointerAlong += 2;
+            wait(Theme.motion.dockMagnifyTrack.duration + 40);
+            fuzzyCompare(dock.layout[2].iconSize, peakBefore, 0.25);
+        }
+
+        // docs/dock.md §5: at the screen edge the zoomed row must be bounded
+        // by lowering the peak, never by clipping the outermost tiles. A width
+        // between the resting and fully magnified widths exercises the fit.
+        function test_magnification_fit_bounds_the_row_at_the_screen_edge() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true), app("d", "D", true),
+                           app("e", "E", true), app("f", "F", true),
+                           app("g", "G", true), app("h", "H", true) ]
+            });
+            var resting = dock.restingPlateRect.w;
+            var full = dock.magnifiedPlateLengthFor(dock.magnifyPeakFactor);
+            verify(full > resting + 20, "the row grows under full magnification");
+            dock.width = Math.round((resting + full) / 2);
+            waitForRendering(stage);
+            verify(dock.magnifyFit < 1, "the peak is constrained at the edge");
+            verify(dock.effectiveMagnifyPeakFactor < dock.magnifyPeakFactor,
+                   "the effective peak is lower than the unconstrained peak");
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForMagnify();
+            var r = dock.plateRect;
+            verify(r.x >= -0.001, "the plate starts inside the surface");
+            verify(r.x + r.w <= dock.width + 0.001,
+                   "the plate ends inside the surface");
+            for (var i = 0; i < dock.layout.length; ++i) {
+                if (dock.items[i].kind === "divider")
+                    continue;
+                verify(dock.layout[i].x >= -0.001,
+                       "tile " + i + " starts inside the surface");
+                verify(dock.layout[i].x + dock.layout[i].w
+                       <= dock.width + 0.001,
+                       "tile " + i + " ends inside the surface");
+            }
+        }
+
+        // The fit is axis-generic: a vertical Dock lowers its peak the same
+        // way when the zoomed row would cross the output height.
+        function test_magnification_fit_applies_to_a_vertical_dock() {
+            var dock = make(dockComponent, {
+                width: 160, height: 720, position: "left", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true), app("d", "D", true),
+                           app("e", "E", true), app("f", "F", true),
+                           app("g", "G", true), app("h", "H", true) ]
+            });
+            var resting = dock.restingPlateRect.h;
+            var full = dock.magnifiedPlateLengthFor(dock.magnifyPeakFactor);
+            verify(full > resting + 20, "the vertical row grows under zoom");
+            dock.height = Math.round((resting + full) / 2);
+            waitForRendering(stage);
+            verify(dock.magnifyFit < 1, "the vertical peak is constrained");
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForMagnify();
+            var r = dock.plateRect;
+            verify(r.y >= -0.001, "the plate starts inside the surface");
+            verify(r.y + r.h <= dock.height + 0.001,
+                   "the plate ends inside the surface");
+            for (var i = 0; i < dock.layout.length; ++i) {
+                if (dock.items[i].kind === "divider")
+                    continue;
+                verify(dock.layout[i].y >= -0.001,
+                       "tile " + i + " starts inside the surface");
+                verify(dock.layout[i].y + dock.layout[i].h
+                       <= dock.height + 0.001,
+                       "tile " + i + " ends inside the surface");
+            }
         }
 
         // Entering and leaving the Dock grows and shrinks the bubble with the
@@ -1155,7 +1259,7 @@ Item {
             compare(Theme.controls.dock.padding, 15);
             compare(Theme.controls.dock.gap, 14);
             compare(Theme.controls.dock.indicatorGap, 8);
-            compare(Theme.controls.dock.radius, 28);
+            compare(Theme.controls.dock.radius, 27);
 
             var dock = make(dockComponent, {
                 width: 1280, height: 240, position: "bottom",
@@ -4815,6 +4919,32 @@ Item {
                 for (var k in extra)
                     e[k] = extra[k];
             return e;
+        }
+
+        // docs/dock.md §4: a notification badge is red, circular/pill, floats
+        // partly outside the top-right corner, and is independent of the
+        // window-count badge.
+        function test_app_badge_floats_outside_the_tile() {
+            var entry = make(entryComponent, {
+                iconSize: 48,
+                entry: { id: "a", appId: "a", name: "A", kind: "pinned",
+                         running: true, badge: 3,
+                         windowList: [ { id: 1 }, { id: 2 } ] }
+            });
+            var badge = findChild(entry, "appBadge");
+            verify(badge !== null && badge.visible, "the app badge shows");
+            compare(badge.color, Theme.color.danger);
+            compare(findChild(entry, "appBadgeText").text, "3");
+            compare(findChild(entry, "windowBadge").visible, false,
+                    "the app badge replaces the window-count badge");
+            // Partly outside: the badge crosses both the tile's top and right
+            // edges rather than sitting inside it.
+            verify(badge.x + badge.width > entry.artworkX + entry.iconSize,
+                   "the badge crosses the tile's right edge");
+            verify(badge.y < entry.artworkY,
+                   "the badge crosses the tile's top edge");
+            verify(entry.stateLabel.indexOf("3 new") >= 0,
+                   "the accessible state carries the badge count");
         }
 
         function test_window_badge_shows_for_a_grouped_app() {

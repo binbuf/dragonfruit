@@ -915,7 +915,9 @@ private:
     bool m_defaultPinsSeeded = false;
     // True once settingsd's first `GetAll` snapshot has been applied (or the
     // daemon is absent). The default-pin seed waits for it so an early
-    // app-index resync cannot overwrite a persisted `dock.pinned`.
+    // app-index resync cannot overwrite a persisted `dock.pinned`; the
+    // wallpaper forwarder also waits so the persisted source is the first one
+    // the compositor decodes instead of flashing the shipped default.
     bool m_settingsSnapshotReceived = false;
     // The Dock's Trash state, read from files-core's one freedesktop Trash
     // store (T-10.6a). It replaced the interim home-trash watcher, so the shell

@@ -68,9 +68,10 @@ Pick the workflow and command that matches what you are doing:
 | If you want to... | Use | What happens |
 |---|---|---|
 | Keep your current desktop and run Dragonfruit in a window | `make dev` (thin services) or `make dev-full` (full services) | Nested compositor; builds first; no install or logout. Fastest loop for app/QML work. |
-| Install Dragonfruit as the session/compositor instead of your current DE | `make native` (debug) or `make native-release` (daily driver) | Provisions dependencies, builds, installs the session, preselects Dragonfruit, and logs out. One-time setup. |
+| Install Dragonfruit as the session/compositor instead of your current DE | `make native` (release daily driver) or `make native-debug` (fast iteration) | Provisions dependencies, builds, installs the session, preselects Dragonfruit, and logs out. One-time setup. Release is the default because the native session is the dogfooding rail. |
 | App or shell change | `make native-restart` | Rebuilds and restarts the shell in place; no logout. New app launches use the new binaries. |
 | Service change | `make native-restart NATIVE_UNITS=services` | Rebuilds and restarts the services in place; no logout. |
+| Keep a debug session for fast iteration | `make native-restart NATIVE_ARGS=--debug` | Restarts the installed debug profile. A profile switch needs `native-rebuild`/`native-reboot`, not `restart`. |
 | Compositor change, or you want a clean session | `make native-rebuild` | Rebuilds, refreshes the install, then logs out; log back in to Dragonfruit. |
 | Do the same but reboot the machine | `make native-reboot` | Same as `native-rebuild`, then reboots. |
 | Return to your original desktop | `make native-return` | Restores the login configuration and ends Dragonfruit. |
@@ -82,7 +83,9 @@ current Wayland session; `make dev-full` adds the real session services on a
 private bus. Both build first and are safe to rerun.
 
 The native loop replaces your current session. `make native` is the one-time
-provisioning path; after that, use the smaller commands in the table.
+provisioning path and defaults to the **release** profile; use
+`make native-debug` (or `NATIVE_ARGS=--debug`) only when you need the fast
+iteration build. After that, use the smaller commands in the table.
 `native-rebuild` also accepts `NATIVE_ARGS=--no-install` for binary-only
 changes or `--no-logout` to build/refresh without ending the session; see
 `make help` for the diagnostics commands.

@@ -212,10 +212,18 @@ Two channels connect our processes:
 logind session
   → display manager starts dragonfruit-session.target (systemd --user)
       → compositor                    (acquires seat / DRM master)
-      → shell                         (once the private protocol socket exists)
-      → settingsd / menu-broker / app-index / notifications   (in parallel)
+      → settingsd                     (once the private protocol socket exists,
+                                       ready when it owns its session-bus name)
+      → shell                         (after the compositor socket and the
+                                       settings bus name, so its first paint
+                                       uses the persisted settings)
+      → menu-broker / app-index / notifications   (in parallel)
       → portal backend                (registers with xdg-desktop-portal)
 ```
+
+The shell's ordering on settingsd is a *readiness* gate, not a hard
+dependency: `Wants` keeps it optional, and a missing or failed daemon leaves
+the shell running on the schema defaults.
 
 Shutdown is the reverse: services stop, the shell unmaps chrome, the
 compositor is last to exit. The compositor is the only unit whose death ends

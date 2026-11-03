@@ -53,6 +53,16 @@ FocusScope {
         var e = root.entries[root.currentIndex];
         return e && e.type === "item" ? e : null;
     }
+    // Category tiles are wider than a plain line glyph. If any item carries a
+    // category, every item keeps that tile-width slot so labels stay in one
+    // column; items without a mapping center their plain glyph in it.
+    readonly property bool hasCategoryItems: {
+        for (var i = 0; i < root.entries.length; ++i) {
+            if (root.entries[i].type === "item" && root.entries[i].category)
+                return true;
+        }
+        return false;
+    }
 
     implicitWidth: Theme.controls.sidebar.width
     implicitHeight: 320
@@ -166,6 +176,11 @@ FocusScope {
         readonly property real glyphSize: row.category !== null
                 ? Theme.controls.sidebar.categoryIconSize
                 : Theme.controls.sidebar.iconSize
+        // The space reserved in front of the label. A mixed list (a category
+        // tile beside a plain fallback glyph) keeps one label column.
+        readonly property real glyphSlot: row.category !== null || root.hasCategoryItems
+                ? Theme.controls.sidebar.categoryIconSize
+                : Theme.controls.sidebar.iconSize
 
         width: parent ? parent.width : 0
         height: isHeader ? headerText.implicitHeight + Theme.controls.sidebar.sectionGap
@@ -218,8 +233,8 @@ FocusScope {
         Item {
             id: rowGlyph
             visible: row.hasGlyph
-            width: row.glyphSize
-            height: row.glyphSize
+            width: row.glyphSlot
+            height: row.glyphSlot
             anchors.left: parent.left
             anchors.leftMargin: Theme.controls.sidebar.padding
             anchors.verticalCenter: parent.verticalCenter

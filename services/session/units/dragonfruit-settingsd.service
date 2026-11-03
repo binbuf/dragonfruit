@@ -5,7 +5,15 @@ After=dragonfruit-compositor.service
 PartOf=dragonfruit-session.target
 
 [Service]
-Type=simple
+# `dbus` readiness: the shell (and any other consumer) waits for the
+# well-known name, not just the process, so its first paint uses the persisted
+# settings instead of the schema defaults (T-09.3 wallpaper, T-08.2 Dock).
+Type=dbus
+BusName=org.dragonfruit.Settings1
+# A settingsd that cannot take its bus name fails the start job rather than
+# holding the shell's ordering gate forever; the shell then runs on defaults.
+# The pre-start socket wait already allows up to 10 s.
+TimeoutStartSec=20s
 # Stage 1: settingsd starts once the compositor's private socket exists.
 ExecStartPre=/usr/bin/dragonfruit-session --wait-socket dragonfruit-wayland --timeout 10
 ExecStart=/usr/bin/dragonfruit-settingsd

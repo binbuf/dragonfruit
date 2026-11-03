@@ -31,7 +31,7 @@ Rectangle {
     focus: keyboardFocused
 
     // --- Injected data --------------------------------------------------
-    // [{ id, appId, name, kind, running, minimized, launch, attention,
+    // [{ id, appId, name, kind, running, active, minimized, launch, attention,
     //    badge, pinned, trashFull }]
     property var entries: []
     // A new projection arrived (T-14.7m): interaction state that cannot
@@ -846,7 +846,29 @@ Rectangle {
     readonly property real magnifyPeakFactor:
         magnification <= 0 ? 1.0
         : 1 + magnification * (Theme.controls.dock.magnifyPeakMax - 1)
+    // The reference zoom profile is expressed in resting slot pitches, not
+    // icon widths (docs/dock.md §5): 1.00 at the pointer, 0.90 one slot away,
+    // 0.45 two, and zero by three. `magnifyFalloff` is the zero point in
+    // pitches; the two knots are tokens so the curve stays tunable without
+    // touching QML. A monotone cubic through the knots keeps the peak flat and
+    // the release smooth (no cosine spike, no ringing).
     readonly property real magnifyFalloff: Theme.controls.dock.magnifyFalloff
+    readonly property real magnifyWeightNear: Theme.controls.dock.magnifyWeightNear
+    readonly property real magnifyWeightMiddle: Theme.controls.dock.magnifyWeightMiddle
+    readonly property real restingPitch: iconSize + gap
+    // Slopes of the monotone cubic at the two interior knots (Fritsch–Carlson).
+    // Endpoints are flat: the peak has zero slope at the pointer and the curve
+    // reaches zero with zero slope at the falloff, so neither edge kinks.
+    readonly property real magnifySlopeNear: {
+        var d0 = magnifyWeightNear - 1.0;
+        var d1 = magnifyWeightMiddle - magnifyWeightNear;
+        return d0 * d1 <= 0 ? 0 : 2 / (1 / d0 + 1 / d1);
+    }
+    readonly property real magnifySlopeMiddle: {
+        var d1 = magnifyWeightMiddle - magnifyWeightNear;
+        var d2 = -magnifyWeightMiddle;
+        return d1 * d2 <= 0 ? 0 : 2 / (1 / d1 + 1 / d2);
+    }
     // How far a lifted (dragged) entry rises above the bar.
     readonly property real dragLift: 8
     // Transparent room above/beside the plate that magnified artwork grows
@@ -3232,12 +3254,43 @@ Rectangle {
     // `layout` calls this every frame; `magnifiedPlateLength` calls it for the
     // candidate pointers whose union sizes the fixed zoomed bar. One source of
     // truth for the magnification geometry.
-    function magnifiedRowAt(along, engaged) {
+    // One cubic Hermite segment (p0 -> p1, slopes m0/m1 at t=0/1).
+    function magnifyHermite(p0, p1, m0, m1, t) {
+        var t2 = t * t;
+        var t3 = t2 * t;
+        return (2 * t3 - 3 * t2 + 1) * p0
+             + (t3 - 2 * t2 + t) * m0
+             + (-2 * t3 + 3 * t2) * p1
+             + (t3 - t2) * m1;
+    }
+
+    // The continuous magnification weight for one entry (docs/dock.md §5).
+    // `distance` is the horizontal distance from the pointer to the entry's
+    // *baseline* centre, normalized by the resting slot pitch. A monotone
+    // cubic through (0, 1.00), (1, near), (2, middle), (falloff, 0) keeps the
+    // peak flat and reaches rest without a slope kink. The knots stay at
+    // three pitches even if the falloff token moves.
+    function magnifyWeightAt(distance) {
+        var d = Math.abs(distance) / restingPitch;
+        if (magnifyFalloff > 0)
+            d *= 3.0 / magnifyFalloff;
+        if (d >= 3.0)
+            return 0;
+        if (d < 1.0)
+            return magnifyHermite(1.0, magnifyWeightNear, 0,
+                                  magnifySlopeNear, d);
+        if (d < 2.0)
+            return magnifyHermite(magnifyWeightNear, magnifyWeightMiddle,
+                                  magnifySlopeNear, magnifySlopeMiddle, d - 1.0);
+        return magnifyHermite(magnifyWeightMiddle, 0, magnifySlopeMiddle, 0,
+                              d - 2.0);
+    }
+
+    function magnifiedRowAt(along, engaged, peakFactor) {
         var list = items;
         var n = list.length;
         var base = _baseline;
-        var peak = iconSize * magnifyPeakFactor;
-        var falloff = magnifyFalloff * iconSize;
+        var peak = iconSize * peakFactor;
         var sizes = [];
         var positions = [];
         var magnifiedCenters = [];
@@ -3245,9 +3298,8 @@ Rectangle {
         for (i = 0; i < n; ++i) {
             var s = base.sizes[i];
             if (list[i].kind !== "divider" && list[i].kind !== "external") {
-                var d = Math.abs(base.centers[i] - along);
-                var t = Math.max(0, Math.min(1, 1 - d / falloff));
-                s = iconSize + (peak - iconSize) * engaged * (1 - (1 - t) * (1 - t));
+                s = iconSize + (peak - iconSize) * engaged
+                    * magnifyWeightAt(base.centers[i] - along);
             }
             sizes.push(s);
         }
@@ -3293,6 +3345,64 @@ Rectangle {
         return { sizes: sizes, positions: positions };
     }
 
+    // The swept union of the fully magnified row at a given peak factor. This
+    // is the same measurement `magnifiedPlateLength` uses, but parameterized
+    // so the fit below can search for a peak that fits the output.
+    function magnifiedPlateLengthFor(peakFactor) {
+        var list = items;
+        var n = list.length;
+        if (n === 0 || peakFactor <= 1)
+            return axisIsX ? restingPlateRect.w : restingPlateRect.h;
+        var base = _baseline;
+        var candidates = [axisCenter];
+        for (var c = 0; c < n; ++c)
+            candidates.push(base.centers[c]);
+        var half = 0;
+        for (var k = 0; k < candidates.length; ++k) {
+            var along = Math.max(0, Math.min(axisLength, candidates[k]));
+            var row = magnifiedRowAt(along, 1.0, peakFactor);
+            for (var i = 0; i < n; ++i) {
+                if (list[i].kind === "divider" || row.sizes[i] <= 0)
+                    continue;
+                half = Math.max(half,
+                                axisCenter - row.positions[i],
+                                row.positions[i] + row.sizes[i] - axisCenter);
+            }
+        }
+        return 2 * half + 2 * paddingAlong;
+    }
+
+    // Near a screen edge a full Dock's zoomed row can be wider than the
+    // output. Instead of clipping the outermost tiles (docs/dock.md §5), lower
+    // the peak uniformly until the swept union fits. The fit is recomputed only
+    // when the resting geometry, icon size, or magnification changes — never
+    // per pointer sample — so the sweep stays cheap. A Dock whose resting row
+    // already exceeds the axis cannot be helped by zoom: keep it at rest.
+    readonly property real magnifyFit: {
+        if (magnification <= 0 || magnifyPeakFactor <= 1 || axisLength <= 0)
+            return 1;
+        var resting = axisIsX ? restingPlateRect.w : restingPlateRect.h;
+        if (resting >= axisLength)
+            return 0;
+        if (magnifiedPlateLengthFor(magnifyPeakFactor) <= axisLength)
+            return 1;
+        // The union is monotone in the peak, so a short bisection lands well
+        // inside a device pixel.
+        var lo = 0;
+        var hi = 1;
+        for (var i = 0; i < 10; ++i) {
+            var mid = (lo + hi) / 2;
+            var peak = 1 + (magnifyPeakFactor - 1) * mid;
+            if (magnifiedPlateLengthFor(peak) <= axisLength)
+                lo = mid;
+            else
+                hi = mid;
+        }
+        return lo;
+    }
+    readonly property real effectiveMagnifyPeakFactor:
+        1 + (magnifyPeakFactor - 1) * magnifyFit
+
     readonly property var layout: {
         var list = items;
         var n = list.length;
@@ -3333,7 +3443,8 @@ Rectangle {
             // shrinks once as the pointer enters and leaves (T-14.7aa).
             var along = Math.max(0, magnifyPointer);
             var engaged = Math.max(0, magnifyEngagement);
-            var row = magnifiedRowAt(along, engaged);
+            var row = magnifiedRowAt(along, engaged,
+                                     effectiveMagnifyPeakFactor);
             sizes = row.sizes;
             positions = row.positions;
         }
@@ -3423,29 +3534,8 @@ Rectangle {
     // bar must cover the swept extent, not just one position), plus the end
     // padding. It is centred on the surface, so the base and zoomed levels
     // share a centre and the bar cannot shift sideways between them.
-    readonly property real magnifiedPlateLength: {
-        var list = items;
-        var n = list.length;
-        if (n === 0 || magnification <= 0)
-            return axisIsX ? restingPlateRect.w : restingPlateRect.h;
-        var base = _baseline;
-        var candidates = [axisCenter];
-        for (var c = 0; c < n; ++c)
-            candidates.push(base.centers[c]);
-        var half = 0;
-        for (var k = 0; k < candidates.length; ++k) {
-            var along = Math.max(0, Math.min(axisLength, candidates[k]));
-            var row = magnifiedRowAt(along, 1.0);
-            for (var i = 0; i < n; ++i) {
-                if (list[i].kind === "divider" || row.sizes[i] <= 0)
-                    continue;
-                half = Math.max(half,
-                                axisCenter - row.positions[i],
-                                row.positions[i] + row.sizes[i] - axisCenter);
-            }
-        }
-        return 2 * half + 2 * paddingAlong;
-    }
+    readonly property real magnifiedPlateLength:
+        magnifiedPlateLengthFor(effectiveMagnifyPeakFactor)
 
     // The visible floating plate. Its cross-axis extent — the height on a
     // bottom Dock — is fixed at the resting bar, and its along-axis extent has

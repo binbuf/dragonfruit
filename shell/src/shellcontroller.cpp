@@ -4968,6 +4968,15 @@ void ShellController::applyWallpaperPolicy()
     // choice, then the shipped default, then the fetched fallback (ADR 0094).
     if (!m_protocol)
         return;
+    // The client starts on the schema defaults. When settingsd is present its
+    // first `GetAll` snapshot is authoritative, so do not publish a default
+    // wallpaper (and decode it in the compositor) only to replace it a moment
+    // later with the persisted choice: wait for the snapshot, then send the
+    // effective source exactly once. A missing daemon never blocks this path.
+    if (m_settingsClient && m_settingsClient->isAvailable()
+        && !m_settingsSnapshotReceived) {
+        return;
+    }
     WallpaperSettings settings = wallpaperSettingsFromValues(
         m_settingsClient ? m_settingsClient->values() : QVariantMap());
     // The settingsd keys persist, but the provider's live properties are

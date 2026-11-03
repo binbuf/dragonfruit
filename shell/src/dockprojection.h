@@ -29,10 +29,11 @@ struct DockWindow {
 // focused window leads its app's list. One `temporary` app entry is produced
 // per distinct non-empty app id; an empty app id groups under a generic
 // `__unknown__` entry the Dock renders with a fallback label. Every app entry
-// carries its full `windowList` (most-recent-first) and a `minimized` flag
-// that is true only when *all* of the app's windows are minimized. One
-// `minimized` entry per minimized window follows, each carrying its app's
-// full window list so the owning app's menu works from the minimized entry.
+// carries its full `windowList` (most-recent-first), an `active` flag that is
+// true when any of its windows is focused, and a `minimized` flag that is true
+// only when *all* of the app's windows are minimized. One `minimized` entry
+// per minimized window follows, each carrying its app's full window list so
+// the owning app's menu works from the minimized entry.
 // App entries are name-sorted (stable for equal names).
 //
 // This is the section 22 lifecycle seam: an app_id change, a window opening

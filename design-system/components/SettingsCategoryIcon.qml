@@ -32,12 +32,19 @@ Item {
     // The glyph tint. Near-white by default so one glyph colour reads on every
     // category hue.
     property color symbolColor: Theme.primitive.color.neutral50
-    // The square edge length in logical pixels.
+    // The square edge length in logical pixels. This is the component's
+    // *implicit* size: callers that place the tile in a slot (`anchors.fill`,
+    // an explicit `width`/`height`) win, so a sidebar tile never paints larger
+    // than its 20px slot. The drawn container, radius, and glyph all follow the
+    // item's actual edge, not this default.
     property real size: Theme.controls.settingsCategory.size
-    // Corner radius. Derived from `size` through the token ratio so the small
-    // sidebar tile and the large hero tile keep the same optical roundness;
-    // callers may override.
-    property real radius: Math.round(root.size * Theme.controls.settingsCategory.radiusRatio)
+    // The drawn square edge. `width`/`height` normally win (a caller may lay
+    // the tile out in a slot); `size` is the fallback that defines them.
+    readonly property real edge: Math.min(root.width, root.height)
+    // Corner radius. Derived from the drawn edge through the token ratio so the
+    // small sidebar tile and the large hero tile keep the same optical
+    // roundness; callers may override.
+    property real radius: Math.round(root.edge * Theme.controls.settingsCategory.radiusRatio)
     // Opt-in coloured halo behind the tile, tinted to `gradientStart`.
     property bool glow: false
 
@@ -65,8 +72,8 @@ Item {
 
     Rectangle {
         id: tile
-        width: root.size
-        height: root.size
+        width: root.width
+        height: root.height
         radius: root.radius
         antialiasing: true
         gradient: Gradient {
@@ -99,7 +106,7 @@ Item {
             visible: root.source.length > 0
             name: root.source
             weight: "fill"
-            size: Math.round(root.size * Theme.controls.settingsCategory.iconRatio)
+            size: Math.round(root.edge * Theme.controls.settingsCategory.iconRatio)
             color: root.symbolColor
         }
     }

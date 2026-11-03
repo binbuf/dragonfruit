@@ -132,7 +132,7 @@ FocusScope {
         return [
             { label: qsTr("Open in Files"), action: "openInFiles" },
             { type: "separator" },
-            { label: qsTr("New Folder"), shortcut: qsTr("Shift+Cmd+N"),
+            { label: qsTr("New Folder"), shortcut: "Shift+Super+N",
               action: "newFolder" }
         ];
     }

@@ -41,9 +41,12 @@
 #
 # DF_NATIVE_PREFIX overrides the install prefix (default /usr; useful for
 # staging tests, not for a real display-manager login).
-# DF_NATIVE_PROFILE=debug|release selects the build (default: follow the
-# installed link; a fresh install starts with debug). `make native-release`
-# builds and installs the optimized daily-driver profile.
+# DF_NATIVE_PROFILE=debug|release selects the build. The default is **release**:
+# the native session is meant to be dogfooded as a real desktop, so it uses the
+# optimized build unless the developer explicitly asks for debug with `--debug`
+# (or DF_NATIVE_PROFILE=debug). `--release` is the explicit inverse. The CLI
+# flag wins over the environment variable; the environment wins over the
+# default. A debug build is still available for fast iteration.
 
 set -euo pipefail
 
@@ -57,19 +60,32 @@ PREFIX="${PREFIX%/}"
 DF_TOOLCHAIN="${DF_TOOLCHAIN:-$HOME/.local/df-toolchain/usr}"
 DF_DEVROOT="${DF_DEVROOT:-$HOME/.local/df-devroot/lib64}"
 
-# Build profile for the native session. `debug` is the fast iteration build;
-# `release` is the daily-driver build (the 4K material/damage path is CPU-bound
-# enough that the unoptimized build caps animated clients well below 60 fps).
-# An explicit DF_NATIVE_PROFILE wins; otherwise follow the installed link so
-# `native-restart` keeps using the profile that is already installed.
-PROFILE="${DF_NATIVE_PROFILE:-}"
-if [ -z "$PROFILE" ]; then
-    installed="$(readlink -f "$PREFIX/bin/dragonfruit-compositor" 2>/dev/null || true)"
-    case "$installed" in
-        */target/release/*) PROFILE=release ;;
-        *) PROFILE=debug ;;
+# Build profile for the native session. `release` is the default because the
+# native session is the dogfooding/deployment rail: the 4K material/damage path
+# is CPU-bound enough that the unoptimized build caps animated clients well
+# below 60 fps and pushes the material degrade ladder down. `debug` is the fast
+# iteration build, opt-in with `--debug` (or DF_NATIVE_PROFILE=debug).
+#
+# Precedence: CLI `--debug`/`--release` > DF_NATIVE_PROFILE > `release`.
+# Strip the global profile flags before the command parsers see the arguments.
+PROFILE_FLAG=""
+for arg in "$@"; do
+    case "$arg" in
+        --debug) PROFILE_FLAG=debug ;;
+        --release) PROFILE_FLAG=release ;;
     esac
+done
+if [ -n "$PROFILE_FLAG" ]; then
+    args=()
+    for arg in "$@"; do
+        case "$arg" in
+            --debug|--release) ;;
+            *) args+=("$arg") ;;
+        esac
+    done
+    set -- "${args[@]}"
 fi
+PROFILE="${PROFILE_FLAG:-${DF_NATIVE_PROFILE:-release}}"
 case "$PROFILE" in
     debug) QT_BUILD_DIR="$root/build" ;;
     release) QT_BUILD_DIR="$root/build-release" ;;
@@ -142,17 +158,25 @@ usage() {
 Native development session helper.
 
 Usage:
-  scripts/native-session.sh [start] [--no-build] [--no-logout] [--no-deps] [--autologin] [--force] [--skip-preflight]
-  scripts/native-session.sh return [--restart-dm|--no-restart-dm] [--force]
-  scripts/native-session.sh recover [--restart-dm|--no-restart-dm] [--force]
-  scripts/native-session.sh ready
-  scripts/native-session.sh rebuild [--reboot] [--no-build] [--no-deps] [--no-install] [--no-logout] [--force]
-  scripts/native-session.sh restart [--no-build] [--no-deps] [--force] [UNIT ...]
-  scripts/native-session.sh status
-  scripts/native-session.sh capture
-  scripts/native-session.sh logs [-f] [UNIT]
-  scripts/native-session.sh install [--force] [--no-deps]
-  scripts/native-session.sh deps
+  scripts/native-session.sh [--debug|--release] [start] [--no-build] [--no-logout] [--no-deps] [--autologin] [--force] [--skip-preflight]
+  scripts/native-session.sh [--debug|--release] return [--restart-dm|--no-restart-dm] [--force]
+  scripts/native-session.sh [--debug|--release] recover [--restart-dm|--no-restart-dm] [--force]
+  scripts/native-session.sh [--debug|--release] ready
+  scripts/native-session.sh [--debug|--release] rebuild [--reboot] [--no-build] [--no-deps] [--no-install] [--no-logout] [--force]
+  scripts/native-session.sh [--debug|--release] restart [--no-build] [--no-deps] [--force] [UNIT ...]
+  scripts/native-session.sh [--debug|--release] status
+  scripts/native-session.sh [--debug|--release] capture
+  scripts/native-session.sh [--debug|--release] logs [-f] [UNIT]
+  scripts/native-session.sh [--debug|--release] install [--force] [--no-deps]
+  scripts/native-session.sh [--debug|--release] deps
+
+Profile:
+  release (default) — optimized daily-driver build; use this for dogfooding
+                      and for any native session you intend to judge visually.
+  --debug           — fast iteration build (build/, target/debug); also
+                      selectable with DF_NATIVE_PROFILE=debug.
+  --release         — explicit inverse; the default.
+  CLI flags win over DF_NATIVE_PROFILE; the environment wins over the default.
 
 UNIT is a shorthand (shell, settings, notifications, wallpaper, apps, menu,
 portal, services, all) or a systemd user unit name. `all` deliberately
@@ -161,15 +185,18 @@ session. Rebuild and use `return` + `start` for compositor changes (or use
 the nested `make dev` loop).
 
 Running the script with no command is `start`: it checks/installs the
-distribution build dependencies, builds the tree, installs the session entry,
-user units, app metadata, and portal data, links the built binaries into
-place, then arms the next login for Dragonfruit and asks the host session
-manager to log out. The installer uses sudo only for the system copy.
-Rebuilds are picked up through the symlinks, so `restart` needs no reinstall.
-The newer SDDM-derived login manager is preselected through a conf.d drop-in;
-`return`/`recover` remove it again. `--no-logout` stops after
-install/preselect, so you can log out by hand. `--no-deps` skips the
-distribution package bootstrap; `deps` prints the detected package command.
+distribution build dependencies, builds the tree (release by default), installs
+the session entry, user units, app metadata, and portal data, links the built
+binaries into place, then arms the next login for Dragonfruit and asks the host
+session manager to log out. The installer uses sudo only for the system copy.
+Rebuilds are picked up through the symlinks, so `restart` needs no reinstall
+when the selected profile matches the installed one. It refuses a mismatch
+because it cannot replace the running compositor; use `rebuild`/`reboot` to
+switch profiles. The newer SDDM-derived login manager is preselected through a
+conf.d drop-in; `return`/`recover` remove it again.
+`--no-logout` stops after install/preselect, so you can log out by hand.
+`--no-deps` skips the distribution package bootstrap; `deps` prints the
+detected package command.
 
 `rebuild` is the full-session cycle for when a change needs a fresh session
 (the compositor, or you just want every app restarted): it rebuilds, refreshes
@@ -204,6 +231,19 @@ binary_source() {
         dragonfruit-files) printf '%s\n' "$QT_BUILD_DIR/apps/files/dragonfruit-files" ;;
         dragonfruit-settings) printf '%s\n' "$QT_BUILD_DIR/apps/settings/dragonfruit-settings" ;;
         *) printf '%s\n' "$root/target/$PROFILE/$1" ;;
+    esac
+}
+
+# Which profile the installed link farm currently points at. `status` reports
+# it; `restart` uses it to refuse a profile mismatch (restart cannot replace
+# the running compositor).
+installed_profile() {
+    local installed
+    installed="$(readlink -f "$PREFIX/bin/dragonfruit-compositor" 2>/dev/null || true)"
+    case "$installed" in
+        */target/release/*) printf 'release\n' ;;
+        */target/debug/*) printf 'debug\n' ;;
+        *) printf 'unknown\n' ;;
     esac
 }
 
@@ -1299,6 +1339,18 @@ cmd_restart() {
         die "not inside Dragonfruit; restart only applies to the running native session (or pass --force)"
     fi
 
+    local installed
+    installed="$(installed_profile)"
+    if [ "$installed" != "$PROFILE" ]; then
+        say "installed profile is $installed; selected profile is $PROFILE."
+        say "restart cannot replace the running compositor; use 'make native-rebuild'"
+        say "(or 'make native-reboot') to switch profiles."
+        if [ "$installed" = debug ] || [ "$installed" = release ]; then
+            say "or pass --$installed to keep the installed profile for this restart."
+        fi
+        exit 1
+    fi
+
     build_all
     write_session_environment
 
@@ -1318,6 +1370,8 @@ cmd_status() {
 
     say "host desktop: ${XDG_CURRENT_DESKTOP:-<unset>}"
     say "install prefix: $PREFIX"
+    say "selected profile: $PROFILE"
+    say "installed profile: $(installed_profile)"
     if [ -f "$state" ]; then
         say "armed state: $state"
     else

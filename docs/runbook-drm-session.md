@@ -66,15 +66,24 @@ If the session package is installed, the display-manager entry
 --install-session /usr`, then pick **Dragonfruit** at the login screen
 ([testing-ladder.md](testing-ladder.md) rung 2).
 
-For a high-resolution/high-refresh panel use the optimized native profile:
+The native session defaults to the optimized **release** profile, which is
+what you want on a high-resolution/high-refresh panel:
 
 ```bash
-make native-release
+make native
 ```
 
-The debug profile is for iteration; the 4K damage/material path is CPU-bound
-enough that an unoptimized build can cap animated clients well below the
-panel's refresh rate.
+The debug profile is opt-in for fast iteration:
+
+```bash
+make native-debug
+# or: make native-rebuild NATIVE_ARGS=--debug
+```
+
+The 4K damage/material path is CPU-bound enough that an unoptimized build can
+cap animated clients well below the panel's refresh rate. A profile switch
+needs `native-rebuild`/`native-reboot`; `native-restart` refuses a mismatch
+because it cannot replace the running compositor.
 
 A `make native` install also wires a dev-only capture unit. On login it records
 the session units, process tree, DRM connector state, journals, and a

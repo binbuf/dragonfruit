@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted — amended by [0186](0186-dock-reference-retune-profile-fit-and-states.md)
+(the profile is now slot-pitch normalized and edge-fitted; the fixed bar,
+continuous warp, and label-tail decisions here still stand)
 
 ## Context
 

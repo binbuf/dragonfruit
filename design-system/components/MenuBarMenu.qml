@@ -371,7 +371,16 @@ Item {
 
             delegate: MenuRow {
                 required property var modelData
+                objectName: "menuRow" + modelData.index
                 entry: modelData
+                highlighted: root.highlightedIndex === modelData.index
+                rowHeight: Theme.controls.menuBarMenu.rowHeight
+                padding: Theme.controls.menuBarMenu.padding
+                labelFontSize: Theme.controls.titlebar.fontSize
+                checkSize: Theme.controls.titlebar.fontSize
+                shortcutGap: Theme.controls.menuBarMenu.shortcutGap
+                onRowHovered: (index) => root.onMainRowHovered(index)
+                onRowActivated: (index) => root.activate(index)
             }
         }
     }
@@ -419,105 +428,6 @@ Item {
         }
     }
 
-    component MenuRow: Item {
-        id: row
-
-        required property var entry
-        property bool highlighted: root.highlightedIndex === entry.index
-        readonly property bool isSeparator: entry.type === "separator"
-        readonly property bool hasSubmenu: entry.type === "submenu"
-
-        width: parent ? parent.width : implicitWidth
-        height: isSeparator ? Theme.controls.menuBarMenu.padding
-                            : Theme.controls.menuBarMenu.rowHeight
-        implicitWidth: Theme.controls.menuBarMenu.padding * 2
-                       + checkGlyph.width + Theme.controls.titlebar.spacing
-                       + labelText.implicitWidth
-                       + (shortcutText.text.length > 0
-                          ? Theme.controls.menuBarMenu.shortcutGap + shortcutText.implicitWidth : 0)
-                       + (hasSubmenu ? Theme.controls.titlebar.spacing + chevron.width : 0)
-        opacity: entry.enabled ? 1.0 : 0.4
-
-        Rectangle {
-            visible: row.isSeparator
-            anchors.verticalCenter: parent.verticalCenter
-            x: Theme.controls.menuBarMenu.padding
-            width: parent.width - 2 * Theme.controls.menuBarMenu.padding
-            height: Theme.controls.window.borderWidth
-            color: Theme.color.separator
-        }
-
-        Rectangle {
-            visible: !row.isSeparator
-            anchors.fill: parent
-            radius: Theme.controls.focusRing.radius
-            color: row.highlighted ? Theme.color.accent : "transparent"
-            antialiasing: true
-        }
-
-        Icon {
-            id: checkGlyph
-            visible: !row.isSeparator
-            name: "check"
-            size: Theme.controls.titlebar.fontSize
-            color: row.highlighted ? Theme.color.accentContent : Theme.color.accent
-            opacity: row.entry.checked ? 1 : 0
-            x: Theme.controls.menuBarMenu.padding
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Text {
-            id: labelText
-            visible: !row.isSeparator
-            text: row.entry.label
-            color: row.highlighted ? Theme.color.accentContent : Theme.color.textPrimary
-            font.pixelSize: Theme.controls.titlebar.fontSize
-            anchors.left: checkGlyph.right
-            anchors.leftMargin: Theme.controls.titlebar.spacing
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Icon {
-            id: chevron
-            visible: !row.isSeparator && row.hasSubmenu
-            name: "chevron-right"
-            size: Theme.controls.titlebar.fontSize
-            color: row.highlighted ? Theme.color.accentContent : Theme.color.textTertiary
-            anchors.right: parent.right
-            anchors.rightMargin: Theme.controls.menuBarMenu.padding
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Text {
-            id: shortcutText
-            visible: !row.isSeparator && text.length > 0
-            text: row.entry.shortcut
-            color: row.highlighted ? Theme.color.accentContent : Theme.color.textTertiary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            anchors.right: row.hasSubmenu ? chevron.left : parent.right
-            anchors.rightMargin: row.hasSubmenu ? Theme.controls.titlebar.spacing
-                                                : Theme.controls.menuBarMenu.padding
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        HoverHandler {
-            onHoveredChanged: {
-                if (hovered && !row.isSeparator && row.entry.enabled)
-                    root.onMainRowHovered(row.entry.index);
-            }
-        }
-
-        TapHandler {
-            onTapped: root.activate(row.entry.index)
-        }
-
-        Accessible.role: Accessible.MenuItem
-        Accessible.name: row.entry.label
-        Accessible.checkable: row.entry.checkable
-        Accessible.checked: row.entry.checked
-        Accessible.onPressAction: root.activate(row.entry.index)
-    }
-
     component SubmenuPanel: Item {
         id: subPanel
 
@@ -558,10 +468,15 @@ Item {
 
             Repeater {
                 model: subPanel.entriesList
-                delegate: SubmenuRow {
+                delegate: MenuRow {
                     required property var modelData
                     entry: modelData
-                    highlightIndex: subPanel.highlightIndex
+                    highlighted: subPanel.highlightIndex === modelData.index
+                    rowHeight: Theme.controls.menuBarMenu.rowHeight
+                    padding: Theme.controls.menuBarMenu.padding
+                    labelFontSize: Theme.controls.titlebar.fontSize
+                    checkSize: Theme.controls.titlebar.fontSize
+                    shortcutGap: Theme.controls.menuBarMenu.shortcutGap
                     onRowHovered: (index) => subPanel.rowHovered(index)
                     onRowActivated: (index) => subPanel.rowActivated(index)
                 }
@@ -571,107 +486,4 @@ Item {
         Accessible.role: Accessible.PopupMenu
     }
 
-    component SubmenuRow: Item {
-        id: subRow
-
-        required property var entry
-        property int highlightIndex: -1
-
-        signal rowHovered(int index)
-        signal rowActivated(int index)
-
-        property bool highlighted: subRow.highlightIndex === entry.index
-        readonly property bool isSeparator: entry.type === "separator"
-        readonly property bool hasSubmenu: entry.type === "submenu"
-
-        width: parent ? parent.width : implicitWidth
-        height: isSeparator ? Theme.controls.menuBarMenu.padding
-                            : Theme.controls.menuBarMenu.rowHeight
-        implicitWidth: Theme.controls.menuBarMenu.padding * 2
-                       + checkGlyph.width + Theme.controls.titlebar.spacing
-                       + labelText.implicitWidth
-                       + (shortcutText.text.length > 0
-                          ? Theme.controls.menuBarMenu.shortcutGap + shortcutText.implicitWidth : 0)
-                       + (hasSubmenu ? Theme.controls.titlebar.spacing + chevron.width : 0)
-        opacity: entry.enabled ? 1.0 : 0.4
-
-        Rectangle {
-            visible: subRow.isSeparator
-            anchors.verticalCenter: parent.verticalCenter
-            x: Theme.controls.menuBarMenu.padding
-            width: parent.width - 2 * Theme.controls.menuBarMenu.padding
-            height: Theme.controls.window.borderWidth
-            color: Theme.color.separator
-        }
-
-        Rectangle {
-            visible: !subRow.isSeparator
-            anchors.fill: parent
-            radius: Theme.controls.focusRing.radius
-            color: subRow.highlighted ? Theme.color.accent : "transparent"
-            antialiasing: true
-        }
-
-        Icon {
-            id: checkGlyph
-            visible: !subRow.isSeparator
-            name: "check"
-            size: Theme.controls.titlebar.fontSize
-            color: subRow.highlighted ? Theme.color.accentContent : Theme.color.accent
-            opacity: subRow.entry.checked ? 1 : 0
-            x: Theme.controls.menuBarMenu.padding
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Text {
-            id: labelText
-            visible: !subRow.isSeparator
-            text: subRow.entry.label
-            color: subRow.highlighted ? Theme.color.accentContent : Theme.color.textPrimary
-            font.pixelSize: Theme.controls.titlebar.fontSize
-            anchors.left: checkGlyph.right
-            anchors.leftMargin: Theme.controls.titlebar.spacing
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Icon {
-            id: chevron
-            visible: !subRow.isSeparator && subRow.hasSubmenu
-            name: "chevron-right"
-            size: Theme.controls.titlebar.fontSize
-            color: subRow.highlighted ? Theme.color.accentContent : Theme.color.textTertiary
-            anchors.right: parent.right
-            anchors.rightMargin: Theme.controls.menuBarMenu.padding
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Text {
-            id: shortcutText
-            visible: !subRow.isSeparator && text.length > 0
-            text: subRow.entry.shortcut
-            color: subRow.highlighted ? Theme.color.accentContent : Theme.color.textTertiary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            anchors.right: subRow.hasSubmenu ? chevron.left : parent.right
-            anchors.rightMargin: subRow.hasSubmenu ? Theme.controls.titlebar.spacing
-                                                   : Theme.controls.menuBarMenu.padding
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        HoverHandler {
-            onHoveredChanged: {
-                if (hovered && !subRow.isSeparator && subRow.entry.enabled)
-                    subRow.rowHovered(subRow.entry.index);
-            }
-        }
-
-        TapHandler {
-            onTapped: subRow.rowActivated(subRow.entry.index)
-        }
-
-        Accessible.role: Accessible.MenuItem
-        Accessible.name: subRow.entry.label
-        Accessible.checkable: subRow.entry.checkable
-        Accessible.checked: subRow.entry.checked
-        Accessible.onPressAction: subRow.rowActivated(subRow.entry.index)
-    }
 }

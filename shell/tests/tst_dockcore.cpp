@@ -537,7 +537,8 @@ private slots:
                         {QStringLiteral("windows"), 2},
                         {QStringLiteral("windowList"),
                          QVariantList{QVariantMap{{QStringLiteral("windowId"), QStringLiteral("1")},
-                                                  {QStringLiteral("title"), QStringLiteral("A")}},
+                                                  {QStringLiteral("title"), QStringLiteral("A")},
+                                                  {QStringLiteral("focused"), true}},
                                       QVariantMap{{QStringLiteral("windowId"), QStringLiteral("2")},
                                                   {QStringLiteral("title"), QStringLiteral("B")}}}}},
             QVariantMap{{QStringLiteral("id"), QStringLiteral("win:1")},
@@ -561,6 +562,8 @@ private slots:
         QCOMPARE(files.value(QStringLiteral("kind")).toString(), QStringLiteral("pinned"));
         QCOMPARE(files.value(QStringLiteral("name")).toString(), QStringLiteral("Files"));
         QCOMPARE(files.value(QStringLiteral("running")).toBool(), true);
+        // The pin merge keeps the projection's active flag (docs/dock.md §6).
+        QCOMPARE(files.value(QStringLiteral("active")).toBool(), true);
         QCOMPARE(files.value(QStringLiteral("windows")).toInt(), 2);
         // The merged published entry carries the derived count too (T-14.7o).
         QCOMPARE(files.value(QStringLiteral("windowCount")).toInt(), 2);
@@ -756,6 +759,32 @@ private slots:
 
         const QVariantMap beta = entryForAppId(entries, QStringLiteral("org.example.Beta"));
         QCOMPARE(beta.value(QStringLiteral("windows")).toInt(), 1);
+    }
+
+    // docs/dock.md §6: the projection marks the app that owns the focused
+    // window so the Dock can draw a full-strength running dot for it and a
+    // muted dot for a merely running app.
+    void projectionMarksTheActiveApp()
+    {
+        const QVariantList entries = buildDockProjection({
+            window(1, QStringLiteral("org.example.Alpha"), QStringLiteral("one")),
+            window(2, QStringLiteral("org.example.Alpha"), QStringLiteral("two"), false, true),
+            window(3, QStringLiteral("org.example.Beta"), QStringLiteral("beta")),
+        });
+
+        const QVariantMap alpha = entryForAppId(entries, QStringLiteral("org.example.Alpha"));
+        const QVariantMap beta = entryForAppId(entries, QStringLiteral("org.example.Beta"));
+        QCOMPARE(alpha.value(QStringLiteral("active")).toBool(), true);
+        QCOMPARE(beta.value(QStringLiteral("active")).toBool(), false);
+
+        // A minimized-only app is running but never active.
+        const QVariantList minimizedEntries = buildDockProjection({
+            window(4, QStringLiteral("org.example.Gamma"), QStringLiteral("g"),
+                   true, false),
+        });
+        const QVariantMap gamma =
+            entryForAppId(minimizedEntries, QStringLiteral("org.example.Gamma"));
+        QCOMPARE(gamma.value(QStringLiteral("active")).toBool(), false);
     }
 
     void projectionMinimizedFlagOnlyWhenAllWindowsMinimized()

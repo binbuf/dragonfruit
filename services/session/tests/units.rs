@@ -151,6 +151,39 @@ fn the_compositor_is_the_session_anchor() {
 }
 
 #[test]
+fn the_shell_waits_for_the_settings_bus_name() {
+    // settingsd is Type=dbus, so systemd reports it started only after it owns
+    // the well-known name. The shell is ordered after that readiness gate so
+    // its first paint can read the persisted wallpaper instead of publishing
+    // the schema default and replacing it once `GetAll` lands.
+    let settings = load("dragonfruit-settingsd.service");
+    assert_eq!(one(&settings, "Service", "Type"), "dbus");
+    assert_eq!(
+        one(&settings, "Service", "BusName"),
+        "org.dragonfruit.Settings1"
+    );
+
+    let shell = load("dragonfruit-shell.service");
+    let wants = values(&shell, "Unit", "Wants").join(" ");
+    assert!(
+        wants
+            .split_whitespace()
+            .any(|unit| unit == "dragonfruit-settingsd.service"),
+        "the shell pulls in the settings owner: {wants}"
+    );
+    let after = values(&shell, "Unit", "After").join(" ");
+    let after: BTreeSet<&str> = after.split_whitespace().collect();
+    assert!(
+        after.contains("dragonfruit-compositor.service"),
+        "the shell still waits for the compositor: {after:?}"
+    );
+    assert!(
+        after.contains("dragonfruit-settingsd.service"),
+        "the shell waits for the settings bus name: {after:?}"
+    );
+}
+
+#[test]
 fn restart_policies_match_the_plan() {
     // services/session/src/plan.rs: shell Always; everything else OnFailure.
     let expectations = [

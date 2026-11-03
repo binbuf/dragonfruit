@@ -148,7 +148,7 @@ pub mod semantic {
             pub const DOCK_BORDER: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
             pub const DOCK_SHADOW: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
             pub const DOCK_HOVER_FILL: [u8; 4] = [0x78, 0x6a, 0x84, 0xff];
-            pub const DOCK_DIVIDER: [u8; 4] = [0x9c, 0x8f, 0xa8, 0xff];
+            pub const DOCK_DIVIDER: [u8; 4] = [0x78, 0x6a, 0x84, 0xff];
             pub const DOCK_INDICATOR: [u8; 4] = [0x1d, 0x17, 0x23, 0xff];
             pub const SKELETON_BASE: [u8; 4] = [0xde, 0xd6, 0xe5, 0xff];
             pub const SKELETON_HIGHLIGHT: [u8; 4] = [0xf8, 0xf6, 0xfa, 0xff];
@@ -224,7 +224,7 @@ pub mod semantic {
             pub const DOCK_BORDER: [u8; 4] = [0x44, 0x39, 0x4d, 0xff];
             pub const DOCK_SHADOW: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
             pub const DOCK_HOVER_FILL: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
-            pub const DOCK_DIVIDER: [u8; 4] = [0x78, 0x6a, 0x84, 0xff];
+            pub const DOCK_DIVIDER: [u8; 4] = [0x9c, 0x8f, 0xa8, 0xff];
             pub const DOCK_INDICATOR: [u8; 4] = [0xf8, 0xf6, 0xfa, 0xff];
             pub const SKELETON_BASE: [u8; 4] = [0x2d, 0x25, 0x34, 0xff];
             pub const SKELETON_HIGHLIGHT: [u8; 4] = [0x44, 0x39, 0x4d, 0xff];
@@ -327,12 +327,14 @@ pub mod component {
         pub const PADDING: f32 = 15.0_f32;
         pub const PADDING_ALONG: f32 = 16.0_f32;
         pub const GAP: f32 = 14.0_f32;
-        pub const RADIUS: f32 = 28.0_f32;
+        pub const RADIUS: f32 = 27.0_f32;
         pub const INDICATOR_SIZE: f32 = 4.0_f32;
         pub const INDICATOR_GAP: f32 = 8.0_f32;
         pub const MAGNIFY_PEAK: f32 = 1.25_f32;
         pub const MAGNIFY_PEAK_MAX: f32 = 1.5_f32;
-        pub const MAGNIFY_FALLOFF: f32 = 4.1_f32;
+        pub const MAGNIFY_FALLOFF: f32 = 3.0_f32;
+        pub const MAGNIFY_WEIGHT_NEAR: f32 = 0.9_f32;
+        pub const MAGNIFY_WEIGHT_MIDDLE: f32 = 0.45_f32;
         pub const LABEL_SIZE: f32 = 12.0_f32;
         pub const TRASH_SIZE: f32 = 44.0_f32;
         pub const EDGE_MARGIN: f32 = 8.0_f32;
@@ -365,11 +367,12 @@ pub mod component {
         }
         pub mod indicator {
             pub const OPACITY: f32 = 0.9_f32;
+            pub const INACTIVE_OPACITY: f32 = 0.45_f32;
         }
         pub mod divider {
-            pub const OPACITY: f32 = 0.5_f32;
+            pub const OPACITY: f32 = 0.7_f32;
             pub const WIDTH: f32 = 1.0_f32;
-            pub const HEIGHT_RATIO: f32 = 0.82_f32;
+            pub const HEIGHT_RATIO: f32 = 0.78_f32;
             pub const GAP: f32 = 22.0_f32;
         }
         pub mod chooser {
@@ -387,6 +390,16 @@ pub mod component {
             pub const FONT_MIN: f32 = 10.0_f32;
             pub const PADDING_H: f32 = 5.0_f32;
             pub const INSET: f32 = 2.0_f32;
+            pub const BORDER_WIDTH: f32 = 1.0_f32;
+        }
+        pub mod app_badge {
+            pub const SIZE_RATIO: f32 = 0.42_f32;
+            pub const SIZE_MIN: f32 = 16.0_f32;
+            pub const SIZE_MAX: f32 = 26.0_f32;
+            pub const FONT_RATIO: f32 = 0.56_f32;
+            pub const FONT_MIN: f32 = 10.0_f32;
+            pub const PADDING_H: f32 = 5.0_f32;
+            pub const OUTSIDE_RATIO: f32 = 0.18_f32;
             pub const BORDER_WIDTH: f32 = 1.0_f32;
         }
         pub mod overflow {
@@ -414,6 +427,12 @@ pub mod component {
         pub const MIN_WIDTH: f32 = 180.0_f32;
         pub const SHORTCUT_GAP: f32 = 24.0_f32;
         pub const SUBMENU_DELAY: f32 = 150.0_f32;
+    }
+    pub mod shortcut_hint {
+        pub const GAP: f32 = 2.0_f32;
+        pub const FONT_SIZE: f32 = 12.0_f32;
+        pub const MODIFIER_WEIGHT: f32 = 400.0_f32;
+        pub const KEY_WEIGHT: f32 = 500.0_f32;
     }
     pub mod focus_ring {
         pub const WIDTH: f32 = 2.0_f32;
@@ -509,13 +528,13 @@ pub mod component {
         pub const SHADOW_BLUR: f32 = 40.0_f32;
     }
     pub mod tooltip {
-        pub const DWELL: f32 = 600.0_f32;
+        pub const DWELL: f32 = 250.0_f32;
         pub const OFFSET: f32 = 8.0_f32;
         pub const RADIUS: f32 = 999.0_f32;
-        pub const PADDING_H: f32 = 8.0_f32;
+        pub const PADDING_H: f32 = 12.0_f32;
         pub const PADDING_V: f32 = 4.0_f32;
         pub const MAX_WIDTH: f32 = 260.0_f32;
-        pub const FONT_SIZE: f32 = 12.0_f32;
+        pub const FONT_SIZE: f32 = 13.0_f32;
         pub const TAIL_WIDTH: f32 = 16.0_f32;
         pub const TAIL_HEIGHT: f32 = 6.0_f32;
         pub const RIM_COLOR: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
@@ -607,7 +626,7 @@ pub mod component {
         pub const GRID_ROW_GAP: f32 = 16.0_f32;
         pub const LABEL_SIZE: f32 = 12.0_f32;
         pub const SCRIM_OPACITY: f32 = 0.35_f32;
-        pub const PANEL_OPACITY: f32 = 0.5_f32;
+        pub const PANEL_OPACITY: f32 = 0.88_f32;
         pub const FALLBACK_GLYPH_RATIO: f32 = 0.6_f32;
         pub const EMPTY_GLYPH_SIZE: f32 = 40.0_f32;
     }
@@ -666,7 +685,7 @@ pub mod motion {
     };
     pub const DOCK_MAGNIFY: Motion = Motion {
         duration_ms: 160_u32,
-        curve: [0.34_f32, 1.56_f32, 0.64_f32, 1.0_f32],
+        curve: [0.22_f32, 1.0_f32, 0.36_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };
     pub const DOCK_HOVER: Motion = Motion {
