@@ -12,6 +12,7 @@
 #include <cstring>
 #include <utility>
 
+#include <QElapsedTimer>
 #include <QVariantMap>
 #include <QSocketNotifier>
 
@@ -26,6 +27,7 @@
 
 #include <wayland-client.h>
 
+#include "chromestats.h"
 #include "dockdrops.h"
 #include "dockprojection.h"
 #include "dragonfruit-core-client-protocol.h"
@@ -1571,10 +1573,52 @@ void ShellProtocol::closeApp(const QString &appId)
         wl_display_flush(m_display);
 }
 
+QString ShellProtocol::surfaceLabel(wl_surface *surface) const
+{
+    if (surface == m_surface)
+        return QStringLiteral("menubar");
+    if (surface == m_popupSurface)
+        return QStringLiteral("menubar-popup");
+    if (surface == m_dockSurface)
+        return QStringLiteral("dock");
+    if (surface == m_dockPopupSurface)
+        return QStringLiteral("dock-popup");
+    if (surface == m_overviewSurface)
+        return QStringLiteral("overview");
+    if (surface == m_switcherSurface)
+        return QStringLiteral("switcher");
+    if (surface == m_bannerSurface)
+        return QStringLiteral("banner");
+    if (surface == m_controlCenterSurface)
+        return QStringLiteral("control-center");
+    if (surface == m_osdSurface)
+        return QStringLiteral("osd");
+    if (surface == m_chooserSurface)
+        return QStringLiteral("chooser");
+    if (surface == m_screenshotSurface)
+        return QStringLiteral("screenshot");
+    if (surface == m_screencastSurface)
+        return QStringLiteral("screencast");
+    if (surface == m_polkitSurface)
+        return QStringLiteral("polkit");
+    if (surface == m_appsDrawerSurface)
+        return QStringLiteral("apps-drawer");
+    for (auto it = m_lockSurfaces.constBegin(); it != m_lockSurfaces.constEnd(); ++it) {
+        if (it.value().surface == surface)
+            return QStringLiteral("lock");
+    }
+    return QStringLiteral("unknown");
+}
+
 bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
 {
     if (!surface || !m_shm)
         return false;
+
+    const bool statsEnabled = ChromeStats::instance().enabled();
+    QElapsedTimer commitTimer;
+    if (statsEnabled)
+        commitTimer.start();
 
     QImage frame = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     const int width = frame.width();
@@ -1631,6 +1675,16 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
     wl_surface_damage_buffer(surface, 0, 0, width, height);
     wl_surface_commit(surface);
     wl_display_flush(m_display);
+    if (statsEnabled) {
+        // `commit_us` is measured from the readback's completion (the frame
+        // gate records it) to the surface commit. The fallback covers a
+        // commit with no preceding `grabWindow()`.
+        qint64 commitUs = ChromeStats::instance().commitUsSinceRender();
+        if (commitUs < 0)
+            commitUs = commitTimer.nsecsElapsed() / 1000;
+        ChromeStats::instance().recordCommit(surfaceLabel(surface), QSize(width, height),
+                                             1, commitUs, static_cast<qint64>(size));
+    }
     return true;
 }
 

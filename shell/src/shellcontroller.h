@@ -785,6 +785,9 @@ private:
     FrameCommitGate m_osdFrameGate;
     bool m_osdSceneGraphCommitLogged = false;
     QTimer *m_osdTimer = nullptr;
+    // T-21.1a: drains the opt-in SIGUSR1 self-pipe and emits the chrome
+    // counters. Null unless `DRAGONFRUIT_CHROME_STATS` is enabled.
+    QSocketNotifier *m_chromeStatsNotifier = nullptr;
     // FileChooser picker (T-13.2b): a centered dialog scene rendered into the
     // `file-chooser` overlay surface while a portal request waits. The bridge
     // owns the request and the one D-Bus call back to the portal.

@@ -9,6 +9,7 @@
 //! Every backend runs this runner — backend selection is a flag, not a
 //! fork (FR-1).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use smithay::reexports::calloop::generic::Generic;
@@ -99,9 +100,15 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         calloop::signals::Signal::SIGUSR1,
     ])
     .map_err(|e| format!("failed to register signal handlers: {e}"))?;
+    // Number SIGUSR1 dumps so the T-21.1a baseline can map each snapshot to a
+    // scenario without parsing timestamps out of interleaved logs.
+    static SIGUSR1_SEQUENCE: AtomicU64 = AtomicU64::new(0);
     loop_handle
         .insert_source(signals, |event, _, state| match event.signal() {
-            calloop::signals::Signal::SIGUSR1 => state.dump_stats("SIGUSR1"),
+            calloop::signals::Signal::SIGUSR1 => {
+                let sequence = SIGUSR1_SEQUENCE.fetch_add(1, Ordering::Relaxed) + 1;
+                state.dump_stats(&format!("SIGUSR1-{sequence}"));
+            }
             _ => {
                 println!("dragonfruit-compositor: shutting down (signal)");
                 state.running = false;
