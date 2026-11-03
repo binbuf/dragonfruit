@@ -46,6 +46,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     apppicker.cpp
     appsdrawer.cpp
     chooserbridge.cpp
+    chromestats.cpp
+    chromestats.h
     clipboardhistory.cpp
     compositorpolicy.cpp
     controlcenterpolicy.cpp

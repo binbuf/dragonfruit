@@ -1973,6 +1973,19 @@ private slots:
         QVERIFY(gate.frameRendered());
     }
 
+    // T-21.1a: the transport summary's percentiles use the same nearest-rank
+    // rule as the compositor's frame/presentation summaries.
+    void chromeStatsPercentilesUseNearestRank()
+    {
+        QVector<qint64> values;
+        for (int value = 1; value <= 100; ++value)
+            values.append(value);
+        QCOMPARE(chromeStatsPercentile(values, 50), qint64(50));
+        QCOMPARE(chromeStatsPercentile(values, 95), qint64(95));
+        QCOMPARE(chromeStatsPercentile(values, 99), qint64(99));
+        QCOMPARE(chromeStatsPercentile(QVector<qint64>{}, 50), qint64(0));
+    }
+
     // -- launch-failure notification + action round-trip (T-11.1b) --------
 
     void aLaunchFailureRaisesANotificationWithTheAppAndReason()

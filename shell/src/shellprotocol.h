@@ -741,6 +741,8 @@ private:
     df_toplevel *toplevelForId(quintptr windowId) const;
     // Attach `image` to `surface` as a fresh shm buffer and commit it.
     bool commitTo(wl_surface *surface, const QImage &image);
+    // A stable name for the opt-in `chrome stats` per-surface line.
+    QString surfaceLabel(wl_surface *surface) const;
     // Send the remembered wallpaper selection to every targeted Space. Safe to
     // call before any Space is known (it is then a no-op; `onManagerDone`
     // retries).

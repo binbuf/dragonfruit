@@ -51,7 +51,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
+        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-chrome-baseline drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
@@ -64,6 +64,7 @@ help:
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
 	@echo "  make idle-trace — T-03.1a 60 s idle/animation frame budget trace"
 	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
+	@echo "  make t21-chrome-baseline — T-21.1a chrome transport counters + report"
 	@echo "  make multi-gpu-validation — T-03.4 multi-GPU import/fallback validation"
 	@echo "  make drm-soak — T-03.4 100-cycle teardown soak + one DRM session cycle"
 	@echo "  make second-vt-validation — T-12.6c second-VT preflight/selection + one real cycle"
@@ -218,6 +219,13 @@ t20-frame-budget: build
 # (docs/captures/t20-material-tiers-*.png); needs a host session, not in e2e.
 t20-material-tiers-capture: build
 	bash scripts/capture-t20-material-tiers.sh
+
+# T-21.1a: the chrome transport baseline. Runs the nested demo with the
+# opt-in shell/compositor counters, drives the six scenarios, and records
+# docs/captures/t21-chrome-baseline.txt (nested; native half OPEN or included).
+# Needs a host Wayland session and the built tree, not part of `make e2e`.
+t21-chrome-baseline: build
+	bash scripts/t21-chrome-baseline.sh
 
 # T-03.2: the DRM first bring-up probe. On a host with a free seat it starts
 # the DRM backend and records the capture/trace; with no free seat it records

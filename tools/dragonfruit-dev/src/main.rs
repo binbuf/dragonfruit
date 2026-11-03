@@ -675,10 +675,48 @@ fn launch_program(
     args: &[String],
     envs: &[(&str, String)],
 ) -> bool {
+    launch_program_logged(guard, label, program, args, envs, None)
+}
+
+/// Spawn a child, optionally redirecting its stdout/stderr to `log`.
+///
+/// The T-21.1a chrome baseline sets `DF_SHELL_LOG` so the shell's long
+/// `chrome stats` lines cannot interleave with the compositor's dump block in
+/// one shared log file. Unset (the normal path) inherits the parent streams.
+fn launch_program_logged(
+    guard: &mut ChildGuard,
+    label: &str,
+    program: &Path,
+    args: &[String],
+    envs: &[(&str, String)],
+    log: Option<&Path>,
+) -> bool {
     let mut command = Command::new(program);
     command.args(args);
     for (key, value) in envs {
         command.env(key, value);
+    }
+    if let Some(path) = log {
+        match std::fs::File::create(path) {
+            Ok(file) => match file.try_clone() {
+                Ok(errors) => {
+                    command.stdout(Stdio::from(file));
+                    command.stderr(Stdio::from(errors));
+                }
+                Err(error) => {
+                    eprintln!(
+                        "dragonfruit dev: could not clone {}: {error}",
+                        path.display()
+                    );
+                }
+            },
+            Err(error) => {
+                eprintln!(
+                    "dragonfruit dev: could not create {}: {error}",
+                    path.display()
+                );
+            }
+        }
     }
     match command.spawn() {
         Ok(child) => {
@@ -968,7 +1006,17 @@ fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -
             .to_string_lossy()
             .into_owned(),
     ));
-    launch_program(guard, "shell", &shell, &args, &envs)
+    // Opt-in dev-only log split (T-21.1a): the chrome baseline keeps the
+    // shell's long stats lines out of the compositor's dump block.
+    let shell_log = std::env::var_os("DF_SHELL_LOG").map(PathBuf::from);
+    launch_program_logged(
+        guard,
+        "shell",
+        &shell,
+        &args,
+        &envs,
+        shell_log.as_deref(),
+    )
 }
 
 /// 32 random bytes as hex, for the compositor's `desktop:` launch token. The

@@ -41,8 +41,8 @@ use smithay::utils::{
 };
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
-    get_parent, with_states, CompositorClientState, CompositorHandler, CompositorState,
-    SurfaceAttributes,
+    get_parent, with_states, BufferAssignment, CompositorClientState, CompositorHandler,
+    CompositorState, SurfaceAttributes,
 };
 use smithay::wayland::content_type::ContentTypeState;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
@@ -279,6 +279,17 @@ pub struct RenderStats {
     /// (T-20.4): `2^iterations`, so the trace records how aggressive the blur
     /// actually was.
     pub blur_downsample_max: u32,
+    /// Chrome transport imports (T-21.1a): every shell chrome buffer the
+    /// compositor received as shared memory, and the bytes those buffers
+    /// carried. The current shell allocates a fresh buffer per commit, so this
+    /// is the per-commit import cost the transport baseline measures.
+    pub chrome_shm_imports: u64,
+    pub chrome_shm_bytes: u64,
+    /// Chrome buffers received as dmabuf (expected 0 before T-21.1d).
+    pub chrome_dmabuf_imports: u64,
+    /// Frame callbacks sent to chrome surfaces (expected 0 before T-21.1c:
+    /// the shell does not request `wl_surface.frame` yet).
+    pub chrome_frame_callbacks: u64,
     /// Actual vblank intervals per DRM output (T-03.1b/P0 baseline). Nested
     /// and headless have no hardware vblank, so this map stays empty there.
     pub presentation: HashMap<String, PresentationStats>,
@@ -329,6 +340,19 @@ impl RenderStats {
     /// Recorded frame samples, oldest first.
     pub fn frame_samples(&self) -> impl Iterator<Item = &FrameSample> {
         self.samples.iter()
+    }
+
+    /// Record one chrome buffer import (T-21.1a). `shm_bytes` is `Some` for a
+    /// shared-memory buffer and `None` for a dmabuf; the caller resolves the
+    /// buffer kind at commit time, before Smithay consumes the attachment.
+    pub fn record_chrome_import(&mut self, shm_bytes: Option<u64>) {
+        match shm_bytes {
+            Some(bytes) => {
+                self.chrome_shm_imports += 1;
+                self.chrome_shm_bytes += bytes;
+            }
+            None => self.chrome_dmabuf_imports += 1,
+        }
     }
 
     /// Record one output's actual vblank interval. Called by the DRM
@@ -2855,6 +2879,19 @@ impl DfState {
             self.scene_pass.applications(),
             self.scene_pass.skipped(),
         );
+        // Chrome transport imports (T-21.1a): the shell side reports the same
+        // commits as `chrome stats`; this line is the compositor's import and
+        // frame-callback half of the baseline. The expected pre-T-21.1c
+        // `chrome_frame_callbacks` is 0.
+        println!(
+            "dragonfruit-compositor: chrome stats ({label}): \
+             chrome_shm_imports={} chrome_shm_bytes={} chrome_dmabuf_imports={} \
+             chrome_frame_callbacks={}",
+            self.stats.chrome_shm_imports,
+            self.stats.chrome_shm_bytes,
+            self.stats.chrome_dmabuf_imports,
+            self.stats.chrome_frame_callbacks,
+        );
         // Input-to-photon latency instrument (T-03.1b): the render-stats line
         // above has the positional fields; this line is the human-readable
         // form and states the pass/fail against one 60 Hz frame.
@@ -3993,6 +4030,41 @@ impl CompositorHandler for DfState {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        // Chrome transport counters (T-21.1a): classify the attached buffer
+        // before Smithay consumes the attachment. The shell's current path
+        // attaches a fresh wl_shm buffer on every chrome commit; dmabuf is the
+        // T-21.1d path and stays zero until it lands.
+        if self.is_above_window_chrome_surface(surface) {
+            let import = with_states(surface, |states| {
+                let mut guard = states.cached_state.get::<SurfaceAttributes>();
+                let attrs = guard.current();
+                match attrs.buffer.as_ref() {
+                    Some(BufferAssignment::NewBuffer(buffer)) => {
+                        if smithay::wayland::dmabuf::get_dmabuf(buffer).is_ok() {
+                            // Some(None) = a dmabuf import.
+                            Some(None)
+                        } else {
+                            smithay::wayland::shm::with_buffer_contents(
+                                buffer,
+                                |_, _, data| {
+                                    let stride = u64::try_from(data.stride).unwrap_or(0);
+                                    let height = u64::try_from(data.height).unwrap_or(0);
+                                    // Some(Some(bytes)) = a shm import.
+                                    Some(Some(stride.saturating_mul(height)))
+                                },
+                            )
+                            .ok()
+                            .flatten()
+                        }
+                    }
+                    _ => None,
+                }
+            });
+            if let Some(import) = import {
+                self.stats.record_chrome_import(import);
+            }
+        }
+
         // Import wl_shm buffers (glow/EGL backends); headless has no
         // renderer and simply ignores buffers.
         smithay::backend::renderer::utils::on_commit_buffer_handler::<DfState>(surface);
@@ -4834,6 +4906,18 @@ mod tests {
         assert_eq!(stats.blur_panels, 2);
         assert_eq!(stats.blur_draws, 1);
         assert_eq!(stats.blur_downsample_max, 8);
+    }
+
+    #[test]
+    fn chrome_imports_separate_shm_bytes_from_dmabuf() {
+        let mut stats = RenderStats::new();
+        stats.record_chrome_import(Some(1024));
+        stats.record_chrome_import(Some(2048));
+        stats.record_chrome_import(None);
+        assert_eq!(stats.chrome_shm_imports, 2);
+        assert_eq!(stats.chrome_shm_bytes, 3072);
+        assert_eq!(stats.chrome_dmabuf_imports, 1);
+        assert_eq!(stats.chrome_frame_callbacks, 0);
     }
 
     #[test]

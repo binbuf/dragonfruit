@@ -37,6 +37,7 @@
 #include "appindexclient.h"
 #include "apppicker.h"
 #include "appsdrawer.h"
+#include "chromestats.h"
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
@@ -298,6 +299,9 @@ ShellController::ShellController(QObject *parent)
 
 ShellController::~ShellController()
 {
+    // The opt-in transport counters land on the clean-exit path too; SIGUSR1
+    // remains the per-scenario trigger (T-21.1a).
+    ChromeStats::instance().emitStats(QStringLiteral("exit"));
     delete m_controlCenterWindow;
     delete m_osdWindow;
     delete m_bannerWindow;
@@ -322,6 +326,19 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 {
     m_barHeight = barHeight;
     m_waylandDisplay = socketName;
+    if (ChromeStats::instance().enabled()) {
+        // The signal handler writes one byte to a self-pipe; the notifier
+        // emits from the Qt thread so the stats line cannot race rendering.
+        ChromeStats::installSignalHandler();
+        const int fd = ChromeStats::signalFd();
+        if (fd >= 0) {
+            m_chromeStatsNotifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+            connect(m_chromeStatsNotifier, &QSocketNotifier::activated, this, []() {
+                if (ChromeStats::takeSignal())
+                    ChromeStats::instance().emitSignalStats();
+            });
+        }
+    }
     m_protocol = new ShellProtocol(this);
     connect(m_protocol, &ShellProtocol::fatal, this, [this](const QString &message) {
         qWarning() << "shell:" << message;
