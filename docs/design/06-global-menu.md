@@ -77,6 +77,13 @@ Shortcuts are **dispatched, not merely displayed**:
   shortcuts (workspace switching, Mission Control, app switcher) take
   precedence over application accelerators.
 
+The visual grammar for every menu row is the design-system
+[menu layout language](10-design-system.md#menu-layout-language): a reserved
+check gutter, an eliding label, a right-aligned `ShortcutHint` glyph sequence,
+and a reserved chevron gutter. The top bar's dropdowns and pointer context
+menus share the same `MenuRow`, so a chord such as `Super+Shift+Z` reads the
+same everywhere and never appears as raw `+`-separated text.
+
 ## Hard rules
 
 - **Never remove a third-party application's internal menu merely because

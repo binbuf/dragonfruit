@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted — amended by [0186](0186-dock-reference-retune-profile-fit-and-states.md)
+(the non-overshooting tracker and raw-pointer anchor rules still stand; the
+discrete `dockMagnify` spring is now a non-overshooting ease-out)
 
 ## Context
 

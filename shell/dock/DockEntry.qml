@@ -88,6 +88,11 @@ Item {
     // a brief highlight makes the no-op visible.
     property bool duplicateFlash: false
     readonly property bool running: entry.running === true
+    // The app owns the focused window (T-14.7ac). macOS distinguishes the
+    // active app's running dot from a merely running one; an entry that does
+    // not carry the flag is treated as active so direct-model callers and
+    // single-app fixtures keep their previous full-strength dot.
+    readonly property bool active: entry.active !== false
     readonly property string name: entry.name !== undefined ? entry.name : ""
     readonly property string appId: entry.appId !== undefined ? entry.appId : ""
     // The app-index record id ("org.dragonfruit.Files.desktop"); the first-party
@@ -179,9 +184,13 @@ Item {
         var label = missing ? qsTr(", not found")
                   : launching ? qsTr(", launching")
                   : failed ? qsTr(", failed to launch")
-                  : running ? qsTr(", running") : qsTr(", not running");
+                  : running ? qsTr(", running")
+                              + (active ? " " + qsTr("(active)") : "")
+                  : qsTr(", not running");
         if (attention && !missing && !launching)
             label += qsTr(", needs attention");
+        if (badge > 0 && !isMinimized)
+            label += qsTr(", %1 new").arg(badge);
         return label;
     }
 
@@ -220,6 +229,14 @@ Item {
     // other badge (T-14.7o precedence: status > app badge > window count).
     readonly property bool showStatusBadge:
         !isDivider && !isExternal && (failed || missing || trashUnavailable)
+    // The app notification badge (docs/dock.md §4): a red count that floats
+    // partly outside the tile's top-right corner. It is independent of the
+    // running dot and follows the current (possibly magnified) artwork bounds.
+    // Folder stacks keep their own new-items badge; a status mark suppresses
+    // this one so there is exactly one badge per entry.
+    readonly property bool showAppBadge:
+        !isDivider && !isExternal && !isTrash && !isStack && !isMinimized
+        && !isOverflow && !isLauncher && !showStatusBadge && badge > 0
     // The window-count badge (T-14.7o): a grouped app (2+ windows) with no
     // status and no app-provided count shows how many windows it has. It never
     // shows on folders/stacks or Trash, and a status or app badge suppresses it
@@ -240,6 +257,17 @@ Item {
         var count = root.isOverflow ? root.overflowCount : root.windowCount;
         return count > 9 ? qsTr("9+") : String(count);
     }
+    // The notification badge is larger than the window-count mark and floats
+    // outside the tile (docs/dock.md §4: ~36-38 px at the 79 px reference,
+    // partly outside the top-right corner). Token-driven like every state.
+    readonly property real appBadgeSize: {
+        var ab = Theme.controls.dock.appBadge;
+        return Math.max(ab.sizeMin,
+                        Math.min(ab.sizeMax,
+                                 Math.round(root.iconSize * ab.sizeRatio)));
+    }
+    readonly property string appBadgeLabel:
+        root.badge > 9 ? qsTr("9+") : String(root.badge)
     // An app demanding attention tints the badge; otherwise the accent marks a
     // grouped app (the reference behavior, our own tokens).
     readonly property color windowBadgeColor:
@@ -543,6 +571,40 @@ Item {
         }
     }
 
+    // The app notification badge (docs/dock.md §4): a red pill at the tile's
+    // top-right corner, partly outside the artwork. It is a sibling of the
+    // glyph, so the squircle mask never clips it, and it scales with the
+    // current tile size rather than the running dot.
+    Rectangle {
+        objectName: "appBadge"
+        visible: root.showAppBadge
+        width: Math.max(root.appBadgeSize,
+                        appBadgeText.implicitWidth
+                        + 2 * Theme.controls.dock.appBadge.paddingH)
+        height: root.appBadgeSize
+        radius: height / 2
+        color: Theme.color.danger
+        border.width: Theme.controls.dock.appBadge.borderWidth
+        border.color: Theme.color.chrome
+        x: root.artworkX + root.iconSize - width
+           * (1 - Theme.controls.dock.appBadge.outsideRatio)
+        y: root.artworkY - height
+           * Theme.controls.dock.appBadge.outsideRatio
+        z: 2
+        Text {
+            id: appBadgeText
+            objectName: "appBadgeText"
+            anchors.centerIn: parent
+            text: root.appBadgeLabel
+            color: Theme.color.accentContent
+            font.pixelSize: Math.max(
+                Theme.controls.dock.appBadge.fontMin,
+                Math.round(root.appBadgeSize
+                           * Theme.controls.dock.appBadge.fontRatio))
+            font.weight: Theme.primitive.font.weightSemibold
+        }
+    }
+
     // Running indicator on the dock-edge side (one per app entry, never per
     // window). Hidden when `showIndicators` is off.
     Rectangle {
@@ -552,7 +614,9 @@ Item {
         height: root.indicatorSize
         radius: root.indicatorSize / 2
         color: Theme.color.dockIndicator
-        opacity: root.attention ? 1.0 : Theme.controls.dock.indicator.opacity
+        opacity: root.attention ? 1.0
+                 : root.active ? Theme.controls.dock.indicator.opacity
+                 : Theme.controls.dock.indicator.inactiveOpacity
         x: root.indicatorEdge === "left" ? 0
            : root.indicatorEdge === "right" ? root.width - width
            : (root.width - width) / 2

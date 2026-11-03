@@ -16279,3 +16279,94 @@ Commands / gotchas for later:
   track).
 - **Per-frame texture allocation** from T-20.1 still stands (cache the Kawase
   textures in `NestedData` keyed by panel/role size).
+
+## T-14.7ac — Dock reference retune: pitch profile, edge fit, states, and badges
+
+**State: done.** The 2026-11 screenshot study in `docs/dock.md` is applied to
+the shipped Dock without changing its plate architecture. ADR
+[0186](design/adr/0186-dock-reference-retune-profile-fit-and-states.md)
+amends ADR 0162/0111.
+
+What landed:
+
+- **`shell/dock/Dock.qml`** — the zoom weight is now a monotone cubic through
+  the measured knots `1.00 / 0.90 / 0.45 / 0.00` at `0 / 1 / 2 / 3` resting
+  slot pitches (`iconSize + gap`), replacing the quadratic in icon widths.
+  `magnifyFit` bisects the peak until the swept zoomed union fits the output,
+  so a full Dock near a screen edge lowers its peak instead of clipping the
+  outermost tiles. `magnifiedPlateLengthFor(peak)` is the shared, parameterized
+  union used by both the fit and the fixed zoomed bar.
+- **`design-system/tokens/tokens.json`** — `magnifyFalloff` 4.1 → 3.0 (now
+  pitches), new `magnifyWeightNear`/`magnifyWeightMiddle`, `radius` 28 → 27,
+  `indicator.inactiveOpacity`, `divider.heightRatio` 0.82 → 0.78,
+  `divider.opacity` 0.5 → 0.7, light `dockDivider` neutral400 → neutral500,
+  new `appBadge` group, `tooltip.dwell` 600 → 250, `tooltip.paddingH` 8 → 12,
+  `tooltip.fontSize` sizeSm → sizeMd, and `motion.dockMagnify` is now a
+  non-overshooting ease-out (`0.22, 1.0, 0.36, 1.0`). `Theme.qml` and
+  `design_tokens.rs` regenerated.
+- **`shell/src/dockprojection.{h,cpp}`** — app entries carry `active` when any
+  of their windows is focused. **`shell/src/dockmodel.{h,cpp}`** — a pinned
+  running app keeps that flag through the pin merge.
+- **`shell/dock/DockEntry.qml`** — running dot is full-strength for the active
+  app and `indicator.inactiveOpacity` for a merely running app; an
+  app-provided `badge` now renders as the reference's red corner pill
+  (`appBadge`, partly outside the top-right, scales with the tile) instead of
+  being silently dropped; the window-count mark still yields to it.
+- **Tests** — `tst_dock.qml`: profile knots, edge fit, active/inactive dot,
+  app badge geometry/color. `tst_dockcore.cpp`: projection `active` and its
+  survival through `buildDockEntries`. `compositor/src/window/backdrop.rs`:
+  Dock radius expectation 27.
+- **Source-of-truth sync** — `tokens.json` `appsDrawer.panelOpacity` was 0.5
+  while the committed generated `Theme.qml` carried a hand-edited 0.88 (the
+  ~90%-opaque drawer documented in 04-shell). Set the token to 0.88 so
+  regeneration preserves the shipped card; the generated comment is gone, the
+  value is not. Also refreshed `translations/dragonfruit.ts` for the new
+  DockEntry `(active)` state and the pre-existing missing FilesWindow string.
+
+Commands that work:
+
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore|tst_design_system|tst_themebinding|tst_settings_desktop_dock|qmllint_shell-dock|qmllint_design-system" --output-on-failure`
+- `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` (87 snapshots);
+  `./scripts/check-no-capture-grab.sh`.
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor dock`.
+
+Gotchas:
+
+- `magnifyFalloff` changed units from icon widths to resting slot pitches.
+  Anything reading it must normalize by `iconSize + gap`, not `iconSize`.
+- The fit is intentionally not per-pointer: it depends on resting geometry,
+  icon size, and magnification only. A resting row already wider than the axis
+  stays at rest; the shell overflow planner owns that error state.
+- The non-magnified hover wash is retained deliberately as the zoom-off
+  affordance (ADR 0162); the magnified anchor tile still drops it, matching the
+  reference hover state.
+- `docs/dock.md` is the new research note and is left as authored; the durable
+  product decisions are in ADR 0186 and `docs/design/04-shell.md`.
+
+## Native session profile default — release
+
+**State: done.** The native session is the dogfooding/deployment rail, so
+`scripts/native-session.sh` now defaults to the **release** profile for every
+native command. Debug is opt-in with `make native-debug`,
+`DF_NATIVE_PROFILE=debug`, or `--debug`; CLI flags win over the environment,
+and the environment wins over the default.
+
+- `scripts/native-session.sh` — profile selection no longer follows the
+  installed link; default release. Global `--debug`/`--release` flags are
+  stripped before command parsing. `status` prints both the selected and
+  installed profile. `restart` refuses a profile mismatch before building or
+  rewriting the session environment, because it cannot replace the running
+  compositor; use `native-rebuild`/`native-reboot` to switch.
+- `Makefile` — `native`/`native-rebuild`/`native-reboot` are release by
+  default; new `native-debug` target; `native-restart` passes `NATIVE_ARGS`
+  (so `NATIVE_ARGS=--debug` works); help text updated.
+- `README.md`, `docs/runbook-drm-session.md`,
+  `docs/design/11-session-and-dev-workflow.md`,
+  `docs/design/proposals/native-drm-dock-glass.md`, and
+  `docs/design/advisor-briefing.md` — profile policy updated.
+
+The currently running session was installed before this change and still uses
+the debug link farm; one `make native-rebuild` or `make native-reboot` switches
+it. `make native-status` makes the mismatch explicit:
+`selected profile: release` / `installed profile: debug`.

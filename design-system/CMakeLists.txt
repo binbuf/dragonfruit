@@ -47,6 +47,8 @@ qt_add_qml_module(dragonfruit-design-system
         components/Slider.qml
         components/Select.qml
         components/ContextMenu.qml
+        components/MenuRow.qml
+        components/ShortcutHint.qml
         components/SearchField.qml
         components/SourceList.qml
         components/Dialog.qml
@@ -134,6 +136,8 @@ df_qml_lint(design-system
     components/Slider.qml
     components/Select.qml
     components/ContextMenu.qml
+    components/MenuRow.qml
+    components/ShortcutHint.qml
     components/SearchField.qml
     components/SourceList.qml
     components/Dialog.qml

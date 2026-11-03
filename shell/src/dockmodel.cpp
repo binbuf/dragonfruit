@@ -289,6 +289,7 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         QVariantMap merged;
         int windows = 0;
         bool anyMinimized = false;
+        bool anyActive = false;
         QString matchAppId;
         bool matched = false;
         QVariantList windowList;
@@ -309,9 +310,17 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
             if (matchAppId.isEmpty())
                 matchAppId = appId;
             windows += candidate.value(QStringLiteral("windows")).toInt();
-            windowList += candidate.value(QStringLiteral("windowList")).toList();
+            const QVariantList candidateWindows =
+                candidate.value(QStringLiteral("windowList")).toList();
+            windowList += candidateWindows;
             if (candidate.value(QStringLiteral("minimized")).toBool())
                 anyMinimized = true;
+            for (const QVariant &windowValue : candidateWindows) {
+                if (windowValue.toMap().value(QStringLiteral("focused")).toBool()) {
+                    anyActive = true;
+                    break;
+                }
+            }
         }
 
         merged.insert(QStringLiteral("id"), pinId);
@@ -325,6 +334,10 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         merged.insert(QStringLiteral("pinned"), true);
         merged.insert(QStringLiteral("missing"), !entry.valid);
         merged.insert(QStringLiteral("running"), matched);
+        // A pinned running app keeps the projection's active flag through the
+        // pin merge, so its running dot stays full-strength while it owns the
+        // focused window (T-14.7ac).
+        merged.insert(QStringLiteral("active"), anyActive);
         merged.insert(QStringLiteral("windows"), windows);
         merged.insert(QStringLiteral("windowList"), windowList);
         merged.insert(QStringLiteral("windowCount"), windowList.size());

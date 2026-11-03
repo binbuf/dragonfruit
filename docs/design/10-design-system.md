@@ -30,6 +30,7 @@ Select
 Popup
 ContextMenu
 MenuBarMenu
+ShortcutHint
 SearchField
 SourceList
 Icon
@@ -85,6 +86,78 @@ pane without a mapping keeps the Tabler-backed `Icon` glyph. Geometry comes from
 `component.settingsCategory.*`; the literal category hues are named constants in
 that one table and are never baked into an SVG (ADR
 [0164](adr/0164-settings-category-tile.md)).
+
+## Menu layout language
+
+Both menu surfaces — the top bar's dropdowns (`MenuBarMenu`) and pointer
+context menus (`ContextMenu`) — use one row anatomy, implemented once in
+`MenuRow.qml`:
+
+```text
+[check/icon gutter] label (flex, one line, elides) [shortcut hint] [chevron gutter]
+```
+
+- The **check and chevron gutters are reserved on every row**, even when the
+  row is unchecked or has no submenu. Labels and shortcut hints therefore line
+  up across rows and between the two menu components; a submenu chevron never
+  shifts its row's hint.
+- The **label is the only flexible cell**. It is single-line and elides before
+  it can touch the hint; the hint is right-aligned in its own trailing cell.
+- Rows are `component.contextMenu.rowHeight` (26) tall inside
+  `component.contextMenu.padding` (6); menu-bar dropdowns use the matching
+  `component.menuBarMenu.*` values. A separator is one `padding` tall.
+- `component.shortcutHint.*` owns the hint's glyph size, weights, and the gap
+  between keys. The bar itself keeps `component.menuBar.*` (28 px high, 8 px
+  horizontal padding, 15 px status glyphs, 2 px status gap) and a 24 px title
+  slot inside `component.menuBarMenu.barHeight` with 10 px side padding. The
+  system menu is the brand mark, the application menu is bold, and app menus
+  are medium.
+
+### Shortcut hints
+
+`ShortcutHint` is the one renderer for a row's `shortcut` field. It never
+prints `Ctrl+Alt+Delete`: the chord is parsed into a canonical row of key
+glyphs. The vocabulary follows the desktop's keymap roles
+([keymap.md](../keymap.md)):
+
+| Role | Glyph | Accepted input |
+|---|---|---|
+| Super (Command role) | `⌘` | `Super`, `Cmd`, `Command`, `Meta`, `Win`, `⌘` |
+| Control | `⌃` | `Ctrl`, `Control`, `⌃` |
+| Option / Alt | `⌥` | `Alt`, `Option`, `Opt`, `⌥` |
+| Shift | `⇧` | `Shift`, `⇧` |
+| Function | `fn` | `Fn`, `Function` |
+| Delete | `⌫` | `Delete`, `Del`, `Backspace`, `⌫` |
+| Return | `↵` | `Return`, `Enter`, `↵`, `⏎` |
+| Escape | `⎋` | `Escape`, `Esc`, `⎋` |
+| Tab | `⇥` | `Tab`, `⇥` |
+| Space | `␣` | `Space`, `Spacebar`, `␣` |
+| Caps Lock | `⇪` | `CapsLock`, `Caps`, `⇪` |
+| Page Up / Down | `⇞` / `⇟` | `PageUp`/`PgUp`, `PageDown`/`PgDn` |
+| Arrows | `←` `↑` `→` `↓` | `Left`/`ArrowLeft`, … |
+
+- Modifiers are reordered to the fixed **Fn, Ctrl, Alt, Shift, Super** order,
+  followed by the key. The input's order and `+` separators never leak into
+  the UI, so every row reads the same way.
+- Letters are uppercased; punctuation and function keys stay as typed
+  (`F3`, `,`).
+- A string that is not a chord is rendered verbatim in the same right-aligned
+  trailing cell. The Dock's window rows use `shortcut` for a Space name
+  (`Space 2`), so the hint never guesses a chord where there is none.
+- Key names are **data, not prose**: first-party menu models carry canonical
+  English names (`Super`, `Delete`, `Return`) and are never passed through
+  `qsTr()`. Only the row label is localized. A translated key word would not
+  parse and would fall back to plain text instead of a symbol.
+- Modifier glyphs use `textTertiary`, the key label uses `textSecondary`, and
+  a highlighted row uses `accentContent` for both. The hint is decorative to
+  AT-SPI; the menu item's accessible description carries the raw chord.
+- There are **no keycap boxes**: the Tahoe reference shows plain right-aligned
+  symbols, and boxes add noise at a 26 px row height. The glyphs come from the
+  bundled Inter face, so they tint and scale like the rest of the row and need
+  no additional icon asset.
+
+The decision and its alternatives are recorded in ADR
+[0187](adr/0187-menu-row-anatomy-and-shortcut-glyphs.md).
 
 ## Token architecture
 

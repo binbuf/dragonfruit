@@ -63,6 +63,13 @@ That is the evidence the rest of the numbers below are read at the same scale.
   pushed the row controls past the card and clipped them.
 - `apps/settings/AppearancePane.qml`: accent swatches `24 → 20` so the swatch
   row plus `Custom…` fits beside its label.
+- `design-system/components/SettingsCategoryIcon.qml` and `Sidebar.qml`: the
+  category tile now paints at the size of the slot it is placed in (the sidebar
+  row's `categoryIconSize` = 20, the header hero's 48) instead of its implicit
+  `settingsCategory.size` = 32. The old 32 px tile overflowed the 28 px sidebar
+  row, overlapping the next tile and drawing under the label. A source list that
+  mixes a category tile with a plain fallback glyph reserves the same 20 px
+  glyph column so all labels start at one x position.
 
 ## Recommendations not applied (need a coordinated design pass)
 

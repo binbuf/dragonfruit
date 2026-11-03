@@ -50,7 +50,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
@@ -94,8 +94,9 @@ help:
 	@echo "  make dev      — dragonfruit dev --nested (daily workflow, thin services)"
 	@echo "  make dev-full — nested session with settingsd/system-status/etc. on a private bus"
 	@echo "                  (FIXTURES=1 for deterministic pane fixtures)"
-	@echo "  make native   — one command: deps + preflight + build + install + preselect + logout"
-	@echo "  make native-release — same, but builds the optimized daily-driver profile"
+	@echo "  make native   — one command: deps + preflight + release build + install + preselect + logout"
+	@echo "  make native-debug — same, but the fast iteration build (opt-in; not for visual judgment)"
+	@echo "  make native-release — explicit alias for the default release profile"
 	@echo "  make native-return — restore the host login (also works from a TTY) and end Dragonfruit"
 	@echo "  make native-recover — from a TTY/SSH: undo preselect/runtime env, restore the host login"
 	@echo "  make native-restart — rebuild and restart native units (NATIVE_UNITS=shell|all|...)"
@@ -670,6 +671,12 @@ dev-full: build
 # then log out/relogin with Dragonfruit preselected; `make native-reboot` does
 # the same but reboots the machine. Both accept NATIVE_ARGS (for example
 # `NATIVE_ARGS=--no-install` for a binary-only rebuild).
+#
+# The native session defaults to the **release** profile because it is the
+# dogfooding/deployment rail; `make native-debug` (or NATIVE_ARGS=--debug) is
+# the opt-in fast iteration build. A debug session must be switched with
+# native-rebuild/native-reboot, not native-restart: restart cannot replace the
+# running compositor, so it refuses a profile mismatch.
 # NATIVE_UNITS accepts the script shorthands (shell, services, all, ...) or a
 # systemd user unit name. The compositor is the session anchor; restarting it
 # ends the session, so `all` deliberately excludes it.
@@ -679,6 +686,9 @@ native:
 native-release:
 	DF_NATIVE_PROFILE=release bash scripts/native-session.sh $(NATIVE_ARGS)
 
+native-debug:
+	DF_NATIVE_PROFILE=debug bash scripts/native-session.sh $(NATIVE_ARGS)
+
 native-return:
 	bash scripts/native-session.sh return $(NATIVE_ARGS)
 
@@ -686,7 +696,7 @@ native-recover:
 	bash scripts/native-session.sh recover $(NATIVE_ARGS)
 
 native-restart:
-	bash scripts/native-session.sh restart $(NATIVE_UNITS)
+	bash scripts/native-session.sh restart $(NATIVE_ARGS) $(NATIVE_UNITS)
 
 native-rebuild:
 	bash scripts/native-session.sh rebuild $(NATIVE_ARGS)
@@ -695,7 +705,7 @@ native-reboot:
 	bash scripts/native-session.sh rebuild --reboot $(NATIVE_ARGS)
 
 native-status:
-	bash scripts/native-session.sh status
+	bash scripts/native-session.sh status $(NATIVE_ARGS)
 
 native-capture:
 	bash scripts/native-session.sh capture

@@ -74,6 +74,14 @@ two. The menu-broker is expected to take over synthesizing the application
 menu from app metadata (T-22) so the items can reflect per-app state, while
 the system menu stays with the session.
 
+The dropdown rows follow the design-system
+[menu layout language](10-design-system.md#menu-layout-language): the shared
+`MenuRow` reserves the check and chevron gutters, the label elides in the one
+flexible cell, and `ShortcutHint` renders a chord as right-aligned modifier
+glyphs (`⌘`, `⌃`, `⌥`, `⇧`, `fn`) plus the key rather than raw
+`Super+Shift+Z` text. The same row component and hint render every context
+menu, submenu, Dock menu, tray menu, and top-bar dropdown.
+
 **System-menu action wiring (T-09 follow-up).** System Settings opens the
 first-party Settings app through the same `.desktop` launch path as the Dock
 (the installed `org.dragonfruit.Settings.desktop`); if Settings is already
@@ -226,7 +234,7 @@ popover buffer (ADR 0100). The live visual check is
 `docs/captures/t14-dock-hover-chooser.png` (`make
 dock-hover-chooser-capture`).
 
-### Dock window-count badge
+### Dock badges (window count and app notification)
 
 A grouped app is visible at rest (T-14.7o): an entry with two or more windows
 shows a small count at its tile's top-right corner, capped at `9+`. The count is
@@ -236,7 +244,11 @@ helper) — and `DockEntry.qml` only formats the numeral. There is exactly one
 badge per entry, with the precedence status (failure / not-found / Trash
 unavailable) > app-provided `badge` > window count > none: a failure never shows
 a count, a folder stack or Trash never shows one, and a pinned app that is not
-running has zero windows so it shows nothing. A minimized-only app still counts
+running has zero windows so it shows nothing. An app-provided notification
+badge is the reference's red corner count (docs/dock.md §4): it is larger than
+the window count, uses `component.dock.appBadge`, floats partly outside the
+tile's top-right corner, and scales with the magnified tile; the window-count
+mark yields to it. A minimized-only app still counts
 its windows (the running indicator stays), matching legacy T-10 §10. The badge
 is accent-filled, tinted with the attention (danger) color while the app demands
 attention, and its size/typography scale with the tile from
@@ -304,38 +316,50 @@ bar always contains the icons; the reserved zone stays at the resting
 thickness, so windows never re-lay-out when the pointer sweeps the Dock. The
 pointer is smoothed with `motion.dockMagnifyTrack`, a short low-pass whose
 curve has no overshoot, so the per-sample follow cannot ring around the real
-position; `motion.dockMagnify`'s overshoot stays only for *discrete* changes
-(the icon-size spring and the reveal). The anchored tile is chosen from the
-**raw** pointer, so the filter can never flip it back and forth at a boundary.
-Reduced motion tracks the pointer directly. The profile itself is the
-reference's wide quadratic bubble (T-14.7aa, ADR
-[0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)):
-`component.dock.magnifyFalloff` (4.1) is its radius in icon widths and one
-neighbour keeps ~90 % of the peak effect, two ~60 %, zero by ~4 — a
-neighbourhood that rises together rather than a narrow spike; the peak mapping
-(`magnifyPeak` 1.25 at the default `scaling`, `magnifyPeakMax` 1.5) matches the
-capture's measured 1.245×. The pointer drives the profile's *shape*;
-`magnifyEngagement` (0..1, eased with `motion.dockHover`) drives its
-*amplitude*, so entering and leaving the Dock grows and shrinks the bubble
-around a held pointer/anchor instead of snapping in and out. Magnified
-positions are a **continuous warp** of the resting row: the row is accumulated
-from the resting leading edge and then translated so the pointer maps to itself
-through the resting-centre → magnified-centre map, so no tile can jump when the
-anchored tile changes (a discrete anchor pin used to translate the row by a
-whole magnified pitch at every boundary, ~35 px with this profile). The
+position. `motion.dockMagnify` is now a non-overshooting ease-out for *discrete*
+changes too (the icon-size transition and the drag gap), so nothing in the Dock
+bounces or overshoots by default; the reveal has its own `motion.dockReveal`
+token. The anchored tile is chosen from the **raw** pointer, so the filter can
+never flip it back and forth at a boundary. Reduced motion tracks the pointer
+directly. The profile itself is the measured reference bubble (docs/dock.md
+§5, ADR [0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md) and
+[0186](adr/0186-dock-reference-retune-profile-fit-and-states.md)):
+`component.dock.magnifyFalloff` (3.0) is its zero point in **resting slot
+pitches**, and a monotone cubic through `1.00 / 0.90 / 0.45 / 0.00` at
+`0 / 1 / 2 / 3` pitches keeps the peak flat and the release smooth — one
+neighbour keeps ~90 % of the peak effect, two ~45 %, and three are at rest.
+The peak mapping (`magnifyPeak` 1.25 at the default `scaling`,
+`magnifyPeakMax` 1.5) matches the capture's measured 1.245×. The pointer drives
+the profile's *shape*; `magnifyEngagement` (0..1, eased with
+`motion.dockHover`) drives its *amplitude*, so entering and leaving the Dock
+grows and shrinks the bubble around a held pointer/anchor instead of snapping
+in and out. Magnified positions are a **continuous warp** of the resting row:
+the row is accumulated from the resting leading edge and then translated so
+the pointer maps to itself through the resting-centre → magnified-centre map,
+so no tile can jump when the anchored tile changes (a discrete anchor pin used
+to translate the row by a whole magnified pitch at every boundary). If the
+swept zoomed union would exceed the output (a full Dock near a screen edge),
+`magnifyFit` lowers the peak uniformly by bisection until it fits, rather than
+clipping the outermost tiles; the fit depends only on resting geometry, icon
+size, and magnification, never on the pointer, so the sweep stays cheap. The
 compositor's frosted backdrop follows the live plate rect that the shell
 declares on each commit, so the material always sits under the artwork. A
-hovered entry reveals its name (and state) in a `Tooltip` capsule
-above the icon (T-14.7i). See
+hovered entry reveals its name (and state) in a `Tooltip` capsule above the
+icon (T-14.7i); the label waits `component.tooltip.dwell` (250 ms), follows the
+entry frame by frame, and uses the reference's wider horizontal padding.
+Running dots are fixed-size and stateful: the app that owns the focused window
+keeps the full-strength `dockIndicator` dot, a merely running app gets
+`indicator.inactiveOpacity` (docs/dock.md §6). See
 [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md),
 [ADR 0111](adr/0111-dock-magnification-tracking-stability.md), and the
 T-14.7a/T-14.7b/T-14.7j units.
 
 **Resting proportions (T-14.7u).** The resting Dock is retuned to the mature
 reference capture (`docs/reference/macos/Dock.png`, local-only): `padding` 15,
-`paddingAlong` 16, `gap` 14, and a plate radius of 28 (~0.36 × the resting
-plate thickness). `barThickness` is `iconSize + 2 * padding` on every side;
-the running indicator's `indicatorGap` + `indicatorSize` live *inside* the
+`paddingAlong` 16, `gap` 14, and a plate radius of 27 (~0.35 × the resting
+plate thickness, matching the reference's ~0.34). `barThickness` is
+`iconSize + 2 * padding` on every side; the running indicator's
+`indicatorGap` + `indicatorSize` live *inside* the
 anchored-edge padding rather than in a band added to the plate, so the artwork
 keeps the same inset from both plate edges and the dot sits 8 pt below it. The
 artwork is anchored on the anchored-edge side, so under magnification it grows
@@ -399,15 +423,16 @@ collapses away — an empty tail or an empty pinned prefix leaves no orphaned or
 doubled rule, and a Dock with no app region at all draws none.
 `component.dock.divider.gap` (22) replaces the icon `gap` on both sides of a
 rule in the resting and magnified layouts, on every position, and
-`divider.heightRatio` (0.82) makes the hairline span that fraction of the plate
-cross-axis. The pinned | tail and minimized | fixed rules are non-interactive;
+`divider.heightRatio` (0.78) makes the hairline span that fraction of the plate
+cross-axis; the line is `dockDivider` at `divider.opacity` (0.7), so it reads
+as a visible but quiet rule rather than disappearing into the plate. The pinned | tail and minimized | fixed rules are non-interactive;
 only the app | right-region divider carries the T-10 §5 drag resize handle, so
 a new boundary never adds a second handle. The overflow planner reserves every
 divider it plans. See [ADR 0109](adr/0109-dock-region-dividers.md).
 
 ### Dock hover name label
 
-Pausing over an entry for `controls.tooltip.dwell` (600 ms) shows the
+Pausing over an entry for `controls.tooltip.dwell` (250 ms) shows the
 design-system `Tooltip` — a passive, pointer-anchored pill with one elided
 line and, since T-14.7aa, a pointer tail (`tailVisible`) aimed at the anchor
 centre — above the icon on a bottom Dock and on the interior side on a
@@ -436,7 +461,8 @@ clocks are empty, so the settled Dock contributes zero wakeups. Opening a
 menu/chooser/stack never resizes the offscreen window: the shell pre-sizes the
 buffer to a fixed `popoverHeadroom`/`popoverGutter` budget and `Dock.qml`
 clamps every popover into it. `dock.size`/overflow changes and the drag-gap
-close spring with `motion.dock-magnify` (reduced motion is duration 0); the
+close ease with the non-overshooting `motion.dockMagnify` token (reduced
+motion is duration 0); the
 first configure snaps and magnification stays progress-based. The T-14.7c
 trace lives at `docs/captures/t14-dock-motion-trace.txt`. See
 [ADR 0100](adr/0100-dock-motion-phase-map-and-popover-buffer.md) and the
