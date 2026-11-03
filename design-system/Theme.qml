@@ -143,6 +143,8 @@ QtObject {
             readonly property color folderRim: "#3a66e0"
             readonly property color folderHighlight: "#ffffff"
             readonly property color dockFill: "#ffffff"
+            readonly property color dockFallbackFill: "#efeaf3"
+            readonly property color chromeFallbackFill: "#f8f6fa"
             readonly property color dockRim: "#ffffff"
             readonly property color dockBorder: "#c3b8cc"
             readonly property color dockShadow: "#000000"
@@ -160,6 +162,8 @@ QtObject {
             readonly property real shadowOpacity: 0.18
             readonly property real dockOpacity: 0.5
             readonly property int dockBlur: 30
+            readonly property real chromeFallbackOpacity: 0.86
+            readonly property real dockFallbackOpacity: 0.88
             readonly property int chromeRefraction: 6
             readonly property int popupRefraction: 8
             readonly property int dockRefraction: 8
@@ -219,6 +223,8 @@ QtObject {
             readonly property color folderRim: "#5b8dff"
             readonly property color folderHighlight: "#ded6e5"
             readonly property color dockFill: "#2d2534"
+            readonly property color dockFallbackFill: "#2d2534"
+            readonly property color chromeFallbackFill: "#2d2534"
             readonly property color dockRim: "#ded6e5"
             readonly property color dockBorder: "#44394d"
             readonly property color dockShadow: "#000000"
@@ -236,6 +242,8 @@ QtObject {
             readonly property real shadowOpacity: 0.45
             readonly property real dockOpacity: 0.42
             readonly property int dockBlur: 34
+            readonly property real chromeFallbackOpacity: 0.82
+            readonly property real dockFallbackOpacity: 0.84
             readonly property int chromeRefraction: 8
             readonly property int popupRefraction: 10
             readonly property int dockRefraction: 10

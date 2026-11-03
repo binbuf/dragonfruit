@@ -1380,6 +1380,40 @@ Item {
                     String(Theme.darkScheme.color.dockRim));
         }
 
+        function test_plate_uses_a_milky_fallback_without_sampled_blur() {
+            // P1: on the DRM rail the compositor reports blurActive=false.
+            // The plate must switch to the near-opaque milky token while
+            // keeping the rim, border, and shadow geometry; it must not stay
+            // a 0.42-alpha white slab over an unfrosted wallpaper.
+            Theme.dark = false;
+            var dock = make(dockComponent, {
+                width: 400, height: 240,
+                materialBlurActive: false,
+                entries: [ app("a", "A", true) ]
+            });
+            var bar = findChild(dock, "dockBar");
+            compare(bar.color, Theme.color.dockFallbackFill);
+            fuzzyCompare(bar.opacity, Theme.material.dockFallbackOpacity, 0.0001);
+            verify(bar.opacity >= 0.8, "the fallback must read as a material");
+            verify(findChild(dock, "dockRim") !== null);
+            verify(findChild(dock, "dockBorder") !== null);
+            verify(findChild(dock, "dockPlateShadow").visible);
+            var lightFallback = String(bar.color);
+
+            // The fallback is scheme-aware, not a hardcoded gray.
+            Theme.dark = true;
+            var darkDock = make(dockComponent, {
+                width: 400, height: 240,
+                materialBlurActive: false,
+                entries: [ app("a", "A", true) ]
+            });
+            var darkBar = findChild(darkDock, "dockBar");
+            compare(darkBar.color, Theme.color.dockFallbackFill);
+            fuzzyCompare(darkBar.opacity, Theme.material.dockFallbackOpacity, 0.0001);
+            verify(String(darkBar.color) !== lightFallback,
+                   "the fallback tone follows the scheme");
+        }
+
         function test_glyph_tile_is_a_token_squircle_with_inset() {
             // The placeholder tile draws at the icon radius ratio and spans the
             // icon box less the token inset; the themed artwork is masked into

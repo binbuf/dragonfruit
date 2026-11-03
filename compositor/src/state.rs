@@ -115,11 +115,12 @@ use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
     cascaded_geometry, centered_on, fullscreen_reveal_rect, BackdropPass, ColorScheme,
-    DecorationTier, DegradeController, DegradeTier, DoubleClickTracker, MaterialPath,
-    MenuActivation, MenuKey, MenuKeyOutcome, MinimizedAnimation, MotionFrame, ReservedZones,
-    SceneTransformPass, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind,
-    WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu,
-    WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
+    DecorationTier, DegradeController, DegradeTier, DoubleClickTracker, EffectiveMaterial,
+    MaterialPath, MenuActivation, MenuKey, MenuKeyOutcome, MinimizedAnimation, MotionFrame,
+    ReservedZones, SceneTransformPass, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement,
+    TrafficLightKind, WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets,
+    WindowMenu, WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind, WindowState,
+    CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -160,6 +161,73 @@ pub struct FrameSample {
     pub interval_ms: u32,
 }
 
+/// One output's actual presentation intervals, measured at vblank on the DRM
+/// rail. The frame-time ring measures how long the compositor's CPU work took;
+/// this ring measures how often a frame actually reached the panel, which is
+/// the only honest source for missed deadlines.
+#[derive(Debug, Default)]
+pub struct PresentationStats {
+    /// Bounded ring of recent intervals, newest last.
+    samples: VecDeque<u32>,
+    /// Intervals recorded over the lifetime of the output.
+    samples_total: u64,
+    max_us: u32,
+    /// Intervals longer than 1.5x the output's frame duration.
+    missed: u64,
+    /// The output's current frame duration, in microseconds.
+    budget_us: u32,
+}
+
+impl PresentationStats {
+    /// Presentation intervals kept for the summary.
+    pub const CAPACITY: usize = 4096;
+
+    /// Record one vblank interval for this output. `frame_duration` is the
+    /// current mode's refresh period; an interval over 1.5x it is a missed
+    /// deadline (the half-frame margin absorbs timestamp jitter).
+    pub fn record(&mut self, interval: Duration, frame_duration: Duration) {
+        let interval_us = interval.as_micros().min(u128::from(u32::MAX)) as u32;
+        let budget_us = frame_duration.as_micros().min(u128::from(u32::MAX)) as u32;
+        self.samples_total += 1;
+        self.max_us = self.max_us.max(interval_us);
+        self.budget_us = budget_us;
+        if u64::from(interval_us) * 2 > u64::from(budget_us) * 3 {
+            self.missed += 1;
+        }
+        if self.samples.len() == Self::CAPACITY {
+            self.samples.pop_front();
+        }
+        self.samples.push_back(interval_us);
+    }
+
+    /// A one-line summary for `dump_stats`.
+    pub fn summary(&self) -> String {
+        let count = self.samples.len();
+        if count == 0 {
+            return "samples=0 samples_total=0 avg_us=0 p50_us=0 p95_us=0 \
+                    p99_us=0 max_us=0 window_max_us=0 missed=0 budget_us=0"
+                .to_owned();
+        }
+        let mut intervals: Vec<u32> = self.samples.iter().copied().collect();
+        intervals.sort_unstable();
+        let total: u64 = intervals.iter().map(|&us| u64::from(us)).sum();
+        let avg_us = total / count as u64;
+        let window_max_us = u64::from(*intervals.last().unwrap_or(&0));
+        format!(
+            "samples={count} samples_total={} avg_us={avg_us} p50_us={} \
+             p95_us={} p99_us={} max_us={} window_max_us={window_max_us} \
+             missed={} budget_us={}",
+            self.samples_total,
+            frame_percentile(&intervals, 50),
+            frame_percentile(&intervals, 95),
+            frame_percentile(&intervals, 99),
+            self.max_us,
+            self.missed,
+            self.budget_us,
+        )
+    }
+}
+
 /// Render-path counters (FR-5: verified via render-path counters) plus the
 /// per-frame timing trace T-11 U-2 needs for the FR-8 frame budget.
 #[derive(Debug, Default)]
@@ -188,7 +256,10 @@ pub struct RenderStats {
     pub input_events: u64,
     /// Bounded ring of recent frame samples, newest last.
     samples: VecDeque<FrameSample>,
-    frame_time_us_total: u64,
+    /// Frames recorded over the lifetime of the process. The summary's
+    /// percentiles and average describe the current ring, not this count;
+    /// the lifetime count is reported so the two cannot be confused.
+    samples_total: u64,
     frame_time_us_max: u64,
     max_interval_ms: u64,
     last_frame_at: Option<Instant>,
@@ -200,10 +271,17 @@ pub struct RenderStats {
     /// Chrome panels blurred across every GPU pass (T-20.4). A frame with two
     /// blurred panels contributes `2`.
     pub blur_panels: u64,
+    /// Output-frames whose blur elements were successfully built and handed to
+    /// the compositor (P2). Unlike `blur_passes`, which counts panel
+    /// resolution, this is recorded only after the draw list exists.
+    pub blur_draws: u64,
     /// The largest linear downsample factor any panel's Kawase chain used
     /// (T-20.4): `2^iterations`, so the trace records how aggressive the blur
     /// actually was.
     pub blur_downsample_max: u32,
+    /// Actual vblank intervals per DRM output (T-03.1b/P0 baseline). Nested
+    /// and headless have no hardware vblank, so this map stays empty there.
+    pub presentation: HashMap<String, PresentationStats>,
     /// Emit the full per-frame trace from [`DfState::dump_stats`]
     /// (`DRAGONFRUIT_FRAME_TRACE`).
     verbose: bool,
@@ -236,7 +314,7 @@ impl RenderStats {
             .unwrap_or(0);
         self.last_frame_at = Some(now);
         let duration_us = duration.as_micros().min(u128::from(u32::MAX)) as u32;
-        self.frame_time_us_total += u64::from(duration_us);
+        self.samples_total += 1;
         self.frame_time_us_max = self.frame_time_us_max.max(u64::from(duration_us));
         self.max_interval_ms = self.max_interval_ms.max(u64::from(interval_ms));
         if self.samples.len() == Self::FRAME_TRACE_CAPACITY {
@@ -253,13 +331,55 @@ impl RenderStats {
         self.samples.iter()
     }
 
+    /// Record one output's actual vblank interval. Called by the DRM
+    /// `frame_finish` only when a queued frame was submitted, so idle vblanks
+    /// do not pollute the interval ring.
+    pub fn record_presentation(
+        &mut self,
+        output: &str,
+        interval: Duration,
+        frame_duration: Duration,
+    ) {
+        self.presentation
+            .entry(output.to_owned())
+            .or_default()
+            .record(interval, frame_duration);
+    }
+
     /// A one-line frame-timing summary for `dump_stats`.
+    ///
+    /// The average, percentiles, and `window_max_us` describe the current
+    /// [`Self::FRAME_TRACE_CAPACITY`] ring. The old implementation divided a
+    /// lifetime accumulator by the ring length, so `avg_us` grew without
+    /// bound after the ring filled. `samples_total` and `max_us` keep the
+    /// lifetime context; `max_interval_ms` remains the lifetime maximum and
+    /// includes idle gaps, so it is not a presentation interval.
     pub fn frame_summary(&self) -> String {
-        let count = self.samples.len() as u64;
-        let avg_us = self.frame_time_us_total.checked_div(count).unwrap_or(0);
+        let count = self.samples.len();
+        if count == 0 {
+            return "samples=0 samples_total=0 avg_us=0 p50_us=0 p95_us=0 \
+                    p99_us=0 max_us=0 window_max_us=0 max_interval_ms=0"
+                .to_owned();
+        }
+        let mut durations: Vec<u32> = self
+            .samples
+            .iter()
+            .map(|sample| sample.duration_us)
+            .collect();
+        durations.sort_unstable();
+        let total: u64 = durations.iter().map(|&us| u64::from(us)).sum();
+        let avg_us = total / count as u64;
+        let window_max_us = u64::from(*durations.last().unwrap_or(&0));
         format!(
-            "samples={count} avg_us={avg_us} max_us={} max_interval_ms={}",
-            self.frame_time_us_max, self.max_interval_ms
+            "samples={count} samples_total={} avg_us={avg_us} p50_us={} \
+             p95_us={} p99_us={} max_us={} window_max_us={window_max_us} \
+             max_interval_ms={}",
+            self.samples_total,
+            frame_percentile(&durations, 50),
+            frame_percentile(&durations, 95),
+            frame_percentile(&durations, 99),
+            self.frame_time_us_max,
+            self.max_interval_ms,
         )
     }
 
@@ -272,10 +392,31 @@ impl RenderStats {
         self.blur_downsample_max = self.blur_downsample_max.max(downsample_max);
     }
 
+    /// Record an output-frame whose blur elements were actually built and
+    /// appended to the compositor's draw list (P2). This is the counter to
+    /// trust for "the blur ran"; `blur_passes` only says the panels resolved.
+    pub fn record_blur_draw(&mut self, downsample_max: u32, panels: u64) {
+        self.blur_draws += 1;
+        self.blur_downsample_max = self.blur_downsample_max.max(downsample_max);
+        debug_assert!(panels > 0);
+    }
+
     /// Whether [`DfState::dump_stats`] should print the full frame trace.
     pub fn frame_trace_verbose(&self) -> bool {
         self.verbose
     }
+}
+
+/// The `percent`-th duration in an ascending-sorted slice, using the
+/// nearest-rank rule on the 0-based window index. Returns `0` for an empty
+/// slice so the summary stays parseable.
+fn frame_percentile(sorted: &[u32], percent: usize) -> u32 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let last = sorted.len() - 1;
+    let rank = (percent * last) / 100;
+    sorted[rank.min(last)]
 }
 
 /// Central compositor state: protocols, outputs, scene, seat.
@@ -510,6 +651,11 @@ pub struct DfState {
     /// readback and collapses to the deterministic `Minimal` mapping. Backends
     /// set this at init; it defaults to `Gpu` so a unit test is unchanged.
     pub material_path: MaterialPath,
+    /// Whether this backend implements the sampled scene-texture blur pass.
+    /// `MaterialPath::Gpu` only says a GPU renderer exists; the DRM rail is
+    /// still on the feather stack, so it sets this `false` until P2. The
+    /// shell's effective-material state keys off this, not `path=gpu`.
+    pub material_blur_supported: bool,
     /// Gesture-scoped frame-budget trace (T-05.6): records every rendered
     /// frame's cadence while an overview transition (Mission Control, a Space
     /// slide, or Desktop Reveal) is live, so the full gesture can be judged
@@ -660,6 +806,7 @@ impl DfState {
             render_serial: 0,
             degrade: DegradeController::new(),
             material_path: MaterialPath::default(),
+            material_blur_supported: false,
             gesture_trace: GestureBudgetTrace::new(),
             color_scheme: ColorScheme::default(),
             magnifier: Magnifier::new(),
@@ -2627,6 +2774,17 @@ impl DfState {
         self.pending_capture.take()
     }
 
+    /// The material the compositor actually applies to chrome (P1). This is
+    /// the effective state the shell receives; `path=gpu` alone is not proof
+    /// that the sampled blur runs.
+    pub fn effective_material(&self) -> EffectiveMaterial {
+        EffectiveMaterial::resolve(
+            self.material_path,
+            self.material_blur_supported,
+            self.degrade.tier(),
+        )
+    }
+
     /// Pin the material degrade tier (T-04.4a) and request a redraw so the
     /// newly selected geometry is drawn. Used by `set degrade-tier` and by a
     /// feature that wants a deterministic tier.
@@ -2732,12 +2890,13 @@ impl DfState {
         println!(
             "dragonfruit-compositor: material stats ({label}): \
              backdrop_passes={} backdrop_skipped={} path={} blur_passes={} \
-             blur_panels={} blur_downsample_max={}",
+             blur_panels={} blur_draws={} blur_downsample_max={}",
             self.material_pass.applications(),
             self.material_pass.skipped(),
             self.material_path.name(),
             self.stats.blur_passes,
             self.stats.blur_panels,
+            self.stats.blur_draws,
             self.stats.blur_downsample_max,
         );
         // Live light/dark scheme (T-04.4b): the token set the compositor
@@ -2769,6 +2928,20 @@ impl DfState {
             "dragonfruit-compositor: frame timing ({label}): {}",
             self.stats.frame_summary()
         );
+        // Actual vblank intervals per output (DRM only). This is the
+        // presentation-side complement to the CPU frame-time line above: a
+        // frame can render quickly and still miss the panel deadline.
+        let mut presentation_outputs: Vec<&String> = self.stats.presentation.keys().collect();
+        presentation_outputs.sort();
+        for output in presentation_outputs {
+            if let Some(stats) = self.stats.presentation.get(output) {
+                println!(
+                    "dragonfruit-compositor: presentation stats ({label}): \
+                     output={output} {}",
+                    stats.summary()
+                );
+            }
+        }
         if self.stats.frame_trace_verbose() {
             for (index, sample) in self.stats.frame_samples().enumerate() {
                 println!(
@@ -4581,3 +4754,121 @@ delegate_tablet_manager!(DfState);
 delegate_text_input_manager!(DfState);
 delegate_input_method_manager!(DfState);
 delegate_xwayland_shell!(DfState);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn field<'a>(summary: &'a str, key: &str) -> &'a str {
+        summary
+            .split_whitespace()
+            .find_map(|value| value.strip_prefix(&format!("{key}=")))
+            .unwrap_or_else(|| panic!("missing {key} in {summary:?}"))
+    }
+
+    #[test]
+    fn frame_summary_describes_the_window_not_the_lifetime() {
+        let mut stats = RenderStats::new();
+        // Fill the ring with 1 ms frames, then replace it with 100 ms frames.
+        // The old lifetime accumulator would report ~101 ms for the window.
+        for _ in 0..RenderStats::FRAME_TRACE_CAPACITY {
+            stats.record_frame(Duration::from_millis(1));
+        }
+        for _ in 0..RenderStats::FRAME_TRACE_CAPACITY {
+            stats.record_frame(Duration::from_millis(100));
+        }
+
+        let summary = stats.frame_summary();
+        assert_eq!(field(&summary, "samples"), "8192");
+        assert_eq!(field(&summary, "samples_total"), "16384");
+        assert_eq!(field(&summary, "avg_us"), "100000");
+        assert_eq!(field(&summary, "p50_us"), "100000");
+        assert_eq!(field(&summary, "p95_us"), "100000");
+        assert_eq!(field(&summary, "p99_us"), "100000");
+        assert_eq!(field(&summary, "max_us"), "100000");
+        assert_eq!(field(&summary, "window_max_us"), "100000");
+    }
+
+    #[test]
+    fn frame_summary_percentiles_follow_the_sorted_window() {
+        let mut stats = RenderStats::new();
+        for millis in 1..=100 {
+            stats.record_frame(Duration::from_millis(millis));
+        }
+
+        let summary = stats.frame_summary();
+        assert_eq!(field(&summary, "samples"), "100");
+        assert_eq!(field(&summary, "avg_us"), "50500");
+        // Nearest-rank with 0-based indices: p50=50 ms, p95=95 ms, p99=99 ms.
+        assert_eq!(field(&summary, "p50_us"), "50000");
+        assert_eq!(field(&summary, "p95_us"), "95000");
+        assert_eq!(field(&summary, "p99_us"), "99000");
+        assert_eq!(field(&summary, "max_us"), "100000");
+        assert_eq!(field(&summary, "window_max_us"), "100000");
+    }
+
+    #[test]
+    fn frame_summary_is_parseable_before_any_frame() {
+        let summary = RenderStats::new().frame_summary();
+        for key in [
+            "samples",
+            "samples_total",
+            "avg_us",
+            "p50_us",
+            "p95_us",
+            "p99_us",
+            "max_us",
+            "window_max_us",
+            "max_interval_ms",
+        ] {
+            assert_eq!(field(&summary, key), "0", "unexpected {key} in {summary:?}");
+        }
+    }
+
+    #[test]
+    fn blur_draws_are_counted_separately_from_resolved_passes() {
+        let mut stats = RenderStats::new();
+        stats.record_blur_pass(8, 2);
+        stats.record_blur_draw(8, 2);
+        assert_eq!(stats.blur_passes, 1);
+        assert_eq!(stats.blur_panels, 2);
+        assert_eq!(stats.blur_draws, 1);
+        assert_eq!(stats.blur_downsample_max, 8);
+    }
+
+    #[test]
+    fn presentation_stats_count_missed_deadlines() {
+        let mut stats = PresentationStats::default();
+        for _ in 0..10 {
+            stats.record(Duration::from_micros(6_944), Duration::from_micros(6_944));
+        }
+        assert_eq!(field(&stats.summary(), "missed"), "0");
+
+        for _ in 0..5 {
+            stats.record(Duration::from_millis(20), Duration::from_micros(6_944));
+        }
+        let summary = stats.summary();
+        assert_eq!(field(&summary, "samples"), "15");
+        assert_eq!(field(&summary, "samples_total"), "15");
+        assert_eq!(field(&summary, "missed"), "5");
+        assert_eq!(field(&summary, "budget_us"), "6944");
+        assert_eq!(field(&summary, "max_us"), "20000");
+    }
+
+    #[test]
+    fn presentation_stats_percentiles_describe_the_window() {
+        let mut stats = PresentationStats::default();
+        for millis in 1..=100 {
+            stats.record(Duration::from_millis(millis), Duration::from_millis(10));
+        }
+        let summary = stats.summary();
+        assert_eq!(field(&summary, "samples"), "100");
+        assert_eq!(field(&summary, "avg_us"), "50500");
+        assert_eq!(field(&summary, "p50_us"), "50000");
+        assert_eq!(field(&summary, "p95_us"), "95000");
+        assert_eq!(field(&summary, "p99_us"), "99000");
+        assert_eq!(field(&summary, "max_us"), "100000");
+        // Over 1.5x the 10 ms budget: 16..=100 ms is 85 intervals.
+        assert_eq!(field(&summary, "missed"), "85");
+    }
+}

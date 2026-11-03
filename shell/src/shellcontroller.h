@@ -278,6 +278,10 @@ private slots:
     void onKeyEvent(quint32 key, bool pressed, quint32 modifiers);
     void onDockConfigured(int width, int height, quint32 serial);
     void onDockStateChanged(const QVariantList &entries);
+    // P1: the compositor's effective chrome material changed. The Dock and
+    // menu bar choose the translucent glass complement or the milky fallback
+    // from this; QML never re-derives the degrade policy.
+    void onMaterialStateChanged(quint32 tier, bool blurActive, quint32 fallback);
     void onDockEntryActivated(const QVariant &entry);
     // The Dock reports the acted-on entry's tile rect in output coordinates
     // (T-14.7l); remember it bounded so the next launch can hand it to the

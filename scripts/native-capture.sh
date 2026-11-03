@@ -90,7 +90,7 @@ journal_for() {
         >"$dir/journal-$tag.txt" 2>&1 || true
     # A short, greppable index. Keep the broad journal for context.
     grep -aEi \
-        'DRM bring-up|Multi-GPU|render stats|frame timing|client authenticated|start failed|panic|segfault|abort|QML|TypeError|failed|refused|token|session lock|suspend|resume' \
+        'DRM bring-up|Multi-GPU|render stats|frame timing|presentation stats|material stats|degrade stats|client authenticated|start failed|panic|segfault|abort|QML|TypeError|failed|refused|token|session lock|suspend|resume' \
         "$dir/journal-$tag.txt" 2>/dev/null \
         | tail -n 400 >"$dir/key-$tag.txt" || true
 }

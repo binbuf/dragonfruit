@@ -96,6 +96,76 @@ impl MaterialPath {
     }
 }
 
+/// Why the sampled material is not active on an output. This is the
+/// **effective** state reported to the shell (P1), not the requested tier:
+/// `NoSampledBlur` means the backend is on the GPU path but has no sampled
+/// blur implementation (the current DRM rail), while `Software` is the
+/// headless/no-readback path. `None` means the sampled pass is active, or the
+/// tier intentionally turned it off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaterialFallback {
+    None,
+    NoSampledBlur,
+    Software,
+    MultiGpu,
+}
+
+impl MaterialFallback {
+    /// The stable name used by logs and tests.
+    pub const fn name(self) -> &'static str {
+        match self {
+            MaterialFallback::None => "none",
+            MaterialFallback::NoSampledBlur => "no-sampled-blur",
+            MaterialFallback::Software => "software",
+            MaterialFallback::MultiGpu => "multi-gpu",
+        }
+    }
+
+    /// The wire value for `df_output.material_state.fallback`.
+    pub const fn wire(self) -> u32 {
+        match self {
+            MaterialFallback::None => 0,
+            MaterialFallback::NoSampledBlur => 1,
+            MaterialFallback::Software => 2,
+            MaterialFallback::MultiGpu => 3,
+        }
+    }
+}
+
+/// The material the compositor actually applies to chrome on an output
+/// (P1). The shell uses this to choose the translucent glass complement or
+/// the milky fallback; it must not re-derive the degrade policy in QML.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectiveMaterial {
+    pub tier: DegradeTier,
+    /// True only when the sampled backdrop pass actually runs.
+    pub blur_active: bool,
+    /// Why the sampled pass is absent, when it is absent for a non-tier
+    /// reason.
+    pub fallback: MaterialFallback,
+}
+
+impl EffectiveMaterial {
+    /// Resolve the effective material from the renderer path, whether the
+    /// backend implements the sampled pass, and the selected degrade tier.
+    pub fn resolve(path: MaterialPath, blur_supported: bool, selected: DegradeTier) -> Self {
+        let tier = path.material_tier(selected);
+        let blur_active = path.gpu_blur() && blur_supported && tier.blur_enabled();
+        let fallback = if !path.gpu_blur() {
+            MaterialFallback::Software
+        } else if !blur_supported && tier.blur_enabled() {
+            MaterialFallback::NoSampledBlur
+        } else {
+            MaterialFallback::None
+        };
+        Self {
+            tier,
+            blur_active,
+            fallback,
+        }
+    }
+}
+
 /// Ordered material-quality tiers, best first. The ladder is the T-04 track's
 /// "smaller radius, then blur off" rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -475,6 +545,47 @@ mod tests {
         }
         assert_eq!(MaterialPath::Gpu.name(), "gpu");
         assert_eq!(MaterialPath::Software.name(), "software");
+    }
+
+    #[test]
+    fn effective_material_reports_the_applied_pass_not_the_requested_tier() {
+        // Nested/GPU with a sampled pass: the tier is the selected one and
+        // blur is active whenever the tier keeps it on.
+        let full = EffectiveMaterial::resolve(MaterialPath::Gpu, true, DegradeTier::Full);
+        assert_eq!(full.tier, DegradeTier::Full);
+        assert!(full.blur_active);
+        assert_eq!(full.fallback, MaterialFallback::None);
+
+        let reduced = EffectiveMaterial::resolve(MaterialPath::Gpu, true, DegradeTier::Reduced);
+        assert_eq!(reduced.tier, DegradeTier::Reduced);
+        assert!(reduced.blur_active);
+        assert_eq!(reduced.fallback, MaterialFallback::None);
+
+        // Minimal is an intentional blur-off, not a fallback failure.
+        let minimal = EffectiveMaterial::resolve(MaterialPath::Gpu, true, DegradeTier::Minimal);
+        assert_eq!(minimal.tier, DegradeTier::Minimal);
+        assert!(!minimal.blur_active);
+        assert_eq!(minimal.fallback, MaterialFallback::None);
+
+        // The current DRM rail: GPU renderer, no sampled pass. This is the
+        // state that must make the shell choose the milky fallback.
+        let drm = EffectiveMaterial::resolve(MaterialPath::Gpu, false, DegradeTier::Full);
+        assert_eq!(drm.tier, DegradeTier::Full);
+        assert!(!drm.blur_active);
+        assert_eq!(drm.fallback, MaterialFallback::NoSampledBlur);
+
+        // Headless/software always resolves to Minimal and reports the
+        // software path even if the controller selected Full.
+        let software = EffectiveMaterial::resolve(MaterialPath::Software, false, DegradeTier::Full);
+        assert_eq!(software.tier, DegradeTier::Minimal);
+        assert!(!software.blur_active);
+        assert_eq!(software.fallback, MaterialFallback::Software);
+
+        assert_eq!(MaterialFallback::None.wire(), 0);
+        assert_eq!(MaterialFallback::NoSampledBlur.wire(), 1);
+        assert_eq!(MaterialFallback::Software.wire(), 2);
+        assert_eq!(MaterialFallback::MultiGpu.wire(), 3);
+        assert_eq!(MaterialFallback::NoSampledBlur.name(), "no-sampled-blur");
     }
 
     #[test]

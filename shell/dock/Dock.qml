@@ -31,6 +31,15 @@ Rectangle {
     focus: keyboardFocused
 
     // --- Injected data --------------------------------------------------
+    // Effective chrome material from the compositor (P1). `materialBlurActive`
+    // is true only when the sampled backdrop pass actually runs; when false
+    // the plate switches to the milky fallback instead of relying on a
+    // compositor blur that is not there. `materialTier` is 0=full, 1=reduced,
+    // 2=minimal; `materialFallback` is 0=none, 1=no-sampled-blur, 2=software,
+    // 3=multi-gpu. QML must not re-derive the degrade policy.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
     // [{ id, appId, name, kind, running, active, minimized, launch, attention,
     //    badge, pinned, trashFull }]
     property var entries: []
@@ -3692,8 +3701,16 @@ Rectangle {
             width: dockPlate.plateW
             height: dockPlate.plateH
             radius: dockPlate.plateRadius
-            color: Theme.color.dockFill
-            opacity: Theme.controls.dock.plate.fillOpacity
+            // With the sampled pass active, the fill is the translucent
+            // complement that lets the compositor's frost/refraction through.
+            // Without it (DRM today, software/headless, or a tier that turned
+            // blur off), the plate becomes a near-opaque milky surface with
+            // the same rim, gloss, border, and shadow geometry.
+            color: dock.materialBlurActive ? Theme.color.dockFill
+                                           : Theme.color.dockFallbackFill
+            opacity: dock.materialBlurActive
+                     ? Theme.controls.dock.plate.fillOpacity
+                     : Theme.material.dockFallbackOpacity
         }
 
         // The interior-edge gloss: a soft band just inside the rim that fades

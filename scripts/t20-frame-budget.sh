@@ -104,7 +104,7 @@ mkdir -p "$(dirname "$OUT")"
     echo "# GPU baseline run (GLES 3.x / Vulkan, dedicated) is OPEN — the T-16"
     echo "# hardware rail owns the baseline machine."
     echo "#"
-    grep -E "Multi-GPU: SCENE|material stats \((exit|SIGUSR1)\)|degrade stats \((exit|SIGUSR1)\)|render stats \((exit|SIGUSR1)\)|latency stats \((exit|SIGUSR1)\)|frame timing \((exit|SIGUSR1)\)" "$log" \
+    grep -E "Multi-GPU: SCENE|material stats \((exit|SIGUSR1)\)|degrade stats \((exit|SIGUSR1)\)|render stats \((exit|SIGUSR1)\)|latency stats \((exit|SIGUSR1)\)|frame timing \((exit|SIGUSR1)\)|presentation stats \((exit|SIGUSR1)\)" "$log" \
         | sed 's/^dragonfruit-compositor: //' || true
 } >"$OUT"
 

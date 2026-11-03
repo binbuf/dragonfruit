@@ -80,6 +80,21 @@ make native-debug
 # or: make native-rebuild NATIVE_ARGS=--debug
 ```
 
+The native two-pass material is the default: the scene-texture/Kawase path and
+the liquid-glass compose both run unless explicitly disabled. For a diagnostic
+run or a quick rollback, opt out with:
+
+```bash
+DRAGONFRUIT_DRM_MATERIAL=0 make native-rebuild   # feather stack + milky plate
+DRAGONFRUIT_DRM_GLASS=0 make native-rebuild      # Kawase blur, no glass compose
+```
+
+Only explicit values are persisted into the compositor unit environment by
+`native-session.sh`; unset keeps the compositor defaults. If a material frame
+fails, the compositor disables the sampled path and reports the fallback state
+to the shell. Check `material stats`: `blur_passes>0`, `blur_draws>0`,
+`blur_panels>=1`; `path=gpu` alone is not proof.
+
 The 4K damage/material path is CPU-bound enough that an unoptimized build can
 cap animated clients well below the panel's refresh rate. A profile switch
 needs `native-rebuild`/`native-reboot`; `native-restart` refuses a mismatch

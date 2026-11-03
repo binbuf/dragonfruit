@@ -3196,7 +3196,7 @@ void ShellProtocol::onManagerOutput(void *data, df_toplevel_manager *, df_output
     static const df_output_listener listener = {
         onOutputName,       onOutputGeometry, onOutputMode,        onOutputScale,
         onOutputTransform,  onOutputVrr,      onOutputNightLight,  onOutputReservedZone,
-        onOutputDone,       onOutputRemoved,  onOutputBrightness,
+        onOutputDone,       onOutputRemoved,  onOutputBrightness,  onOutputMaterialState,
     };
     df_output_add_listener(id, &listener, self);
     // Remember the output so a display policy can reach it (T-09.5). A policy
@@ -3539,6 +3539,19 @@ void ShellProtocol::onOutputReservedZone(void *, df_output *, uint32_t edge, uin
 {
     fprintf(stderr, "dragonfruit-shell: output reserved zone edge=%u thickness=%u\n", edge,
             thickness);
+}
+void ShellProtocol::onOutputMaterialState(void *data, df_output *, uint32_t tier,
+                                          uint32_t blurActive, uint32_t fallback)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    const bool active = blurActive != 0;
+    if (self->m_materialTier == tier && self->m_materialBlurActive == active
+            && self->m_materialFallback == fallback)
+        return;
+    self->m_materialTier = tier;
+    self->m_materialBlurActive = active;
+    self->m_materialFallback = fallback;
+    emit self->materialStateChanged(tier, active, fallback);
 }
 void ShellProtocol::onOutputDone(void *, df_output *) {}
 void ShellProtocol::onOutputRemoved(void *data, df_output *output)
