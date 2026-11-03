@@ -63,9 +63,12 @@ the material through its `MaterialRole`.
 - Captures are tolerance-based (`scripts/t20-material-compare.py`,
   ADR [0184](../adr/0184-material-capture-determinism-and-software-path.md));
   the design-system gallery goldens stay exact.
-- Scene-texture routing under `renderer_multi` is the pure
-  `multi_gpu::plan_scene_routes` model; the DRM two-pass composition that
-  consumes it is a follow-up (the rail still renders the feather stack).
+- The DRM two-pass composition landed after T-20.4: the rail now renders the
+  offscreen scene texture, Kawase blur, and glass by default on single-GPU,
+  normal-transform outputs ([ADR 0189](../adr/0189-drm-sampled-material-default-and-fallbacks.md)).
+  `multi_gpu::plan_scene_routes` remains the routing plan; the copy route is
+  not executed, so multi-GPU/rotated outputs use the feather fallback. Native
+  hardware acceptance is still open (STATUS G-03/G-08).
 
 ## References
 

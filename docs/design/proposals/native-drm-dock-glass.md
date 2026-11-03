@@ -2,10 +2,18 @@
 
 | | |
 |---|---|
-| **Status** | proposal / draft |
+| **Status** | **superseded / implemented in part** (2026-11-03) |
 | **Area** | `compositor/src/backend/drm.rs`, `compositor/src/backend/nested.rs`, `compositor/src/window/{blur,degrade,backdrop}.rs`, `shell/dock/Dock.qml`, `scripts/native-session.sh` |
-| **Related** | T-20.1–T-20.4, ADR 0182, ADR 0184, ADR 0186, `docs/dock.md` |
+| **Related** | T-20.1–T-20.4, ADR 0182, ADR 0184, ADR 0186, ADR 0189, `docs/dock.md` |
 | **Hardware** | native DRM session (the current dogfooding rail) |
+
+> **Superseded.** P1 (effective material state + milky fallback) and P2
+> (DRM scene texture + Kawase blur + glass) are implemented and default on the
+> single-GPU, normal-transform boundary. The authoritative current record is
+> [`../architecture-audit-native-rendering.md`](../architecture-audit-native-rendering.md)
+> and [`../STATUS.md`](../STATUS.md); this proposal is kept as the historical
+> problem statement. Its P3/P4 quality-floor and runbook recommendations
+> remain relevant.
 
 > **Implementation update (2026-11-03).** P1 (effective material state +
 > milky fallback) is implemented. The P2A/P2B scene-texture + Kawase path and

@@ -4,6 +4,11 @@
 
 accepted
 
+> **Postscript (2026-11-03).** The DRM follow-up named in the Consequences
+> landed: the sampled scene/blur/glass path is default on single-GPU,
+> normal-transform outputs. See
+> [0189](0189-drm-sampled-material-default-and-fallbacks.md).
+
 ## Context
 
 [ADR 0182](0182-tahoe-liquid-glass-material-pass.md) moved the chrome material

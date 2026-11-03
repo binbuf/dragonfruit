@@ -1,5 +1,12 @@
 # T-17 — The premium experience gate: sign-off report
 
+> **Post-gate update (2026-11-03).** T-20 landed the sampled GPU material on
+> nested and (single-GPU, normal-transform) DRM, so the F3 "no GPU sampler"
+> waiver is narrowed to **native hardware acceptance**, not the sampler's
+> existence. The DRM full-loop and baseline-perf rows remain OPEN. See
+> [../design/STATUS.md](../design/STATUS.md) and
+> [../design/adr/0189-drm-sampled-material-default-and-fallbacks.md](../design/adr/0189-drm-sampled-material-default-and-fallbacks.md).
+
 This is the reviewed sign-off for the T-17 track
 ([design/tracks/17-premium-gate.md](../design/tracks/17-premium-gate.md)). It
 reproduces the track checklist with a verdict and an evidence link per item,

@@ -150,9 +150,10 @@ ladder.
 - Effects (blur, shadows, workspace scale/clip transforms) are compositor
   render passes over live surface buffers — never client re-renders, never
   screenshots, never recompositing by a third-party program.
-- Fullscreen surfaces take the direct-scanout path where possible;
-  `tearing-control` is honored for fullscreen games (see
-  [14-risks.md](14-risks.md)).
+- Fullscreen surfaces take the direct-scanout path where possible. The
+  `tearing-control` protocol is **not implemented yet**; the design target is
+  to honor it for fullscreen games (see [14-risks.md](14-risks.md) and
+  [STATUS.md](STATUS.md) G-13).
 - Damage tracking keeps the idle path cheap: no damage, no render, no client
   wakeups. Animations drive damage every frame while running. Compositor-drawn
   effects (titlebar, shadow, backdrop, wallpaper fill, menu) key their render
@@ -169,10 +170,13 @@ ladder.
   `DrmCompositor` does not send them itself, so this is what keeps Qt, GTK,
   Chromium, and Electron clients painting instead of stalling after their
   first buffer.
-- VRR/adaptive-sync is enabled per output where connector and mode support
-  it, and is a Displays-pane toggle (see [08-settings.md](08-settings.md)).
-- Night light (per-output gamma ramps) is compositor-owned, like everything
-  else about outputs (see [08-settings.md](08-settings.md)).
+- VRR/adaptive-sync and night light (per-output gamma ramps) are **design
+  targets, not shipped behavior**. The private output protocol carries
+  `set_vrr`/`set_night_light`, but the compositor currently accepts and
+  acknowledges them without applying anything, and the Displays pane exposes
+  neither (see [STATUS.md](STATUS.md) G-13). The intended owner remains the
+  compositor, like everything else about outputs
+  (see [08-settings.md](08-settings.md)).
 - Multi-GPU: render on the primary node, import GBM buffers across devices,
   and fall back automatically when a GPU disappears — device *loss* is part
   of the hotplug story, not just display hotplug (see
@@ -185,6 +189,16 @@ ladder.
   feather stack. The flat desktop (no material) runs on any renderer the
   compositor can start. The recommended baseline is repeated in
   [12-packaging.md](12-packaging.md) for the shipped session.
+- **Known presentation limits (2026-11).** The shell is a separate Qt Quick
+  process on the offscreen QPA; it reads each chrome surface back with
+  `QImage::grabWindow()`, copies it into a fresh `wl_shm` buffer, and does not
+  set a buffer scale or consume `wl_surface.frame` callbacks. This is on the
+  critical path for every Dock/menu/popover frame, and it upscales chrome on
+  fractional-scale outputs. The compositor's animation clock and degrade
+  budget are also fixed at 16 ms (60 Hz), with no per-output refresh deadline
+  or VRR awareness. Both are recorded as P0 gaps in [STATUS.md](STATUS.md)
+  (G-01/G-02) and are the next presentation work; they are not evidence that
+  the current material path is cheap enough on real hardware.
 - Performance budgets are targets, not hopes — see
   [ROADMAP.md](../ROADMAP.md).
 
@@ -239,7 +253,11 @@ template**: a read-only snapshot of `direct_scanouts`/`frames_rendered`/
 `frames_skipped_no_damage` that the DRM rail snapshots before/after a
 condition to prove `direct_scanouts` engages for an unobstructed fullscreen
 client and not otherwise (`scanout stats`, `query scanout`). See
-[ADR 0010](adr/0010-latency-and-scanout-instruments.md).
+[ADR 0010](adr/0010-latency-and-scanout-instruments.md). The DRM rail also
+records a per-output `presentation stats` line from the actual vblank interval
+(p50/p95/p99, `missed`, `refresh_hz`), so a 60 Hz animation on a 144 Hz panel
+can be judged against the real deadline instead of the CPU render duration
+(implementation note in the [native-rendering audit](architecture-audit-native-rendering.md#92-no-presentation-interval-or-dropped-frame-instrument-implemented)).
 
 #### Window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore; T-02.3 zoom/fullscreen; T-02.4a close; T-02.4b interrupt)
 
@@ -370,7 +388,10 @@ The GPU path landed in **T-20.1**
 renders the scene (wallpaper, desktop, windows, shadows, titlebars) into an
 output-sized offscreen **scene texture** once per frame, then composes the
 output from the chrome Wayland surfaces, one **sampled blur per panel**, and
-that scene texture (`compositor/src/backend/nested.rs`). Each panel's region is
+that scene texture (`compositor/src/backend/nested.rs`). The DRM backend uses
+the same two-stage path by default on its supported boundary — one GPU and a
+normal output transform ([ADR 0189](adr/0189-drm-sampled-material-default-and-fallbacks.md)).
+Each panel's region is
 downsampled through `BlurSpec.iterations` Kawase passes with a custom texture
 shader compiled once per renderer
 (`GlesRenderer::compile_custom_texture_shader`,
@@ -381,10 +402,12 @@ tokens; only the iteration count is derived. The blur samples the **live** scene
 texture inside the render pass — never a screenshot or screencopy. A
 `MaterialRole::Drawer` role covers the Applications drawer, whose card declares
 its live rect through the same `set_panel_rect` request, so the frosted card
-follows the card rather than the full-output overlay. The DRM and headless paths
-keep the deterministic feather stack (no GPU readback), and `Minimal` keeps blur
-off — the pre-GPU feather stack is what a backend without a scene texture draws
-at `Full`/`Reduced`.
+follows the card rather than the full-output overlay. The headless/software path
+always resolves to `Minimal` (deterministic feather stack, no GPU readback).
+A DRM output that is multi-GPU or rotated, a renderer that cannot build the
+sampled pass, or a material-frame failure keeps the feather stack; `Minimal`
+also keeps blur off. The pre-GPU feather stack is therefore the honest fallback,
+not the only DRM path.
 
 The Tahoe **liquid-glass pass** landed in **T-20.2**
 ([ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)) as a second custom
@@ -407,8 +430,9 @@ the **complement**: the menu bar already uses `material.chromeOpacity` in its
 fill (T-20.1), and the Applications card's fill uses
 `controls.appsDrawer.panelOpacity` (0.88) so the compositor material reads
 through it while the card stays a solid frosted surface on backends without
-the GPU scene-blur pass (the current DRM rail composites the token tint but
-not the Kawase/glass sample).
+the GPU scene-blur pass. On a DRM output outside the supported boundary
+(multi-GPU, rotated) the compositor draws the token tint/feather fallback and
+reports `blur_active=0`; QML then uses its milky complement.
 
 The chrome **rollout** landed in **T-20.3**
 ([ADR 0183](adr/0183-chrome-material-rollout.md)). Every chrome namespace
@@ -426,8 +450,9 @@ corner now follows the surface's own component radius
 notifications. Every popup-family QML fill now carries
 `material.popupOpacity` (retuned to 0.62 light / 0.70 dark) so the sampled
 backdrop and glass read through, while the rim/hairline stays opaque; the
-feather fallback (`Minimal`/DRM) uses the same token, so the approximation and
-the GPU path cannot drift.
+feather fallback (`Minimal`, unsupported DRM, or any backend without a scene
+texture) uses the same token, so the approximation and the GPU path cannot
+drift.
 
 `DegradeTier` owns the fallback: `Full` = blur + refraction + specular + tint;
 `Reduced` = blur + specular + tint with the edge lens dropped and the blur
@@ -439,16 +464,22 @@ asserted headless.
 **Multi-GPU, software fallback, and determinism (T-20.4, ADR 0184).** The
 material's scene texture is owned **per GPU** and is never sampled across
 devices. The pure `multi_gpu::scene_route` / `plan_scene_routes` model decides,
-per output, whether the blur composes locally (the output's GPU owns the
-texture) or the primary GPU's scene texture is copied onto it first (an output
-on another GPU, or a panel straddling outputs); the DRM rail prints one
-`Multi-GPU: SCENE output=… route=local|copy|software` marker per output. The
+per output, whether the blur would compose locally (the output's GPU owns the
+texture), would need the primary GPU's scene texture copied across, or must fall
+back to software; the DRM rail prints one
+`Multi-GPU: SCENE output=… route=local|copy|software` marker per output.
+**The copy route is not executed yet.** On a multi-GPU seat the DRM rail
+disables the sampled material at startup and uses the feather stack, so the
+marker is a plan/diagnostic, not proof that cross-GPU composition ran
+([ADR 0189](adr/0189-drm-sampled-material-default-and-fallbacks.md)). The
 **software/headless** backend sets `MaterialPath::Software`, which collapses
 every selected tier to `Minimal` — the deterministic feather stack, no GPU
 readback — so headless output stays exact; `chrome_blur_panels` never runs
 there. The pass is instrumented in the `material stats` line (`path=`,
-`blur_passes`, `blur_panels`, `blur_downsample_max`, and `backdrop_skipped`,
-which must stay `0`), and the idle trace asserts the material counters stay
+`blur_passes`, `blur_panels`, `blur_draws`, `blur_downsample_max`, and
+`backdrop_skipped`, which must stay `0`); `blur_passes` means the panels were
+resolved, `blur_draws` means the elements were actually built and handed to the
+compositor. The idle trace asserts the material counters stay
 flat while the desktop is idle (ADR 0009). GPU-material captures are
 **tolerance artifacts**, not byte goldens: a re-run over the same static
 fixture backdrop is compared with `scripts/t20-material-compare.py` (mean
@@ -677,7 +708,7 @@ show the destination Space, is a later T-05 slice).
 
 ### Image wallpaper and the per-Space slide (T-05.4)
 
-Each Space's [`Wallpaper`](../compositor/src/workspace/mod.rs) may carry an
+Each Space's [`Wallpaper`](../../compositor/src/workspace/mod.rs) may carry an
 image `source` and a `fit` (`fill` cover, `fit` contain, `stretch`, `center`).
 `wallpaper::sample_wallpaper` is the pure source/fit mapping (image pixels to an
 output-local destination); `wallpaper::WallpaperCache` decodes a source **once**
@@ -862,12 +893,16 @@ complete the track:
   Space (see [03-workspaces.md](03-workspaces.md)). There is no separate
   "maximize" state.
 - **Focus.** Click-to-focus only; focus never follows pointer motion alone.
-  A Dock/launcher activation is an explicit click and focuses the first window
+  A click that activates a window also restacks it, so the window under the
+  pointer is the one that receives focus and is visibly frontmost. A
+  Dock/launcher activation is an explicit click and focuses the first window
   the launch produces, through the one activation path (the shell asks the
-  compositor; it does not set focus itself). Focus changes are broadcast over
-  the private protocol so the shell, Dock, and menu-broker track the active
-  application without polling (see [04-shell.md](04-shell.md),
-  [06-global-menu.md](06-global-menu.md)).
+  compositor; it does not set focus itself). Activation requested before a
+  window's first buffer is remembered and applied when the window maps, so a
+  launcher token is not lost between surface creation and the first commit.
+  Focus changes are broadcast over the private protocol so the shell, Dock, and
+  menu-broker track the active application without polling (see
+  [04-shell.md](04-shell.md), [06-global-menu.md](06-global-menu.md)).
 - **Placement.** New windows open near the center of the **focused output**
   — the display under the pointer, else the active window's output, else the
   primary — inside that output's usable area (minus its reserved zones, so
@@ -907,17 +942,21 @@ Standard protocols the compositor implements or consumes:
 - `xdg-decoration` for SSD negotiation (see
   [05-window-decorations.md](05-window-decorations.md))
 - Pointer constraints, relative pointer, `cursor-shape`, `idle-inhibit`
-- `wp-content-type-manager-v1` content-type hints, so fullscreen video and
-  conferencing clients can take efficient/scanout paths
+- `wp-content-type-manager-v1` content-type hints. The global is advertised,
+  but the compositor does not yet apply a content-type-specific scanout policy;
+  that tuning is still open (G-13).
 - `wlr-data-control`, so the shell's clipboard manager sees text, images, and
   files (see [ROADMAP.md](../ROADMAP.md))
 - `security-context`, so sandboxed (Flatpak) clients identify themselves
 - The Wayland color-management protocol (`xx-color-management-v1` while
-  staging) for per-output color and HDR — the basis of the Displays pane's
-  color controls (see [08-settings.md](08-settings.md))
+  staging) for per-output color and HDR is a **design target, not implemented**
+  ([STATUS.md](STATUS.md) G-13). The Displays pane currently exposes scale and
+  rotation only (see [08-settings.md](08-settings.md)).
 - `xdg-activation` (launch feedback / Dock bounce)
 - `ext-session-lock-v1` for fail-secure locking; `ext-idle-notify` for idle
-- `text-input` / input-method protocols for input methods
+- `text-input` / input-method protocols for input methods. The protocols are
+  advertised, but no first-party IME process ships yet; host IME integration is
+  still open ([STATUS.md](STATUS.md) G-20).
 - **Capture is portal-only.** Screenshots and screen sharing are exposed
   exclusively through our portal backend as PipeWire streams, per-window or
   per-monitor, each with explicit user consent (see

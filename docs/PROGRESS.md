@@ -27,7 +27,7 @@ _(177 earlier sections omitted)_
 - **T176c — T-19.1c Menu-bar icon migration to Phosphor**: **State: done.** Every menu-bar status mark now renders from Phosphor via; `shell/menubar/StatusGlyph.qml` — rewritten. A `glyphName` switch maps each
 - **T176d — T-19.1d Dock Files tile and first-party app icons**: **State: done.** Our two first-party apps now carry Phosphor-derived artwork:; `assets/icons/apps/org.dragonfruit.Files.svg` / `org.dragonfruit.Settings.svg`
 - **T177 — T-19.2 Applications drawer**: **State: done.** The shell's launcher landed: a full-output `apps-drawer` overlay; `shell/src/appsdrawer.{h,cpp}` (new) — the pure list model:
-- **T178 — T-19.3 Desktop items and mouse selection**: **State: continue.** The compositor desktop-layer + trust slice, the shared; `compositor/src/shell/layer.rs` — `LAYER_BACKGROUND` (0) / `LAYER_TOP` (2),
+- **T178 — T-19.3 Desktop items and mouse selection**: **State: done (systemd desktop-token provisioning follow-up).** The compositor desktop-layer + trust slice, the shared; `compositor/src/shell/layer.rs` — `LAYER_BACKGROUND` (0) / `LAYER_TOP` (2),
 - **T159 — T-03.2 DRM first bring-up**: **State: OPEN (hardware unavailable).** The never-executed DRM backend was run; `compositor/src/drm_bringup.rs` (new) — pure
 - **T160 — T-03.3 Hardware input validation**: **State: OPEN (hardware unavailable).** Real-device input validation needs the; `compositor/src/input_validation.rs` (new) — pure matrix. `InputClass` with
 - **T161 — T-03.4 DRM soak, teardown, runbook**: **State: OPEN (hardware unavailable).** The T-03 hardware rail's final unit:; `tools/dragonfruit-dev/src/soak.rs` — new `teardown_artifacts(socket)`
@@ -39,7 +39,7 @@ _(177 earlier sections omitted)_
 - **T157 — T-17.5b Leak and lock enforcement verification**: **State: done.** The premium gate's leak and lock contracts are re-verified on; vision read clean.
 - **T158 — T-17.6 Unfamiliar-user test and sign-off report**: **State: done (agent half; the human unfamiliar-user verdict is the batched; `docs/captures/t17-premium-gate.md` (new) — the sign-off report: the full
 - **T162 — T-16.4 Suspend/resume soak**: **State: done (automated half); the real-machine logind half is OPEN on the; `compositor/tests/suspend_resume_conformance.rs` — new
-- **T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass**: **State: done (nested proof); DRM keeps the deterministic feather stack.** The; `compositor/src/window/blur.rs` (new) — `BLUR_SHADER` (4-tap Kawase), the pure
+- **T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass**: **State: done (nested proof; DRM sampled path added after T-20.4 on the supported boundary).** The; `compositor/src/window/blur.rs` (new) — `BLUR_SHADER` (4-tap Kawase), the pure
 - **T180 — T-20.2 Tahoe liquid-glass: refraction, specular rim, adaptive tint**: **State: done.** The Tahoe signature landed on top of T-20.1's GPU blur as a; `compositor/src/window/blur.rs` — `GLASS_SHADER` (GLES2 custom texture
 - **T181 — T-20.3 Chrome material rollout**: **State: done.** The sampled blur + liquid-glass material now reaches every; `compositor/src/window/backdrop.rs` — `MaterialRole::corner_radius(namespace)`
 - **T182 — T-20.4 Multi-GPU composition, software fallback, golden determinism**: **State: done (agent half); recommended-GPU frame-budget run OPEN on the T-16; `compositor/src/multi_gpu.rs` — pure `SceneRoute`
@@ -2831,7 +2831,7 @@ What landed:
 - **`main.rs`** — loads and migrates on startup, runs from defaults on a
   malformed/unreadable file, and gained `--config-path`.
 - **`Cargo.toml`** — runtime dep `serde_json = "=1.0.151"`.
-- **ADR [0031](../design/adr/0031-settingsd-persistence-format-and-atomic-writes.md)**;
+- **ADR [0031](design/adr/0031-settingsd-persistence-format-and-atomic-writes.md)**;
   track doc 08 gained a persistence/atomic-writes/migrations section. The
   `043-…` task file's acceptance box is ticked.
 

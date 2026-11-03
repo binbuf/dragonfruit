@@ -8,9 +8,21 @@
 | **Evidence** | working tree at `6c1acd6`, the running native session, Smithay `=0.7.0` source, and the current generated tokens |
 | **Related** | `docs/design/advisor-briefing.md`, `docs/design/proposals/native-drm-dock-glass.md`, ADR 0182, ADR 0186 |
 
+> **Implementation status (2026-11-03).** P0.1 (windowed frame stats), P0.2
+> (presentation instrumentation), P1.1/P1.2 (effective material state + milky
+> fallback), P2A/P2B (DRM scene texture + Kawase blur), and P2C (glass compose)
+> are implemented and the DRM sampled path is default on single-GPU,
+> normal-transform outputs. **Still open:** P3 shell transport/HiDPI, P4
+> refresh-aware scheduling, P5 multi-GPU/rotated material, and P6 native
+> verification. The live-session numbers in §2/§3 are the pre-implementation
+> baseline; do not read them as current. See
+> [`STATUS.md`](STATUS.md) and
+> [ADR 0189](adr/0189-drm-sampled-material-default-and-fallbacks.md).
+
 This is the report requested before implementation. It does not change the
-renderer. It records what is actually running, corrects two premises in the
-briefing, and identifies the smallest defensible implementation sequence.
+renderer. It records what was actually running at the audit point, corrects
+two premises in the briefing, and identifies the smallest defensible
+implementation sequence.
 
 > **Implementation note (same change).** P0.1 and the DRM presentation-interval
 > half of P0.2 are implemented in `compositor/src/state.rs` and
@@ -75,7 +87,10 @@ Smithay 0.7 as written; section 7 explains the correction.
 
 ---
 
-## 2. What is actually running
+## 2. What was running at the audit point
+
+> Historical baseline (2026-11-02). The DRM material path and presentation
+> counters below were the pre-P2 state; see the status banner above.
 
 Captured from the live session on 2026-11-02:
 
@@ -171,8 +186,9 @@ desktop layer
 wallpaper
 ```
 
-There is no `chrome_blur_panels` call, no offscreen scene texture, no
-`BackdropBlurElement`, and no `GLASS_SHADER` in this path.
+At the audit point there was no `chrome_blur_panels` call, no offscreen scene
+texture, no `BackdropBlurElement`, and no `GLASS_SHADER` in this path. The P2
+implementation added them; this paragraph records the pre-P2 state.
 
 `DrmOutputElements` (`drm.rs:85-97`) has variants for `Pointer`, `Space`,
 `Chrome`, `Decoration`, `Appear`, and `Wallpaper`. It has no `Blur` or `Scene`
@@ -299,7 +315,7 @@ plugin or a second UI renderer before that measurement.
 
 ---
 
-## 6. Why `blur_passes=0`
+## 6. Why `blur_passes=0` at the audit point
 
 `chrome_blur_panels` is the only function that increments `blur_passes`
 (`render.rs:321-390`, `record_blur_pass` at `:388`). The DRM path never calls
@@ -576,7 +592,7 @@ stats produce a parseable line.
 intervals and misses; a 144 Hz animation reports ~6.94 ms and near-zero
 misses; an idle desktop adds no samples.
 
-### P1.1 — effective material state
+### P1.1 — effective material state (implemented)
 
 **Files:** `protocols/dragonfruit-shell.xml`, generated protocol bindings,
 `compositor/src/shell/mod.rs`, `compositor/src/render.rs`,
@@ -592,7 +608,7 @@ misses; an idle desktop adds no samples.
 **Acceptance:** a protocol conformance test observes one event per effective
 change; the shell exposes the state to QML; no event is emitted per frame.
 
-### P1.2 — milky fallback
+### P1.2 — milky fallback (implemented)
 
 **Files:** `design-system/tokens/tokens.json`, generated `Theme.qml` /
 `design_tokens.rs`, `shell/dock/Dock.qml`, `shell/tests/tst_dock.qml`.
@@ -645,7 +661,7 @@ the Dock; 4K release meets the configured deadline at 60 Hz and is measured at
 144 Hz; nested output unchanged; no per-frame texture allocation; no cursor
 regression.
 
-### P2C — glass details
+### P2C — glass details (implemented, default)
 
 - Reuse `GLASS_SHADER`, `GlassSpec`, and the generated tokens; no native-only
   aesthetic.
@@ -656,7 +672,7 @@ regression.
 themes; no duplicate shader business logic; the glass pass is measurable
 separately from the blur pass.
 
-### P3 — shell transport, only after measurement
+### P3 — shell transport/HiDPI (OPEN; the next P0 unit)
 
 - First fix HiDPI buffer scale and reduce copies (buffer pool, dirty-rect
   damage, avoid `grabWindow` full-window re-render).
@@ -668,7 +684,7 @@ separately from the blur pass.
 **Acceptance:** a before/after frame-time and copy-count report; no change to
 the private layer protocol; the shell remains independently restartable.
 
-### P4 — refresh-aware scheduling
+### P4 — refresh-aware scheduling (OPEN)
 
 - Replace the global 16 ms budget with a per-output refresh deadline.
 - Animation progress remains monotonic elapsed time; scheduling uses the
@@ -678,7 +694,7 @@ the private layer protocol; the shell remains independently restartable.
 **Acceptance:** 60/120/144/240 Hz table in section 12; p95/p99 and missed
 deadlines reported; mixed-refresh test; no idle damage when animations settle.
 
-### P5/P6 — multi-GPU and native verification
+### P5/P6 — multi-GPU and native verification (OPEN)
 
 - P5: local-only first, then same-GPU multi-output, then hotplug/mode changes,
   then explicit cross-GPU copy or a reported fallback. Never sample across
@@ -713,22 +729,29 @@ Averages alone are insufficient; report p50/p95/p99 and missed deadlines.
 
 ## 13. Decisions still needed
 
+> **Resolved:** 1 (milky neutral fallback + `material_state`), 2 (P2A/P2B
+> cheap DRM blur first), and 3 (glass port after the blur) are implemented.
+> **Still open:** the quality floor, the shell transport/HiDPI fix, and native
+> verification. See [`STATUS.md`](STATUS.md).
+
 1. **P1 fallback design:** milky neutral (recommended), wallpaper-tinted
-   sample, or a cheap static approximation? The advisor's near-opaque milky
-   surface is the safest and has no live-backdrop dependency.
+   sample, or a cheap static approximation? **Resolved:** milky neutral,
+   tokenized, driven by `df_output.material_state`.
 2. **Quality floor:** should persistent chrome stay at `Reduced` (blur on)
    while transient overlays may reach `Minimal`, or is `Minimal` acceptable for
    the Dock if the fallback is convincing? The advisor recommends a perceptual
-   floor, not a mandatory GPU-blur floor. This audit agrees.
+   floor, not a mandatory GPU-blur floor. This audit agrees. **Still open
+   (G-12).**
 3. **P2 scope:** ship the cheap DRM blur first and defer refraction (P2A/P2B),
-   or port the full glass shader at once? The audit recommends the former; the
-   API mismatch and 4K cost make the full shader a poor first target.
-4. **Shell transport:** fix HiDPI and copy count before P2, or after? The audit
-   recommends fixing HiDPI before judging P1/P2 visual quality, but not
-   rewriting the transport until P0.2 measures it.
+   or port the full glass shader at once? **Resolved:** P2A/P2B first, then
+   P2C glass; both are implemented.
+4. **Shell transport:** fix HiDPI and copy count before P2, or after? **Still
+   open (G-01).** The audit recommends fixing HiDPI before judging visual
+   quality, but not rewriting the transport until P0.2 measures it. The
+   measurement now exists; this is the next P0 unit.
 5. **Native verification:** trusted capture vs external photographs vs
-   diagnostics-only. This audit does not authorize a screenshot path; it
-   records that nested captures are not native proof.
+   diagnostics-only. **Still open (G-03).** This audit does not authorize a
+   screenshot path; it records that nested captures are not native proof.
 
 ---
 
@@ -746,6 +769,9 @@ wayland-info | grep -A10 "interface: 'wl_output'"
 ```
 
 ## Appendix B — code references
+
+> Line numbers are from the audit commit (`6c1acd6`); use the symbol names
+> when navigating the current tree.
 
 | Concern | Reference |
 |---|---|

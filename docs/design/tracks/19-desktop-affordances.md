@@ -157,10 +157,12 @@ drag-to-Trash, Reveal) — see the T-19.3 hand-off.
 
 Local captures only, and they never ship:
 
-- [macos/AppDrawer.md](../../reference/macos/AppDrawer.md) — the Applications
+- `docs/reference/macos/AppDrawer.md` — local-only reference capture (not
+  committed); the Applications
   grid: title, search, category pills, 7-column tiles, truncated labels, and the
   gradient category-icon language.
-- [macos/Desktop1.md](../../reference/macos/Desktop1.md) — desktop items,
+- `docs/reference/macos/Desktop1.md` — local-only reference capture (not
+  committed); desktop items,
   label under the icon, free grid placement.
 - [macos-ui-inventory.md](../../reference/macos-ui-inventory.md) — distilled
   summaries ("Applications grid (Launchpad)", "Desktop").

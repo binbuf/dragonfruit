@@ -11,11 +11,11 @@ environment boringly reliable:
 | Suspend/resume | logind `PrepareForSleep` hooks; render quiesce; resume re-init | Soak tests (see [ROADMAP.md](../ROADMAP.md)) |
 | Multiple displays, unusual DPI | Fractional scaling via `viewporter`/`fractional-scale`; per-display Spaces | Multi-monitor test machines |
 | Xwayland applications | Explicit compatibility phase; tracked app zoo | Compatibility phase |
-| Input methods | `text-input` / input-method protocols from the start | Early integration tests |
+| Input methods | `text-input` / input-method protocols advertised; no shipped IME process yet (G-20) | Host IME integration is still open |
 | Drag and drop, clipboard | Wayland DnD + data-control paths; files, images, text | Vertical slice |
 | Screen sharing | Portal + PipeWire stream path | Infrastructure phase |
 | Full-screen games | Direct scanout where possible; avoid compositor overhead | Performance phase |
-| Accessibility | Component-level AT-SPI verification (see [10-design-system.md](10-design-system.md)) | Per component |
+| Accessibility | Apps live on AT-SPI; shell chrome keeps per-component semantics but is not on the bus yet (G-19; see [10-design-system.md](10-design-system.md)) | Apps live; shell component tests |
 | Locking | Compositor-enforced fail-secure lock | Kill tests |
 | Applications bending protocol expectations | Robustness-first handling; never crash on malformed requests | Protocol fuzzing |
 
@@ -23,6 +23,29 @@ Smithay and wlroots remove a huge amount of work, but neither turns a
 compositor into a finished desktop. This is exactly why we reuse the entire
 Linux plumbing layer and spend the engineering budget on the pieces users
 actually perceive as *our* desktop.
+
+## Current engineering risks (2026-11)
+
+These are the risks the audit found in the actual tree, ordered by leverage.
+The gap register in [STATUS.md](STATUS.md) carries the evidence and proposed
+units.
+
+| Risk | Why it is material | Current mitigation |
+|---|---|---|
+| **Shell chrome transport** — offscreen QML → `grabWindow()` → `wl_shm`, no buffer scale or frame callback | Every Dock/menu/popover frame pays a full readback + copy; chrome is soft on fractional-scale outputs; this is the biggest threat to the "premium" claim | P0 unit: physical-scale rendering, buffer pool, frame callbacks, no full-window re-render |
+| **Fixed 60 Hz scheduling** — animation clock, timer, and degrade budget all 16 ms | 120/144/240 Hz panels miss deadlines or degrade against the wrong budget; VRR is not represented | P0 unit: per-output refresh deadline and VRR-aware budget |
+| **No native visual evidence** — DRM capture explicitly fails | Nested captures cannot prove the material/HiDPI/cursor path users see | P0 unit: trusted KMS readback or external capture procedure |
+| **Files feature gap** — no tabs/New Window/copy/move/undo/progress/Open With/menu model | The Finder design promises operations the UI does not expose; users hit the gap immediately | P1 Files-completeness track |
+| **Compatibility closure** — DBusMenu clicks, hide verbs, XDnD, `_NET_FRAME_EXTENTS` | These are the classic "Linux desktop jank" moments; the architecture already has the models | P1 compatibility-closure track |
+| **Session power/idle** — About/power actions are stubs; no idle service or logind suspend backend | A desktop that cannot reliably lock/suspend/log out is not a daily driver | P1 session-completion track |
+| **Multi-GPU/rotated material** — sampled path disabled, feather fallback | Hybrid laptops and rotated displays lose the signature material | P2; never sample across GPUs |
+| **Persistent-chrome quality floor** — Dock/menu bar can reach `Minimal` | The most visible surfaces can lose the material under load | P2 policy + cheaper 4K blur |
+| **Packaging/hardware rail** — packages are placeholders; driver matrix/perf OPEN | No installable, verifiable product without them | Hardware rail + real packaging work |
+| **Shell accessibility/IME** — chrome not on AT-SPI; no shipped input-method process | Screen-reader and CJK users cannot rely on the desktop even though apps are accessible | P2: bridge shell chrome, integrate an existing IME |
+
+The documentation risk is now managed by the rule in
+[STATUS.md](STATUS.md): a topic doc describes the target, STATUS records the
+delta, and a claim without a test/capture/ADR is a documentation bug.
 
 ## Project risks
 

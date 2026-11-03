@@ -6,6 +6,29 @@ which is archived in [legacy/](tasks/legacy/) with a status table and a mapping 
 [../design/](design/) remain the source of truth for *what* to build; this
 index is the source of truth for *the order and the definition of done*.
 
+## Current status (2026-11-03)
+
+The T-01…T-20 track sequence is complete at the **agent-verified** level. The
+generated pipeline block at the bottom of this file tracks one-session task
+ids only; it is not a hardware or product sign-off. The accurate feature-level
+status, including partials and design-only claims, is
+[`design/STATUS.md`](design/STATUS.md).
+
+```text
+Tracks T-01…T-20      agent-done (T-10, T-12, T-14, T-16, T-17, T-20 partial)
+Hardware rail         OPEN: T159–T161, T163–T168 (DRM, input, driver matrix,
+                      packaging, packaged perf, DRM full loop, baseline perf)
+Human sign-off        OPEN: T-17 unfamiliar-user verdict, track-boundary reviews
+Post-gate work        shell transport/HiDPI, refresh-aware scheduling, native
+                      capture, Files completeness, global-menu completion,
+                      desktop-session provisioning, window-menu text
+```
+
+The short version: the compositor and material architecture are real and
+credible; the **shell presentation transport and fixed 60 Hz scheduling** are
+now the highest-leverage engineering gaps, not missing settings panes. See
+STATUS §5 and §9 for the ordered gap register.
+
 ## Why the plan was re-cut
 
 The legacy plan built a large amount of verified machinery — compositor core,
@@ -16,7 +39,7 @@ settings, apps). The result was "done" tickets that could not be experienced
 end to end, and a first honest product review that sat behind a twelve-ticket
 dependency fan-in.
 
-The remaining work is cut into **tracks** (the 19 named slices, kept as design
+The remaining work is cut into **tracks** (the named slices T-01…T-20, kept as design
 references) and executed as a strict, single-session **work-unit** sequence in
 [tasks/](tasks/). Every unit ends with its headless tests green and a capture
 artifact committed; human sign-off is batched at the track boundary. Each unit
@@ -58,7 +81,7 @@ at the track boundary rather than per unit.
 
 ## The tracks
 
-The 19 named slices are now **tracks**: design references, not single sessions.
+The named slices (T-01…T-20) are now **tracks**: design references, not single sessions.
 Every track is decomposed into one-session **work units** in [tasks/](tasks/),
 listed in strict execution order below. A unit ends with its headless test green
 in `make e2e`, `make check`/`make soak` unchanged, and a capture artifact
@@ -82,12 +105,42 @@ every task un-completable.
 | [T-11](design/tracks/11-control-center-notifications.md) | Control Center + notifications | 8 | panel, banners, OSD |
 | [T-12](design/tracks/12-session-lock-idle.md) | Session + lock + idle | 13 | real login session, lock, idle, suspend [hw], dev-session harness |
 | [T-13](design/tracks/13-portals-capture-clipboard.md) | Portals + capture + clipboard | 12 | Flatpak browser walkthrough |
-| [T-14](design/tracks/14-global-menu-app-index-compat.md) | Global menu + app index + compat | 22 | real menus, tray, DBusMenu, XDnD, zoo; Dock feel + app management |
+| [T-14](design/tracks/14-global-menu-app-index-compat.md) | Global menu + app index + compat | 37 | real menus, tray, DBusMenu projection, XDnD model, zoo; Dock feel + app management |
 | [T-15](design/tracks/15-system-services-breadth.md) | System services + Settings Waves 2–3 | 31 | Bluetooth, storage, printers, users, … |
 | [T-16](design/tracks/16-platform-polish-packaging.md) | Platform polish + packaging | 15 | multi-monitor, scaling, soak, a11y, i18n, packages [hw] |
-| [T-17](design/tracks/17-premium-gate.md) | The premium experience gate | 9 | the full loop on nested + DRM, at the visual floor |
+| [T-17](design/tracks/17-premium-gate.md) | The premium experience gate | 7 | the full loop on nested + DRM, at the visual floor |
 | [T-18](design/tracks/18-wallpaper-content-provider.md) | Wallpaper content provider | 4 | shipped original default; Featured fills from Wikimedia when the pane is open; offline keeps the shipped default |
-| [T-19](design/tracks/19-desktop-affordances.md) | Desktop affordances — icon system, Apps drawer, desktop items | 6 | Phosphor icon language, the Applications overlay, desktop files with mouse multi-select |
+| [T-19](design/tracks/19-desktop-affordances.md) | Desktop affordances — icon system, Apps drawer, desktop items | 6 | Tabler line + Phosphor fill icon language, the Applications overlay, desktop files with mouse multi-select |
+| [T-20](design/tracks/20-tahoe-liquid-glass.md) | Tahoe liquid-glass material | 4 | sampled backdrop blur, glass rim/tint, all chrome roles, DRM two-pass on the supported boundary |
+
+### Track completion at a glance
+
+`A` = agent-verified at the task bar · `H` = hardware/seat verification ·
+`P` = product/human sign-off · `—` = not applicable/complete. The detailed
+evidence is in [`design/STATUS.md`](design/STATUS.md).
+
+| Track | A | H | P | Remaining |
+|---|---|---|---|---|
+| T-01 window controls | done | — | batched | window-menu text (G-06) |
+| T-02 lifecycle motion | done | — | batched | — |
+| T-03 real session | partial | **OPEN** | batched | DRM bring-up/input/soak (T159–T161) |
+| T-04 materials | done | — | batched | superseded in part by T-20 |
+| T-05 Mission Control live | done | — | batched | paging/neighbour reveal (G-15) |
+| T-06 app switcher | done | — | batched | — |
+| T-07 menu bar live | done | — | batched | real-daemon half manual |
+| T-08 settingsd | done | — | batched | — |
+| T-09 Settings Wave 1 | done | — | batched | Displays breadth (G-13) |
+| T-10 Files MVP | partial | — | batched | Files completeness (G-04/G-14) |
+| T-11 Control Center | done | — | batched | some links/actions |
+| T-12 session/lock/idle | partial | **OPEN** | batched | idle service/logind suspend (G-10) |
+| T-13 portals/capture | partial | — | batched | live PipeWire producer; DRM capture (G-03) |
+| T-14 menu/app-index/compat | partial | — | batched | DBusMenu/XDnD (G-05/G-07) |
+| T-15 services breadth | done | — | batched | real-daemon/VM half manual |
+| T-16 platform polish | partial | **OPEN** | batched | driver matrix/packaging/perf (G-11) |
+| T-17 premium gate | partial | **OPEN** | **OPEN** | DRM loop, baseline perf, human verdict |
+| T-18 wallpaper provider | done | — | batched | — |
+| T-19 desktop affordances | done | — | batched | desktop session token (G-09) |
+| T-20 liquid glass | partial | **OPEN** | batched | native acceptance/multi-GPU/floor (G-03/G-08/G-12) |
 
 ## Work units (strict order)
 
@@ -414,8 +467,8 @@ just the forward group with
 > existing task files stay valid. `symphony` executes in roadmap order, so these
 > run here. Design:
 > [19-desktop-affordances.md](design/tracks/19-desktop-affordances.md)
-> · references [macos/AppDrawer.md](reference/macos/AppDrawer.md) and
-> [macos/Desktop1.md](reference/macos/Desktop1.md).
+> · references `docs/reference/macos/AppDrawer.md` and
+> `docs/reference/macos/Desktop1.md` (local-only captures, not committed).
 
 - [x] T176a — T-19.1a Vendor Phosphor, QML resource plumbing, glyph primitive → [tasks/176a-t-19.1a-phosphor-vendor-and-icon-primitive.md](tasks/176a-t-19.1a-phosphor-vendor-and-icon-primitive.md)
 - [x] T176b — T-19.1b System Settings category style → [tasks/176b-t-19.1b-system-settings-category-style.md](tasks/176b-t-19.1b-system-settings-category-style.md)
@@ -570,7 +623,7 @@ The new slices build on this; they do not rebuild it.
 - **Private shell protocols** — `df_core` trust/token handshake, chrome
   surfaces + reserved zones, window/workspace/output control
   (`docs/tasks/legacy/07-private-shell-protocols.md`).
-- **Design system** — tokens + all 20 components + gallery goldens
+- **Design system** — tokens + the component library + gallery goldens
   (`docs/tasks/legacy/08-design-system.md`).
 - **Menu bar** — render/interaction core, overlay dropdown, hotplug re-anchor,
   fixed system + application menus (`docs/tasks/legacy/09-menu-bar.md`).
@@ -585,20 +638,61 @@ The new slices build on this; they do not rebuild it.
 - **Dev workflow** — `make dev`, `make e2e`, `make soak`, nested/headless
   sessions, conformance suites (`docs/tasks/legacy/01-repo-scaffolding-ci-licensing.md`).
 
-Known foundation gaps are absorbed by new slices: DRM bring-up and perf (T-03),
-image wallpaper and live transforms (T-04/T-05), XDnD (T-14), per-output
-chrome sizing (T-16).
+Known foundation gaps and their outcome: DRM bring-up/perf is T-03 (hardware
+half OPEN); image wallpaper/live transforms landed in T-04/T-05; XDnD landed
+as a model + codec but its X11 runtime half is still open (G-07); per-output
+chrome sizing landed in T-16. The shell transport/HiDPI and refresh-aware
+scheduling were not foundation gaps in the original plan; they are now the
+top post-gate engineering work (G-01/G-02).
 
-## Explicitly deferred (post-premium-gate backlog)
+## Post-gate backlog and engineering gaps
 
-Named so they cannot silently creep into the slices:
+Named so they cannot silently creep into the slices. The feature-level status
+and evidence are in [`design/STATUS.md`](design/STATUS.md); this is the
+ordering view.
 
-- Desktop icons (legacy T-19) — **now scheduled** as track T-19 / T178.
+### Presentation (P0 — next)
+
+- **Shell transport + HiDPI.** Offscreen QML → `grabWindow()` → fresh
+  `wl_shm` buffer, no buffer scale, no frame callbacks. Fix before judging
+  sharpness or frame pacing. STATUS G-01.
+- **Refresh-aware scheduling.** Per-output deadline, animation clock and
+  degrade budget use it, VRR state included. STATUS G-02.
+- **Native visual verification.** DRM capture/readback so the material, HiDPI,
+  and cursor path can be signed off on real hardware. STATUS G-03.
+
+### Product closure (P1)
+
+- **Files completeness.** Tabs/New Window, copy/move/paste, undo, progress/
+  conflicts, Open With, Files menu publication, watcher wiring. STATUS G-04.
+- **Global-menu completion.** DBusMenu shell consumption/click routing,
+  hide/hide-others/show-all, tray live icon signals. STATUS G-05.
+- **Session completion.** Desktop-process unit/token, production idle service,
+  logind suspend backend, power/About actions. STATUS G-09/G-10.
+- **Window-menu text.** A readable compositor menu or a trusted shell menu
+  surface. STATUS G-06.
+
+### Breadth / hardening (P2)
+
+- Multi-GPU and rotated-output sampled material; persistent-chrome quality
+  floor. STATUS G-08/G-12.
+- XDnD runtime half and `_NET_FRAME_EXTENTS`. STATUS G-07/G-16.
+- Packaging (Fedora/Debian), driver matrix, packaged perf, DRM full loop,
+  baseline perf. STATUS G-11.
+- VRR/night light/color management/tearing-control if the Displays design is
+  kept; otherwise remove them from the shipped claims. STATUS G-13.
+- Shell AT-SPI export and a shipped input-method/IME path. STATUS G-19/G-20.
 - Search/Spotlight-equivalent pane and app-index search.
 - Internet Accounts (GOA).
 - NVIDIA-specific validation and HDR/color-management staging.
 - Printer/scanner breadth beyond the MVP pane.
+- Live PipeWire screencast producer (the stills fallback remains).
 - Screen Time / AI features (not planned).
+
+Desktop icons (legacy T-19) are **done** as track T-19/T178; the remaining
+session-provisioning half is G-09. The T-20 sampled material is **done** on the
+supported DRM boundary; the remaining multi-GPU/rotation/native-acceptance
+halves are G-08/G-03.
 
 ## Performance budgets (apply to every slice)
 

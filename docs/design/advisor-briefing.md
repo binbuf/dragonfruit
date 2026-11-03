@@ -1,5 +1,16 @@
 # Dragonfruit — advisor briefing
 
+> **Historical document (2026-11-02).** This was the context pack for the
+> native-material architecture review. Its central gap — "DRM still renders
+> the feather stack" — is **closed**: the DRM sampled scene-texture/blur/glass
+> path is implemented and default on the single-GPU, normal-transform boundary
+> ([ADR 0189](adr/0189-drm-sampled-material-default-and-fallbacks.md),
+> [`architecture-audit-native-rendering.md`](architecture-audit-native-rendering.md)).
+> Multi-GPU/rotation, native capture, the persistent-chrome quality floor, and
+> the shell transport are still open. Read
+> [`STATUS.md`](STATUS.md) for the current state; where this document conflicts
+> with STATUS or the audit, STATUS/audit win.
+
 **Purpose.** This is the context pack for an advisor who has not seen the
 repository. It covers the technology stack, the desktop-environment
 architecture, the Dock and compositor decisions, the design-token system, the
@@ -185,7 +196,7 @@ suffix.
 | Backend | Renderer | Material path |
 |---|---|---|
 | Nested (Wayland window) | `GlowRenderer` (GLES via glow) | **Two-pass GPU material implemented** |
-| DRM/KMS | `UdevRenderer` = `MultiRenderer<GbmGlesBackend<GlesRenderer>, …>` | **Feather stack only; two-pass is the open follow-up** |
+| DRM/KMS | `UdevRenderer` = `MultiRenderer<GbmGlesBackend<GlesRenderer>, …>` | **Two-pass GPU material implemented and default on single-GPU, normal-transform outputs; multi-GPU/rotation fall back to feather** ([ADR 0189](adr/0189-drm-sampled-material-default-and-fallbacks.md)) |
 | Headless | software | `MaterialPath::Software` → deterministic `Minimal` |
 
 ### 3.4 Material/degrade instrumentation
@@ -457,10 +468,16 @@ Minimized window → optional per-window row on the right
   (< 0.75 budget); forceable for tests/captures.
 - `DRAGONFRUIT_FRAME_BUDGET_US` can override the budget for acceptance runs.
 
-### 7.4 The current native gap (important)
+### 7.4 The native gap (historical — closed by T-20/P2)
 
-The native session uses the **DRM backend**, and the DRM rail still renders
-the **feather stack**, not the two-pass blur/glass:
+> **Status update (2026-11-03).** The gap described in this section is closed
+> on the supported boundary. DRM now renders the offscreen scene texture,
+> Kawase blur, and glass compose by default; multi-GPU/rotation fall back to
+> feather. The bullets below are the pre-implementation evidence and are kept
+> only as history. See [ADR 0189](adr/0189-drm-sampled-material-default-and-fallbacks.md).
+
+The native session uses the **DRM backend**, and at the time of this briefing
+the DRM rail rendered the **feather stack**, not the two-pass blur/glass:
 
 - `compositor/src/backend/nested.rs` has the two-pass path;
 - `compositor/src/backend/drm.rs` still calls
@@ -492,12 +509,13 @@ floor, P4 profile guardrails.
   (mean ≤ 8/255, worst pixel ≤ 64/255), not byte goldens. Headless stays exact.
 - The scene texture is owned per GPU; multi-GPU routing plans local/copy/
   software; the material never samples across GPUs.
-- `DrmCompositor` currently has no two-pass branch; adding `Blur`/`Scene`
-  element variants and a `BlurRenderer` impl for `UdevRenderer` is the main
-  implementation unknown.
-- DRM screenshot/capture is not implemented yet; native visual verification is
-  limited to diagnostics and nested captures.
-- The per-frame blur texture allocation is a known frame-budget follow-up.
+- The DRM two-pass branch exists (`DrmOutputElements::{Scene,Blur}`, a
+  renderer-agnostic `BlurRenderer`, and the `UdevRenderer` path); the remaining
+  material limits are multi-GPU/rotation, panel-region-only rendering, and
+  native acceptance.
+- DRM screenshot/capture is still not implemented; native visual verification
+  is limited to diagnostics and nested captures (G-03).
+- The per-frame blur texture allocation remains a frame-budget follow-up.
 
 ---
 
@@ -520,7 +538,9 @@ floor, P4 profile guardrails.
   native capture service for units/journals/DRM/render stats; premium-gate
   report with some hardware rows still OPEN.
 - **Known open verification rows:** DRM full loop, baseline Intel/AMD frame
-  budget, human unfamiliar-user sign-off, true GPU blur/refraction on DRM.
+  budget, human unfamiliar-user sign-off, and native (DRM) pixel capture. The
+  GPU blur/refraction path now runs on DRM on the supported boundary; native
+  visual acceptance is still open (G-03).
 
 ---
 
@@ -544,10 +564,11 @@ floor, P4 profile guardrails.
    during a sweep; the compositor frosts exactly the declared plate.
 8. **Two-pass GPU material is the intended glass.** Scene texture → per-panel
    Kawase blur → liquid-glass shader (refraction/specular/tint) → chrome
-   surfaces. Nested has it; DRM still uses the feather fallback.
+   surfaces. Nested has it; DRM has it on single-GPU, normal-transform outputs,
+   with feather fallback elsewhere ([ADR 0189](adr/0189-drm-sampled-material-default-and-fallbacks.md)).
 9. **Degrade honestly.** Full → Reduced → Minimal, with a software/headless
    `Minimal` path; persistent chrome should not silently lose its material
-   under load (current gap).
+   under load. The quality floor is still not implemented (G-12).
 10. **Original assets and interaction-model emulation.** No Apple bitmaps;
     Tahoe-era language, own tokens, Inter, Tabler/Phosphor, original icons.
 11. **Nested-first development; native session for real hardware.** Release is
@@ -559,10 +580,17 @@ floor, P4 profile guardrails.
 
 ## 10. Decisions where advice is useful
 
+> **Resolved since the briefing:** P1 (milky fallback + effective material
+> state) and P2 (DRM scene texture/blur/glass) are implemented. The remaining
+> questions are P3 quality floor, P4 refresh-aware scheduling, P5 multi-GPU
+> material, P6 native verification, and the shell transport/HiDPI fix. See
+> [`STATUS.md`](STATUS.md) for the current sequence.
+
 1. **Priority:** should the next unit be P1 (QML milky fallback) to make the
    current native Dock look intentional, or P2 (DRM two-pass glass) to fix the
    architecture? P1 is days; P2 is the durable fix and has renderer/compositor
-   risk.
+   risk. **Resolved:** both landed; the next priority is the shell transport
+   and refresh scheduling (STATUS G-01/G-02).
 2. **Persistent-chrome quality floor:** should the Dock/menu bar be allowed to
    fall to `Minimal` under frame pressure, or should they stay at `Reduced`
    (blur on) while transient overlays degrade further?
@@ -606,7 +634,7 @@ docs/design/adr/0186-dock-reference-retune-profile-fit-and-states.md
 docs/design/proposals/native-drm-dock-glass.md
 
 compositor/src/backend/nested.rs      # two-pass blur/glass reference
-compositor/src/backend/drm.rs         # feather fallback; missing two-pass
+compositor/src/backend/drm.rs         # two-pass blur/glass on single-GPU/normal; feather fallback
 compositor/src/render.rs              # chrome_blur_panels / backdrop elements
 compositor/src/window/blur.rs         # BLUR_SHADER / GLASS_SHADER / elements
 compositor/src/window/degrade.rs      # Full/Reduced/Minimal + budget controller
@@ -635,10 +663,8 @@ magnification, window chooser, folder stacks, Trash, drag/drop, keyboard, and
 tooltips. The design system is token-generated into both QML and Rust, and the
 intended glass is a two-pass GPU pipeline: scene texture → Kawase blur →
 liquid-glass shader (refraction, specular, adaptive tint), with Full/Reduced/
-Minimal degrade tiers. The nested backend implements it; the native DRM backend
-still uses the old feather fallback. The currently running native session
-predates the new release default and is still debug at 4K, so it degrades to
-Reduced/Minimal. The Dock QML is current; the premium look is missing because
-the native material path is not implemented and the fallback QML plate is not
-tuned for no-blur. The main decision is whether to ship a QML milky fallback
-now, port the DRM two-pass glass next, or do both in sequence.
+Minimal degrade tiers. Both nested and DRM implement it; DRM is single-GPU and
+normal-transform only, with an explicit feather fallback. The remaining
+presentation work is the shell transport/HiDPI fix, refresh-aware scheduling,
+native capture, multi-GPU/rotation, and the persistent-chrome quality floor.
+See [`STATUS.md`](STATUS.md) for the current sequence.

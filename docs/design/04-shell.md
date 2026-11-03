@@ -33,6 +33,16 @@ Dock, Control Center quick-settings sheets, Spotlight, About This System):
 [macos-ui-inventory.md](../reference/macos-ui-inventory.md) — distilled from
 local-only macOS screenshots that never ship.
 
+**Known presentation limits (2026-11).** The shell forces
+`QT_QPA_PLATFORM=offscreen` and commits each chrome surface as a
+`QImage` readback: `grabWindow()` renders the QML scene, the image is copied,
+and `commitTo()` allocates a fresh `wl_shm` buffer. It does not set
+`wl_surface.set_buffer_scale` and does not consume `wl_surface.frame`
+callbacks. That keeps the shell independent of the Qt Wayland platform plugin,
+but it is expensive per frame and soft at fractional scale. The transport and
+HiDPI fix is P0 in [STATUS.md](STATUS.md) (G-01); it must land before judging
+shell sharpness or frame pacing on real hardware.
+
 **Chrome materials (T-20.3).** Every one of these surfaces is
 [a compositor-material surface](../design/02-compositor.md#backdrop-blur-pass-t-042),
 not a flat rectangle: the compositor frosts each panel with its `MaterialRole`
@@ -70,9 +80,9 @@ The top menu bar hosts, from left to right:
 The system menu and application menu are **shell-owned chrome**, not part of
 the application's exported model: an app that exports nothing still gets a
 complete menu bar, and an app that exports menus gets them *after* the fixed
-two. The menu-broker is expected to take over synthesizing the application
-menu from app metadata (T-22) so the items can reflect per-app state, while
-the system menu stays with the session.
+two. The menu-broker synthesizes the fixed application menu with live
+enable/disable state (T-14.2a); the system menu stays with the session. Actual
+Hide/Hide Others/Show All execution is still a stub (G-05).
 
 The dropdown rows follow the design-system
 [menu layout language](10-design-system.md#menu-layout-language): the shared
@@ -86,14 +96,16 @@ menu, submenu, Dock menu, tray menu, and top-bar dropdown.
 first-party Settings app through the same `.desktop` launch path as the Dock
 (the installed `org.dragonfruit.Settings.desktop`); if Settings is already
 running its window is focused instead of a second launch. Lock Screen routes to
-the same `ext-session-lock-v1` path as the Cmd+Ctrl+Q shortcut. About This
-System awaits the General > About pane (T-15.10); Sleep / Restart / Shut Down /
-Log Out await the real-session logind work (T-12.6/T-16.4); App Store ships
-disabled (no equivalent). The system menu also carries the real-session
-**"Quit to \<previous desktop\>"** row (T-12.6b), shown only when the session
+the same `ext-session-lock-v1` path as the Cmd+Ctrl+Q shortcut. The
+**"Quit to \<previous desktop\>"** row (T-12.6b) is shown only when the session
 was started by the dev harness (`DRAGONFRUIT_DEV_RETURN`); it runs the
 harness's return and logs out. The row's presence and label are unit-tested in
-`shell/tests/tst_dockcore.cpp` via `ShellMenus::systemMenu`. Launched apps
+`shell/tests/tst_dockcore.cpp` via `ShellMenus::systemMenu`.
+
+**Still stubs (2026-11):** About This System only logs (the General > About
+pane exists but is not opened), Sleep / Restart / Shut Down / Log Out only log
+because there is no logind action backend yet, and App Store ships disabled (no
+equivalent). These are tracked in [STATUS.md](STATUS.md) G-10. Launched apps
 inherit the session environment with the shell's own
 `QT_QPA_PLATFORM=offscreen` replaced by the session's Wayland platform, so a Qt
 client maps on the real session platform.
@@ -130,10 +142,11 @@ Minimized window
 
 Also included: magnification, auto-hide, bounce feedback (launch attention),
 running indicators, drag rearrangement, and contextual menus. The Dock's
-right end hosts **Trash**: a Files-backed location whose badge watches the
-same GVfs `trash://` mount Files does — one source of truth that also
-catches deletions made by other applications (see
-[09-files.md](09-files.md)).
+right end hosts **Trash**: a Files-backed location whose badge reads the same
+`files-core` freedesktop Trash store Files writes — one source of truth that
+also catches deletions made by other applications. The shipping store is the
+`FreedesktopTrash` fallback (GIO/GVfs is not linked); it is the same on-disk
+store GVfs uses (see [09-files.md](09-files.md)).
 
 ### Dock activation and launch
 
@@ -747,14 +760,20 @@ The desktop background is **compositor-drawn**: each Space's wallpaper is
 part of the workspace scene and slides with it during switches (see
 [03-workspaces.md](03-workspaces.md)). The shell draws chrome only.
 
-Desktop icons are a later work item and belong to **Files** — the macOS
-model, where the file manager owns the desktop — rendered through a
-compositor desktop-layer surface. The MVP ships plain wallpaper. The Desktop
-Reveal hot corner works regardless: it moves windows aside to expose the
-background (see [09-files.md](09-files.md)). Desktop Reveal shares the one
-overview pipeline and scene transform: the live surfaces slide out of their
-nearest screen edge (reduced motion fades them in place), and `query reveal`
-exposes the progress headlessly (see [02-compositor.md](02-compositor.md)).
+Desktop icons belong to **Files** — the macOS model, where the file manager
+owns the desktop — rendered through a compositor desktop-layer surface. The
+T-19.3 implementation ships `dragonfruit-files --desktop`, the `background`
+layer between wallpaper and windows, icon view, click/Cmd/Shift multi-select,
+rubber-band selection, open, and a background menu (see
+[09-files.md](09-files.md#desktop-icons-owned-by-files)). The remaining gap is
+session provisioning: the dev tool writes the desktop token, but the systemd
+session plan/units do not yet start the desktop process
+([STATUS.md](STATUS.md) G-09). The Desktop Reveal hot corner works regardless:
+it moves windows aside to expose the background and its icons. Desktop Reveal
+shares the one overview pipeline and scene transform: the live surfaces slide
+out of their nearest screen edge (reduced motion fades them in place), and
+`query reveal` exposes the progress headlessly (see
+[02-compositor.md](02-compositor.md)).
 
 ## Screenshot and screen recording
 
@@ -854,12 +873,20 @@ Wi-Fi (state + network, `Wi-Fi Settings…` link), Sound (volume slider + mute,
 through the T-07 bridge host), and Display (the brightness slider, written to
 settingsd `display.brightness` and forwarded to the compositor as
 `df_output.set_brightness`). Escape and click-away dismiss it. The Wi-Fi radio
-is read-only until T-15 adds the adapter write; Focus/DND, dark mode, and the
-a11y pass are T-11.3b. See [adr/0060](adr/0060-control-center-panel-and-brightness.md).
+is still read-only in the panel (`wifiWritable: false`); the NetworkManager
+adapter has a join path, but the Control Center radio toggle is not wired to it
+yet ([STATUS.md](STATUS.md) G-10). Focus/DND, dark mode, and the a11y pass are
+T-11.3b. See [adr/0060](adr/0060-control-center-panel-and-brightness.md).
 
-**T-11.3b status.** The panel now ships five tiles: Focus/DND and Dark Mode
-join Wi-Fi, Sound, and Display. The Focus switch is Do Not Disturb: on writes
-the notification service's `SetFocusMode("dnd")`, off writes `off`; the mode
+**T-11.3b status.** T-11.3b added Focus/DND and Dark Mode to the original
+Wi-Fi, Sound, and Display tiles. The T-15 breadth wave then grew the panel to
+the full 18-tile set (Wi-Fi, Bluetooth, Storage, Focus, Sound, Display, Dark
+Mode, Keyboard, Mission Control, Battery, Lock Screen, Menu Bar, Software
+Update, Users, Printers, Privacy, Accessibility, VPN) plus the clipboard
+section; the tile-fit and absence rules are in
+[07-system-integration.md](07-system-integration.md). The Focus switch is Do
+Not Disturb: on writes the notification service's `SetFocusMode("dnd")`, off
+writes `off`; the mode
 and suppression count come back through `FocusPolicy()` so the tile and the
 menu-bar crescent share one source of truth. The Dark Mode switch writes
 settingsd's `appearance.colorScheme` (`dark`/`light`, never `auto`) through the
@@ -867,8 +894,10 @@ same client the shell's `ThemeBinding` owns, so the whole design-system Theme
 flips live. The `shell/src/controlcenterpolicy.{h,cpp}` mapping is pure and
 unit-tested. Accessible roles are on every tile (grouping + switch/slider
 names, operable text links), and the panel keeps the `ON_DEMAND` + deferred
-dismissal rules of ADR 0060. The Focus and Appearance `… Settings…` links log
-only until T-16. See [adr/0061](adr/0061-control-center-toggles-and-a11y.md).
+dismissal rules of ADR 0060. The Focus and Appearance `… Settings…` links still
+only log — opening Settings directly on a pane is a follow-up
+([STATUS.md](STATUS.md) G-10). See
+[adr/0061](adr/0061-control-center-toggles-and-a11y.md).
 
 **T-11.4a status.** The OSD exists: a volume or brightness change (the Control
 Center sliders, the menu-bar volume menu, or mute) presents a brief centered

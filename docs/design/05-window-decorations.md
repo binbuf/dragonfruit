@@ -91,11 +91,13 @@ decoration via `xdg-decoration` (or never creates a decoration object, or an
 X11 client marked undecorated) is never given a compositor titlebar — the
 tier-3 dignity rule.
 
-Explicitly deferred: real materials (blur/shadow/rounded corners, T-04),
-drag-to-move and double-click zoom on the titlebar (T-01.3), the window
-menu's real labels/icons (T-01.4 lands the geometry and command routing as
+At T-01, explicitly deferred: real materials (blur/shadow/rounded corners,
+T-04), drag-to-move and double-click zoom on the titlebar (T-01.3), the window
+menu's real labels/icons (T-01.4 landed the geometry and command routing as
 flat token fills, the same placeholder stage as the T-01.1 glyphs), and the
-live color scheme (settings, T-08).
+live color scheme (settings, T-08). The shadow/rounding half of the material
+deferral landed in T-04; the menu labels did not (see the current status at the
+end of this document).
 
 T-01.2 adds the traffic-light interaction on top of the element: the
 compositor tracks which button cluster the pointer is over (glyph reveal),
@@ -144,8 +146,11 @@ highlight, Right/Left open/close the submenu, Enter/Space activates, and
 click-away or focus loss dismisses. While open the menu is modal to keyboard
 and pointer input. The four commands are proven for a Wayland and an X11
 window in `window_conformance` / `xwayland_conformance`. The visual pass is
-flat and label-less for now (no text renderer yet); T-04 draws the real
-labels and materials, and T-14 reuses the menu for decoration themes.
+still flat and label-less: the compositor has no text/icon renderer, so the
+menu draws token-colored rows without labels. T-04 did not add the promised
+labels, and T-14 reused the menu model rather than solving text rendering.
+This is a first-day usability gap, tracked in [STATUS.md](STATUS.md) G-06; do
+not describe the window menu as shipped until it is readable.
 
 T-01.5 pins down the tier policy and the X11 path:
 
@@ -169,8 +174,8 @@ T-01.5 pins down the tier policy and the X11 path:
   Tier-2 X11 window is configured one titlebar shorter than the output (its
   frame offset by the strip), verified against the real X server geometry in
   `xwayland_conformance::x11_decoration_tier_follows_motif_hints_and_configures_insets`.
-  `_NET_FRAME_EXTENTS` is not published yet; the report is documented as
-  deferred to the T-16 compatibility polish.
+  `_NET_FRAME_EXTENTS` is not published yet; it was deferred to the T-16
+  compatibility polish, which did not land it. It remains open (G-16).
 
 T-04.1a makes the decoration read as a real material: an SSD window now casts
 a soft drop shadow drawn by the compositor behind the whole decorated window
@@ -185,3 +190,10 @@ shadow layers round to `component.window.radius + blur * spread`, matching
 `Shadow.qml` (see [ADR 0012](adr/0012-rounded-corner-mask.md)). The titlebar
 chrome fill is still opaque; translucency and the real backdrop blur are the
 following T-04 material tasks, on the same element and the same geometry.
+
+**Current status (2026-11).** T-04.1a/1b landed the shadow and rounded-corner
+geometry; T-20's sampled material is a chrome-panel pass and deliberately does
+not turn the SSD titlebar into glass, so the titlebar fill remains the
+token-opaque surface described above. `_NET_FRAME_EXTENTS` is still not
+published to X11 clients ([STATUS.md](STATUS.md) G-16). The label-less window
+menu is the main decoration gap (G-06).
