@@ -172,6 +172,34 @@ Item {
             compare(bar.appMenuAt(2), null);
         }
 
+        function test_menu_bar_uses_a_milky_fallback_without_sampled_blur() {
+            // P1: the DRM rail reports blurActive=false. The bar must switch
+            // from the translucent chrome fill to the near-opaque milky
+            // fallback while keeping the same chrome geometry.
+            Theme.dark = false;
+            var bar = make(menuBarComponent, {
+                width: 600,
+                materialBlurActive: false
+            });
+            var expected = Qt.rgba(Theme.color.chromeFallbackFill.r,
+                                   Theme.color.chromeFallbackFill.g,
+                                   Theme.color.chromeFallbackFill.b,
+                                   Theme.material.chromeFallbackOpacity);
+            fuzzyCompare(bar.color.a, expected.a, 0.001);
+            fuzzyCompare(bar.color.r, expected.r, 0.001);
+            fuzzyCompare(bar.color.g, expected.g, 0.001);
+            fuzzyCompare(bar.color.b, expected.b, 0.001);
+            verify(bar.color.a >= 0.8, "the fallback must read as a material");
+
+            var glass = make(menuBarComponent, {
+                width: 600,
+                materialBlurActive: true
+            });
+            fuzzyCompare(glass.color.a, Theme.material.chromeOpacity, 0.001);
+            verify(glass.color.a < bar.color.a,
+                   "the sampled-glass complement stays more translucent");
+        }
+
         function test_app_menu_renders_after_fixed_menus() {
             var fixed = fixedMenus();
             var bar = make(menuBarComponent, {

@@ -7,6 +7,14 @@
 | **Related** | T-20.1–T-20.4, ADR 0182, ADR 0184, ADR 0186, `docs/dock.md` |
 | **Hardware** | native DRM session (the current dogfooding rail) |
 
+> **Implementation update (2026-11-03).** P1 (effective material state +
+> milky fallback) is implemented. The P2A/P2B scene-texture + Kawase path and
+> the P2C glass compose are implemented and are the default;
+> `DRAGONFRUIT_DRM_MATERIAL=0` and `DRAGONFRUIT_DRM_GLASS=0` are opt-outs. It
+> is single-GPU and normal-transform only, and falls back to the feather stack
+> if a material frame fails. Native hardware acceptance is still required. See
+> [`../architecture-audit-native-rendering.md`](../architecture-audit-native-rendering.md).
+
 ## 1. Summary
 
 The native session **is** running the QML Dock and the latest Dock geometry

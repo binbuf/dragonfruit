@@ -456,6 +456,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     }
     m_item->setParentItem(m_window->contentItem());
     m_item->setProperty("showDate", true);
+    // P1: apply the compositor's effective material before the first commit.
+    // The default is translucent glass; the first `material_state` event
+    // corrects it (DRM reports blurActive=false).
+    m_item->setProperty("materialBlurActive", m_protocol->materialBlurActive());
+    m_item->setProperty("materialTier", static_cast<int>(m_protocol->materialTier()));
+    m_item->setProperty("materialFallback", static_cast<int>(m_protocol->materialFallback()));
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
@@ -473,6 +479,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onMenuAfterRendering);
 
     connect(m_protocol, &ShellProtocol::configured, this, &ShellController::onConfigured);
+    connect(m_protocol, &ShellProtocol::materialStateChanged, this,
+            &ShellController::onMaterialStateChanged);
     connect(m_protocol, &ShellProtocol::focusedAppChanged, this,
             &ShellController::onFocusedAppChanged);
     connect(m_protocol, &ShellProtocol::appAccelerator, this,
@@ -637,6 +645,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_dockItem->setParentItem(m_dockWindow->contentItem());
+    // P1: the same effective material state as the menu bar, applied before
+    // the Dock's first commit so the fallback never flashes the wrong plate.
+    m_dockItem->setProperty("materialBlurActive", m_protocol->materialBlurActive());
+    m_dockItem->setProperty("materialTier", static_cast<int>(m_protocol->materialTier()));
+    m_dockItem->setProperty("materialFallback",
+                            static_cast<int>(m_protocol->materialFallback()));
     // The popover budget the Dock clamps into (T-14.7c); fixed for the
     // session so the offscreen window never grows on a popover open.
     m_dockItem->setProperty("popoverHeadroom", kDockPopoverHeadroom);
@@ -4669,6 +4683,26 @@ void ShellController::onInputAction(const QString &action, const QString &)
 }
 
 // --- Dock (T-10) ------------------------------------------------------------
+
+void ShellController::onMaterialStateChanged(quint32 tier, bool blurActive, quint32 fallback)
+{
+    const int tierValue = static_cast<int>(tier);
+    const int fallbackValue = static_cast<int>(fallback);
+    for (QQuickItem *item : {m_item, m_dockItem}) {
+        if (!item)
+            continue;
+        item->setProperty("materialBlurActive", blurActive);
+        item->setProperty("materialTier", tierValue);
+        item->setProperty("materialFallback", fallbackValue);
+    }
+    // The event arrives from the Wayland dispatch, outside the render path;
+    // repaint both persistent chrome surfaces so the new plate is committed
+    // immediately rather than waiting for an unrelated scene change.
+    if (m_dockItem)
+        scheduleDockRender();
+    if (m_item && m_window)
+        render();
+}
 
 void ShellController::onDockConfigured(int width, int height, quint32)
 {

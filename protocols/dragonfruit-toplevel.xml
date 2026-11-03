@@ -442,7 +442,7 @@
     </enum>
   </interface>
 
-  <interface name="df_output" version="2">
+  <interface name="df_output" version="3">
     <description summary="one display">
       Follows wlr-output-management: modes, scale, transform, plus VRR and
       night-light/color controls, brightness, and reserved zones. `set_*`
@@ -551,6 +551,18 @@
     <event name="brightness" since="2">
       <description summary="the output's current brightness level"/>
       <arg name="level" type="fixed"/>
+    </event>
+
+    <!-- Additive in v3 (P1): the effective chrome material, not the
+         requested degrade tier. `blur_active` is 1 only when the sampled
+         backdrop pass actually runs on this output. `fallback` is
+         0=none, 1=no-sampled-blur (GPU path without the pass),
+         2=software, 3=multi-gpu. Emitted on effective-state changes only. -->
+    <event name="material_state" since="3">
+      <description summary="the chrome material actually applied on this output"/>
+      <arg name="tier" type="uint" summary="0=full,1=reduced,2=minimal"/>
+      <arg name="blur_active" type="uint"/>
+      <arg name="fallback" type="uint"/>
     </event>
   </interface>
 

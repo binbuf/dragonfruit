@@ -59,6 +59,13 @@ Rectangle {
     // T-15.9b: `menu.showBackground`. When off the bar keeps its items and its
     // reserved zone but draws no chrome material, so the desktop shows through.
     property bool showBackground: true
+    // Effective chrome material from the compositor (P1). When the sampled
+    // backdrop pass is not actually running (the current DRM rail, headless,
+    // or a blur-off tier), the bar uses the near-opaque milky fallback rather
+    // than a translucent fill over an unfrosted wallpaper.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
     // The compositor reports when the shell/menu surface holds focus; when
     // it is lost the open menu dismisses (FR-3).
     property bool shellFocused: true
@@ -156,12 +163,16 @@ Rectangle {
     // T-20.1: the bar's fill is the translucent chrome material (the same
     // `material.chromeOpacity` the compositor reads), so its sampled backdrop
     // blur shows through; the items/text stay fully opaque because the alpha
-    // is in the fill, not on the item.
+    // is in the fill, not on the item. When the sampled pass is absent (P1),
+    // the milky fallback keeps the same chrome geometry and text contrast.
     readonly property color chromeFill: Theme.color.chrome
-    color: menuBar.showBackground
-        ? Qt.rgba(menuBar.chromeFill.r, menuBar.chromeFill.g,
-                  menuBar.chromeFill.b, Theme.material.chromeOpacity)
-        : "transparent"
+    readonly property color chromeFallbackFill: Theme.color.chromeFallbackFill
+    color: !menuBar.showBackground ? "transparent"
+        : menuBar.materialBlurActive
+          ? Qt.rgba(menuBar.chromeFill.r, menuBar.chromeFill.g,
+                    menuBar.chromeFill.b, Theme.material.chromeOpacity)
+          : Qt.rgba(menuBar.chromeFallbackFill.r, menuBar.chromeFallbackFill.g,
+                    menuBar.chromeFallbackFill.b, Theme.material.chromeFallbackOpacity)
 
     function openMenu(index) {
         if (index < 0 || index >= menuRepeater.count || index === openMenuIndex)

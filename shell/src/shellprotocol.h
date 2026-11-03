@@ -441,6 +441,16 @@ public:
     // Invalid until the first output is announced.
     QRect primaryOutputGeometry() const;
 
+    // The effective chrome material reported by the compositor (P1):
+    // `df_output.material_state`. `blurActive` is true only when the sampled
+    // backdrop pass actually runs; `tier` is 0=full, 1=reduced, 2=minimal;
+    // `fallback` is 0=none, 1=no-sampled-blur, 2=software, 3=multi-gpu. QML
+    // uses this to choose the translucent glass complement or the milky
+    // fallback; it must not re-derive the degrade policy.
+    uint32_t materialTier() const { return m_materialTier; }
+    bool materialBlurActive() const { return m_materialBlurActive; }
+    uint32_t materialFallback() const { return m_materialFallback; }
+
     // Mirror the menu-broker's focus-scoped accelerator table for `appId`
     // (T-14.2b, `df_toplevel_manager.set_app_accelerators`, additive in v7).
     // `accelerators` is the wire table: one `action<TAB>chord` per line, empty
@@ -528,6 +538,9 @@ signals:
     void popupConfigured(int width, int height, uint32_t serial);
     void dockConfigured(int width, int height, uint32_t serial);
     void dockPopupConfigured(int width, int height, uint32_t serial);
+    // The compositor's effective chrome material changed (P1): tier, whether
+    // the sampled blur actually runs, and the fallback reason.
+    void materialStateChanged(uint32_t tier, bool blurActive, uint32_t fallback);
     void overviewConfigured(int width, int height, uint32_t serial);
     void switcherConfigured(int width, int height, uint32_t serial);
     void bannerConfigured(int width, int height, uint32_t serial);
@@ -903,6 +916,8 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     static void onOutputBrightness(void *data, df_output *output, wl_fixed_t level);
     static void onOutputReservedZone(void *data, df_output *output, uint32_t edge,
                                      uint32_t thickness);
+    static void onOutputMaterialState(void *data, df_output *output, uint32_t tier,
+                                      uint32_t blurActive, uint32_t fallback);
     static void onOutputDone(void *data, df_output *output);
     static void onOutputRemoved(void *data, df_output *output);
     static void onWorkspaceName(void *data, df_workspace *workspace, const char *name);
@@ -1155,5 +1170,11 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // The last brightness forwarded (T-11.3a), re-sent with the scale/transform
     // once outputs are announced.
     double m_displayBrightness = 1.0;
+    // Effective chrome material from `df_output.material_state` (P1). The
+    // default is the safe translucent-glass assumption for an older
+    // compositor; the first event corrects it (DRM reports blurActive=false).
+    uint32_t m_materialTier = 0;
+    bool m_materialBlurActive = true;
+    uint32_t m_materialFallback = 0;
     QSet<wl_buffer *> m_buffers;
 };

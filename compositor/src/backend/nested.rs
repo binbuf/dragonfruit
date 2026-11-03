@@ -34,14 +34,14 @@ use smithay::wayland::presentation::Refresh;
 
 use crate::backend::{add_output, add_seat_capabilities};
 use crate::session::{run_session, BackendHooks};
-use crate::window::BlurRenderer;
+use crate::window::TextureRenderer;
 use crate::{render, LOCKSTEP_VERSION};
 
 // Custom elements for the nested output: shell chrome (menu bar, overlays)
 // and the compositor-drawn SSD titlebars (T-01.1). One enum so both kinds
 // can composite above the window space in a single render pass.
 render_elements! {
-    pub NestedOutputElements<R> where R: ImportAll + ImportMem + ImportMemWl + BlurRenderer;
+    pub NestedOutputElements<R> where R: ImportAll + ImportMem + ImportMemWl + TextureRenderer;
     Chrome=WaylandSurfaceRenderElement<R>,
     Decoration=SolidColorRenderElement,
     // A window mid-appear: scaled about its target and translated from the
@@ -59,7 +59,7 @@ render_elements! {
 // (`Magnified`). One enum so the live frame and the offscreen capture render
 // the same list.
 render_elements! {
-    pub NestedFrameElements<R> where R: ImportAll + ImportMem + ImportMemWl + BlurRenderer;
+    pub NestedFrameElements<R> where R: ImportAll + ImportMem + ImportMemWl + TextureRenderer;
     Plain=NestedOutputElements<R>,
     Magnified=RelocateRenderElement<RescaleRenderElement<NestedOutputElements<R>>>,
 }
@@ -128,6 +128,11 @@ pub fn run(socket_name: &str) -> Result<(), String> {
         socket_name,
         BackendHooks {
             init: Box::new(move |state| {
+                // The nested GlowRenderer implements the two-pass scene
+                // texture + Kawase/glass path, so the effective material can
+                // report blur as active. The DRM rail leaves this false until
+                // P2 lands there.
+                state.material_blur_supported = true;
                 let window_size = backend.window_size();
                 // T-16.3b: the nested output's scale. Fractional values let a
                 // live session exercise chrome sizing and the per-surface
@@ -467,6 +472,17 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     scale,
                     &mut data.material_textures,
                 )?);
+                // The blur elements exist and are in the draw list; this is
+                // the counter to trust over `blur_passes` (which only says the
+                // panels resolved).
+                let downsample_max = blur_panels
+                    .iter()
+                    .map(|panel| panel.spec.downsample())
+                    .max()
+                    .unwrap_or(0);
+                state
+                    .stats
+                    .record_blur_draw(downsample_max, blur_panels.len() as u64);
                 // The scene composites below the blur as one texture. Its
                 // corner radius is zero, so it covers the whole output.
                 custom_elements.push(NestedOutputElements::Blur(
@@ -610,15 +626,22 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
 /// Render the scene `elements` into an output-sized offscreen texture once per
 /// frame (T-20.1). This is the texture the chrome backdrop blur samples; it
 /// holds the live wallpaper/desktop/window/shadow pixels, never a screenshot.
-fn render_scene_offscreen(
-    renderer: &mut GlowRenderer,
+pub(crate) fn render_scene_offscreen<R, E>(
+    renderer: &mut R,
     state: &crate::state::DfState,
     output: &smithay::output::Output,
     scale: smithay::utils::Scale<f64>,
-    elements: &[NestedOutputElements<GlowRenderer>],
+    elements: &[E],
     cache: &mut Option<GlesTexture>,
-) -> Result<GlesTexture, String> {
-    use smithay::backend::renderer::{Bind, Offscreen};
+) -> Result<GlesTexture, String>
+where
+    R: Renderer
+        + smithay::backend::renderer::Bind<GlesTexture>
+        + smithay::backend::renderer::Offscreen<GlesTexture>,
+    R::TextureId: Texture,
+    R::Error: std::fmt::Debug,
+    E: smithay::backend::renderer::element::RenderElement<R>,
+{
     use smithay::utils::Transform;
 
     let size = output
@@ -698,16 +721,21 @@ fn build_blur_elements(
 /// Downsample `src_region` of `scene` through a small Kawase chain, returning
 /// the blurred texture (T-20.1). Each pass halves the resolution and samples
 /// the previous texture with the custom program when available.
-fn blur_panel_texture(
-    renderer: &mut GlowRenderer,
+pub(crate) fn blur_panel_texture<R>(
+    renderer: &mut R,
     program: Option<&GlesTexProgram>,
     scene: &GlesTexture,
     src_region: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
     spec: &crate::window::BlurSpec,
     slot: &mut Vec<GlesTexture>,
-) -> Result<GlesTexture, String> {
+) -> Result<GlesTexture, String>
+where
+    R: TextureRenderer
+        + smithay::backend::renderer::Bind<GlesTexture>
+        + smithay::backend::renderer::Offscreen<GlesTexture>,
+    R::Error: std::fmt::Debug,
+{
     use smithay::backend::renderer::gles::Uniform;
-    use smithay::backend::renderer::{Bind, Offscreen};
     use smithay::utils::{Physical, Transform};
 
     let mut current: GlesTexture = scene.clone();
@@ -753,21 +781,16 @@ fn blur_panel_texture(
                 ),
                 Uniform::new(crate::window::BLUR_RADIUS_UNIFORM, 1.0f32),
             ];
-            let gles_frame: &mut smithay::backend::renderer::gles::GlesFrame<'_, '_> =
-                std::borrow::BorrowMut::borrow_mut(&mut frame);
-            gles_frame
-                .render_texture_from_to(
-                    &current,
-                    current_src,
-                    dst_phys,
-                    &[dst_phys],
-                    &[],
-                    Transform::Normal,
-                    1.0,
-                    program,
-                    &uniforms,
-                )
-                .map_err(|err| format!("blur draw failed: {err}"))?;
+            R::draw_texture_from_to(
+                &mut frame,
+                &current,
+                current_src,
+                dst_phys,
+                &[dst_phys],
+                program,
+                &uniforms,
+            )
+            .map_err(|err| format!("blur draw failed: {err:?}"))?;
         }
         current = texture;
         current_src = Rectangle::from_size(current.size().to_f64());
