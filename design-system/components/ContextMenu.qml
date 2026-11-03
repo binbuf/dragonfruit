@@ -314,10 +314,11 @@ Item {
 
         Repeater {
             model: root.entries
-            delegate: ContextRow {
+            delegate: MenuRow {
                 required property var modelData
+                objectName: "menuRow" + modelData.index
                 entry: modelData
-                highlightIndex: root.highlightedIndex
+                highlighted: root.highlightedIndex === modelData.index
                 onRowHovered: (index) => root.onMainRowHovered(index)
                 onRowActivated: (index) => root.activate(index)
             }
@@ -416,110 +417,6 @@ Item {
     Accessible.role: Accessible.PopupMenu
     Accessible.name: root.accessibleName
 
-    component ContextRow: Item {
-        id: row
-
-        required property var entry
-        property int highlightIndex: -1
-
-        signal rowHovered(int index)
-        signal rowActivated(int index)
-
-        property bool highlighted: row.highlightIndex === entry.index
-        readonly property bool isSeparator: entry.type === "separator"
-        readonly property bool hasSubmenu: entry.type === "submenu"
-
-        width: parent ? parent.width : implicitWidth
-        height: isSeparator ? Theme.controls.contextMenu.padding
-                            : Theme.controls.contextMenu.rowHeight
-        implicitWidth: Theme.controls.contextMenu.padding * 2
-                       + checkGlyph.width + Theme.primitive.spacing.sm
-                       + labelText.implicitWidth
-                       + (shortcutText.text.length > 0
-                          ? Theme.controls.contextMenu.shortcutGap + shortcutText.implicitWidth : 0)
-                       + (hasSubmenu ? Theme.primitive.spacing.sm + chevron.width : 0)
-        opacity: entry.enabled ? 1.0 : 0.4
-
-        Rectangle {
-            visible: row.isSeparator
-            anchors.verticalCenter: parent.verticalCenter
-            x: Theme.controls.contextMenu.padding
-            width: parent.width - 2 * Theme.controls.contextMenu.padding
-            height: Theme.controls.window.borderWidth
-            color: Theme.color.separator
-        }
-
-        Rectangle {
-            visible: !row.isSeparator
-            anchors.fill: parent
-            radius: Theme.controls.focusRing.radius
-            color: row.highlighted ? Theme.color.accent : "transparent"
-            antialiasing: true
-        }
-
-        Icon {
-            id: checkGlyph
-            visible: !row.isSeparator
-            name: "check"
-            size: Theme.controls.button.fontSize
-            color: row.highlighted ? Theme.color.accentContent : Theme.color.accent
-            opacity: row.entry.checked ? 1 : 0
-            x: Theme.controls.contextMenu.padding
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Text {
-            id: labelText
-            visible: !row.isSeparator
-            text: row.entry.label
-            color: row.highlighted ? Theme.color.accentContent : Theme.color.textPrimary
-            font.pixelSize: Theme.controls.button.fontSize
-            anchors.left: checkGlyph.right
-            anchors.leftMargin: Theme.primitive.spacing.sm
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Icon {
-            id: chevron
-            visible: !row.isSeparator && row.hasSubmenu
-            name: "chevron-right"
-            size: Theme.controls.button.fontSize
-            color: row.highlighted ? Theme.color.accentContent : Theme.color.textTertiary
-            anchors.right: parent.right
-            anchors.rightMargin: Theme.controls.contextMenu.padding
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Text {
-            id: shortcutText
-            visible: !row.isSeparator && text.length > 0
-            text: row.entry.shortcut
-            color: row.highlighted ? Theme.color.accentContent : Theme.color.textTertiary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            anchors.right: row.hasSubmenu ? chevron.left : parent.right
-            anchors.rightMargin: row.hasSubmenu ? Theme.primitive.spacing.sm
-                                                : Theme.controls.contextMenu.padding
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        HoverHandler {
-            onHoveredChanged: {
-                if (hovered && !row.isSeparator && row.entry.enabled)
-                    row.rowHovered(row.entry.index);
-            }
-        }
-
-        TapHandler {
-            onTapped: row.rowActivated(row.entry.index)
-        }
-
-        Accessible.role: Accessible.MenuItem
-        Accessible.name: row.entry.label
-        Accessible.checkable: row.entry.checkable
-        Accessible.checked: row.entry.checked
-        Accessible.onPressAction: row.rowActivated(row.entry.index)
-    }
-
     component SubmenuPanel: Item {
         id: subPanel
 
@@ -557,10 +454,10 @@ Item {
 
             Repeater {
                 model: subPanel.entriesList
-                delegate: ContextRow {
+                delegate: MenuRow {
                     required property var modelData
                     entry: modelData
-                    highlightIndex: subPanel.highlightIndex
+                    highlighted: subPanel.highlightIndex === modelData.index
                     onRowHovered: (index) => subPanel.rowHovered(index)
                     onRowActivated: (index) => subPanel.rowActivated(index)
                 }

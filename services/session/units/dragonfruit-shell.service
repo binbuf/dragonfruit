@@ -1,7 +1,13 @@
 [Unit]
 Description=Dragonfruit shell (menu bar, Dock, Control Center, OSD)
 Documentation=https://github.com/dragonfruit-desktop/dragonfruit
-After=dragonfruit-compositor.service
+# Start the settings owner first and wait for its bus name. The shell's first
+# wallpaper/dock/theme paint must read the persisted values, never a default
+# that a later GetAll would replace (the visible startup flash). `Wants` is
+# optional: a missing or failed settingsd never blocks the shell, which then
+# runs on the schema defaults.
+Wants=dragonfruit-settingsd.service
+After=dragonfruit-compositor.service dragonfruit-settingsd.service
 PartOf=dragonfruit-session.target
 
 [Service]

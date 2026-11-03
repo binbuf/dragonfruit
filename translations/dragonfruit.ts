@@ -994,10 +994,6 @@
         <source>Open in Files</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <source>Shift+Cmd+N</source>
-        <translation type="unfinished"></translation>
-    </message>
 </context>
 <context>
     <name>DisplaysPane</name>
@@ -1311,6 +1307,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>(active)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>, %1 items</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1598,19 +1598,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cmd+A</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Computer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Context menu</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Delete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1666,10 +1658,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Return</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Search</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1683,14 +1671,6 @@
     </message>
     <message>
         <source>Select All</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Shift+Cmd+Delete</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Shift+Cmd+N</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1710,6 +1690,10 @@
     <name>FilesWindow</name>
     <message>
         <source>Dragonfruit Files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No application can open %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

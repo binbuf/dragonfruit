@@ -46,6 +46,8 @@ TestCase {
     Component { id: sliderComponent; Slider { width: 200 } }
     Component { id: selectComponent; Select { width: 200 } }
     Component { id: contextMenuComponent; ContextMenu { } }
+    Component { id: menuRowComponent; MenuRow { width: 300 } }
+    Component { id: shortcutHintComponent; ShortcutHint { } }
     Component { id: searchFieldComponent; SearchField { } }
     Component { id: sourceListComponent; SourceList { } }
     Component { id: sidebarComponent; Sidebar { } }
@@ -58,6 +60,26 @@ TestCase {
     Component { id: tablerIconComponent; TablerIcon { name: "folder" } }
     Component { id: legacyIconComponent; Icon { name: "folder" } }
     Component { id: settingsCategoryComponent; SettingsCategoryIcon { } }
+    Component {
+        id: settingsCategorySlotComponent
+        Item {
+            width: 80
+            height: 80
+            // A 20px sidebar slot with the tile's 32px default `size`: the
+            // container must stay inside the slot rather than paint at its
+            // implicit size over the label and the neighbouring rows.
+            SettingsCategoryIcon {
+                x: 30
+                y: 30
+                width: 20
+                height: 20
+                size: 32
+                radius: 0
+                gradientStart: "#2266ff"
+                gradientEnd: "#2266ff"
+            }
+        }
+    }
     Component {
         id: scrollViewComponent
         ScrollView {
@@ -533,6 +555,102 @@ TestCase {
         waitForRendering(stage);
         verify(cm.contentRect.w > closedWidth,
                "an open submenu must extend the committed content rect");
+    }
+
+    // -- Shortcut hints and menu row anatomy --------------------------------
+
+    function test_shortcut_hint_parses_plus_chords_in_canonical_order() {
+        var hint = make(shortcutHintComponent, { shortcut: "Super+Shift+Z" });
+        compare(hint.keys.length, 3);
+        compare(hint.keys[0].id, "shift");
+        compare(hint.keys[1].id, "super");
+        compare(hint.keys[2].glyph, "Z");
+    }
+
+    function test_shortcut_hint_parses_glyph_clusters_and_key_aliases() {
+        var hint = make(shortcutHintComponent, { shortcut: "⇧⌘N" });
+        compare(hint.keys.length, 3);
+        compare(hint.keys[0].id, "shift");
+        compare(hint.keys[1].id, "super");
+        compare(hint.keys[2].glyph, "N");
+        hint.shortcut = "Ctrl+Delete";
+        compare(hint.keys.length, 2);
+        compare(hint.keys[0].glyph, "⌃");
+        compare(hint.keys[1].glyph, "⌫");
+    }
+
+    function test_shortcut_hint_keeps_plain_trailing_text() {
+        var hint = make(shortcutHintComponent, { shortcut: "Space 2" });
+        compare(hint.hasShortcut, false);
+        compare(hint.keys.length, 0);
+        hint.shortcut = "Home";
+        compare(hint.hasShortcut, false);
+    }
+
+    function test_shortcut_hint_renders_fn_and_function_keys() {
+        var hint = make(shortcutHintComponent, { shortcut: "Fn+Ctrl+F3" });
+        compare(hint.keys.length, 3);
+        compare(hint.keys[0].id, "fn");
+        compare(hint.keys[1].id, "ctrl");
+        compare(hint.keys[2].glyph, "F3");
+    }
+
+    function test_context_menu_grows_to_fit_its_longest_label() {
+        var cm = make(contextMenuComponent, {
+            open: true,
+            model: [
+                { label: "Open", shortcut: "Super+O" },
+                { label: "Enter Full Screen", shortcut: "Ctrl+Super+F" }
+            ]
+        });
+        verify(cm.width > Theme.controls.contextMenu.minWidth,
+               "a long label must widen the menu instead of eliding at minWidth");
+        var row = findChild(cm, "menuRow1");
+        verify(row !== null, "the long row must be addressable");
+        verify(row.width >= row.implicitWidth,
+               "the row must fill the resolved menu width");
+    }
+
+    function test_context_menu_measures_before_it_opens() {
+        var cm = make(contextMenuComponent, {
+            model: [{ label: "Enter Full Screen", shortcut: "Ctrl+Super+F" }]
+        });
+        var closedWidth = cm.width;
+        verify(closedWidth > Theme.controls.contextMenu.minWidth,
+               "the closed menu must already include its widest row and hint");
+        cm.open = true;
+        waitForRendering(stage);
+        compare(cm.width, closedWidth);
+    }
+
+    function test_context_menu_rows_stretch_to_the_panel_width() {
+        var cm = make(contextMenuComponent, {
+            open: true,
+            model: [{ label: "Open", shortcut: "Super+O" }]
+        });
+        compare(cm.width, Theme.controls.contextMenu.minWidth);
+        var row = findChild(cm, "menuRow0");
+        verify(row !== null, "the short row must be addressable");
+        verify(row.width > row.implicitWidth,
+               "a short row must stretch so its highlight spans the panel");
+    }
+
+    function test_menu_row_reserves_the_shortcut_column() {
+        var plain = make(menuRowComponent, {
+            entry: { index: 0, type: "item", label: "Open", enabled: true }
+        });
+        var chord = make(menuRowComponent, {
+            entry: { index: 0, type: "item", label: "Open",
+                     shortcut: "Super+O", enabled: true }
+        });
+        verify(chord.implicitWidth > plain.implicitWidth,
+               "a shortcut hint must widen the row rather than overlap the label");
+        var trailing = make(menuRowComponent, {
+            entry: { index: 0, type: "item", label: "Open",
+                     shortcut: "Space 2", enabled: true }
+        });
+        verify(trailing.implicitWidth > plain.implicitWidth,
+               "plain trailing metadata must reserve the same cell as a chord");
     }
 
     // -- MenuBarMenu submenus (T-10 section 13) ----------------------------
@@ -1063,6 +1181,32 @@ TestCase {
         // The container still paints even when the glyph is unknown.
         verify(findPixel(img, Qt.rgba(0x22 / 255, 0xaa / 255, 0x55 / 255, 1)),
                "the gradient container must render regardless of the glyph");
+    }
+
+    function test_settings_category_tile_follows_its_slot() {
+        // A caller may lay the tile out at a size other than the implicit
+        // default (the sidebar slot is 20px, the hero is 48px). The painted
+        // container must fill that slot in both directions.
+        var tile = make(settingsCategoryComponent, {
+            size: 20, width: 40, height: 40, radius: 0,
+            gradientStart: "#336699", gradientEnd: "#336699"
+        });
+        var img = grabImage(tile);
+        compare(img.width, 40);
+        verify(findPixel(img, Qt.rgba(0x33 / 255, 0x66 / 255, 0x99 / 255, 1)),
+               "a slot larger than `size` must be filled by the container");
+
+        // And it must not overflow a slot smaller than `size`.
+        var slot = make(settingsCategorySlotComponent);
+        var slotImg = grabImage(slot);
+        var inside = slotImg.pixel(40, 40);
+        verify(inside.a > 0.9 && inside.b > 0.9,
+               "the container must paint inside the 20px slot");
+        // The grabbed background is the light window fill, so test the hue:
+        // a bleeding container would paint its blue past the slot edge.
+        var outside = slotImg.pixel(61, 40);
+        verify(outside.r > 0.5,
+               "a slot smaller than `size` must clip the container to the slot");
     }
 
     function test_settings_category_default_is_a_token_gradient() {

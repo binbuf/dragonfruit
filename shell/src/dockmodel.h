@@ -110,7 +110,9 @@ QStringList movePinnedEntry(const QStringList &pinnedIds, int index, int delta);
 QStringList resolveDefaultDockPins(const DesktopEntryIndex &index);
 
 // Build the Dock's ordered entries. `running` is the shell projection
-// (kind "temporary" with `windows`, plus per-window "minimized" entries).
+// (kind "temporary" with `windows`, `active`, plus per-window "minimized"
+// entries); a pinned running app keeps the projection's `active` flag through
+// the merge so its running dot can distinguish the focused app.
 // `launchStates` maps a pinned desktop id to "launching" | "failed" (absent =
 // idle). `recentIds` is the recency-ordered app list for the suggested
 // entries (T-10 section 17; empty when `dock.showRecentApps` is off). Pinned

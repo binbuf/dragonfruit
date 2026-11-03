@@ -376,17 +376,18 @@ Item {
                     title: qsTr("File")
                     open: true
                     model: [
-                        { label: qsTr("New Window"), shortcut: "⌘N" },
-                        { label: qsTr("New Folder"), shortcut: "⇧⌘N" },
+                        { label: qsTr("New Window"), shortcut: "Super+N" },
+                        { label: qsTr("New Folder"), shortcut: "Shift+Super+N" },
                         { type: "separator" },
-                        { label: qsTr("Open…"), shortcut: "⌘O" },
+                        { label: qsTr("Open…"), shortcut: "Super+O" },
                         { label: qsTr("Open With"), type: "submenu",
                           submenu: [
                               { label: qsTr("Text Editor") },
                               { label: qsTr("Preview") },
                               { label: qsTr("Archive Utility") }
                           ] },
-                        { label: qsTr("Close Window"), shortcut: "⌘W" },
+                        { label: qsTr("Close Window"), shortcut: "Super+W" },
+                        { label: qsTr("Enter Full Screen"), shortcut: "Ctrl+Super+F" },
                         { type: "separator" },
                         { label: qsTr("Show in Sidebar"), checked: true, checkable: true },
                         { label: qsTr("Unavailable"), enabled: false }
@@ -399,9 +400,29 @@ Item {
             MenuBarMenu {
                 title: qsTr("Edit")
                 model: [
-                    { label: qsTr("Undo"), shortcut: "⌘Z" },
-                    { label: qsTr("Redo"), shortcut: "⇧⌘Z" }
+                    { label: qsTr("Undo"), shortcut: "Super+Z" },
+                    { label: qsTr("Redo"), shortcut: "Shift+Super+Z" }
                 ]
+            }
+        }
+        Section {
+            heading: qsTr("Shortcut hints")
+            Column {
+                spacing: Theme.primitive.spacing.sm
+                Row {
+                    spacing: Theme.primitive.spacing.xl
+                    ShortcutHint { shortcut: "Super+K" }
+                    ShortcutHint { shortcut: "Ctrl+Alt+Delete" }
+                    ShortcutHint { shortcut: "Shift+Super+Z" }
+                    ShortcutHint { shortcut: "Fn+Ctrl+F3" }
+                }
+                Row {
+                    spacing: Theme.primitive.spacing.xl
+                    ShortcutHint { shortcut: "Super+," }
+                    ShortcutHint { shortcut: "Return" }
+                    ShortcutHint { shortcut: "⌥⌘⎋" }
+                    ShortcutHint { shortcut: "Space 2" }
+                }
             }
         }
     }
@@ -593,7 +614,7 @@ Item {
                     open: true
                     accessibleName: qsTr("Item actions")
                     model: [
-                        { label: qsTr("Open"), shortcut: "⌘O" },
+                        { label: qsTr("Open"), shortcut: "Super+O" },
                         { label: qsTr("Open With"), type: "submenu",
                           submenu: [
                               { label: qsTr("Text Editor") },
@@ -602,11 +623,13 @@ Item {
                               { label: qsTr("Other…") }
                           ] },
                         { type: "separator" },
-                        { label: qsTr("Get Info"), shortcut: "⌘I" },
-                        { label: qsTr("Rename"), shortcut: "↵" },
+                        { label: qsTr("Get Info"), shortcut: "Super+I" },
+                        { label: qsTr("Rename"), shortcut: "Return" },
+                        { label: qsTr("Enter Full Screen"), shortcut: "Ctrl+Super+F" },
                         { label: qsTr("Show in Sidebar"), checked: true, checkable: true },
                         { type: "separator" },
-                        { label: qsTr("Move to Trash"), enabled: false }
+                        { label: qsTr("Move to Trash"), shortcut: "Super+Delete",
+                          enabled: false }
                     ]
                 }
             }

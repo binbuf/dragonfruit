@@ -146,6 +146,17 @@ QVariantList buildDockProjection(const QList<DockWindow> &windows)
         entry.insert(QStringLiteral("name"), it.value().name);
         entry.insert(QStringLiteral("kind"), QStringLiteral("temporary"));
         entry.insert(QStringLiteral("running"), true);
+        // The app owns the focused window. The Dock draws a full-strength
+        // running dot for the active app and a muted one for a merely running
+        // app (docs/dock.md §6); the window list already carries the flag.
+        bool active = false;
+        for (const QVariant &value : it.value().windows) {
+            if (value.toMap().value(QStringLiteral("focused")).toBool()) {
+                active = true;
+                break;
+            }
+        }
+        entry.insert(QStringLiteral("active"), active);
         entry.insert(QStringLiteral("windows"), it.value().windows.size());
         entry.insert(QStringLiteral("windowList"), it.value().windows);
         entry.insert(QStringLiteral("windowCount"), it.value().windows.size());

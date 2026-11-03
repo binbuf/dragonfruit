@@ -311,7 +311,7 @@ Item {
     function nodeMenu(node) {
         if (root.selectedIds.length > 1) {
             return [
-                { label: qsTr("Move to Trash"), shortcut: qsTr("Delete"),
+                { label: qsTr("Move to Trash"), shortcut: "Delete",
                   action: "trash" }
             ];
         }
@@ -323,9 +323,9 @@ Item {
                            enabled: false });
         }
         entries.push({ type: "separator" });
-        entries.push({ label: qsTr("Rename"), shortcut: qsTr("Return"),
+        entries.push({ label: qsTr("Rename"), shortcut: "Return",
                        action: "rename" });
-        entries.push({ label: qsTr("Move to Trash"), shortcut: qsTr("Delete"),
+        entries.push({ label: qsTr("Move to Trash"), shortcut: "Delete",
                        action: "trash" });
         return entries;
     }
@@ -333,18 +333,18 @@ Item {
     function backgroundMenu() {
         if (root.inTrash) {
             return [
-                { label: qsTr("Empty Trash"), shortcut: qsTr("Shift+Cmd+Delete"),
+                { label: qsTr("Empty Trash"), shortcut: "Shift+Super+Delete",
                   action: "emptyTrash", enabled: directory.count > 0 },
                 { type: "separator" },
-                { label: qsTr("Select All"), shortcut: qsTr("Cmd+A"),
+                { label: qsTr("Select All"), shortcut: "Super+A",
                   action: "selectAll" }
             ];
         }
         return [
-            { label: qsTr("New Folder"), shortcut: qsTr("Shift+Cmd+N"),
+            { label: qsTr("New Folder"), shortcut: "Shift+Super+N",
               action: "newFolder" },
             { type: "separator" },
-            { label: qsTr("Select All"), shortcut: qsTr("Cmd+A"),
+            { label: qsTr("Select All"), shortcut: "Super+A",
               action: "selectAll" }
         ];
     }
