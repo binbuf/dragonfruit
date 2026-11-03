@@ -28,7 +28,7 @@ numbered records.
 | [advisor-briefing.md](advisor-briefing.md) | Historical context pack; superseded where it conflicts with STATUS/audit |
 
 The track documents in [tracks/](tracks/) are the design references for the
-T-01…T-20 slices. They describe the target at the time the track was cut; use
+T-01…T-21 slices. They describe the target at the time the track was cut; use
 `STATUS.md` for the current state.
 
 ## Reading rules
