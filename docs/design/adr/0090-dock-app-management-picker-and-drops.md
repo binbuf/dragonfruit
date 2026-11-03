@@ -17,7 +17,7 @@ load it into the shell and T-14.1c adds coalesced install/uninstall/update
 subscriptions (ADR
 [0087](0087-app-index-events-launch-registry-recency.md)). Launchpad and the
 Spotlight-equivalent search are explicitly post-gate
-([../ROADMAP.md](../ROADMAP.md), "Explicitly deferred").
+([../../ROADMAP.md](../../ROADMAP.md), "Explicitly deferred").
 
 ## Decision
 

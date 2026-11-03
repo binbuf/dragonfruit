@@ -26,7 +26,7 @@ dragonfruit-files (Qt Quick)        xdg-desktop-portal-dragonfruit
   windows / tabs / views               FileChooser (chooser mode)
   sidebar / chrome                              │
          │                                      │
-         │        thin Qt model bridge (cxx-qt) │
+         │   thin Qt model bridge (C ABI today) │
          └────────────► files-core ◄────────────┘
                      (Rust library, not a process)
               model │ ops engine │ trash │ mimeapps
@@ -42,17 +42,23 @@ dragonfruit-files (Qt Quick)        xdg-desktop-portal-dragonfruit
 
 - **`files-core` is a Rust library, not a process.** It is async, event-driven,
   and headless-testable. Files embeds it through a thin C++/Rust bridge
-  (cxx-qt) exposing models and signals to QML — no business logic crosses the
-  seam. The portal backend (Rust) links it directly.
+  exposing models and signals to QML — no business logic crosses the seam. The
+  design originally named cxx-qt; the pinned toolchain is offline and has no
+  cxx-qt, so the shipping bridge is a hand-written C ABI
+  (`services/files-core/src/ffi.rs` + `FilesDirectoryModel`). The portal
+  backend (Rust) links the core directly.
 - **One implementation, three consumers:** browser windows, the desktop
   surface (below), and the portal's FileChooser. A second browsing
   implementation would drift on collation, sorting, trash, and bookmarks —
   and the file dialog must feel like a small Files, because on macOS the
   open/save panel *is* the file manager's.
-- **GVfs is the backend, not a competitor.** `trash://`, `recent://`,
+- **GVfs is the intended backend, not a competitor.** `trash://`, `recent://`,
   `network://`, `admin://`, and the udisks2 volume monitor (including
   automount policy) come from GVfs's ordinary session processes. We observe
-  and request; we never re-implement.
+  and request; we never re-implement. The pinned toolchain does not link GIO,
+  so the shipping backends are the marked `std::fs`/inotify/freedesktop-trash
+  fallbacks over the same on-disk contracts (see the implementation status
+  below).
 
 Rust for the core is not a whim: our services are already Rust, GIO/UDisks
 bindings are mature (gtk-rs), and the Rust portal backend gets the core for
@@ -279,8 +285,31 @@ scroll trace is
 budget record stays in
 [`docs/captures/t10-files-perf.txt`](../captures/t10-files-perf.txt).
 
-**Still deferred:** wiring the files-core folder watcher to the Files facade
-via the delta path.
+**Current status (2026-11) — what the Files MVP actually ships.** The browsing
+core is real: streaming listings, natural sorting, the C ABI delta path,
+sidebar favorites/volumes/Computer/Trash, icon/list views, selection
+(click/Cmd/Shift/marquee), inline rename, New Folder, Move to Trash, Empty
+Trash, file opening, thumbnails, Trash browsing, path bar, back/forward
+history, local name search, and the Dock/desktop integration. It is **not**
+the full Finder design:
+
+- **Not implemented:** tabs, New Window (the context row is disabled), copy /
+  move / paste, drag-and-drop inside Files, duplicate, Make Alias, Get Info,
+  Compress, Open With, undo/redo, per-item progress, conflict policy, batch
+  operations, column/gallery views, Quick Look, preview pane, tags, saved
+  searches, batch rename, Connect to Server, and the Files menu model.
+- **Partially implemented:** thumbnails (local images; PDF/video only when a
+  host helper exists; no archives/remote), search (current-location name
+  filter, not the app-index Spotlight), and the folder watcher (the
+  files-core seam exists but is not wired into the Files facade).
+- **Deliberate fallbacks:** GIO/GVfs is the design target; the shipping backend
+  is the marked `StdFsSource` / `InotifyWatcher` / `FreedesktopTrash` fallback,
+  which speaks the same on-disk contracts. The "no file-manager daemon" rule
+  still holds.
+
+The rest of this document is the design target. See
+[STATUS.md](STATUS.md) G-04/G-14 for the gap register and the proposed
+completeness track.
 
 ### Model
 
@@ -298,8 +327,9 @@ via the delta path.
   onward and fills in as the backend iterates. No I/O on the UI thread, ever.
 - **One change monitor per visible directory** (GFileMonitor/inotify locally,
   GVfs change events remotely), fanned out to views. Idle windows do zero
-  polling. Shipped as the `FolderWatcher` seam with the `InotifyWatcher`
-  fallback, marked for replacement (T-10.3b).
+  polling. The `FolderWatcher` seam and `InotifyWatcher` fallback exist
+  (T-10.3b), but the Files facade does not consume them yet; that wiring is
+  still open (G-14).
 - **One collation implementation** — locale-aware, numeric mode (`file2`
   sorts before `file10`) — so icon view, list view, and the chooser always
   agree. Shipped now as a dependency-free natural/numeric comparison in
@@ -312,13 +342,18 @@ via the delta path.
 |---|---|
 | Window/tab layout, per-location view state, favorites, tag registry | Files itself, under `$XDG_CONFIG_HOME/dragonfruit/files/` |
 | Default applications | the freedesktop `mimeapps.list` files, read/written per spec — shared with every other Linux app |
-| Mount state, trash contents, recents | GVfs/UDisks — we observe, never duplicate |
+| Mount state, recents | GVfs/UDisks — we observe, never duplicate |
+| Trash contents | the freedesktop store, through `files-core` (`FreedesktopTrash` today; GVfs when linked) |
 | Anything genuinely desktop-wide | `settingsd` (see [08-settings.md](08-settings.md)) |
 
 Files is an **ordinary application**: no daemon of ours runs to support it,
 and the session runs fine without it.
 
 ## Windows, tabs, and navigation
+
+**Status (2026-11): back/forward history and the single-window browser are
+shipped; tabs, New Window, and per-tab history are not.** The bullets below are
+the design target.
 
 - **Browser model**, Finder-style: the window persists while the location
   changes within it; back/forward history is per tab.
@@ -533,32 +568,41 @@ family libarchive supports, with per-entry errors and no partial output.
 
 ## Trash
 
-- The backend is GVfs `trash://` (freedesktop Trash spec: `$XDG_DATA_HOME/Trash`
-  plus per-volume `.Trash-$UID`). **We consume it, we do not re-implement it**
-  — so deletions made by other applications appear in our Trash too. Where
-  GIO/GVfs is not linked, the sanctioned `FreedesktopTrash` fallback speaks the
-  same spec over the same store, so the guarantee holds offline (T-10.3a).
+- The design backend is GVfs `trash://` (freedesktop Trash spec:
+  `$XDG_DATA_HOME/Trash` plus per-volume `.Trash-$UID`). **We consume the
+  store, we do not re-implement the protocol** — so deletions made by other
+  applications appear in our Trash too. Because GIO/GVfs is not linked in the
+  pinned toolchain, the **shipping** backend is the sanctioned
+  `FreedesktopTrash` fallback over the same on-disk store, so the guarantee
+  holds offline (T-10.3a, [ADR 0046](adr/0046-files-core-trash-seam-and-spec-fallback.md)).
 - **Put Back** restores from the `.trashinfo`'s original path; a missing
   origin falls back to a destination picker.
 - Trash on removable media stays on that medium (spec behavior) and is
   labeled as such ("Trash on 'VolumeName'").
 - Empty Trash is a confirmation sheet, Shift+Cmd+Delete.
-- The shell's Dock Trash badge watches the **same** GVfs mount — one source
-  of truth, zero coupling between Files and the shell (see
+- The shell's Dock Trash badge reads the **same** `files-core` store — one
+  source of truth, zero coupling between Files and the shell (see
   [04-shell.md](04-shell.md)).
 
 ## Open With and default applications
 
-- Association enumeration and defaults both come from GIO's `AppInfo` — one
-  library owns all `mimeapps.list` semantics, shared with every other Linux
-  application. Files never re-parses `.desktop` trees itself.
-- "Always Open With" writes the default per spec; a plain Open With is a
-  one-shot override. Our defaults and other apps' agree, in both directions.
+- **Shipped opening path (2026-11):** `filesOpen()` resolves the MIME's default
+  desktop entry, falls back to the first installed registered handler, and only
+  then uses `xdg-open`/`gio open`. It parses `.desktop` files through Qt and
+  `xdg-mime`/`gio mime`, because GIO headers are not available in the pinned
+  toolchain; it does not re-implement `mimeapps.list` writes. The child runs
+  out of process with the desktop's forced `QT_QPA_PLATFORM=offscreen`
+  removed. See [ADR 0190](adr/0190-files-thumbnails-and-default-handler-opening.md).
+- **Design target:** association enumeration and defaults come from GIO's
+  `AppInfo` when the toolchain links it; "Always Open With" writes the default
+  per spec and a plain Open With is a one-shot override.
+- **Open With UI is not shipped yet** (G-04); only the default-handler open
+  path is.
 - app-index is *not* involved here — it resolves window→application identity
   for the shell (see [01-architecture.md](01-architecture.md)), not file
   associations.
-- Packaging registers Files as the default `inode/directory` handler (see
-  [12-packaging.md](12-packaging.md)).
+- Packaging registers `org.dragonfruit.Files.desktop` as the default
+  `inode/directory` handler (see [12-packaging.md](12-packaging.md)).
 
 ## Recents
 
@@ -661,20 +705,27 @@ The macOS model: **the file manager owns the desktop.**
   delivers raw press pairs, the process synthesizes Qt's double-click from a
   second press in the platform window, and a directory open launches the
   browser with the desktop's forced `offscreen` platform removed so the new
-  window maps as a normal Wayland client. A file open likewise launches the
-  default handler (`xdg-open`, else `gio open`) in a separate process with
-  `QT_QPA_PLATFORM` removed: `QDesktopServices` in the offscreen desktop has
-  no platform services and only logs that `openDocument()` is unsupported.
+  window maps as a normal Wayland client. A file open uses `filesOpen()`: it
+  resolves the MIME default desktop entry, falls back to an installed handler,
+  then `xdg-open`/`gio open`, launching in a separate process with
+  `QT_QPA_PLATFORM` removed (ADR 0190). `QDesktopServices` in the offscreen
+  desktop has no platform services and only logs that `openDocument()` is
+  unsupported, so it is never used there.
 - **Still deferred:** Desktop Reveal icon exposure, selection/focus transfer
   between the desktop, chrome, and windows, and the session-manager
-  provisioning of the desktop token (see the T-19.3 hand-off).
+  provisioning of the desktop token (see the T-19.3 hand-off and
+  [STATUS.md](STATUS.md) G-09). The dev tool starts the desktop process; a real
+  login does not yet.
 - The Desktop Reveal hot corner moves windows aside to expose the background
-  and its icons (see [04-shell.md](04-shell.md)). The MVP ships plain
-  wallpaper.
+  and its icons (see [04-shell.md](04-shell.md)). The desktop surface is
+  implemented, not "plain wallpaper".
 
 ## Menu model
 
-Files publishes its menu via the design system's `MenuBarMenu` component (see
+**Status (2026-11): not implemented for Files.** Settings publishes its native
+model; Files does not yet publish one, so the shell keeps the fixed application
+menu for Files. The model below is the design target (G-04). It will publish
+via the design system's `MenuBarMenu` component (see
 [06-global-menu.md](06-global-menu.md)), with live enable/disable state
 driven by the selection:
 
@@ -731,6 +782,10 @@ Targets, enforced in the dev loop rather than discovered in the polish phase
 
 ## MVP scope
 
+This is the **design target** for the first Finder-equivalent release. The
+current tree ships a subset; see "Current status (2026-11)" above and
+[STATUS.md](STATUS.md) G-04. Do not read this list as a shipped-feature list.
+
 ```text
 Files
 ├── Recents / Favorites (sidebar)
@@ -756,16 +811,19 @@ Later
 ├── Quick Look
 ├── preview pane (Cmd+Shift+P)
 ├── tags (xattr + registry)
-├── thumbnails (freedesktop cache)
+├── thumbnails beyond local images (archives/remote; see ADR 0190)
 ├── SMB/SFTP shares (GVfs — never ours)
 ├── richer search/indexing (app-index)
 ├── saved searches (smart folders)
 ├── batch rename
 ├── connect to server
 ├── share extensions
-├── desktop icons (own process, desktop-layer surface)
 └── folder size calculation in list view
 ```
+
+Desktop icons moved out of this list: they are implemented by T-19.3 (see
+[Desktop icons](#desktop-icons-owned-by-files)). Thumbnails for local images
+also shipped; the remaining thumbnail work is helper/format breadth.
 
 ## Relationships
 
@@ -776,8 +834,9 @@ Later
   global-menu behavior (see [06-global-menu.md](06-global-menu.md)).
 - Traffic lights are exactly the design system's `TitleBar`/`TrafficLights`
   components (see [10-design-system.md](10-design-system.md)).
-- The **Dock Trash badge** and Files watch the same GVfs trash mount — no IPC
-  between them (see [04-shell.md](04-shell.md)).
+- The **Dock Trash badge** and Files read the same `files-core` freedesktop
+  Trash store — no separate shell watcher and no IPC between them (see
+  [04-shell.md](04-shell.md)).
 - **Desktop icons** are Files, on a trusted desktop-layer surface (see
   [04-shell.md](04-shell.md) and [02-compositor.md](02-compositor.md)).
 - Mounts are requested on demand through UDisks, with unmount/eject feedback

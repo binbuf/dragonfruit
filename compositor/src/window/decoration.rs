@@ -7,8 +7,9 @@
 //! (FR-3). It is deliberately a *model plus a solid-fill renderer*:
 //!
 //! * geometry/insets are deterministic and unit-testable without a GPU;
-//! * the fill is a flat token color (real materials — blur, shadow, rounded
-//!   corners — are T-04 and replace [`TitlebarElement::render_elements`]);
+//! * the fill is a token-opaque color: T-04.1a/1b added the shadow and
+//!   rounded corners, and T-20's sampled material is a chrome-panel pass, so
+//!   the SSD titlebar deliberately remains opaque rather than becoming glass;
 //! * hover and disabled *drawing* exist now; T-01.2 wires interaction: the
 //!   compositor sets `hovered` from the pointer and routes button presses
 //!   through [`TitlebarElement::button_at`] to the existing window state

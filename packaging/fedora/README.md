@@ -1,7 +1,7 @@
 # Fedora packaging
 
-Lands in T-32 (packaging and distribution). Until then this directory
-only anchors the monorepo layout from
+Lands in T164 (Fedora packaging and CI; still OPEN). Until then this
+directory only anchors the monorepo layout from
 [docs/design/01-architecture.md](../../docs/design/01-architecture.md).
 
 The Fedora package will carry the pinned toolchain expectations from

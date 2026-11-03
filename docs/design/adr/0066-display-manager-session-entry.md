@@ -41,7 +41,7 @@ desktop ([ADR 0053](0053-real-session-dev-harness.md)).
   entry file, the script, and the units, and `entry::install_into(prefix)`
   writes them under `bin/`, `share/wayland-sessions/`, and
   `lib/systemd/user/`; `dragonfruit-session --install-session DIR` exposes the
-  same seam. T-32 packaging calls it with its build root.
+  same seam. T164/T165 packaging calls it with its build root.
 
 ## Consequences
 

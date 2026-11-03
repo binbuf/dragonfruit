@@ -18,11 +18,12 @@
 //! submenu, and Enter/Space activates the highlighted row. Clicking a row
 //! activates it; clicking away (or losing focus) dismisses.
 //!
-//! The visual pass is intentionally flat and label-less in this slice: the
-//! compositor has no text/icon renderer yet, so rows draw as token-colored
-//! fills with a highlight, exactly as the T-01.1 traffic-light glyphs are
-//! placeholder marks. T-04's material pass replaces the fill and draws the
-//! labels; the geometry, hit-testing, and command routing here do not change.
+//! The visual pass is still flat and label-less: the compositor has no
+//! text/icon renderer, so rows draw as token-colored fills with a highlight,
+//! exactly as the T-01.1 traffic-light glyphs are placeholder marks. T-04 did
+//! not add the labels; the menu is therefore not readable yet (STATUS G-06).
+//! The geometry, hit-testing, and command routing here do not change when a
+//! text renderer or a trusted shell menu surface lands.
 
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::utils::CommitCounter;

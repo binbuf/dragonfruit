@@ -55,7 +55,7 @@ that says "no flat approximations remain".
 
 - The premium gate has a reproducible live-floor artifact and a written verdict;
   the human sign-off (watch the demo, compare to the goldens) stays batched at
-  the track boundary (see [SLICING-REVIEW.md](../SLICING-REVIEW.md)).
+  the track boundary (see [SLICING-REVIEW.md](../../SLICING-REVIEW.md)).
 - The capture reuses the T-17.1a active-window capturer (KWin raise +
   `spectacle -a`) and lives outside `make e2e`; the automated floor is the sweep
   plus the gallery `--strict` gate.
