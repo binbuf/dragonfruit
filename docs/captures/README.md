@@ -1054,6 +1054,22 @@ re-run over the static fixture agrees with mean 0.01. The scene texture is route
 (`Multi-GPU: SCENE output=… route=local|copy|software`). The contract is
 [ADR 0184](../design/adr/0184-material-capture-determinism-and-software-path.md).
 
+T-21.1a's chrome transport baseline is `scripts/t21-chrome-baseline.sh`
+(`make t21-chrome-baseline`). It runs the nested demo with
+`DRAGONFRUIT_CHROME_STATS=1` and `QSG_INFO=1`, drives idle, a slow Dock sweep,
+the menu-bar dropdown, the Dock window chooser, one app launch, and Mission
+Control with 10+ windows, and brackets every scenario with `SIGUSR1` dumps on
+both the shell and the compositor. The committed report
+`t21-chrome-baseline.txt` carries the per-scenario `chrome stats` /
+`chrome surface` deltas, compositor `chrome stats`, `frame timing`, `material
+stats`, `degrade stats`, and the p50/p95/p99 table; the native half is recorded
+through `make native-capture` and marked **OPEN** for the scenario comparison
+when the running native compositor predates the counters. The live visual check
+stills are `t21-chrome-baseline-dock.png`, `-menu.png`, and
+`-mission-control.png`, captured through the trusted compositor screenshot path
+(not a screencopy client). The transport decision is
+[ADR 0191](../design/adr/0191-chrome-transport-render-control-and-shm-fallback.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

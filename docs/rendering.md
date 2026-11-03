@@ -48,7 +48,7 @@ The executable v0.1.1 task set is in
 | P2A DRM offscreen scene | **done, default-on** | Per-output scene texture; custom `SceneTextureElement`; feather fallback on failure. |
 | P2B DRM Kawase blur | **done, default-on** | Per-panel chain reuses `BLUR_SHADER`; `blur_draws` counts built elements. |
 | P2C glass compose | **done, default-on** | Reuses `GLASS_SHADER` and `GlassSpec`; `DRAGONFRUIT_DRM_GLASS=0` disables. |
-| P3 shell transport | **not started** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + `wl_shm` per commit. |
+| P3 shell transport | **baseline done (T-21.1a)** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + fresh `wl_shm` per commit. Measured in [`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt); transport decision [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md). Rewrite is T184–T186. |
 | P4 refresh-aware scheduling | **not started** | Global 16 ms animation/degrade budget; output is 4K @ 144 Hz. |
 | P5 multi-GPU | **single-GPU only** | Material path disables itself on a multi-GPU seat; shell falls back. |
 | P6 native visual verification | **not implemented** | No trusted native capture path. |
@@ -201,6 +201,12 @@ The shell also commits a logical-resolution buffer without
 `wl_surface.set_buffer_scale`, so a 1.5x output upscales the chrome.
 
 ### R2.1 Confirm the scene-graph backend
+
+**Status: done (T-21.1a).** The committed baseline
+[`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt) records
+`QSG_INFO=1` → `Loading backend software`; the live shell maps the EGL/GLX
+loader libraries but no DRI driver. The measured path and the transport
+decision are in [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md).
 
 **Work**
 
@@ -526,7 +532,10 @@ Each slice should be independently testable and have a rollback:
    a perceptual floor, not a mandatory GPU-blur floor.
 3. **Native capture.** Trusted portal path vs isolated development readback vs
    external evidence only.
-4. **Shell transport.** GPU-backed path only if `QSG_INFO=1` and copy/frame
-   measurements show it is the bottleneck.
+4. **Shell transport.** Decided in
+   [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md):
+   `QQuickRenderControl` + reusable GPU buffers/dmabuf is the primary path;
+   pooled `wl_shm` + frame callbacks is the fallback. The T-21.1a baseline
+   confirmed the software backend and the per-commit copy cost.
 5. **Cross-GPU.** Copy/import vs explicit safe fallback; do not introduce CPU
    readback without a measured requirement.

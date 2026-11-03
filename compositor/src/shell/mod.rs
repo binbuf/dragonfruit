@@ -608,6 +608,15 @@ impl DfState {
             .is_some_and(|surface| self.is_above_window_chrome_surface(&surface))
     }
 
+    /// The `df_shell.layer` value of a chrome surface, if it is one.
+    pub fn chrome_layer(&self, surface: &WlSurface) -> Option<u32> {
+        self.shell
+            .layers
+            .iter()
+            .find(|entry| entry.surface == *surface)
+            .map(|entry| entry.state.layer)
+    }
+
     /// Whether `surface` is a chrome layer surface that composites **above**
     /// windows (`top`/`overlay`, T-19.3). The desktop `background` surface is
     /// excluded: it is client-facing below windows, not shell chrome.

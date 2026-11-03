@@ -37,7 +37,7 @@ done.
 
 ## Phase 21.1 — Chrome transport
 
-- [ ] T183 — T-21.1a Chrome transport baseline and decision → [../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md](../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md)
+- [x] T183 — T-21.1a Chrome transport baseline and decision → [../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md](../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md)
 - [ ] T184 — T-21.1b Chrome HiDPI and fractional scale → [../tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md](../tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md)
 - [ ] T185 — T-21.1c Chrome SHM transport hygiene and frame pacing → [../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md](../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md)
 - [ ] T186 — T-21.1d GPU-backed chrome transport → [../tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md](../tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md)
@@ -68,3 +68,13 @@ unchanged, the task's capture/evidence artifact exists, any hardware-dependent
 half is explicitly `OPEN`, docs and design references are updated, and the
 task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
+
+<!-- symphony:status -->
+**Pipeline status** — updated 2026-11-03T22:42:18Z · 1/11 done
+
+- Completed: T183
+- Blocked: none
+- Failed: none
+- Remaining: T184, T185, T186, T187, T188, T189, T190, T191, T192, T193
+- Last finished: T183 — done · Chrome transport baseline, opt-in shell/compositor counters, report, ADR 0191, and live stills landed; qml-test and e2e pass.
+<!-- /symphony:status -->

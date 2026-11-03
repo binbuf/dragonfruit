@@ -12,6 +12,8 @@
 
 #include <QtGlobal>
 
+#include "chromestats.h"
+
 class FrameCommitGate
 {
 public:
@@ -21,17 +23,23 @@ public:
     bool frameRendered()
     {
         ++m_sceneFrames;
+        ChromeStats::instance().recordSceneFrame();
         return !m_committing;
     }
 
     // Bracket the `grabWindow()` readback. `grabWindow()` renders the scene
     // again, so the nested `frameRendered()` must not schedule another
     // commit.
-    void beginCommit() { m_committing = true; }
+    void beginCommit()
+    {
+        m_committing = true;
+        ChromeStats::instance().recordGrabRender();
+    }
     void endCommit()
     {
         m_committing = false;
         ++m_committedFrames;
+        ChromeStats::instance().recordRenderComplete();
     }
 
     bool committing() const { return m_committing; }

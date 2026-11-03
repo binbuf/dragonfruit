@@ -31,8 +31,14 @@ pub fn teardown_artifacts(socket: &Path) -> Vec<PathBuf> {
 /// Snapshot of dragonfruit processes currently running, by scanning
 /// /proc directly (no procps dependency). Our own process is excluded —
 /// the soak check runs from inside `dragonfruit dev`.
+///
+/// Only the dev run's own process group is considered. A developer machine
+/// can be running a native Dragonfruit session at the same time (the T-21
+/// baseline is executed from inside one); those systemd-owned processes are
+/// not this run's children and must not fail its teardown gate.
 pub fn dragonfruit_processes() -> Vec<String> {
     let own_pid = std::process::id().to_string();
+    let own_pgid = unsafe { libc::getpgid(0) };
     let mut found = Vec::new();
     let Ok(entries) = std::fs::read_dir("/proc") else {
         return found;
@@ -42,6 +48,12 @@ pub fn dragonfruit_processes() -> Vec<String> {
             continue;
         };
         if !name.bytes().all(|b| b.is_ascii_digit()) || name == own_pid {
+            continue;
+        }
+        let Ok(pid) = name.parse::<i32>() else {
+            continue;
+        };
+        if unsafe { libc::getpgid(pid) } != own_pgid {
             continue;
         }
         if let Ok(comm) = std::fs::read_to_string(format!("/proc/{name}/comm")) {

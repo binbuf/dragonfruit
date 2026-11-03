@@ -259,8 +259,19 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
             && calls.contains("DRAGONFRUIT_LAUNCH_TOKEN"),
         "the session environment is imported: {calls}"
     );
+    // The entry script appends the install-prefix root to any inherited
+    // QML_IMPORT_PATH (the native session exports the build-tree root), so
+    // accept it as any component of the path, not only as the first one.
+    let qml_line = calls
+        .lines()
+        .find(|line| line.starts_with("QML_IMPORT_PATH="))
+        .unwrap_or("");
+    let qml_roots: Vec<&str> = qml_line
+        .trim_start_matches("QML_IMPORT_PATH=")
+        .split(':')
+        .collect();
     assert!(
-        calls.contains(&format!("QML_IMPORT_PATH={}", qml_dir.display())),
+        qml_roots.iter().any(|root| Path::new(root) == qml_dir),
         "the install-prefix QML module root is imported: {calls}"
     );
     assert!(

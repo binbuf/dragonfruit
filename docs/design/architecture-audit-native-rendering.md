@@ -318,6 +318,18 @@ justified **if** a controlled `QSG_INFO=1` run confirms the software backend and
 the baseline shows the shell on the critical path. Do not build a custom QPA
 plugin or a second UI renderer before that measurement.
 
+> **T-21.1a measurement (2026-11-03).** The controlled `QSG_INFO=1` run
+> confirms `Loading backend software`; the live shell maps the EGL/GLX loader
+> but no DRI driver. On the nested 1920×1200 baseline, the slow Dock sweep
+> produced 291 chrome commits / 268,929,360 shm bytes (960,000 bytes for the
+> 1920×125 Dock bar alone), with `commit_us` p50/p95/p99 = 1069/1653/1943 µs
+> and compositor `frame timing` p50/p95/p99 = 10569/18445/23422 µs. Idle was
+> zero-wakeup. The decision is
+> [ADR 0191](adr/0191-chrome-transport-render-control-and-shm-fallback.md):
+> `QQuickRenderControl` + reusable GPU buffers/dmabuf as the primary path,
+> pooled `wl_shm` + frame callbacks as the fallback. The full report is
+> [`../captures/t21-chrome-baseline.txt`](../captures/t21-chrome-baseline.txt).
+
 ---
 
 ## 6. Why `blur_passes=0` at the audit point
