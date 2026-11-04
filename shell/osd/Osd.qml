@@ -20,6 +20,13 @@ Item {
     property bool muted: false
     // Presentation opacity [0, 1] from the OSD model.
     property real fade: 0.0
+    // T-21.2c: the shell applies the compositor's Popup role state. Without
+    // the sampled pass the card takes the token-driven milky plate.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
     // The visible card in surface-local pixels (T-20.3). The surface is larger
     // than the card so its shadow is not clipped; the shell declares this rect
@@ -85,9 +92,9 @@ Item {
         height: Theme.controls.osd.height
         radius: Theme.controls.osd.radius
         // The compositor material's scrim (T-20.3): the OSD is a `Popup`, so
-        // the fill carries `material.popupOpacity`; the rim stays opaque.
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        // the fill carries `material.popupOpacity`; without the sampled pass
+        // it switches to the milky complement. The rim stays opaque.
+        color: Material.popupFill(root.materialBlurActive)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true

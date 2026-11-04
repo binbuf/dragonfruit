@@ -25,6 +25,13 @@ Item {
     // Whether the bar title shows the keyboard FocusRing. The shell turns it
     // off until it implements Tab navigation across the bar (T-09 polish).
     property bool showFocusRing: true
+    // T-21.2c: the shell applies the compositor's Popup role state to the
+    // dropdown and every submenu through this one pair of properties.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
     signal triggered(int index, var item)
     signal opened()
@@ -299,6 +306,9 @@ Item {
         accessibleRole: Accessible.PopupMenu
         accessibleName: root.title
         escapeCloses: false
+        materialBlurActive: root.materialBlurActive
+        materialTier: root.materialTier
+        materialFallback: root.materialFallback
 
         onOpened: {
             root.highlightedIndex = -1;
@@ -449,12 +459,13 @@ Item {
         }
 
         Rectangle {
+            objectName: "submenuSurface"
             anchors.fill: parent
             radius: Theme.controls.popup.radius
             // The compositor material's scrim (T-20.3): the submenu is a
-            // `Popup`, so it shares `material.popupOpacity`.
-            color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                           Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+            // `Popup`, so it shares `material.popupOpacity`; without the
+            // sampled pass it takes the same milky complement as the parent.
+            color: Material.popupFill(root.materialBlurActive)
             border.width: Theme.controls.window.borderWidth
             border.color: Theme.color.border
             antialiasing: true

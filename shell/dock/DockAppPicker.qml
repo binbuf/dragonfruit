@@ -19,6 +19,12 @@ FocusScope {
     property var items: []
     property Item anchorItem: null
     property bool open: false
+    // T-21.2c: the Dock applies the compositor's Popup role state here.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
     // True when app-index is reachable; false renders the explicit absence
     // state instead of an empty panel (ADR 0090).
     property bool available: true
@@ -172,8 +178,7 @@ FocusScope {
         anchors.fill: parent
         anchors.bottomMargin: root.arrowSize / 2
         radius: root.radius
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        color: Material.popupFill(root.materialBlurActive)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true
@@ -184,8 +189,7 @@ FocusScope {
         width: root.arrowSize
         height: root.arrowSize
         rotation: 45
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        color: Material.popupFill(root.materialBlurActive)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         x: {

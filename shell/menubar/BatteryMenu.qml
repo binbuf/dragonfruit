@@ -15,6 +15,12 @@ Item {
     property Item anchorItem: null
     property alias popup: popup
     property alias open: popup.open
+    // T-21.2c: the menu bar pushes the compositor's Popup role state here.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
     readonly property bool available: model.state === "available"
     readonly property bool present: model.present === true
@@ -57,6 +63,9 @@ Item {
         accessibleRole: Accessible.PopupMenu
         accessibleName: qsTr("Battery")
         escapeCloses: true
+        materialBlurActive: root.materialBlurActive
+        materialTier: root.materialTier
+        materialFallback: root.materialFallback
 
         onOpened: {
             root.refreshRequested();

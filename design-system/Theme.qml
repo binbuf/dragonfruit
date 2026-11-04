@@ -164,6 +164,7 @@ QtObject {
             readonly property int dockBlur: 30
             readonly property real chromeFallbackOpacity: 0.86
             readonly property real dockFallbackOpacity: 0.88
+            readonly property real popupFallbackOpacity: 0.92
             readonly property int chromeRefraction: 6
             readonly property int popupRefraction: 8
             readonly property int dockRefraction: 8
@@ -244,6 +245,7 @@ QtObject {
             readonly property int dockBlur: 34
             readonly property real chromeFallbackOpacity: 0.82
             readonly property real dockFallbackOpacity: 0.84
+            readonly property real popupFallbackOpacity: 0.9
             readonly property int chromeRefraction: 8
             readonly property int popupRefraction: 10
             readonly property int dockRefraction: 10

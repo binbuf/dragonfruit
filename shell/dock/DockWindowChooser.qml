@@ -31,6 +31,12 @@ FocusScope {
     property var entry: null
     property Item anchorItem: null
     property bool open: false
+    // T-21.2c: the Dock applies the compositor's Popup role state here.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
     // The visible-row cap; a longer window list scrolls through the rest. The
     // default is the token, not a literal.
     property int maxRows: Theme.controls.dock.chooser.maxRows
@@ -282,8 +288,7 @@ FocusScope {
         anchors.fill: parent
         anchors.bottomMargin: root.arrowSize / 2
         radius: root.radius
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        color: Material.popupFill(root.materialBlurActive)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true
@@ -295,8 +300,7 @@ FocusScope {
         width: root.arrowSize
         height: root.arrowSize
         rotation: 45
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        color: Material.popupFill(root.materialBlurActive)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         x: {
