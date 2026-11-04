@@ -65,6 +65,7 @@
 //! zoom <window-id> | unzoom <window-id>
 //! fullscreen <window-id> | unfullscreen <window-id>
 //! animate-dummy <duration-ms>
+//! animate-dummy-on <output> <duration-ms>
 //! ```
 //!
 //! `query decorations` is a read-only introspection aid for the SSD
@@ -99,7 +100,8 @@
 //! `animate-dummy <ms>` starts a scene-free animation on the shared clock
 //! (T-02.1a/T-03.1a) so a headless test can assert the frame discipline:
 //! exactly one compositor frame per animation frame, and a flat counter once
-//! it settles.
+//! it settles. `animate-dummy-on <output> <ms>` scopes the same animation to
+//! one output (T188c mixed-refresh capture), leaving the other outputs idle.
 
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
@@ -807,6 +809,12 @@ pub enum SyntheticCommand {
     AnimateDummy {
         duration_ms: u64,
     },
+    /// Start the scene-free animation on one output only (T188c mixed-refresh
+    /// capture plumbing); every other output stays idle.
+    AnimateDummyOn {
+        output: String,
+        duration_ms: u64,
+    },
 }
 
 fn parse_state(token: &str) -> Result<KeyState, String> {
@@ -917,6 +925,19 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                 .ok_or("animate-dummy requires a duration in ms")?
                 .parse()
                 .map_err(|_| "animate-dummy duration must be a non-negative integer".to_string())?,
+        },
+        "animate-dummy-on" => SyntheticCommand::AnimateDummyOn {
+            output: parts
+                .next()
+                .ok_or("animate-dummy-on requires an output name")?
+                .to_string(),
+            duration_ms: parts
+                .next()
+                .ok_or("animate-dummy-on requires a duration in ms")?
+                .parse()
+                .map_err(|_| {
+                    "animate-dummy-on duration must be a non-negative integer".to_string()
+                })?,
         },
         "query" => match parts.next() {
             Some("decorations") => SyntheticCommand::QueryDecorations,
@@ -1294,9 +1315,12 @@ impl SyntheticCommand {
             SyntheticCommand::UnfullscreenWindow(_) => {
                 unreachable!("unfullscreen is handled by apply_datagram")
             }
-            // A clock command, not an input event.
+            // Clock commands, not input events.
             SyntheticCommand::AnimateDummy { .. } => {
                 unreachable!("animate-dummy is handled by apply_datagram")
+            }
+            SyntheticCommand::AnimateDummyOn { .. } => {
+                unreachable!("animate-dummy-on is handled by apply_datagram")
             }
         }
     }
@@ -1598,6 +1622,13 @@ fn apply_datagram_reply(
                 // The clock arms its own timer; no redraw is requested here,
                 // so the first rendered frame is the first animation frame.
                 state.start_dummy_animation(duration_ms);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::AnimateDummyOn {
+                output,
+                duration_ms,
+            }) => {
+                state.start_dummy_animation_on(Some(&output), duration_ms);
                 applied += 1;
             }
             Ok(command) => {
@@ -2491,6 +2522,13 @@ mod tests {
             SyntheticCommand::AnimateDummy { duration_ms: 160 }
         );
         assert_eq!(
+            parse_command("animate-dummy-on MIXED-144 800").unwrap(),
+            SyntheticCommand::AnimateDummyOn {
+                output: "MIXED-144".into(),
+                duration_ms: 800,
+            }
+        );
+        assert_eq!(
             parse_command("query motion").unwrap(),
             SyntheticCommand::QueryMotion
         );
@@ -2662,6 +2700,9 @@ mod tests {
         assert!(parse_command("set magnifier-zoom fast").is_err());
         assert!(parse_command("set magnifier-mode wiggle").is_err());
         assert!(parse_command("set magnifier-center 1").is_err());
+        assert!(parse_command("animate-dummy-on").is_err());
+        assert!(parse_command("animate-dummy-on MIXED-144").is_err());
+        assert!(parse_command("animate-dummy-on MIXED-144 fast").is_err());
     }
 
     #[test]

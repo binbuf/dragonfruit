@@ -263,6 +263,18 @@ is cleared and no timer is armed. The `frame scheduler stats` line and one
 `frame request` line per output expose the request bits, in-flight state,
 timer state, and each clock's `refresh_hz`/deadline.
 
+T188c makes the clock's carried VRR state actionable (ADR
+[0202](adr/0202-vrr-adaptation-and-mixed-refresh-evidence.md)). A clock only
+adapts when the backend reports `VrrState::On` and supplies a period range; a
+measured interval inside that range becomes the next deadline, while an
+interval outside it falls back to the nominal mode period. One interval never
+turns VRR on. DRM installs the state from `DrmCompositor::vrr_supported` /
+`vrr_enabled`; nested and headless report `unsupported`. `presentation stats`
+and `frame request` append `vrr`, the accepted interval, and the range. Chrome
+frame callbacks are sent on every presented output frame and on the no-damage
+callback path, so the shell's QML pacing uses the same presentation timestamp
+as windows.
+
 #### Idle and animation frame trace (T-03.1a)
 
 The render-path counters emitted on `SIGUSR1`/clean exit are the trace

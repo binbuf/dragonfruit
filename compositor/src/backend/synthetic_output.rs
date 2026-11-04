@@ -13,9 +13,13 @@
 //! Wire format (one command per line; a datagram may batch lines):
 //!
 //! ```text
-//! add <name> <width> <height> <x> <y> [scale]
+//! add <name> <width> <height> <x> <y> [scale] [refresh_mhz]
 //! remove <name>
 //! ```
+//!
+//! `refresh_mhz` is the optional mode refresh in millihertz (default 60000 =
+//! 60 Hz). The mixed-refresh trace uses it to add a synthetic 144 Hz output
+//! beside the headless 60 Hz output.
 //!
 //! Like the T-03 synthetic-input harness, this is test plumbing: only the
 //! headless backend installs it, only when the environment variable is set,
@@ -46,6 +50,7 @@ pub enum SyntheticOutputCommand {
         x: i32,
         y: i32,
         scale: f64,
+        refresh_mhz: i32,
     },
     Remove {
         name: String,
@@ -80,6 +85,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticOutputCommand, String> {
             let x = parse_i32(parts.next().ok_or("add requires an x position")?)?;
             let y = parse_i32(parts.next().ok_or("add requires a y position")?)?;
             let scale = parts.next().map(parse_f64).transpose()?.unwrap_or(1.0);
+            let refresh_mhz = parts.next().map(parse_i32).transpose()?.unwrap_or(60_000);
             SyntheticOutputCommand::Add {
                 name,
                 width,
@@ -87,6 +93,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticOutputCommand, String> {
                 x,
                 y,
                 scale,
+                refresh_mhz,
             }
         }
         "remove" => SyntheticOutputCommand::Remove {
@@ -118,11 +125,12 @@ pub fn apply_command(
             x,
             y,
             scale,
+            refresh_mhz,
         } => {
-            if width <= 0 || height <= 0 || !scale.is_finite() || scale <= 0.0 {
+            if width <= 0 || height <= 0 || !scale.is_finite() || scale <= 0.0 || refresh_mhz <= 0 {
                 eprintln!(
                     "dragonfruit-compositor: refusing synthetic output {name:?}: \
-                     bad size/scale {width}x{height}@{scale}"
+                     bad size/scale/refresh {width}x{height}@{scale} {refresh_mhz}mHz"
                 );
                 return false;
             }
@@ -136,7 +144,7 @@ pub fn apply_command(
                 headless_physical_properties(),
                 Mode {
                     size: (width, height).into(),
-                    refresh: 60_000,
+                    refresh: refresh_mhz,
                 },
                 (x, y),
                 scale,
@@ -248,10 +256,11 @@ mod tests {
                 x: 1280,
                 y: 0,
                 scale: 1.0,
+                refresh_mhz: 60_000,
             }
         );
         assert_eq!(
-            parse_command("add eDP-1 2560 1440 0 0 1.5").unwrap(),
+            parse_command("add eDP-1 2560 1440 0 0 1.5 144000").unwrap(),
             SyntheticOutputCommand::Add {
                 name: "eDP-1".into(),
                 width: 2560,
@@ -259,6 +268,7 @@ mod tests {
                 x: 0,
                 y: 0,
                 scale: 1.5,
+                refresh_mhz: 144_000,
             }
         );
         assert_eq!(
@@ -276,6 +286,7 @@ mod tests {
         assert!(parse_command("add DP-1 1920").is_err());
         assert!(parse_command("add DP-1 wide high 0 0").is_err());
         assert!(parse_command("add DP-1 1920 1080 0 0 1.0 extra").is_err());
+        assert!(parse_command("add DP-1 1920 1080 0 0 1.0 fast").is_err());
         assert!(parse_command("remove").is_err());
         assert!(parse_command("teleport DP-1").is_err());
     }
