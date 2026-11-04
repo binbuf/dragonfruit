@@ -51,7 +51,13 @@ fractional scales, and keeps reserved zones, panel rects, and input regions
 logical ([ADR 0192](adr/0192-chrome-scale-physical-buffer-and-viewport.md)).
 The remaining transport work is the GPU/dmabuf path (T186); the pooled shm path
 is its fallback ([ADR 0191](adr/0191-chrome-transport-render-control-and-shm-fallback.md),
-[ADR 0193](adr/0193-chrome-frame-producer-pooled-shm-pacing.md)). Per-output
+[ADR 0193](adr/0193-chrome-frame-producer-pooled-shm-pacing.md)). T-21.1d's
+first slice added a read-only `zwp_linux_dmabuf_v1`/EGL capability probe and a
+`GpuChromeFrameProducer` render-control/FBO skeleton behind the T185 producer;
+`DRAGONFRUIT_CHROME_GPU` stays unset, no `wl_buffer` is committed, and the
+offscreen shell rail records `no-gl-context` rather than a black frame
+([ADR 0194](adr/0194-gpu-chrome-probe-and-render-control-spike.md)). The
+dmabuf export/commit and rollout remain T186b–T186d. Per-output
 shell scenes with different scales on one desktop remain a follow-up; a chrome
 surface shares one scale. The T-21.1c close-out also retired the old
 `FrameCommitGate` double-render workaround: no runtime path used it after the

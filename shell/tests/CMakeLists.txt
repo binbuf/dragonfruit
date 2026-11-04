@@ -84,6 +84,38 @@ set_tests_properties(tst_chromebufferpool PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# GPU chrome capability/format selection (T-21.1d): linux-dmabuf feedback
+# parsing, EGL extension parsing, and the deterministic format choice. Pure;
+# no Wayland, EGL, QML, or compositor.
+qt_add_executable(tst_gpucapabilities
+    tst_gpucapabilities.cpp
+)
+target_link_libraries(tst_gpucapabilities PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_gpucapabilities
+    COMMAND tst_gpucapabilities
+)
+set_tests_properties(tst_gpucapabilities PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Nested GL smoke rail (T-21.1d). Not a ctest: it needs a host Wayland/GL
+# compositor and writes docs/captures/t21-gpu-smoke.png through
+# scripts/t21-gpu-probe.sh. It links the same producer/probe library as the
+# shell, so the spike and the eventual transport share one implementation.
+qt_add_executable(t21-gpu-smoke
+    t21-gpu-smoke.cpp
+)
+target_link_libraries(t21-gpu-smoke PRIVATE
+    Qt6::Quick
+    dragonfruit-shell-chromegpu
+)
+
 # Chrome pointer injection unit tests (T-16.12): the shared helper owns every
 # injected event's timestamp (nonzero, strictly increasing) and never hands a
 # zero-timestamp `QMouseEvent` to a chrome window. No QML, Wayland, or

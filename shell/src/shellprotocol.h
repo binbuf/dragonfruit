@@ -23,6 +23,7 @@
 #include <cstdint>
 
 #include "chromebufferpool.h"
+#include "gpuchromeprobe.h"
 
 // The listener signatures mirror the libwayland C API exactly (wl_fixed_t,
 // wl_array), so pull in the client header rather than re-declaring them.
@@ -550,6 +551,11 @@ public:
 
     QString lastError() const { return m_error; }
 
+    // The startup GPU transport probe (T-21.1d): linux-dmabuf feedback, EGL
+    // export support, and the selected compositor format. T186b consumes this
+    // to decide whether the GPU producer can export a buffer.
+    const GpuChromeProbeResult &gpuCapabilities() const { return m_gpuCapabilities; }
+
     // The live xkb `depressed` modifier mask (WL_KEYBOARD_MODIFIER_MASK_*).
     // Chrome key handlers use it to build a complete QKeyEvent (text plus
     // modifiers), not just the special navigation keys.
@@ -1022,6 +1028,9 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
 
     wl_display *m_display = nullptr;
     wl_registry *m_registry = nullptr;
+    // T-21.1d: one startup probe of the compositor's dmabuf feedback and the
+    // EGL export extensions. It creates no buffers and commits nothing.
+    GpuChromeProbeResult m_gpuCapabilities;
     wl_compositor *m_compositor = nullptr;
     wl_shm *m_shm = nullptr;
     wp_fractional_scale_manager_v1 *m_fractionalScaleManager = nullptr;

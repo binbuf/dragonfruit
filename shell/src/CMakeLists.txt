@@ -30,11 +30,27 @@ endif()
 find_program(WAYLAND_SCANNER wayland-scanner
     HINTS "${DF_QT_PREFIX}/bin" "$ENV{HOME}/.local/df-toolchain/usr/bin")
 
+# EGL is used by the T-21.1d capability probe and (T186b) the dmabuf export.
+# The Qt toolchain ships the headers and linker name on hosts without the
+# system -devel package.
+find_path(EGL_INCLUDE_DIR EGL/egl.h
+    HINTS "${DF_QT_PREFIX}/include"
+    PATHS /usr/include /usr/local/include)
+find_library(EGL_LIBRARY NAMES EGL
+    HINTS "${DF_QT_PREFIX}/lib64" "${DF_QT_PREFIX}/lib"
+    PATHS /usr/lib64 /usr/lib /usr/lib/x86_64-linux-gnu)
+
 if(NOT WAYLAND_CLIENT_FOUND OR NOT WAYLAND_SCANNER)
     message(WARNING
         "dragonfruit-shell: libwayland-client or wayland-scanner not found; "
         "the shell process target is skipped")
     return()
+endif()
+
+if(NOT EGL_INCLUDE_DIR OR NOT EGL_LIBRARY)
+    message(FATAL_ERROR
+        "dragonfruit-shell: EGL headers/library not found; the T-21.1d GPU "
+        "probe and dmabuf export need EGL")
 endif()
 
 # Pure, Wayland-free Dock core (T-10): the app-index entry cache and launcher,
@@ -52,6 +68,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     chromescale.h
     chromestats.cpp
     chromestats.h
+    gpuchromecapabilities.cpp
+    gpuchromecapabilities.h
     clipboardhistory.cpp
     compositorpolicy.cpp
     controlcenterpolicy.cpp
@@ -172,10 +190,55 @@ foreach(_scale_proto fractional-scale-v1 viewporter)
     list(APPEND DF_PROTOCOL_SOURCES "${_scale_source}")
 endforeach()
 
-qt_add_executable(dragonfruit-shell
-    main.cpp
+# linux-dmabuf is the compositor's GPU-chrome import path (T-21.1d). The
+# shell's probe binds it read-only to learn the format/modifier feedback; no
+# buffer is created in T186a. The v5 XML is vendored (MIT) so the probe does
+# not depend on a system wayland-protocols package.
+set(_dmabuf_xml
+    "${CMAKE_SOURCE_DIR}/protocols/wayland-protocols/linux-dmabuf-unstable-v1.xml")
+set(_dmabuf_header
+    "${DF_PROTOCOL_DIR}/linux-dmabuf-unstable-v1-client-protocol.h")
+set(_dmabuf_source "${DF_PROTOCOL_DIR}/linux-dmabuf-unstable-v1-protocol.c")
+add_custom_command(
+    OUTPUT "${_dmabuf_header}" "${_dmabuf_source}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DF_PROTOCOL_DIR}"
+    COMMAND "${WAYLAND_SCANNER}" client-header "${_dmabuf_xml}" "${_dmabuf_header}"
+    COMMAND "${WAYLAND_SCANNER}" private-code "${_dmabuf_xml}" "${_dmabuf_source}"
+    DEPENDS "${_dmabuf_xml}"
+    COMMENT "wayland-scanner linux-dmabuf-unstable-v1"
+    VERBATIM)
+
+# The GPU producer, runtime probe, and the T185 producer share one small
+# library so the shell and the nested GL smoke rail exercise the same code.
+# The smoke target is not part of `make e2e`; it needs a host Wayland/GL rail.
+add_library(dragonfruit-shell-chromegpu STATIC
     chromeframeproducer.cpp
     chromeframeproducer.h
+    gpuchromeframeproducer.cpp
+    gpuchromeframeproducer.h
+    gpuchromeprobe.cpp
+    gpuchromeprobe.h
+)
+target_sources(dragonfruit-shell-chromegpu PRIVATE "${_dmabuf_source}")
+target_include_directories(dragonfruit-shell-chromegpu PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${DF_PROTOCOL_DIR}"
+)
+target_include_directories(dragonfruit-shell-chromegpu PRIVATE "${EGL_INCLUDE_DIR}")
+target_link_libraries(dragonfruit-shell-chromegpu PUBLIC
+    Qt6::Core Qt6::Gui Qt6::Quick
+    dragonfruit-shell-dockcore
+    "${EGL_LIBRARY}"
+)
+if(TARGET PkgConfig::WAYLAND_CLIENT)
+    target_link_libraries(dragonfruit-shell-chromegpu PUBLIC PkgConfig::WAYLAND_CLIENT)
+else()
+    target_include_directories(dragonfruit-shell-chromegpu PUBLIC "${WAYLAND_CLIENT_INCLUDE_DIR}")
+    target_link_libraries(dragonfruit-shell-chromegpu PUBLIC "${WAYLAND_CLIENT_LIBRARY}")
+endif()
+
+qt_add_executable(dragonfruit-shell
+    main.cpp
     shellcontroller.cpp
     shellprotocol.cpp
     systemstatusclient.cpp
@@ -188,6 +251,7 @@ target_compile_definitions(dragonfruit-shell PRIVATE
     DF_QML_IMPORT_DIR="${CMAKE_BINARY_DIR}/qml")
 target_link_libraries(dragonfruit-shell PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::DBus
+    dragonfruit-shell-chromegpu
     dragonfruit-shell-dockcore
     dragonfruit-system-font
     dragonfruit-i18n
