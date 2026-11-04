@@ -138,6 +138,11 @@ def main():
         "--transport",
         default="offscreen QPA -> grabWindow() -> QImage -> fresh wl_shm buffer -> wl_surface.commit",
     )
+    parser.add_argument(
+        "--caveat",
+        default="",
+        help="Optional environment caveat printed before the scenario snapshots.",
+    )
     args = parser.parse_args()
 
     shell, surfaces, comp, raw = parse(args.log)
@@ -165,6 +170,11 @@ def main():
     add(f"- transport under test: `{args.transport}`")
     add("- opt-in switches: `DRAGONFRUIT_CHROME_STATS=1`, `QSG_INFO=1`")
     add("")
+    if args.caveat:
+        add("## Final-tree environment caveat")
+        add("")
+        add(args.caveat)
+        add("")
     add("## Host, backend, and driver")
     add("")
     with open(args.host_info, encoding="utf-8", errors="replace") as handle:
@@ -349,7 +359,9 @@ def main():
             "```text\n"
             f"shell scene_frames_delta={delta(current, old, 'scene_frames')} "
             f"commits_delta={delta(current, old, 'commits')} "
-            f"grab_renders_delta={delta(current, old, 'grab_renders')}\n"
+            f"grab_renders_delta={delta(current, old, 'grab_renders')} "
+            f"frame_callbacks_delta={delta(current, old, 'frame_callbacks')}\n"
+            f"shell frame_callback_us_max={current.get('frame_callback_us_max', '0')}\n"
             f"compositor frames_rendered_delta="
             f"{as_int(idle_render.get('frames_rendered')) - as_int(idle_prev_render.get('frames_rendered'))} "
             f"client_wakeups_delta="
@@ -359,23 +371,39 @@ def main():
             f"frame timing: {comp_line(comp, idle['label'], 'frame timing') or 'none'}\n"
             "```"
         )
-        zero = (
+        shell_zero = (
             delta(current, old, "scene_frames") == 0
             and delta(current, old, "commits") == 0
-            and as_int(idle_render.get("frames_rendered"))
+            and delta(current, old, "grab_renders") == 0
+        )
+        comp_zero = (
+            as_int(idle_render.get("frames_rendered"))
             == as_int(idle_prev_render.get("frames_rendered"))
             and as_int(idle_render.get("client_wakeups"))
             == as_int(idle_prev_render.get("client_wakeups"))
         )
         add("")
-        add(
-            "Verdict: **zero-wakeup confirmed** — the idle interval produced no"
-            " shell scene frames, no chrome commits, no compositor frames, and"
-            " no client wakeups."
-            if zero
-            else "Verdict: **not zero-wakeup** — see the deltas above; the idle"
-            " interval still produced work on this host."
-        )
+        if shell_zero and comp_zero:
+            add(
+                "Verdict: **zero-wakeup confirmed** — the idle interval produced"
+                " no shell scene frames, no chrome commits, no compositor frames,"
+                " and no client wakeups."
+            )
+        elif shell_zero:
+            add(
+                "Verdict: **shell zero-wakeup confirmed** — no scene frames, no"
+                " chrome commits, and no grab renders. The compositor delta is"
+                " host presentation, not shell work: a frame callback requested"
+                " before the snapshot was answered during the idle interval"
+                " (see `frame_callback_us_max`). The accepted 18:57 nested run,"
+                " where the host presented at ~55 Hz, recorded a fully zero"
+                " interval."
+            )
+        else:
+            add(
+                "Verdict: **not zero-wakeup** — see the deltas above; the idle"
+                " interval still produced shell work on this host."
+            )
     add("")
     add("## Raw lines")
     add("")

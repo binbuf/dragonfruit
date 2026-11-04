@@ -10,15 +10,19 @@ presentation measurement.
 - transport under test: `QQuickRenderControl -> ping-pong QImage -> pooled wl_shm (3 buffers/surface) -> wl_surface.commit + wl_surface.frame`
 - opt-in switches: `DRAGONFRUIT_CHROME_STATS=1`, `QSG_INFO=1`
 
+## Final-tree environment caveat
+
+The final-tree rerun was made while the nested window was not being presented by the host at 60 Hz: the compositor's `frame timing` p50 is about 1.0 s, so QML animation advanced only on synthetic pointer events and the shell's 100 ms safety tick is visible as `fallback_renders`. The transport invariants still hold per commit (`grab_renders=0`, bounded `shm_allocs`, exactly one full-surface copy per commit), and the idle interval produced zero shell scene frames, commits, and grab renders. The accepted 18:57 nested run, where the host presented at ~55 Hz, recorded the target dock-sweep numbers: commits=136, `grab_renders=0`, `shm_allocs=4`, `shm_bytes=1,198,560`, `copy_bytes=121,280,880`, `frame_callbacks=105`, `fallback_renders=0`; its idle interval was fully zero (shell and compositor). The final-tree deltas in this file are therefore a same-transport, host-throttled sample, not a replacement for the accepted comparison.
+
 ## Host, backend, and driver
 
 ```text
-timestamp: 2026-11-03T18:57:55-08:00
+timestamp: 2026-11-03T20:04:35-08:00
 host: Linux 7.2.13-200.fc44.x86_64 x86_64
 distro: Fedora Linux 44 (KDE Plasma Desktop Edition)
 session: XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=dragonfruit WAYLAND_DISPLAY=dragonfruit-wayland
-nested socket: dragonfruit-t21-baseline-9434 (private session bus, scratch XDG dirs)
-shell pid: 9540; compositor pid: 9486
+nested socket: dragonfruit-t21-baseline-26134 (private session bus, scratch XDG dirs)
+shell pid: 26266; compositor pid: 26203
 
 ## QSG_INFO (shell scene-graph backend)
 Loading backend software
@@ -38,7 +42,7 @@ DRM nodes: by-path card1 renderD128
 verdict: QSG software backend; no DRI driver mapped (loader libraries alone do not make a GL backend)
 
 ## Exact command
-QSG_INFO=1 DRAGONFRUIT_CHROME_STATS=1 DRAGONFRUIT_SYNTHETIC_INPUT=/run/user/1000/dragonfruit-t21-baseline-9434.synth DF_DOCK_CHOOSER_FIXTURE=1 DF_SCREENSHOT_DIR=/tmp/dragonfruit-t21-baseline.55kquX/shots DF_SHELL_LOG=/tmp/dragonfruit-t21-baseline.55kquX/shell.log make demo DEMO_ARGS="--socket-name dragonfruit-t21-baseline-9434 --private-bus"
+QSG_INFO=1 DRAGONFRUIT_CHROME_STATS=1 DRAGONFRUIT_SYNTHETIC_INPUT=/run/user/1000/dragonfruit-t21-baseline-26134.synth DF_DOCK_CHOOSER_FIXTURE=1 DF_SCREENSHOT_DIR=/tmp/opencode/t21-after-run/shots DF_SHELL_LOG=/tmp/opencode/t21-after-run/shell.log make demo DEMO_ARGS="--socket-name dragonfruit-t21-baseline-26134 --private-bus"
 ```
 
 ## Scenario snapshots
@@ -50,384 +54,404 @@ dump (the timing rings clear on emit), so they describe this scenario.
 Compositor `frame timing` percentiles are the compositor's current
 8192-sample window, not a per-scenario delta; the raw line is quoted.
 
-### baseline (SIGUSR1-1, 1.801 s)
+### baseline (SIGUSR1-1, 2.704 s)
 
-shell delta: scene_frames=25 commits=3 grab_renders=0 shm_allocs=3 shm_bytes=2135040 copy_bytes=2135040 damage_pixels=307968 frame_callbacks=3 fallback_renders=0 skipped_commits=22
-cadence: scene_frames/s=13.9 commits/s=1.7
-shell timing: commit_us_samples=3 commit_us_p50=872 commit_us_p95=872 commit_us_p99=872 commit_us_max=1755 frame_callback_us_samples=3 frame_callback_us_p50=74074 frame_callback_us_p95=74074 frame_callback_us_p99=74074
-compositor delta: chrome_shm_imports=3 chrome_shm_bytes=2135040 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
-compositor render delta: frames_rendered=29 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=47 animation_frames_stepped=8
-frame timing (SIGUSR1-1): samples=29 samples_total=29 avg_us=155243 p50_us=18032 p95_us=26194 p99_us=29882 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell delta: scene_frames=38 commits=4 grab_renders=0 shm_allocs=4 shm_bytes=1566720 copy_bytes=1566720 damage_pixels=211002 frame_callbacks=3 fallback_renders=1 skipped_commits=34
+cadence: scene_frames/s=14.1 commits/s=1.5
+shell timing: commit_us_samples=4 commit_us_p50=381 commit_us_p95=936 commit_us_p99=936 commit_us_max=1384 frame_callback_us_samples=3 frame_callback_us_p50=1988801 frame_callback_us_p95=1988801 frame_callback_us_p99=1988801
+compositor delta: chrome_shm_imports=4 chrome_shm_bytes=1566720 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
+compositor render delta: frames_rendered=90 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=172 animation_frames_stepped=1
+frame timing (SIGUSR1-1): samples=90 samples_total=90 avg_us=1002220 p50_us=1004290 p95_us=1011724 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-1): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-1): backdrop_passes=7 backdrop_skipped=0 path=gpu blur_passes=7 blur_panels=10 blur_draws=7 blur_downsample_max=16
-degrade stats (SIGUSR1-1): tier=reduced forced=0 budget_us=16000 samples=29 over_budget=18 downgrades=1 upgrades=0 tiers=full:23,reduced:6,minimal:0
-animation stats (SIGUSR1-1): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-scanout stats (SIGUSR1-1): direct_scanouts=0 frames_rendered=29 frames_skipped_no_damage=0 considered=29
+material stats (SIGUSR1-1): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-1): tier=minimal forced=0 budget_us=16000 samples=90 over_budget=89 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:65
+animation stats (SIGUSR1-1): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-1): direct_scanouts=0 frames_rendered=90 frames_skipped_no_damage=0 considered=90
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=2 renders_delta=5 shm_allocs_delta=2 shm_bytes_delta=1920000 copy_bytes_delta=1920000 damage_pixels_delta=254208 skipped_delta=3 fallback_delta=0 commit_us_p50=872 commit_us_p95=872 commit_us_p99=872 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=1 renders_delta=20 shm_allocs_delta=1 shm_bytes_delta=215040 copy_bytes_delta=215040 damage_pixels_delta=53760 skipped_delta=19 fallback_delta=0 commit_us_p50=264 commit_us_p95=264 commit_us_p99=264 frame_callback_us_samples=0
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=2 renders_delta=5 shm_allocs_delta=2 shm_bytes_delta=1280000 copy_bytes_delta=1280000 damage_pixels_delta=174208 skipped_delta=3 fallback_delta=0 commit_us_p50=936 commit_us_p95=936 commit_us_p99=936 frame_callback_us_samples=1
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=2 renders_delta=33 shm_allocs_delta=2 shm_bytes_delta=286720 copy_bytes_delta=286720 damage_pixels_delta=36794 skipped_delta=31 fallback_delta=0 commit_us_p50=347 commit_us_p95=347 commit_us_p99=347 frame_callback_us_samples=2
 
-### idle (SIGUSR1-2, 5.301 s)
+### idle (SIGUSR1-2, 6.105 s)
 
 shell delta: scene_frames=0 commits=0 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=0 frame_callbacks=0 fallback_renders=0 skipped_commits=0
 cadence: scene_frames/s=0.0 commits/s=0.0
 shell timing: commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0
 compositor delta: chrome_shm_imports=0 chrome_shm_bytes=0 chrome_dmabuf_imports=0 chrome_frame_callbacks=0
-compositor render delta: frames_rendered=0 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=0 animation_frames_stepped=0
-frame timing (SIGUSR1-2): samples=29 samples_total=29 avg_us=155243 p50_us=18032 p95_us=26194 p99_us=29882 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+compositor render delta: frames_rendered=6 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=12 animation_frames_stepped=0
+frame timing (SIGUSR1-2): samples=96 samples_total=96 avg_us=1002275 p50_us=1004275 p95_us=1011724 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-2): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-2): backdrop_passes=7 backdrop_skipped=0 path=gpu blur_passes=7 blur_panels=10 blur_draws=7 blur_downsample_max=16
-degrade stats (SIGUSR1-2): tier=reduced forced=0 budget_us=16000 samples=29 over_budget=18 downgrades=1 upgrades=0 tiers=full:23,reduced:6,minimal:0
-animation stats (SIGUSR1-2): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-scanout stats (SIGUSR1-2): direct_scanouts=0 frames_rendered=29 frames_skipped_no_damage=0 considered=29
+material stats (SIGUSR1-2): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-2): tier=minimal forced=0 budget_us=16000 samples=96 over_budget=95 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:71
+animation stats (SIGUSR1-2): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-2): direct_scanouts=0 frames_rendered=96 frames_skipped_no_damage=0 considered=96
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
 
-### dock-sweep (SIGUSR1-3, 2.708 s)
+### dock-sweep (SIGUSR1-3, 3.012 s)
 
-shell delta: scene_frames=158 commits=136 grab_renders=0 shm_allocs=4 shm_bytes=1198560 copy_bytes=121280880 damage_pixels=5026083 frame_callbacks=105 fallback_renders=0 skipped_commits=32
-cadence: scene_frames/s=58.3 commits/s=50.2
-shell timing: commit_us_samples=136 commit_us_p50=928 commit_us_p95=1247 commit_us_p99=1536 commit_us_max=2002 frame_callback_us_samples=105 frame_callback_us_p50=17963 frame_callback_us_p95=26184 frame_callback_us_p99=29994
-compositor delta: chrome_shm_imports=136 chrome_shm_bytes=121280880 chrome_dmabuf_imports=0 chrome_frame_callbacks=105
-compositor render delta: frames_rendered=178 frames_skipped_no_damage=2 direct_scanouts=0 client_wakeups=360 animation_frames_stepped=0
-frame timing (SIGUSR1-3): samples=207 samples_total=207 avg_us=30923 p50_us=11676 p95_us=19199 p99_us=22618 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell delta: scene_frames=7 commits=4 grab_renders=0 shm_allocs=3 shm_bytes=657760 copy_bytes=1297760 damage_pixels=62506 frame_callbacks=0 fallback_renders=4 skipped_commits=3
+cadence: scene_frames/s=2.3 commits/s=1.3
+shell timing: commit_us_samples=4 commit_us_p50=827 commit_us_p95=830 commit_us_p99=830 commit_us_max=1522 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0
+compositor delta: chrome_shm_imports=4 chrome_shm_bytes=1297760 chrome_dmabuf_imports=0 chrome_frame_callbacks=0
+compositor render delta: frames_rendered=3 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=6 animation_frames_stepped=0
+frame timing (SIGUSR1-3): samples=99 samples_total=99 avg_us=1002313 p50_us=1004275 p95_us=1011724 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-3): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-3): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
-degrade stats (SIGUSR1-3): tier=minimal forced=0 budget_us=16000 samples=207 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:172
-animation stats (SIGUSR1-3): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-scanout stats (SIGUSR1-3): direct_scanouts=0 frames_rendered=207 frames_skipped_no_damage=2 considered=209
+material stats (SIGUSR1-3): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-3): tier=minimal forced=0 budget_us=16000 samples=99 over_budget=98 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:74
+animation stats (SIGUSR1-3): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-3): direct_scanouts=0 frames_rendered=99 frames_skipped_no_damage=0 considered=99
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=126 renders_delta=156 shm_allocs_delta=1 shm_bytes_delta=960000 copy_bytes_delta=120960000 damage_pixels_delta=4946803 skipped_delta=30 fallback_delta=0 commit_us_p50=931 commit_us_p95=1247 commit_us_p99=1536 frame_callback_us_samples=0
-  surface=dock-popup logical_size=98x30 buffer_size=98x30 buffer_scale=1 commits_delta=9 renders_delta=0 shm_allocs_delta=2 shm_bytes_delta=23520 copy_bytes_delta=105840 damage_pixels_delta=25520 skipped_delta=1 fallback_delta=0 commit_us_p50=672 commit_us_p95=936 commit_us_p99=936 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=1 renders_delta=2 shm_allocs_delta=1 shm_bytes_delta=215040 copy_bytes_delta=215040 damage_pixels_delta=53760 skipped_delta=1 fallback_delta=0 commit_us_p50=345 commit_us_p95=345 commit_us_p99=345 frame_callback_us_samples=0
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=2 renders_delta=7 shm_allocs_delta=1 shm_bytes_delta=640000 copy_bytes_delta=1280000 damage_pixels_delta=58096 skipped_delta=2 fallback_delta=0 commit_us_p50=637 commit_us_p95=637 commit_us_p99=637 frame_callback_us_samples=0
+  surface=dock-popup logical_size=74x30 buffer_size=74x30 buffer_scale=1 commits_delta=2 renders_delta=0 shm_allocs_delta=2 shm_bytes_delta=17760 copy_bytes_delta=17760 damage_pixels_delta=4410 skipped_delta=1 fallback_delta=0 commit_us_p50=827 commit_us_p95=827 commit_us_p99=827 frame_callback_us_samples=0
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
 
-### menubar-open (SIGUSR1-4, 1.501 s)
+### menubar-open (SIGUSR1-4, 2.004 s)
 
-shell delta: scene_frames=25 commits=29 grab_renders=0 shm_allocs=2 shm_bytes=415072 copy_bytes=10163664 damage_pixels=946186 frame_callbacks=29 fallback_renders=0 skipped_commits=16
-cadence: scene_frames/s=16.7 commits/s=19.3
-shell timing: commit_us_samples=29 commit_us_p50=363 commit_us_p95=1117 commit_us_p99=1202 commit_us_max=1240 frame_callback_us_samples=29 frame_callback_us_p50=16931 frame_callback_us_p95=22125 frame_callback_us_p99=25262
-compositor delta: chrome_shm_imports=29 chrome_shm_bytes=10163664 chrome_dmabuf_imports=0 chrome_frame_callbacks=29
-compositor render delta: frames_rendered=26 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=52 animation_frames_stepped=0
-frame timing (SIGUSR1-4): samples=233 samples_total=233 avg_us=28330 p50_us=11398 p95_us=19031 p99_us=22618 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell delta: scene_frames=19 commits=4 grab_renders=0 shm_allocs=2 shm_bytes=28440 copy_bytes=1308440 damage_pixels=99910 frame_callbacks=1 fallback_renders=13 skipped_commits=6
+cadence: scene_frames/s=9.5 commits/s=2.0
+shell timing: commit_us_samples=4 commit_us_p50=1180 commit_us_p95=1324 commit_us_p99=1324 commit_us_max=1971 frame_callback_us_samples=1 frame_callback_us_p50=2009740 frame_callback_us_p95=2009740 frame_callback_us_p99=2009740
+compositor delta: chrome_shm_imports=4 chrome_shm_bytes=1308440 chrome_dmabuf_imports=0 chrome_frame_callbacks=2
+compositor render delta: frames_rendered=2 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=4 animation_frames_stepped=0
+frame timing (SIGUSR1-4): samples=101 samples_total=101 avg_us=1002328 p50_us=1004193 p95_us=1011724 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-4): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-4): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
-degrade stats (SIGUSR1-4): tier=minimal forced=0 budget_us=16000 samples=233 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:198
-animation stats (SIGUSR1-4): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-scanout stats (SIGUSR1-4): direct_scanouts=0 frames_rendered=233 frames_skipped_no_damage=2 considered=235
+material stats (SIGUSR1-4): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-4): tier=minimal forced=0 budget_us=16000 samples=101 over_budget=100 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:76
+animation stats (SIGUSR1-4): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-4): direct_scanouts=0 frames_rendered=101 frames_skipped_no_damage=0 considered=101
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=7 renders_delta=8 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=6720000 damage_pixels_delta=450777 skipped_delta=1 fallback_delta=0 commit_us_p50=1041 commit_us_p95=1084 commit_us_p99=1084 frame_callback_us_samples=0
-  surface=dock-popup logical_size=98x30 buffer_size=98x30 buffer_scale=1 commits_delta=6 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=70560 damage_pixels_delta=16327 skipped_delta=1 fallback_delta=0 commit_us_p50=1072 commit_us_p95=1117 commit_us_p99=1117 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=7 renders_delta=17 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=1505280 damage_pixels_delta=12126 skipped_delta=10 fallback_delta=0 commit_us_p50=154 commit_us_p95=223 commit_us_p99=223 frame_callback_us_samples=0
-  surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 commits_delta=9 renders_delta=0 shm_allocs_delta=2 shm_bytes_delta=415072 copy_bytes_delta=1867824 damage_pixels_delta=466956 skipped_delta=4 fallback_delta=0 commit_us_p50=220 commit_us_p95=363 commit_us_p99=363 frame_callback_us_samples=0
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=2 renders_delta=19 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=1280000 damage_pixels_delta=92800 skipped_delta=2 fallback_delta=0 commit_us_p50=1180 commit_us_p95=1180 commit_us_p99=1180 frame_callback_us_samples=1
+  surface=dock-popup logical_size=148x30 buffer_size=148x30 buffer_scale=1 commits_delta=2 renders_delta=0 shm_allocs_delta=2 shm_bytes_delta=28440 copy_bytes_delta=28440 damage_pixels_delta=7110 skipped_delta=4 fallback_delta=0 commit_us_p50=889 commit_us_p95=889 commit_us_p99=889 frame_callback_us_samples=0
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
 
-### menubar-close (SIGUSR1-5, 1.501 s)
+### menubar-close (SIGUSR1-5, 2.004 s)
 
-shell delta: scene_frames=13 commits=12 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=2520448 damage_pixels=365138 frame_callbacks=12 fallback_renders=0 skipped_commits=11
-cadence: scene_frames/s=8.7 commits/s=8.0
-shell timing: commit_us_samples=12 commit_us_p50=225 commit_us_p95=340 commit_us_p99=340 commit_us_max=364 frame_callback_us_samples=12 frame_callback_us_p50=3578 frame_callback_us_p95=11583 frame_callback_us_p99=11583
-compositor delta: chrome_shm_imports=12 chrome_shm_bytes=2520448 chrome_dmabuf_imports=0 chrome_frame_callbacks=12
-compositor render delta: frames_rendered=10 frames_skipped_no_damage=1 direct_scanouts=0 client_wakeups=22 animation_frames_stepped=0
-frame timing (SIGUSR1-5): samples=243 samples_total=243 avg_us=27326 p50_us=11215 p95_us=18369 p99_us=22618 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell delta: scene_frames=31 commits=5 grab_renders=0 shm_allocs=3 shm_bytes=558432 copy_bytes=1341792 damage_pixels=161144 frame_callbacks=1 fallback_renders=26 skipped_commits=21
+cadence: scene_frames/s=15.5 commits/s=2.5
+shell timing: commit_us_samples=5 commit_us_p50=570 commit_us_p95=619 commit_us_p99=619 commit_us_max=1421 frame_callback_us_samples=1 frame_callback_us_p50=2005925 frame_callback_us_p95=2005925 frame_callback_us_p99=2005925
+compositor delta: chrome_shm_imports=5 chrome_shm_bytes=1341792 chrome_dmabuf_imports=0 chrome_frame_callbacks=4
+compositor render delta: frames_rendered=2 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=4 animation_frames_stepped=0
+frame timing (SIGUSR1-5): samples=103 samples_total=103 avg_us=1002296 p50_us=1004193 p95_us=1011529 p99_us=1011978 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-5): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-5): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
-degrade stats (SIGUSR1-5): tier=minimal forced=0 budget_us=16000 samples=243 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:208
-animation stats (SIGUSR1-5): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-scanout stats (SIGUSR1-5): direct_scanouts=0 frames_rendered=243 frames_skipped_no_damage=3 considered=246
+material stats (SIGUSR1-5): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-5): tier=minimal forced=0 budget_us=16000 samples=103 over_budget=102 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:78
+animation stats (SIGUSR1-5): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-5): direct_scanouts=0 frames_rendered=103 frames_skipped_no_damage=0 considered=103
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=dock-popup logical_size=98x30 buffer_size=98x30 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=4 renders_delta=13 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=860160 damage_pixels_delta=8030 skipped_delta=9 fallback_delta=0 commit_us_p50=147 commit_us_p95=215 commit_us_p99=215 frame_callback_us_samples=0
-  surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 commits_delta=8 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=1660288 damage_pixels_delta=357108 skipped_delta=2 fallback_delta=0 commit_us_p50=241 commit_us_p95=340 commit_us_p99=340 frame_callback_us_samples=0
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=1 renders_delta=16 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=640000 damage_pixels_delta=55792 skipped_delta=0 fallback_delta=0 commit_us_p50=1421 commit_us_p95=1421 commit_us_p99=1421 frame_callback_us_samples=1
+  surface=dock-popup logical_size=148x30 buffer_size=148x30 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=7 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=2 renders_delta=15 shm_allocs_delta=1 shm_bytes_delta=143360 copy_bytes_delta=286720 damage_pixels_delta=1584 skipped_delta=1 fallback_delta=0 commit_us_p50=274 commit_us_p95=274 commit_us_p99=274 frame_callback_us_samples=0
+  surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 commits_delta=2 renders_delta=0 shm_allocs_delta=2 shm_bytes_delta=415072 copy_bytes_delta=415072 damage_pixels_delta=103768 skipped_delta=13 fallback_delta=0 commit_us_p50=570 commit_us_p95=570 commit_us_p99=570 frame_callback_us_samples=0
 
-### dock-popover-open (SIGUSR1-6, 1.917 s)
+### dock-popover-open (SIGUSR1-6, 4.052 s)
 
-shell delta: scene_frames=28 commits=23 grab_renders=0 shm_allocs=2 shm_bytes=174240 copy_bytes=12478320 damage_pixels=336103 frame_callbacks=23 fallback_renders=0 skipped_commits=17
-cadence: scene_frames/s=14.6 commits/s=12.0
-shell timing: commit_us_samples=23 commit_us_p50=850 commit_us_p95=1045 commit_us_p99=1443 commit_us_max=1537 frame_callback_us_samples=23 frame_callback_us_p50=9621 frame_callback_us_p95=26038 frame_callback_us_p99=26217
-compositor delta: chrome_shm_imports=23 chrome_shm_bytes=12478320 chrome_dmabuf_imports=0 chrome_frame_callbacks=23
-compositor render delta: frames_rendered=20 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=78 animation_frames_stepped=0
-frame timing (SIGUSR1-6): samples=263 samples_total=263 avg_us=26102 p50_us=11158 p95_us=18525 p99_us=22618 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell delta: scene_frames=29 commits=9 grab_renders=0 shm_allocs=4 shm_bytes=468896 copy_bytes=2243152 damage_pixels=164181 frame_callbacks=4 fallback_renders=17 skipped_commits=24
+cadence: scene_frames/s=7.2 commits/s=2.2
+shell timing: commit_us_samples=9 commit_us_p50=712 commit_us_p95=1033 commit_us_p99=1033 commit_us_max=1547 frame_callback_us_samples=4 frame_callback_us_p50=2003632 frame_callback_us_p95=2003936 frame_callback_us_p99=2003936
+compositor delta: chrome_shm_imports=9 chrome_shm_bytes=2243152 chrome_dmabuf_imports=0 chrome_frame_callbacks=5
+compositor render delta: frames_rendered=4 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=14 animation_frames_stepped=0
+frame timing (SIGUSR1-6): samples=107 samples_total=107 avg_us=1002181 p50_us=1004178 p95_us=1011529 p99_us=1011978 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-6): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-6): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
-degrade stats (SIGUSR1-6): tier=minimal forced=0 budget_us=16000 samples=263 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:228
-animation stats (SIGUSR1-6): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-scanout stats (SIGUSR1-6): direct_scanouts=0 frames_rendered=263 frames_skipped_no_damage=3 considered=266
+material stats (SIGUSR1-6): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-6): tier=minimal forced=0 budget_us=16000 samples=107 over_budget=106 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:82
+animation stats (SIGUSR1-6): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-6): direct_scanouts=0 frames_rendered=107 frames_skipped_no_damage=0 considered=107
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=12 renders_delta=20 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=11520000 damage_pixels_delta=134752 skipped_delta=8 fallback_delta=0 commit_us_p50=750 commit_us_p95=942 commit_us_p99=942 frame_callback_us_samples=0
-  surface=dock-popup logical_size=180x121 buffer_size=180x121 buffer_scale=1 commits_delta=11 renders_delta=0 shm_allocs_delta=2 shm_bytes_delta=174240 copy_bytes_delta=958320 damage_pixels_delta=201351 skipped_delta=1 fallback_delta=0 commit_us_p50=940 commit_us_p95=1045 commit_us_p99=1045 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=0 renders_delta=8 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=8 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=2 renders_delta=14 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=1280000 damage_pixels_delta=32832 skipped_delta=1 fallback_delta=0 commit_us_p50=700 commit_us_p95=700 commit_us_p99=700 frame_callback_us_samples=1
+  surface=dock-popup logical_size=180x121 buffer_size=180x121 buffer_scale=1 commits_delta=3 renders_delta=0 shm_allocs_delta=3 shm_bytes_delta=261360 copy_bytes_delta=261360 damage_pixels_delta=65340 skipped_delta=9 fallback_delta=0 commit_us_p50=1033 commit_us_p95=1033 commit_us_p99=1033 frame_callback_us_samples=0
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=2 renders_delta=15 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=286720 damage_pixels_delta=8769 skipped_delta=7 fallback_delta=0 commit_us_p50=280 commit_us_p95=280 commit_us_p99=280 frame_callback_us_samples=2
+  surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 commits_delta=2 renders_delta=0 shm_allocs_delta=1 shm_bytes_delta=207536 copy_bytes_delta=415072 damage_pixels_delta=57240 skipped_delta=7 fallback_delta=0 commit_us_p50=490 commit_us_p95=490 commit_us_p99=490 frame_callback_us_samples=1
 
-### dock-popover-close (SIGUSR1-7, 1.501 s)
+### dock-popover-close (SIGUSR1-7, 2.004 s)
 
-shell delta: scene_frames=70 commits=46 grab_renders=0 shm_allocs=3 shm_bytes=117360 copy_bytes=29817840 damage_pixels=982352 frame_callbacks=32 fallback_renders=0 skipped_commits=44
-cadence: scene_frames/s=46.6 commits/s=30.6
-shell timing: commit_us_samples=46 commit_us_p50=1071 commit_us_p95=1753 commit_us_p99=1879 commit_us_max=1952 frame_callback_us_samples=32 frame_callback_us_p50=13664 frame_callback_us_p95=27134 frame_callback_us_p99=90446
-compositor delta: chrome_shm_imports=46 chrome_shm_bytes=29817840 chrome_dmabuf_imports=0 chrome_frame_callbacks=32
-compositor render delta: frames_rendered=47 frames_skipped_no_damage=1 direct_scanouts=0 client_wakeups=216 animation_frames_stepped=9
-frame timing (SIGUSR1-7): samples=310 samples_total=310 avg_us=23864 p50_us=11152 p95_us=18286 p99_us=22405 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell delta: scene_frames=6 commits=1 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=640000 damage_pixels=16500 frame_callbacks=2 fallback_renders=5 skipped_commits=6
+cadence: scene_frames/s=3.0 commits/s=0.5
+shell timing: commit_us_samples=1 commit_us_p50=1322 commit_us_p95=1322 commit_us_p99=1322 commit_us_max=1322 frame_callback_us_samples=2 frame_callback_us_p50=1536094 frame_callback_us_p95=1536094 frame_callback_us_p99=1536094
+compositor delta: chrome_shm_imports=1 chrome_shm_bytes=640000 chrome_dmabuf_imports=0 chrome_frame_callbacks=1
+compositor render delta: frames_rendered=2 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=8 animation_frames_stepped=0
+frame timing (SIGUSR1-7): samples=109 samples_total=109 avg_us=1002220 p50_us=1004178 p95_us=1011529 p99_us=1011978 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-7): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-7): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
-degrade stats (SIGUSR1-7): tier=minimal forced=0 budget_us=16000 samples=310 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:275
-animation stats (SIGUSR1-7): frames_stepped=17 animations_started=2 animations_completed=2 reduced_motion=false
-scanout stats (SIGUSR1-7): direct_scanouts=0 frames_rendered=310 frames_skipped_no_damage=4 considered=314
+material stats (SIGUSR1-7): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-7): tier=minimal forced=0 budget_us=16000 samples=109 over_budget=108 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:84
+animation stats (SIGUSR1-7): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-7): direct_scanouts=0 frames_rendered=109 frames_skipped_no_damage=0 considered=109
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=30 renders_delta=56 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=28800000 damage_pixels_delta=808648 skipped_delta=15 fallback_delta=0 commit_us_p50=1065 commit_us_p95=1719 commit_us_p99=1737 frame_callback_us_samples=0
-  surface=dock-popup logical_size=126x30 buffer_size=126x30 buffer_scale=1 commits_delta=15 renders_delta=0 shm_allocs_delta=3 shm_bytes_delta=117360 copy_bytes_delta=802800 damage_pixels_delta=173028 skipped_delta=16 fallback_delta=0 commit_us_p50=1343 commit_us_p95=1879 commit_us_p99=1879 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=1 renders_delta=14 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=215040 damage_pixels_delta=676 skipped_delta=13 fallback_delta=0 commit_us_p50=198 commit_us_p95=198 commit_us_p99=198 frame_callback_us_samples=0
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=1 renders_delta=6 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=640000 damage_pixels_delta=16500 skipped_delta=0 fallback_delta=0 commit_us_p50=1322 commit_us_p95=1322 commit_us_p99=1322 frame_callback_us_samples=1
+  surface=dock-popup logical_size=180x121 buffer_size=180x121 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=6 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=1
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
   surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
 
-### app-launch (SIGUSR1-8, 1.409 s)
+### app-launch (SIGUSR1-8, 5.047 s)
 
-shell delta: scene_frames=9 commits=2 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=1920000 damage_pixels=44640 frame_callbacks=2 fallback_renders=0 skipped_commits=12
-cadence: scene_frames/s=6.4 commits/s=1.4
-shell timing: commit_us_samples=2 commit_us_p50=775 commit_us_p95=775 commit_us_p99=775 commit_us_max=787 frame_callback_us_samples=2 frame_callback_us_p50=19809 frame_callback_us_p95=19809 frame_callback_us_p99=19809
-compositor delta: chrome_shm_imports=2 chrome_shm_bytes=1920000 chrome_dmabuf_imports=0 chrome_frame_callbacks=2
-compositor render delta: frames_rendered=7 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=42 animation_frames_stepped=0
-frame timing (SIGUSR1-8): samples=317 samples_total=317 avg_us=23688 p50_us=11215 p95_us=18369 p99_us=22405 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell delta: scene_frames=36 commits=12 grab_renders=0 shm_allocs=5 shm_bytes=12312000 copy_bytes=23207360 damage_pixels=2182930 frame_callbacks=5 fallback_renders=19 skipped_commits=18
+cadence: scene_frames/s=7.1 commits/s=2.4
+shell timing: commit_us_samples=12 commit_us_p50=879 commit_us_p95=4488 commit_us_p99=4488 commit_us_max=5671 frame_callback_us_samples=5 frame_callback_us_p50=1996865 frame_callback_us_p95=2001647 frame_callback_us_p99=2001647
+compositor delta: chrome_shm_imports=14 chrome_shm_bytes=31399360 chrome_dmabuf_imports=0 chrome_frame_callbacks=6
+compositor render delta: frames_rendered=5 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=23 animation_frames_stepped=0
+frame timing (SIGUSR1-8): samples=114 samples_total=114 avg_us=1002122 p50_us=1004035 p95_us=1011724 p99_us=1012960 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-8): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-8): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
-degrade stats (SIGUSR1-8): tier=minimal forced=0 budget_us=16000 samples=317 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:282
-animation stats (SIGUSR1-8): frames_stepped=17 animations_started=2 animations_completed=2 reduced_motion=false
-scanout stats (SIGUSR1-8): direct_scanouts=0 frames_rendered=317 frames_skipped_no_damage=4 considered=321
+material stats (SIGUSR1-8): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-8): tier=minimal forced=0 budget_us=16000 samples=114 over_budget=113 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:89
+animation stats (SIGUSR1-8): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-8): direct_scanouts=0 frames_rendered=114 frames_skipped_no_damage=0 considered=114
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=2 renders_delta=5 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=1920000 damage_pixels_delta=44640 skipped_delta=3 fallback_delta=0 commit_us_p50=775 commit_us_p95=775 commit_us_p99=775 frame_callback_us_samples=0
-  surface=dock-popup logical_size=126x30 buffer_size=126x30 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=5 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=0 renders_delta=4 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=4 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
+  surface=apps-drawer logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 commits_delta=5 renders_delta=18 shm_allocs_delta=3 shm_bytes_delta=12288000 copy_bytes_delta=20480000 damage_pixels_delta=2048048 skipped_delta=5 fallback_delta=0 commit_us_p50=4306 commit_us_p95=4488 commit_us_p99=4488 frame_callback_us_samples=2
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=4 renders_delta=14 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=2560000 damage_pixels_delta=127928 skipped_delta=4 fallback_delta=0 commit_us_p50=802 commit_us_p95=804 commit_us_p99=804 frame_callback_us_samples=2
+  surface=dock-popup logical_size=100x30 buffer_size=100x30 buffer_scale=1 commits_delta=2 renders_delta=0 shm_allocs_delta=2 shm_bytes_delta=24000 copy_bytes_delta=24000 damage_pixels_delta=6000 skipped_delta=6 fallback_delta=0 commit_us_p50=871 commit_us_p95=871 commit_us_p99=871 frame_callback_us_samples=0
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=1 renders_delta=4 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=143360 damage_pixels_delta=954 skipped_delta=3 fallback_delta=0 commit_us_p50=197 commit_us_p95=197 commit_us_p99=197 frame_callback_us_samples=1
   surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
 
-### mission-control (SIGUSR1-9, 2.631 s)
+### mission-control (SIGUSR1-9, 11.074 s)
 
-shell delta: scene_frames=71 commits=5 grab_renders=0 shm_allocs=2 shm_bytes=18432000 copy_bytes=21312000 damage_pixels=4653384 frame_callbacks=3 fallback_renders=0 skipped_commits=90
-cadence: scene_frames/s=27.0 commits/s=1.9
-shell timing: commit_us_samples=5 commit_us_p50=878 commit_us_p95=6618 commit_us_p99=6618 commit_us_max=7865 frame_callback_us_samples=3 frame_callback_us_p50=83130 frame_callback_us_p95=83130 frame_callback_us_p99=83130
-compositor delta: chrome_shm_imports=5 chrome_shm_bytes=21312000 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
-compositor render delta: frames_rendered=31 frames_skipped_no_damage=3 direct_scanouts=0 client_wakeups=422 animation_frames_stepped=6
-frame timing (SIGUSR1-9): samples=348 samples_total=348 avg_us=25579 p50_us=11652 p95_us=35793 p99_us=65763 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell delta: scene_frames=90 commits=18 grab_renders=0 shm_allocs=2 shm_bytes=8192000 copy_bytes=56448000 damage_pixels=2143570 frame_callbacks=10 fallback_renders=39 skipped_commits=71
+cadence: scene_frames/s=8.1 commits/s=1.6
+shell timing: commit_us_samples=18 commit_us_p50=2664 commit_us_p95=3971 commit_us_p99=3971 commit_us_max=4191 frame_callback_us_samples=10 frame_callback_us_p50=1501759 frame_callback_us_p95=1892737 frame_callback_us_p99=1892737
+compositor delta: chrome_shm_imports=16 chrome_shm_bytes=48256000 chrome_dmabuf_imports=0 chrome_frame_callbacks=10
+compositor render delta: frames_rendered=11 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=112 animation_frames_stepped=1
+frame timing (SIGUSR1-9): samples=125 samples_total=125 avg_us=1002022 p50_us=1004012 p95_us=1011724 p99_us=1012960 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-9): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-9): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
-degrade stats (SIGUSR1-9): tier=minimal forced=0 budget_us=16000 samples=348 over_budget=59 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:313
-animation stats (SIGUSR1-9): frames_stepped=23 animations_started=2 animations_completed=2 reduced_motion=false
-scanout stats (SIGUSR1-9): direct_scanouts=0 frames_rendered=348 frames_skipped_no_damage=7 considered=355
+material stats (SIGUSR1-9): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-9): tier=minimal forced=0 budget_us=16000 samples=125 over_budget=124 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:100
+animation stats (SIGUSR1-9): frames_stepped=2 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-9): direct_scanouts=0 frames_rendered=125 frames_skipped_no_damage=0 considered=125
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=3 renders_delta=24 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=2880000 damage_pixels_delta=45384 skipped_delta=21 fallback_delta=0 commit_us_p50=794 commit_us_p95=794 commit_us_p99=794 frame_callback_us_samples=0
-  surface=dock-popup logical_size=126x30 buffer_size=126x30 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=24 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=0 renders_delta=40 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=40 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
+  surface=apps-drawer logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 commits_delta=11 renders_delta=42 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=45056000 damage_pixels_delta=176 skipped_delta=15 fallback_delta=0 commit_us_p50=2776 commit_us_p95=3712 commit_us_p99=3712 frame_callback_us_samples=5
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=5 renders_delta=27 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=3200000 damage_pixels_delta=95394 skipped_delta=10 fallback_delta=0 commit_us_p50=857 commit_us_p95=1017 commit_us_p99=1017 frame_callback_us_samples=4
+  surface=dock-popup logical_size=100x30 buffer_size=100x30 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=27 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=1
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=0 renders_delta=18 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=18 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
   surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=overview logical_size=1920x1200 buffer_size=1920x1200 buffer_scale=1 commits_delta=2 renders_delta=7 shm_allocs_delta=2 shm_bytes_delta=18432000 copy_bytes_delta=18432000 damage_pixels_delta=4608000 skipped_delta=5 fallback_delta=0 commit_us_p50=6618 commit_us_p95=6618 commit_us_p99=6618 frame_callback_us_samples=0
+  surface=overview logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 commits_delta=2 renders_delta=3 shm_allocs_delta=2 shm_bytes_delta=8192000 copy_bytes_delta=8192000 damage_pixels_delta=2048000 skipped_delta=1 fallback_delta=0 commit_us_p50=3971 commit_us_p95=3971 commit_us_p99=3971 frame_callback_us_samples=0
 
-### mission-control-close (SIGUSR1-10, 1.293 s)
+### mission-control-close (SIGUSR1-10, 3.930 s)
 
-shell delta: scene_frames=67 commits=6 grab_renders=0 shm_allocs=1 shm_bytes=9216000 copy_bytes=55296000 damage_pixels=13824000 frame_callbacks=2 fallback_renders=0 skipped_commits=77
-cadence: scene_frames/s=51.8 commits/s=4.6
-shell timing: commit_us_samples=6 commit_us_p50=2404 commit_us_p95=3353 commit_us_p99=3353 commit_us_max=6717 frame_callback_us_samples=2 frame_callback_us_p50=77858 frame_callback_us_p95=77858 frame_callback_us_p99=77858
-compositor delta: chrome_shm_imports=6 chrome_shm_bytes=55296000 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
-compositor render delta: frames_rendered=9 frames_skipped_no_damage=1 direct_scanouts=0 client_wakeups=130 animation_frames_stepped=6
-frame timing (SIGUSR1-10): samples=357 samples_total=357 avg_us=26346 p50_us=11784 p95_us=44694 p99_us=66870 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell delta: scene_frames=41 commits=5 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=20480000 damage_pixels=1024064 frame_callbacks=3 fallback_renders=16 skipped_commits=28
+cadence: scene_frames/s=10.4 commits/s=1.3
+shell timing: commit_us_samples=5 commit_us_p50=2711 commit_us_p95=2798 commit_us_p99=2798 commit_us_max=3356 frame_callback_us_samples=3 frame_callback_us_p50=1923395 frame_callback_us_p95=1923395 frame_callback_us_p99=1923395
+compositor delta: chrome_shm_imports=5 chrome_shm_bytes=20480000 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
+compositor render delta: frames_rendered=4 frames_skipped_no_damage=0 direct_scanouts=0 client_wakeups=48 animation_frames_stepped=1
+frame timing (SIGUSR1-10): samples=129 samples_total=129 avg_us=1002033 p50_us=1004012 p95_us=1011724 p99_us=1012960 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 presentation stats (SIGUSR1-10): none — the nested backend has no hardware vblank; DRM `frame_finish` owns this line.
-material stats (SIGUSR1-10): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
-degrade stats (SIGUSR1-10): tier=minimal forced=0 budget_us=16000 samples=357 over_budget=68 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:322
-animation stats (SIGUSR1-10): frames_stepped=29 animations_started=2 animations_completed=2 reduced_motion=false
-scanout stats (SIGUSR1-10): direct_scanouts=0 frames_rendered=357 frames_skipped_no_damage=8 considered=365
+material stats (SIGUSR1-10): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
+degrade stats (SIGUSR1-10): tier=minimal forced=0 budget_us=16000 samples=129 over_budget=128 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:104
+animation stats (SIGUSR1-10): frames_stepped=3 animations_started=1 animations_completed=1 reduced_motion=false
+scanout stats (SIGUSR1-10): direct_scanouts=0 frames_rendered=129 frames_skipped_no_damage=0 considered=129
 per-surface:
-  surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 commits_delta=0 renders_delta=16 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=16 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=dock-popup logical_size=126x30 buffer_size=126x30 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=16 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 commits_delta=0 renders_delta=32 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=32 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
+  surface=apps-drawer logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 commits_delta=4 renders_delta=23 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=16384000 damage_pixels_delta=64 skipped_delta=7 fallback_delta=0 commit_us_p50=2711 commit_us_p95=2798 commit_us_p99=2798 frame_callback_us_samples=2
+  surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 commits_delta=0 renders_delta=4 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=4 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
+  surface=dock-popup logical_size=100x30 buffer_size=100x30 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=4 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
+  surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 commits_delta=0 renders_delta=8 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=8 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
   surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 commits_delta=0 renders_delta=0 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=0 damage_pixels_delta=0 skipped_delta=0 fallback_delta=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 frame_callback_us_samples=0
-  surface=overview logical_size=1920x1200 buffer_size=1920x1200 buffer_scale=1 commits_delta=6 renders_delta=19 shm_allocs_delta=1 shm_bytes_delta=9216000 copy_bytes_delta=55296000 damage_pixels_delta=13824000 skipped_delta=13 fallback_delta=0 commit_us_p50=2404 commit_us_p95=3353 commit_us_p99=3353 frame_callback_us_samples=0
+  surface=overview logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 commits_delta=1 renders_delta=6 shm_allocs_delta=0 shm_bytes_delta=0 copy_bytes_delta=4096000 damage_pixels_delta=1024000 skipped_delta=5 fallback_delta=0 commit_us_p50=1570 commit_us_p95=1570 commit_us_p99=1570 frame_callback_us_samples=1
 
 ## Percentiles and idle evidence
 
 | scenario | commit_us p50 | p95 | p99 | frame timing p50 | p95 | p99 |
 |---|---|---|---|---|---|---|
-| baseline | 872 | 872 | 872 | 18032 | 26194 | 29882 |
-| idle | 0 | 0 | 0 | 18032 | 26194 | 29882 |
-| dock-sweep | 928 | 1247 | 1536 | 11676 | 19199 | 22618 |
-| menubar-open | 363 | 1117 | 1202 | 11398 | 19031 | 22618 |
-| menubar-close | 225 | 340 | 340 | 11215 | 18369 | 22618 |
-| dock-popover-open | 850 | 1045 | 1443 | 11158 | 18525 | 22618 |
-| dock-popover-close | 1071 | 1753 | 1879 | 11152 | 18286 | 22405 |
-| app-launch | 775 | 775 | 775 | 11215 | 18369 | 22405 |
-| mission-control | 878 | 6618 | 6618 | 11652 | 35793 | 65763 |
-| mission-control-close | 2404 | 3353 | 3353 | 11784 | 44694 | 66870 |
+| baseline | 381 | 936 | 936 | 1004290 | 1011724 | 1013337 |
+| idle | 0 | 0 | 0 | 1004275 | 1011724 | 1013337 |
+| dock-sweep | 827 | 830 | 830 | 1004275 | 1011724 | 1013337 |
+| menubar-open | 1180 | 1324 | 1324 | 1004193 | 1011724 | 1013337 |
+| menubar-close | 570 | 619 | 619 | 1004193 | 1011529 | 1011978 |
+| dock-popover-open | 712 | 1033 | 1033 | 1004178 | 1011529 | 1011978 |
+| dock-popover-close | 1322 | 1322 | 1322 | 1004178 | 1011529 | 1011978 |
+| app-launch | 879 | 4488 | 4488 | 1004035 | 1011724 | 1012960 |
+| mission-control | 2664 | 3971 | 3971 | 1004012 | 1011724 | 1012960 |
+| mission-control-close | 2711 | 2798 | 2798 | 1004012 | 1011724 | 1012960 |
 
 Idle zero-wakeup evidence (the `idle` snapshot):
 
 ```text
-shell scene_frames_delta=0 commits_delta=0 grab_renders_delta=0
-compositor frames_rendered_delta=0 client_wakeups_delta=0 animation_frames_stepped_delta=0
-frame timing: samples=29 samples_total=29 avg_us=155243 p50_us=18032 p95_us=26194 p99_us=29882 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
+shell scene_frames_delta=0 commits_delta=0 grab_renders_delta=0 frame_callbacks_delta=0
+shell frame_callback_us_max=0
+compositor frames_rendered_delta=6 client_wakeups_delta=12 animation_frames_stepped_delta=0
+frame timing: samples=96 samples_total=96 avg_us=1002275 p50_us=1004275 p95_us=1011724 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
 ```
 
-Verdict: **zero-wakeup confirmed** — the idle interval produced no shell scene frames, no chrome commits, no compositor frames, and no client wakeups.
+Verdict: **shell zero-wakeup confirmed** — no scene frames, no chrome commits, and no grab renders. The compositor delta is host presentation, not shell work: a frame callback requested before the snapshot was answered during the idle interval (see `frame_callback_us_max`). The accepted 18:57 nested run, where the host presented at ~55 Hz, recorded a fully zero interval.
 
 ## Raw lines
 
 ```text
-dragonfruit-compositor: render stats (SIGUSR1-1): frames_rendered=29 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=8 client_wakeups=47 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=0 scene_transforms=8 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-1): chrome_shm_imports=3 chrome_shm_bytes=2135040 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
+dragonfruit-compositor: render stats (SIGUSR1-1): frames_rendered=90 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=1 client_wakeups=172 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=0 scene_transforms=1 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-1): chrome_shm_imports=4 chrome_shm_bytes=1566720 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
 dragonfruit-compositor: latency stats (SIGUSR1-1): last_us=0 max_us=0 samples=0 dropped=0 within_one_frame_60hz=false
-dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 frames_rendered=29 frames_skipped_no_damage=0 considered=29
-dragonfruit-compositor: animation stats (SIGUSR1-1): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=7 backdrop_skipped=0 path=gpu blur_passes=7 blur_panels=10 blur_draws=7 blur_downsample_max=16
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 frames_rendered=90 frames_skipped_no_damage=0 considered=90
+dragonfruit-compositor: animation stats (SIGUSR1-1): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-1): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-1): tier=reduced forced=0 budget_us=16000 samples=29 over_budget=18 downgrades=1 upgrades=0 tiers=full:23,reduced:6,minimal:0
-dragonfruit-compositor: frame timing (SIGUSR1-1): samples=29 samples_total=29 avg_us=155243 p50_us=18032 p95_us=26194 p99_us=29882 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-1): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (SIGUSR1-2): frames_rendered=29 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=8 client_wakeups=47 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=0 scene_transforms=8 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-2): chrome_shm_imports=3 chrome_shm_bytes=2135040 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
+dragonfruit-compositor: degrade stats (SIGUSR1-1): tier=minimal forced=0 budget_us=16000 samples=90 over_budget=89 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:65
+dragonfruit-compositor: frame timing (SIGUSR1-1): samples=90 samples_total=90 avg_us=1002220 p50_us=1004290 p95_us=1011724 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-1): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (SIGUSR1-2): frames_rendered=96 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=1 client_wakeups=184 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=0 scene_transforms=1 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-2): chrome_shm_imports=4 chrome_shm_bytes=1566720 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
 dragonfruit-compositor: latency stats (SIGUSR1-2): last_us=0 max_us=0 samples=0 dropped=0 within_one_frame_60hz=false
-dragonfruit-compositor: scanout stats (SIGUSR1-2): direct_scanouts=0 frames_rendered=29 frames_skipped_no_damage=0 considered=29
-dragonfruit-compositor: animation stats (SIGUSR1-2): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=7 backdrop_skipped=0 path=gpu blur_passes=7 blur_panels=10 blur_draws=7 blur_downsample_max=16
+dragonfruit-compositor: scanout stats (SIGUSR1-2): direct_scanouts=0 frames_rendered=96 frames_skipped_no_damage=0 considered=96
+dragonfruit-compositor: animation stats (SIGUSR1-2): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-2): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-2): tier=reduced forced=0 budget_us=16000 samples=29 over_budget=18 downgrades=1 upgrades=0 tiers=full:23,reduced:6,minimal:0
-dragonfruit-compositor: frame timing (SIGUSR1-2): samples=29 samples_total=29 avg_us=155243 p50_us=18032 p95_us=26194 p99_us=29882 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-2): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (SIGUSR1-3): frames_rendered=207 frames_skipped_no_damage=2 direct_scanouts=0 animation_frames_stepped=8 client_wakeups=407 latency_us_last=11298 latency_us_max=17698 latency_samples=40 latency_dropped=0 scene_transforms=8 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-3): chrome_shm_imports=139 chrome_shm_bytes=123415920 chrome_dmabuf_imports=0 chrome_frame_callbacks=108
-dragonfruit-compositor: latency stats (SIGUSR1-3): last_us=11298 max_us=17698 samples=40 dropped=0 within_one_frame_60hz=true
-dragonfruit-compositor: scanout stats (SIGUSR1-3): direct_scanouts=0 frames_rendered=207 frames_skipped_no_damage=2 considered=209
-dragonfruit-compositor: animation stats (SIGUSR1-3): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-3): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
+dragonfruit-compositor: degrade stats (SIGUSR1-2): tier=minimal forced=0 budget_us=16000 samples=96 over_budget=95 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:71
+dragonfruit-compositor: frame timing (SIGUSR1-2): samples=96 samples_total=96 avg_us=1002275 p50_us=1004275 p95_us=1011724 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-2): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (SIGUSR1-3): frames_rendered=99 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=1 client_wakeups=190 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=2 scene_transforms=1 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-3): chrome_shm_imports=8 chrome_shm_bytes=2864480 chrome_dmabuf_imports=0 chrome_frame_callbacks=3
+dragonfruit-compositor: latency stats (SIGUSR1-3): last_us=0 max_us=0 samples=0 dropped=2 within_one_frame_60hz=false
+dragonfruit-compositor: scanout stats (SIGUSR1-3): direct_scanouts=0 frames_rendered=99 frames_skipped_no_damage=0 considered=99
+dragonfruit-compositor: animation stats (SIGUSR1-3): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-3): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-3): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-3): tier=minimal forced=0 budget_us=16000 samples=207 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:172
-dragonfruit-compositor: frame timing (SIGUSR1-3): samples=207 samples_total=207 avg_us=30923 p50_us=11676 p95_us=19199 p99_us=22618 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-3): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (SIGUSR1-4): frames_rendered=233 frames_skipped_no_damage=2 direct_scanouts=0 animation_frames_stepped=8 client_wakeups=459 latency_us_last=14602 latency_us_max=17698 latency_samples=42 latency_dropped=0 scene_transforms=8 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-4): chrome_shm_imports=168 chrome_shm_bytes=133579584 chrome_dmabuf_imports=0 chrome_frame_callbacks=137
-dragonfruit-compositor: latency stats (SIGUSR1-4): last_us=14602 max_us=17698 samples=42 dropped=0 within_one_frame_60hz=true
-dragonfruit-compositor: scanout stats (SIGUSR1-4): direct_scanouts=0 frames_rendered=233 frames_skipped_no_damage=2 considered=235
-dragonfruit-compositor: animation stats (SIGUSR1-4): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-4): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
+dragonfruit-compositor: degrade stats (SIGUSR1-3): tier=minimal forced=0 budget_us=16000 samples=99 over_budget=98 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:74
+dragonfruit-compositor: frame timing (SIGUSR1-3): samples=99 samples_total=99 avg_us=1002313 p50_us=1004275 p95_us=1011724 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-3): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (SIGUSR1-4): frames_rendered=101 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=1 client_wakeups=194 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=4 scene_transforms=1 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-4): chrome_shm_imports=12 chrome_shm_bytes=4172920 chrome_dmabuf_imports=0 chrome_frame_callbacks=5
+dragonfruit-compositor: latency stats (SIGUSR1-4): last_us=0 max_us=0 samples=0 dropped=4 within_one_frame_60hz=false
+dragonfruit-compositor: scanout stats (SIGUSR1-4): direct_scanouts=0 frames_rendered=101 frames_skipped_no_damage=0 considered=101
+dragonfruit-compositor: animation stats (SIGUSR1-4): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-4): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-4): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-4): tier=minimal forced=0 budget_us=16000 samples=233 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:198
-dragonfruit-compositor: frame timing (SIGUSR1-4): samples=233 samples_total=233 avg_us=28330 p50_us=11398 p95_us=19031 p99_us=22618 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-4): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (SIGUSR1-5): frames_rendered=243 frames_skipped_no_damage=3 direct_scanouts=0 animation_frames_stepped=8 client_wakeups=481 latency_us_last=17249 latency_us_max=17698 latency_samples=44 latency_dropped=0 scene_transforms=8 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-5): chrome_shm_imports=180 chrome_shm_bytes=136100032 chrome_dmabuf_imports=0 chrome_frame_callbacks=149
-dragonfruit-compositor: latency stats (SIGUSR1-5): last_us=17249 max_us=17698 samples=44 dropped=0 within_one_frame_60hz=false
-dragonfruit-compositor: scanout stats (SIGUSR1-5): direct_scanouts=0 frames_rendered=243 frames_skipped_no_damage=3 considered=246
-dragonfruit-compositor: animation stats (SIGUSR1-5): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-5): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
+dragonfruit-compositor: degrade stats (SIGUSR1-4): tier=minimal forced=0 budget_us=16000 samples=101 over_budget=100 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:76
+dragonfruit-compositor: frame timing (SIGUSR1-4): samples=101 samples_total=101 avg_us=1002328 p50_us=1004193 p95_us=1011724 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-4): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (SIGUSR1-5): frames_rendered=103 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=1 client_wakeups=198 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=5 scene_transforms=1 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-5): chrome_shm_imports=17 chrome_shm_bytes=5514712 chrome_dmabuf_imports=0 chrome_frame_callbacks=9
+dragonfruit-compositor: latency stats (SIGUSR1-5): last_us=0 max_us=0 samples=0 dropped=5 within_one_frame_60hz=false
+dragonfruit-compositor: scanout stats (SIGUSR1-5): direct_scanouts=0 frames_rendered=103 frames_skipped_no_damage=0 considered=103
+dragonfruit-compositor: animation stats (SIGUSR1-5): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-5): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-5): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-5): tier=minimal forced=0 budget_us=16000 samples=243 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:208
-dragonfruit-compositor: frame timing (SIGUSR1-5): samples=243 samples_total=243 avg_us=27326 p50_us=11215 p95_us=18369 p99_us=22618 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-5): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (SIGUSR1-6): frames_rendered=263 frames_skipped_no_damage=3 direct_scanouts=0 animation_frames_stepped=8 client_wakeups=559 latency_us_last=17249 latency_us_max=17698 latency_samples=44 latency_dropped=0 scene_transforms=8 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-6): chrome_shm_imports=203 chrome_shm_bytes=148578352 chrome_dmabuf_imports=0 chrome_frame_callbacks=172
-dragonfruit-compositor: latency stats (SIGUSR1-6): last_us=17249 max_us=17698 samples=44 dropped=0 within_one_frame_60hz=false
-dragonfruit-compositor: scanout stats (SIGUSR1-6): direct_scanouts=0 frames_rendered=263 frames_skipped_no_damage=3 considered=266
-dragonfruit-compositor: animation stats (SIGUSR1-6): frames_stepped=8 animations_started=1 animations_completed=1 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-6): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
+dragonfruit-compositor: degrade stats (SIGUSR1-5): tier=minimal forced=0 budget_us=16000 samples=103 over_budget=102 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:78
+dragonfruit-compositor: frame timing (SIGUSR1-5): samples=103 samples_total=103 avg_us=1002296 p50_us=1004193 p95_us=1011529 p99_us=1011978 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-5): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (SIGUSR1-6): frames_rendered=107 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=1 client_wakeups=212 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=5 scene_transforms=1 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-6): chrome_shm_imports=26 chrome_shm_bytes=7757864 chrome_dmabuf_imports=0 chrome_frame_callbacks=14
+dragonfruit-compositor: latency stats (SIGUSR1-6): last_us=0 max_us=0 samples=0 dropped=5 within_one_frame_60hz=false
+dragonfruit-compositor: scanout stats (SIGUSR1-6): direct_scanouts=0 frames_rendered=107 frames_skipped_no_damage=0 considered=107
+dragonfruit-compositor: animation stats (SIGUSR1-6): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-6): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-6): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-6): tier=minimal forced=0 budget_us=16000 samples=263 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:228
-dragonfruit-compositor: frame timing (SIGUSR1-6): samples=263 samples_total=263 avg_us=26102 p50_us=11158 p95_us=18525 p99_us=22618 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-6): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (SIGUSR1-7): frames_rendered=310 frames_skipped_no_damage=4 direct_scanouts=0 animation_frames_stepped=17 client_wakeups=775 latency_us_last=65808 latency_us_max=65808 latency_samples=46 latency_dropped=0 scene_transforms=20 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-7): chrome_shm_imports=249 chrome_shm_bytes=178396192 chrome_dmabuf_imports=0 chrome_frame_callbacks=204
-dragonfruit-compositor: latency stats (SIGUSR1-7): last_us=65808 max_us=65808 samples=46 dropped=0 within_one_frame_60hz=false
-dragonfruit-compositor: scanout stats (SIGUSR1-7): direct_scanouts=0 frames_rendered=310 frames_skipped_no_damage=4 considered=314
-dragonfruit-compositor: animation stats (SIGUSR1-7): frames_stepped=17 animations_started=2 animations_completed=2 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-7): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
+dragonfruit-compositor: degrade stats (SIGUSR1-6): tier=minimal forced=0 budget_us=16000 samples=107 over_budget=106 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:82
+dragonfruit-compositor: frame timing (SIGUSR1-6): samples=107 samples_total=107 avg_us=1002181 p50_us=1004178 p95_us=1011529 p99_us=1011978 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-6): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (SIGUSR1-7): frames_rendered=109 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=1 client_wakeups=220 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=6 scene_transforms=1 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-7): chrome_shm_imports=27 chrome_shm_bytes=8397864 chrome_dmabuf_imports=0 chrome_frame_callbacks=15
+dragonfruit-compositor: latency stats (SIGUSR1-7): last_us=0 max_us=0 samples=0 dropped=6 within_one_frame_60hz=false
+dragonfruit-compositor: scanout stats (SIGUSR1-7): direct_scanouts=0 frames_rendered=109 frames_skipped_no_damage=0 considered=109
+dragonfruit-compositor: animation stats (SIGUSR1-7): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-7): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-7): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-7): tier=minimal forced=0 budget_us=16000 samples=310 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:275
-dragonfruit-compositor: frame timing (SIGUSR1-7): samples=310 samples_total=310 avg_us=23864 p50_us=11152 p95_us=18286 p99_us=22405 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-7): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (SIGUSR1-8): frames_rendered=317 frames_skipped_no_damage=4 direct_scanouts=0 animation_frames_stepped=17 client_wakeups=817 latency_us_last=65808 latency_us_max=65808 latency_samples=46 latency_dropped=0 scene_transforms=20 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-8): chrome_shm_imports=251 chrome_shm_bytes=180316192 chrome_dmabuf_imports=0 chrome_frame_callbacks=206
-dragonfruit-compositor: latency stats (SIGUSR1-8): last_us=65808 max_us=65808 samples=46 dropped=0 within_one_frame_60hz=false
-dragonfruit-compositor: scanout stats (SIGUSR1-8): direct_scanouts=0 frames_rendered=317 frames_skipped_no_damage=4 considered=321
-dragonfruit-compositor: animation stats (SIGUSR1-8): frames_stepped=17 animations_started=2 animations_completed=2 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-8): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
+dragonfruit-compositor: degrade stats (SIGUSR1-7): tier=minimal forced=0 budget_us=16000 samples=109 over_budget=108 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:84
+dragonfruit-compositor: frame timing (SIGUSR1-7): samples=109 samples_total=109 avg_us=1002220 p50_us=1004178 p95_us=1011529 p99_us=1011978 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-7): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (SIGUSR1-8): frames_rendered=114 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=1 client_wakeups=243 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=6 scene_transforms=1 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-8): chrome_shm_imports=41 chrome_shm_bytes=39797224 chrome_dmabuf_imports=0 chrome_frame_callbacks=21
+dragonfruit-compositor: latency stats (SIGUSR1-8): last_us=0 max_us=0 samples=0 dropped=6 within_one_frame_60hz=false
+dragonfruit-compositor: scanout stats (SIGUSR1-8): direct_scanouts=0 frames_rendered=114 frames_skipped_no_damage=0 considered=114
+dragonfruit-compositor: animation stats (SIGUSR1-8): frames_stepped=1 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-8): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-8): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-8): tier=minimal forced=0 budget_us=16000 samples=317 over_budget=28 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:282
-dragonfruit-compositor: frame timing (SIGUSR1-8): samples=317 samples_total=317 avg_us=23688 p50_us=11215 p95_us=18369 p99_us=22405 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-8): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (SIGUSR1-9): frames_rendered=348 frames_skipped_no_damage=7 direct_scanouts=0 animation_frames_stepped=23 client_wakeups=1239 latency_us_last=38268 latency_us_max=80323 latency_samples=50 latency_dropped=0 scene_transforms=38 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-9): chrome_shm_imports=256 chrome_shm_bytes=201628192 chrome_dmabuf_imports=0 chrome_frame_callbacks=209
-dragonfruit-compositor: latency stats (SIGUSR1-9): last_us=38268 max_us=80323 samples=50 dropped=0 within_one_frame_60hz=false
-dragonfruit-compositor: scanout stats (SIGUSR1-9): direct_scanouts=0 frames_rendered=348 frames_skipped_no_damage=7 considered=355
-dragonfruit-compositor: animation stats (SIGUSR1-9): frames_stepped=23 animations_started=2 animations_completed=2 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-9): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
+dragonfruit-compositor: degrade stats (SIGUSR1-8): tier=minimal forced=0 budget_us=16000 samples=114 over_budget=113 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:89
+dragonfruit-compositor: frame timing (SIGUSR1-8): samples=114 samples_total=114 avg_us=1002122 p50_us=1004035 p95_us=1011724 p99_us=1012960 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-8): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (SIGUSR1-9): frames_rendered=125 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=2 client_wakeups=355 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=8 scene_transforms=4 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-9): chrome_shm_imports=57 chrome_shm_bytes=88053224 chrome_dmabuf_imports=0 chrome_frame_callbacks=31
+dragonfruit-compositor: latency stats (SIGUSR1-9): last_us=0 max_us=0 samples=0 dropped=8 within_one_frame_60hz=false
+dragonfruit-compositor: scanout stats (SIGUSR1-9): direct_scanouts=0 frames_rendered=125 frames_skipped_no_damage=0 considered=125
+dragonfruit-compositor: animation stats (SIGUSR1-9): frames_stepped=2 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-9): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-9): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-9): tier=minimal forced=0 budget_us=16000 samples=348 over_budget=59 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:313
-dragonfruit-compositor: frame timing (SIGUSR1-9): samples=348 samples_total=348 avg_us=25579 p50_us=11652 p95_us=35793 p99_us=65763 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-9): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (SIGUSR1-10): frames_rendered=357 frames_skipped_no_damage=8 direct_scanouts=0 animation_frames_stepped=29 client_wakeups=1369 latency_us_last=61624 latency_us_max=134333 latency_samples=53 latency_dropped=0 scene_transforms=44 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (SIGUSR1-10): chrome_shm_imports=262 chrome_shm_bytes=256924192 chrome_dmabuf_imports=0 chrome_frame_callbacks=212
-dragonfruit-compositor: latency stats (SIGUSR1-10): last_us=61624 max_us=134333 samples=53 dropped=0 within_one_frame_60hz=false
-dragonfruit-compositor: scanout stats (SIGUSR1-10): direct_scanouts=0 frames_rendered=357 frames_skipped_no_damage=8 considered=365
-dragonfruit-compositor: animation stats (SIGUSR1-10): frames_stepped=29 animations_started=2 animations_completed=2 reduced_motion=false
-dragonfruit-compositor: material stats (SIGUSR1-10): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
+dragonfruit-compositor: degrade stats (SIGUSR1-9): tier=minimal forced=0 budget_us=16000 samples=125 over_budget=124 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:100
+dragonfruit-compositor: frame timing (SIGUSR1-9): samples=125 samples_total=125 avg_us=1002022 p50_us=1004012 p95_us=1011724 p99_us=1012960 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-9): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (SIGUSR1-10): frames_rendered=129 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=3 client_wakeups=403 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=9 scene_transforms=6 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-10): chrome_shm_imports=62 chrome_shm_bytes=108533224 chrome_dmabuf_imports=0 chrome_frame_callbacks=34
+dragonfruit-compositor: latency stats (SIGUSR1-10): last_us=0 max_us=0 samples=0 dropped=9 within_one_frame_60hz=false
+dragonfruit-compositor: scanout stats (SIGUSR1-10): direct_scanouts=0 frames_rendered=129 frames_skipped_no_damage=0 considered=129
+dragonfruit-compositor: animation stats (SIGUSR1-10): frames_stepped=3 animations_started=1 animations_completed=1 reduced_motion=false
+dragonfruit-compositor: material stats (SIGUSR1-10): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (SIGUSR1-10): scheme=dark
-dragonfruit-compositor: degrade stats (SIGUSR1-10): tier=minimal forced=0 budget_us=16000 samples=357 over_budget=68 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:322
-dragonfruit-compositor: frame timing (SIGUSR1-10): samples=357 samples_total=357 avg_us=26346 p50_us=11784 p95_us=44694 p99_us=66870 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (SIGUSR1-10): display=:1 starts=1 running=true
-dragonfruit-compositor: render stats (exit): frames_rendered=463 frames_skipped_no_damage=11 direct_scanouts=0 animation_frames_stepped=41 client_wakeups=2777 latency_us_last=44171 latency_us_max=194322 latency_samples=94 latency_dropped=5 scene_transforms=63 scene_transform_skipped=0
-dragonfruit-compositor: chrome stats (exit): chrome_shm_imports=347 chrome_shm_bytes=398280800 chrome_dmabuf_imports=0 chrome_frame_callbacks=273
-dragonfruit-compositor: latency stats (exit): last_us=44171 max_us=194322 samples=94 dropped=5 within_one_frame_60hz=false
-dragonfruit-compositor: scanout stats (exit): direct_scanouts=0 frames_rendered=463 frames_skipped_no_damage=11 considered=474
-dragonfruit-compositor: animation stats (exit): frames_stepped=41 animations_started=2 animations_completed=2 reduced_motion=false
-dragonfruit-compositor: material stats (exit): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=22 blur_draws=13 blur_downsample_max=16
+dragonfruit-compositor: degrade stats (SIGUSR1-10): tier=minimal forced=0 budget_us=16000 samples=129 over_budget=128 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:104
+dragonfruit-compositor: frame timing (SIGUSR1-10): samples=129 samples_total=129 avg_us=1002033 p50_us=1004012 p95_us=1011724 p99_us=1012960 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (SIGUSR1-10): display=:2 starts=1 running=true
+dragonfruit-compositor: render stats (exit): frames_rendered=171 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=6 client_wakeups=931 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=23 scene_transforms=22 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (exit): chrome_shm_imports=84 chrome_shm_bytes=138926360 chrome_dmabuf_imports=0 chrome_frame_callbacks=46
+dragonfruit-compositor: latency stats (exit): last_us=0 max_us=0 samples=0 dropped=23 within_one_frame_60hz=false
+dragonfruit-compositor: scanout stats (exit): direct_scanouts=0 frames_rendered=171 frames_skipped_no_damage=0 considered=171
+dragonfruit-compositor: animation stats (exit): frames_stepped=6 animations_started=2 animations_completed=2 reduced_motion=false
+dragonfruit-compositor: material stats (exit): backdrop_passes=0 backdrop_skipped=0 path=gpu blur_passes=0 blur_panels=0 blur_draws=0 blur_downsample_max=0
 dragonfruit-compositor: scheme stats (exit): scheme=dark
-dragonfruit-compositor: degrade stats (exit): tier=minimal forced=0 budget_us=16000 samples=463 over_budget=174 downgrades=2 upgrades=0 tiers=full:23,reduced:12,minimal:428
-dragonfruit-compositor: frame timing (exit): samples=463 samples_total=463 avg_us=34708 p50_us=14098 p95_us=64768 p99_us=72350 max_us=4038052 window_max_us=4038052 max_interval_ms=61097
-dragonfruit-compositor: xwayland stats (exit): display=:1 starts=1 running=true
-dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+shm scene_frames=25 commits=3 grab_renders=0 shm_allocs=3 shm_bytes=2135040 copy_bytes=2135040 damage_pixels=307968 frame_callbacks=3 fallback_renders=0 skipped_commits=22 commit_us_samples=3 commit_us_p50=872 commit_us_p95=872 commit_us_p99=872 commit_us_max=1755 frame_callback_us_samples=3 frame_callback_us_p50=74074 frame_callback_us_p95=74074 frame_callback_us_p99=74074 frame_callback_us_max=4059975
-dragonfruit-shell: chrome surface (SIGUSR1-1): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=1920000 copy_bytes=1920000 damage_pixels=254208 skipped=3 fallback=0 renders=5 commit_us_samples=2 commit_us_p50=872 commit_us_p95=872 commit_us_p99=872 commit_us_max=1755 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=1 shm_allocs=1 shm_bytes=215040 copy_bytes=215040 damage_pixels=53760 skipped=19 fallback=0 renders=20 commit_us_samples=1 commit_us_p50=264 commit_us_p95=264 commit_us_p99=264 commit_us_max=264 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome stats (SIGUSR1-2): path=render-control+shm scene_frames=25 commits=3 grab_renders=0 shm_allocs=3 shm_bytes=2135040 copy_bytes=2135040 damage_pixels=307968 frame_callbacks=3 fallback_renders=0 skipped_commits=22 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-2): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=1920000 copy_bytes=1920000 damage_pixels=254208 skipped=3 fallback=0 renders=5 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-2): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=1 shm_allocs=1 shm_bytes=215040 copy_bytes=215040 damage_pixels=53760 skipped=19 fallback=0 renders=20 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome stats (SIGUSR1-3): path=render-control+shm scene_frames=183 commits=139 grab_renders=0 shm_allocs=7 shm_bytes=3333600 copy_bytes=123415920 damage_pixels=5334051 frame_callbacks=108 fallback_renders=0 skipped_commits=54 commit_us_samples=136 commit_us_p50=928 commit_us_p95=1247 commit_us_p99=1536 commit_us_max=2002 frame_callback_us_samples=105 frame_callback_us_p50=17963 frame_callback_us_p95=26184 frame_callback_us_p99=29994 frame_callback_us_max=36195
-dragonfruit-shell: chrome surface (SIGUSR1-3): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=128 shm_allocs=3 shm_bytes=2880000 copy_bytes=122880000 damage_pixels=5201011 skipped=33 fallback=0 renders=161 commit_us_samples=126 commit_us_p50=931 commit_us_p95=1247 commit_us_p99=1536 commit_us_max=2002 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-3): surface=dock-popup logical_size=98x30 buffer_size=98x30 buffer_scale=1 scale=1 viewport=0 commits=9 shm_allocs=2 shm_bytes=23520 copy_bytes=105840 damage_pixels=25520 skipped=1 fallback=0 renders=0 commit_us_samples=9 commit_us_p50=672 commit_us_p95=936 commit_us_p99=936 commit_us_max=1021 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-3): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=430080 copy_bytes=430080 damage_pixels=107520 skipped=20 fallback=0 renders=22 commit_us_samples=1 commit_us_p50=345 commit_us_p95=345 commit_us_p99=345 commit_us_max=345 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome stats (SIGUSR1-4): path=render-control+shm scene_frames=208 commits=168 grab_renders=0 shm_allocs=9 shm_bytes=3748672 copy_bytes=133579584 damage_pixels=6280237 frame_callbacks=137 fallback_renders=0 skipped_commits=70 commit_us_samples=29 commit_us_p50=363 commit_us_p95=1117 commit_us_p99=1202 commit_us_max=1240 frame_callback_us_samples=29 frame_callback_us_p50=16931 frame_callback_us_p95=22125 frame_callback_us_p99=25262 frame_callback_us_max=25297
-dragonfruit-shell: chrome surface (SIGUSR1-4): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=135 shm_allocs=3 shm_bytes=2880000 copy_bytes=129600000 damage_pixels=5651788 skipped=34 fallback=0 renders=169 commit_us_samples=7 commit_us_p50=1041 commit_us_p95=1084 commit_us_p99=1084 commit_us_max=1202 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-4): surface=dock-popup logical_size=98x30 buffer_size=98x30 buffer_scale=1 scale=1 viewport=0 commits=15 shm_allocs=2 shm_bytes=23520 copy_bytes=176400 damage_pixels=41847 skipped=2 fallback=0 renders=0 commit_us_samples=6 commit_us_p50=1072 commit_us_p95=1117 commit_us_p99=1117 commit_us_max=1240 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-4): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=9 shm_allocs=2 shm_bytes=430080 copy_bytes=1935360 damage_pixels=119646 skipped=30 fallback=0 renders=39 commit_us_samples=7 commit_us_p50=154 commit_us_p95=223 commit_us_p99=223 commit_us_max=225 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-4): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=9 shm_allocs=2 shm_bytes=415072 copy_bytes=1867824 damage_pixels=466956 skipped=4 fallback=0 renders=0 commit_us_samples=9 commit_us_p50=220 commit_us_p95=363 commit_us_p99=363 commit_us_max=453 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome stats (SIGUSR1-5): path=render-control+shm scene_frames=221 commits=180 grab_renders=0 shm_allocs=9 shm_bytes=3748672 copy_bytes=136100032 damage_pixels=6645375 frame_callbacks=149 fallback_renders=0 skipped_commits=81 commit_us_samples=12 commit_us_p50=225 commit_us_p95=340 commit_us_p99=340 commit_us_max=364 frame_callback_us_samples=12 frame_callback_us_p50=3578 frame_callback_us_p95=11583 frame_callback_us_p99=11583 frame_callback_us_max=11681
-dragonfruit-shell: chrome surface (SIGUSR1-5): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=135 shm_allocs=3 shm_bytes=2880000 copy_bytes=129600000 damage_pixels=5651788 skipped=34 fallback=0 renders=169 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-5): surface=dock-popup logical_size=98x30 buffer_size=98x30 buffer_scale=1 scale=1 viewport=0 commits=15 shm_allocs=2 shm_bytes=23520 copy_bytes=176400 damage_pixels=41847 skipped=2 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-5): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=13 shm_allocs=2 shm_bytes=430080 copy_bytes=2795520 damage_pixels=127676 skipped=39 fallback=0 renders=52 commit_us_samples=4 commit_us_p50=147 commit_us_p95=215 commit_us_p99=215 commit_us_max=225 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-5): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=17 shm_allocs=2 shm_bytes=415072 copy_bytes=3528112 damage_pixels=824064 skipped=6 fallback=0 renders=0 commit_us_samples=8 commit_us_p50=241 commit_us_p95=340 commit_us_p99=340 commit_us_max=364 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome stats (SIGUSR1-6): path=render-control+shm scene_frames=249 commits=203 grab_renders=0 shm_allocs=11 shm_bytes=3922912 copy_bytes=148578352 damage_pixels=6981478 frame_callbacks=172 fallback_renders=0 skipped_commits=98 commit_us_samples=23 commit_us_p50=850 commit_us_p95=1045 commit_us_p99=1443 commit_us_max=1537 frame_callback_us_samples=23 frame_callback_us_p50=9621 frame_callback_us_p95=26038 frame_callback_us_p99=26217 frame_callback_us_max=187773
-dragonfruit-shell: chrome surface (SIGUSR1-6): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=147 shm_allocs=3 shm_bytes=2880000 copy_bytes=141120000 damage_pixels=5786540 skipped=42 fallback=0 renders=189 commit_us_samples=12 commit_us_p50=750 commit_us_p95=942 commit_us_p99=942 commit_us_max=1443 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-6): surface=dock-popup logical_size=180x121 buffer_size=180x121 buffer_scale=1 scale=1 viewport=0 commits=26 shm_allocs=4 shm_bytes=197760 copy_bytes=1134720 damage_pixels=243198 skipped=3 fallback=0 renders=0 commit_us_samples=11 commit_us_p50=940 commit_us_p95=1045 commit_us_p99=1045 commit_us_max=1537 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-6): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=13 shm_allocs=2 shm_bytes=430080 copy_bytes=2795520 damage_pixels=127676 skipped=47 fallback=0 renders=60 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-6): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=17 shm_allocs=2 shm_bytes=415072 copy_bytes=3528112 damage_pixels=824064 skipped=6 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome stats (SIGUSR1-7): path=render-control+shm scene_frames=319 commits=249 grab_renders=0 shm_allocs=14 shm_bytes=4040272 copy_bytes=178396192 damage_pixels=7963830 frame_callbacks=204 fallback_renders=0 skipped_commits=142 commit_us_samples=46 commit_us_p50=1071 commit_us_p95=1753 commit_us_p99=1879 commit_us_max=1952 frame_callback_us_samples=32 frame_callback_us_p50=13664 frame_callback_us_p95=27134 frame_callback_us_p99=90446 frame_callback_us_max=332011
-dragonfruit-shell: chrome surface (SIGUSR1-7): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=177 shm_allocs=3 shm_bytes=2880000 copy_bytes=169920000 damage_pixels=6595188 skipped=57 fallback=0 renders=245 commit_us_samples=30 commit_us_p50=1065 commit_us_p95=1719 commit_us_p99=1737 commit_us_max=1749 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-7): surface=dock-popup logical_size=126x30 buffer_size=126x30 buffer_scale=1 scale=1 viewport=0 commits=41 shm_allocs=7 shm_bytes=315120 copy_bytes=1937520 damage_pixels=416226 skipped=19 fallback=0 renders=0 commit_us_samples=15 commit_us_p50=1343 commit_us_p95=1879 commit_us_p99=1879 commit_us_max=1952 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-7): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=14 shm_allocs=2 shm_bytes=430080 copy_bytes=3010560 damage_pixels=128352 skipped=60 fallback=0 renders=74 commit_us_samples=1 commit_us_p50=198 commit_us_p95=198 commit_us_p99=198 commit_us_max=198 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-7): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=17 shm_allocs=2 shm_bytes=415072 copy_bytes=3528112 damage_pixels=824064 skipped=6 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome stats (SIGUSR1-8): path=render-control+shm scene_frames=328 commits=251 grab_renders=0 shm_allocs=14 shm_bytes=4040272 copy_bytes=180316192 damage_pixels=8008470 frame_callbacks=206 fallback_renders=0 skipped_commits=154 commit_us_samples=2 commit_us_p50=775 commit_us_p95=775 commit_us_p99=775 commit_us_max=787 frame_callback_us_samples=2 frame_callback_us_p50=19809 frame_callback_us_p95=19809 frame_callback_us_p99=19809 frame_callback_us_max=24237
-dragonfruit-shell: chrome surface (SIGUSR1-8): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=179 shm_allocs=3 shm_bytes=2880000 copy_bytes=171840000 damage_pixels=6639828 skipped=60 fallback=0 renders=250 commit_us_samples=2 commit_us_p50=775 commit_us_p95=775 commit_us_p99=775 commit_us_max=787 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-8): surface=dock-popup logical_size=126x30 buffer_size=126x30 buffer_scale=1 scale=1 viewport=0 commits=41 shm_allocs=7 shm_bytes=315120 copy_bytes=1937520 damage_pixels=416226 skipped=24 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-8): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=14 shm_allocs=2 shm_bytes=430080 copy_bytes=3010560 damage_pixels=128352 skipped=64 fallback=0 renders=78 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-8): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=17 shm_allocs=2 shm_bytes=415072 copy_bytes=3528112 damage_pixels=824064 skipped=6 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome stats (SIGUSR1-9): path=render-control+shm scene_frames=399 commits=256 grab_renders=0 shm_allocs=16 shm_bytes=22472272 copy_bytes=201628192 damage_pixels=12661854 frame_callbacks=209 fallback_renders=0 skipped_commits=244 commit_us_samples=5 commit_us_p50=878 commit_us_p95=6618 commit_us_p99=6618 commit_us_max=7865 frame_callback_us_samples=3 frame_callback_us_p50=83130 frame_callback_us_p95=83130 frame_callback_us_p99=83130 frame_callback_us_max=867770
-dragonfruit-shell: chrome surface (SIGUSR1-9): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=182 shm_allocs=3 shm_bytes=2880000 copy_bytes=174720000 damage_pixels=6685212 skipped=81 fallback=0 renders=274 commit_us_samples=3 commit_us_p50=794 commit_us_p95=794 commit_us_p99=794 commit_us_max=878 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-9): surface=dock-popup logical_size=126x30 buffer_size=126x30 buffer_scale=1 scale=1 viewport=0 commits=41 shm_allocs=7 shm_bytes=315120 copy_bytes=1937520 damage_pixels=416226 skipped=48 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-9): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=14 shm_allocs=2 shm_bytes=430080 copy_bytes=3010560 damage_pixels=128352 skipped=104 fallback=0 renders=118 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-9): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=17 shm_allocs=2 shm_bytes=415072 copy_bytes=3528112 damage_pixels=824064 skipped=6 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-9): surface=overview logical_size=1920x1200 buffer_size=1920x1200 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=18432000 copy_bytes=18432000 damage_pixels=4608000 skipped=5 fallback=0 renders=7 commit_us_samples=2 commit_us_p50=6618 commit_us_p95=6618 commit_us_p99=6618 commit_us_max=7865 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome stats (SIGUSR1-10): path=render-control+shm scene_frames=466 commits=262 grab_renders=0 shm_allocs=17 shm_bytes=31688272 copy_bytes=256924192 damage_pixels=26485854 frame_callbacks=211 fallback_renders=0 skipped_commits=321 commit_us_samples=6 commit_us_p50=2404 commit_us_p95=3353 commit_us_p99=3353 commit_us_max=6717 frame_callback_us_samples=2 frame_callback_us_p50=77858 frame_callback_us_p95=77858 frame_callback_us_p99=77858 frame_callback_us_max=86318
-dragonfruit-shell: chrome surface (SIGUSR1-10): surface=dock logical_size=1920x125 buffer_size=1920x125 buffer_scale=1 scale=1 viewport=0 commits=182 shm_allocs=3 shm_bytes=2880000 copy_bytes=174720000 damage_pixels=6685212 skipped=97 fallback=0 renders=290 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-10): surface=dock-popup logical_size=126x30 buffer_size=126x30 buffer_scale=1 scale=1 viewport=0 commits=41 shm_allocs=7 shm_bytes=315120 copy_bytes=1937520 damage_pixels=416226 skipped=64 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-10): surface=menubar logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=0 commits=14 shm_allocs=2 shm_bytes=430080 copy_bytes=3010560 damage_pixels=128352 skipped=136 fallback=0 renders=150 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-10): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=17 shm_allocs=2 shm_bytes=415072 copy_bytes=3528112 damage_pixels=824064 skipped=6 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
-dragonfruit-shell: chrome surface (SIGUSR1-10): surface=overview logical_size=1920x1200 buffer_size=1920x1200 buffer_scale=1 scale=1 viewport=0 commits=8 shm_allocs=3 shm_bytes=27648000 copy_bytes=73728000 damage_pixels=18432000 skipped=18 fallback=0 renders=26 commit_us_samples=6 commit_us_p50=2404 commit_us_p95=3353 commit_us_p99=3353 commit_us_max=6717 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-compositor: degrade stats (exit): tier=minimal forced=0 budget_us=16000 samples=171 over_budget=170 downgrades=2 upgrades=0 tiers=full:13,reduced:12,minimal:146
+dragonfruit-compositor: frame timing (exit): samples=171 samples_total=171 avg_us=1002776 p50_us=1004178 p95_us=1011951 p99_us=1013337 max_us=4270403 window_max_us=4270403 max_interval_ms=15855
+dragonfruit-compositor: xwayland stats (exit): display=:2 starts=1 running=true
+dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+shm scene_frames=38 commits=4 grab_renders=0 shm_allocs=4 shm_bytes=1566720 copy_bytes=1566720 damage_pixels=211002 frame_callbacks=3 fallback_renders=1 skipped_commits=34 commit_us_samples=4 commit_us_p50=381 commit_us_p95=936 commit_us_p99=936 commit_us_max=1384 frame_callback_us_samples=3 frame_callback_us_p50=1988801 frame_callback_us_p95=1988801 frame_callback_us_p99=1988801 frame_callback_us_max=4698612
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=1280000 copy_bytes=1280000 damage_pixels=174208 skipped=3 fallback=0 renders=5 commit_us_samples=2 commit_us_p50=936 commit_us_p95=936 commit_us_p99=936 commit_us_max=1384 frame_callback_us_samples=1 frame_callback_us_p50=1988801 frame_callback_us_p95=1988801 frame_callback_us_p99=1988801 frame_callback_us_max=1988801
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=286720 copy_bytes=286720 damage_pixels=36794 skipped=31 fallback=0 renders=33 commit_us_samples=2 commit_us_p50=347 commit_us_p95=347 commit_us_p99=347 commit_us_max=381 frame_callback_us_samples=2 frame_callback_us_p50=1732352 frame_callback_us_p95=1732352 frame_callback_us_p99=1732352 frame_callback_us_max=4698612
+dragonfruit-shell: chrome stats (SIGUSR1-2): path=render-control+shm scene_frames=38 commits=4 grab_renders=0 shm_allocs=4 shm_bytes=1566720 copy_bytes=1566720 damage_pixels=211002 frame_callbacks=3 fallback_renders=1 skipped_commits=34 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-2): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=1280000 copy_bytes=1280000 damage_pixels=174208 skipped=3 fallback=0 renders=5 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-2): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=286720 copy_bytes=286720 damage_pixels=36794 skipped=31 fallback=0 renders=33 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome stats (SIGUSR1-3): path=render-control+shm scene_frames=45 commits=8 grab_renders=0 shm_allocs=7 shm_bytes=2224480 copy_bytes=2864480 damage_pixels=273508 frame_callbacks=3 fallback_renders=5 skipped_commits=37 commit_us_samples=4 commit_us_p50=827 commit_us_p95=830 commit_us_p99=830 commit_us_max=1522 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-3): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=1920000 copy_bytes=2560000 damage_pixels=232304 skipped=5 fallback=0 renders=12 commit_us_samples=2 commit_us_p50=637 commit_us_p95=637 commit_us_p99=637 commit_us_max=1522 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-3): surface=dock-popup logical_size=74x30 buffer_size=74x30 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=17760 copy_bytes=17760 damage_pixels=4410 skipped=1 fallback=0 renders=0 commit_us_samples=2 commit_us_p50=827 commit_us_p95=827 commit_us_p99=827 commit_us_max=830 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-3): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=286720 copy_bytes=286720 damage_pixels=36794 skipped=31 fallback=0 renders=33 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome stats (SIGUSR1-4): path=render-control+shm scene_frames=64 commits=12 grab_renders=0 shm_allocs=9 shm_bytes=2252920 copy_bytes=4172920 damage_pixels=373418 frame_callbacks=4 fallback_renders=18 skipped_commits=43 commit_us_samples=4 commit_us_p50=1180 commit_us_p95=1324 commit_us_p99=1324 commit_us_max=1971 frame_callback_us_samples=1 frame_callback_us_p50=2009740 frame_callback_us_p95=2009740 frame_callback_us_p99=2009740 frame_callback_us_max=2009740
+dragonfruit-shell: chrome surface (SIGUSR1-4): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=6 shm_allocs=3 shm_bytes=1920000 copy_bytes=3840000 damage_pixels=325104 skipped=7 fallback=0 renders=31 commit_us_samples=2 commit_us_p50=1180 commit_us_p95=1180 commit_us_p99=1180 commit_us_max=1971 frame_callback_us_samples=1 frame_callback_us_p50=2009740 frame_callback_us_p95=2009740 frame_callback_us_p99=2009740 frame_callback_us_max=2009740
+dragonfruit-shell: chrome surface (SIGUSR1-4): surface=dock-popup logical_size=148x30 buffer_size=148x30 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=4 shm_bytes=46200 copy_bytes=46200 damage_pixels=11520 skipped=5 fallback=0 renders=0 commit_us_samples=2 commit_us_p50=889 commit_us_p95=889 commit_us_p99=889 commit_us_max=1324 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-4): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=286720 copy_bytes=286720 damage_pixels=36794 skipped=31 fallback=0 renders=33 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome stats (SIGUSR1-5): path=render-control+shm scene_frames=95 commits=17 grab_renders=0 shm_allocs=12 shm_bytes=2811352 copy_bytes=5514712 damage_pixels=534562 frame_callbacks=5 fallback_renders=44 skipped_commits=64 commit_us_samples=5 commit_us_p50=570 commit_us_p95=619 commit_us_p99=619 commit_us_max=1421 frame_callback_us_samples=1 frame_callback_us_p50=2005925 frame_callback_us_p95=2005925 frame_callback_us_p99=2005925 frame_callback_us_max=2005925
+dragonfruit-shell: chrome surface (SIGUSR1-5): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=7 shm_allocs=3 shm_bytes=1920000 copy_bytes=4480000 damage_pixels=380896 skipped=7 fallback=0 renders=47 commit_us_samples=1 commit_us_p50=1421 commit_us_p95=1421 commit_us_p99=1421 commit_us_max=1421 frame_callback_us_samples=1 frame_callback_us_p50=2005925 frame_callback_us_p95=2005925 frame_callback_us_p99=2005925 frame_callback_us_max=2005925
+dragonfruit-shell: chrome surface (SIGUSR1-5): surface=dock-popup logical_size=148x30 buffer_size=148x30 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=4 shm_bytes=46200 copy_bytes=46200 damage_pixels=11520 skipped=12 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-5): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=430080 copy_bytes=573440 damage_pixels=38378 skipped=32 fallback=0 renders=48 commit_us_samples=2 commit_us_p50=274 commit_us_p95=274 commit_us_p99=274 commit_us_max=490 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-5): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=415072 copy_bytes=415072 damage_pixels=103768 skipped=13 fallback=0 renders=0 commit_us_samples=2 commit_us_p50=570 commit_us_p95=570 commit_us_p99=570 commit_us_max=619 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome stats (SIGUSR1-6): path=render-control+shm scene_frames=124 commits=26 grab_renders=0 shm_allocs=16 shm_bytes=3280248 copy_bytes=7757864 damage_pixels=698743 frame_callbacks=9 fallback_renders=61 skipped_commits=88 commit_us_samples=9 commit_us_p50=712 commit_us_p95=1033 commit_us_p99=1033 commit_us_max=1547 frame_callback_us_samples=4 frame_callback_us_p50=2003632 frame_callback_us_p95=2003936 frame_callback_us_p99=2003936 frame_callback_us_max=2004773
+dragonfruit-shell: chrome surface (SIGUSR1-6): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=9 shm_allocs=3 shm_bytes=1920000 copy_bytes=5760000 damage_pixels=413728 skipped=8 fallback=0 renders=61 commit_us_samples=2 commit_us_p50=700 commit_us_p95=700 commit_us_p99=700 commit_us_max=712 frame_callback_us_samples=1 frame_callback_us_p50=2003936 frame_callback_us_p95=2003936 frame_callback_us_p99=2003936 frame_callback_us_max=2003936
+dragonfruit-shell: chrome surface (SIGUSR1-6): surface=dock-popup logical_size=180x121 buffer_size=180x121 buffer_scale=1 scale=1 viewport=0 commits=7 shm_allocs=7 shm_bytes=307560 copy_bytes=307560 damage_pixels=76860 skipped=21 fallback=0 renders=0 commit_us_samples=3 commit_us_p50=1033 commit_us_p95=1033 commit_us_p99=1033 commit_us_max=1547 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-6): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=6 shm_allocs=3 shm_bytes=430080 copy_bytes=860160 damage_pixels=47147 skipped=39 fallback=0 renders=63 commit_us_samples=2 commit_us_p50=280 commit_us_p95=280 commit_us_p99=280 commit_us_max=332 frame_callback_us_samples=2 frame_callback_us_p50=2003632 frame_callback_us_p95=2003632 frame_callback_us_p99=2003632 frame_callback_us_max=2004773
+dragonfruit-shell: chrome surface (SIGUSR1-6): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=622608 copy_bytes=830144 damage_pixels=161008 skipped=20 fallback=0 renders=0 commit_us_samples=2 commit_us_p50=490 commit_us_p95=490 commit_us_p99=490 commit_us_max=726 frame_callback_us_samples=1 frame_callback_us_p50=2003277 frame_callback_us_p95=2003277 frame_callback_us_p99=2003277 frame_callback_us_max=2003277
+dragonfruit-shell: chrome stats (SIGUSR1-7): path=render-control+shm scene_frames=130 commits=27 grab_renders=0 shm_allocs=16 shm_bytes=3280248 copy_bytes=8397864 damage_pixels=715243 frame_callbacks=11 fallback_renders=66 skipped_commits=94 commit_us_samples=1 commit_us_p50=1322 commit_us_p95=1322 commit_us_p99=1322 commit_us_max=1322 frame_callback_us_samples=2 frame_callback_us_p50=1536094 frame_callback_us_p95=1536094 frame_callback_us_p99=1536094 frame_callback_us_max=1614359
+dragonfruit-shell: chrome surface (SIGUSR1-7): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=10 shm_allocs=3 shm_bytes=1920000 copy_bytes=6400000 damage_pixels=430228 skipped=8 fallback=0 renders=67 commit_us_samples=1 commit_us_p50=1322 commit_us_p95=1322 commit_us_p99=1322 commit_us_max=1322 frame_callback_us_samples=1 frame_callback_us_p50=1614359 frame_callback_us_p95=1614359 frame_callback_us_p99=1614359 frame_callback_us_max=1614359
+dragonfruit-shell: chrome surface (SIGUSR1-7): surface=dock-popup logical_size=180x121 buffer_size=180x121 buffer_scale=1 scale=1 viewport=0 commits=7 shm_allocs=7 shm_bytes=307560 copy_bytes=307560 damage_pixels=76860 skipped=27 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=1 frame_callback_us_p50=1536094 frame_callback_us_p95=1536094 frame_callback_us_p99=1536094 frame_callback_us_max=1536094
+dragonfruit-shell: chrome surface (SIGUSR1-7): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=6 shm_allocs=3 shm_bytes=430080 copy_bytes=860160 damage_pixels=47147 skipped=39 fallback=0 renders=63 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-7): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=622608 copy_bytes=830144 damage_pixels=161008 skipped=20 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome stats (SIGUSR1-8): path=render-control+shm scene_frames=166 commits=39 grab_renders=0 shm_allocs=21 shm_bytes=15592248 copy_bytes=31605224 damage_pixels=2898173 frame_callbacks=16 fallback_renders=85 skipped_commits=112 commit_us_samples=12 commit_us_p50=879 commit_us_p95=4488 commit_us_p99=4488 commit_us_max=5671 frame_callback_us_samples=5 frame_callback_us_p50=1996865 frame_callback_us_p95=2001647 frame_callback_us_p99=2001647 frame_callback_us_max=2029511
+dragonfruit-shell: chrome surface (SIGUSR1-8): surface=apps-drawer logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 scale=1 viewport=0 commits=5 shm_allocs=3 shm_bytes=12288000 copy_bytes=20480000 damage_pixels=2048048 skipped=5 fallback=0 renders=18 commit_us_samples=5 commit_us_p50=4306 commit_us_p95=4488 commit_us_p99=4488 commit_us_max=5671 frame_callback_us_samples=2 frame_callback_us_p50=1921622 frame_callback_us_p95=1921622 frame_callback_us_p99=1921622 frame_callback_us_max=2001647
+dragonfruit-shell: chrome surface (SIGUSR1-8): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=14 shm_allocs=3 shm_bytes=1920000 copy_bytes=8960000 damage_pixels=558156 skipped=12 fallback=0 renders=81 commit_us_samples=4 commit_us_p50=802 commit_us_p95=804 commit_us_p99=804 commit_us_max=973 frame_callback_us_samples=2 frame_callback_us_p50=1996865 frame_callback_us_p95=1996865 frame_callback_us_p99=1996865 frame_callback_us_max=2029511
+dragonfruit-shell: chrome surface (SIGUSR1-8): surface=dock-popup logical_size=100x30 buffer_size=100x30 buffer_scale=1 scale=1 viewport=0 commits=9 shm_allocs=9 shm_bytes=331560 copy_bytes=331560 damage_pixels=82860 skipped=33 fallback=0 renders=0 commit_us_samples=2 commit_us_p50=871 commit_us_p95=871 commit_us_p99=871 commit_us_max=879 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-8): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=7 shm_allocs=3 shm_bytes=430080 copy_bytes=1003520 damage_pixels=48101 skipped=42 fallback=0 renders=67 commit_us_samples=1 commit_us_p50=197 commit_us_p95=197 commit_us_p99=197 commit_us_max=197 frame_callback_us_samples=1 frame_callback_us_p50=1733491 frame_callback_us_p95=1733491 frame_callback_us_p99=1733491 frame_callback_us_max=1733491
+dragonfruit-shell: chrome surface (SIGUSR1-8): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=622608 copy_bytes=830144 damage_pixels=161008 skipped=20 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome stats (SIGUSR1-9): path=render-control+shm scene_frames=256 commits=57 grab_renders=0 shm_allocs=23 shm_bytes=23784248 copy_bytes=88053224 damage_pixels=5041743 frame_callbacks=26 fallback_renders=124 skipped_commits=183 commit_us_samples=18 commit_us_p50=2664 commit_us_p95=3971 commit_us_p99=3971 commit_us_max=4191 frame_callback_us_samples=10 frame_callback_us_p50=1501759 frame_callback_us_p95=1892737 frame_callback_us_p99=1892737 frame_callback_us_max=2010858
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=apps-drawer logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 scale=1 viewport=0 commits=16 shm_allocs=3 shm_bytes=12288000 copy_bytes=65536000 damage_pixels=2048224 skipped=20 fallback=0 renders=60 commit_us_samples=11 commit_us_p50=2776 commit_us_p95=3712 commit_us_p99=3712 commit_us_max=3788 frame_callback_us_samples=5 frame_callback_us_p50=1809235 frame_callback_us_p95=1817085 frame_callback_us_p99=1817085 frame_callback_us_max=1892737
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=19 shm_allocs=3 shm_bytes=1920000 copy_bytes=12160000 damage_pixels=653550 skipped=22 fallback=0 renders=108 commit_us_samples=5 commit_us_p50=857 commit_us_p95=1017 commit_us_p99=1017 commit_us_max=1434 frame_callback_us_samples=4 frame_callback_us_p50=1501759 frame_callback_us_p95=1789379 frame_callback_us_p99=1789379 frame_callback_us_max=2010858
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=dock-popup logical_size=100x30 buffer_size=100x30 buffer_scale=1 scale=1 viewport=0 commits=9 shm_allocs=9 shm_bytes=331560 copy_bytes=331560 damage_pixels=82860 skipped=60 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=1 frame_callback_us_p50=1387407 frame_callback_us_p95=1387407 frame_callback_us_p99=1387407 frame_callback_us_max=1387407
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=7 shm_allocs=3 shm_bytes=430080 copy_bytes=1003520 damage_pixels=48101 skipped=60 fallback=0 renders=85 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=622608 copy_bytes=830144 damage_pixels=161008 skipped=20 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=overview logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=8192000 copy_bytes=8192000 damage_pixels=2048000 skipped=1 fallback=0 renders=3 commit_us_samples=2 commit_us_p50=3971 commit_us_p95=3971 commit_us_p99=3971 commit_us_max=4191 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome stats (SIGUSR1-10): path=render-control+shm scene_frames=297 commits=62 grab_renders=0 shm_allocs=23 shm_bytes=23784248 copy_bytes=108533224 damage_pixels=6065807 frame_callbacks=29 fallback_renders=140 skipped_commits=211 commit_us_samples=5 commit_us_p50=2711 commit_us_p95=2798 commit_us_p99=2798 commit_us_max=3356 frame_callback_us_samples=3 frame_callback_us_p50=1923395 frame_callback_us_p95=1923395 frame_callback_us_p99=1923395 frame_callback_us_max=2030726
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=apps-drawer logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 scale=1 viewport=0 commits=20 shm_allocs=3 shm_bytes=12288000 copy_bytes=81920000 damage_pixels=2048288 skipped=27 fallback=0 renders=83 commit_us_samples=4 commit_us_p50=2711 commit_us_p95=2798 commit_us_p99=2798 commit_us_max=3356 frame_callback_us_samples=2 frame_callback_us_p50=1892099 frame_callback_us_p95=1892099 frame_callback_us_p99=1892099 frame_callback_us_max=1923395
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=dock logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=19 shm_allocs=3 shm_bytes=1920000 copy_bytes=12160000 damage_pixels=653550 skipped=26 fallback=0 renders=112 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=dock-popup logical_size=100x30 buffer_size=100x30 buffer_scale=1 scale=1 viewport=0 commits=9 shm_allocs=9 shm_bytes=331560 copy_bytes=331560 damage_pixels=82860 skipped=64 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=menubar logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=7 shm_allocs=3 shm_bytes=430080 copy_bytes=1003520 damage_pixels=48101 skipped=68 fallback=0 renders=93 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=menubar-popup logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=622608 copy_bytes=830144 damage_pixels=161008 skipped=20 fallback=0 renders=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=overview logical_size=1280x800 buffer_size=1280x800 buffer_scale=1 scale=1 viewport=0 commits=3 shm_allocs=2 shm_bytes=8192000 copy_bytes=12288000 damage_pixels=3072000 skipped=6 fallback=0 renders=9 commit_us_samples=1 commit_us_p50=1570 commit_us_p95=1570 commit_us_p99=1570 commit_us_max=1570 frame_callback_us_samples=1 frame_callback_us_p50=2030726 frame_callback_us_p95=2030726 frame_callback_us_p99=2030726 frame_callback_us_max=2030726
 ```
 
 ## Native half
 
 ```text
+native capture: /home/user/.local/state/dragonfruit/native-captures/20261103-200601-31410
 
+## Native session diagnostics (installed release compositor)
+Nov 03 20:06:03 fedora dragonfruit-compositor[2327]: dragonfruit-compositor: render stats (SIGUSR1-3): frames_rendered=103921 frames_skipped_no_damage=2 direct_scanouts=0 animation_frames_stepped=90 client_wakeups=130255 latency_us_last=11543 latency_us_max=29130 latency_samples=2895 latency_dropped=0 scene_transforms=58 scene_transform_skipped=0
+Nov 03 20:06:03 fedora dragonfruit-compositor[2327]: dragonfruit-compositor: material stats (SIGUSR1-3): backdrop_passes=103918 backdrop_skipped=0 path=gpu blur_passes=103918 blur_panels=207920 blur_draws=103918 blur_downsample_max=16
+Nov 03 20:06:03 fedora dragonfruit-compositor[2327]: dragonfruit-compositor: degrade stats (SIGUSR1-3): tier=full forced=0 budget_us=16000 samples=103919 over_budget=297 downgrades=2 upgrades=2 tiers=full:103036,reduced:883,minimal:0
+Nov 03 20:06:03 fedora dragonfruit-compositor[2327]: dragonfruit-compositor: frame timing (SIGUSR1-3): samples=8192 samples_total=103919 avg_us=8977 p50_us=8840 p95_us=11189 p99_us=20105 max_us=140065 window_max_us=38969 max_interval_ms=19617
+Nov 03 20:06:03 fedora dragonfruit-compositor[2327]: dragonfruit-compositor: presentation stats (SIGUSR1-3): output=DP-1 samples=4096 samples_total=99474 avg_us=14931 p50_us=13890 p95_us=27780 p99_us=34725 max_us=19619750 window_max_us=76395 missed=95899 budget_us=6944
+
+## Why the native scenario half is OPEN
+The host is already a native Dragonfruit session. Its running compositor is
+the installed release build: it has no T-21.1a chrome counters and was not
+started with DRAGONFRUIT_SYNTHETIC_INPUT. Restarting it to run the same six
+scenarios would end the session this task is executing in. The native
+presentation line above is real; the native chrome scenario comparison is
+left OPEN for the T-21 hardware rail.
 ```
 
 ## Live visual check

@@ -63,7 +63,6 @@ add_library(dragonfruit-shell-dockcore STATIC
     filestarget.cpp
     folderstacks.cpp
     focusstatus.cpp
-    framecommitgate.h
     launchfailure.cpp
     lockauth.cpp
     lockinput.cpp

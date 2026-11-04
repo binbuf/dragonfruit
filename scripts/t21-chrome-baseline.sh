@@ -31,6 +31,7 @@ KEEP_SCRATCH="${KEEP_SCRATCH:-0}"
 SKIP_NATIVE="${SKIP_NATIVE:-0}"
 TITLE="${T21_REPORT_TITLE:-T-21.1a chrome transport baseline}"
 TRANSPORT="${T21_TRANSPORT_LABEL:-offscreen QPA -> grabWindow() -> QImage -> fresh wl_shm buffer -> wl_surface.commit}"
+CAVEAT="${T21_REPORT_CAVEAT:-}"
 SOCKET="${SOCKET:-dragonfruit-t21-baseline-$$}"
 SCRATCH="${SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/dragonfruit-t21-baseline.XXXXXX")}"
 SYNTH="${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must be set}/$SOCKET.synth"
@@ -176,6 +177,9 @@ for name in dock menu mission-control; do
     path="docs/captures/t21-chrome-baseline-$name.png"
     [ -f "$path" ] && VISUAL="${VISUAL}${VISUAL:+,}$path"
 done
+if [ -f docs/captures/t21-chrome-motion.png ]; then
+    VISUAL="${VISUAL}${VISUAL:+,}docs/captures/t21-chrome-motion.png"
+fi
 
 python3 scripts/t21-chrome-baseline-report.py \
     --log "$LOG" \
@@ -187,7 +191,8 @@ python3 scripts/t21-chrome-baseline-report.py \
     --visual "$VISUAL" \
     --command "make t21-chrome-baseline" \
     --title "$TITLE" \
-    --transport "$TRANSPORT"
+    --transport "$TRANSPORT" \
+    --caveat "$CAVEAT"
 
 echo "t21-chrome-baseline: report written to $OUT"
 grep -E "^### |shell delta:|compositor delta:|Verdict:" "$OUT" | head -60 || true

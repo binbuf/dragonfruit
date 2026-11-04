@@ -274,6 +274,23 @@ Before/after evidence:
 [`captures/t21-chrome-transport-after.txt`](captures/t21-chrome-transport-after.txt).
 The GPU/dmabuf transport remains T186; the pooled shm path is its fallback.
 
+**Close-out (T185a).** The final-tree rerun was host-throttled: the nested
+window was not presented at 60 Hz, so the shell's 100 ms safety tick is visible
+as `fallback_renders` and the Dock sweep commits fewer frames than the accepted
+run. The transport invariants still held on that tree: `grab_renders=0`, a
+bounded pool, and exactly one 960,000 B Dock copy per committed frame. A second
+final-tree run on a KWin virtual host (1920x1200 nested output) reproduced the
+accepted shape: Dock sweep `commits=136`, `grab_renders=0`, `shm_allocs=3`,
+`copy_bytes=123,177,360`, `frame_callbacks=78`, `fallback_renders=0`. The
+18:57 accepted run's numbers remain the comparison in the committed report,
+with the host-throttled sample and its caveat beside it. Live close-out stills
+are `captures/t21-chrome-motion.png` (a frame during Dock magnification),
+`-menubar-open.png`, `-dock-popover.png`, `-dock-rest.png`, and `-lock.png`
+(the lock surface with typed password dots). The lock smoke test used the
+system menu because the synthetic harness on the close-out host did not set the
+Meta modifier for the `Cmd+Ctrl+Q` chord. `FrameCommitGate` is retired: no
+runtime path used it after T-21.1c, so its header and unit tests were removed.
+
 **Do not** build a custom QPA plugin or a second UI renderer without the R2.1
 evidence.
 

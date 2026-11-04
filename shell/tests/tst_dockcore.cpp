@@ -5,6 +5,7 @@
 // Runs headless with no compositor, Wayland, or QML.
 #include "apppicker.h"
 #include "appsdrawer.h"
+#include "chromestats.h"
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
@@ -13,7 +14,6 @@
 #include "folderstacks.h"
 #include "filestarget.h"
 #include "focusstatus.h"
-#include "framecommitgate.h"
 #include "launchfailure.h"
 #include "menubrokerclient.h"
 #include "menubrokerpolicy.h"
@@ -1940,37 +1940,6 @@ private slots:
         QVERIFY(movePinnedEntry(QStringList{}, 0, 1).isEmpty());
         QVERIFY(movePinnedEntry(QStringList{QStringLiteral("only")}, 0, 1)
                     == QStringList{QStringLiteral("only")});
-    }
-
-    // -- scene-graph frame gate (FR-14) ----------------------------------
-
-    void frameGateSchedulesEachSceneGraphFrame()
-    {
-        FrameCommitGate gate;
-        // A rendered scene-graph frame schedules a commit; the readback's own
-        // re-render (bracketed by begin/endCommit) must not schedule another.
-        QVERIFY(gate.frameRendered());
-        gate.beginCommit();
-        QVERIFY(gate.committing());
-        QVERIFY(!gate.frameRendered());
-        gate.endCommit();
-        QVERIFY(!gate.committing());
-        QVERIFY(gate.frameRendered());
-        QCOMPARE(gate.sceneFrames(), quint64(3));
-        QCOMPARE(gate.committedFrames(), quint64(1));
-    }
-
-    void frameGateResetClearsCounters()
-    {
-        FrameCommitGate gate;
-        gate.frameRendered();
-        gate.beginCommit();
-        gate.endCommit();
-        gate.reset();
-        QVERIFY(!gate.committing());
-        QCOMPARE(gate.sceneFrames(), quint64(0));
-        QCOMPARE(gate.committedFrames(), quint64(0));
-        QVERIFY(gate.frameRendered());
     }
 
     // T-21.1a: the transport summary's percentiles use the same nearest-rank

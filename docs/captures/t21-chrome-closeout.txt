@@ -1,0 +1,94 @@
+T-21.1c close-out live checks
+nested demo, synthetic input harness
+
+## Motion and menu stills (real host)
+
+The final-tree motion and menu stills use the shell's capture-only
+`DF_SCREENSHOT_CAPTURE_FIXTURE=<delay-ms>:<path>` seam: after the chrome is
+configured, the shell asks the compositor to render the output straight to a
+PNG (the same trusted `df_toplevel_manager.capture_screenshot` path, no
+selection overlay and no screencopy client). This avoids the synthetic
+`Cmd+Shift+3` chord, which does not resolve on this host.
+
+```text
+XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=dragonfruit-wayland \
+DRAGONFRUIT_SYNTHETIC_INPUT=$XDG_RUNTIME_DIR/dragonfruit-t21-live-motion.synth \
+DF_SCREENSHOT_CAPTURE_FIXTURE=12000:/tmp/opencode/t21-live-motion/capture.png \
+make demo DEMO_ARGS="--socket-name dragonfruit-t21-live-motion --private-bus"
+```
+
+The motion still is captured while the synthetic pointer keeps sweeping the
+Dock; the menu still is captured with the system menu open. The nested output
+is 1280x800 (the host session's size).
+
+Artifacts:
+
+- `docs/captures/t21-chrome-motion.png` — a frame captured while the Dock was
+  magnifying (the icon under the pointer is enlarged, the rest of the plate is
+  at rest).
+- `docs/captures/t21-chrome-menu.png` (alias `-menubar-open.png`) — the system
+  menu fully drawn.
+
+## Dock popover still (KWin virtual host)
+
+The real-host demo only maps one X11 window, so the capture-only chooser
+fixture has no grouped entry to open. A second nested run on a KWin virtual
+output (1920x1246 host, nested client area 1920x1200) used a real right-click
+on a Dock icon; the popover was captured with `spectacle -b -n -f` and cropped
+to the nested client area.
+
+```text
+XDG_RUNTIME_DIR=/tmp/opencode/kwin2 WAYLAND_DISPLAY=kwin-t21 \
+DRAGONFRUIT_SYNTHETIC_INPUT=$XDG_RUNTIME_DIR/dragonfruit-motion-test.synth \
+DF_DOCK_CHOOSER_FIXTURE=1 \
+make demo DEMO_ARGS="--socket-name dragonfruit-motion-test --private-bus"
+```
+
+- `docs/captures/t21-chrome-popover.png` (alias `-dock-popover.png`) — the Dock
+  context popover fully drawn.
+- `docs/captures/t21-chrome-dock-rest.png` — the resting Dock.
+
+Verdict: **pass**. No stale strips, no half-drawn popover or menu, and no
+visible frame doubling in the motion still. The magnified icon and its
+unchanged neighbours are consistent with one committed frame per scene render.
+
+## Lock surface (KWin virtual host)
+
+The system menu's Lock Screen row was used because the synthetic `Cmd+Ctrl+Q`
+chord does not register the Meta modifier on this host. `query lock` before and
+after:
+
+```text
+before: lock locked=0 surfaces=0 lock-focus=0
+after:  lock locked=1 surfaces=1 lock-focus=1
+after three KEY_A presses: lock locked=1 surfaces=1 lock-focus=1
+```
+
+`docs/captures/t21-chrome-lock.png` shows the lock surface mapped over the
+whole output with the user card and three password dots. The lock surface
+therefore maps and accepts keyboard input through the converted producer and
+pacing path. Authentication/PAM is out of scope and was not exercised.
+
+Exception: the synthetic input harness on this host did not set the Meta/logo
+modifier, so the real `Cmd+Ctrl+Q` and `Cmd+Shift+3` chords did not resolve.
+The system menu was used for the lock check; the capture-only compositor seam
+was used for the stills. This is an input-injection limitation, not a chrome
+transport failure; the compositor's shortcut engine itself is unchanged.
+
+## Shell restart
+
+A real-host close-out run killed the shell with `SIGKILL` and observed the
+compositor reissue the launch token, then relaunched the shell with the
+captured argv/environment and the new token:
+
+```text
+old_pid=56079
+token_reissued=True
+restarted shell pid=56726
+chrome_path=True
+```
+
+The restarted shell authenticated on the same private layer protocol and
+logged `Dock scene-graph commit path active`; the compositor kept the existing
+windows and outputs. No private layer protocol or surface role changed in this
+task.

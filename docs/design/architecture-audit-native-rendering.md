@@ -259,8 +259,8 @@ For one Dock frame:
    - resizes the offscreen window to `m_dockWidth + 2 * 320` by
      `m_dockHeight + 320` (the fixed popover headroom/gutter);
    - calls `m_dockWindow->grabWindow()` (`:7064`). **`grabWindow()` renders the
-     scene a second time**; `FrameCommitGate` suppresses the re-entrant
-     `afterRendering`.
+     scene a second time**; the old `FrameCommitGate` suppressed the re-entrant
+     `afterRendering` (both were retired by T-21.1c/T185a).
    - calls `image.copy(leftGutter, headroom, m_dockWidth, m_dockHeight)`
      (`:7098-7099`), a deep copy of the bar;
    - sends the panel rect and input region.
@@ -823,7 +823,7 @@ wayland-info | grep -A10 "interface: 'wl_output'"
 | Shell offscreen QPA | `shell/src/main.cpp:30-33` |
 | Dock commit path | `shell/src/shellcontroller.cpp:6999-7142` |
 | Menu bar commit path | `shell/src/shellcontroller.cpp:7144-7169` |
-| Frame commit gate | `shell/src/framecommitgate.h` |
+| Frame commit gate | retired in T185a (was `shell/src/framecommitgate.h`) |
 | SHM transport | `shell/src/shellprotocol.cpp:91-106,1574-1635` |
 | Profile selection | `scripts/native-session.sh:63-92,237-247` |
 | Smithay MultiRenderer | `smithay-0.7.0/src/backend/renderer/multigpu/mod.rs:949-1056` |

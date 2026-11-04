@@ -1075,8 +1075,20 @@ by the same `make t21-chrome-baseline` driver with `OUT` and
 `T21_REPORT_TITLE`/`T21_TRANSPORT_LABEL` set for the render-control + pooled
 shm path. It records `grab_renders=0`, the per-surface `shm_allocs`/`copy_bytes`
 and `damage_pixels` deltas, and the `frame_callbacks` cadence next to the T183
-baseline. The contract is
+baseline. The final-tree rerun carries a **host-throttled** caveat: the nested
+window was not presented at 60 Hz, so `fallback_renders` is visible and the
+Dock sweep is shorter than the accepted 18:57 run; the transport invariants
+still hold per commit. The contract is
 [ADR 0193](../design/adr/0193-chrome-frame-producer-pooled-shm-pacing.md).
+
+T-21.1c's close-out captures are `t21-chrome-motion.png` (a frame during Dock
+magnification), `t21-chrome-menubar-open.png`, `t21-chrome-dock-popover.png`,
+`t21-chrome-dock-rest.png`, and `t21-chrome-lock.png` (the lock surface with
+three typed password dots). They were taken from a real nested run on a KWin
+virtual host, with the nested window maximized to 1920x1200; the transcript is
+`t21-chrome-closeout.txt`. The close-out used the system menu for the lock
+smoke test because the synthetic input harness on that host did not set the
+Meta modifier for the `Cmd+Ctrl+Q` chord.
 
 T-21.1b's HiDPI chrome stills are `t21-hidpi-1x.png`, `t21-hidpi-1_5x.png`,
 and `t21-hidpi-2x.png` (the menu bar, Dock, and Dock popover at each scale),
