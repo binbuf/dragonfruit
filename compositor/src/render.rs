@@ -26,8 +26,8 @@ use smithay::desktop::utils::{
 use smithay::output::Output;
 use smithay::render_elements;
 use smithay::utils::{IsAlive, Logical, Rectangle, Scale};
-use smithay::wayland::fractional_scale::with_fractional_scale;
 use smithay::wayland::compositor::{with_states, SurfaceAttributes};
+use smithay::wayland::fractional_scale::with_fractional_scale;
 
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
@@ -255,28 +255,35 @@ pub fn chrome_backdrop_render_elements(
     // The live scheme (T-04.4b) selects the per-scheme material tokens; the
     // pass renders in whatever light/dark the session currently is.
     let scheme = state.color_scheme;
-    // Resolve the token material per surface and map it through the current
-    // degrade tier (T-04.4a). `None` means "blur off" (the `Minimal` tier), so
-    // the pass draws nothing and owns no damage: forcing the tier visibly
-    // changes the pass. The software/headless path (T-20.4) always resolves to
-    // `Minimal`, so a backend without a GPU scene texture cannot drift from the
-    // deterministic feather geometry.
-    let tier = state.material_path.material_tier(state.degrade.tier());
-    let specs: Vec<_> = surfaces
+    // Resolve the token material per surface through that role's **effective**
+    // state (T-21.2c): persistent chrome keeps the Reduced floor while the
+    // sampled path is available, transient overlays may reach Minimal, and a
+    // role whose sampled pass is absent takes its milky fallback (no feather
+    // elements). The software/headless path always resolves to Minimal, so a
+    // backend without a GPU scene texture cannot drift from the deterministic
+    // feather geometry.
+    let visible: Vec<_> = surfaces
         .iter()
-        .map(|chrome| {
+        .filter_map(|chrome| {
             let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
-            tier.backdrop(role.spec_for(scheme, &chrome.namespace))
+            let material = state.effective_material_for_role(role);
+            if !material.blur_active {
+                return None;
+            }
+            material
+                .tier
+                .backdrop(role.spec_for(scheme, &chrome.namespace))
+                .map(|spec| (chrome, spec))
         })
         .collect();
-    if specs.iter().all(Option::is_none) {
+    if visible.is_empty() {
         return Vec::new();
     }
-    // The chrome band: the union of the top/overlay surfaces on this output,
-    // in output-local logical coordinates. This is the damage the pass owns.
-    let region = surfaces
+    // The chrome band: the union of the panels that actually draw, in
+    // output-local logical coordinates. This is the damage the pass owns.
+    let region = visible
         .iter()
-        .map(|chrome| chrome.panel)
+        .map(|(chrome, _)| chrome.panel)
         .reduce(|a, b| a.merge(b))
         .unwrap_or_default();
     if state
@@ -289,10 +296,8 @@ pub fn chrome_backdrop_render_elements(
     let mut elements = Vec::new();
     // Backdrops follow the same front-to-back rule as the chrome surfaces:
     // the topmost overlay's panel tint is drawn before lower chrome's.
-    for (chrome, spec) in surfaces.iter().zip(&specs).rev() {
-        if let Some(spec) = spec {
-            elements.extend(backdrop_elements(chrome.panel, *spec, scale));
-        }
+    for (chrome, spec) in visible.iter().rev() {
+        elements.extend(backdrop_elements(chrome.panel, *spec, scale));
     }
     elements
 }
@@ -344,13 +349,18 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
         return Vec::new();
     }
     let scheme = state.color_scheme;
-    let tier = state.material_path.material_tier(state.degrade.tier());
     let mut panels: Vec<BlurPanel> = surfaces
         .iter()
         .filter_map(|chrome| {
             let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
-            let spec = tier.blur(role.blur_spec_for(scheme, &chrome.namespace))?;
-            let glass = tier.glass(role.glass_spec(scheme))?;
+            let material = state.effective_material_for_role(role);
+            if !material.blur_active {
+                return None;
+            }
+            let spec = material
+                .tier
+                .blur(role.blur_spec_for(scheme, &chrome.namespace))?;
+            let glass = material.tier.glass(role.glass_spec(scheme))?;
             Some(BlurPanel {
                 panel: chrome.panel,
                 spec,
@@ -365,9 +375,9 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
     // panel must sit above the persistent chrome it covers.
     panels.reverse();
     // The chrome band: the union of the panels (the damage the pass owns).
-    let region = surfaces
+    let region = panels
         .iter()
-        .map(|chrome| chrome.panel)
+        .map(|panel| panel.panel)
         .reduce(|a, b| a.merge(b))
         .unwrap_or_default();
     if state

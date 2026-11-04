@@ -1515,25 +1515,22 @@ fn render_surface(
         DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
     >(&mut renderer, state, &surface.output, scale));
 
-    // The material path (P2): when the effective material says the sampled
-    // pass is active, render the scene into an offscreen texture and compose
-    // the chrome above the per-panel blur. The sampled path is the default on
-    // the supported boundary (single GPU, normal transform); it is disabled
-    // by `DRAGONFRUIT_DRM_MATERIAL=0`, at Minimal/software, or after a failed
-    // material frame. In those cases keep the deterministic feather stack and
-    // the direct window/desktop elements.
-    let material = state.effective_material();
+    // The material path (P2): render the scene into an offscreen texture and
+    // compose the chrome above the per-panel blur when any role's effective
+    // state keeps the sampled pass active. Persistent chrome holds the
+    // Reduced floor (T-21.2c), so a global Minimal selection no longer turns
+    // the menu bar and Dock into a flat plate. `chrome_blur_panels` returns
+    // empty when no role blurs (software, no sampled pass, or all-transient
+    // Minimal), and the caller keeps the direct window/desktop elements.
     // The scene texture and the panel SDF are output-local and currently
     // rendered with `Transform::Normal`; a rotated output keeps the feather
     // path until the transform mapping is verified.
-    let blur_panels = if material.blur_active
-        && !state.lock.is_locked()
-        && surface.output.current_transform() == Transform::Normal
-    {
-        crate::render::chrome_blur_panels(state, &surface.output)
-    } else {
-        Vec::new()
-    };
+    let blur_panels =
+        if !state.lock.is_locked() && surface.output.current_transform() == Transform::Normal {
+            crate::render::chrome_blur_panels(state, &surface.output)
+        } else {
+            Vec::new()
+        };
     let used_material = !blur_panels.is_empty();
 
     if !blur_panels.is_empty() {

@@ -624,6 +624,22 @@ the design tokens remain the single source and no opacity/tone is invented
 untouched — the tier changes material geometry, never the scene mapping, so
 T-02 transitions render correctly at every tier.
 
+**Per-role floor (T-21.2c).** `MaterialRole::{Chrome, Dock}` are persistent
+chrome; `{Popup, Drawer}` are transient overlays.
+`EffectiveMaterial::resolve_for_role` maps the selected tier through that
+classification: a persistent role never selects below `Reduced` while the
+sampled path is available, and if the controller selected `Minimal` (even
+`Reduced` missed the
+deadline) it reports `tier=reduced`, `blur_active=0`, and the explicit
+`floor-missed` fallback so the shell draws the milky plate rather than a flat
+translucent slab. Transient roles follow the ladder to `Minimal`. The software/
+headless path remains `Minimal` with the `software` reason for every role. The
+render path resolves each chrome panel through `effective_material_for_role`,
+so the floor applies to the actual backdrop/blur pass, not just the protocol.
+`df_output` is v4: the additive `material_role_state` event carries
+`role/tier/blur_active/fallback` per output, emitted only on effective change;
+the legacy v3 `material_state` keeps its global meaning.
+
 `DegradeController` selects the tier from rendered-frame durations against a
 frame budget. The budget is the fastest active output's refresh deadline
 (T-21.2a; 16.666 ms on a 60 Hz output, 6.944 ms on 144 Hz), falling back to

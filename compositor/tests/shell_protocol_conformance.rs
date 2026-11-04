@@ -121,6 +121,11 @@ struct TestClient {
     output_modes: Vec<(u32, u32, u32)>,
     output_transforms: Vec<u32>,
     output_brightness: Vec<f64>,
+    /// Legacy v3 `df_output.material_state` events: `(tier, blur, fallback)`.
+    output_material_states: Vec<(u32, u32, u32)>,
+    /// v4 `df_output.material_role_state` events:
+    /// `(role, tier, blur_active, fallback)`, in arrival order.
+    output_material_role_states: Vec<(u32, u32, u32, u32)>,
     workspace_names: Vec<String>,
     workspace_indexes: Vec<u32>,
     workspace_activated_flags: Vec<u32>,
@@ -426,6 +431,21 @@ impl Dispatch<df_output::DfOutput, ()> for TestClient {
                     .push((resource.id().protocol_id(), edge, thickness));
             }
             df_output::Event::Brightness { level } => state.output_brightness.push(level),
+            df_output::Event::MaterialState {
+                tier,
+                blur_active,
+                fallback,
+            } => state
+                .output_material_states
+                .push((tier, blur_active, fallback)),
+            df_output::Event::MaterialRoleState {
+                role,
+                tier,
+                blur_active,
+                fallback,
+            } => state
+                .output_material_role_states
+                .push((role, tier, blur_active, fallback)),
             _ => {}
         }
     }
@@ -1346,6 +1366,215 @@ fn handshake_chrome_and_control_conformance() {
     surface.destroy();
     let _ = conn.flush();
     proc.shutdown();
+}
+
+/// T-21.2c protocol conformance: `df_output.material_role_state` (v4) carries
+/// one effective state per role, applies the persistent-chrome floor, and is
+/// emitted only when an effective state changes. The synthetic material-path
+/// hook lets the headless rail exercise the sampled-path floor deterministically.
+#[test]
+fn material_role_state_is_per_role_floor_aware_and_change_only() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-material-role-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-material-role",
+        &[],
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Handshake and manager replay (the output object carries the events).
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.done_count > 0,
+    );
+
+    let role_map = |states: &[(u32, u32, u32, u32)]| {
+        let mut map = std::collections::BTreeMap::new();
+        for &(role, tier, blur, fallback) in states {
+            map.insert(role, (tier, blur, fallback));
+        }
+        map
+    };
+
+    // The headless/software path is the deterministic Minimal fallback for
+    // every role, and the legacy v3 event keeps its global meaning.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_material_role_states.len() >= 4,
+    );
+    let initial = role_map(&state.output_material_role_states);
+    assert_eq!(initial.len(), 4, "one initial event per role: {initial:?}");
+    for role in 0..4 {
+        assert_eq!(
+            initial.get(&role),
+            Some(&(2, 0, 2)),
+            "software role {role} must be minimal/software: {initial:?}"
+        );
+    }
+    assert!(
+        state
+            .output_material_states
+            .iter()
+            .any(|&(tier, blur, fallback)| (tier, blur, fallback) == (2, 0, 2)),
+        "the legacy v3 event must still report the global software state"
+    );
+
+    // Switch to a sampled GPU path in one datagram so there is no transient
+    // intermediate state between the path and blur-support updates.
+    state.output_material_role_states.clear();
+    input.send("set material-path gpu\nset material-blur-supported on");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_material_role_states.len() >= 4,
+    );
+    let sampled = role_map(&state.output_material_role_states);
+    assert_eq!(sampled.len(), 4, "one event per role: {sampled:?}");
+    for role in 0..4 {
+        assert_eq!(
+            sampled.get(&role),
+            Some(&(0, 1, 0)),
+            "sampled role {role} must be full/blur: {sampled:?}"
+        );
+    }
+
+    // Forced Minimal: persistent chrome holds the Reduced floor and reports
+    // floor-missed; transient overlays may reach Minimal.
+    state.output_material_role_states.clear();
+    input.send("set degrade-tier minimal");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_material_role_states.len() >= 4,
+    );
+    let minimal = role_map(&state.output_material_role_states);
+    assert_eq!(
+        state.output_material_role_states.len(),
+        4,
+        "one event per role: {:?}",
+        state.output_material_role_states
+    );
+    assert_eq!(minimal.len(), 4, "one event per role: {minimal:?}");
+    for role in [0, 1] {
+        assert_eq!(
+            minimal.get(&role),
+            Some(&(1, 0, 4)),
+            "persistent role {role} must keep the reduced floor with floor-missed"
+        );
+    }
+    for role in [2, 3] {
+        assert_eq!(
+            minimal.get(&role),
+            Some(&(2, 0, 0)),
+            "transient role {role} may reach minimal"
+        );
+    }
+
+    // Re-forcing the same tier is not an effective change: no role event.
+    state.output_material_role_states.clear();
+    input.send("set degrade-tier minimal");
+    let _ = input.query("query degrade");
+    std::thread::sleep(Duration::from_millis(150));
+    queue
+        .roundtrip(&mut state)
+        .expect("roundtrip after duplicate tier");
+    assert!(
+        state.output_material_role_states.is_empty(),
+        "a duplicate tier must not emit role events: {:?}",
+        state.output_material_role_states
+    );
+
+    // Reduced keeps the sampled pass for every role.
+    input.send("set degrade-tier reduced");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_material_role_states.len() >= 4,
+    );
+    let reduced = role_map(&state.output_material_role_states);
+    assert_eq!(reduced.len(), 4, "one event per role: {reduced:?}");
+    for role in 0..4 {
+        assert_eq!(
+            reduced.get(&role),
+            Some(&(1, 1, 0)),
+            "role {role} must be reduced/blur: {reduced:?}"
+        );
+    }
+
+    // GPU without the sampled pass reports the explicit reason per role.
+    state.output_material_role_states.clear();
+    input.send("set material-blur-supported off");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_material_role_states.len() >= 4,
+    );
+    let absent = role_map(&state.output_material_role_states);
+    assert_eq!(absent.len(), 4, "one event per role: {absent:?}");
+    for role in 0..4 {
+        assert_eq!(
+            absent.get(&role),
+            Some(&(1, 0, 1)),
+            "role {role} must report no-sampled-blur: {absent:?}"
+        );
+    }
+
+    // Back to software: every role collapses to the deterministic fallback.
+    state.output_material_role_states.clear();
+    input.send("set material-path software");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_material_role_states.len() >= 4,
+    );
+    let software = role_map(&state.output_material_role_states);
+    assert_eq!(software.len(), 4, "one event per role: {software:?}");
+    for role in 0..4 {
+        assert_eq!(
+            software.get(&role),
+            Some(&(2, 0, 2)),
+            "role {role} must return to software/minimal: {software:?}"
+        );
+    }
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
 }
 
 #[test]

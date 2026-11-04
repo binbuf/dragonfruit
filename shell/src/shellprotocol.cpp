@@ -4201,6 +4201,7 @@ void ShellProtocol::onManagerOutput(void *data, df_toplevel_manager *, df_output
         onOutputName,       onOutputGeometry, onOutputMode,        onOutputScale,
         onOutputTransform,  onOutputVrr,      onOutputNightLight,  onOutputReservedZone,
         onOutputDone,       onOutputRemoved,  onOutputBrightness,  onOutputMaterialState,
+        onOutputMaterialRoleState,
     };
     df_output_add_listener(id, &listener, self);
     // Remember the output so a display policy can reach it (T-09.5). A policy
@@ -4698,6 +4699,21 @@ void ShellProtocol::onOutputMaterialState(void *data, df_output *, uint32_t tier
     self->m_materialBlurActive = active;
     self->m_materialFallback = fallback;
     emit self->materialStateChanged(tier, active, fallback);
+}
+
+void ShellProtocol::onOutputMaterialRoleState(void *data, df_output *, uint32_t role,
+                                              uint32_t tier, uint32_t blurActive,
+                                              uint32_t fallback)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    const bool active = blurActive != 0;
+    auto &state = self->m_materialRoles[role];
+    if (state.tier == tier && state.blurActive == active && state.fallback == fallback)
+        return;
+    state.tier = tier;
+    state.blurActive = active;
+    state.fallback = fallback;
+    emit self->materialRoleStateChanged(role, tier, active, fallback);
 }
 void ShellProtocol::onOutputDone(void *, df_output *) {}
 void ShellProtocol::onOutputRemoved(void *data, df_output *output)

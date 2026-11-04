@@ -540,6 +540,24 @@ public:
     bool materialBlurActive() const { return m_materialBlurActive; }
     uint32_t materialFallback() const { return m_materialFallback; }
 
+    // The role-keyed effective material (T-21.2c, `df_output` v4). `role` is
+    // 0=chrome, 1=dock, 2=popup, 3=drawer. Persistent roles keep the Reduced
+    // floor; `fallback=4` (floor-missed) means even Reduced missed and the
+    // surface must use its milky complement. Unknown roles report the safe
+    // translucent default until their first event.
+    uint32_t materialRoleTier(uint32_t role) const
+    {
+        return m_materialRoles.value(role).tier;
+    }
+    bool materialRoleBlurActive(uint32_t role) const
+    {
+        return m_materialRoles.value(role).blurActive;
+    }
+    uint32_t materialRoleFallback(uint32_t role) const
+    {
+        return m_materialRoles.value(role).fallback;
+    }
+
     // Mirror the menu-broker's focus-scoped accelerator table for `appId`
     // (T-14.2b, `df_toplevel_manager.set_app_accelerators`, additive in v7).
     // `accelerators` is the wire table: one `action<TAB>chord` per line, empty
@@ -635,6 +653,10 @@ signals:
     // The compositor's effective chrome material changed (P1): tier, whether
     // the sampled blur actually runs, and the fallback reason.
     void materialStateChanged(uint32_t tier, bool blurActive, uint32_t fallback);
+    // The role-keyed effective material changed (T-21.2c): role, tier,
+    // whether the sampled blur runs, and the fallback reason.
+    void materialRoleStateChanged(uint32_t role, uint32_t tier, bool blurActive,
+                                  uint32_t fallback);
     void overviewConfigured(int width, int height, uint32_t serial);
     void switcherConfigured(int width, int height, uint32_t serial);
     void bannerConfigured(int width, int height, uint32_t serial);
@@ -1074,6 +1096,9 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
                                      uint32_t thickness);
     static void onOutputMaterialState(void *data, df_output *output, uint32_t tier,
                                       uint32_t blurActive, uint32_t fallback);
+    static void onOutputMaterialRoleState(void *data, df_output *output, uint32_t role,
+                                          uint32_t tier, uint32_t blurActive,
+                                          uint32_t fallback);
     static void onOutputDone(void *data, df_output *output);
     static void onOutputRemoved(void *data, df_output *output);
     static void onWorkspaceName(void *data, df_workspace *workspace, const char *name);
@@ -1368,6 +1393,15 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     uint32_t m_materialTier = 0;
     bool m_materialBlurActive = true;
     uint32_t m_materialFallback = 0;
+    // Role-keyed effective material (T-21.2c, `df_output` v4), keyed by the
+    // protocol role value. Defaults are the safe translucent-glass assumption
+    // until the first event corrects them.
+    struct RoleMaterialState {
+        uint32_t tier = 0;
+        bool blurActive = true;
+        uint32_t fallback = 0;
+    };
+    QHash<uint32_t, RoleMaterialState> m_materialRoles;
     // Per-surface pooled shm transport (T-21.1c). A surface is keyed by its
     // wl_surface; its buffer pool, previous frame, and pending callback live
     // together so a Dock commit never waits on a menu-bar buffer.

@@ -116,11 +116,11 @@ use crate::window::resize::SizeConstraints;
 use crate::window::{
     cascaded_geometry, centered_on, fullscreen_reveal_rect, BackdropPass, ColorScheme,
     DecorationTier, DegradeController, DegradeTier, DoubleClickTracker, EffectiveMaterial,
-    MaterialPath, MenuActivation, MenuKey, MenuKeyOutcome, MinimizedAnimation, MotionFrame,
-    ReservedZones, SceneTransformPass, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement,
-    TrafficLightKind, WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets,
-    WindowMenu, WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind, WindowState,
-    CASCADE_STEP,
+    MaterialPath, MaterialRole, MenuActivation, MenuKey, MenuKeyOutcome, MinimizedAnimation,
+    MotionFrame, ReservedZones, SceneTransformPass, ShellWindowEvent, TitlebarDoubleClick,
+    TitlebarElement, TrafficLightKind, WindowDispatch, WindowEvent, WindowEventKind, WindowId,
+    WindowInsets, WindowMenu, WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind,
+    WindowState, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -3234,6 +3234,38 @@ impl DfState {
             self.material_blur_supported,
             self.degrade.tier(),
         )
+    }
+
+    /// The effective material for one [`MaterialRole`] (T-21.2c). Persistent
+    /// chrome keeps the `Reduced` floor while the sampled path is available;
+    /// transient overlays may reach `Minimal`.
+    pub fn effective_material_for_role(&self, role: MaterialRole) -> EffectiveMaterial {
+        EffectiveMaterial::resolve_for_role(
+            role,
+            self.material_path,
+            self.material_blur_supported,
+            self.degrade.tier(),
+        )
+    }
+
+    /// The four per-role effective states in stable wire order.
+    pub fn effective_materials(&self) -> [(MaterialRole, EffectiveMaterial); MaterialRole::COUNT] {
+        MaterialRole::ALL.map(|role| (role, self.effective_material_for_role(role)))
+    }
+
+    /// Diagnostic/test plumbing: override the renderer class the material
+    /// resolves on. The headless backend starts on `Software`; a conformance
+    /// test can switch to `Gpu` to exercise the role floor without a display.
+    pub fn set_material_path(&mut self, path: MaterialPath) {
+        self.material_path = path;
+        self.needs_redraw = true;
+    }
+
+    /// Diagnostic/test plumbing: declare whether the sampled backdrop pass is
+    /// implemented on the GPU path.
+    pub fn set_material_blur_supported(&mut self, supported: bool) {
+        self.material_blur_supported = supported;
+        self.needs_redraw = true;
     }
 
     /// Pin the material degrade tier (T-04.4a) and request a redraw so the

@@ -36,7 +36,9 @@ use crate::shell_protocol::toplevel_protocol::{
     df_output, df_toplevel, df_toplevel_manager, df_workspace,
 };
 use crate::state::DfState;
-use crate::window::{EffectiveMaterial, ReservedZones, WindowEventKind, WindowId, WindowState};
+use crate::window::{
+    EffectiveMaterial, MaterialRole, ReservedZones, WindowEventKind, WindowId, WindowState,
+};
 use crate::workspace::{SpaceId, Wallpaper, WallpaperFit};
 
 use layer::{aggregate_reserved_for, Edge, KeyboardInteraction, LayerSurfaceState};
@@ -59,11 +61,11 @@ const SHELL_INTERFACE_VERSION: u32 = 2;
 /// [`INTERFACE_VERSION`].
 const MANAGER_INTERFACE_VERSION: u32 = 7;
 
-/// `df_output` is version 3 since the effective `material_state` event was
-/// added (P1). `set_brightness` and the `brightness` event were the v2
-/// additions (T-11.3a). The other private interfaces stay at
-/// [`INTERFACE_VERSION`].
-const DF_OUTPUT_INTERFACE_VERSION: u32 = 3;
+/// `df_output` is version 4 since the role-keyed `material_role_state` event
+/// was added (T-21.2c); v3 added the global effective `material_state` event
+/// (P1), and `set_brightness`/`brightness` were the v2 additions (T-11.3a).
+/// The other private interfaces stay at [`INTERFACE_VERSION`].
+const DF_OUTPUT_INTERFACE_VERSION: u32 = 4;
 
 /// Error code posted when an untrusted client binds a private global.
 const ERROR_ACCESS_DENIED: u32 = 1;
@@ -139,10 +141,16 @@ pub struct ShellProtocolState {
     /// the value; a backend applies it best-effort (headless/nested keep the
     /// value only, DRM is a later task). Keyed by output name; absent = 1.0.
     output_brightness: HashMap<String, f64>,
-    /// Last effective material state broadcast to the shell (P1). The degrade
-    /// tier is global today, so one snapshot covers every output; keeping it
-    /// here makes "emit only on change" cheap.
+    /// Last **global** effective material state broadcast on the legacy v3
+    /// `material_state` event (P1). Kept so an older shell keeps its exact
+    /// meaning; the per-role table below is the T-21.2c state.
     pub last_material_state: Option<EffectiveMaterial>,
+    /// Last effective material broadcast per role (T-21.2c), keyed by the
+    /// `df_output` protocol id and indexed by [`MaterialRole::wire`]. The
+    /// policy is global today, but the event is per-output, so each client's
+    /// output resource gets its own initial table without a duplicate
+    /// broadcast to the others.
+    pub last_material_role_states: HashMap<u32, [Option<EffectiveMaterial>; MaterialRole::COUNT]>,
 }
 
 impl ShellProtocolState {
@@ -171,6 +179,7 @@ impl ShellProtocolState {
             attention: Vec::new(),
             output_brightness: HashMap::new(),
             last_material_state: None,
+            last_material_role_states: HashMap::new(),
         }
     }
 
@@ -738,7 +747,7 @@ impl DfState {
         }
     }
 
-    fn send_output_properties(&self, resource: &df_output::DfOutput, output: &Output) {
+    fn send_output_properties(&mut self, resource: &df_output::DfOutput, output: &Output) {
         resource.name(output.name());
         if let Some(geometry) = self.space.output_geometry(output) {
             resource.geometry(
@@ -791,7 +800,7 @@ impl DfState {
                 resource.reserved_zone(edge_wire(edge), thickness as u32);
             }
         }
-        // Effective material (P1): the shell uses this to choose the
+        // Effective material (P1/T-21.2c): the shell uses this to choose the
         // translucent glass complement or the milky fallback. Send the
         // initial state with the other output properties; later changes go
         // through `broadcast_material_state`.
@@ -803,6 +812,23 @@ impl DfState {
                 material.fallback.wire(),
             );
         }
+        let materials = self.effective_materials();
+        if resource.version() >= 4 {
+            for (role, material) in materials {
+                resource.material_role_state(
+                    role.wire(),
+                    material.tier.index() as u32,
+                    u32::from(material.blur_active),
+                    material.fallback.wire(),
+                );
+            }
+        }
+        // This output resource now has the current table; a later broadcast
+        // only sends roles that actually changed.
+        self.shell.last_material_role_states.insert(
+            resource.id().protocol_id(),
+            materials.map(|(_, material)| Some(material)),
+        );
     }
 
     /// Announce every workspace to one manager.
@@ -993,22 +1019,48 @@ impl DfState {
     }
 
     /// Push the effective material state to every announced output when it
-    /// changes (P1). The tier is global today, so the same snapshot goes to
-    /// each output; the event is per-output so a future role/output policy
-    /// can diverge without a protocol change.
+    /// changes (P1/T-21.2c). The legacy v3 event keeps its global meaning and
+    /// change-only rule; the v4 role event is emitted per output only for the
+    /// roles whose effective state changed. Neither is a per-frame event.
     fn broadcast_material_state(&mut self) {
-        let effective = self.effective_material();
-        if self.shell.last_material_state == Some(effective) {
-            return;
+        let materials = self.effective_materials();
+        let global = self.effective_material();
+        let global_changed = self.shell.last_material_state != Some(global);
+        if global_changed {
+            self.shell.last_material_state = Some(global);
         }
-        self.shell.last_material_state = Some(effective);
+
         for (_, output) in self.output_sessions() {
-            if output.version() >= 3 {
+            if output.version() >= 3 && global_changed {
                 output.material_state(
-                    effective.tier.index() as u32,
-                    u32::from(effective.blur_active),
-                    effective.fallback.wire(),
+                    global.tier.index() as u32,
+                    u32::from(global.blur_active),
+                    global.fallback.wire(),
                 );
+            }
+            if output.version() < 4 {
+                continue;
+            }
+            let cache = self
+                .shell
+                .last_material_role_states
+                .entry(output.id().protocol_id())
+                .or_insert([None; MaterialRole::COUNT]);
+            let changed: Vec<_> = materials
+                .into_iter()
+                .filter(|(role, material)| cache[role.wire() as usize] != Some(*material))
+                .collect();
+            if changed.is_empty() {
+                continue;
+            }
+            for (role, material) in changed {
+                output.material_role_state(
+                    role.wire(),
+                    material.tier.index() as u32,
+                    u32::from(material.blur_active),
+                    material.fallback.wire(),
+                );
+                cache[role.wire() as usize] = Some(material);
             }
         }
     }
@@ -2263,9 +2315,13 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
     fn destroyed(
         state: &mut Self,
         client: wayland_server::backend::ClientId,
-        _resource: &df_output::DfOutput,
+        resource: &df_output::DfOutput,
         data: &OutputUserData,
     ) {
+        state
+            .shell
+            .last_material_role_states
+            .remove(&resource.id().protocol_id());
         if let Some(session) = state.shell.sessions.get_mut(&client) {
             session.outputs.remove(&data.name);
         }
