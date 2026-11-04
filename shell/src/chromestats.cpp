@@ -116,6 +116,23 @@ void ChromeStats::setTransportPath(const QString &path)
     m_transportPath = path;
 }
 
+void ChromeStats::setGpuPath(const QString &path)
+{
+    if (!m_enabled || path.isEmpty())
+        return;
+    m_gpuPath = path;
+}
+
+void ChromeStats::setGpuFallbackReason(const QString &reason)
+{
+    if (!m_enabled)
+        return;
+    // Keep the first reason: the interesting one is why the GPU rail was
+    // abandoned, not every later frame that stayed on the fallback.
+    if (m_gpuReason.isEmpty() && !reason.isEmpty())
+        m_gpuReason = reason;
+}
+
 void ChromeStats::recordShmAlloc(const QString &surface, qint64 bytes)
 {
     if (!m_enabled)
@@ -168,6 +185,34 @@ void ChromeStats::recordSkippedCommit(const QString &surface, const QSize &logic
     ++stats.skippedCommits;
 }
 
+void ChromeStats::recordDmabufCommit(const QString &surface, qint64 bytes)
+{
+    if (!m_enabled)
+        return;
+    ++m_dmabufCommits;
+    m_dmabufBytes += quint64(qMax<qint64>(0, bytes));
+    SurfaceStats &stats = m_surfaces[surface];
+    ++stats.dmabufCommits;
+    stats.dmabufBytes += quint64(qMax<qint64>(0, bytes));
+}
+
+void ChromeStats::recordDmabufDeferred(const QString &surface)
+{
+    if (!m_enabled)
+        return;
+    ++m_dmabufDeferred;
+    ++m_surfaces[surface].dmabufDeferred;
+}
+
+void ChromeStats::recordDmabufFallback(const QString &surface, const QString &reason)
+{
+    if (!m_enabled)
+        return;
+    ++m_dmabufFallbacks;
+    ++m_surfaces[surface].dmabufFallbacks;
+    setGpuFallbackReason(reason);
+}
+
 void ChromeStats::recordFrameCallback(const QString &surface, qint64 callbackUs)
 {
     if (!m_enabled)
@@ -197,7 +242,9 @@ void ChromeStats::emitStats(const QString &label)
                "chrome stats (%1): path=%2 scene_frames=%3 commits=%4 "
                "grab_renders=%5 shm_allocs=%6 shm_bytes=%7 copy_bytes=%8 "
                "damage_pixels=%9 frame_callbacks=%10 fallback_renders=%11 "
-               "skipped_commits=%12 %13 %14")
+               "skipped_commits=%12 dmabuf_commits=%13 dmabuf_bytes=%14 "
+               "dmabuf_deferred=%15 dmabuf_fallbacks=%16 gpu=%17 "
+               "gpu_reason=%18 %19 %20")
                .arg(label)
                .arg(m_transportPath)
                .arg(m_sceneFrames)
@@ -210,6 +257,12 @@ void ChromeStats::emitStats(const QString &label)
                .arg(m_frameCallbacks)
                .arg(m_fallbackRenders)
                .arg(m_skippedCommits)
+               .arg(m_dmabufCommits)
+               .arg(m_dmabufBytes)
+               .arg(m_dmabufDeferred)
+               .arg(m_dmabufFallbacks)
+               .arg(m_gpuPath)
+               .arg(m_gpuReason.isEmpty() ? QStringLiteral("none") : m_gpuReason)
                .arg(timingText("commit_us", m_commitUs))
                .arg(timingText("frame_callback_us", m_frameCallbackUs));
 
@@ -222,7 +275,8 @@ void ChromeStats::emitStats(const QString &label)
                    "chrome surface (%1): surface=%2 logical_size=%3 buffer_size=%4 "
                    "buffer_scale=%5 scale=%6 viewport=%7 commits=%8 shm_allocs=%9 "
                    "shm_bytes=%10 copy_bytes=%11 damage_pixels=%12 skipped=%13 "
-                   "fallback=%14 renders=%15 %16 %17")
+                   "fallback=%14 renders=%15 dmabuf_commits=%16 dmabuf_bytes=%17 "
+                   "dmabuf_deferred=%18 dmabuf_fallbacks=%19 %20 %21")
                    .arg(label)
                    .arg(name)
                    .arg(sizeText(stats.logicalSize))
@@ -238,6 +292,10 @@ void ChromeStats::emitStats(const QString &label)
                    .arg(stats.skippedCommits)
                    .arg(stats.fallbackRenders)
                    .arg(stats.renders)
+                   .arg(stats.dmabufCommits)
+                   .arg(stats.dmabufBytes)
+                   .arg(stats.dmabufDeferred)
+                   .arg(stats.dmabufFallbacks)
                    .arg(timingText("commit_us", stats.commitUs))
                    .arg(timingText("frame_callback_us", stats.frameCallbackUs));
     }
