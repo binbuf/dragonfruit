@@ -119,9 +119,17 @@ The effective material is delivered per role over the additive
 `df_output.material_role_state` event (v4, T-21.2c): `role` 0=chrome,
 1=dock, 2=popup, 3=drawer; `fallback` 4 (`floor-missed`) means even `Reduced`
 missed the deadline and the persistent surface must use its milky complement.
-`ShellProtocol` stores the role table and emits `materialRoleStateChanged`;
-the Dock/menu-bar and overlay QML application are the T-21.2c shell tasks.
-QML still never re-derives the degrade policy.
+`ShellProtocol` stores the role table and emits `materialRoleStateChanged`.
+`ShellController` owns one `MaterialPolicy` (`shell/src/materialpolicy.h`);
+the menu bar applies the `Chrome` role and the Dock the `Dock` role, so a
+transient overlay cannot pull the persistent chrome down and QML never
+re-derives the degrade policy. A known v4 role wins over the legacy v3
+`material_state` snapshot, which remains the compatibility path for an older
+compositor. Any explicit fallback reason selects the existing token-driven
+milky complement (`blurActive=false`); a persistent role that reports
+`Minimal` with no fallback is guarded to the explicit `floor-missed` state.
+The popup/overlay family is T189c and must use the same policy object
+(ADR [0204](adr/0204-shell-role-material-application-policy.md)).
 
 ## Menu bar
 

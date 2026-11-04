@@ -31,6 +31,7 @@
 #include "dockmodel.h"
 #include "folderstacks.h"
 #include "lockauth.h"
+#include "materialpolicy.h"
 #include "menubrokerclient.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
@@ -287,6 +288,10 @@ private slots:
     // menu bar choose the translucent glass complement or the milky fallback
     // from this; QML never re-derives the degrade policy.
     void onMaterialStateChanged(quint32 tier, bool blurActive, quint32 fallback);
+    // T-21.2c: one role's effective material changed. The menu bar applies
+    // the Chrome role and the Dock applies Dock from the same policy object.
+    void onMaterialRoleStateChanged(quint32 role, quint32 tier, bool blurActive,
+                                    quint32 fallback);
     void onDockEntryActivated(const QVariant &entry);
     // The Dock reports the acted-on entry's tile rect in output coordinates
     // (T-14.7l); remember it bounded so the next launch can hand it to the
@@ -752,7 +757,14 @@ private:
     void onChromeFallbackTick();
     QImage renderChromeFrame(QQuickWindow *window);
 
+    // T-21.2c: seed the policy from the protocol's current (possibly
+    // pre-dispatched) role table, then push the two persistent roles' applied
+    // state into their QML items. One policy object owns the decision.
+    void seedMaterialPolicy();
+    void applyMaterialState();
+
     ShellProtocol *m_protocol = nullptr;
+    MaterialPolicy m_materialPolicy;
     // The compositor socket the shell connected on (`--socket-name`, or the
     // resolved `$WAYLAND_DISPLAY`). Exported to every launched child as
     // `WAYLAND_DISPLAY` so a launch cannot produce a display-less client

@@ -1,0 +1,27 @@
+T-21.2c forced persistent-chrome material tiers
+scheme and forced tier, then the compositor's query degrade
+
+scheme=light forced=full
+degrade tier=full forced=1 budget_us=16666 samples=17 over_budget=13 downgrades=1 upgrades=0 tiers=full:16,reduced:1,minimal:0 budget_source=refresh
+end
+
+scheme=light forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=20 over_budget=13 downgrades=1 upgrades=0 tiers=full:17,reduced:3,minimal:0 budget_source=refresh
+end
+
+scheme=light forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=23 over_budget=13 downgrades=1 upgrades=0 tiers=full:17,reduced:4,minimal:2 budget_source=refresh
+end
+
+scheme=dark forced=full
+degrade tier=full forced=1 budget_us=16666 samples=28 over_budget=13 downgrades=1 upgrades=0 tiers=full:20,reduced:4,minimal:4 budget_source=refresh
+end
+
+scheme=dark forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=31 over_budget=13 downgrades=1 upgrades=0 tiers=full:21,reduced:6,minimal:4 budget_source=refresh
+end
+
+scheme=dark forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=34 over_budget=13 downgrades=1 upgrades=0 tiers=full:21,reduced:7,minimal:6 budget_source=refresh
+end
+

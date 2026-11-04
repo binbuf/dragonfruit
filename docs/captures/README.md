@@ -1090,6 +1090,17 @@ virtual host, with the nested window maximized to 1920x1200; the transcript is
 smoke test because the synthetic input harness on that host did not set the
 Meta modifier for the `Cmd+Ctrl+Q` chord.
 
+T-21.2c's persistent-chrome forced-tier stills are produced by
+`scripts/capture-t21-material-tiers.sh` (`make t21-material-tiers-capture`).
+It runs the nested demo with the compositor capture fixture, forces Full,
+Reduced, and Minimal in the light and dark schemes, and writes the menu-bar and
+Dock crops `t21-material-{menubar,dock}-{full,reduced,minimal}-{light,dark}.png`
+plus the review sheets `t21-material-{menubar,dock}-tiers-{light,dark}.png`.
+`t21-material-tiers.txt` records each forced `query degrade` state. The forced
+Minimal state is the persistent `floor-missed` milky fallback, not a flat
+translucent slab; the shell applies the `Chrome`/`Dock` role through one policy
+(ADR [0204](../design/adr/0204-shell-role-material-application-policy.md)).
+
 T-21.1b's HiDPI chrome stills are `t21-hidpi-1x.png`, `t21-hidpi-1_5x.png`,
 and `t21-hidpi-2x.png` (the menu bar, Dock, and Dock popover at each scale),
 plus `t21-hidpi-1_5x-dock.png` and `t21-hidpi-1_5x-control-center.png` for the

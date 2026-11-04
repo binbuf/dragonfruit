@@ -518,8 +518,13 @@ application and refresh-aware hysteresis land in the follow-up tasks.
   4=floor-missed). The legacy v3 `material_state` keeps its global meaning.
 - The compositor emits the role event per output only for roles whose
   effective state changed, not per frame. The shell parses and stores the
-  role table; the Dock/menu-bar and overlay application land in T-21.2c's
-  shell tasks.
+  role table; `ShellController` applies it through one `MaterialPolicy`
+  object. The menu bar consumes `Chrome`, the Dock consumes `Dock`, and the
+  legacy v3 snapshot is only the compatibility source for a role that has not
+  received a v4 state. Any explicit fallback reason selects the milky
+  complement; a persistent `Minimal` with no reason is guarded to the explicit
+  `floor-missed` state (ADR [0204](adr/0204-shell-role-material-application-policy.md)).
+  The popup/overlay family is T189c and must use the same policy object.
 
 **Acceptance**
 
@@ -533,6 +538,12 @@ application and refresh-aware hysteresis land in the follow-up tasks.
 - Apply the milky fallback to popovers, Control Center, notifications, OSD,
   and the Applications drawer where they currently assume blur.
 - Keep the Dock/menu-bar fallback tokens as the source of truth.
+
+**Status (T-21.2c)**
+
+- The Dock and menu bar are covered (T189b): `MaterialPolicy` turns every
+  explicit fallback reason, including `floor-missed`, into the existing
+  token-driven milky complement. The popup family remains T189c.
 
 **Acceptance**
 
