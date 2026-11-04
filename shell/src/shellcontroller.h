@@ -52,6 +52,7 @@ class QQuickItem;
 class QSocketNotifier;
 class QTimer;
 class ChromeFrameProducer;
+class GpuChromeFrameProducer;
 
 class ShellController : public QObject
 {
@@ -442,6 +443,36 @@ private:
                             qreal scale);
     // A logical scene rect -> the physical crop in `grabWindow()`'s image.
     QRect chromeBufferRect(const QRect &logical) const;
+    // T-21.1d rollout: one scene render committed to one or two surfaces.
+    // The GPU producer exports once; each target then commits the same frame
+    // through `commitDmabufTo` (the menu bar + its dropdown and the Dock + its
+    // popover share one render). A target that cannot use dmabuf falls back to
+    // the T185 pooled shm commit with the already-rendered frame; nothing is
+    // rendered twice. A `Deferred` target is retried on the release signal.
+    struct ChromeSceneTarget {
+        QString label;
+        QSize logicalSize;
+        QRect sourceRect;
+        std::function<bool(const QImage &)> commitShm;
+        // Non-zero for a lock surface, which is addressed by the opaque id
+        // from `lockSurfaceConfigured` rather than a label lookup.
+        quintptr lockSurfaceId = 0;
+    };
+    bool commitChromeScene(QQuickWindow *window,
+                           const QList<ChromeSceneTarget> &targets);
+    // One dmabuf target commit, including the per-surface stats path and the
+    // producer-slot release bookkeeping for a shared scene.
+    ShellProtocol::DmabufCommitResult commitChromeDmabufTarget(
+        GpuChromeFrameProducer *gpu, const QString &label,
+        const ChromeDmabufFrame &frame, const QSize &logicalSize,
+        const QRect &sourceRect, quintptr lockSurfaceId, QString *reason);
+    // Mark the producer slot dirty for a retry after a deferred commit.
+    void deferChromeProducer(ChromeFrameProducer *producer);
+    // The stable stats label that owns a surface's producer (`dock-popup`
+    // shares the Dock's render, `menubar-popup` the menu bar's).
+    QString chromePaceLabel(const QString &surface) const;
+    void noteSurfacePath(const QString &label, const QString &path,
+                         const QString &reason = QString());
     // Inject a pointer event in logical surface coordinates. The offscreen
     // window is physical-size, so the position is scaled here; QML still sees
     // logical item coordinates through the root item transform.
@@ -905,10 +936,18 @@ private:
     GpuChromeState m_gpuChromeState = GpuChromeState::Unknown;
     bool m_gpuChromeRequested = false;
     QString m_gpuChromeReason;
-    // The Dock's single dmabuf buffer can be abandoned for the rest of the
-    // session after an export/import/format failure. The Dock then uses the
-    // GPU producer's readback + T185 shm path; it never goes black.
-    bool m_dockDmabufEnabled = false;
+    // The GPU rail can be abandoned for the rest of the session after a
+    // producer-wide export/format failure. Individual surfaces can also be
+    // disabled when their own dmabuf commit is not expressible (for example a
+    // missing viewporter); they stay on the T185 shm path with a recorded
+    // reason and never go black.
+    bool m_chromeDmabufEnabled = false;
+    QSet<QString> m_chromeDmabufDisabled;
+    // Capture-only isolation (`DRAGONFRUIT_CHROME_GPU_SURFACES`): when set,
+    // only the named surface labels use dmabuf. Empty means every surface is
+    // eligible, which is the shipping default. A shared scene is all-or-
+    // nothing so a popover never mixes a dmabuf bar with a shm sub-rect.
+    QSet<QString> m_chromeDmabufAllowed;
     // T-21.1c: producer lookup and per-producer pacing state.
     QHash<QQuickWindow *, ChromeFrameProducer *> m_producers;
     struct ChromePace {
@@ -918,6 +957,10 @@ private:
         bool dirty = false;
         bool scheduled = false;
         bool rendering = false;
+        // T-21.1d: one exported scene can be committed to more than one
+        // surface (bar + popup). Hold the producer slot until every surface
+        // returned its wl_buffer.
+        ChromeDmabufReleaseTracker dmabufUsers;
     };
     QHash<ChromeFrameProducer *, ChromePace> m_chromePaces;
     QTimer *m_chromeFallbackTimer = nullptr;

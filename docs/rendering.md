@@ -334,7 +334,32 @@ run `gpu=off`, zero dmabuf imports) and the two host stills
 [`t21-dmabuf-ring.png`](captures/t21-dmabuf-ring.png) /
 [`t21-dmabuf-ring-fallback.png`](captures/t21-dmabuf-ring-fallback.png).
 Contract: [ADR 0196](design/adr/0196-dmabuf-ring-release-reuse-and-sync.md).
-The menu bar/popover rollout remains T186d.
+
+**Chrome rollout (T186d).** Every chrome scene now commits through the same
+dmabuf path: the menu bar and its dropdown, the Dock and its popover, Mission
+Control, the app switcher, notification banner, Control Center, OSD, chooser,
+screenshot selection, ScreenCast picker, polkit dialog, Applications drawer,
+and the session-lock surfaces. `ShellProtocol::commitDmabufFor()` addresses a
+surface by its stable `chrome stats` label; `commitLockDmabuf()` addresses a
+lock surface by its configure id. A shared scene (bar + popup, Dock + popover)
+renders once and commits the same exported frame to both surfaces; the producer
+ring slot is held until the last `wl_buffer.release`, and if any surface cannot
+express the commit the whole scene takes the T185 shm path. No successful
+dmabuf frame performs a CPU readback. Each `chrome surface` stats line now
+reports `path=dmabuf|shm`, `gpu_reason`, the live `dmabuf_buffers` count,
+`dmabuf_allocs`/`dmabuf_reuses`, and `copy_bytes`; a GPU frame has
+`copy_bytes=0`, while a fallback frame is counted with its reason. Evidence:
+[`captures/t21-gpu-rollout.txt`](captures/t21-gpu-rollout.txt) (Dock, menu bar,
+both popovers, and lock on dmabuf; `DRAGONFRUIT_CHROME_GPU=0` on shm with zero
+dmabuf imports) and the five stills
+[`t21-gpu-rollout-dock.png`](captures/t21-gpu-rollout-dock.png),
+[`-menubar.png`](captures/t21-gpu-rollout-menubar.png),
+[`-popover.png`](captures/t21-gpu-rollout-popover.png),
+[`-lock.png`](captures/t21-gpu-rollout-lock.png), and
+[`-fallback.png`](captures/t21-gpu-rollout-fallback.png). Contract:
+[ADR 0197](design/adr/0197-gpu-chrome-rollout-and-per-surface-stats.md). The
+default remains off until T192/T193 accept the rail; the implicit-sync
+limitation still applies to a shared scene under load.
 
 **Close-out (T185a).** The final-tree rerun was host-throttled: the nested
 window was not presented at 60 Hz, so the shell's 100 ms safety tick is visible

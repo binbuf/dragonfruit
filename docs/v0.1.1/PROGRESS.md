@@ -10,6 +10,7 @@
 - **T186a — T-21.1d GPU probe and render-control spike**: `shell/src/gpuchromecapabilities.{h,cpp}`: pure linux-dmabuf feedback-table; `shell/src/gpuchromeprobe.{h,cpp}`: read-only runtime probe. It binds
 - **T186b — T-21.1d dmabuf export and single-buffer Dock commit**: `shell/src/chromedmabuf.{h,cpp}`: pure `ChromeDmabufFrame` validation; `shell/src/chromedmabufexport.{h,cpp}`: EGLImage from the FBO texture +
 - **T186c — T-21.1d dmabuf ring, sync, and fallback**: `shell/src/chromedmabuf.{h,cpp}`: `ChromeDmabufRing` (capacity 3): acquire/; `GpuChromeFrameProducer` owns one FBO/export per ring slot. `exportFrame()`
+- **T186d — T-21.1d GPU transport: rollout, stats, and docs**: `ShellController::commitChromeScene()` is the single commit path for every; `ShellProtocol::commitDmabufFor(label, ...)` and `commitLockDmabuf(id, ...)`
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -20,6 +21,7 @@
 - [T186a](progress/T186a.md) — `shell/src/gpuchromecapabilities.{h,cpp}`: pure linux-dmabuf feedback-table
 - [T186b](progress/T186b.md) — `shell/src/chromedmabuf.{h,cpp}`: pure `ChromeDmabufFrame` validation
 - [T186c](progress/T186c.md) — `shell/src/chromedmabuf.{h,cpp}`: `ChromeDmabufRing` (capacity 3): acquire/
+- [T186d](progress/T186d.md) — `ShellController::commitChromeScene()` is the single commit path for every
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

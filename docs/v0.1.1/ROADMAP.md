@@ -44,7 +44,7 @@ done.
 - [x] T186a — T-21.1d GPU transport: capability probe and render-control spike → [../tasks/0.1.1/186a-t-21.1d-gpu-probe.md](../tasks/0.1.1/186a-t-21.1d-gpu-probe.md)
 - [x] T186b — T-21.1d GPU transport: dmabuf export and single-buffer Dock commit → [../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md](../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md)
 - [x] T186c — T-21.1d GPU transport: dmabuf ring, sync, and fallback → [../tasks/0.1.1/186c-t-21.1d-dmabuf-ring-sync.md](../tasks/0.1.1/186c-t-21.1d-dmabuf-ring-sync.md)
-- [ ] T186d — T-21.1d GPU transport: rollout, stats, and docs → [../tasks/0.1.1/186d-t-21.1d-gpu-rollout.md](../tasks/0.1.1/186d-t-21.1d-gpu-rollout.md)
+- [x] T186d — T-21.1d GPU transport: rollout, stats, and docs → [../tasks/0.1.1/186d-t-21.1d-gpu-rollout.md](../tasks/0.1.1/186d-t-21.1d-gpu-rollout.md)
 
 ## Phase 21.2 — Refresh-aware scheduling and material floor
 
@@ -89,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-04T14:06:02Z · 7/30 done
+**Pipeline status** — updated 2026-11-04T16:00:18Z · 8/30 done
 
-- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c
+- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d
 - Blocked: none
 - Failed: none
-- Remaining: T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
-- Last finished: T186c — done · dmabuf ring, release-driven reuse, GL-fence sync, shm fallback, stats, unit tests, and nested GPU/fallback captures landed; all gates pass.
+- Remaining: T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Last finished: T186d — done · Rolled dmabuf commits out to every chrome surface with per-surface path/copy/reason stats, shared-scene release tracking, ADR 0197, updated docs, and GPU/fallback stills+stats; `make e2e` and `make qml-test` (81/81) pass. Explicit sync/default-on remain T192/T193.
 <!-- /symphony:status -->

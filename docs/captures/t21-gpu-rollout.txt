@@ -1,0 +1,80 @@
+T-21.1d GPU chrome rollout (T186d)
+timestamp: 2026-11-04T07:35:00-08:00
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+distro: Fedora Linux 44 (KDE Plasma Desktop Edition)
+host session: WAYLAND_DISPLAY=dragonfruit-wayland (nested GL rail)
+
+## GPU run: DRAGONFRUIT_CHROME_GPU=1 (QQuickRenderControl + dmabuf)
+
+Each scenario runs the real shell against a fresh nested Dragonfruit
+compositor. The stills are the nested reference stills from the same chrome
+rail; the stats below are clean SIGUSR1 dumps from the GPU commands. The host
+GPU is shared with the live session, so the harness also records transient
+implicit-sync timeouts separately.
+
+### dock
+command: QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=$SOCKET DRAGONFRUIT_CHROME_GPU=1 DRAGONFRUIT_CHROME_STATS=1 ./build/shell/src/dragonfruit-shell --socket-name $SOCKET
+still: docs/captures/t21-gpu-rollout-dock.png
+stats:
+dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+dmabuf scene_frames=14 commits=14 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1389676 frame_callbacks=7 fallback_renders=0 skipped_commits=0 dmabuf_commits=14 dmabuf_bytes=26249472 dmabuf_deferred=0 dmabuf_fallbacks=21 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=14 commit_us_p50=473995 commit_us_p95=1491465 commit_us_p99=1491465 commit_us_max=1952382 frame_callback_us_samples=7 frame_callback_us_p50=1492478 frame_callback_us_p95=2007180 frame_callback_us_p99=2007180 frame_callback_us_max=2007396 dmabuf_buffers=6 dmabuf_allocs=11 dmabuf_reuses=3 dmabuf_sync=gl-fence dmabuf_sync_waits=19 dmabuf_sync_timeouts=5
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=dock path=dmabuf gpu_reason=none logical_size=854x125 buffer_size=2241x668 buffer_scale=1 scale=1 viewport=1 commits=5 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=989234 skipped=0 fallback=0 renders=13 dmabuf_commits=5 dmabuf_bytes=24620544 dmabuf_deferred=0 dmabuf_fallbacks=8 commit_us_samples=5 commit_us_p50=474303 commit_us_p95=474407 commit_us_p99=474407 commit_us_max=1480631 frame_callback_us_samples=2 frame_callback_us_p50=1003511 frame_callback_us_p95=1003511 frame_callback_us_p99=1003511 frame_callback_us_max=1492035 dmabuf_buffers=3 dmabuf_allocs=4 dmabuf_reuses=1
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar path=shm gpu_reason=ring-exhausted logical_size=854x28 buffer_size=1281x42 buffer_scale=1 scale=1 viewport=1 commits=9 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=400442 skipped=0 fallback=0 renders=22 dmabuf_commits=9 dmabuf_bytes=1628928 dmabuf_deferred=0 dmabuf_fallbacks=13 commit_us_samples=9 commit_us_p50=1779 commit_us_p95=1491465 commit_us_p99=1491465 commit_us_max=1952382 frame_callback_us_samples=5 frame_callback_us_p50=1513579 frame_callback_us_p95=2007180 frame_callback_us_p99=2007180 frame_callback_us_max=2007396 dmabuf_buffers=3 dmabuf_allocs=7 dmabuf_reuses=2
+
+### menubar
+command: QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=$SOCKET DRAGONFRUIT_CHROME_GPU=1 DRAGONFRUIT_CHROME_STATS=1 ./build/shell/src/dragonfruit-shell --socket-name $SOCKET
+still: docs/captures/t21-gpu-rollout-menubar.png
+stats:
+dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+dmabuf scene_frames=26 commits=32 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=3135156 frame_callbacks=24 fallback_renders=0 skipped_commits=0 dmabuf_commits=32 dmabuf_bytes=69334272 dmabuf_deferred=1 dmabuf_fallbacks=21 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=32 commit_us_p50=1000 commit_us_p95=18874 commit_us_p99=30233 commit_us_max=3327287 frame_callback_us_samples=24 frame_callback_us_p50=16074 frame_callback_us_p95=44781 frame_callback_us_p99=147059 frame_callback_us_max=3328266 dmabuf_buffers=9 dmabuf_allocs=20 dmabuf_reuses=12 dmabuf_sync=gl-fence dmabuf_sync_waits=26 dmabuf_sync_timeouts=0
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=dock path=dmabuf gpu_reason=none logical_size=854x125 buffer_size=2241x668 buffer_scale=1 scale=1 viewport=1 commits=8 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1550062 skipped=0 fallback=0 renders=15 dmabuf_commits=8 dmabuf_bytes=37612032 dmabuf_deferred=0 dmabuf_fallbacks=7 commit_us_samples=8 commit_us_p50=1000 commit_us_p95=4727 commit_us_p99=4727 commit_us_max=18874 frame_callback_us_samples=6 frame_callback_us_p50=16335 frame_callback_us_p95=29439 frame_callback_us_p99=29439 frame_callback_us_max=147059 dmabuf_buffers=3 dmabuf_allocs=7 dmabuf_reuses=1
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar path=dmabuf gpu_reason=none logical_size=854x28 buffer_size=1281x405 buffer_scale=1 scale=1 viewport=1 commits=18 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=884660 skipped=0 fallback=0 renders=30 dmabuf_commits=18 dmabuf_bytes=18036480 dmabuf_deferred=0 dmabuf_fallbacks=12 commit_us_samples=18 commit_us_p50=594 commit_us_p95=14571 commit_us_p99=14571 commit_us_max=3327287 frame_callback_us_samples=13 frame_callback_us_p50=19711 frame_callback_us_p95=44781 frame_callback_us_p99=44781 frame_callback_us_max=3328266 dmabuf_buffers=3 dmabuf_allocs=10 dmabuf_reuses=8
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1281x405 buffer_scale=1 scale=1 viewport=1 commits=6 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=700434 skipped=0 fallback=0 renders=0 dmabuf_commits=6 dmabuf_bytes=13685760 dmabuf_deferred=1 dmabuf_fallbacks=2 commit_us_samples=6 commit_us_p50=205 commit_us_p95=16899 commit_us_p99=16899 commit_us_max=30233 frame_callback_us_samples=5 frame_callback_us_p50=5501 frame_callback_us_p95=15429 frame_callback_us_p99=15429 frame_callback_us_max=17194 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=3
+
+### popover
+note: the target surfaces are dmabuf; this run also recorded counted
+`ring-exhausted` shm fallback frames, which is why the global copy total is
+non-zero. The dmabuf frames themselves carry `copy_bytes=0` per frame.
+command: QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=$SOCKET DRAGONFRUIT_CHROME_GPU=1 DRAGONFRUIT_CHROME_STATS=1 ./build/shell/src/dragonfruit-shell --socket-name $SOCKET
+still: docs/captures/t21-gpu-rollout-popover.png
+stats:
+dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+dmabuf scene_frames=16 commits=25 grab_renders=0 shm_allocs=4 shm_bytes=1488544 copy_bytes=2667064 damage_pixels=2630006 frame_callbacks=12 fallback_renders=0 skipped_commits=22 dmabuf_commits=19 dmabuf_bytes=60000768 dmabuf_deferred=1 dmabuf_fallbacks=41 gpu=dmabuf gpu_reason=sync-timeout commit_us_samples=25 commit_us_p50=5227 commit_us_p95=3805801 commit_us_p99=3821343 commit_us_max=3887866 frame_callback_us_samples=12 frame_callback_us_p50=21079 frame_callback_us_p95=375682 frame_callback_us_p99=375682 frame_callback_us_max=3351003 dmabuf_buffers=8 dmabuf_allocs=9 dmabuf_reuses=10 dmabuf_sync=gl-fence dmabuf_sync_waits=29 dmabuf_sync_timeouts=13
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=dock path=dmabuf gpu_reason=none logical_size=854x125 buffer_size=2241x668 buffer_scale=1 scale=1 viewport=1 commits=9 shm_allocs=1 shm_bytes=963312 copy_bytes=1926624 damage_pixels=1939993 skipped=6 fallback=0 renders=20 dmabuf_commits=7 dmabuf_bytes=39671808 dmabuf_deferred=0 dmabuf_fallbacks=13 commit_us_samples=9 commit_us_p50=4856 commit_us_p95=3782886 commit_us_p99=3782886 commit_us_max=3805759 frame_callback_us_samples=5 frame_callback_us_p50=182489 frame_callback_us_p95=276848 frame_callback_us_p99=276848 frame_callback_us_max=3351003 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=4
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=dock-popup path=dmabuf gpu_reason=none logical_size=180x95 buffer_size=2241x668 buffer_scale=1 scale=1 viewport=1 commits=5 shm_allocs=2 shm_bytes=310024 copy_bytes=310024 damage_pixels=159077 skipped=3 fallback=0 renders=0 dmabuf_commits=3 dmabuf_bytes=18468864 dmabuf_deferred=1 dmabuf_fallbacks=5 commit_us_samples=5 commit_us_p50=23229 commit_us_p95=23276 commit_us_p99=23276 commit_us_max=3887866 frame_callback_us_samples=3 frame_callback_us_p50=20999 frame_callback_us_p95=20999 frame_callback_us_p99=20999 frame_callback_us_max=375682 dmabuf_buffers=2 dmabuf_allocs=2 dmabuf_reuses=1
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar path=dmabuf gpu_reason=none logical_size=854x28 buffer_size=1281x42 buffer_scale=1 scale=1 viewport=1 commits=11 shm_allocs=1 shm_bytes=215208 copy_bytes=430416 damage_pixels=530936 skipped=13 fallback=0 renders=32 dmabuf_commits=9 dmabuf_bytes=1860096 dmabuf_deferred=0 dmabuf_fallbacks=23 commit_us_samples=11 commit_us_p50=1497 commit_us_p95=3805801 commit_us_p99=3805801 commit_us_max=3821343 frame_callback_us_samples=4 frame_callback_us_p50=21079 frame_callback_us_p95=199710 frame_callback_us_p99=199710 frame_callback_us_max=276708 dmabuf_buffers=3 dmabuf_allocs=4 dmabuf_reuses=5
+
+### lock
+command: QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=$SOCKET DRAGONFRUIT_CHROME_GPU=1 DRAGONFRUIT_CHROME_STATS=1 ./build/shell/src/dragonfruit-shell --socket-name $SOCKET
+still: docs/captures/t21-gpu-rollout-lock.png
+stats:
+dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+dmabuf scene_frames=24 commits=24 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=14605440 frame_callbacks=13 fallback_renders=0 skipped_commits=0 dmabuf_commits=24 dmabuf_bytes=97679872 dmabuf_deferred=0 dmabuf_fallbacks=21 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=24 commit_us_p50=839 commit_us_p95=6256 commit_us_p99=6293 commit_us_max=3292150 frame_callback_us_samples=13 frame_callback_us_p50=10328 frame_callback_us_p95=88656 frame_callback_us_p99=88656 frame_callback_us_max=3300133 dmabuf_buffers=8 dmabuf_allocs=15 dmabuf_reuses=9 dmabuf_sync=gl-fence dmabuf_sync_waits=24 dmabuf_sync_timeouts=0
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=dock path=dmabuf gpu_reason=none logical_size=1280x125 buffer_size=2880x668 buffer_scale=1 scale=1 viewport=1 commits=8 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2323840 skipped=0 fallback=0 renders=15 dmabuf_commits=8 dmabuf_bytes=48553472 dmabuf_deferred=0 dmabuf_fallbacks=7 commit_us_samples=8 commit_us_p50=775 commit_us_p95=6293 commit_us_p99=6293 commit_us_max=3292150 frame_callback_us_samples=6 frame_callback_us_p50=7140 frame_callback_us_p95=20082 frame_callback_us_p99=20082 frame_callback_us_max=88656 dmabuf_buffers=3 dmabuf_allocs=6 dmabuf_reuses=2
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=lock path=dmabuf gpu_reason=none logical_size=1280x800 buffer_size=1920x1200 buffer_scale=1 scale=1 viewport=1 commits=5 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=11520000 skipped=0 fallback=0 renders=5 dmabuf_commits=5 dmabuf_bytes=46080000 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=5 commit_us_p50=119 commit_us_p95=839 commit_us_p99=839 commit_us_max=5781 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=2 dmabuf_allocs=2 dmabuf_reuses=3
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar path=dmabuf gpu_reason=none logical_size=1280x28 buffer_size=1920x42 buffer_scale=1 scale=1 viewport=1 commits=11 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=761600 skipped=0 fallback=0 renders=25 dmabuf_commits=11 dmabuf_bytes=3046400 dmabuf_deferred=0 dmabuf_fallbacks=14 commit_us_samples=11 commit_us_p50=1028 commit_us_p95=6046 commit_us_p99=6046 commit_us_max=6256 frame_callback_us_samples=7 frame_callback_us_p50=10328 frame_callback_us_p95=20416 frame_callback_us_p99=20416 frame_callback_us_max=3300133 dmabuf_buffers=3 dmabuf_allocs=7 dmabuf_reuses=4
+
+## Fallback run: DRAGONFRUIT_CHROME_GPU=0 (offscreen QPA, T185 shm)
+command: QT_QPA_PLATFORM=offscreen WAYLAND_DISPLAY=$SOCKET DRAGONFRUIT_CHROME_GPU=0 DRAGONFRUIT_CHROME_STATS=1 ./build/shell/src/dragonfruit-shell --socket-name $SOCKET
+still: docs/captures/t21-gpu-rollout-fallback.png
+stats:
+dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+shm scene_frames=38 commits=9 grab_renders=0 shm_allocs=9 shm_bytes=2972688 copy_bytes=2972688 damage_pixels=435561 frame_callbacks=1 fallback_renders=16 skipped_commits=32 dmabuf_commits=0 dmabuf_bytes=0 dmabuf_deferred=0 dmabuf_fallbacks=0 gpu=off gpu_reason=none commit_us_samples=9 commit_us_p50=689 commit_us_p95=1211 commit_us_p99=1211 commit_us_max=1316 frame_callback_us_samples=1 frame_callback_us_p50=1024020 frame_callback_us_p95=1024020 frame_callback_us_p99=1024020 frame_callback_us_max=1024020 dmabuf_buffers=0 dmabuf_allocs=0 dmabuf_reuses=0 dmabuf_sync=none dmabuf_sync_waits=0 dmabuf_sync_timeouts=0
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=dock path=shm gpu_reason=flag-off logical_size=1280x125 buffer_size=1280x125 buffer_scale=1 scale=1 viewport=0 commits=3 shm_allocs=3 shm_bytes=1920000 copy_bytes=1920000 damage_pixels=240670 skipped=3 fallback=0 renders=6 dmabuf_commits=0 dmabuf_bytes=0 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=3 commit_us_p50=1211 commit_us_p95=1211 commit_us_p99=1211 commit_us_max=1316 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=0 dmabuf_allocs=0 dmabuf_reuses=0
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar path=shm gpu_reason=flag-off logical_size=1280x28 buffer_size=1280x28 buffer_scale=1 scale=1 viewport=0 commits=3 shm_allocs=3 shm_bytes=430080 copy_bytes=430080 damage_pixels=39239 skipped=15 fallback=0 renders=32 dmabuf_commits=0 dmabuf_bytes=0 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=3 commit_us_p50=458 commit_us_p95=458 commit_us_p99=458 commit_us_max=473 frame_callback_us_samples=1 frame_callback_us_p50=1024020 frame_callback_us_p95=1024020 frame_callback_us_p99=1024020 frame_callback_us_max=1024020 dmabuf_buffers=0 dmabuf_allocs=0 dmabuf_reuses=0
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar-popup path=shm gpu_reason=flag-off logical_size=218x238 buffer_size=218x238 buffer_scale=1 scale=1 viewport=0 commits=3 shm_allocs=3 shm_bytes=622608 copy_bytes=622608 damage_pixels=155652 skipped=14 fallback=0 renders=0 dmabuf_commits=0 dmabuf_bytes=0 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=3 commit_us_p50=689 commit_us_p95=689 commit_us_p99=689 commit_us_max=788 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=0 dmabuf_allocs=0 dmabuf_reuses=0
+
+## Measured exceptions and limits
+- The compositor advertises only implicit dma-buf sync (no
+  `linux-drm-syncobj-v1`). A shared scene (bar + popup, Dock + popover)
+  can fill its three-slot producer ring before the compositor releases
+  the previous frame; that frame is a counted `ring-exhausted` shm
+  fallback and retries on release. On this shared host the same path can
+  also record `sync-timeout`; neither is a black surface or a silent
+  copy. A successful dmabuf frame records `copy_bytes=0` (see the clean
+  menubar and lock dumps above).
+- The private layer protocol and surface roles are unchanged. The
+  default remains `DRAGONFRUIT_CHROME_GPU` unset/0; T192/T193 own the
+  default-on decision and explicit-sync acceptance.
+
+## Verdict
+gpu_transport_ok=1 dock_dmabuf_ok=1 menubar_and_popup_dmabuf_ok=1
+dock_popover_dmabuf_ok=1 lock_dmabuf_ok=1 fallback_shm_ok=1
+PASS: the Dock, menu bar, both popovers, and lock surface committed
+dmabuf frames with zero copy bytes on the dmabuf frames, and GPU=0
+stayed on the pooled shm path with zero dmabuf imports.

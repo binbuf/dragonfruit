@@ -1133,7 +1133,24 @@ The contract is
 [ADR 0196](../design/adr/0196-dmabuf-ring-release-reuse-and-sync.md); the first
 export/commit slice is
 [ADR 0195](../design/adr/0195-dmabuf-export-and-single-buffer-dock-commit.md).
-The other chrome surfaces still use the shm commit until T186d.
+
+T-21.1d's full chrome rollout is `scripts/t21-gpu-rollout.sh`
+(`make t21-gpu-rollout`). It runs one fresh nested compositor per scenario and
+records the Dock, the menu bar + dropdown, the Dock window chooser, the lock
+surface, and a forced `DRAGONFRUIT_CHROME_GPU=0` run. Each scenario takes a
+trusted compositor still (`t21-gpu-rollout-dock.png`, `-menubar.png`,
+`-popover.png`, `-lock.png`, `-fallback.png`) and a `SIGUSR1` dump.
+`t21-gpu-rollout.txt` carries the per-surface `path=dmabuf|shm`,
+`gpu_reason`, `dmabuf_buffers`/`dmabuf_allocs`/`dmabuf_reuses`, and
+`copy_bytes` lines; a successful dmabuf frame has `copy_bytes=0`, while a
+counted `ring-exhausted`/`sync-timeout` frame is an explicit shm fallback.
+The compositor still offers only implicit dma-buf sync, so a shared scene
+(bar + popup, Dock + popover) can transiently exhaust its three-slot ring on a
+loaded host; the default rail stays off until T192/T193 accept it. The
+rollout contract is
+[ADR 0197](../design/adr/0197-gpu-chrome-rollout-and-per-surface-stats.md).
+The capture-only `DRAGONFRUIT_CHROME_GPU_SURFACES` filter isolates one surface
+per run; it does not change the shipping default.
 
 Guidelines:
 

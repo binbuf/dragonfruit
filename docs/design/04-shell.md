@@ -74,8 +74,20 @@ only implicit dma-buf sync is available (the compositor advertises no
 is the sync contract. Ring exhaustion commits the last complete frame through
 shm for that frame and retries on release; hard export/import/format failures
 abandon the rail. Both carry a `gpu_reason`; the surface never goes black
-([ADR 0196](adr/0196-dmabuf-ring-release-reuse-and-sync.md)). The menu
-bar/popover rollout remains T186d. The default rail stays off. Per-output
+([ADR 0196](adr/0196-dmabuf-ring-release-reuse-and-sync.md)). T186d rolls the
+same commit path out to the menu bar/popup, Dock popover, Mission Control,
+switcher, banner, Control Center, OSD, chooser, screenshot, ScreenCast,
+polkit, Applications drawer, and lock surfaces. A shared scene (bar + popup,
+Dock + popover) commits one exported frame to both surfaces and holds the
+producer slot until the last release; if any surface cannot express the commit
+the whole scene uses the T185 shm path. `chrome stats` reports per-surface
+`path=dmabuf|shm`, `gpu_reason`, live buffer counts, reuse, and `copy_bytes`;
+a successful dmabuf frame has zero copies
+([ADR 0197](adr/0197-gpu-chrome-rollout-and-per-surface-stats.md)). The default
+rail stays off until T192/T193 accept it. The compositor still offers only
+implicit dma-buf sync: a shared scene under load can fill its three-slot ring
+(`ring-exhausted`) or record a `sync-timeout`, both counted shm fallbacks;
+explicit sync is the T192/T193 boundary. Per-output
 shell scenes with different scales on one desktop remain a follow-up; a chrome
 surface shares one scale. The T-21.1c close-out also retired the old
 `FrameCommitGate` double-render workaround: no runtime path used it after the
