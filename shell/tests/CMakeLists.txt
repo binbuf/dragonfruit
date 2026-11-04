@@ -240,6 +240,26 @@ set_tests_properties(tst_compositorpolicy PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Material-application policy tests (T-21.2c): the role-keyed state the shell
+# applies to the persistent Dock/menu bar, the legacy v3 compatibility path,
+# and the persistent-floor/milky-fallback guard. No Wayland, QML, or compositor.
+qt_add_executable(tst_materialpolicy
+    tst_materialpolicy.cpp
+)
+target_link_libraries(tst_materialpolicy PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_materialpolicy
+    COMMAND tst_materialpolicy
+)
+set_tests_properties(tst_materialpolicy PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Control Center tile -> owner mapping tests (T-11.3b / T-15.5b): the Focus and
 # dark-mode toggle spellings plus the Mission Control / hot corners trigger
 # summary the shell projects from the settingsd values. No bus, Wayland, or QML.

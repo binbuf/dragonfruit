@@ -200,6 +200,51 @@ Item {
                    "the sampled-glass complement stays more translucent");
         }
 
+        function test_forced_material_tiers_apply_the_role_state() {
+            // T-21.2c: the shell applies the Chrome role's effective state.
+            // Full and Reduced keep the sampled glass; the persistent
+            // floor-missed fallback (tier reduced, blur off, reason 4) and the
+            // software/headless fallback both draw the milky complement.
+            var tiers = [
+                { tier: 0, blur: true, fallback: 0, label: "full" },
+                { tier: 1, blur: true, fallback: 0, label: "reduced" },
+                { tier: 1, blur: false, fallback: 4, label: "floor-missed" },
+                { tier: 2, blur: false, fallback: 2, label: "software" }
+            ];
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                for (var i = 0; i < tiers.length; ++i) {
+                    var state = tiers[i];
+                    var bar = make(menuBarComponent, {
+                        width: 600,
+                        materialTier: state.tier,
+                        materialBlurActive: state.blur,
+                        materialFallback: state.fallback
+                    });
+                    compare(bar.materialTier, state.tier, state.label);
+                    compare(bar.materialBlurActive, state.blur, state.label);
+                    compare(bar.materialFallback, state.fallback, state.label);
+                    if (state.blur) {
+                        fuzzyCompare(bar.color.a, Theme.material.chromeOpacity,
+                                     0.001, state.label);
+                    } else {
+                        var expected = Qt.rgba(
+                            Theme.color.chromeFallbackFill.r,
+                            Theme.color.chromeFallbackFill.g,
+                            Theme.color.chromeFallbackFill.b,
+                            Theme.material.chromeFallbackOpacity);
+                        fuzzyCompare(bar.color.a, expected.a, 0.001, state.label);
+                        fuzzyCompare(bar.color.r, expected.r, 0.001, state.label);
+                        fuzzyCompare(bar.color.g, expected.g, 0.001, state.label);
+                        fuzzyCompare(bar.color.b, expected.b, 0.001, state.label);
+                        verify(bar.color.a >= 0.8,
+                               state.label + " must read as a material");
+                    }
+                }
+            }
+            Theme.dark = false;
+        }
+
         function test_app_menu_renders_after_fixed_menus() {
             var fixed = fixedMenus();
             var bar = make(menuBarComponent, {

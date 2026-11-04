@@ -51,7 +51,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates \
-        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
+        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
@@ -231,6 +231,12 @@ t20-frame-budget: build
 # (docs/captures/t20-material-tiers-*.png); needs a host session, not in e2e.
 t20-material-tiers-capture: build
 	bash scripts/capture-t20-material-tiers.sh
+
+# T-21.2c: the persistent Dock/menu-bar material at forced Full/Reduced/Minimal
+# in light and dark (docs/captures/t21-material-*.png). Needs a host session,
+# not in e2e.
+t21-material-tiers-capture: build
+	bash scripts/capture-t21-material-tiers.sh
 
 # T-21 capture preflight: host Wayland session, built shell/compositor, optional
 # nested-compositor helpers, and the screenshot path. Run it before a nested or
