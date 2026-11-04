@@ -236,6 +236,20 @@ override (absent from normal sessions); `animation stats` reports `interval_us`
 and a `refresh stats` line reports `refresh_hz`, `source`, and the deadline.
 Animation progress remains monotonic elapsed time, not a tick count.
 
+T-21.2b adds the pure per-output presentation clock in
+`compositor/src/presentation.rs` (ADR [0200](adr/0200-per-output-presentation-clock.md)):
+each output records its `last_presented` monotonic timestamp and derives
+`next_deadline = last_presented + period`, with `is_due(now)` /
+`time_until_due(now)` and the carried `vrr` state. A missed deadline stays due
+and the next presentation re-anchors it, so a late frame never causes a
+catch-up burst; an idle output has no samples or deadline. DRM feeds the clock
+from the vblank timestamp in `frame_finish()` only when `frame_submitted()`
+confirms a queued frame. Nested feeds it from `state.clock.now()` immediately
+after a successful damage `submit()`: Smithay's winit submit returns no
+platform timestamp, so its completion is the closest available source. T188a
+only records; per-output frame requests and earliest-deadline timer arming are
+T188b.
+
 #### Idle and animation frame trace (T-03.1a)
 
 The render-path counters emitted on `SIGUSR1`/clean exit are the trace

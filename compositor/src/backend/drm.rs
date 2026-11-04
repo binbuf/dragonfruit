@@ -1264,8 +1264,12 @@ fn frame_finish(
     let retry = match submit_result {
         Ok(user_data) => {
             // `Some` means a queued frame reached this vblank. Record the
-            // interval only then; an idle vblank is not a presentation.
+            // interval and the per-output presentation clock only then; an
+            // idle vblank is not a presentation. `clock` is the kernel's
+            // monotonic vblank timestamp when the event carried one, or the
+            // compositor clock fallback above.
             if user_data.is_some() {
+                state.note_presentation(&output_name, Duration::from(clock));
                 if let Some(interval) = presentation_interval {
                     let refresh = state.refresh_for_output(&output_name);
                     state

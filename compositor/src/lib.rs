@@ -7,13 +7,15 @@
 //! exposes the XDnD bridge model ([`xdnd`]), the DRM bring-up classification
 //! ([`drm_bringup`]), the hardware input validation matrix
 //! ([`input_validation`]), the multi-GPU import/fallback classification
-//! ([`multi_gpu`]), and the per-output refresh model ([`refresh`]); the T-14.5
-//! conformance test drives the first's codec against a real Xwayland server,
-//! and the T-03.2/T-03.3/T-03.4 tests pin the others' decisions without
+//! ([`multi_gpu`]), the per-output refresh model ([`refresh`]), and the pure
+//! per-output presentation clock ([`presentation`]); the T-14.5 conformance
+//! test drives the first's codec against a real Xwayland server, and the
+//! T-03.2/T-03.3/T-03.4/T-21.2 tests pin the others' decisions without
 //! hardware.
 
 pub mod drm_bringup;
 pub mod input_validation;
 pub mod multi_gpu;
+pub mod presentation;
 pub mod refresh;
 pub mod xdnd;
