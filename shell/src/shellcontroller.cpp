@@ -289,29 +289,55 @@ void sendChromeKeyEvent(QQuickWindow *window, quint32 key, bool pressed,
 // pane (T-15.10); Sleep/Restart/Shut Down/Log Out await the real-session work
 // (T-12.6/T-16.4). Unlanded items dispatch as logged stubs.
 
-// T-21.2c: push one applied material state into a chrome QML item. Returns
-// true when a property changed so the caller only repaints the affected
-// surface.
-bool setMaterialProperties(QQuickItem *item, const AppliedMaterial &material)
+// T-21.2c: push one applied material state into a chrome QML item. `prefix`
+// selects the role-specific property group on a scene that hosts more than one
+// role (the Dock/menu bar scenes expose `popupMaterial*` alongside their own
+// `material*`). Returns true when a property changed so the caller only
+// repaints the affected surface.
+bool setMaterialProperties(QQuickItem *item, const AppliedMaterial &material,
+                           const char *prefix = "material")
 {
     if (!item)
+        return false;
+    const QByteArray base(prefix);
+    const QByteArray blurName = base + "BlurActive";
+    const QByteArray tierName = base + "Tier";
+    const QByteArray fallbackName = base + "Fallback";
+    const QVariant currentBlur = item->property(blurName.constData());
+    if (!currentBlur.isValid())
         return false;
     const int tier = static_cast<int>(material.tier);
     const int fallback = static_cast<int>(material.fallback);
     bool changed = false;
-    if (item->property("materialBlurActive").toBool() != material.blurActive) {
-        item->setProperty("materialBlurActive", material.blurActive);
+    if (currentBlur.toBool() != material.blurActive) {
+        item->setProperty(blurName.constData(), material.blurActive);
         changed = true;
     }
-    if (item->property("materialTier").toInt() != tier) {
-        item->setProperty("materialTier", tier);
+    if (item->property(tierName.constData()).toInt() != tier) {
+        item->setProperty(tierName.constData(), tier);
         changed = true;
     }
-    if (item->property("materialFallback").toInt() != fallback) {
-        item->setProperty("materialFallback", fallback);
+    if (item->property(fallbackName.constData()).toInt() != fallback) {
+        item->setProperty(fallbackName.constData(), fallback);
         changed = true;
     }
     return changed;
+}
+
+const char *materialRoleName(std::uint32_t role)
+{
+    switch (role) {
+    case MaterialPolicy::Chrome:
+        return "chrome";
+    case MaterialPolicy::Dock:
+        return "dock";
+    case MaterialPolicy::Popup:
+        return "popup";
+    case MaterialPolicy::Drawer:
+        return "drawer";
+    default:
+        return "unknown";
+    }
 }
 
 } // namespace
@@ -549,6 +575,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_item->setProperty("materialBlurActive", menuMaterial.blurActive);
     m_item->setProperty("materialTier", static_cast<int>(menuMaterial.tier));
     m_item->setProperty("materialFallback", static_cast<int>(menuMaterial.fallback));
+    // The bar scene also hosts every menu dropdown/status popover; seed the
+    // transient Popup role before the first commit (T-21.2c).
+    setMaterialProperties(m_item, m_materialPolicy.applied(MaterialPolicy::Popup),
+                          "popupMaterial");
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
@@ -757,6 +787,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_dockItem->setProperty("materialTier", static_cast<int>(dockMaterial.tier));
     m_dockItem->setProperty("materialFallback",
                             static_cast<int>(dockMaterial.fallback));
+    // The Dock scene hosts its popovers; seed the transient Popup role before
+    // the first commit (T-21.2c).
+    setMaterialProperties(m_dockItem, m_materialPolicy.applied(MaterialPolicy::Popup),
+                          "popupMaterial");
     // The popover budget the Dock clamps into (T-14.7c); fixed for the
     // session so the offscreen window never grows on a popover open.
     m_dockItem->setProperty("popoverHeadroom", kDockPopoverHeadroom);
@@ -942,6 +976,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_appsDrawerItem->setParentItem(m_appsDrawerWindow->contentItem());
+    // T-21.2c: the drawer is the transient Drawer role; seed it before the
+    // first commit so it never flashes the wrong plate.
+    setMaterialProperties(m_appsDrawerItem,
+                          m_materialPolicy.applied(MaterialPolicy::Drawer));
     connect(appsDrawerObject, SIGNAL(appLaunched(QString,qreal,qreal,qreal,qreal)), this,
             SLOT(onAppsDrawerActivated(QString,qreal,qreal,qreal,qreal)));
     connect(appsDrawerObject, SIGNAL(dismissRequested()), this,
@@ -1012,6 +1050,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_bannerItem->setParentItem(m_bannerWindow->contentItem());
+    // T-21.2c: the banner is the transient Popup role.
+    setMaterialProperties(m_bannerItem,
+                          m_materialPolicy.applied(MaterialPolicy::Popup));
     connect(bannerObject, SIGNAL(actionInvoked(QString)), this,
             SLOT(onBannerActionInvoked(QString)));
     connect(bannerObject, SIGNAL(activated()), this, SLOT(onBannerActivated()));
@@ -1050,6 +1091,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_controlCenterItem->setParentItem(m_controlCenterWindow->contentItem());
+    // T-21.2c: Control Center is the transient Popup role.
+    setMaterialProperties(m_controlCenterItem,
+                          m_materialPolicy.applied(MaterialPolicy::Popup));
     connect(controlCenterObject, SIGNAL(closed()), this, SLOT(onControlCenterClosed()));
     connect(controlCenterObject, SIGNAL(volumeSetRequested(double)), this,
             SLOT(onVolumeSetRequested(double)));
@@ -1164,6 +1208,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_osdItem->setParentItem(m_osdWindow->contentItem());
+    // T-21.2c: the OSD is the transient Popup role.
+    setMaterialProperties(m_osdItem,
+                          m_materialPolicy.applied(MaterialPolicy::Popup));
     bindChromePacing(m_producers.value(m_osdWindow), QStringLiteral("osd"),
                      [this]() { renderOsd(); });
     connect(m_protocol, &ShellProtocol::osdConfigured, this,
@@ -1509,6 +1556,27 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         });
     }
 
+    // Capture/demo seam (T-21.2c): open the Control Center once the chrome is
+    // up so the forced-tier overlay capture can show its material without a
+    // synthetic chord. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_CONTROL_CENTER_FIXTURE")) {
+        const QString fixture = qEnvironmentVariable("DF_CONTROL_CENTER_FIXTURE");
+        auto open = [this]() {
+            if (!m_controlCenterOpen)
+                showControlCenter();
+        };
+        QTimer::singleShot(1500, this, open);
+        // `hold` keeps the panel open while a capture script cycles the forced
+        // material tiers; a focus change may dismiss it between captures.
+        // Never set in a normal session.
+        if (fixture == QLatin1String("hold")) {
+            auto *timer = new QTimer(this);
+            timer->setInterval(500);
+            connect(timer, &QTimer::timeout, this, open);
+            QTimer::singleShot(1500, timer, [timer]() { timer->start(); });
+        }
+    }
+
     // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
     // notification once the chrome is up, so the live check can exercise the
     // real failure path deterministically. Never set in a normal session.
@@ -1524,12 +1592,21 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // `volume` (default) or `brightness`. Never set in a normal session.
     if (qEnvironmentVariableIsSet("DF_OSD_FIXTURE")) {
         const QString fixture = qEnvironmentVariable("DF_OSD_FIXTURE");
-        QTimer::singleShot(1500, this, [this, fixture]() {
+        auto present = [this, fixture]() {
             if (fixture == QLatin1String("brightness"))
                 showOsd(OsdModel::Kind::Brightness, 0.7, false);
             else
                 showOsd(OsdModel::Kind::Volume, 0.6, false);
-        });
+        };
+        QTimer::singleShot(1500, this, present);
+        // `hold` re-presents the brief overlay while a capture script cycles
+        // the forced material tiers; never set in a normal session.
+        if (fixture == QLatin1String("hold")) {
+            auto *timer = new QTimer(this);
+            timer->setInterval(1000);
+            connect(timer, &QTimer::timeout, this, present);
+            QTimer::singleShot(1500, timer, [timer]() { timer->start(); });
+        }
     }
 
     // Capture/demo seam (T-13.2b): present the FileChooser picker once the
@@ -4800,6 +4877,11 @@ void ShellController::onMaterialRoleStateChanged(quint32 role, quint32 tier,
                                                  bool blurActive, quint32 fallback)
 {
     m_materialPolicy.setRole(role, tier, blurActive, fallback);
+    // Change-only state broadcast; record the reason alongside the tier so a
+    // capture log can name the milky fallback without inferring it from pixels.
+    qInfo().nospace() << "shell: material role=" << materialRoleName(role)
+                      << " tier=" << tier << " blur=" << (blurActive ? 1 : 0)
+                      << " fallback=" << fallback;
     applyMaterialState();
 }
 
@@ -4821,17 +4903,37 @@ void ShellController::seedMaterialPolicy()
 
 void ShellController::applyMaterialState()
 {
+    const AppliedMaterial popup = m_materialPolicy.applied(MaterialPolicy::Popup);
+    const AppliedMaterial drawer = m_materialPolicy.applied(MaterialPolicy::Drawer);
+
     const bool menuChanged =
         setMaterialProperties(m_item, m_materialPolicy.applied(MaterialPolicy::Chrome));
     const bool dockChanged =
         setMaterialProperties(m_dockItem, m_materialPolicy.applied(MaterialPolicy::Dock));
+    // The bar and Dock scenes host their popovers, so the transient role is
+    // pushed into the same two scenes under the `popupMaterial*` names.
+    const bool menuPopupChanged = setMaterialProperties(m_item, popup, "popupMaterial");
+    const bool dockPopupChanged = setMaterialProperties(m_dockItem, popup, "popupMaterial");
+    const bool drawerChanged = setMaterialProperties(m_appsDrawerItem, drawer);
+    const bool bannerChanged = setMaterialProperties(m_bannerItem, popup);
+    const bool controlCenterChanged = setMaterialProperties(m_controlCenterItem, popup);
+    const bool osdChanged = setMaterialProperties(m_osdItem, popup);
+
     // The event arrives from the Wayland dispatch, outside the render path;
-    // repaint the affected persistent chrome surface so the new plate is
-    // committed immediately rather than waiting for an unrelated scene change.
-    if (dockChanged)
+    // repaint the affected surface so the new plate is committed immediately
+    // rather than waiting for an unrelated scene change.
+    if (dockChanged || dockPopupChanged)
         scheduleDockRender();
-    if (menuChanged && m_window)
+    if ((menuChanged || menuPopupChanged) && m_window)
         render();
+    if (drawerChanged && m_appsDrawerOpen)
+        scheduleAppsDrawerRender();
+    if (bannerChanged && m_bannerPending)
+        scheduleBannerRender();
+    if (controlCenterChanged && m_controlCenterOpen)
+        scheduleControlCenterRender();
+    if (osdChanged && m_osdActive)
+        renderOsd();
 }
 
 void ShellController::onDockConfigured(int width, int height, quint32)

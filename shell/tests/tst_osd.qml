@@ -97,5 +97,57 @@ Item {
             keyClick(Qt.Key_Escape);
             compare(dismissed, 1);
         }
+
+        function compareColor(actual, expected, label) {
+            fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
+            fuzzyCompare(actual.g, expected.g, 0.001, label + " green");
+            fuzzyCompare(actual.b, expected.b, 0.001, label + " blue");
+            fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
+        }
+
+        function test_popup_role_material_covers_the_osd() {
+            // T-21.2c: the OSD is the transient Popup role. The card keeps
+            // its glyph/track/label while the fill switches to the milky
+            // plate when the sampled pass is absent.
+            var states = [
+                { tier: 0, blur: true, fallback: 0, reason: "none", label: "full" },
+                { tier: 1, blur: true, fallback: 0, reason: "none", label: "reduced" },
+                { tier: 2, blur: false, fallback: 0, reason: "minimal", label: "minimal" },
+                { tier: 2, blur: false, fallback: 2, reason: "software", label: "software" }
+            ];
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                for (var i = 0; i < states.length; ++i) {
+                    var state = states[i];
+                    var osd = make({
+                        kind: "volume", value: 0.5,
+                        materialTier: state.tier,
+                        materialBlurActive: state.blur,
+                        materialFallback: state.fallback
+                    });
+                    compare(osd.materialTier, state.tier, state.label);
+                    compare(osd.materialBlurActive, state.blur, state.label);
+                    compare(osd.materialFallback, state.fallback, state.label);
+                    compare(osd.materialFallbackReason, state.reason, state.label);
+                    var card = findChild(osd, "osdCard");
+                    verify(card !== null);
+                    compareColor(card.color, Material.popupFill(state.blur),
+                                 state.label);
+                    verify(card.color.a >= 0.9 || state.blur,
+                           state.label + " fallback must read as a plate");
+                }
+            }
+            Theme.dark = false;
+        }
+
+        function test_material_fallback_reason_names() {
+            compare(Material.fallbackReason(0, true, 0), "none");
+            compare(Material.fallbackReason(1, false, 0), "no-sampled-blur");
+            compare(Material.fallbackReason(2, false, 2), "software");
+            compare(Material.fallbackReason(3, false, 0), "multi-gpu");
+            compare(Material.fallbackReason(4, false, 1), "floor-missed");
+            compare(Material.fallbackReason(0, false, 2), "minimal");
+            compare(Material.fallbackReason(0, false, 1), "blur-off");
+        }
     }
 }

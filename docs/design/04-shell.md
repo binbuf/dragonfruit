@@ -121,15 +121,28 @@ The effective material is delivered per role over the additive
 missed the deadline and the persistent surface must use its milky complement.
 `ShellProtocol` stores the role table and emits `materialRoleStateChanged`.
 `ShellController` owns one `MaterialPolicy` (`shell/src/materialpolicy.h`);
-the menu bar applies the `Chrome` role and the Dock the `Dock` role, so a
-transient overlay cannot pull the persistent chrome down and QML never
-re-derives the degrade policy. A known v4 role wins over the legacy v3
-`material_state` snapshot, which remains the compatibility path for an older
-compositor. Any explicit fallback reason selects the existing token-driven
-milky complement (`blurActive=false`); a persistent role that reports
-`Minimal` with no fallback is guarded to the explicit `floor-missed` state.
-The popup/overlay family is T189c and must use the same policy object
-(ADR [0204](adr/0204-shell-role-material-application-policy.md)).
+the menu bar applies the `Chrome` role, the Dock the `Dock` role, and the whole
+popup family (`Popup` for menus, Dock popovers, Control Center, notification
+banners, and the OSD; `Drawer` for the Applications drawer) reads the same
+policy object. A transient overlay therefore cannot pull the persistent chrome
+down, and QML never re-derives the degrade policy. A known v4 role wins over
+the legacy v3 `material_state` snapshot, which remains the compatibility path
+for an older compositor. Any explicit fallback reason selects the existing
+token-driven milky complement (`blurActive=false`); a persistent role that
+reports `Minimal` with no fallback is guarded to the explicit `floor-missed`
+state (ADR [0204](adr/0204-shell-role-material-application-policy.md)).
+
+The QML side has one visual complement, `design-system/Material.qml`:
+`popupFill()`/`drawerFill()` return the sampled-glass scrim when
+`materialBlurActive` is true and the milky `chromeFallbackFill` at
+`material.popupFallbackOpacity` otherwise. `fallbackReason()` records the wire
+reason (`no-sampled-blur`, `software`, `multi-gpu`, `floor-missed`) or the
+tier reason (`minimal`/`blur-off`) on every surface. Each surface exposes
+`materialBlurActive`/`materialTier`/`materialFallback`; the Dock and menu-bar
+scenes additionally expose the same triple under `popupMaterial*` for the
+popovers they host. The shell pushes one applied state per role into all of
+them, so the popup family is T189c's coverage rather than a second policy
+(ADR [0205](adr/0205-popup-family-material-fallback.md)).
 
 ## Menu bar
 

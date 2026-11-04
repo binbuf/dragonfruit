@@ -14,6 +14,13 @@ Item {
     property int horizontalPadding: Theme.controls.popover.padding
     property int verticalPadding: Theme.controls.popover.padding
     property string accessibleName: ""
+    // T-21.2c: the shell applies the compositor's Popup role state. Without
+    // the sampled pass the bubble and its arrow use the milky plate.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
     default property alias contentData: contentColumn.data
     property alias content: contentColumn
@@ -85,12 +92,12 @@ Item {
     }
 
     Rectangle {
+        objectName: "popoverSurface"
         anchors.fill: parent
         radius: Theme.controls.popover.radius
         // The compositor material's scrim: token alpha in the fill so the
         // sampled backdrop and liquid-glass pass read through (T-20.3).
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        color: Material.popupFill(root.materialBlurActive)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true
@@ -98,13 +105,13 @@ Item {
 
     Rectangle {
         id: arrow
+        objectName: "popoverArrow"
         width: root.arrowSize
         height: root.arrowSize
         x: root.arrowX - width / 2
         y: -height / 2
         rotation: 45
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        color: Material.popupFill(root.materialBlurActive)
         antialiasing: true
     }
 

@@ -524,7 +524,7 @@ application and refresh-aware hysteresis land in the follow-up tasks.
   received a v4 state. Any explicit fallback reason selects the milky
   complement; a persistent `Minimal` with no reason is guarded to the explicit
   `floor-missed` state (ADR [0204](adr/0204-shell-role-material-application-policy.md)).
-  The popup/overlay family is T189c and must use the same policy object.
+  The popup/overlay family uses the same policy object (T189c); see R4.4.
 
 **Acceptance**
 
@@ -543,7 +543,16 @@ application and refresh-aware hysteresis land in the follow-up tasks.
 
 - The Dock and menu bar are covered (T189b): `MaterialPolicy` turns every
   explicit fallback reason, including `floor-missed`, into the existing
-  token-driven milky complement. The popup family remains T189c.
+  token-driven milky complement.
+- The popup family is covered (T189c): menus and Dock popovers, Control
+  Center, notification banners, and the OSD read the `Popup` role; the
+  Applications drawer reads `Drawer`. `design-system/Material.qml` is the one
+  fill/fallback complement, and every surface records its
+  `materialFallback` reason. `material.popupFallbackOpacity` is the new
+  fallback alpha (0.92 light / 0.90 dark); the fill reuses
+  `chromeFallbackFill`, so the Dock/menu-bar fallback tokens remain the single
+  neutral source. Forced Full/Reduced/Minimal captures cover each surface in
+  light and dark (ADR [0205](design/adr/0205-popup-family-material-fallback.md)).
 
 **Acceptance**
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Capture the T-21.2c persistent-chrome forced-tier stills.
+"""Capture the T-21.2c forced-tier stills.
 
 Driven by ``scripts/capture-t21-material-tiers.sh`` (run that, not this).
 Requires a host Wayland session and Pillow. The stills are the compositor's
@@ -10,9 +10,10 @@ tool is needed.
 For one colour scheme and each forced degrade tier (Full, Reduced, Minimal)
 the driver sends the compositor's synthetic ``set degrade-tier`` command,
 picks the newest capture the shell saved after the state was applied, and crops
-the menu bar and Dock bands. The three tiers are also stacked into one review
-sheet per surface. ``query degrade`` is recorded next to every shot so the
-forced state is not inferred from the pixels alone.
+the requested surface (the menu bar and Dock for ``persistent``, one overlay
+panel otherwise). The three tiers are also stacked into one review sheet per
+surface. ``query degrade`` is recorded next to every shot so the forced state
+is not inferred from the pixels alone.
 """
 import argparse
 import os
@@ -23,6 +24,10 @@ import time
 from PIL import Image, ImageDraw
 
 TIERS = ("full", "reduced", "minimal")
+SURFACES = (
+    "persistent", "dockpopover", "menupopover", "controlcenter",
+    "notification", "osd", "drawer",
+)
 
 
 def log(message):
@@ -100,6 +105,31 @@ def bands(width, height):
     return menu, dock
 
 
+def crop_rect(surface, width, height):
+    """The visible panel region for one overlay surface.
+
+    Fractions are scaled from the nested 1280x800 demo; the capture fixture
+    always writes the primary output's logical geometry, so a different output
+    size keeps the same relative framing.
+    """
+    if surface == "dockpopover":
+        return (round(width * 0.20), round(height * 0.42),
+                round(width * 0.80), height)
+    if surface == "menupopover":
+        return (0, 0, round(width * 0.44), round(height * 0.58))
+    if surface == "controlcenter":
+        return (round(width * 0.58), 0, width, round(height * 0.96))
+    if surface == "notification":
+        return (round(width * 0.58), 0, width, round(height * 0.24))
+    if surface == "osd":
+        return (round(width * 0.30), round(height * 0.30),
+                round(width * 0.70), round(height * 0.70))
+    if surface == "drawer":
+        return (round(width * 0.10), round(height * 0.10),
+                round(width * 0.90), round(height * 0.90))
+    raise ValueError(f"no crop for surface {surface!r}")
+
+
 def stack(panels, labels, dest, label_h=22, gap=8, bg=(24, 24, 28)):
     w = max(p.width for p in panels)
     h = sum(p.height for p in panels) + gap * (len(panels) - 1) + label_h * len(panels)
@@ -135,24 +165,32 @@ def run(args):
         if not shot:
             raise RuntimeError(f"no compositor capture appeared for {args.scheme}/{tier}")
         state = synth.query("query degrade").strip()
-        log(f"{args.scheme}/{tier}: {state}")
-        trace.append(f"scheme={args.scheme} forced={tier}\n{state}\n")
+        log(f"{args.surface}/{args.scheme}/{tier}: {state}")
+        trace.append(
+            f"surface={args.surface} scheme={args.scheme} forced={tier}\n{state}\n")
 
         image = Image.open(shot).convert("RGB")
-        menu_band, dock_band = bands(image.width, image.height)
-        menu = image.crop(menu_band)
-        dock = image.crop(dock_band)
-        menu_path = os.path.join(
-            args.outdir, f"t21-material-menubar-{tier}-{args.scheme}.png")
-        dock_path = os.path.join(
-            args.outdir, f"t21-material-dock-{tier}-{args.scheme}.png")
-        menu.save(menu_path)
-        dock.save(dock_path)
-        log(f"saved {menu_path}")
-        log(f"saved {dock_path}")
+        if args.surface == "persistent":
+            menu_band, dock_band = bands(image.width, image.height)
+            panels = (
+                ("menubar", image.crop(menu_band)),
+                ("dock", image.crop(dock_band)),
+            )
+        else:
+            panels = ((args.surface,
+                       image.crop(crop_rect(args.surface, image.width,
+                                            image.height))),)
+        for surface, panel in panels:
+            path = os.path.join(
+                args.outdir,
+                f"t21-material-{surface}-{tier}-{args.scheme}.png")
+            panel.save(path)
+            log(f"saved {path}")
 
     if args.compose:
-        for surface in ("menubar", "dock"):
+        surfaces = ("menubar", "dock") if args.surface == "persistent" \
+            else (args.surface,)
+        for surface in surfaces:
             panels = []
             for tier in TIERS:
                 path = os.path.join(
@@ -177,6 +215,7 @@ def main():
     parser.add_argument("--scratch", required=True)
     parser.add_argument("--shots", required=True)
     parser.add_argument("--scheme", required=True, choices=("light", "dark"))
+    parser.add_argument("--surface", default="persistent", choices=SURFACES)
     parser.add_argument("--compose", action="store_true")
     args = parser.parse_args()
     try:

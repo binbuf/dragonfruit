@@ -638,10 +638,14 @@ render path resolves each chrome panel through `effective_material_for_role`,
 so the floor applies to the actual backdrop/blur pass, not just the protocol.
 `df_output` is v4: the additive `material_role_state` event carries
 `role/tier/blur_active/fallback` per output, emitted only on effective change;
-the legacy v3 `material_state` keeps its global meaning. The shell applies the
-`Chrome`/`Dock` roles through one `MaterialPolicy` (ADR
-[0204](adr/0204-shell-role-material-application-policy.md)); the popup family
-is T189c.
+the legacy v3 `material_state` keeps its global meaning. The shell applies all
+four roles through one `MaterialPolicy` (ADR
+[0204](adr/0204-shell-role-material-application-policy.md)): the menu bar and
+Dock consume `Chrome`/`Dock`, the menu and Dock popovers, Control Center,
+notification banners, and OSD consume `Popup`, and the Applications drawer
+consumes `Drawer`. The QML complement is `design-system/Material.qml`, so a
+popup or drawer never falls back to a flat translucent slab (ADR
+[0205](adr/0205-popup-family-material-fallback.md)).
 
 `DegradeController` selects the tier from rendered-frame durations against a
 frame budget. The budget is the fastest active output's refresh deadline

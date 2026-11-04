@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T-21.2c persistent-chrome material forced-tier capture.
+# T-21.2c persistent-chrome and overlay-family forced-tier capture.
 #
 # Runs the nested demo, forces Full/Reduced/Minimal through the compositor's
-# synthetic-input harness in the light and dark schemes, and commits the Dock
-# and menu-bar crops:
+# synthetic-input harness in the light and dark schemes, and commits the
+# persistent Dock/menu-bar crops plus one crop per overlay family:
 #
-#   * docs/captures/t21-material-dock-{full,reduced,minimal}-{light,dark}.png
-#   * docs/captures/t21-material-menubar-{full,reduced,minimal}-{light,dark}.png
-#   * docs/captures/t21-material-{dock,menubar}-tiers-{light,dark}.png (review sheets)
-#   * docs/captures/t21-material-tiers.txt (the forced `query degrade` state)
+#   * docs/captures/t21-material-{menubar,dock}-{full,reduced,minimal}-{light,dark}.png
+#   * docs/captures/t21-material-{dockpopover,menupopover,controlcenter,
+#     notification,osd,drawer}-{full,reduced,minimal}-{light,dark}.png
+#   * docs/captures/t21-material-<surface>-tiers-{light,dark}.png (review sheets)
+#   * docs/captures/t21-material-tiers.txt (forced `query degrade` + the
+#     shell's applied per-role tier/blur/fallback lines)
 #
 # The shell QML Theme follows settingsd, so the script reuses the running
 # settingsd and restores its `appearance.colorScheme` afterwards; when no
@@ -119,39 +121,101 @@ else
     done
 fi
 
-rm -f "$SYNTH"
-LOG="$SCRATCH/demo.log"
-echo "capture-t21-material: starting the nested demo (socket $SOCKET)"
-env DF_STATUS_FIXTURE=1 \
-    DF_SCREENSHOT_DIR="$SHOTS" \
-    DF_SCREENSHOT_CAPTURE_FIXTURE="1000:$SCRATCH/capture.png" \
-    DF_SCREENSHOT_CAPTURE_INTERVAL_MS=1500 \
-    DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" \
-    setsid make demo DEMO_ARGS="--socket-name $SOCKET" \
-    >"$LOG" 2>&1 &
-DEMO_PGID=$!
-for _ in $(seq 1 600); do [ -e "$XDG_RUNTIME_DIR/$SOCKET" ] && break; sleep 0.1; done
-for _ in $(seq 1 600); do [ -e "$SYNTH" ] && break; sleep 0.1; done
-if [ ! -e "$SYNTH" ]; then
-    echo "capture-t21-material: synthetic socket never appeared; demo log:" >&2
-    tail -40 "$LOG" >&2
-    exit 1
-fi
-sleep "$SETTLE"
+LOG_LINES=0
+start_demo() {
+    local settle="$1"; shift
+    rm -f "$SYNTH"
+    LOG="$SCRATCH/demo.log"
+    : >"$LOG"
+    LOG_LINES=0
+    echo "capture-t21-material: starting the nested demo (socket $SOCKET, ${*:-})"
+    env "$@" \
+        DF_SCREENSHOT_DIR="$SHOTS" \
+        DF_SCREENSHOT_CAPTURE_FIXTURE="1000:$SCRATCH/capture.png" \
+        DF_SCREENSHOT_CAPTURE_INTERVAL_MS=1500 \
+        DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" \
+        setsid make demo DEMO_ARGS="--socket-name $SOCKET" \
+        >"$LOG" 2>&1 &
+    DEMO_PGID=$!
+    for _ in $(seq 1 600); do [ -e "$XDG_RUNTIME_DIR/$SOCKET" ] && break; sleep 0.1; done
+    for _ in $(seq 1 600); do [ -e "$SYNTH" ] && break; sleep 0.1; done
+    if [ ! -e "$SYNTH" ]; then
+        echo "capture-t21-material: synthetic socket never appeared; demo log:" >&2
+        tail -40 "$LOG" >&2
+        exit 1
+    fi
+    [ "$settle" = "0" ] || sleep "$settle"
+}
+
+driver() {
+    local surface="$1" scheme="$2"
+    python3 scripts/t21-material-tiers-driver.py \
+        --synth "$SYNTH" --outdir "$OUTDIR" --scratch "$SCRATCH" \
+        --shots "$SHOTS" --scheme "$scheme" --surface "$surface" --compose
+    # Record the shell's applied per-role state (tier/blur/fallback) next to
+    # the forced-tier trace. Change-only, so this is one line per role event.
+    local total
+    total=$(wc -l <"$LOG")
+    if [ "$total" -gt "$LOG_LINES" ]; then
+        tail -n "+$((LOG_LINES + 1))" "$LOG" \
+            | grep -E "shell: material role=" >>"$OUTDIR/t21-material-tiers.txt" || true
+    fi
+    LOG_LINES=$total
+}
+
+capture_overlay() {
+    local surface="$1" settle="$2"; shift 2
+    local scheme
+    for scheme in light dark; do
+        set_scheme "$scheme"
+        sleep 1.0
+        start_demo "$settle" "$@"
+        driver "$surface" "$scheme"
+        stop_demo
+    done
+}
 
 {
-    echo "T-21.2c forced persistent-chrome material tiers"
-    echo "scheme and forced tier, then the compositor's query degrade"
+    echo "T-21.2c forced material tiers — persistent chrome and overlay family"
+    echo "surface, scheme and forced tier, then the compositor's query degrade"
+    echo "and the shell's applied per-role state (tier/blur/fallback)"
     echo
 } >"$OUTDIR/t21-material-tiers.txt"
 
+# Persistent chrome: the menu bar and Dock.
+set_scheme light
+start_demo "$SETTLE" DF_STATUS_FIXTURE=1
 for scheme in light dark; do
     set_scheme "$scheme"
     sleep 1.0
-    python3 scripts/t21-material-tiers-driver.py \
-        --synth "$SYNTH" --outdir "$OUTDIR" --scratch "$SCRATCH" \
-        --shots "$SHOTS" --scheme "$scheme" --compose
+    driver persistent "$scheme"
 done
+stop_demo
+
+# A Dock popover (the Downloads folder stack), with a populated scratch
+# Downloads folder so the panel has real rows.
+mkdir -p "$SCRATCH/downloads/Projects"
+for i in $(seq 1 4); do : >"$SCRATCH/downloads/download-$i.pdf"; done
+capture_overlay dockpopover "$SETTLE" \
+    DF_STATUS_FIXTURE=1 DF_DOCK_STACK_FIXTURE=open \
+    XDG_DOWNLOAD_DIR="$SCRATCH/downloads"
+
+# A menu-bar dropdown (the fixed system menu).
+capture_overlay menupopover "$SETTLE" \
+    DF_STATUS_FIXTURE=1 DF_MENUBAR_MENU_FIXTURE=0
+
+# Control Center.
+capture_overlay controlcenter "$SETTLE" \
+    DF_STATUS_FIXTURE=1 DF_CONTROL_CENTER_FIXTURE=hold
+
+# A notification banner.
+capture_overlay notification "$SETTLE" DF_NOTIFY_FIXTURE=1
+
+# The OSD, held visible while the tiers cycle.
+capture_overlay osd "$SETTLE" DF_OSD_FIXTURE=hold
+
+# The Applications drawer.
+capture_overlay drawer "$SETTLE" DF_APPS_DRAWER_FIXTURE=1
 
 echo "capture-t21-material: done"
-echo "  ${OUTDIR}/t21-material-{dock,menubar}-{full,reduced,minimal}-{light,dark}.png"
+echo "  ${OUTDIR}/t21-material-{dock,menubar,dockpopover,menupopover,controlcenter,notification,osd,drawer}-{full,reduced,minimal}-{light,dark}.png"

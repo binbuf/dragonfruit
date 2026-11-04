@@ -1,27 +1,384 @@
-T-21.2c forced persistent-chrome material tiers
-scheme and forced tier, then the compositor's query degrade
+T-21.2c forced material tiers — persistent chrome and overlay family
+surface, scheme and forced tier, then the compositor's query degrade
+and the shell's applied per-role state (tier/blur/fallback)
 
-scheme=light forced=full
-degrade tier=full forced=1 budget_us=16666 samples=17 over_budget=13 downgrades=1 upgrades=0 tiers=full:16,reduced:1,minimal:0 budget_source=refresh
+surface=persistent scheme=light forced=full
+degrade tier=full forced=1 budget_us=16666 samples=40 over_budget=16 downgrades=0 upgrades=0 tiers=full:40,reduced:0,minimal:0 budget_source=refresh
 end
 
-scheme=light forced=reduced
-degrade tier=reduced forced=1 budget_us=16666 samples=20 over_budget=13 downgrades=1 upgrades=0 tiers=full:17,reduced:3,minimal:0 budget_source=refresh
+surface=persistent scheme=light forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=42 over_budget=16 downgrades=0 upgrades=0 tiers=full:41,reduced:1,minimal:0 budget_source=refresh
 end
 
-scheme=light forced=minimal
-degrade tier=minimal forced=1 budget_us=16666 samples=23 over_budget=13 downgrades=1 upgrades=0 tiers=full:17,reduced:4,minimal:2 budget_source=refresh
+surface=persistent scheme=light forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=44 over_budget=16 downgrades=0 upgrades=0 tiers=full:41,reduced:2,minimal:1 budget_source=refresh
 end
 
-scheme=dark forced=full
-degrade tier=full forced=1 budget_us=16666 samples=28 over_budget=13 downgrades=1 upgrades=0 tiers=full:20,reduced:4,minimal:4 budget_source=refresh
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=persistent scheme=dark forced=full
+degrade tier=full forced=1 budget_us=16666 samples=48 over_budget=16 downgrades=0 upgrades=0 tiers=full:44,reduced:2,minimal:2 budget_source=refresh
 end
 
-scheme=dark forced=reduced
-degrade tier=reduced forced=1 budget_us=16666 samples=31 over_budget=13 downgrades=1 upgrades=0 tiers=full:21,reduced:6,minimal:4 budget_source=refresh
+surface=persistent scheme=dark forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=50 over_budget=16 downgrades=0 upgrades=0 tiers=full:45,reduced:3,minimal:2 budget_source=refresh
 end
 
-scheme=dark forced=minimal
-degrade tier=minimal forced=1 budget_us=16666 samples=34 over_budget=13 downgrades=1 upgrades=0 tiers=full:21,reduced:7,minimal:6 budget_source=refresh
+surface=persistent scheme=dark forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=52 over_budget=16 downgrades=0 upgrades=0 tiers=full:45,reduced:4,minimal:3 budget_source=refresh
 end
 
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=dockpopover scheme=light forced=full
+degrade tier=full forced=1 budget_us=16666 samples=34 over_budget=15 downgrades=1 upgrades=0 tiers=full:31,reduced:3,minimal:0 budget_source=refresh
+end
+
+surface=dockpopover scheme=light forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=36 over_budget=15 downgrades=1 upgrades=0 tiers=full:32,reduced:4,minimal:0 budget_source=refresh
+end
+
+surface=dockpopover scheme=light forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=38 over_budget=15 downgrades=1 upgrades=0 tiers=full:32,reduced:5,minimal:1 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=dockpopover scheme=dark forced=full
+degrade tier=full forced=1 budget_us=16666 samples=15 over_budget=13 downgrades=1 upgrades=0 tiers=full:14,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=dockpopover scheme=dark forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=18 over_budget=13 downgrades=1 upgrades=0 tiers=full:15,reduced:3,minimal:0 budget_source=refresh
+end
+
+surface=dockpopover scheme=dark forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=21 over_budget=13 downgrades=1 upgrades=0 tiers=full:15,reduced:4,minimal:2 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=menupopover scheme=light forced=full
+degrade tier=full forced=1 budget_us=16666 samples=16 over_budget=13 downgrades=1 upgrades=0 tiers=full:15,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=menupopover scheme=light forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=18 over_budget=13 downgrades=1 upgrades=0 tiers=full:16,reduced:2,minimal:0 budget_source=refresh
+end
+
+surface=menupopover scheme=light forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=22 over_budget=13 downgrades=1 upgrades=0 tiers=full:16,reduced:3,minimal:3 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=menupopover scheme=dark forced=full
+degrade tier=full forced=1 budget_us=16666 samples=15 over_budget=13 downgrades=1 upgrades=0 tiers=full:14,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=menupopover scheme=dark forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=19 over_budget=13 downgrades=1 upgrades=0 tiers=full:15,reduced:4,minimal:0 budget_source=refresh
+end
+
+surface=menupopover scheme=dark forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=21 over_budget=13 downgrades=1 upgrades=0 tiers=full:15,reduced:5,minimal:1 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=controlcenter scheme=light forced=full
+degrade tier=full forced=1 budget_us=16666 samples=16 over_budget=13 downgrades=1 upgrades=0 tiers=full:15,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=controlcenter scheme=light forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=18 over_budget=13 downgrades=1 upgrades=0 tiers=full:16,reduced:2,minimal:0 budget_source=refresh
+end
+
+surface=controlcenter scheme=light forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=22 over_budget=13 downgrades=1 upgrades=0 tiers=full:16,reduced:3,minimal:3 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=controlcenter scheme=dark forced=full
+degrade tier=full forced=1 budget_us=16666 samples=15 over_budget=13 downgrades=1 upgrades=0 tiers=full:14,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=controlcenter scheme=dark forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=18 over_budget=13 downgrades=1 upgrades=0 tiers=full:14,reduced:4,minimal:0 budget_source=refresh
+end
+
+surface=controlcenter scheme=dark forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=21 over_budget=13 downgrades=1 upgrades=0 tiers=full:14,reduced:4,minimal:3 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=notification scheme=light forced=full
+degrade tier=full forced=1 budget_us=16666 samples=16 over_budget=12 downgrades=1 upgrades=0 tiers=full:16,reduced:0,minimal:0 budget_source=refresh
+end
+
+surface=notification scheme=light forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=18 over_budget=12 downgrades=1 upgrades=0 tiers=full:17,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=notification scheme=light forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=20 over_budget=12 downgrades=1 upgrades=0 tiers=full:17,reduced:2,minimal:1 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=notification scheme=dark forced=full
+degrade tier=full forced=1 budget_us=16666 samples=15 over_budget=12 downgrades=1 upgrades=0 tiers=full:15,reduced:0,minimal:0 budget_source=refresh
+end
+
+surface=notification scheme=dark forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=18 over_budget=12 downgrades=1 upgrades=0 tiers=full:16,reduced:2,minimal:0 budget_source=refresh
+end
+
+surface=notification scheme=dark forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=22 over_budget=12 downgrades=1 upgrades=0 tiers=full:16,reduced:2,minimal:4 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=osd scheme=light forced=full
+degrade tier=full forced=1 budget_us=16666 samples=16 over_budget=12 downgrades=1 upgrades=0 tiers=full:16,reduced:0,minimal:0 budget_source=refresh
+end
+
+surface=osd scheme=light forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=18 over_budget=12 downgrades=1 upgrades=0 tiers=full:17,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=osd scheme=light forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=20 over_budget=12 downgrades=1 upgrades=0 tiers=full:17,reduced:2,minimal:1 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=osd scheme=dark forced=full
+degrade tier=full forced=1 budget_us=16666 samples=16 over_budget=13 downgrades=1 upgrades=0 tiers=full:15,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=osd scheme=dark forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=18 over_budget=13 downgrades=1 upgrades=0 tiers=full:16,reduced:2,minimal:0 budget_source=refresh
+end
+
+surface=osd scheme=dark forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=22 over_budget=13 downgrades=1 upgrades=0 tiers=full:16,reduced:3,minimal:3 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=drawer scheme=light forced=full
+degrade tier=full forced=1 budget_us=16666 samples=15 over_budget=13 downgrades=1 upgrades=0 tiers=full:14,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=drawer scheme=light forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=17 over_budget=13 downgrades=1 upgrades=0 tiers=full:15,reduced:2,minimal:0 budget_source=refresh
+end
+
+surface=drawer scheme=light forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=21 over_budget=13 downgrades=1 upgrades=0 tiers=full:15,reduced:3,minimal:3 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0
+surface=drawer scheme=dark forced=full
+degrade tier=full forced=1 budget_us=16666 samples=16 over_budget=12 downgrades=1 upgrades=0 tiers=full:16,reduced:0,minimal:0 budget_source=refresh
+end
+
+surface=drawer scheme=dark forced=reduced
+degrade tier=reduced forced=1 budget_us=16666 samples=18 over_budget=12 downgrades=1 upgrades=0 tiers=full:17,reduced:1,minimal:0 budget_source=refresh
+end
+
+surface=drawer scheme=dark forced=minimal
+degrade tier=minimal forced=1 budget_us=16666 samples=20 over_budget=12 downgrades=1 upgrades=0 tiers=full:17,reduced:2,minimal:1 budget_source=refresh
+end
+
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=popup tier=2 blur=0 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=2 blur=0 fallback=0

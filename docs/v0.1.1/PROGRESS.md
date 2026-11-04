@@ -18,6 +18,7 @@
 - **T188c — T-21.2b VRR, chrome callbacks, and mixed-refresh evidence**: `PresentationClock` (T188a) now owns a backend-supplied `VrrRange` plus the; `DfState` owns `output_vrr`. `refresh_for_output`, `on_output_mode_changed`,
 - **T189a — T-21.2c role classification and per-role state**: `MaterialRole` now owns the persistent/transient classification:; `EffectiveMaterial` carries a `role` field and
 - **T189b — T-21.2c Shell per-role application: Dock and menu bar**: `shell/src/materialpolicy.{h,cpp}` is the shell's one application policy for; a known role state wins; an unknown role uses the legacy v3 global state;
+- **T189c — T-21.2c Overlay and popover fallback coverage**: The shell now applies the v4 role state to the whole popup family through the; `Popup` → menu-bar dropdowns/submenus, status menus, tray context menu,
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -36,6 +37,7 @@
 - [T188c](progress/T188c.md) — `PresentationClock` (T188a) now owns a backend-supplied `VrrRange` plus the
 - [T189a](progress/T189a.md) — `MaterialRole` now owns the persistent/transient classification:
 - [T189b](progress/T189b.md) — `shell/src/materialpolicy.{h,cpp}` is the shell's one application policy for
+- [T189c](progress/T189c.md) — The shell now applies the v4 role state to the whole popup family through the
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

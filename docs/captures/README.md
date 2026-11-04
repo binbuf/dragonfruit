@@ -1090,16 +1090,24 @@ virtual host, with the nested window maximized to 1920x1200; the transcript is
 smoke test because the synthetic input harness on that host did not set the
 Meta modifier for the `Cmd+Ctrl+Q` chord.
 
-T-21.2c's persistent-chrome forced-tier stills are produced by
+T-21.2c's forced-tier stills are produced by
 `scripts/capture-t21-material-tiers.sh` (`make t21-material-tiers-capture`).
 It runs the nested demo with the compositor capture fixture, forces Full,
-Reduced, and Minimal in the light and dark schemes, and writes the menu-bar and
-Dock crops `t21-material-{menubar,dock}-{full,reduced,minimal}-{light,dark}.png`
-plus the review sheets `t21-material-{menubar,dock}-tiers-{light,dark}.png`.
-`t21-material-tiers.txt` records each forced `query degrade` state. The forced
-Minimal state is the persistent `floor-missed` milky fallback, not a flat
-translucent slab; the shell applies the `Chrome`/`Dock` role through one policy
-(ADR [0204](../design/adr/0204-shell-role-material-application-policy.md)).
+Reduced, and Minimal in the light and dark schemes, and writes the persistent
+menu-bar and Dock crops
+`t21-material-{menubar,dock}-{full,reduced,minimal}-{light,dark}.png` plus the
+overlay-family crops
+`t21-material-{dockpopover,menupopover,controlcenter,notification,osd,drawer}-{full,reduced,minimal}-{light,dark}.png`.
+Each surface also gets a `t21-material-<surface>-tiers-{light,dark}.png`
+review sheet. `t21-material-tiers.txt` records each forced `query degrade`
+state and the shell's applied per-role `tier/blur/fallback` lines, so the
+milky reason is recorded rather than inferred from pixels. The forced Minimal
+state is the persistent `floor-missed` milky fallback and the transient
+popup/drawer `Minimal` state, never a flat translucent slab; the shell applies
+all four roles through one policy (ADR
+[0204](../design/adr/0204-shell-role-material-application-policy.md)) and the
+popup family shares one QML complement (ADR
+[0205](../design/adr/0205-popup-family-material-fallback.md)).
 
 T-21.1b's HiDPI chrome stills are `t21-hidpi-1x.png`, `t21-hidpi-1_5x.png`,
 and `t21-hidpi-2x.png` (the menu bar, Dock, and Dock popover at each scale),
