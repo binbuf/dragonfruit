@@ -457,8 +457,10 @@ deadline is 6.94 ms.
 
 ## R4 — Material quality floor and degrade policy
 
-The current controller still degrades the Dock and menu bar like transient
-overlays.
+T-21.2c classifies `MaterialRole` as persistent (`Chrome`, `Dock`) or
+transient (`Popup`, `Drawer`) and computes an effective material per role. The
+compositor render path and the v4 protocol carry that state; the shell
+application and refresh-aware hysteresis land in the follow-up tasks.
 
 ### R4.1 Persistent-chrome floor
 
@@ -468,6 +470,18 @@ overlays.
 - Allow transient overlays to reach `Minimal`.
 - If the GPU cannot meet the deadline even at `Reduced`, use the P1 milky
   fallback rather than a flat translucent plate.
+
+**Status (T-21.2c)**
+
+- `MaterialRole::is_persistent()` is the classification. The render path
+  resolves each chrome panel through `effective_material_for_role`, so a
+  global `Minimal` selection no longer drops the Dock/menu bar to the feather
+  stack.
+- A persistent role at a selected `Minimal` reports `tier=reduced`,
+  `blur_active=0`, `fallback=4` (`floor-missed`): the explicit milky fallback,
+  not a flat translucent `Minimal` slab.
+- Transient roles follow the ladder to `Minimal` unchanged; software/headless
+  stays `Minimal` with the `software` reason for every role.
 
 **Acceptance**
 
@@ -495,6 +509,17 @@ overlays.
 - Extend `material_state` beyond the current global snapshot if persistent
   chrome and transient overlays need different effective tiers.
 - Keep the event change-only and additive.
+
+**Status (T-21.2c)**
+
+- `df_output` is v4. `material_role_state` is the additive event:
+  `role` (0=chrome, 1=dock, 2=popup, 3=drawer), `tier`, `blur_active`, and
+  `fallback` (0=none, 1=no-sampled-blur, 2=software, 3=multi-gpu,
+  4=floor-missed). The legacy v3 `material_state` keeps its global meaning.
+- The compositor emits the role event per output only for roles whose
+  effective state changed, not per frame. The shell parses and stores the
+  role table; the Dock/menu-bar and overlay application land in T-21.2c's
+  shell tasks.
 
 **Acceptance**
 

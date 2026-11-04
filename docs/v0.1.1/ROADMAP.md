@@ -53,7 +53,7 @@ done.
 - [x] T188a — T-21.2b Per-output presentation clock (pure) → [../tasks/0.1.1/188a-t-21.2b-presentation-clock.md](../tasks/0.1.1/188a-t-21.2b-presentation-clock.md)
 - [x] T188b — T-21.2b Per-output frame requests and timer arming → [../tasks/0.1.1/188b-t-21.2b-frame-requests.md](../tasks/0.1.1/188b-t-21.2b-frame-requests.md)
 - [x] T188c — T-21.2b VRR, chrome callbacks, and mixed-refresh evidence → [../tasks/0.1.1/188c-t-21.2b-vrr-mixed-refresh.md](../tasks/0.1.1/188c-t-21.2b-vrr-mixed-refresh.md)
-- [ ] T189a — T-21.2c Persistent/transient role classification and per-role state → [../tasks/0.1.1/189a-t-21.2c-role-classification.md](../tasks/0.1.1/189a-t-21.2c-role-classification.md)
+- [x] T189a — T-21.2c Persistent/transient role classification and per-role state → [../tasks/0.1.1/189a-t-21.2c-role-classification.md](../tasks/0.1.1/189a-t-21.2c-role-classification.md)
 - [ ] T189b — T-21.2c Shell per-role application: Dock and menu bar → [../tasks/0.1.1/189b-t-21.2c-shell-role-application.md](../tasks/0.1.1/189b-t-21.2c-shell-role-application.md)
 - [ ] T189c — T-21.2c Overlay and popover fallback coverage → [../tasks/0.1.1/189c-t-21.2c-overlay-fallback-coverage.md](../tasks/0.1.1/189c-t-21.2c-overlay-fallback-coverage.md)
 - [ ] T189d — T-21.2c Refresh-aware hysteresis and load tests → [../tasks/0.1.1/189d-t-21.2c-refresh-aware-hysteresis.md](../tasks/0.1.1/189d-t-21.2c-refresh-aware-hysteresis.md)
@@ -89,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-04T20:28:33Z · 13/30 done
+**Pipeline status** — updated 2026-11-04T21:41:08Z · 14/30 done
 
-- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c
+- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a
 - Blocked: none
 - Failed: none
-- Remaining: T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
-- Last finished: T188c — done · VRR adaptation/reporting, chrome-callback verification, mixed 60+144 scheduler hook, and nested/synthetic traces landed; native mixed-refresh remains OPEN because this host has one connected DRM output.
+- Remaining: T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Last finished: T189a — done · Role classification, per-role floor/effective state, v4 role-keyed protocol, renderer application, pure floor tests, conformance coverage, and docs landed; all gates pass.
 <!-- /symphony:status -->

@@ -92,6 +92,18 @@ pub enum MaterialRole {
 }
 
 impl MaterialRole {
+    /// Every role in wire order. The index is also the stable `df_output`
+    /// role value (`Chrome=0`, `Dock=1`, `Popup=2`, `Drawer=3`).
+    pub const ALL: [MaterialRole; 4] = [
+        MaterialRole::Chrome,
+        MaterialRole::Dock,
+        MaterialRole::Popup,
+        MaterialRole::Drawer,
+    ];
+
+    /// Number of material roles; the size of a per-role state table.
+    pub const COUNT: usize = Self::ALL.len();
+
     /// The role for a `df_shell.layer` value: `overlay` (3) and above is a
     /// popover, everything else is persistent chrome. The Dock is selected by
     /// its namespace, not its layer.
@@ -131,6 +143,40 @@ impl MaterialRole {
             MaterialRole::Popup => "popup",
             MaterialRole::Drawer => "drawer",
         }
+    }
+
+    /// The stable `df_output.material_role_state.role` wire value.
+    pub const fn wire(self) -> u32 {
+        match self {
+            MaterialRole::Chrome => 0,
+            MaterialRole::Dock => 1,
+            MaterialRole::Popup => 2,
+            MaterialRole::Drawer => 3,
+        }
+    }
+
+    /// Parse a wire role value (the inverse of [`Self::wire`]).
+    pub const fn from_wire(value: u32) -> Option<Self> {
+        match value {
+            0 => Some(MaterialRole::Chrome),
+            1 => Some(MaterialRole::Dock),
+            2 => Some(MaterialRole::Popup),
+            3 => Some(MaterialRole::Drawer),
+            _ => None,
+        }
+    }
+
+    /// Whether this role is **persistent chrome** (the menu bar and the Dock)
+    /// rather than a transient overlay (popovers and the Applications drawer).
+    /// Persistent roles keep the T-21.2c material floor: they never select
+    /// below `Reduced` while the sampled path is available.
+    pub const fn is_persistent(self) -> bool {
+        matches!(self, MaterialRole::Chrome | MaterialRole::Dock)
+    }
+
+    /// Whether this role is a transient overlay that may reach `Minimal`.
+    pub const fn is_transient(self) -> bool {
+        !self.is_persistent()
     }
 
     /// The panel corner radius for a surface in `namespace` (T-20.3).

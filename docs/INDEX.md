@@ -52,6 +52,9 @@ _Maintained from the working tree; reconciled by hand on 2026-11-03. The design 
 - `docs/design/proposals/native-drm-dock-glass.md` — Proposal — Native DRM Dock material: why it does not read as the premium macOS Dock
 - `docs/dock-learnings.md` — Proposal — Cutefish glass study and a transparency setting
 
+## Research notes
+- `docs/hyprglass-study.md` — Research — hyprglass study: porting notes for Dragonfruit's material
+
 ## Architecture decision records
 - `docs/design/adr/0000-template.md` — 0000 — ADR template
 - `docs/design/adr/0001-titlebar-double-click-setting-owner.md` — 0001 — Titlebar double-click setting lives in the compositor until T-08

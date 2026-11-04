@@ -115,6 +115,14 @@ that should show the material but paints an opaque fill makes the material
 invisible — the fill's alpha, never the item's `opacity`, is what lets it
 through.
 
+The effective material is delivered per role over the additive
+`df_output.material_role_state` event (v4, T-21.2c): `role` 0=chrome,
+1=dock, 2=popup, 3=drawer; `fallback` 4 (`floor-missed`) means even `Reduced`
+missed the deadline and the persistent surface must use its milky complement.
+`ShellProtocol` stores the role table and emits `materialRoleStateChanged`;
+the Dock/menu-bar and overlay QML application are the T-21.2c shell tasks.
+QML still never re-derives the degrade policy.
+
 ## Menu bar
 
 The top menu bar hosts, from left to right:

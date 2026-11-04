@@ -16,6 +16,7 @@
 - **T188a — T-21.2b per-output presentation clock (pure)**: New pure library module `compositor/src/presentation.rs`, exported as; `PresentationClock { last_presented, next_deadline, period, refresh_hz, vrr }`
 - **T188b — T-21.2b per-output frame requests and earliest-deadline arming**: New pure library module `compositor/src/frame_scheduler.rs` (exported as; `FrameScheduler` keyed by output name with independent `urgent` and
 - **T188c — T-21.2b VRR, chrome callbacks, and mixed-refresh evidence**: `PresentationClock` (T188a) now owns a backend-supplied `VrrRange` plus the; `DfState` owns `output_vrr`. `refresh_for_output`, `on_output_mode_changed`,
+- **T189a — T-21.2c role classification and per-role state**: `MaterialRole` now owns the persistent/transient classification:; `EffectiveMaterial` carries a `role` field and
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -32,6 +33,7 @@
 - [T188a](progress/T188a.md) — New pure library module `compositor/src/presentation.rs`, exported as
 - [T188b](progress/T188b.md) — New pure library module `compositor/src/frame_scheduler.rs` (exported as
 - [T188c](progress/T188c.md) — `PresentationClock` (T188a) now owns a backend-supplied `VrrRange` plus the
+- [T189a](progress/T189a.md) — `MaterialRole` now owns the persistent/transient classification:
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

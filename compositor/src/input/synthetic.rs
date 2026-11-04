@@ -57,6 +57,8 @@
 //! set launch-origin <app-id> <x> <y> <width> <height>
 //! set degrade-tier full|reduced|minimal
 //! set degrade-budget <microseconds>
+//! set material-path gpu|software
+//! set material-blur-supported on|off
 //! set color-scheme light|dark
 //! minimize <window-id>
 //! restore <window-id>
@@ -121,7 +123,8 @@ use smithay::reexports::calloop::{Interest, Mode, PostAction};
 use crate::magnifier::MagnifierMode;
 use crate::state::DfState;
 use crate::window::{
-    ColorScheme, DegradeTier, MaterialRole, TitlebarDoubleClick, WindowEventKind, WindowId,
+    ColorScheme, DegradeTier, MaterialPath, MaterialRole, TitlebarDoubleClick, WindowEventKind,
+    WindowId,
 };
 use crate::workspace::WallpaperFit;
 
@@ -784,6 +787,14 @@ pub enum SyntheticCommand {
     /// Set the frame budget the degrade controller selects against, in
     /// microseconds (T-04.4a test plumbing).
     SetDegradeBudget(u32),
+    /// Override the renderer class the material resolves on (T-21.2c test
+    /// plumbing): `gpu` or `software`. The headless backend starts on
+    /// `software`, so conformance can still exercise the sampled-path role
+    /// floor without a display.
+    SetMaterialPath(MaterialPath),
+    /// Declare whether the sampled backdrop pass is implemented on the GPU
+    /// path (T-21.2c test plumbing).
+    SetMaterialBlurSupported(bool),
     /// Set the live light/dark color scheme the compositor materials render
     /// with (T-04.4b test/capture plumbing): `light` or `dark`.
     SetColorScheme(ColorScheme),
@@ -1083,6 +1094,20 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                         "degrade-budget must be an integer number of microseconds".to_string()
                     })?,
             ),
+            Some("material-path") => match parts.next() {
+                Some("gpu") => SyntheticCommand::SetMaterialPath(MaterialPath::Gpu),
+                Some("software") => SyntheticCommand::SetMaterialPath(MaterialPath::Software),
+                other => {
+                    return Err(format!("expected gpu|software, got {other:?}"));
+                }
+            },
+            Some("material-blur-supported") => match parts.next() {
+                Some("on") | Some("1") => SyntheticCommand::SetMaterialBlurSupported(true),
+                Some("off") | Some("0") => SyntheticCommand::SetMaterialBlurSupported(false),
+                other => {
+                    return Err(format!("expected on|off, got {other:?}"));
+                }
+            },
             Some("magnifier") => match parts.next() {
                 Some("on") | Some("1") => SyntheticCommand::SetMagnifier(true),
                 Some("off") | Some("0") => SyntheticCommand::SetMagnifier(false),
@@ -1105,7 +1130,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             },
             _ => {
                 return Err(
-                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget, color-scheme, magnifier, magnifier-zoom, magnifier-mode, magnifier-center)"
+                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget, material-path, material-blur-supported, color-scheme, magnifier, magnifier-zoom, magnifier-mode, magnifier-center)"
                         .into(),
                 );
             }
@@ -1275,6 +1300,12 @@ impl SyntheticCommand {
             }
             SyntheticCommand::SetDegradeBudget(_) => {
                 unreachable!("set degrade-budget is handled by apply_datagram")
+            }
+            SyntheticCommand::SetMaterialPath(_) => {
+                unreachable!("set material-path is handled by apply_datagram")
+            }
+            SyntheticCommand::SetMaterialBlurSupported(_) => {
+                unreachable!("set material-blur-supported is handled by apply_datagram")
             }
             SyntheticCommand::SetColorScheme(_) => {
                 unreachable!("set color-scheme is handled by apply_datagram")
@@ -1560,6 +1591,14 @@ fn apply_datagram_reply(
             }
             Ok(SyntheticCommand::SetDegradeBudget(budget_us)) => {
                 state.set_degrade_budget_us(budget_us);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetMaterialPath(path)) => {
+                state.set_material_path(path);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetMaterialBlurSupported(supported)) => {
+                state.set_material_blur_supported(supported);
                 applied += 1;
             }
             Ok(SyntheticCommand::SetColorScheme(scheme)) => {
@@ -2615,6 +2654,22 @@ mod tests {
         assert_eq!(
             parse_command("set degrade-budget 12000").unwrap(),
             SyntheticCommand::SetDegradeBudget(12_000)
+        );
+        assert_eq!(
+            parse_command("set material-path gpu").unwrap(),
+            SyntheticCommand::SetMaterialPath(MaterialPath::Gpu)
+        );
+        assert_eq!(
+            parse_command("set material-path software").unwrap(),
+            SyntheticCommand::SetMaterialPath(MaterialPath::Software)
+        );
+        assert_eq!(
+            parse_command("set material-blur-supported on").unwrap(),
+            SyntheticCommand::SetMaterialBlurSupported(true)
+        );
+        assert_eq!(
+            parse_command("set material-blur-supported off").unwrap(),
+            SyntheticCommand::SetMaterialBlurSupported(false)
         );
         assert_eq!(
             parse_command("query material").unwrap(),

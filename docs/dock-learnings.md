@@ -48,6 +48,14 @@ Recommendations, in order:
    notifications, Control Center, Settings, and dialogs should read the same
    effective values rather than re-deriving them per component.
 
+**Competitive check (section 11).** `hyprglass` / `nothing-liquid` currently
+has the best open-source optics; `macos-tahoe-liquid-kde` is the most complete
+Tahoe desktop replica; Cutefish is the closest architecture to Dragonfruit;
+Apple is still the behavioral reference. The right path (section 12) is to
+stay compositor-native and build a dynamic material, not to adopt a KDE or
+Hyprland plugin architecture. The source study and porting notes are in
+[`hyprglass-study.md`](hyprglass-study.md).
+
 ---
 
 ## 1. What was examined
@@ -1061,49 +1069,83 @@ until the client surface-material protocol lands.
 
 ## 7. Token proposal
 
-Keep the token surface small. Most optical constants are shared; only a few
-vary by role.
+The first pass used Cutefish's superellipse lens. The hyprglass study
+([`hyprglass-study.md`](hyprglass-study.md) §4) gives a closer model and exact
+Tahoe presets. Use the hyprglass values as the starting point; the Cutefish
+values remain useful only for the older `GLASS_SHADER` fallback.
 
-**New `primitive.glass` (shared):**
+### 7.1 Shared optical tokens
 
 | Token | Value | Notes |
 |---|---:|---|
-| `bevel` | 14 | Lip width in logical px. |
-| `depth` | 16 | Surface height above the back face. |
-| `ior` | 1.7 | Index of refraction. |
-| `profile` | 2.5 | Superellipse exponent. |
-| `chroma` | 0.05 | Red/blue split; 0 for the Dock (no rainbow fringe). |
-| `lightAngle` | 50 | Degrees. |
-| `ambientOcclusion` | 0.0 | Off by default; opt-in for large panels. |
-| `ambientOcclusionRadius` | 4 | Logical px. |
-| `rim` | 1.0 | Material-drawn lit edge. |
+| `edgeThickness` | 0.06 | Ratio; `* 400` -> 24 logical px at 1x, capped at half the pane. |
+| `edgeThicknessPx` | 0 (auto) | Optional absolute bezel, per role. |
+| `ior` | 1.5 | Snell. |
+| `thickness` | 1.8 dock/bar, 1.3 text panels, 1.2 windows | `thicknessPx = thickness * bezelPx * materialize`. |
+| `bodyLens` | 0.8 | `bodyLensPx = bodyLens * min(0.14 * minDim, 130 * scale)`. |
+| `dispersion` | 0.5 clear, 0.35 regular, 0.3 window | Shader uses `* 0.12` per channel. |
+| `bevel` | 0.6–0.85 | Rim line strength. |
+| `bevelSize` | 4 | Rim band width. |
+| `bevelTint` | 0.2 | Rim picks up backdrop hue. |
+| `bevelShadow` | 0.28 dark / 0.18 light | Shape-aware shadow. |
+| `fresnel` | 0.15 clear/regular, 0.12 window | Inner glow. |
+| `fresnelTint` | 0.4 | Glow picks up backdrop hue. |
+| `touch` | 1.0 | Touch-light scale (`specularStrength`). |
+| `tintedMix` | 0.62 | Clear/Tinted blend toward the surface colour. |
+| `tintedBlurScale` | `1 + 1.6 * tinted` | Tinted is frostier. |
 
-**Per-role overrides:**
+### 7.2 Role presets (from `hyprglass-nl`)
 
-| Token | Dock | Chrome | Popup |
+| Token | `tahoe_clear` (Dock/bar) | `tahoe` (text panels) | `tahoe_window` (apps/dialogs) |
 |---|---:|---:|---:|
-| `displacement` | 36 | 24 | 20 |
-| `saturation` | 1.3 | 1.2 | 1.2 |
-| `rim` | 1.0 | 1.0 | 0.0 |
+| `blur` | 2.4 px | 12 px | 14.4 px |
+| `blurIterations` | 2 | 2 | 3 |
+| `thickness` | 1.8 | 1.3 | 1.2 |
+| `dispersion` | 0.5 | 0.35 | 0.3 |
+| `edgeThickness` | 0.06 | 0.06 | 0.05 |
+| `bodyLens` | 0.8 | 0.8 | 0.8 |
+| `bevel` | 0.75 | 0.85 | 0.75 |
+| `fresnel` | 0.15 | 0.15 | 0.12 |
+| Dark tint | `0x0a0a0c40` (α 0.251) | `0x0b0b0e66` (α 0.400) | `0x0c0c0f58` (α 0.345) |
+| Light tint | `0xffffff2a` (α 0.165) | `0xfbfbfd70` (α 0.439) | `0xf5f5f780` (α 0.502) |
+| Dark `brightness` | 0.80 | 0.70 | 0.70 |
+| Dark `saturation` | 1.10 | 1.10 | 1.10 |
+| Dark `adaptiveDim` | 0.80 | 0.85 | 0.50 |
+| Light `brightness` | 1.04 | 1.03 | 1.00 |
+| Light `adaptiveBoost` | 0.55 | 0.85 | 0.70 |
 
-`bevel`, `depth`, `ior`, `profile`, `chroma`, `lightAngle`, and the ambient
-occlusion pair stay shared; Cutefish uses the same values for the Dock and its
-popups, and only varies blur, displacement, saturation, and tint.
+`tintColor` is `RRGGBBAA`; the alphas above are decoded. The shared
+`applyTahoeBase` also sets `bevelSize 4`, `bevelTint 0.2`, `bevelShadow 0.28
+dark / 0.18 light`, `fresnelTint 0.4`, `specularStrength 1.0`,
+`glassOpacity 1.0`, dark `contrast 1.0`, dark `vibrancy 0.15`, light
+`contrast 1.0`, light `saturation 1.08`, light `vibrancy 0.12`, light
+`adaptiveDim 0.0`.
 
-**Retuned existing tokens (balanced preset, light/dark):**
+### 7.3 Tone tokens
 
-| Token | Current | Proposed | Why |
+| Token | Dark default | Light default | Notes |
 |---|---:|---:|---|
-| `dockBlur` | 30 / 34 | 18 / 20 | Let the lens bend detail. |
-| `dockRefraction` | 8 / 10 | 14 / 16 | The main lens strength. |
-| `dockTint` | 0.22 / 0.20 | 0.16 / 0.14 | Less milk; adaptive tint still protects text. |
-| `dockSpecular` | 0.5 / 0.34 | 0.45 / 0.30 | One subtle rim. |
-| `chromeBlur` | 24 / 28 | 16 / 18 | Same direction, more conservative. |
-| `chromeRefraction` | 6 / 8 | 10 / 12 | |
-| `chromeTint` | 0.16 / 0.14 | 0.12 / 0.10 | Keep the menu bar readable with a fill floor. |
-| `popupBlur` | 30 / 32 | 24 / 26 | Popups stay frosted for text. |
-| `popupRefraction` | 8 / 10 | 10 / 12 | |
-| `popupTint` | 0.2 / 0.18 | 0.28 / 0.26 | Raise readability, not lower it. |
+| `brightness` | 0.82 | 1.12 | Global fallback; presets override. |
+| `contrast` | 0.90 | 0.92 | |
+| `saturation` | 0.80 | 0.85 | |
+| `vibrancy` | 0.15 | 0.12 | |
+| `vibrancyDarkness` | 0.0 | 0.0 | |
+| `adaptiveDim` | 0.40 | 0.00 | Dark: pull bright backdrops down. |
+| `adaptiveBoost` | 0.00 | 0.40 | Light: lift dark backdrops toward a floor. |
+
+### 7.4 Mapping from our current tokens
+
+| Current token | Current | New equivalent | Note |
+|---|---:|---:|---|
+| `dockBlur` | 30 / 34 | 2.4 px (`tahoe_clear`) | The biggest change. |
+| `dockRefraction` | 8 / 10 px | `thickness` 1.8 | **Unit change:** ratio, not px. |
+| `dockTint` | 0.22 / 0.20 | 0.251 dark / 0.165 light | `tahoe_clear`. |
+| `dockSpecular` | 0.5 / 0.34 | `touch` 1.0 | Touch-light scale. |
+| `dockSpecularWidth` | 2.5 | `bevelSize` 4 | Rim band. |
+| `chromeBlur` | 24 / 28 | 12 px (`tahoe`) | Text panels. |
+| `chromeTint` | 0.16 / 0.14 | 0.400 / 0.439 | `tahoe`. |
+| `popupBlur` | 30 / 32 | 12 px (`tahoe`) | Text panels. |
+| `popupTint` | 0.2 / 0.18 | 0.400 / 0.439 | `tahoe`. |
 | QML `plate.fillOpacity` | 0.42 | 0.0 when blur active; 0.42 fallback | One tint owner. |
 | QML `plate.rimOpacity` | 0.7 | 0.0 when blur active; 0.7 fallback | One rim owner. |
 | QML `plate.glossOpacity` | 0.22 | 0.0 when blur active; 0.22 fallback | One gloss owner. |
@@ -1166,7 +1208,267 @@ will only make the wrong look adjustable.
 
 ---
 
-## 11. Appendix — reading list
+## 11. Competitive landscape (November 2026)
+
+The question is not only "who has the prettiest screenshot?" It is "who has
+the closest *material model*, and what can Dragonfruit actually reuse?" The
+short answer:
+
+- **Best open-source optics: `hyprglass`** (and its `nothing-liquid` fork).
+  It models a thick convex glass slab with a height field, Snell refraction,
+  chromatic dispersion, Fresnel edge glow, specular highlights, adaptive
+  tone mapping, per-layer contour masks, touch light, and clear/tinted
+  presets. It is BSD-3-Clause, so the math can be ported with attribution.
+- **Most complete Tahoe desktop replica: `macos-tahoe-liquid-kde`.** It ships
+  the Dock, launcher, menus, icons, installer, and distro support, but its
+  glass is a GPL KWin effect (`Better Blur DX` / `Glass`) layered on KWin,
+  not a compositor-native material. It wins on product completeness, not on
+  material physics.
+- **Cleanest physical-optics reference: `ziuus/liquid-glass`.** Plano-convex
+  Snell refraction, Cauchy dispersion, Schlick Fresnel, bounded quads, MIT
+  licensed. It is a UI engine, not a desktop, so it is a math reference rather
+  than an integration path.
+- **Closest architecture to Dragonfruit: Cutefish.** Compositor-native,
+  per-surface, token-driven, BSD-3-Clause. Its material is simpler than
+  hyprglass, but its *shape* — one compositor-owned glass pass, one
+  per-surface protocol, one set of role tokens — is the right one.
+- **The reference is still Apple.** No Linux project matches the full
+  Liquid Glass behavior: lensing that responds to motion and touch,
+  materialize-in instead of fade-in, adaptive shadows and tint, light spill,
+  scroll edge effects, Regular/Clear variants, and accessibility modifiers.
+
+### 11.1 Scorecard
+
+Ratings are qualitative, for "how close to Tahoe" rather than "is it a good
+desktop?" — a project can be excellent and still not be a Tahoe material.
+
+| Project | Optics (lens/refraction) | Adaptivity (tint/shadow) | Dynamics (motion/light) | Surface coverage | Native integration | Reuse license |
+|---|---|---|---|---|---|---|
+| **macOS Tahoe** | Reference | Reference | Reference | Reference | Reference | Proprietary |
+| **hyprglass / nothing-liquid** | Strong | Strong | Partial | Strong | Partial (Hyprland plugin) | BSD-3-Clause |
+| **ziuus/liquid-glass** | Strong | Partial | Partial | Partial | None (UI engine) | MIT |
+| **macos-tahoe-liquid-kde** | Partial | Partial | None | Strong | Partial (KWin effect + theme) | GPL-3.0 |
+| **Cutefish** | Strong | Partial | None | Partial | Strong (own compositor) | BSD-3-Clause |
+| **KDE native + Better Blur DX / Glass** | Partial | Partial | None | Strong | Partial (KWin effect) | GPL-3.0 |
+| **GNOME / COSMIC / SwayFX / Wayfire** | None–Partial | None | None | Varies | Varies | Mixed |
+
+### 11.2 What each one gets right
+
+**hyprglass / nothing-liquid — the best optics on Linux.**
+The fork study, exact presets, and porting notes are in
+[`hyprglass-study.md`](hyprglass-study.md).
+
+- Upstream models the pane as a thick convex slab; the `nothing-liquid` fork
+  refines it to a **squircle bezel** with a Snell-refracted rim, a body lens,
+  and materialize-by-lensing.
+- SDF height field; edge refraction by Snell's law; chromatic aberration;
+  center dome magnification; Fresnel edge glow; specular highlight and inner
+  shadow.
+- Per-layer glass: alpha/contour masks so a bar, a dock, a notification card,
+  or a pill each get their own rim instead of sharing the layer's bounding box.
+- Clear/tinted presets, adaptive brightness/contrast/saturation/vibrancy,
+  dark smoked / light milky tone mapping.
+- Touch light: pressing glass lets light in from the press point and spreads
+  to nearby panes; focus light on the active window; frost that increases when
+  windows are behind the glass.
+- Background cache and live-resample controls, which is the performance model
+  a production compositor needs.
+
+One nuance: the crisp lens edge is opt-in (`edge_height`), so hyprglass's
+default look is softer/frostier than its best "lens" or "pomme" presets. The
+optics are there; the preset matters.
+
+What it lacks: it is a Hyprland plugin, version-sensitive, and does not own the
+compositor. It has no scroll-edge effects, no system-wide accessibility
+modifiers, and its "pomme" preset is explicitly an approximation. Its motion
+is mostly light/frost, not the full Apple materialize/morph behavior.
+
+**ziuus/liquid-glass — the cleanest physical shader reference.**
+
+- Plano-convex lens, Snell refraction, Cauchy dispersion, Schlick Fresnel,
+  directional meniscus glints.
+- Tight bounded quads with dynamic uniform offsets: fragment work only inside
+  the glass footprint, not a full-screen post-process.
+- MIT licensed and small enough to read as a reference.
+
+What it lacks: it is a UI engine/demo, not a desktop compositor. No window/layer
+pipeline, no adaptive system integration, no production caching. Treat it as a
+math and shader-structure reference.
+
+**macos-tahoe-liquid-kde — the most complete product.**
+
+- Dock, launcher, menus, Finder-style Nautilus, icons, cursors, boot splash,
+  installer, light/dark switching, 11 distros qualified.
+- "Acrylic Glass" effect built on Better Blur DX / Glass: blur, edge
+  refraction, tint, gradients, rounded corners, per-window rules.
+- The best answer to "what does a complete Tahoe-themed Linux desktop look
+  like?" and a useful checklist for Dragonfruit's non-material surface area.
+
+What it lacks: the glass is a KWin effect, so it is a rectangular region
+behind windows with rounded-corner cutouts, not a per-shape material. It is
+GPL-3.0, so it cannot be copied into Dragonfruit's MIT code; study it for
+product decisions and pitfalls, not for code. It has no motion-coupled
+lensing, no touch light, and no scroll-edge behavior.
+
+**Cutefish — the closest architecture.**
+
+- One compositor-owned glass pass, one per-surface protocol, role tokens,
+  shape masks, clear/default/tinted presets, and a settings slider.
+- Its superellipse lens is the right *kind* of model, and its per-surface
+  protocol is the right integration shape for Dragonfruit.
+
+What it lacks: the shader is simpler than hyprglass (no Fresnel/Schlick, no
+self-sample, no touch light, no contour masks, no background cache), and the
+project is smaller. It is the best architectural template, not the best
+finished material.
+
+**KDE native + Better Blur DX / Glass — the most mature integration.**
+
+- KWin's blur is stable and well-integrated; Better Blur DX and Glass add
+  force-blur, rounded corners, refraction, brightness/contrast/saturation,
+  tint, glow, and per-window rules.
+- The ecosystem is mature: packaging, settings UI, X11/Wayland, distro support.
+
+What it lacks: native KWin blur has no lensing; the refraction comes from a
+third-party effect, and the effect is ABI-sensitive to KWin versions. It is a
+plugin architecture, not a compositor-native material. It also has recurring
+conflicts with translucency, wobbly windows, and double-blur effects.
+
+**GNOME / COSMIC / SwayFX / Wayfire.** Blur, rounded corners, and shadows at
+best; no physically based lensing. They are not the reference for this goal.
+
+### 11.3 What this means for Dragonfruit
+
+Dragonfruit is in a better position than any of the plugin projects:
+
+- It **owns the compositor**, so it can sample the scene, blur it, refract it,
+  and draw the material in the same pass as the windows. It does not need a
+  plugin hook or a rectangular window rule.
+- It **owns the shell**, so it can make the Dock, menu bar, popovers, OSD,
+  notifications, Control Center, and Settings/dialogs share one material and
+  one set of role presets.
+- It **owns the settings daemon**, so a transparency/accessibility change can
+  reach every surface live through one key.
+- It already has the **degrade ladder**, **per-surface panel rects**, and a
+  **compositor-native glass shader**. The missing pieces are optical depth,
+  shape coverage, dynamics, and calibration — not a new architecture.
+
+The wrong move would be to copy a KWin/Hyprland plugin architecture. Those
+projects need plugins because they do not own the compositor. Dragonfruit
+would be trading away its main advantage.
+
+### 11.4 License notes for reuse
+
+| Project | License | Can we port code? |
+|---|---|---|
+| hyprglass / nothing-liquid | BSD-3-Clause | Yes, with copyright notice and `NOTICE`/`LICENSES` attribution. |
+| ziuus/liquid-glass | MIT | Yes, with copyright notice. |
+| Cutefish | BSD-3-Clause | Yes, with copyright notice and attribution. |
+| macos-tahoe-liquid-kde | GPL-3.0 | No direct code reuse in MIT code; study behavior and product decisions. |
+| Better Blur DX / Glass | GPL-3.0 | No direct code reuse; study shader ideas and reimplement. |
+| Apple | Proprietary | No assets or code; reproduce behavior with original code. |
+
+---
+
+## 12. The right path for Dragonfruit's Dock
+
+The goal is not "add more blur." The goal is a **compositor-native,
+content- and motion-aware glass material** that is close enough to Tahoe that
+a side-by-side at normal viewing distance is hard to call. That means six
+principles and a staged plan.
+
+### 12.1 Principles
+
+1. **Model a lens, not a blur.** The material's identity is lensing: a thick
+   edge, compressed backdrop, subtle magnification, dispersion, Fresnel rim,
+   and a flat, sharp interior. Blur is a supporting layer, not the material.
+2. **One material system, many roles.** Dock, menu bar, popovers, OSD,
+   notifications, Control Center, Settings, and dialogs share one shader and
+   one role table. Regular (adaptive) and Clear (permanently transparent, with
+   a dimming layer) are the two variants; never mix them on one surface.
+3. **The material is a function of content, motion, and context.** Apple's
+   differentiator is not the static look; it is the response: shadow opacity
+   when text scrolls under, tint/dynamic range shifts, light from touch,
+   materialize by modulating lensing, morph between surfaces, scroll-edge
+   dissolve. Build these as first-class material inputs, not QML animations.
+4. **No glass on glass.** A popover over the Dock should use a fill/vibrancy
+   overlay, not a second lens. One lens per visual layer.
+5. **Performance and accessibility are part of the material.** Background
+   cache, damage tracking, bounded quads, degrade tiers, reduced transparency,
+   increased contrast, reduced motion. A material that cannot hold 60 Hz at 4K
+   or respect accessibility is not finished.
+6. **Calibrate against macOS, not against vibes.** Use a rubric and captures:
+   lens profile, edge falloff, tint response, shadow response, materialize,
+   press light, scroll edge, light/dark flip. "Looks good" is not acceptance.
+
+### 12.2 What to borrow, and from whom
+
+| Source | Borrow | Do not copy |
+|---|---|---|
+| **Apple** | The rubric: lensing, materialize, motion-coupled light, adaptive shadow/tint, Regular/Clear, scroll edge, accessibility, no glass-on-glass. | Assets, private APIs, or an attempt at bit-exact pixels. |
+| **hyprglass / nothing-liquid** | Height-field/Snell refraction, dispersion, Fresnel, specular, inner shadow, alpha/contour masks, background cache/live-resample, touch light, clear/tinted presets. | Hyprland plugin hooks or version-sensitive ABI tricks. |
+| **ziuus/liquid-glass** | Plano-convex lens math, Cauchy dispersion, Schlick Fresnel, bounded-quad rendering. | Its UI-engine scope; it is not a compositor. |
+| **Cutefish** | Compositor-native per-surface protocol, role tokens, shape masks, pace/blend curve, settings slider integration. | Its simpler shader as the final material; use it as the starting point, not the ceiling. |
+| **macos-tahoe-liquid-kde** | Product checklist: Dock, launcher, menus, icons, installer, theme switching, distro pitfalls. | GPL code, KWin effect architecture, double-blur/translucency workarounds. |
+| **KDE Better Blur DX / Glass** | Shader ideas, per-window rules, refraction parameters, performance warnings. | GPL code; plugin architecture. |
+
+### 12.3 Staged plan
+
+| Stage | Goal | Work | Exit criteria |
+|---|---|---|---|
+| **0 — Rubric and harness** | Define "nearly perfect" and make it measurable. | Capture macOS Tahoe reference behavior (static, motion, adaptive, accessibility); add a material comparison harness and a scorecard. | A reviewer can compare a Dragonfruit capture to a Tahoe capture on the same rubric. |
+| **1 — Static fidelity** | Make the Dock, menu bar, and popovers look like Tahoe at rest. | P0 cleanup (one tint/rim owner), P2 lens (height field, Snell, dispersion, Fresnel, specular), P1 transparency slider, role presets. | Side-by-side at 1x/2x on pale/colorful/dark wallpapers; no visible difference at normal viewing distance. |
+| **2 — Coverage** | Every surface shares the material. | P4 client surface protocol + shape masks; P5 rollout to menu bar, popovers, OSD, notifications, Control Center, Settings/dialogs; fallback coverage. | No surface is a flat slab; arrows/cards have their own rim; no glass-on-glass. |
+| **3 — Dynamics** | The material feels alive, not painted. | Press/touch light, materialize (modulate lensing), morph between surfaces (Dock magnification, toolbar→menu), scroll-edge dissolve, pointer/velocity response. | Motion captures match Apple's response envelope within tolerance; reduced motion still works. |
+| **4 — Adaptivity** | The material responds to content. | Shadow opacity based on content, tint/dynamic range from the backdrop, small-element light/dark flip, large-element stability, ambient light spill. | Bright/dark/text/video backdrops stay legible; shadow and tint track content. |
+| **5 — Performance and accessibility** | Ship it. | Background cache, damage tracking, bounded quads, degrade tiers, reduced transparency/contrast/motion, 4K soak, native DRM captures. | 60 Hz at 4K; no allocation churn; no full-output damage; accessibility matrix passes. |
+
+### 12.4 Definition of "nearly perfect"
+
+Use this as the acceptance rubric. "Nearly perfect" does **not** mean
+bit-identical pixels; it means perceptually indistinguishable material
+behavior at normal viewing distance, with original code and assets.
+
+| Dimension | Acceptance |
+|---|---|
+| **Static lens** | The edge shows a compressed/magnified band, a single lit rim, a subtle inner shadow, and a flat interior. No halo, banding, double edge, or milky slab. |
+| **Tint** | The body tint adapts to the backdrop; text stays legible on pale, colorful, dark, and video backgrounds. No double tint. |
+| **Shadow** | The shadow deepens over text/busy content and recedes over solid light content; it reads as elevation, not a grey halo. |
+| **Materialize** | Surfaces appear by ramping lensing/light, not by a plain opacity cross-fade. |
+| **Motion/light** | Pressing glass lights it from the contact point; light spreads to nearby glass; the rim responds to geometry and pointer motion. |
+| **Morph** | A surface that changes size/role (Dock plate growing, toolbar menu opening) changes thickness/lensing/shadow smoothly, not by swapping two static looks. |
+| **Scroll edge** | Content dissolves under floating chrome; dark content triggers a dim or dark style; pinned accessory views use a hard edge. |
+| **Variants** | Regular (adaptive) and Clear (transparent + dimming) are distinct and never mixed on one surface. |
+| **Accessibility** | Reduced transparency makes it frostier; increased contrast makes it black/white with a contrasting border; reduced motion disables elastic/lensing motion. |
+| **Performance** | 60 Hz at 4K on the reference GPU; no full-output damage; no steady-state allocations; degrade tiers preserve the look. |
+| **Legal** | Original code and assets; BSD/MIT attribution where ported; no Apple assets. |
+
+### 12.5 First three moves for the Dock
+
+1. **Replace the frosted slab with a lens.** Do P0 (one tint/rim owner) and P2
+   (height-field/Snell lens) together, with a clear-glass preset. This is the
+   single biggest visual jump.
+2. **Add the transparency control.** Do P1 (`appearance.transparency`) with
+   Regular/Clear role presets, and wire it through settingsd, the shell, and
+   the compositor. This makes the material tunable without a rebuild.
+3. **Build the calibration harness before adding dynamics.** Capture the Dock
+   against macOS Tahoe on the rubric, then extend the same material to the
+   menu bar and popovers. Do not start Stage 3 until the static look is
+   accepted; dynamic effects on a wrong base only hide the problem.
+
+### 12.6 The decision
+
+**Stay compositor-native. Use Cutefish as the architectural template,
+hyprglass/ziuus as the optical references, KDE's Tahoe project as the
+product-completeness checklist, and Apple as the behavioral rubric.** Do not
+switch Dragonfruit to a KDE/Hyprland-style plugin architecture, and do not
+chase a static screenshot clone. The differentiator is a material that is
+correct at rest *and* alive in motion — which is exactly what owning the
+compositor lets Dragonfruit do.
+
+---
+
+## 13. Appendix — reading list
 
 ### Cutefish
 
@@ -1217,6 +1519,38 @@ will only make the wrong look adjustable.
 - `apps/settings/AppearancePane.qml` — slider placement.
 - `design-system/components/Slider.qml` — slider captions/API.
 - `docs/settings-keys.md` — the key table to update.
+
+### Study notes
+
+- [`hyprglass-study.md`](hyprglass-study.md) — source study, exact Tahoe
+  presets, alpha coverage field, caching model, and the Dragonfruit port plan.
+
+### Competitive references
+
+- Apple, **Meet Liquid Glass** (WWDC25):
+  <https://developer.apple.com/videos/play/wwdc2025/219/> — the lensing,
+  materialize, adaptivity, Regular/Clear, and accessibility principles.
+- Apple, **Human Interface Guidelines: Materials**:
+  <https://developer.apple.com/design/human-interface-guidelines/materials>.
+- **hyprglass** (BSD-3-Clause): <https://github.com/hyprnux/hyprglass> — the
+  closest open-source optical model.
+- **nothing-liquid** (GPL-3.0 scripts; hyprglass fork BSD-3-Clause):
+  <https://github.com/shlok-shinde/nothing-liquid> — touch light, clear/tinted,
+  per-panel presets, a complete Tahoe-style shell.
+- **ziuus/liquid-glass** (MIT): <https://github.com/ziuus/liquid-glass> —
+  plano-convex lens, Cauchy dispersion, Schlick Fresnel, bounded quads.
+- **macos-tahoe-liquid-kde** (GPL-3.0):
+  <https://github.com/lestercorderomurillo/macos-tahoe-liquid-kde> — the most
+  complete Tahoe desktop replica and a product-completeness checklist.
+- **Better Blur DX** (GPL-3.0):
+  <https://github.com/xarblu/kwin-effects-better-blur-dx> — KWin blur with
+  refraction, force blur, rounded corners.
+- **KWin Effects Glass** (GPL-3.0):
+  <https://github.com/4v3ngR/kwin-effects-glass> — Snell refraction and
+  per-part blur for KWin.
+- **Better Blur DX+** (GPL-3.0):
+  <https://github.com/slynobody/kwin-effects-better-blur-dx-plus> — the
+  "liquid" KWin variant with border/mouse highlights.
 
 ### Glossary
 
