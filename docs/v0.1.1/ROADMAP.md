@@ -42,8 +42,9 @@ done.
 - [x] T185 — T-21.1c Chrome SHM transport hygiene and frame pacing → [../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md](../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md) ⟵ accepted
 - [ ] T185a1 — T-21.1c close-out verification → [../tasks/0.1.1/185a1-t-21.1c-closeout-verify.md](../tasks/0.1.1/185a1-t-21.1c-closeout-verify.md)
 - [ ] T186a — T-21.1d GPU transport: capability probe and render-control spike → [../tasks/0.1.1/186a-t-21.1d-gpu-probe.md](../tasks/0.1.1/186a-t-21.1d-gpu-probe.md)
-- [ ] T186b — T-21.1d GPU transport: dmabuf export and Dock commit → [../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md](../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md)
-- [ ] T186c — T-21.1d GPU transport: rollout, stats, and docs → [../tasks/0.1.1/186c-t-21.1d-gpu-rollout.md](../tasks/0.1.1/186c-t-21.1d-gpu-rollout.md)
+- [ ] T186b — T-21.1d GPU transport: dmabuf export and single-buffer Dock commit → [../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md](../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md)
+- [ ] T186c — T-21.1d GPU transport: dmabuf ring, sync, and fallback → [../tasks/0.1.1/186c-t-21.1d-dmabuf-ring-sync.md](../tasks/0.1.1/186c-t-21.1d-dmabuf-ring-sync.md)
+- [ ] T186d — T-21.1d GPU transport: rollout, stats, and docs → [../tasks/0.1.1/186d-t-21.1d-gpu-rollout.md](../tasks/0.1.1/186d-t-21.1d-gpu-rollout.md)
 
 ## Phase 21.2 — Refresh-aware scheduling and material floor
 
@@ -53,27 +54,31 @@ done.
 - [ ] T188b — T-21.2b Per-output frame requests and timer arming → [../tasks/0.1.1/188b-t-21.2b-frame-requests.md](../tasks/0.1.1/188b-t-21.2b-frame-requests.md)
 - [ ] T188c — T-21.2b VRR, chrome callbacks, and mixed-refresh evidence → [../tasks/0.1.1/188c-t-21.2b-vrr-mixed-refresh.md](../tasks/0.1.1/188c-t-21.2b-vrr-mixed-refresh.md)
 - [ ] T189a — T-21.2c Persistent/transient role classification and per-role state → [../tasks/0.1.1/189a-t-21.2c-role-classification.md](../tasks/0.1.1/189a-t-21.2c-role-classification.md)
-- [ ] T189b — T-21.2c Shell per-role application and fallback coverage → [../tasks/0.1.1/189b-t-21.2c-shell-role-application.md](../tasks/0.1.1/189b-t-21.2c-shell-role-application.md)
-- [ ] T189c — T-21.2c Refresh-aware hysteresis and load tests → [../tasks/0.1.1/189c-t-21.2c-refresh-aware-hysteresis.md](../tasks/0.1.1/189c-t-21.2c-refresh-aware-hysteresis.md)
+- [ ] T189b — T-21.2c Shell per-role application: Dock and menu bar → [../tasks/0.1.1/189b-t-21.2c-shell-role-application.md](../tasks/0.1.1/189b-t-21.2c-shell-role-application.md)
+- [ ] T189c — T-21.2c Overlay and popover fallback coverage → [../tasks/0.1.1/189c-t-21.2c-overlay-fallback-coverage.md](../tasks/0.1.1/189c-t-21.2c-overlay-fallback-coverage.md)
+- [ ] T189d — T-21.2c Refresh-aware hysteresis and load tests → [../tasks/0.1.1/189d-t-21.2c-refresh-aware-hysteresis.md](../tasks/0.1.1/189d-t-21.2c-refresh-aware-hysteresis.md)
 
 ## Phase 21.3 — Panel-region material
 
 - [ ] T190a — T-21.3 Pure MaterialRegion helper → [../tasks/0.1.1/190a-t-21.3-material-region.md](../tasks/0.1.1/190a-t-21.3-material-region.md)
-- [ ] T190b — T-21.3 Region-sized scene render and stable IDs → [../tasks/0.1.1/190b-t-21.3-region-render.md](../tasks/0.1.1/190b-t-21.3-region-render.md)
-- [ ] T190c — T-21.3 Direct-scanout preservation and material counters → [../tasks/0.1.1/190c-t-21.3-scanout-and-counters.md](../tasks/0.1.1/190c-t-21.3-scanout-and-counters.md)
+- [ ] T190b — T-21.3 Region-sized scene render and caching → [../tasks/0.1.1/190b-t-21.3-region-render.md](../tasks/0.1.1/190b-t-21.3-region-render.md)
+- [ ] T190c — T-21.3 Stable scene/panel IDs and damage → [../tasks/0.1.1/190c-t-21.3-stable-ids-damage.md](../tasks/0.1.1/190c-t-21.3-stable-ids-damage.md)
+- [ ] T190d — T-21.3 Direct-scanout preservation and material counters → [../tasks/0.1.1/190d-t-21.3-scanout-and-counters.md](../tasks/0.1.1/190d-t-21.3-scanout-and-counters.md)
 
 ## Phase 21.4 — Native evidence and benchmarks
 
 - [ ] T191a — T-21.4a Native rebuild, diagnostics, and rollback → [../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md](../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md)
 - [ ] T191b — T-21.4a Native visual sweep and evidence boundary → [../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md](../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md)
-- [ ] T192a — T-21.4b GPU/chrome timing counters and benchmark harness → [../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md](../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md)
-- [ ] T192b — T-21.4b Baseline comparison and native benchmark rows → [../tasks/0.1.1/192b-t-21.4b-baseline-and-native.md](../tasks/0.1.1/192b-t-21.4b-baseline-and-native.md)
-- [ ] T192c — T-21.4b Presentation soak and final report → [../tasks/0.1.1/192c-t-21.4b-soak-and-report.md](../tasks/0.1.1/192c-t-21.4b-soak-and-report.md)
+- [ ] T192a — T-21.4b GPU/chrome timing counters → [../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md](../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md)
+- [ ] T192b — T-21.4b Benchmark script and nested scenario run → [../tasks/0.1.1/192b-t-21.4b-bench-harness.md](../tasks/0.1.1/192b-t-21.4b-bench-harness.md)
+- [ ] T192c — T-21.4b Baseline comparison and native benchmark rows → [../tasks/0.1.1/192c-t-21.4b-baseline-and-native.md](../tasks/0.1.1/192c-t-21.4b-baseline-and-native.md)
+- [ ] T192d — T-21.4b Presentation soak and final report → [../tasks/0.1.1/192d-t-21.4b-soak-and-report.md](../tasks/0.1.1/192d-t-21.4b-soak-and-report.md)
 
 ## Phase 21.5 — Release close-out
 
-- [ ] T193a — T-21.5 Regression matrix execution → [../tasks/0.1.1/193a-t-21.5-regression-matrix.md](../tasks/0.1.1/193a-t-21.5-regression-matrix.md)
-- [ ] T193b — T-21.5 Docs reconciliation and v0.1.1 close-out → [../tasks/0.1.1/193b-t-21.5-docs-and-closeout.md](../tasks/0.1.1/193b-t-21.5-docs-and-closeout.md)
+- [ ] T193a — T-21.5 Regression matrix: rendering and interactions → [../tasks/0.1.1/193a-t-21.5-regression-matrix.md](../tasks/0.1.1/193a-t-21.5-regression-matrix.md)
+- [ ] T193b — T-21.5 Regression matrix: performance and compatibility → [../tasks/0.1.1/193b-t-21.5-performance-compatibility-matrix.md](../tasks/0.1.1/193b-t-21.5-performance-compatibility-matrix.md)
+- [ ] T193c — T-21.5 Docs reconciliation and v0.1.1 close-out → [../tasks/0.1.1/193c-t-21.5-docs-and-closeout.md](../tasks/0.1.1/193c-t-21.5-docs-and-closeout.md)
 
 ## Release definition of done
 
@@ -84,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-04T05:51:40Z · 3/25 done
+**Pipeline status** — updated 2026-11-04T06:00:24Z · 3/30 done
 
 - Completed: T183, T184, T185
 - Blocked: none
 - Failed: none
-- Remaining: T185a1, T186a, T186b, T186c, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T190a, T190b, T190c, T191a, T191b, T192a, T192b, T192c, T193a, T193b
+- Remaining: T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
 - Last finished: T184 — done · Chrome now commits physical buffers with correct buffer-scale/viewport at 1x/1.5x/2x; unit, QML, visual, and e2e gates pass and nested captures are committed.
 <!-- /symphony:status -->
