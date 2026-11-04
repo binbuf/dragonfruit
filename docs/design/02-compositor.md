@@ -195,10 +195,11 @@ ladder.
   set a buffer scale or consume `wl_surface.frame` callbacks. This is on the
   critical path for every Dock/menu/popover frame, and it upscales chrome on
   fractional-scale outputs. The compositor's animation clock and degrade
-  budget are also fixed at 16 ms (60 Hz), with no per-output refresh deadline
-  or VRR awareness. Both are recorded as P0 gaps in [STATUS.md](STATUS.md)
-  (G-01/G-02) and are the next presentation work; they are not evidence that
-  the current material path is cheap enough on real hardware.
+  budget now follow the fastest active output's refresh period (T-21.2a), but
+  per-output presentation deadlines and VRR awareness remain. The shell
+  transport and the remaining refresh work are recorded as P0 gaps in
+  [STATUS.md](STATUS.md) (G-01/G-02); they are not evidence that the current
+  material path is cheap enough on real hardware.
 - Performance budgets are targets, not hopes — see
   [ROADMAP.md](../ROADMAP.md).
 
@@ -226,8 +227,14 @@ T-21.2a adds the pure per-output refresh model in `compositor/src/refresh.rs`
 (ADR [0198](adr/0198-per-output-refresh-model.md)): each output resolves its
 Smithay millihertz mode into a period and deadline, with a 60 Hz fallback when
 no mode is known and a 24–500 Hz clamp around the exact mode value. T187b wires
-the fastest active period into this clock and the degrade budget; animation
-progress remains monotonic elapsed time, not a tick count.
+the fastest active period into the clock and the degrade budget
+(ADR [0199](adr/0199-refresh-clock-wiring.md)): the clock stores the derived
+tick interval, output add/remove, mode/scale/transform changes, hotplug, and
+resume recompute it, and a live animation's timer is cancelled/re-armed only
+when the period actually changes. `DRAGONFRUIT_REFRESH_HZ` is a test-only
+override (absent from normal sessions); `animation stats` reports `interval_us`
+and a `refresh stats` line reports `refresh_hz`, `source`, and the deadline.
+Animation progress remains monotonic elapsed time, not a tick count.
 
 #### Idle and animation frame trace (T-03.1a)
 
@@ -262,8 +269,9 @@ condition to prove `direct_scanouts` engages for an unobstructed fullscreen
 client and not otherwise (`scanout stats`, `query scanout`). See
 [ADR 0010](adr/0010-latency-and-scanout-instruments.md). The DRM rail also
 records a per-output `presentation stats` line from the actual vblank interval
-(p50/p95/p99, `missed`, `refresh_hz`), so a 60 Hz animation on a 144 Hz panel
-can be judged against the real deadline instead of the CPU render duration
+(p50/p95/p99, `missed`, `budget_us`, `refresh_hz`, `source`), so a 60 Hz
+animation on a 144 Hz panel can be judged against the real deadline instead of
+the CPU render duration
 (implementation note in the [native-rendering audit](architecture-audit-native-rendering.md#92-no-presentation-interval-or-dropped-frame-instrument-implemented)).
 
 #### Window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore; T-02.3 zoom/fullscreen; T-02.4a close; T-02.4b interrupt)
@@ -578,14 +586,19 @@ untouched — the tier changes material geometry, never the scene mapping, so
 T-02 transitions render correctly at every tier.
 
 `DegradeController` selects the tier from rendered-frame durations against a
-frame budget (default `animation::FRAME_INTERVAL`, 16 ms; overridable with
-`DRAGONFRUIT_FRAME_BUDGET_US`) using an EMA plus hysteresis, so a stray spike
+frame budget. The budget is the fastest active output's refresh deadline
+(T-21.2a; 16.666 ms on a 60 Hz output, 6.944 ms on 144 Hz), falling back to
+`animation::FRAME_INTERVAL` before the first output mode is known.
+`DRAGONFRUIT_FRAME_BUDGET_US` or the synthetic `set degrade-budget` pins a
+diagnostic budget and is reported as `budget_source=env|manual`; otherwise the
+source is `refresh`. Selection uses an EMA plus hysteresis, so a stray spike
 cannot degrade the UI and a tier cannot oscillate. A tier can be pinned
 (`set degrade-tier` over the synthetic harness, or `set_degrade_tier`) for a
 deterministic test or feature. The selection never forces a redraw, so the
 idle trace stays flat. The state is reported on a `degrade stats` render-stats
 line and by `query degrade`. See
-[ADR 0015](adr/0015-material-degrade-tiers.md).
+[ADR 0015](adr/0015-material-degrade-tiers.md) and
+[ADR 0199](adr/0199-refresh-clock-wiring.md).
 
 ### Light/dark and reduced motion (T-04.4b)
 
@@ -789,8 +802,9 @@ presentation and a jittery cadence is not a slow frame. `held` is the honest
 verdict — at least one frame and neither kind of miss — and `query gesture` /
 the `gesture budget` stats line report it, plus the live T-04.4a `tier` the
 grid composes at, so a run can show the budget held *because* the material
-degraded. The default budget is `animation::FRAME_INTERVAL` (16 ms), the same
-knob the degrade controller selects against.
+degraded. The gesture trace keeps its own 16 ms 60 Hz verdict budget (T-05.6);
+the material degrade controller now follows the output refresh deadline
+(T-21.2a).
 
 The nested capture is `scripts/capture-overview.sh` +
 `scripts/capture-overview-driver.py`; the stills and per-gesture `query gesture`

@@ -124,6 +124,9 @@ use crate::window::{
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
+use dragonfruit_compositor::refresh::{
+    ModeRefresh, OutputRefresh, RefreshSchedule, RefreshSource, VrrState, ENV_REFRESH_HZ,
+};
 
 use smithay::input::pointer::Focus as PointerFocus;
 use smithay::input::pointer::GrabStartData;
@@ -176,21 +179,28 @@ pub struct PresentationStats {
     missed: u64,
     /// The output's current frame duration, in microseconds.
     budget_us: u32,
+    /// The refresh the budget was derived from, in millihertz.
+    refresh_mhz: u32,
+    /// Where the refresh came from (mode/fallback/override).
+    source: Option<RefreshSource>,
 }
 
 impl PresentationStats {
     /// Presentation intervals kept for the summary.
     pub const CAPACITY: usize = 4096;
 
-    /// Record one vblank interval for this output. `frame_duration` is the
-    /// current mode's refresh period; an interval over 1.5x it is a missed
-    /// deadline (the half-frame margin absorbs timestamp jitter).
-    pub fn record(&mut self, interval: Duration, frame_duration: Duration) {
+    /// Record one vblank interval for this output. `refresh` is the effective
+    /// output refresh (its deadline is the budget); an interval over 1.5x the
+    /// deadline is a missed frame (the half-frame margin absorbs timestamp
+    /// jitter).
+    pub fn record(&mut self, interval: Duration, refresh: OutputRefresh) {
         let interval_us = interval.as_micros().min(u128::from(u32::MAX)) as u32;
-        let budget_us = frame_duration.as_micros().min(u128::from(u32::MAX)) as u32;
+        let budget_us = refresh.deadline.as_micros().min(u128::from(u32::MAX)) as u32;
         self.samples_total += 1;
         self.max_us = self.max_us.max(interval_us);
         self.budget_us = budget_us;
+        self.refresh_mhz = refresh.refresh_mhz;
+        self.source = Some(refresh.source);
         if u64::from(interval_us) * 2 > u64::from(budget_us) * 3 {
             self.missed += 1;
         }
@@ -205,7 +215,8 @@ impl PresentationStats {
         let count = self.samples.len();
         if count == 0 {
             return "samples=0 samples_total=0 avg_us=0 p50_us=0 p95_us=0 \
-                    p99_us=0 max_us=0 window_max_us=0 missed=0 budget_us=0"
+                    p99_us=0 max_us=0 window_max_us=0 missed=0 budget_us=0 \
+                    refresh_hz=0.000 source=fallback"
                 .to_owned();
         }
         let mut intervals: Vec<u32> = self.samples.iter().copied().collect();
@@ -213,10 +224,12 @@ impl PresentationStats {
         let total: u64 = intervals.iter().map(|&us| u64::from(us)).sum();
         let avg_us = total / count as u64;
         let window_max_us = u64::from(*intervals.last().unwrap_or(&0));
+        let source = self.source.unwrap_or(RefreshSource::Fallback);
+        let refresh_hz = f64::from(self.refresh_mhz) / 1_000.0;
         format!(
             "samples={count} samples_total={} avg_us={avg_us} p50_us={} \
              p95_us={} p99_us={} max_us={} window_max_us={window_max_us} \
-             missed={} budget_us={}",
+             missed={} budget_us={} refresh_hz={refresh_hz:.3} source={}",
             self.samples_total,
             frame_percentile(&intervals, 50),
             frame_percentile(&intervals, 95),
@@ -224,6 +237,7 @@ impl PresentationStats {
             self.max_us,
             self.missed,
             self.budget_us,
+            source.as_str(),
         )
     }
 }
@@ -358,17 +372,18 @@ impl RenderStats {
 
     /// Record one output's actual vblank interval. Called by the DRM
     /// `frame_finish` only when a queued frame was submitted, so idle vblanks
-    /// do not pollute the interval ring.
+    /// do not pollute the interval ring. `refresh` is the effective refresh
+    /// (the output mode, or the diagnostic override when one is active).
     pub fn record_presentation(
         &mut self,
         output: &str,
         interval: Duration,
-        frame_duration: Duration,
+        refresh: OutputRefresh,
     ) {
         self.presentation
             .entry(output.to_owned())
             .or_default()
-            .record(interval, frame_duration);
+            .record(interval, refresh);
     }
 
     /// A one-line frame-timing summary for `dump_stats`.
@@ -633,6 +648,15 @@ pub struct DfState {
     /// The shared animation clock: frame interval, reduced-motion policy,
     /// the running-animation set, and the frame counters (T-02.1a).
     pub animation_clock: AnimationClock<DfState>,
+    /// Per-output refresh periods, keyed by output name (T-21.2a). The
+    /// fastest active period drives the animation tick and the degrade
+    /// budget; the schedule is recomputed on hotplug, mode/scale/transform
+    /// changes, and resume.
+    pub refresh_schedule: RefreshSchedule,
+    /// A test/diagnostic refresh override (`DRAGONFRUIT_REFRESH_HZ`), absent
+    /// from a normal session. When present it replaces the fastest active
+    /// output's period and reports `source=override`.
+    pub refresh_override: Option<OutputRefresh>,
     /// True while a single window-lifecycle motion driver is registered with
     /// the clock (T-02.2). The driver steps *every* window motion once per
     /// frame; without this guard, one registered closure per motion would
@@ -702,6 +726,32 @@ pub struct DfState {
     pub stats: RenderStats,
 }
 
+/// Read the test/diagnostic refresh override once at startup.
+///
+/// `DRAGONFRUIT_REFRESH_HZ` is absent from a normal session. A malformed or
+/// non-positive value is ignored with a log line rather than silently
+/// changing the clock, so the mode/fallback policy stays authoritative.
+fn refresh_override_from_env() -> Option<OutputRefresh> {
+    let value = std::env::var(ENV_REFRESH_HZ).ok()?;
+    match OutputRefresh::override_from_str(&value) {
+        Some(refresh) => {
+            eprintln!(
+                "dragonfruit-compositor: refresh override active \
+                 ({ENV_REFRESH_HZ}={value} -> {:.3} Hz, source=override)",
+                refresh.refresh_hz()
+            );
+            Some(refresh)
+        }
+        None => {
+            eprintln!(
+                "dragonfruit-compositor: ignoring invalid {ENV_REFRESH_HZ}={value:?} \
+                 (expected a positive Hz value)"
+            );
+            None
+        }
+    }
+}
+
 impl DfState {
     /// Create all protocol globals. Runs for every backend (FR-1).
     pub fn new(
@@ -752,6 +802,7 @@ impl DfState {
         let overview = OverviewMachine::new(input_settings.progress);
         let hot_corners = HotCornerDetector::new(input_settings.hot_corners);
         let shell = ShellProtocolState::new(display_handle);
+        let refresh_override = refresh_override_from_env();
 
         DfState {
             running: true,
@@ -822,6 +873,8 @@ impl DfState {
             hot_corner_timer: None,
             animation_timer: None,
             animation_clock: AnimationClock::new(),
+            refresh_schedule: RefreshSchedule::new(),
+            refresh_override,
             window_motion_driver: false,
             dock_tiles: HashMap::new(),
             pending_capture: None,
@@ -1260,9 +1313,84 @@ impl DfState {
         slots
     }
 
+    /// The refresh that currently drives the clock: the test/diagnostic
+    /// override when present, otherwise the fastest active output, otherwise
+    /// the 60 Hz fallback (T-21.2a).
+    pub fn effective_refresh(&self) -> OutputRefresh {
+        self.refresh_override
+            .unwrap_or_else(|| self.refresh_schedule.fastest_refresh())
+    }
+
+    /// The effective refresh for one output, used by `presentation stats`.
+    /// An active override applies to every output so the trace shows what the
+    /// clock and budget actually used.
+    pub fn refresh_for_output(&self, output: &str) -> OutputRefresh {
+        if let Some(refresh) = self.refresh_override {
+            return refresh;
+        }
+        self.refresh_schedule
+            .for_output(output)
+            .copied()
+            .unwrap_or_else(|| OutputRefresh::fallback(VrrState::Unknown))
+    }
+
+    /// Re-read every output's current mode into the schedule. Used on resume
+    /// and as the hotplug safety net.
+    pub fn recompute_refresh_schedule(&mut self) {
+        let outputs: Vec<(String, Option<ModeRefresh>)> = self
+            .space
+            .outputs()
+            .map(|output| {
+                (
+                    output.name(),
+                    output
+                        .current_mode()
+                        .map(|mode| ModeRefresh::new(mode.refresh)),
+                )
+            })
+            .collect();
+        self.refresh_schedule.clear();
+        for (name, mode) in outputs {
+            self.refresh_schedule.update(&name, mode);
+        }
+        self.sync_refresh_policy();
+    }
+
+    /// Recompute one output's mode and apply the resulting fastest period.
+    /// Called for add/remove, mode changes, and scale/transform changes (the
+    /// latter do not change the period but keep one recompute path).
+    pub fn on_output_mode_changed(&mut self, output: &Output) {
+        let mode = output
+            .current_mode()
+            .map(|mode| ModeRefresh::new(mode.refresh));
+        self.refresh_schedule.update(&output.name(), mode);
+        self.sync_refresh_policy();
+    }
+
+    /// Apply the current refresh policy: the animation clock owns the fastest
+    /// active period, and the degrade controller takes its budget from that
+    /// deadline. If the period changed while an animation is live, the timer
+    /// is cancelled and re-armed with the new interval (T-21.2a).
+    pub fn sync_refresh_policy(&mut self) {
+        let refresh = self.effective_refresh();
+        let interval = refresh.period;
+        let changed = self.animation_clock.frame_interval() != interval;
+        if changed {
+            self.animation_clock.set_frame_interval(interval);
+        }
+        self.degrade.set_budget_from_deadline(refresh.deadline);
+        if changed && self.animations_active() {
+            if let Some(token) = self.animation_timer.take() {
+                self.loop_handle.remove(token);
+            }
+            crate::input::schedule_animation_timer(self);
+        }
+    }
+
     /// Hotplug attach: a fresh Space list for the new output (FR-7).
     pub fn on_output_added(&mut self, output: &Output) {
         self.workspaces.add_output(&output.name());
+        self.on_output_mode_changed(output);
         self.reconfigure_layers();
     }
 
@@ -1272,6 +1400,7 @@ impl DfState {
     /// (T-16.2).
     pub fn on_output_removed(&mut self, output: &Output) {
         let removed = output.name();
+        self.refresh_schedule.remove(&removed);
         let primary = self
             .space
             .outputs()
@@ -1286,6 +1415,7 @@ impl DfState {
         self.workspaces.remove_output(&removed, primary.as_deref());
         self.after_workspace_change();
         self.reconfigure_layers();
+        self.sync_refresh_policy();
     }
 
     /// Re-home onto `primary` every window that was on the detached output
@@ -2539,6 +2669,10 @@ impl DfState {
         }
         self.needs_redraw = true;
         self.notify_activity();
+        // Modes may have changed while the machine slept; recompute the
+        // schedule and apply the (possibly new) fastest period before
+        // re-arming the clock (T-21.2a).
+        self.recompute_refresh_schedule();
         crate::input::schedule_animation_timer(self);
         true
     }
@@ -2574,8 +2708,20 @@ impl DfState {
     /// mutate the compositor state; any animation started mid-step is
     /// absorbed back into the live clock.
     pub fn step_animations(&mut self, now: u64) -> bool {
+        let interval = self.animation_clock.frame_interval();
         let mut clock = std::mem::take(&mut self.animation_clock);
+        clock.set_frame_interval(interval);
+        // The placeholder left by `take` starts at the default interval; give
+        // it the live interval so an `advance`-time mode change is the only
+        // thing that can alter it during the step.
+        self.animation_clock.set_frame_interval(interval);
         let active = clock.step(self, now);
+        // An animation's `advance` may change an output mode; preserve any
+        // interval update made on the placeholder clock during the step.
+        let updated_interval = self.animation_clock.frame_interval();
+        if updated_interval != interval {
+            clock.set_frame_interval(updated_interval);
+        }
         clock.absorb(&mut self.animation_clock);
         self.animation_clock = clock;
         active
@@ -2841,7 +2987,9 @@ impl DfState {
     }
 
     /// Set the frame budget the degrade controller selects against (T-04.4a),
-    /// in microseconds. Does not itself change the tier.
+    /// in microseconds. This is a manual diagnostic override: it is recorded
+    /// as `budget_source=manual` and the output refresh deadline no longer
+    /// replaces it. Does not itself change the tier.
     pub fn set_degrade_budget_us(&mut self, budget_us: u32) {
         self.degrade.set_budget_us(budget_us);
     }
@@ -2937,11 +3085,29 @@ impl DfState {
         println!(
             "dragonfruit-compositor: animation stats ({label}): \
              frames_stepped={} animations_started={} animations_completed={} \
-             reduced_motion={}",
+             reduced_motion={} interval_us={}",
             self.animation_clock.frames_stepped(),
             self.animation_clock.animations_started(),
             self.animation_clock.animations_completed(),
             self.animation_clock.reduced_motion(),
+            self.animation_clock.frame_interval().as_micros(),
+        );
+        // Refresh policy (T-21.2a): the effective refresh that drives the
+        // animation tick and degrade budget. On nested/headless there is no
+        // hardware vblank, so this line is the derived-interval evidence the
+        // 144 Hz trace records; `presentation stats` carries the same value
+        // per DRM output.
+        let refresh = self.effective_refresh();
+        println!(
+            "dragonfruit-compositor: refresh stats ({label}): \
+             refresh_hz={:.3} source={} interval_us={} deadline_us={} \
+             outputs={} override={}",
+            refresh.refresh_hz(),
+            refresh.source.as_str(),
+            refresh.period.as_micros(),
+            refresh.deadline.as_micros(),
+            self.refresh_schedule.len(),
+            self.refresh_override.is_some() as u32,
         );
         // Backdrop material pass (T-04.2): `backdrop_passes` is the number of
         // output-frames that applied the chrome backdrop and `backdrop_skipped`
@@ -4067,15 +4233,12 @@ impl CompositorHandler for DfState {
                             // Some(None) = a dmabuf import.
                             Some(None)
                         } else {
-                            smithay::wayland::shm::with_buffer_contents(
-                                buffer,
-                                |_, _, data| {
-                                    let stride = u64::try_from(data.stride).unwrap_or(0);
-                                    let height = u64::try_from(data.height).unwrap_or(0);
-                                    // Some(Some(bytes)) = a shm import.
-                                    Some(Some(stride.saturating_mul(height)))
-                                },
-                            )
+                            smithay::wayland::shm::with_buffer_contents(buffer, |_, _, data| {
+                                let stride = u64::try_from(data.stride).unwrap_or(0);
+                                let height = u64::try_from(data.height).unwrap_or(0);
+                                // Some(Some(bytes)) = a shm import.
+                                Some(Some(stride.saturating_mul(height)))
+                            })
                             .ok()
                             .flatten()
                         }
@@ -4946,27 +5109,31 @@ mod tests {
     #[test]
     fn presentation_stats_count_missed_deadlines() {
         let mut stats = PresentationStats::default();
+        let refresh = OutputRefresh::from_mhz(143_999, RefreshSource::Mode, VrrState::Unknown);
         for _ in 0..10 {
-            stats.record(Duration::from_micros(6_944), Duration::from_micros(6_944));
+            stats.record(Duration::from_micros(6_944), refresh);
         }
         assert_eq!(field(&stats.summary(), "missed"), "0");
 
         for _ in 0..5 {
-            stats.record(Duration::from_millis(20), Duration::from_micros(6_944));
+            stats.record(Duration::from_millis(20), refresh);
         }
         let summary = stats.summary();
         assert_eq!(field(&summary, "samples"), "15");
         assert_eq!(field(&summary, "samples_total"), "15");
         assert_eq!(field(&summary, "missed"), "5");
         assert_eq!(field(&summary, "budget_us"), "6944");
+        assert_eq!(field(&summary, "refresh_hz"), "143.999");
+        assert_eq!(field(&summary, "source"), "mode");
         assert_eq!(field(&summary, "max_us"), "20000");
     }
 
     #[test]
     fn presentation_stats_percentiles_describe_the_window() {
         let mut stats = PresentationStats::default();
+        let refresh = OutputRefresh::from_mhz(100_000, RefreshSource::Mode, VrrState::Unknown);
         for millis in 1..=100 {
-            stats.record(Duration::from_millis(millis), Duration::from_millis(10));
+            stats.record(Duration::from_millis(millis), refresh);
         }
         let summary = stats.summary();
         assert_eq!(field(&summary, "samples"), "100");
@@ -4975,7 +5142,19 @@ mod tests {
         assert_eq!(field(&summary, "p95_us"), "95000");
         assert_eq!(field(&summary, "p99_us"), "99000");
         assert_eq!(field(&summary, "max_us"), "100000");
+        assert_eq!(field(&summary, "refresh_hz"), "100.000");
         // Over 1.5x the 10 ms budget: 16..=100 ms is 85 intervals.
         assert_eq!(field(&summary, "missed"), "85");
+    }
+
+    #[test]
+    fn presentation_stats_record_the_override_source() {
+        let mut stats = PresentationStats::default();
+        let refresh = OutputRefresh::override_from_str("144").expect("valid override");
+        stats.record(Duration::from_micros(6_944), refresh);
+        let summary = stats.summary();
+        assert_eq!(field(&summary, "refresh_hz"), "144.000");
+        assert_eq!(field(&summary, "source"), "override");
+        assert_eq!(field(&summary, "budget_us"), "6944");
     }
 }

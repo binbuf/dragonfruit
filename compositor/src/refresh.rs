@@ -38,6 +38,11 @@ pub const MIN_REFRESH_MHZ: u32 = 24_000;
 /// Highest refresh the model accepts (500 Hz).
 pub const MAX_REFRESH_MHZ: u32 = 500_000;
 
+/// Test/diagnostic override for the animation tick and degrade budget, in Hz.
+/// Unset in a normal session; nested/headless tests set `60`, `120`, `144`, or
+/// `240` to exercise the table without hardware.
+pub const ENV_REFRESH_HZ: &str = "DRAGONFRUIT_REFRESH_HZ";
+
 /// Where an [`OutputRefresh`] value came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshSource {
@@ -148,6 +153,26 @@ impl OutputRefresh {
     pub fn refresh_hz(&self) -> f64 {
         f64::from(self.refresh_mhz) / 1_000.0
     }
+
+    /// A test/diagnostic override from a refresh in Hz. Non-finite and
+    /// non-positive values are rejected; a valid value is clamped by the same
+    /// 24–500 Hz policy as a mode and reports [`RefreshSource::Override`].
+    pub fn override_from_hz(hz: f64) -> Option<Self> {
+        if !hz.is_finite() || hz <= 0.0 {
+            return None;
+        }
+        let mhz = (hz * 1_000.0).round().clamp(1.0, f64::from(i32::MAX)) as i32;
+        Some(Self::from_mhz(
+            mhz,
+            RefreshSource::Override,
+            VrrState::Unknown,
+        ))
+    }
+
+    /// Parse `DRAGONFRUIT_REFRESH_HZ` (a decimal Hz value).
+    pub fn override_from_str(value: &str) -> Option<Self> {
+        Self::override_from_hz(value.trim().parse::<f64>().ok()?)
+    }
 }
 
 /// One period in nanoseconds from a millihertz refresh. The caller guarantees
@@ -195,14 +220,26 @@ impl RefreshSchedule {
         self.outputs.clear();
     }
 
+    /// The output with the shortest active period, or `None` for an empty
+    /// schedule. Ties resolve by output name because the map is ordered.
+    pub fn fastest(&self) -> Option<&OutputRefresh> {
+        self.outputs.values().min_by_key(|refresh| refresh.period)
+    }
+
     /// The shortest active period, or the 60 Hz fallback when the schedule is
     /// empty. Ties resolve by output name because the map is ordered.
     pub fn fastest_period(&self) -> Duration {
-        self.outputs
-            .values()
+        self.fastest()
             .map(|refresh| refresh.period)
-            .min()
             .unwrap_or(FALLBACK_PERIOD)
+    }
+
+    /// The resolved refresh that drives the clock: the fastest active output,
+    /// or the 60 Hz fallback for an empty schedule.
+    pub fn fastest_refresh(&self) -> OutputRefresh {
+        self.fastest()
+            .copied()
+            .unwrap_or_else(|| OutputRefresh::fallback(VrrState::Unknown))
     }
 
     /// One output's resolved refresh.
@@ -394,5 +431,53 @@ mod tests {
             OutputRefresh::from_mhz(120_000, RefreshSource::Override, VrrState::Unknown);
         assert_eq!(overridden.source, RefreshSource::Override);
         assert_ms(overridden.period, 8.333);
+    }
+
+    #[test]
+    fn the_test_override_covers_the_60_120_144_240_table() {
+        let table = [
+            ("60", 60_000, 16.667),
+            ("120", 120_000, 8.333),
+            ("144", 144_000, 6.944),
+            ("240", 240_000, 4.167),
+            // A real panel value keeps its exact millihertz period.
+            ("143.999", 143_999, 6.944),
+        ];
+        for (text, expected_mhz, expected_ms) in table {
+            let refresh = OutputRefresh::override_from_str(text)
+                .unwrap_or_else(|| panic!("{text:?} should parse"));
+            assert_eq!(refresh.refresh_mhz, expected_mhz);
+            assert_eq!(refresh.source, RefreshSource::Override);
+            assert_ms(refresh.period, expected_ms);
+            assert_eq!(refresh.deadline, refresh.period);
+        }
+
+        // Invalid values are ignored (a normal session keeps the mode policy).
+        for invalid in ["", "0", "-1", "nan", "inf", "fast"] {
+            assert_eq!(
+                OutputRefresh::override_from_str(invalid),
+                None,
+                "{invalid:?} must not install an override"
+            );
+        }
+    }
+
+    #[test]
+    fn fastest_refresh_carries_the_source_of_the_shortest_period() {
+        let mut schedule = RefreshSchedule::new();
+        let empty = schedule.fastest_refresh();
+        assert_eq!(empty.source, RefreshSource::Fallback);
+        assert_eq!(empty.period, FALLBACK_PERIOD);
+
+        schedule.update("DP-1", Some(ModeRefresh::new(60_000)));
+        schedule.update("eDP-1", Some(ModeRefresh::new(143_999)));
+        let fastest = schedule.fastest_refresh();
+        assert_eq!(fastest.source, RefreshSource::Mode);
+        assert_eq!(fastest.refresh_mhz, 143_999);
+        assert_eq!(fastest.period, Duration::from_nanos(6_944_492));
+        assert_eq!(schedule.fastest_period(), fastest.period);
+
+        schedule.update("HDMI-A-1", None);
+        assert_eq!(schedule.fastest_refresh().refresh_mhz, 143_999);
     }
 }

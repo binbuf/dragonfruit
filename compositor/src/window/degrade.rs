@@ -49,6 +49,34 @@ const RECOVERY_RATIO: f64 = 0.75;
 const MIN_BUDGET_US: u32 = 1_000;
 const MAX_BUDGET_US: u32 = 100_000;
 
+/// Where the controller's frame budget came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BudgetSource {
+    /// The fastest active output's refresh deadline (the normal policy).
+    #[default]
+    Refresh,
+    /// `DRAGONFRUIT_FRAME_BUDGET_US` (diagnostic/test override).
+    Env,
+    /// `set degrade-budget` / [`DegradeController::set_budget_us`] (manual).
+    Manual,
+}
+
+impl BudgetSource {
+    /// The stable token reported on the degrade stats line.
+    pub const fn name(self) -> &'static str {
+        match self {
+            BudgetSource::Refresh => "refresh",
+            BudgetSource::Env => "env",
+            BudgetSource::Manual => "manual",
+        }
+    }
+
+    /// Whether this source pins the budget against the refresh deadline.
+    pub const fn is_override(self) -> bool {
+        !matches!(self, BudgetSource::Refresh)
+    }
+}
+
 /// The environment variable that overrides the frame budget, in microseconds.
 /// Unset in a normal session; a nested/DRM acceptance run can pin it.
 pub const ENV_FRAME_BUDGET_US: &str = "DRAGONFRUIT_FRAME_BUDGET_US";
@@ -327,6 +355,9 @@ pub struct DegradeController {
     tier: DegradeTier,
     forced: Option<DegradeTier>,
     budget_us: u32,
+    /// Where `budget_us` came from. A non-refresh source pins the budget so
+    /// the output refresh deadline cannot overwrite a diagnostic override.
+    budget_source: BudgetSource,
     ema_us: f64,
     samples: u64,
     over_budget_streak: u32,
@@ -345,15 +376,23 @@ impl Default for DegradeController {
 
 impl DegradeController {
     /// A controller at [`Full`] with the default budget
-    /// ([`animation::FRAME_INTERVAL`]), overridable through
-    /// [`ENV_FRAME_BUDGET_US`].
+    /// ([`animation::FRAME_INTERVAL`]) until the output refresh deadline is
+    /// wired, overridable through [`ENV_FRAME_BUDGET_US`].
     pub fn new() -> Self {
-        let budget_us = std::env::var(ENV_FRAME_BUDGET_US)
+        let env_budget = std::env::var(ENV_FRAME_BUDGET_US)
             .ok()
-            .and_then(|value| value.parse::<u32>().ok())
-            .unwrap_or(FRAME_INTERVAL.as_micros() as u32)
-            .clamp(MIN_BUDGET_US, MAX_BUDGET_US);
-        Self::with_budget_us(budget_us)
+            .and_then(|value| value.parse::<u32>().ok());
+        let mut controller =
+            Self::with_budget_us(env_budget.unwrap_or(FRAME_INTERVAL.as_micros() as u32));
+        if env_budget.is_some() {
+            controller.budget_source = BudgetSource::Env;
+            eprintln!(
+                "dragonfruit-compositor: frame budget override active \
+                 ({ENV_FRAME_BUDGET_US}={}us); the output deadline will not replace it",
+                controller.budget_us
+            );
+        }
+        controller
     }
 
     /// A controller at [`Full`] with an explicit budget.
@@ -362,6 +401,7 @@ impl DegradeController {
             tier: DegradeTier::Full,
             forced: None,
             budget_us: budget_us.clamp(MIN_BUDGET_US, MAX_BUDGET_US),
+            budget_source: BudgetSource::Refresh,
             ema_us: 0.0,
             samples: 0,
             over_budget_streak: 0,
@@ -388,10 +428,28 @@ impl DegradeController {
         self.budget_us
     }
 
-    /// Set the frame budget. Does not change the tier; the next observations
-    /// decide. Clamped to a sane range.
+    /// Where the current budget came from.
+    pub fn budget_source(&self) -> BudgetSource {
+        self.budget_source
+    }
+
+    /// Set the frame budget manually. This pins it as a diagnostic override:
+    /// later output refresh changes do not replace it. Does not change the
+    /// tier; the next observations decide. Clamped to a sane range.
     pub fn set_budget_us(&mut self, budget_us: u32) {
         self.budget_us = budget_us.clamp(MIN_BUDGET_US, MAX_BUDGET_US);
+        self.budget_source = BudgetSource::Manual;
+    }
+
+    /// Set the budget from the fastest active output's refresh deadline. A
+    /// diagnostic override (environment or manual) wins, so an acceptance run
+    /// can pin a budget without the clock policy overwriting it.
+    pub fn set_budget_from_deadline(&mut self, deadline: Duration) {
+        if self.budget_source.is_override() {
+            return;
+        }
+        let us = deadline.as_micros().min(u128::from(u32::MAX)) as u32;
+        self.budget_us = us.clamp(MIN_BUDGET_US, MAX_BUDGET_US);
     }
 
     /// Pin the tier, suspending automatic selection. Used by a test or by a
@@ -479,7 +537,7 @@ impl DegradeController {
     pub fn summary(&self) -> String {
         format!(
             "tier={} forced={} budget_us={} samples={} over_budget={} downgrades={} \
-             upgrades={} tiers=full:{},reduced:{},minimal:{}",
+             upgrades={} tiers=full:{},reduced:{},minimal:{} budget_source={}",
             self.tier.name(),
             self.forced.is_some() as u32,
             self.budget_us,
@@ -490,6 +548,7 @@ impl DegradeController {
             self.tier_frames[DegradeTier::Full.index()],
             self.tier_frames[DegradeTier::Reduced.index()],
             self.tier_frames[DegradeTier::Minimal.index()],
+            self.budget_source.name(),
         )
     }
 
@@ -714,10 +773,43 @@ mod tests {
     fn the_budget_is_selectable_and_clamped() {
         let mut controller = DegradeController::with_budget_us(20_000);
         assert_eq!(controller.budget_us(), 20_000);
+        assert_eq!(controller.budget_source(), BudgetSource::Refresh);
         controller.set_budget_us(0);
         assert_eq!(controller.budget_us(), MIN_BUDGET_US);
         controller.set_budget_us(u32::MAX);
         assert_eq!(controller.budget_us(), MAX_BUDGET_US);
+        assert_eq!(controller.budget_source(), BudgetSource::Manual);
+    }
+
+    #[test]
+    fn the_refresh_deadline_sets_the_budget_until_an_override_pins_it() {
+        let mut controller = DegradeController::with_budget_us(16_000);
+
+        // A 144 Hz output's deadline is 6.944 ms.
+        controller.set_budget_from_deadline(Duration::from_nanos(6_944_444));
+        assert_eq!(controller.budget_us(), 6_944);
+        assert_eq!(controller.budget_source(), BudgetSource::Refresh);
+
+        // A later mode change follows the new deadline.
+        controller.set_budget_from_deadline(Duration::from_nanos(16_666_666));
+        assert_eq!(controller.budget_us(), 16_666);
+
+        // A manual diagnostic override wins and is recorded.
+        controller.set_budget_us(12_000);
+        controller.set_budget_from_deadline(Duration::from_nanos(4_166_666));
+        assert_eq!(controller.budget_us(), 12_000);
+        assert_eq!(controller.budget_source(), BudgetSource::Manual);
+        assert!(controller.summary().contains("budget_source=manual"));
+    }
+
+    #[test]
+    fn an_env_budget_pins_the_deadline_like_a_manual_override() {
+        let mut controller = DegradeController::with_budget_us(12_000);
+        controller.budget_source = BudgetSource::Env;
+        controller.set_budget_from_deadline(Duration::from_nanos(6_944_444));
+        assert_eq!(controller.budget_us(), 12_000);
+        assert_eq!(controller.budget_source(), BudgetSource::Env);
+        assert!(controller.summary().contains("budget_source=env"));
     }
 
     #[test]
@@ -734,6 +826,7 @@ mod tests {
             "downgrades=0",
             "upgrades=0",
             "tiers=full:3,reduced:0,minimal:0",
+            "budget_source=refresh",
         ] {
             assert!(summary.contains(field), "missing {field:?} in {summary:?}");
         }

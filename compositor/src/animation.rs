@@ -27,8 +27,9 @@ use std::time::Duration;
 
 use crate::design_tokens::Motion;
 
-/// The animation frame interval (~60 Hz). One compositor frame is rendered
-/// per elapsed interval while an animation is live.
+/// The default animation frame interval (~60 Hz) used before an output mode is
+/// known. Once the refresh schedule has an output, the clock's tick interval is
+/// the fastest active period instead (T-21.2a).
 pub const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
 /// Evaluate a cubic-bezier easing curve `[x1, y1, x2, y2]` at `t` in
@@ -200,6 +201,10 @@ impl<S> Animation<S> for TweenAnimation {
 /// [`Self::step`] once and renders once.
 pub struct AnimationClock<S> {
     animations: Vec<Box<dyn Animation<S>>>,
+    /// Current tick interval, derived from the fastest active output's
+    /// refresh period (T-21.2a). [`FRAME_INTERVAL`] until an output mode is
+    /// known.
+    frame_interval: Duration,
     reduced_motion: bool,
     frames_stepped: u64,
     animations_started: u64,
@@ -216,6 +221,7 @@ impl<S> AnimationClock<S> {
     pub fn new() -> Self {
         AnimationClock {
             animations: Vec::new(),
+            frame_interval: FRAME_INTERVAL,
             reduced_motion: false,
             frames_stepped: 0,
             animations_started: 0,
@@ -223,10 +229,20 @@ impl<S> AnimationClock<S> {
         }
     }
 
-    /// The animation frame interval (fixed at [`FRAME_INTERVAL`] today; a
-    /// settable interval is the output-refresh-rate hook for T-16).
+    /// The current animation frame interval. It starts at [`FRAME_INTERVAL`]
+    /// and is set from `RefreshSchedule::fastest_period()` once an output mode
+    /// is known (T-21.2a). Animation progress itself stays on monotonic
+    /// elapsed time; only the tick cadence changes.
     pub fn frame_interval(&self) -> Duration {
-        FRAME_INTERVAL
+        self.frame_interval
+    }
+
+    /// Replace the tick interval. A zero interval is ignored so a bad mode
+    /// can never make the timer spin.
+    pub fn set_frame_interval(&mut self, interval: Duration) {
+        if !interval.is_zero() {
+            self.frame_interval = interval;
+        }
     }
 
     /// The shared reduced-motion flag (`accessibility.reduceMotion`, T-08).
@@ -388,5 +404,22 @@ mod tests {
         assert!(!clock.is_active());
         assert_eq!(clock.frames_stepped(), 0);
         assert_eq!(clock.animations_started(), 0);
+    }
+
+    #[test]
+    fn the_clock_owns_the_derived_tick_interval() {
+        let mut clock: AnimationClock<u32> = AnimationClock::new();
+        assert_eq!(
+            clock.frame_interval(),
+            FRAME_INTERVAL,
+            "the pre-output default stays the 16 ms fallback"
+        );
+
+        clock.set_frame_interval(Duration::from_nanos(6_944_444));
+        assert_eq!(clock.frame_interval(), Duration::from_nanos(6_944_444));
+
+        // A zero interval is ignored: a bad mode never makes the timer spin.
+        clock.set_frame_interval(Duration::ZERO);
+        assert_eq!(clock.frame_interval(), Duration::from_nanos(6_944_444));
     }
 }

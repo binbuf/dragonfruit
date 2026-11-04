@@ -2240,6 +2240,10 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
         // re-lays-out at the new size (T-16.3b). The ack below carries the
         // new geometry/scale to the shell.
         if geometry_changed {
+            // Mode/scale/transform changes all recompute the refresh policy;
+            // only a mode changes the period, but one path keeps the clock and
+            // degrade budget in step (T-21.2a).
+            state.on_output_mode_changed(&output);
             state.reconfigure_layers();
         }
         // Ack with the applied properties.

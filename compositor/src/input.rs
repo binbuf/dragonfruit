@@ -1011,10 +1011,12 @@ fn poll_hot_corner(state: &mut DfState) {
 }
 
 /// Arm the shared animation clock while any compositor transition is in
-/// flight (T-02.1a). One reusable ~16 ms timer advances the overview's
-/// discrete progress and every registered animation exactly one frame, then
-/// re-arms until nothing is live. When nothing animates the timer is not
-/// armed at all — zero damage, zero client wakeups (FR-2).
+/// flight (T-02.1a). One reusable timer advances the overview's discrete
+/// progress and every registered animation exactly one frame, then re-arms
+/// until nothing is live. The interval is the clock's current tick, derived
+/// from the fastest active output's refresh period (T-21.2a). When nothing
+/// animates the timer is not armed at all — zero damage, zero client wakeups
+/// (FR-2).
 pub(crate) fn schedule_animation_timer(state: &mut DfState) {
     if state.suspend.is_suspended() {
         // A suspended session produces no frames; `resume_session` re-arms
@@ -1024,14 +1026,14 @@ pub(crate) fn schedule_animation_timer(state: &mut DfState) {
     if state.animation_timer.is_some() || !state.animations_active() {
         return;
     }
-    match state.loop_handle.insert_source(
-        Timer::from_duration(crate::animation::FRAME_INTERVAL),
-        |_, _, state| {
+    let interval = state.animation_clock.frame_interval();
+    match state
+        .loop_handle
+        .insert_source(Timer::from_duration(interval), |_, _, state| {
             state.animation_timer = None;
             poll_animations(state);
             TimeoutAction::Drop
-        },
-    ) {
+        }) {
         Ok(token) => state.animation_timer = Some(token),
         Err(err) => eprintln!("dragonfruit-compositor: failed to arm animation timer: {err}"),
     }
@@ -1043,8 +1045,8 @@ pub(crate) fn schedule_animation_timer(state: &mut DfState) {
 /// The overview's discrete transition (keyboard/hot-corner/shell) shares the
 /// pipeline a gesture drives and is advanced here; registered animations
 /// (T-02.1b onward) are advanced through [`DfState::step_animations`]. One
-/// tick always requests exactly one redraw, and the timer re-arms only while
-/// something is still live.
+/// tick always requests exactly one redraw, and the timer re-arms with the
+/// clock's current interval only while something is still live.
 fn poll_animations(state: &mut DfState) {
     let now = state.now_msec();
     if state.overview.is_discrete() {

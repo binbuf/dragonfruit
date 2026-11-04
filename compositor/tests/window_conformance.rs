@@ -3751,11 +3751,12 @@ fn material_degrade_tiers_select_and_transitions_stay_correct() {
     let input = SyntheticInput::connect(&synthetic_path);
     let (conn, mut queue, mut state) = connect(&proc.socket_path);
 
-    // The default selection is Full, unpinned, against the 16 ms frame budget.
+    // The default selection is Full, unpinned, against the headless output's
+    // 60 Hz deadline (16.666 ms -> 16666 us).
     let report = parse_degrade(&input.query("query degrade"));
     assert_eq!(report.tier, "full");
     assert!(!report.forced);
-    assert_eq!(report.budget_us, 16_000);
+    assert_eq!(report.budget_us, 16_666);
     assert_eq!(report.downgrades, 0);
     assert_eq!(report.upgrades, 0);
 
