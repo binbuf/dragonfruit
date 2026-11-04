@@ -299,7 +299,11 @@ def main():
 
     try:
         # Let the shell finish its startup commits before the baseline dump.
+        # The extra second absorbs a host-driven focus/redraw (the nested
+        # window being mapped or maximized), so the idle interval below starts
+        # from a quiescent compositor rather than counting that one-off wake.
         time.sleep(1.5)
+        time.sleep(1.0)
         snapshot("baseline")
 
         # 1. Idle: five seconds with no synthetic input.
@@ -330,8 +334,10 @@ def main():
         wait_for(lambda: len(synth.identities()) >= 4, 8.0, "two X11 windows")
         time.sleep(1.5)
         snapshot("dock-popover-open")
-        # Empty Dock plate space dismisses the popover (T-10 section 13).
-        synth.click(705, DOCK_Y)
+        # Click-away on empty desktop space dismisses the popover (T-10
+        # section 13). Keep the click outside the Dock plate so a widened or
+        # reordered Dock cannot turn the dismissal into an app launch.
+        synth.click(100, 600)
         time.sleep(0.8)
         snapshot("dock-popover-close")
 
@@ -361,7 +367,9 @@ def main():
         # 7. Live-visual stills, after the measured scenarios. The capture
         # itself goes through the compositor's trusted screenshot path.
         if not args.skip_visual:
-            synth.click(960, 600)
+            # Focus the desktop/chrome, not whatever window happens to sit at
+            # the output centre, before the screenshot chord.
+            synth.click(100, 600)
             time.sleep(0.4)
             # Dock visible at rest, then a second slow sweep.
             synth.motion(960, DOCK_Y)

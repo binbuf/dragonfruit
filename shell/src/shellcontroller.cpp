@@ -1488,6 +1488,39 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         QTimer::singleShot(1500, this, &ShellController::startScreenshotFixture);
     }
 
+    // Capture/demo seam (T-21.1c close-out): ask the compositor to render the
+    // output straight to a PNG after a delay, without the selection overlay.
+    // The value is `<delay-ms>:<path>`; the capture uses the primary output's
+    // logical geometry. This is how the transport close-out records a live
+    // frame while the Dock is moving on a host that throttles the nested
+    // window. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_SCREENSHOT_CAPTURE_FIXTURE")) {
+        const QString spec = qEnvironmentVariable("DF_SCREENSHOT_CAPTURE_FIXTURE");
+        const qsizetype separator = spec.indexOf(QLatin1Char(':'));
+        const int delay = (separator > 0 ? spec.left(separator) : QStringLiteral("3000"))
+                              .toInt();
+        const QString path = separator > 0 ? spec.mid(separator + 1) : spec;
+        const int interval = qEnvironmentVariableIntValue(
+            "DF_SCREENSHOT_CAPTURE_INTERVAL_MS");
+        auto capture = [this, path]() {
+            if (!m_protocol || path.isEmpty())
+                return;
+            const QRect rect = m_protocol->primaryOutputGeometry();
+            if (rect.isEmpty())
+                return;
+            m_protocol->captureScreenshot(path, rect.x(), rect.y(), rect.width(),
+                                          rect.height(), QStringLiteral("fullscreen"));
+        };
+        if (interval > 0) {
+            auto *timer = new QTimer(this);
+            timer->setInterval(interval);
+            connect(timer, &QTimer::timeout, this, capture);
+            QTimer::singleShot(qMax(0, delay), this, [timer]() { timer->start(); });
+        } else {
+            QTimer::singleShot(qMax(0, delay), this, capture);
+        }
+    }
+
     // Capture/demo seam (T-13.4a): present the ScreenCast source picker once
     // the chrome is up so the live visual check can capture it with no portal
     // caller. `DF_SCREENCAST_FIXTURE` is `monitors`/`windows`/`1` (empty/`1` =

@@ -53,7 +53,15 @@ The remaining transport work is the GPU/dmabuf path (T186); the pooled shm path
 is its fallback ([ADR 0191](adr/0191-chrome-transport-render-control-and-shm-fallback.md),
 [ADR 0193](adr/0193-chrome-frame-producer-pooled-shm-pacing.md)). Per-output
 shell scenes with different scales on one desktop remain a follow-up; a chrome
-surface shares one scale.
+surface shares one scale. The T-21.1c close-out also retired the old
+`FrameCommitGate` double-render workaround: no runtime path used it after the
+`ChromeFrameProducer` conversion. On a host that does not present the nested
+window at 60 Hz the counted 100 ms safety tick keeps the shell live; that is
+visible as `fallback_renders` in `chrome stats` and is a host limitation, not a
+transport fallback. The close-out lock smoke test used the system menu because
+the synthetic input harness on that host did not set the Meta modifier for the
+`Cmd+Ctrl+Q` chord; the lock surface itself mapped and accepted typed keys
+(`docs/captures/t21-chrome-lock.png`).
 
 **Chrome materials (T-20.3).** Every one of these surfaces is
 [a compositor-material surface](../design/02-compositor.md#backdrop-blur-pass-t-042),

@@ -61,6 +61,8 @@ void ScreenshotBridge::checkService()
     QDBusConnection bus = QDBusConnection::sessionBus();
     QDBusConnectionInterface *iface = bus.interface();
     m_serviceAvailable = iface && iface->isServiceRegistered(kService);
+    qInfo() << "shell: screenshot portal available" << m_serviceAvailable
+            << bus.baseService();
 #else
     m_serviceAvailable = false;
 #endif
@@ -71,6 +73,7 @@ void ScreenshotBridge::onScreenshotOpened(const QString &handle, const QString &
                                           const QVariantMap &options)
 {
     Q_UNUSED(options);
+    qInfo() << "shell: screenshot portal request" << handle << mode << appId;
     begin(handle, mode, appId, parentWindow);
 }
 
