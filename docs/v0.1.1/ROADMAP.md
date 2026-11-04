@@ -84,11 +84,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-04T05:28:17Z · 3/12 done
+**Pipeline status** — updated 2026-11-04T05:51:40Z · 3/25 done
 
 - Completed: T183, T184, T185
 - Blocked: none
-- Failed: T185a
-- Remaining: T186, T187, T188, T189, T190, T191, T192, T193
-- Last finished: T185a — failed · interrupted by the run view
+- Failed: none
+- Remaining: T185a1, T186a, T186b, T186c, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T190a, T190b, T190c, T191a, T191b, T192a, T192b, T192c, T193a, T193b
+- Last finished: T184 — done · Chrome now commits physical buffers with correct buffer-scale/viewport at 1x/1.5x/2x; unit, QML, visual, and e2e gates pass and nested captures are committed.
 <!-- /symphony:status -->
