@@ -1647,6 +1647,63 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     return DmabufCommitResult::Committed;
 }
 
+ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufFor(
+    const QString &surfaceLabel, const ChromeDmabufFrame &frame,
+    const QSize &logicalSize, const QRect &sourceRect, QString *reason)
+{
+    wl_surface *surface = surfaceForLabel(surfaceLabel);
+    if (!surface) {
+        if (reason)
+            *reason = QStringLiteral("unknown-surface");
+        return DmabufCommitResult::Failed;
+    }
+    const DmabufCommitResult result =
+        commitDmabufTo(surface, frame, logicalSize, sourceRect, reason);
+    if (result == DmabufCommitResult::Committed) {
+        if (surface == m_dockSurface)
+            m_dockMapped = true;
+        else if (surface == m_popupSurface)
+            m_popupMapped = true;
+        else if (surface == m_dockPopupSurface)
+            m_dockPopupMapped = true;
+        else if (surface == m_overviewSurface)
+            m_overviewMapped = true;
+        else if (surface == m_switcherSurface)
+            m_switcherMapped = true;
+        else if (surface == m_bannerSurface)
+            m_bannerMapped = true;
+        else if (surface == m_controlCenterSurface)
+            m_controlCenterMapped = true;
+        else if (surface == m_osdSurface)
+            m_osdMapped = true;
+        else if (surface == m_chooserSurface)
+            m_chooserMapped = true;
+        else if (surface == m_screenshotSurface)
+            m_screenshotMapped = true;
+        else if (surface == m_screencastSurface)
+            m_screencastMapped = true;
+        else if (surface == m_polkitSurface)
+            m_polkitMapped = true;
+        else if (surface == m_appsDrawerSurface)
+            m_appsDrawerMapped = true;
+    }
+    return result;
+}
+
+ShellProtocol::DmabufCommitResult ShellProtocol::commitLockDmabuf(
+    quintptr lockSurfaceId, const ChromeDmabufFrame &frame,
+    const QSize &logicalSize, QString *reason)
+{
+    auto *lockSurface = reinterpret_cast<ext_session_lock_surface_v1 *>(lockSurfaceId);
+    auto it = m_lockSurfaces.find(lockSurface);
+    if (it == m_lockSurfaces.end() || !it.value().surface) {
+        if (reason)
+            *reason = QStringLiteral("unknown-lock-surface");
+        return DmabufCommitResult::Failed;
+    }
+    return commitDmabufTo(it.value().surface, frame, logicalSize, QRect(), reason);
+}
+
 bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *buffer,
                                      int slotIndex, const ChromeDmabufFrame &frame,
                                      QString *reason)
@@ -2028,6 +2085,41 @@ QString ShellProtocol::surfaceLabel(wl_surface *surface) const
             return QStringLiteral("lock");
     }
     return QStringLiteral("unknown");
+}
+
+wl_surface *ShellProtocol::surfaceForLabel(const QString &label) const
+{
+    if (label == QLatin1String("menubar"))
+        return m_surface;
+    if (label == QLatin1String("menubar-popup"))
+        return m_popupSurface;
+    if (label == QLatin1String("dock"))
+        return m_dockSurface;
+    if (label == QLatin1String("dock-popup"))
+        return m_dockPopupSurface;
+    if (label == QLatin1String("overview"))
+        return m_overviewSurface;
+    if (label == QLatin1String("switcher"))
+        return m_switcherSurface;
+    if (label == QLatin1String("banner"))
+        return m_bannerSurface;
+    if (label == QLatin1String("control-center"))
+        return m_controlCenterSurface;
+    if (label == QLatin1String("osd"))
+        return m_osdSurface;
+    if (label == QLatin1String("chooser"))
+        return m_chooserSurface;
+    if (label == QLatin1String("screenshot"))
+        return m_screenshotSurface;
+    if (label == QLatin1String("screencast"))
+        return m_screencastSurface;
+    if (label == QLatin1String("polkit"))
+        return m_polkitSurface;
+    if (label == QLatin1String("apps-drawer"))
+        return m_appsDrawerSurface;
+    // `lock` is intentionally not resolved here: every output has its own lock
+    // surface and the caller must pass the id to `commitLockDmabuf`.
+    return nullptr;
 }
 
 QSize ShellProtocol::outputLogicalSize() const

@@ -335,6 +335,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // producer. A requested-but-unavailable rail records a reason and keeps
     // every surface on the T185 producer.
     m_gpuChromeRequested = GpuChromeFrameProducer::environmentRequested();
+    const QString gpuSurfaces = qEnvironmentVariable("DRAGONFRUIT_CHROME_GPU_SURFACES");
+    if (!gpuSurfaces.isEmpty()) {
+        const QStringList labels = gpuSurfaces.split(QLatin1Char(','), Qt::SkipEmptyParts);
+        for (const QString &label : labels)
+            m_chromeDmabufAllowed.insert(label.trimmed());
+    }
     if (!m_gpuChromeRequested) {
         ChromeStats::instance().setGpuPath(QStringLiteral("off"));
     }
@@ -477,9 +483,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (menuProducer && menuProducer->renderControlActive()) {
         if (m_gpuChromeState == GpuChromeState::Active) {
             ChromeStats::instance().setTransportPath(
-                QStringLiteral("render-control+gpu"));
+                QStringLiteral("render-control+dmabuf"));
             qInfo() << "shell: chrome transport: QQuickRenderControl + GPU"
-                    << "(Dock dmabuf, other surfaces shm)";
+                    << "(dmabuf chrome, shm fallback)";
         } else {
             ChromeStats::instance().setTransportPath(
                 QStringLiteral("render-control+shm"));
@@ -490,7 +496,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         qWarning() << "shell: chrome transport: render control unavailable; using the"
                    << "grabWindow fallback";
     }
-    m_dockDmabufEnabled = (m_gpuChromeState == GpuChromeState::Active);
+    m_chromeDmabufEnabled = (m_gpuChromeState == GpuChromeState::Active);
 
     QQmlComponent component(m_engine);
     component.loadFromModule(QStringLiteral("Dragonfruit.MenuBar"), QStringLiteral("MenuBar"));
@@ -2726,9 +2732,12 @@ void ShellController::renderControlCenter()
     prepareChromeScene(m_controlCenterWindow, m_controlCenterItem,
                        QSize(m_controlCenterWidth, m_controlCenterHeight),
                        QSize(m_controlCenterWidth, m_controlCenterHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_controlCenterWindow);
-    if (!image.isNull() && m_protocol)
-        m_protocol->commitControlCenterImage(image, QSize(m_controlCenterWidth, m_controlCenterHeight));
+    const QSize logical(m_controlCenterWidth, m_controlCenterHeight);
+    commitChromeScene(m_controlCenterWindow,
+                      {{QStringLiteral("control-center"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitControlCenterImage(image, logical);
+                        }}});
 }
 
 void ShellController::scheduleControlCenterRender()
@@ -2830,7 +2839,6 @@ void ShellController::renderOsd()
         return;
     prepareChromeScene(m_osdWindow, m_osdItem, QSize(m_osdWidth, m_osdHeight),
                        QSize(m_osdWidth, m_osdHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_osdWindow);
     // Declare the visible card so the compositor's backdrop frosts the card,
     // not the transparent shadow margin (T-20.3). The card never moves, so
     // only a changed integer rect is sent.
@@ -2847,10 +2855,15 @@ void ShellController::renderOsd()
             m_osdPanelRectValid = true;
         }
     }
-    if (!image.isNull() && m_protocol) {
-        m_protocol->commitOsdImage(image, QSize(m_osdWidth, m_osdHeight));
+    const QSize logical(m_osdWidth, m_osdHeight);
+    const bool committed =
+        commitChromeScene(m_osdWindow,
+                          {{QStringLiteral("osd"), logical, QRect(),
+                            [this, logical](const QImage &image) {
+                                return m_protocol->commitOsdImage(image, logical);
+                            }}});
+    if (committed)
         m_osdMapped = true;
-    }
 }
 
 // --- FileChooser picker (T-13.2b) -------------------------------------------
@@ -2938,9 +2951,12 @@ void ShellController::renderChooser()
         return;
     prepareChromeScene(m_chooserWindow, m_chooserItem, QSize(m_chooserWidth, m_chooserHeight),
                        QSize(m_chooserWidth, m_chooserHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_chooserWindow);
-    if (!image.isNull() && m_protocol)
-        m_protocol->commitChooserImage(image, QSize(m_chooserWidth, m_chooserHeight));
+    const QSize logical(m_chooserWidth, m_chooserHeight);
+    commitChromeScene(m_chooserWindow,
+                      {{QStringLiteral("chooser"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitChooserImage(image, logical);
+                        }}});
 }
 
 void ShellController::scheduleChooserRender()
@@ -3209,9 +3225,12 @@ void ShellController::renderScreenshot()
         return;
     prepareChromeScene(m_screenshotWindow, m_screenshotItem, QSize(m_screenshotWidth, m_screenshotHeight),
                        QSize(m_screenshotWidth, m_screenshotHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_screenshotWindow);
-    if (!image.isNull() && m_protocol)
-        m_protocol->commitScreenshotImage(image, QSize(m_screenshotWidth, m_screenshotHeight));
+    const QSize logical(m_screenshotWidth, m_screenshotHeight);
+    commitChromeScene(m_screenshotWindow,
+                      {{QStringLiteral("screenshot"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitScreenshotImage(image, logical);
+                        }}});
 }
 
 void ShellController::scheduleScreenshotRender()
@@ -3443,9 +3462,12 @@ void ShellController::renderScreenCast()
         return;
     prepareChromeScene(m_screencastWindow, m_screencastItem, QSize(m_screencastWidth, m_screencastHeight),
                        QSize(m_screencastWidth, m_screencastHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_screencastWindow);
-    if (!image.isNull() && m_protocol)
-        m_protocol->commitScreenCastImage(image, QSize(m_screencastWidth, m_screencastHeight));
+    const QSize logical(m_screencastWidth, m_screencastHeight);
+    commitChromeScene(m_screencastWindow,
+                      {{QStringLiteral("screencast"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitScreenCastImage(image, logical);
+                        }}});
 }
 
 void ShellController::scheduleScreenCastRender()
@@ -3649,9 +3671,12 @@ void ShellController::renderPolkit()
         return;
     prepareChromeScene(m_polkitWindow, m_polkitItem, QSize(m_polkitWidth, m_polkitHeight),
                        QSize(m_polkitWidth, m_polkitHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_polkitWindow);
-    if (!image.isNull() && m_protocol)
-        m_protocol->commitPolkitImage(image, QSize(m_polkitWidth, m_polkitHeight));
+    const QSize logical(m_polkitWidth, m_polkitHeight);
+    commitChromeScene(m_polkitWindow,
+                      {{QStringLiteral("polkit"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitPolkitImage(image, logical);
+                        }}});
 }
 
 void ShellController::schedulePolkitRender()
@@ -3935,8 +3960,15 @@ void ShellController::renderLockSurface(quintptr lockSurfaceId)
     // wp_fractional_scale event; they follow the output scale directly.
     const qreal scale = m_protocol ? m_protocol->outputScale() : m_chromeScale;
     prepareChromeScene(m_lockWindow, m_lockItem, size, size, scale);
-    const QImage image = renderChromeFrame(m_lockWindow);
-    if (!image.isNull() && m_protocol->commitLockImage(lockSurfaceId, image, size))
+    const bool committed =
+        commitChromeScene(m_lockWindow,
+                          {{QStringLiteral("lock"), size, QRect(),
+                            [this, lockSurfaceId, size](const QImage &image) {
+                                return m_protocol->commitLockImage(lockSurfaceId,
+                                                                   image, size);
+                            },
+                            lockSurfaceId}});
+    if (committed)
         m_lockCommitted.insert(lockSurfaceId);
 }
 
@@ -6146,9 +6178,12 @@ void ShellController::renderOverview()
         return;
     prepareChromeScene(m_overviewWindow, m_overviewItem, QSize(m_overviewWidth, m_overviewHeight),
                        QSize(m_overviewWidth, m_overviewHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_overviewWindow);
-    if (!image.isNull() && m_protocol)
-        m_protocol->commitOverviewImage(image, QSize(m_overviewWidth, m_overviewHeight));
+    const QSize logical(m_overviewWidth, m_overviewHeight);
+    commitChromeScene(m_overviewWindow,
+                      {{QStringLiteral("overview"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitOverviewImage(image, logical);
+                        }}});
 }
 
 // --- app-switcher overlay (T-06.2a) -----------------------------------------
@@ -6401,9 +6436,12 @@ void ShellController::renderBanner()
         return;
     prepareChromeScene(m_bannerWindow, m_bannerItem, QSize(m_bannerWidth, m_bannerHeight),
                        QSize(m_bannerWidth, m_bannerHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_bannerWindow);
-    if (!image.isNull() && m_protocol)
-        m_protocol->commitBannerImage(image, QSize(m_bannerWidth, m_bannerHeight));
+    const QSize logical(m_bannerWidth, m_bannerHeight);
+    commitChromeScene(m_bannerWindow,
+                      {{QStringLiteral("banner"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitBannerImage(image, logical);
+                        }}});
 }
 
 void ShellController::renderSwitcher()
@@ -6414,9 +6452,12 @@ void ShellController::renderSwitcher()
         return;
     prepareChromeScene(m_switcherWindow, m_switcherItem, QSize(m_switcherWidth, m_switcherHeight),
                        QSize(m_switcherWidth, m_switcherHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_switcherWindow);
-    if (!image.isNull() && m_protocol)
-        m_protocol->commitSwitcherImage(image, QSize(m_switcherWidth, m_switcherHeight));
+    const QSize logical(m_switcherWidth, m_switcherHeight);
+    commitChromeScene(m_switcherWindow,
+                      {{QStringLiteral("switcher"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitSwitcherImage(image, logical);
+                        }}});
 }
 
 // --- Applications drawer (T-19.2) -------------------------------------------
@@ -6681,8 +6722,7 @@ void ShellController::renderAppsDrawer()
         return;
     prepareChromeScene(m_appsDrawerWindow, m_appsDrawerItem, QSize(m_appsDrawerWidth, m_appsDrawerHeight),
                        QSize(m_appsDrawerWidth, m_appsDrawerHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_appsDrawerWindow);
-    if (!image.isNull() && m_protocol) {
+    if (m_protocol) {
         // Declare the card's live rect before the buffer commit, so the
         // compositor's backdrop blur follows it (T-20.1). The card is centred
         // and changes size with the corpus, so it is re-sent every commit.
@@ -6696,8 +6736,13 @@ void ShellController::renderAppsDrawer()
                 qMax(0, qRound(map.value(QStringLiteral("width")).toDouble())),
                 qMax(0, qRound(map.value(QStringLiteral("height")).toDouble())));
         }
-        m_protocol->commitAppsDrawerImage(image, QSize(m_appsDrawerWidth, m_appsDrawerHeight));
     }
+    const QSize logical(m_appsDrawerWidth, m_appsDrawerHeight);
+    commitChromeScene(m_appsDrawerWindow,
+                      {{QStringLiteral("apps-drawer"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitAppsDrawerImage(image, logical);
+                        }}});
 }
 
 void ShellController::onDockEntryMenuAction(const QString &action, const QVariant &payload)
@@ -7216,12 +7261,22 @@ void ShellController::onChromeBufferReleased(const QString &surface)
 void ShellController::onChromeDmabufReleased(const QString &surface, int slot,
                                              quint64 serial)
 {
+    const QString paceLabel = chromePaceLabel(surface);
     for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
         ChromePace &pace = it.value();
-        if (pace.primaryLabel != surface)
+        if (pace.primaryLabel != paceLabel)
             continue;
+        // A shared scene has one wl_buffer per surface. Only the last release
+        // returns the producer's ring slot; an earlier popover release must
+        // not let the next frame overwrite the still-visible bar buffer.
+        if (!pace.dmabufUsers.release(serial))
+            return;
         if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(pace.producer))
             gpu->releaseDmabufFrame(slot, serial);
+        if (pace.dirty && !pace.scheduled
+            && !m_protocol->hasPendingFrame(pace.primaryLabel))
+            scheduleChromeRender(pace.producer);
+        return;
     }
 }
 
@@ -7261,6 +7316,216 @@ void ShellController::onChromeFallbackTick()
     }
     if (!waiting && m_chromeFallbackTimer)
         m_chromeFallbackTimer->stop();
+}
+
+QString ShellController::chromePaceLabel(const QString &surface) const
+{
+    // A popover is a sub-rect of its owner's scene, not a second render. Its
+    // wl_buffer release must return the owner producer's ring slot.
+    if (surface == QLatin1String("menubar-popup"))
+        return QStringLiteral("menubar");
+    if (surface == QLatin1String("dock-popup"))
+        return QStringLiteral("dock");
+    return surface;
+}
+
+void ShellController::noteSurfacePath(const QString &label, const QString &path,
+                                      const QString &reason)
+{
+    ChromeStats::instance().setSurfacePath(label, path, reason);
+}
+
+void ShellController::deferChromeProducer(ChromeFrameProducer *producer)
+{
+    auto it = m_chromePaces.find(producer);
+    if (it == m_chromePaces.end())
+        return;
+    it.value().dirty = true;
+    // A transient export failure means the GPU is still finishing the frame.
+    // Retry on the bounded safety tick instead of spinning a new render
+    // immediately; a wl_buffer release still wakes the producer directly.
+    if (m_chromeFallbackTimer)
+        m_chromeFallbackTimer->start();
+    else if (!it.value().scheduled
+             && !m_protocol->hasPendingFrame(it.value().primaryLabel))
+        scheduleChromeRender(producer);
+}
+
+ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
+    GpuChromeFrameProducer *gpu, const QString &label,
+    const ChromeDmabufFrame &frame, const QSize &logicalSize,
+    const QRect &sourceRect, quintptr lockSurfaceId, QString *reason)
+{
+    const ShellProtocol::DmabufCommitResult result =
+        lockSurfaceId != 0
+            ? m_protocol->commitLockDmabuf(lockSurfaceId, frame, logicalSize, reason)
+            : m_protocol->commitDmabufFor(label, frame, logicalSize, sourceRect,
+                                          reason);
+    if (result == ShellProtocol::DmabufCommitResult::Committed) {
+        noteSurfacePath(label, QStringLiteral("dmabuf"));
+        ChromeStats::instance().setGpuPath(QStringLiteral("dmabuf"));
+        ChromeStats::instance().setTransportPath(QStringLiteral("render-control+dmabuf"));
+        auto it = m_chromePaces.find(gpu);
+        if (it != m_chromePaces.end())
+            it.value().dmabufUsers.acquire(frame.serial);
+        return result;
+    }
+
+    const QString why = reason && !reason->isEmpty() ? *reason
+                                                     : QStringLiteral("import-failed");
+    if (result == ShellProtocol::DmabufCommitResult::Deferred) {
+        ChromeStats::instance().recordDmabufDeferred(label);
+        noteSurfacePath(label, QStringLiteral("shm"), why);
+        return result;
+    }
+
+    ChromeStats::instance().recordDmabufFallback(label, why);
+    noteSurfacePath(label, QStringLiteral("shm"), why);
+    ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
+    // A surface that cannot express this commit (no viewporter, no format,
+    // import failure) stays on shm for the session; the rest of the chrome
+    // keeps using dmabuf. A missing linux-dmabuf binding is producer-wide.
+    if (why == QLatin1String("no-dmabuf")) {
+        m_chromeDmabufEnabled = false;
+        ChromeStats::instance().setTransportPath(QStringLiteral("render-control+shm"));
+    } else {
+        m_chromeDmabufDisabled.insert(label);
+    }
+    return result;
+}
+
+bool ShellController::commitChromeScene(QQuickWindow *window,
+                                        const QList<ChromeSceneTarget> &targets)
+{
+    if (!window || !m_protocol || targets.isEmpty())
+        return false;
+
+    ChromeFrameProducer *producer = m_producers.value(window);
+    auto *gpu = qobject_cast<GpuChromeFrameProducer *>(producer);
+
+    QList<int> deferredTargets;
+    bool anyCommitted = false;
+    ChromeDmabufFrame frame;
+    QString exportReason;
+
+    // A shared scene has one path: if any of its surfaces cannot use dmabuf,
+    // the whole scene renders through T185 shm. That is the only way to avoid
+    // reading back a frame that the compositor is already sampling through a
+    // committed dmabuf (which can block on the GPU fence).
+    bool anyTargetDisabled = false;
+    for (const ChromeSceneTarget &target : targets) {
+        if (m_chromeDmabufDisabled.contains(target.label)
+            || (!m_chromeDmabufAllowed.isEmpty()
+                && !m_chromeDmabufAllowed.contains(target.label))) {
+            anyTargetDisabled = true;
+            break;
+        }
+    }
+    const bool useGpu = gpu && gpu->gpuActive() && m_chromeDmabufEnabled
+        && !anyTargetDisabled;
+
+    if (useGpu) {
+        // One scene render for every target. The first target owns the stats
+        // label; a shared popover does not add a second render.
+        ChromeStats::instance().recordRender(targets.first().label);
+        if (gpu->exportFrame(&frame, &exportReason)) {
+            int successCount = 0;
+            bool anyHardFailure = false;
+            for (int index = 0; index < targets.size(); ++index) {
+                const ChromeSceneTarget &target = targets.at(index);
+                if (!m_chromeDmabufAllowed.isEmpty()
+                    && !m_chromeDmabufAllowed.contains(target.label)) {
+                    noteSurfacePath(target.label, QStringLiteral("shm"),
+                                    QStringLiteral("not-selected"));
+                    continue;
+                }
+                QString reason;
+                const ShellProtocol::DmabufCommitResult result =
+                    commitChromeDmabufTarget(gpu, target.label, frame,
+                                             target.logicalSize, target.sourceRect,
+                                             target.lockSurfaceId, &reason);
+                if (result == ShellProtocol::DmabufCommitResult::Committed) {
+                    anyCommitted = true;
+                    ++successCount;
+                } else if (result == ShellProtocol::DmabufCommitResult::Deferred) {
+                    deferredTargets.append(index);
+                } else {
+                    anyHardFailure = true;
+                }
+            }
+            if (successCount == 0) {
+                // Nothing holds the exported frame. The FBO is safe to read
+                // once for the shm fallback of this frame.
+                gpu->abandonDmabufFrame(frame.slot);
+                const QImage image = gpu->readbackCurrentFrame();
+                if (!image.isNull()) {
+                    for (const ChromeSceneTarget &target : targets) {
+                        if (target.commitShm && target.commitShm(image)) {
+                            anyCommitted = true;
+                            noteSurfacePath(target.label, QStringLiteral("shm"));
+                        }
+                    }
+                } else {
+                    deferChromeProducer(producer);
+                }
+            } else if (anyHardFailure || !deferredTargets.isEmpty()) {
+                // A dmabuf commit already handed this scene to the compositor.
+                // Do not read it back; a hard-failed surface is now disabled,
+                // so the next frame renders the whole scene through shm. A
+                // deferred surface retries on the release signal.
+                deferChromeProducer(producer);
+            }
+        } else {
+            // The producer could not export. A transient ring/fence failure
+            // keeps the rail enabled and retries; a hard export/format failure
+            // abandons it for the session so the next frame takes the shm
+            // path. Never read back a slot the compositor may still hold.
+            const bool transient = exportReason == QLatin1String("ring-exhausted")
+                || exportReason == QLatin1String("sync-timeout");
+            if (!transient) {
+                m_chromeDmabufEnabled = false;
+                ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
+                ChromeStats::instance().setTransportPath(
+                    QStringLiteral("render-control+shm"));
+            }
+            for (const ChromeSceneTarget &target : targets) {
+                ChromeStats::instance().recordDmabufFallback(target.label,
+                                                             exportReason);
+                noteSurfacePath(target.label, QStringLiteral("shm"), exportReason);
+            }
+            deferChromeProducer(producer);
+        }
+    } else {
+        QString reason;
+        if (!gpu || !gpu->gpuActive())
+            reason = m_gpuChromeRequested && !m_gpuChromeReason.isEmpty()
+                ? m_gpuChromeReason
+                : QStringLiteral("flag-off");
+        else
+            reason = QStringLiteral("disabled");
+        for (const ChromeSceneTarget &target : targets) {
+            const QString targetReason =
+                (!m_chromeDmabufAllowed.isEmpty()
+                 && !m_chromeDmabufAllowed.contains(target.label))
+                    ? QStringLiteral("not-selected")
+                    : reason;
+            noteSurfacePath(target.label, QStringLiteral("shm"), targetReason);
+        }
+
+        const QImage image = renderChromeFrame(window);
+        if (image.isNull()) {
+            deferChromeProducer(producer);
+        } else {
+            for (const ChromeSceneTarget &target : targets) {
+                if (target.commitShm && target.commitShm(image)) {
+                    anyCommitted = true;
+                    noteSurfacePath(target.label, QStringLiteral("shm"));
+                }
+            }
+        }
+    }
+
+    return anyCommitted && deferredTargets.isEmpty();
 }
 
 QImage ShellController::renderChromeFrame(QQuickWindow *window)
@@ -7369,7 +7634,6 @@ void ShellController::renderDock()
                        QSize(windowWidth, windowHeight), m_chromeScale);
     auto *gpuProducer =
         qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_dockWindow));
-    const bool gpuDock = m_dockDmabufEnabled && gpuProducer && gpuProducer->gpuActive();
     // The software producer's window is the physical buffer, so the scene
     // offset is physical too. The GPU producer keeps the QQuickWindow in
     // logical units (the FBO is physical), so the same offset stays logical.
@@ -7379,35 +7643,6 @@ void ShellController::renderDock()
                                                    m_chromeScale);
     m_dockItem->setX(itemOrigin.x());
     m_dockItem->setY(itemOrigin.y());
-
-    QImage image;
-    ChromeDmabufFrame dmabufFrame;
-    QString gpuReason;
-    bool dmabufFrameReady = false;
-    if (gpuDock) {
-        ChromeStats::instance().recordRender(QStringLiteral("dock"));
-        if (gpuProducer->exportFrame(&dmabufFrame, &gpuReason)) {
-            dmabufFrameReady = true;
-        } else {
-            // The FBO still holds the last rendered frame; read it back once
-            // and commit through the T185 shm pool so the Dock never goes
-            // black. A full ring or a slow fence is transient: keep the
-            // dmabuf rail enabled and retry on the next release.
-            const bool transient = gpuReason == QLatin1String("ring-exhausted")
-                || gpuReason == QLatin1String("sync-timeout");
-            image = gpuProducer->readbackCurrentFrame();
-            ChromeStats::instance().recordDmabufFallback(QStringLiteral("dock"),
-                                                         gpuReason);
-            ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
-            if (!transient) {
-                ChromeStats::instance().setTransportPath(
-                    QStringLiteral("render-control+shm"));
-                m_dockDmabufEnabled = false;
-            }
-        }
-    } else {
-        image = renderChromeFrame(m_dockWindow);
-    }
 
     // The input region is the visible bar plus the currently magnified or
     // bouncing icon rectangles; the transparent magnified band and the hidden
@@ -7442,58 +7677,18 @@ void ShellController::renderDock()
     }
     const QRect dockRect(leftGutter, headroom, m_dockWidth, m_dockHeight);
     const QRect dockSource = chromeBufferRect(dockRect);
-    bool committed = false;
-    if (dmabufFrameReady) {
-        const ShellProtocol::DmabufCommitResult result =
-            m_protocol->commitDockDmabuf(dmabufFrame,
-                                         QSize(m_dockWidth, m_dockHeight),
-                                         dockSource, &gpuReason);
-        if (result == ShellProtocol::DmabufCommitResult::Committed) {
-            committed = true;
-            ChromeStats::instance().setGpuPath(QStringLiteral("dmabuf"));
-            ChromeStats::instance().setTransportPath(
-                QStringLiteral("render-control+dmabuf"));
-        } else if (result == ShellProtocol::DmabufCommitResult::Deferred) {
-            // The ring slot is still held by the compositor. Return the
-            // producer slot without marking it committed, keep the Dock
-            // dirty, and retry on the release signal.
-            if (gpuProducer)
-                gpuProducer->abandonDmabufFrame(dmabufFrame.slot);
-            auto it = m_chromePaces.find(m_producers.value(m_dockWindow));
-            if (it != m_chromePaces.end())
-                it.value().dirty = true;
-            ChromeStats::instance().recordDmabufDeferred(QStringLiteral("dock"));
-            return;
-        } else {
-            // Import/format failure: abandon the dmabuf rail for the session
-            // and commit this already-rendered frame through shm.
-            if (gpuProducer)
-                gpuProducer->abandonDmabufFrame(dmabufFrame.slot);
-            ChromeStats::instance().recordDmabufFallback(QStringLiteral("dock"),
-                                                         gpuReason);
-            ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
-            ChromeStats::instance().setTransportPath(
-                QStringLiteral("render-control+shm"));
-            m_dockDmabufEnabled = false;
-            image = gpuProducer ? gpuProducer->readbackCurrentFrame() : QImage();
-        }
-    }
-    if (!committed) {
-        if (!image.isNull()
-            && m_protocol->commitDockImage(image, QSize(m_dockWidth, m_dockHeight),
-                                           dockSource)) {
-            committed = true;
-        }
-    }
-    if (!committed)
-        qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
+    QList<ChromeSceneTarget> targets;
+    targets.append({QStringLiteral("dock"), QSize(m_dockWidth, m_dockHeight), dockSource,
+                    [this, dockSource](const QImage &image) {
+                        return m_protocol->commitDockImage(
+                            image, QSize(m_dockWidth, m_dockHeight), dockSource);
+                    }});
 
-    // Place and commit the popover on the Dock's overlay surface. The
-    // popover is anchored to the Dock's edge, so the margins are measured
-    // from that edge: scene y=0 is the Dock surface top and scene x=0 its
-    // left. A bottom popover sits above the bar (bottom margin); a vertical
-    // Dock's popover sits beside the bar (left/right margin) at the entry's
-    // scene y (T-10 section 5).
+    // Place the popover on the Dock's overlay surface. The popover is anchored
+    // to the Dock's edge, so the margins are measured from that edge: scene
+    // y=0 is the Dock surface top and scene x=0 its left. A bottom popover
+    // sits above the bar (bottom margin); a vertical Dock's popover sits beside
+    // the bar (left/right margin) at the entry's scene y (T-10 section 5).
     m_dockPopoverX = px;
     m_dockPopoverY = py;
     m_dockPopoverWidth = pw;
@@ -7520,15 +7715,22 @@ void ShellController::renderDock()
         }
         m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph);
         const QRect popupRect(leftGutter + px, headroom + py, pw, ph);
-        if (!m_protocol->commitDockPopupImage(image, QSize(pw, ph),
-                                              chromeBufferRect(popupRect)))
-            qWarning() << "shell: failed to commit the Dock popover:"
-                       << m_protocol->lastError();
-        m_dockPopoverMapped = true;
+        const QRect popupSource = chromeBufferRect(popupRect);
+        targets.append({QStringLiteral("dock-popup"), QSize(pw, ph), popupSource,
+                        [this, pw, ph, popupSource](const QImage &image) {
+                            return m_protocol->commitDockPopupImage(
+                                image, QSize(pw, ph), popupSource);
+                        }});
     } else if (m_dockPopoverMapped) {
         m_protocol->hideDockPopup();
         m_dockPopoverMapped = false;
     }
+
+    const bool committed = commitChromeScene(m_dockWindow, targets);
+    if (hasPopover)
+        m_dockPopoverMapped = committed;
+    if (!committed)
+        qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 }
 
 void ShellController::render()
@@ -7542,15 +7744,24 @@ void ShellController::render()
         popupShown ? qMax(m_barHeight, m_popupY + m_popupHeight) : m_barHeight;
     prepareChromeScene(m_window, m_item, QSize(m_width, m_barHeight),
                        QSize(m_width, windowHeight), m_chromeScale);
-    const QImage image = renderChromeFrame(m_window);
     const QRect barRect(0, 0, m_width, m_barHeight);
-    if (!m_protocol->commitImage(image, QSize(m_width, m_barHeight),
-                                 chromeBufferRect(barRect)))
-        qWarning() << "shell: failed to commit the menu bar:" << m_protocol->lastError();
+    const QRect barSource = chromeBufferRect(barRect);
+    QList<ChromeSceneTarget> targets;
+    targets.append({QStringLiteral("menubar"), QSize(m_width, m_barHeight), barSource,
+                    [this, barSource](const QImage &image) {
+                        return m_protocol->commitImage(image,
+                                                       QSize(m_width, m_barHeight),
+                                                       barSource);
+                    }});
     if (popupShown) {
         const QRect popupRect(m_popupX, m_popupY, m_popupWidth, m_popupHeight);
-        if (!m_protocol->commitPopupImage(image, QSize(m_popupWidth, m_popupHeight),
-                                          chromeBufferRect(popupRect)))
-            qWarning() << "shell: failed to commit the menu popup:" << m_protocol->lastError();
+        const QRect popupSource = chromeBufferRect(popupRect);
+        targets.append({QStringLiteral("menubar-popup"),
+                        QSize(m_popupWidth, m_popupHeight), popupSource,
+                        [this, popupSource](const QImage &image) {
+                            return m_protocol->commitPopupImage(
+                                image, QSize(m_popupWidth, m_popupHeight), popupSource);
+                        }});
     }
+    commitChromeScene(m_window, targets);
 }

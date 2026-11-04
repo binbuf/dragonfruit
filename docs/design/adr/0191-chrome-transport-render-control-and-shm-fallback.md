@@ -72,3 +72,10 @@ remains OPEN for the hardware rail.
   the surface layout or the private protocol.
 - No default behavior changed in T-21.1a: the counters are opt-in and the
   normal `make demo`/`make e2e` paths are untouched.
+
+**T186d update.** The GPU/dmabuf branch now covers every chrome surface behind
+`DRAGONFRUIT_CHROME_GPU`, with per-surface `path=dmabuf|shm` stats and the
+pooled shm path as the explicit fallback. The rollout, shared-scene release
+rules, and measured implicit-sync limits are in
+[ADR 0197](0197-gpu-chrome-rollout-and-per-surface-stats.md); the default
+remains off until T192/T193.

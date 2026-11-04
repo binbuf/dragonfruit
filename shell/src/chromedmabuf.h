@@ -7,6 +7,7 @@
 // GUI state is involved, so the format/commit rules are unit-tested headlessly.
 #pragma once
 
+#include <QHash>
 #include <QSize>
 #include <QString>
 #include <QVector>
@@ -70,6 +71,27 @@ uint32_t modifierLow(uint64_t modifier);
 // The reuse state of one dmabuf-backed surface buffer. Kept as the small
 // single-buffer state machine used by the export smoke test; the production
 // transport uses `ChromeDmabufRing` below.
+// Tracks how many committed surfaces still hold one exported frame (T186d).
+//
+// A Dock/menu scene is exported once but can be committed to two surfaces: the
+// bar itself and its popover sub-rect. Each surface gets its own wl_buffer, so
+// each gets its own `wl_buffer.release`; the producer slot must stay busy until
+// the last user is done. The tracker turns the per-surface releases back into
+// one producer release and is pure so the rule is unit-tested headlessly.
+class ChromeDmabufReleaseTracker
+{
+public:
+    void acquire(quint64 serial);
+    // True when this was the last user of `serial`; the entry is then removed.
+    bool release(quint64 serial);
+    int users(quint64 serial) const;
+    int size() const { return m_users.size(); }
+    void clear() { m_users.clear(); }
+
+private:
+    QHash<quint64, int> m_users;
+};
+
 class ChromeDmabufSlot
 {
 public:

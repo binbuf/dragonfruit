@@ -180,6 +180,21 @@ public:
                                       const QRect &sourceRect,
                                       QString *reason = nullptr);
 
+    // T-21.1d rollout: the same commit addressed by the stable `chrome stats`
+    // surface label (`menubar`, `menubar-popup`, `dock`, `dock-popup`,
+    // `overview`, ...). Keeps the surface pointers private to this class.
+    DmabufCommitResult commitDmabufFor(const QString &surfaceLabel,
+                                       const ChromeDmabufFrame &frame,
+                                       const QSize &logicalSize,
+                                       const QRect &sourceRect,
+                                       QString *reason = nullptr);
+    // Lock surfaces are keyed by the opaque id from `lockSurfaceConfigured`;
+    // every lock surface shares the `lock` stats label.
+    DmabufCommitResult commitLockDmabuf(quintptr lockSurfaceId,
+                                        const ChromeDmabufFrame &frame,
+                                        const QSize &logicalSize,
+                                        QString *reason = nullptr);
+
     // Set the Dock surface's input region to the union of `rects` in
     // surface-local coordinates. An empty list makes the whole surface pass
     // input through (the hidden Dock, the transparent magnified band). Each
@@ -877,6 +892,9 @@ private:
     void destroyScaleObjects();
     // A stable name for the opt-in `chrome stats` per-surface line.
     QString surfaceLabel(wl_surface *surface) const;
+    // Reverse of `surfaceLabel` for the dmabuf rollout. Returns null for an
+    // unknown label (including the ambiguous `lock`, which has its own id).
+    wl_surface *surfaceForLabel(const QString &label) const;
     // Send the remembered wallpaper selection to every targeted Space. Safe to
     // call before any Space is known (it is then a no-op; `onManagerDone`
     // retries).
