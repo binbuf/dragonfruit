@@ -14,6 +14,7 @@
 - **T187a — T-21.2a per-output refresh model (pure)**: New pure library module `compositor/src/refresh.rs`, exported as; `OutputRefresh { refresh_mhz, period, deadline, source, vrr }`,
 - **T187b — T-21.2a refresh clock wiring**: `AnimationClock` now owns `frame_interval` (default `FRAME_INTERVAL`), with; `DfState` owns `RefreshSchedule` and an optional `DRAGONFRUIT_REFRESH_HZ`
 - **T188a — T-21.2b per-output presentation clock (pure)**: New pure library module `compositor/src/presentation.rs`, exported as; `PresentationClock { last_presented, next_deadline, period, refresh_hz, vrr }`
+- **T188b — T-21.2b per-output frame requests and earliest-deadline arming**: New pure library module `compositor/src/frame_scheduler.rs` (exported as; `FrameScheduler` keyed by output name with independent `urgent` and
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -28,6 +29,7 @@
 - [T187a](progress/T187a.md) — New pure library module `compositor/src/refresh.rs`, exported as
 - [T187b](progress/T187b.md) — `AnimationClock` now owns `frame_interval` (default `FRAME_INTERVAL`), with
 - [T188a](progress/T188a.md) — New pure library module `compositor/src/presentation.rs`, exported as
+- [T188b](progress/T188b.md) — New pure library module `compositor/src/frame_scheduler.rs` (exported as
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

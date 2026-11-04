@@ -1,0 +1,42 @@
+T-21.2b per-output frame request trace (T188b)
+timestamp: 2026-11-04T10:56:58-08:00
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+session: XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=dragonfruit-wayland
+command: DRAGONFRUIT_REFRESH_HZ=<hz> target/debug/dragonfruit-compositor --backend <nested|headless>
+synthetic command: animate-dummy 600
+derived period: 1e12 / 144000 mHz = 6944 ns = 6.944 ms
+
+## Nested single-output: request lifecycle (144 Hz)
+nested socket: dragonfruit-t21-scheduler-nested-439160
+idle sample: SIGUSR1-1
+dragonfruit-compositor: animation stats (SIGUSR1-1): frames_stepped=0 animations_started=0 animations_completed=0 reduced_motion=false interval_us=6944
+dragonfruit-compositor: refresh stats (SIGUSR1-1): refresh_hz=144.000 source=override interval_us=6944 deadline_us=6944 outputs=1 override=1
+dragonfruit-compositor: frame scheduler stats (SIGUSR1-1): outputs=1 urgent=0 animation=0 in_flight=0 timer_armed=0
+dragonfruit-compositor: frame request (SIGUSR1-1): output=NESTED-1 refresh_hz=144.000 period_us=6944 last_presented_us=37062420223 next_deadline_us=37062427168 idle=0 due=1 urgent=0 animation=0 in_flight=0
+live sample: SIGUSR1-2
+dragonfruit-compositor: animation stats (SIGUSR1-2): frames_stepped=2 animations_started=1 animations_completed=0 reduced_motion=false interval_us=6944
+dragonfruit-compositor: frame scheduler stats (SIGUSR1-2): outputs=1 urgent=0 animation=1 in_flight=0 timer_armed=1
+dragonfruit-compositor: frame request (SIGUSR1-2): output=NESTED-1 refresh_hz=144.000 period_us=6944 last_presented_us=37065309591 next_deadline_us=37065316535 idle=0 due=0 urgent=0 animation=1 in_flight=0
+settled sample: SIGUSR1-4
+dragonfruit-compositor: animation stats (SIGUSR1-4): frames_stepped=4 animations_started=1 animations_completed=1 reduced_motion=false interval_us=6944
+dragonfruit-compositor: frame scheduler stats (SIGUSR1-4): outputs=1 urgent=0 animation=0 in_flight=0 timer_armed=0
+dragonfruit-compositor: frame request (SIGUSR1-4): output=NESTED-1 refresh_hz=144.000 period_us=6944 last_presented_us=37066313736 next_deadline_us=37066320680 idle=0 due=1 urgent=0 animation=0 in_flight=0
+
+idle:    animation=0 timer_armed=0
+live:    animation=1 timer_armed=1
+settled: animation=0 timer_armed=0
+frames_stepped: live=2 settled=4 exit=4
+settled clock must not step after the final frame: settled == exit.
+
+## Headless cadence controls
+animation_frames_stepped delta over 600 ms:
+  144 Hz: 81 (~85 frames at 6.944 ms)
+   60 Hz: 36 (~35 frames at 16.666 ms)
+
+## Verdict
+idle request lifecycle: PASS (animation=0 timer_armed=0)
+live request lifecycle: PASS (animation=1 timer_armed=1)
+settled request lifecycle: PASS (animation=0 timer_armed=0)
+settled clock: PASS (no animation step after the final frame)
+headless cadence: PASS (144 Hz delta=81 >= 60; 60 Hz delta=36 in 24..48)
+PASS: per-output requests arm from the earliest deadline and settle with no timer.

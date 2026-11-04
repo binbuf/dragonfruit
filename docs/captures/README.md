@@ -1164,6 +1164,19 @@ a normal session; the cadence is pinned by
 `compositor/tests/animation_clock.rs` in `make e2e`. The policy is
 [ADR 0199](../design/adr/0199-refresh-clock-wiring.md).
 
+T-21.2b's per-output request trace is `scripts/t21-frame-scheduler.sh`
+(`make t21-frame-scheduler`). It runs one nested compositor at 144 Hz, samples
+`frame scheduler stats` / `frame request` before, during, and after the
+synthetic dummy animation, and records that the idle desktop has no request or
+armed timer, the live animation has one animation request and one armed timer,
+and the settled output returns to `animation=0 timer_armed=0` with flat
+`frames_rendered`/`animation_frames_stepped`. Two headless controls show the
+same scheduler pacing at 144 Hz and 60 Hz. The nested rail is a single-output
+correctness trace, not mixed-refresh proof; the pure 60+144 scheduler test is
+`compositor/src/frame_scheduler.rs`, and native mixed-refresh evidence is
+T188c. The policy is
+[ADR 0201](../design/adr/0201-per-output-frame-requests-and-earliest-deadline.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

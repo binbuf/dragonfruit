@@ -49,7 +49,7 @@ The executable v0.1.1 task set is in
 | P2B DRM Kawase blur | **done, default-on** | Per-panel chain reuses `BLUR_SHADER`; `blur_draws` counts built elements. |
 | P2C glass compose | **done, default-on** | Reuses `GLASS_SHADER` and `GlassSpec`; `DRAGONFRUIT_DRM_GLASS=0` disables. |
 | P3 shell transport | **baseline + HiDPI done (T-21.1a/b)** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + fresh `wl_shm` per commit. HiDPI chrome now commits physical buffers with `buffer_scale`/`wp_viewport` ([ADR 0192](design/adr/0192-chrome-scale-physical-buffer-and-viewport.md)); pooling, frame callbacks, and GPU transport remain T185/T186. Measured in [`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt); transport decision [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md). |
-| P4 refresh-aware scheduling | **partial (T-21.2a)** | The animation clock and degrade budget use the fastest active output's period, with `DRAGONFRUIT_REFRESH_HZ` test overrides and `refresh_hz`/`source` stats ([ADR 0199](design/adr/0199-refresh-clock-wiring.md)). Per-output deadlines, mixed refresh, and VRR remain T188. |
+| P4 refresh-aware scheduling | **partial (T-21.2b)** | The animation clock and degrade budget use the fastest active output's period, with `DRAGONFRUIT_REFRESH_HZ` test overrides and `refresh_hz`/`source` stats ([ADR 0199](design/adr/0199-refresh-clock-wiring.md)). Per-output urgent/animation requests and earliest-deadline arming are wired ([ADR 0201](design/adr/0201-per-output-frame-requests-and-earliest-deadline.md)); VRR adaptation and native mixed-refresh evidence remain T188c. |
 | P5 multi-GPU | **single-GPU only** | Material path disables itself on a multi-GPU seat; shell falls back. |
 | P6 native visual verification | **not implemented** | No trusted native capture path. |
 
@@ -419,7 +419,10 @@ deadline is 6.94 ms.
 - The pure per-output presentation clock (`last_presented`, `next_deadline`,
   `is_due`, `time_until_due`) is in place (T-21.2b, ADR 0200); DRM records the
   vblank timestamp and nested records the successful `submit()` completion.
-  Earliest-deadline timer arming is T188b.
+  Earliest-deadline timer arming, urgent-vs-animation requests, and the DRM
+  in-flight marker are wired in T188b (ADR 0201).
+- A settled output has no animation request, so it produces no frame and no
+  presentation sample even while another output animates.
 
 **Acceptance**
 
@@ -431,9 +434,11 @@ deadline is 6.94 ms.
 
 **Work**
 
-- Schedule per output, not from a single global clock.
-- Account for VRR state where the backend exposes it.
-- Test a 60 Hz + 144 Hz mixed setup if hardware is available.
+- Schedule per output, not from a single global clock. Done in T188b: the
+  scheduler arms one timer from the earliest due request and presents each
+  output only at its own deadline (ADR 0201).
+- Account for VRR state where the backend exposes it (T188c).
+- Test a 60 Hz + 144 Hz mixed setup if hardware is available (T188c).
 
 **Acceptance**
 

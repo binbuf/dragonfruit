@@ -208,6 +208,12 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
             state.observe_rendered_frame(frame_duration);
         }
 
+        // T-21.2b: re-arm the animation timer from the earliest per-output
+        // deadline after the render pass. A presentation re-arms immediately
+        // (it knows the updated clock); this covers a tick whose output was
+        // not due or a backend that produced no new frame.
+        crate::input::schedule_animation_timer(&mut state);
+
         // Drain the T-03/T-04/T-05 outboxes into the private shell protocol
         // (T-07): window/workspace/focus/attention and input events are
         // delivered in scene-consistent order before the flush below.

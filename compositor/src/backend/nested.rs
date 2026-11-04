@@ -371,17 +371,23 @@ impl NestedData {
 }
 
 fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Result<(), String> {
-    if !state.needs_redraw {
+    let Some(output) = state.space.outputs().next().cloned() else {
+        state.needs_redraw = false;
+        return Ok(());
+    };
+    // Per-output frame requests (T-21.2b): urgent work (input/commit/resize)
+    // presents immediately; animation work waits for this output's own
+    // presentation deadline. An output that is not requested is not rendered,
+    // even while another output's animation ticks.
+    let now = Duration::from(state.clock.now());
+    if !state.output_should_render(&output.name(), now) {
         return Ok(());
     }
     state.needs_redraw = false;
+    state.note_output_frame(&output.name());
     // Open this frame's material pass, so the chrome backdrop is applied at
     // most once per output (T-04.2).
     state.begin_render_frame();
-
-    let Some(output) = state.space.outputs().next().cloned() else {
-        return Ok(());
-    };
 
     // The damage tracker's static mode carries the output's physical size and
     // scale; its scale is what every render element's geometry is resolved

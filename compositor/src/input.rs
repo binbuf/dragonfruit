@@ -1010,23 +1010,42 @@ fn poll_hot_corner(state: &mut DfState) {
     }
 }
 
-/// Arm the shared animation clock while any compositor transition is in
-/// flight (T-02.1a). One reusable timer advances the overview's discrete
-/// progress and every registered animation exactly one frame, then re-arms
-/// until nothing is live. The interval is the clock's current tick, derived
-/// from the fastest active output's refresh period (T-21.2a). When nothing
-/// animates the timer is not armed at all — zero damage, zero client wakeups
-/// (FR-2).
+/// Arm the shared animation clock from the earliest per-output deadline while
+/// any output has an animation request (T-21.2b). One reusable timer advances
+/// the overview's discrete progress and every registered animation exactly one
+/// frame, then re-arms until nothing is live. The interval comes from
+/// [`DfState::next_animation_interval`], so a 60 Hz output animating alone arms
+/// 16.67 ms even when another output runs at 144 Hz. When nothing animates the
+/// timer is not armed at all — zero damage, zero client wakeups (FR-2).
 pub(crate) fn schedule_animation_timer(state: &mut DfState) {
     if state.suspend.is_suspended() {
         // A suspended session produces no frames; `resume_session` re-arms
         // this if anything is still live.
         return;
     }
-    if state.animation_timer.is_some() || !state.animations_active() {
+    if state.animation_timer.is_some() {
+        // A timer armed before the final frame must not survive the frame
+        // that settled the last request; otherwise it fires once more and
+        // steps a settled clock. Keep it only while there is real work.
+        if state.frame_scheduler.has_animation() || state.animations_active() {
+            return;
+        }
+        if let Some(token) = state.animation_timer.take() {
+            state.loop_handle.remove(token);
+        }
         return;
     }
-    let interval = state.animation_clock.frame_interval();
+    let interval = match state.next_animation_interval() {
+        Some(interval) => interval,
+        // Before the first clock tick no output has an animation request yet.
+        // Arm one frame out, exactly like the pre-T-21.2b clock; the tick
+        // steps the animation, marks the outputs it actually moves, and the
+        // following arming uses their presentation deadlines.
+        None if !state.frame_scheduler.has_animation() && state.animations_active() => {
+            state.animation_clock.frame_interval()
+        }
+        None => return,
+    };
     match state
         .loop_handle
         .insert_source(Timer::from_duration(interval), |_, _, state| {
@@ -1039,14 +1058,16 @@ pub(crate) fn schedule_animation_timer(state: &mut DfState) {
     }
 }
 
-/// Advance every in-flight animation one frame and render exactly one
-/// compositor frame for it.
+/// Advance every in-flight animation one frame and request that frame per
+/// output.
 ///
 /// The overview's discrete transition (keyboard/hot-corner/shell) shares the
 /// pipeline a gesture drives and is advanced here; registered animations
-/// (T-02.1b onward) are advanced through [`DfState::step_animations`]. One
-/// tick always requests exactly one redraw, and the timer re-arms with the
-/// clock's current interval only while something is still live.
+/// (T-02.1b onward) are advanced through [`DfState::step_animations`]. A tick
+/// no longer sets the global redraw flag: it reconciles the per-output
+/// animation request set, and each backend presents an output only when that
+/// output's own presentation deadline is due. The timer re-arms from the
+/// earliest due request (T-21.2b).
 fn poll_animations(state: &mut DfState) {
     let now = state.now_msec();
     if state.overview.is_discrete() {
@@ -1061,11 +1082,26 @@ fn poll_animations(state: &mut DfState) {
             state.apply_overview_commit(commit);
         }
     }
+    // Capture the outputs the animation is moving *before* the step: a
+    // zero-duration or final step settles the motion set, but that output
+    // still owes one final frame. Without this, a transition that completes on
+    // its first tick would step once and never present.
+    let final_outputs = if state.animations_active() {
+        state.animation_output_names()
+    } else {
+        Vec::new()
+    };
     state.step_animations(now);
-    state.needs_redraw = true;
-    if state.animations_active() {
-        schedule_animation_timer(state);
+    if !final_outputs.is_empty() && !state.animations_active() {
+        for output in &final_outputs {
+            state.frame_scheduler.request_animation(output);
+        }
     }
+    // The step may have settled one output while another continues; reconcile
+    // before arming so a settled output is never kept on the clock. A settled
+    // output's final request drains when its next deadline presents.
+    state.sync_animation_requests();
+    schedule_animation_timer(state);
 }
 
 /// Map a global-logical view point to the scene point under it through the

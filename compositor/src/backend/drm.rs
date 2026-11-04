@@ -450,7 +450,13 @@ fn render_pending(state: &mut crate::state::DfState) -> Result<(), String> {
     if state.suspend.is_suspended() {
         return Ok(());
     }
-    if !state.needs_redraw && !state.has_pending_frame_callbacks() {
+    // A global scene change or a pending client callback is urgent for every
+    // output; an animation request is not (T-21.2b). The scheduler's own
+    // requests are checked per output inside `render_surface`.
+    if state.has_pending_frame_callbacks() {
+        state.needs_redraw = true;
+    }
+    if !state.needs_redraw && !state.frame_scheduler.has_animation() {
         return Ok(());
     }
     let Some(shared) = drm_shared_slot() else {
@@ -469,7 +475,7 @@ fn render_pending(state: &mut crate::state::DfState) -> Result<(), String> {
             .unwrap_or_default()
     };
     for (node, crtc) in targets {
-        render_surface(state, &shared, node, crtc);
+        render_surface(state, &shared, node, crtc, false);
     }
     state.needs_redraw = false;
     Ok(())
@@ -707,7 +713,7 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
         for (node, crtc) in initial {
             let shared = shared.clone();
             let _ = state.loop_handle.insert_idle(move |state| {
-                render_surface(state, &shared, node, crtc);
+                render_surface(state, &shared, node, crtc, true);
             });
         }
     }
@@ -786,7 +792,7 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
                         for crtc in device.surfaces.keys().copied() {
                             let shared = shared.clone();
                             let _ = state.loop_handle.insert_idle(move |state| {
-                                render_surface(state, &shared, node, crtc);
+                                render_surface(state, &shared, node, crtc, true);
                             });
                         }
                     }
@@ -1107,7 +1113,7 @@ fn connector_connected(
     let shared = drm_shared_slot();
     if let Some(shared) = shared {
         let _ = state.loop_handle.insert_idle(move |state| {
-            render_surface(state, &shared, node, crtc);
+            render_surface(state, &shared, node, crtc, true);
         });
     }
 }
@@ -1244,6 +1250,9 @@ fn frame_finish(
             .last_presentation_time
             .map(|last| Time::elapsed(&last, clock));
         let output_name = surface.output.name();
+        // The vblank boundary has been reached (or the queued frame was
+        // rejected); this output may accept its next animation frame again.
+        state.frame_scheduler.clear_in_flight(&output_name);
         surface.last_presentation_time = Some(clock);
         (interval, output_name)
     };
@@ -1322,12 +1331,16 @@ fn frame_finish(
             move |_, _, state| {
                 let shared = drm_shared_slot();
                 if let Some(shared) = shared {
-                    render_surface(state, &shared, dev_id, crtc);
+                    render_surface(state, &shared, dev_id, crtc, true);
                 }
                 TimeoutAction::Drop
             },
         );
     }
+    // Re-arm the animation clock from the updated per-output deadlines. A
+    // presentation already rescheduled it; this also covers an idle vblank
+    // that cleared an in-flight marker without presenting a new frame.
+    crate::input::schedule_animation_timer(state);
 }
 
 /// Render one DRM output: build elements from the scene and hand them to
@@ -1337,6 +1350,7 @@ fn render_surface(
     shared: &SharedData,
     node: DrmNode,
     crtc: crtc::Handle,
+    force: bool,
 ) {
     // A suspended session (T-12.5a) draws nothing; the output surfaces and
     // clients are kept, so wake is a repaint rather than a re-init.
@@ -1353,6 +1367,17 @@ fn render_surface(
     let Some(surface) = device.surfaces.get_mut(&crtc) else {
         return;
     };
+
+    // Per-output frame requests (T-21.2b): urgent work presents immediately,
+    // animation work waits for this output's own deadline, and a frame already
+    // queued on this output is not queued again. `force` is only for the
+    // initial/resume/retry paths that are not scheduler requests.
+    let output_name = surface.output.name();
+    let now = Duration::from(state.clock.now());
+    if !force && !state.output_should_render(&output_name, now) {
+        return;
+    }
+    state.note_output_frame(&output_name);
 
     // The refresh rate is captured before the render result is handled: the
     // empty/rejected-frame reschedule runs while this `RefCell` borrow is live.
@@ -1681,11 +1706,19 @@ fn render_surface(
                     &render_frame_result.states,
                 );
                 // The feedback is delivered on vblank (frame_finish).
-                if let Err(err) = surface.drm_output.queue_frame(Some(feedback)) {
-                    eprintln!("dragonfruit-compositor: queue_frame failed: {err:?}");
-                    // A rejected frame must not stall the output forever: retry
-                    // on the frame clock, exactly like an empty frame.
-                    reschedule_probe(state, node, crtc, refresh);
+                match surface.drm_output.queue_frame(Some(feedback)) {
+                    Ok(()) => {
+                        // One output-frame is queued; the scheduler must not
+                        // queue another animation frame for this output until
+                        // `frame_finish()` clears the marker.
+                        state.frame_scheduler.mark_in_flight(&output_name);
+                    }
+                    Err(err) => {
+                        eprintln!("dragonfruit-compositor: queue_frame failed: {err:?}");
+                        // A rejected frame must not stall the output forever:
+                        // retry on the frame clock, exactly like an empty frame.
+                        reschedule_probe(state, node, crtc, refresh);
+                    }
                 }
                 // Send this frame's `wl_surface.frame` callbacks. This is the
                 // one wakeup that lets Qt, GTK, Chromium, and Electron clients
@@ -1743,7 +1776,7 @@ fn reschedule_probe(
         .insert_source(Timer::from_duration(delay), move |_, _, state| {
             let shared = drm_shared_slot();
             if let Some(shared) = shared {
-                render_surface(state, &shared, node, crtc);
+                render_surface(state, &shared, node, crtc, true);
             }
             TimeoutAction::Drop
         });

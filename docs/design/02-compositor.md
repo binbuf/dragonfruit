@@ -216,11 +216,11 @@ Every compositor-side lifecycle transition (window appear/minimize/zoom/close,
 the overview slide, the scene transforms) runs on **one** shared animation
 clock (`compositor/src/animation.rs`). A single frame-scheduled calloop timer
 is armed only while an animation is live; each tick advances every running
-transition exactly once and requests exactly one compositor frame, and a
-settled clock is not armed at all — zero damage, zero client wakeups
-(FR-2). `accessibility.reduceMotion` is a single flag on the clock: each
-transition reads it when it builds its tween and takes one step through the
-same commit path, never a second "instant" path. See
+transition exactly once, then requests frames per output from that output's
+presentation deadline, and a settled clock is not armed at all — zero damage,
+zero client wakeups (FR-2). `accessibility.reduceMotion` is a single flag on
+the clock: each transition reads it when it builds its tween and takes one step
+through the same commit path, never a second "instant" path. See
 [ADR 0003](adr/0003-shared-animation-clock.md).
 
 T-21.2a adds the pure per-output refresh model in `compositor/src/refresh.rs`
@@ -246,9 +246,22 @@ catch-up burst; an idle output has no samples or deadline. DRM feeds the clock
 from the vblank timestamp in `frame_finish()` only when `frame_submitted()`
 confirms a queued frame. Nested feeds it from `state.clock.now()` immediately
 after a successful damage `submit()`: Smithay's winit submit returns no
-platform timestamp, so its completion is the closest available source. T188a
-only records; per-output frame requests and earliest-deadline timer arming are
-T188b.
+platform timestamp, so its completion is the closest available source.
+
+T188b adds per-output frame requests and earliest-deadline arming in
+`compositor/src/frame_scheduler.rs` (ADR
+[0201](adr/0201-per-output-frame-requests-and-earliest-deadline.md)). Urgent
+work (input, client/chrome commit, resize, a global scene change) is separate
+from animation work: a global change may mark every output urgent, but an
+animation request is presented only when that output's own clock is due, and a
+frame already queued on the DRM rail is excluded until `frame_finish()` clears
+it. The one animation timer arms from the earliest requested deadline; a
+never-presented clock arms zero for its first frame, while a presented clock
+that is still due uses its period so a no-damage frame cannot spin. A settled
+output keeps its request only until its final frame presents, then the request
+is cleared and no timer is armed. The `frame scheduler stats` line and one
+`frame request` line per output expose the request bits, in-flight state,
+timer state, and each clock's `refresh_hz`/deadline.
 
 #### Idle and animation frame trace (T-03.1a)
 
