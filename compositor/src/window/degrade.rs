@@ -31,7 +31,7 @@
 use std::time::Duration;
 
 use crate::animation::FRAME_INTERVAL;
-use crate::window::backdrop::BackdropSpec;
+use crate::window::backdrop::{BackdropSpec, MaterialRole};
 use crate::window::blur::{BlurSpec, GlassSpec};
 use crate::window::shadow::ShadowSpec;
 
@@ -136,6 +136,11 @@ pub enum MaterialFallback {
     NoSampledBlur,
     Software,
     MultiGpu,
+    /// The sampled path exists, but the controller selected `Minimal` (even
+    /// `Reduced` missed the frame deadline). Persistent chrome keeps its
+    /// `Reduced` floor tier and takes the deliberate milky fallback rather
+    /// than silently becoming a flat translucent slab (T-21.2c).
+    FloorMissed,
 }
 
 impl MaterialFallback {
@@ -146,16 +151,19 @@ impl MaterialFallback {
             MaterialFallback::NoSampledBlur => "no-sampled-blur",
             MaterialFallback::Software => "software",
             MaterialFallback::MultiGpu => "multi-gpu",
+            MaterialFallback::FloorMissed => "floor-missed",
         }
     }
 
-    /// The wire value for `df_output.material_state.fallback`.
+    /// The wire value for `df_output.material_state.fallback` and
+    /// `df_output.material_role_state.fallback`.
     pub const fn wire(self) -> u32 {
         match self {
             MaterialFallback::None => 0,
             MaterialFallback::NoSampledBlur => 1,
             MaterialFallback::Software => 2,
             MaterialFallback::MultiGpu => 3,
+            MaterialFallback::FloorMissed => 4,
         }
     }
 }
@@ -165,6 +173,10 @@ impl MaterialFallback {
 /// the milky fallback; it must not re-derive the degrade policy in QML.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EffectiveMaterial {
+    /// The role this snapshot applies to. The legacy v3 `material_state`
+    /// event reports the global snapshot as [`MaterialRole::Chrome`]; the v4
+    /// `material_role_state` event carries one snapshot per role.
+    pub role: MaterialRole,
     pub tier: DegradeTier,
     /// True only when the sampled backdrop pass actually runs.
     pub blur_active: bool,
@@ -174,8 +186,11 @@ pub struct EffectiveMaterial {
 }
 
 impl EffectiveMaterial {
-    /// Resolve the effective material from the renderer path, whether the
-    /// backend implements the sampled pass, and the selected degrade tier.
+    /// Resolve the **global** effective material from the renderer path,
+    /// whether the backend implements the sampled pass, and the selected
+    /// degrade tier. This keeps the legacy v3 `material_state` meaning: the
+    /// selected tier is not role-floored here. Use [`Self::resolve_for_role`]
+    /// for the per-role state the shell applies.
     pub fn resolve(path: MaterialPath, blur_supported: bool, selected: DegradeTier) -> Self {
         let tier = path.material_tier(selected);
         let blur_active = path.gpu_blur() && blur_supported && tier.blur_enabled();
@@ -187,6 +202,77 @@ impl EffectiveMaterial {
             MaterialFallback::None
         };
         Self {
+            role: MaterialRole::Chrome,
+            tier,
+            blur_active,
+            fallback,
+        }
+    }
+
+    /// Resolve the effective material for one [`MaterialRole`] (T-21.2c).
+    ///
+    /// * Persistent chrome (`Chrome`/`Dock`) never selects below `Reduced`
+    ///   while the sampled path is available. If the controller selected
+    ///   `Minimal`, even `Reduced` missed the deadline: keep the `Reduced`
+    ///   floor tier, turn the sampled pass off, and report
+    ///   [`MaterialFallback::FloorMissed`] so the shell draws the deliberate
+    ///   milky plate instead of a flat translucent slab.
+    /// * Transient roles (`Popup`/`Drawer`) follow the ladder to `Minimal`.
+    /// * The software/headless path always resolves to `Minimal` with the
+    ///   [`MaterialFallback::Software`] reason for every role: there is no
+    ///   sampled path to floor, and the deterministic milky plate is the
+    ///   contract.
+    pub fn resolve_for_role(
+        role: MaterialRole,
+        path: MaterialPath,
+        blur_supported: bool,
+        selected: DegradeTier,
+    ) -> Self {
+        if !path.gpu_blur() {
+            return Self {
+                role,
+                tier: DegradeTier::Minimal,
+                blur_active: false,
+                fallback: MaterialFallback::Software,
+            };
+        }
+
+        if role.is_persistent() {
+            let floor_missed = selected == DegradeTier::Minimal;
+            let tier = if floor_missed {
+                DegradeTier::Reduced
+            } else {
+                selected
+            };
+            let blur_active = blur_supported && tier.blur_enabled() && !floor_missed;
+            let fallback = if floor_missed {
+                if blur_supported {
+                    MaterialFallback::FloorMissed
+                } else {
+                    MaterialFallback::NoSampledBlur
+                }
+            } else if !blur_supported && tier.blur_enabled() {
+                MaterialFallback::NoSampledBlur
+            } else {
+                MaterialFallback::None
+            };
+            return Self {
+                role,
+                tier,
+                blur_active,
+                fallback,
+            };
+        }
+
+        let tier = selected;
+        let blur_active = blur_supported && tier.blur_enabled();
+        let fallback = if !blur_supported && tier.blur_enabled() {
+            MaterialFallback::NoSampledBlur
+        } else {
+            MaterialFallback::None
+        };
+        Self {
+            role,
             tier,
             blur_active,
             fallback,
@@ -644,7 +730,139 @@ mod tests {
         assert_eq!(MaterialFallback::NoSampledBlur.wire(), 1);
         assert_eq!(MaterialFallback::Software.wire(), 2);
         assert_eq!(MaterialFallback::MultiGpu.wire(), 3);
+        assert_eq!(MaterialFallback::FloorMissed.wire(), 4);
         assert_eq!(MaterialFallback::NoSampledBlur.name(), "no-sampled-blur");
+        assert_eq!(MaterialFallback::FloorMissed.name(), "floor-missed");
+    }
+
+    #[test]
+    fn material_roles_classify_as_persistent_or_transient() {
+        assert_eq!(MaterialRole::ALL.len(), MaterialRole::COUNT);
+        for (index, role) in MaterialRole::ALL.into_iter().enumerate() {
+            assert_eq!(role.wire(), index as u32);
+            assert_eq!(MaterialRole::from_wire(role.wire()), Some(role));
+            assert_eq!(role.is_transient(), !role.is_persistent());
+        }
+        for role in [MaterialRole::Chrome, MaterialRole::Dock] {
+            assert!(role.is_persistent(), "{} must be persistent", role.name());
+            assert!(!role.is_transient());
+        }
+        for role in [MaterialRole::Popup, MaterialRole::Drawer] {
+            assert!(role.is_transient(), "{} must be transient", role.name());
+            assert!(!role.is_persistent());
+        }
+        assert_eq!(MaterialRole::from_wire(4), None);
+    }
+
+    #[test]
+    fn persistent_roles_hold_the_reduced_floor_on_the_sampled_path() {
+        // Full/Reduced pass through unchanged for both persistent roles.
+        for role in [MaterialRole::Chrome, MaterialRole::Dock] {
+            for tier in [DegradeTier::Full, DegradeTier::Reduced] {
+                let material =
+                    EffectiveMaterial::resolve_for_role(role, MaterialPath::Gpu, true, tier);
+                assert_eq!(material.role, role);
+                assert_eq!(material.tier, tier);
+                assert!(material.blur_active);
+                assert_eq!(material.fallback, MaterialFallback::None);
+            }
+
+            // The controller selected Minimal because even Reduced missed the
+            // deadline. Persistent chrome keeps the Reduced tier and reports
+            // the explicit milky-fallback reason instead of dropping to a flat
+            // translucent Minimal slab.
+            let floor_missed = EffectiveMaterial::resolve_for_role(
+                role,
+                MaterialPath::Gpu,
+                true,
+                DegradeTier::Minimal,
+            );
+            assert_eq!(floor_missed.role, role);
+            assert_eq!(floor_missed.tier, DegradeTier::Reduced);
+            assert!(!floor_missed.blur_active);
+            assert_eq!(floor_missed.fallback, MaterialFallback::FloorMissed);
+        }
+    }
+
+    #[test]
+    fn transient_roles_may_reach_minimal() {
+        for role in [MaterialRole::Popup, MaterialRole::Drawer] {
+            for tier in DegradeTier::ALL {
+                let material =
+                    EffectiveMaterial::resolve_for_role(role, MaterialPath::Gpu, true, tier);
+                assert_eq!(material.role, role);
+                assert_eq!(material.tier, tier);
+                assert_eq!(material.blur_active, tier.blur_enabled());
+                assert_eq!(material.fallback, MaterialFallback::None);
+            }
+        }
+    }
+
+    #[test]
+    fn an_absent_sampled_path_reports_its_reason_per_role() {
+        // GPU without the sampled pass: persistent chrome still keeps the
+        // Reduced floor and the existing no-sampled-blur reason.
+        for role in [MaterialRole::Chrome, MaterialRole::Dock] {
+            let material = EffectiveMaterial::resolve_for_role(
+                role,
+                MaterialPath::Gpu,
+                false,
+                DegradeTier::Full,
+            );
+            assert_eq!(material.tier, DegradeTier::Full);
+            assert!(!material.blur_active);
+            assert_eq!(material.fallback, MaterialFallback::NoSampledBlur);
+
+            let floor_missed = EffectiveMaterial::resolve_for_role(
+                role,
+                MaterialPath::Gpu,
+                false,
+                DegradeTier::Minimal,
+            );
+            assert_eq!(floor_missed.tier, DegradeTier::Reduced);
+            assert!(!floor_missed.blur_active);
+            assert_eq!(floor_missed.fallback, MaterialFallback::NoSampledBlur);
+        }
+        for role in [MaterialRole::Popup, MaterialRole::Drawer] {
+            let material = EffectiveMaterial::resolve_for_role(
+                role,
+                MaterialPath::Gpu,
+                false,
+                DegradeTier::Full,
+            );
+            assert_eq!(material.tier, DegradeTier::Full);
+            assert!(!material.blur_active);
+            assert_eq!(material.fallback, MaterialFallback::NoSampledBlur);
+
+            // Minimal is an intentional blur-off, not a missing-pass reason.
+            let minimal = EffectiveMaterial::resolve_for_role(
+                role,
+                MaterialPath::Gpu,
+                false,
+                DegradeTier::Minimal,
+            );
+            assert_eq!(minimal.tier, DegradeTier::Minimal);
+            assert!(!minimal.blur_active);
+            assert_eq!(minimal.fallback, MaterialFallback::None);
+        }
+    }
+
+    #[test]
+    fn the_software_path_stays_minimal_for_every_role() {
+        for role in MaterialRole::ALL {
+            for selected in DegradeTier::ALL {
+                let material = EffectiveMaterial::resolve_for_role(
+                    role,
+                    MaterialPath::Software,
+                    false,
+                    selected,
+                );
+                assert_eq!(material.role, role);
+                assert_eq!(material.tier, DegradeTier::Minimal);
+                assert!(!material.blur_active);
+                assert_eq!(material.fallback, MaterialFallback::Software);
+            }
+        }
     }
 
     #[test]
