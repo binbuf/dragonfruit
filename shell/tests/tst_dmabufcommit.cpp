@@ -19,6 +19,12 @@ private slots:
     void modifierSplit();
     void slotReuseDefersWhileBusy();
     void slotFailureIsStickyUntilReset();
+    void ringReusesReleasedSlot();
+    void ringDefersWhileAllSlotsBusy();
+    void ringResizeRetiresUntilRelease();
+    void ringFormatChangeRetires();
+    void ringFirstFormatIsAdopted();
+    void ringResetDropsEverything();
 };
 
 namespace {
@@ -127,6 +133,137 @@ void TestDmabufCommit::slotFailureIsStickyUntilReset()
     QCOMPARE(slot.state(), ChromeDmabufSlot::State::Empty);
     QVERIFY(slot.failureReason().isEmpty());
     QVERIFY(slot.beginCommit());
+}
+
+void TestDmabufCommit::ringReusesReleasedSlot()
+{
+    ChromeDmabufRing ring(3);
+    QVERIFY(!ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                            GpuChromeCapabilities::ModifierLinear));
+    QCOMPARE(ring.capacity(), 3);
+    QCOMPARE(ring.liveCount(), 0);
+
+    const int first = ring.acquire();
+    QCOMPARE(first, 0);
+    QVERIFY(ring.setSerial(first, 11));
+    QVERIFY(ring.isBusy(first));
+
+    const int second = ring.acquire();
+    QCOMPARE(second, 1);
+    QVERIFY(ring.setSerial(second, 12));
+    const int third = ring.acquire();
+    QCOMPARE(third, 2);
+    QVERIFY(ring.setSerial(third, 13));
+
+    // Bounded: a fourth acquisition is refused, never allocated per frame.
+    QCOMPARE(ring.acquire(), -1);
+    QCOMPARE(ring.liveCount(), 3);
+    QCOMPARE(ring.allocations(), quint64(3));
+
+    QVERIFY(ring.release(11));
+    QVERIFY(!ring.isBusy(first));
+    QCOMPARE(ring.acquire(), first);
+    QCOMPARE(ring.reuses(), quint64(1));
+    QCOMPARE(ring.allocations(), quint64(3));
+}
+
+void TestDmabufCommit::ringDefersWhileAllSlotsBusy()
+{
+    ChromeDmabufRing ring(2);
+    ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                   GpuChromeCapabilities::ModifierLinear);
+    QCOMPARE(ring.acquire(), 0);
+    QVERIFY(ring.setSerial(0, 21));
+    QCOMPARE(ring.acquire(), 1);
+    QVERIFY(ring.setSerial(1, 22));
+    QCOMPARE(ring.acquire(), -1);
+
+    // A stale serial never frees a slot.
+    QVERIFY(!ring.release(999));
+    QVERIFY(ring.isBusy(0));
+    QVERIFY(ring.release(21));
+    QVERIFY(ring.isFree(0));
+    QCOMPARE(ring.acquire(), 0);
+    QVERIFY(ring.isBusy(0));
+}
+
+void TestDmabufCommit::ringResizeRetiresUntilRelease()
+{
+    ChromeDmabufRing ring(3);
+    ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                   GpuChromeCapabilities::ModifierLinear);
+    for (int i = 0; i < 3; ++i) {
+        QCOMPARE(ring.acquire(), i);
+        QVERIFY(ring.setSerial(i, 100 + i));
+    }
+
+    QVERIFY(ring.setSize(QSize(640, 360)));
+    for (int i = 0; i < 3; ++i) {
+        QVERIFY(ring.isRetired(i));
+        QVERIFY(ring.isBusy(i));
+    }
+    // The bounded ring cannot allocate a new generation while all three old
+    // slots are still held by the compositor.
+    QCOMPARE(ring.acquire(), -1);
+    QVERIFY(ring.takeRetired().isEmpty());
+
+    QVERIFY(ring.release(100));
+    QVERIFY(!ring.isBusy(0));
+    const QVector<int> retired = ring.takeRetired();
+    QCOMPARE(retired, QVector<int>{0});
+
+    // The released index is reused for the new size, not leaked.
+    QCOMPARE(ring.acquire(), 0);
+    QVERIFY(ring.isBusy(0));
+    QVERIFY(!ring.isRetired(0));
+    QCOMPARE(ring.allocations(), quint64(4));
+}
+
+void TestDmabufCommit::ringFormatChangeRetires()
+{
+    ChromeDmabufRing ring(3);
+    ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                   GpuChromeCapabilities::ModifierLinear);
+    QCOMPARE(ring.acquire(), 0);
+    QVERIFY(ring.setSerial(0, 31));
+
+    QVERIFY(ring.setFormat(GpuChromeCapabilities::Argb8888,
+                           GpuChromeCapabilities::ModifierLinear));
+    QVERIFY(ring.isRetired(0));
+    QVERIFY(ring.isBusy(0));
+    // A new generation is still bounded and may allocate a second slot.
+    QCOMPARE(ring.acquire(), 1);
+    QVERIFY(ring.isBusy(1));
+    QVERIFY(!ring.isRetired(1));
+}
+
+void TestDmabufCommit::ringFirstFormatIsAdopted()
+{
+    ChromeDmabufRing ring(3);
+    ring.setSize(QSize(320, 180));
+    QCOMPARE(ring.acquire(), 0);
+    QVERIFY(ring.setSerial(0, 41));
+    // The first export establishes the format without retiring the slot that
+    // produced it.
+    QVERIFY(!ring.setFormat(GpuChromeCapabilities::Abgr8888,
+                            GpuChromeCapabilities::ModifierLinear));
+    QVERIFY(!ring.isRetired(0));
+    QCOMPARE(ring.format(), GpuChromeCapabilities::Abgr8888);
+    QCOMPARE(ring.modifier(), GpuChromeCapabilities::ModifierLinear);
+}
+
+void TestDmabufCommit::ringResetDropsEverything()
+{
+    ChromeDmabufRing ring(3);
+    ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                   GpuChromeCapabilities::ModifierLinear);
+    QCOMPARE(ring.acquire(), 0);
+    ring.reset();
+    QCOMPARE(ring.liveCount(), 0);
+    QCOMPARE(ring.busyCount(), 0);
+    QVERIFY(ring.size().isEmpty());
+    QCOMPARE(ring.allocations(), quint64(0));
+    QCOMPARE(ring.reuses(), quint64(0));
 }
 
 QTEST_MAIN(TestDmabufCommit)

@@ -66,10 +66,11 @@ QQuickWindow is shown.
   That is a deliberate deviation from the parent spec's "one display" wording;
   the private chrome protocol and surface roles are unchanged, and the shell
   remains independently restartable.
-- T186c must add the 2–3 buffer ring, release handling, and explicit sync.
-  Until then a single buffer is re-rendered while the compositor may still be
-  sampling the previous frame; the nested rail is visually correct but the
-  final sync contract is not yet in place.
+- T186c supersedes the single-buffer part with
+  [ADR 0196](0196-dmabuf-ring-release-reuse-and-sync.md): a three-slot ring,
+  `wl_buffer.release`-driven reuse, resize/format recreation, and a GL-fence
+  pre-sample sync. This ADR remains the record of the first export/commit
+  slice.
 - The compositor still imports and composites the dmabuf through the normal
   `WaylandSurfaceRenderElement` path; there is no compositor-side CPU upload
   fallback.

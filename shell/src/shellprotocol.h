@@ -155,22 +155,21 @@ public:
     bool commitDockImage(const QImage &image, const QSize &logicalSize = QSize(),
                          const QRect &sourceRect = QRect());
 
-    // T-21.1d: the result of a dmabuf commit. `Deferred` means the single
-    // reusable buffer is still held by the compositor; the controller retries
-    // on `bufferReleased`. `Failed` means the caller must fall back to shm.
+    // T-21.1d: the result of a dmabuf commit. `Deferred` means the ring slot
+    // is still held by the compositor; the controller retries on the release.
+    // `Failed` means the caller must fall back to shm.
     enum class DmabufCommitResult { Committed, Deferred, Failed };
 
-    // Attach a dmabuf-backed buffer to the Dock surface and commit it. The
-    // buffer is created once from the exported format/modifier/stride/offset
-    // and reused; a resize recreates it after the compositor releases it.
-    // `sourceRect` selects the physical sub-rect shown through the surface's
-    // viewport (the Dock FBO includes the popover headroom/gutter).
+    // Attach a dmabuf-backed buffer to the Dock surface and commit it. One
+    // reusable wl_buffer is kept per producer ring slot; a size/format change
+    // recreates that slot after the compositor releases it. `sourceRect`
+    // selects the physical sub-rect shown through the surface's viewport (the
+    // Dock FBO includes the popover headroom/gutter).
     DmabufCommitResult commitDockDmabuf(const ChromeDmabufFrame &frame,
                                         const QSize &logicalSize,
                                         const QRect &sourceRect,
                                         QString *reason = nullptr);
-    // True while the Dock's single dmabuf buffer is held by the compositor.
-    // The controller checks this before rendering into its FBO.
+    // True while any Dock dmabuf ring slot is held by the compositor.
     bool dockDmabufBusy() const;
 
     // The generic dmabuf commit (T186b exposes it for the Dock; T186d uses the
@@ -689,6 +688,9 @@ signals:
     // A pooled buffer was returned by the compositor. A commit skipped because
     // every buffer was busy can retry now.
     void bufferReleased(const QString &surface);
+    // T186c: a dmabuf ring slot was returned by `wl_buffer.release`. The
+    // producer must not render into `slot` again until this fires.
+    void dmabufReleased(const QString &surface, int slot, quint64 serial);
     // A commit could not acquire a pooled buffer (all still busy). The
     // controller keeps the surface dirty and retries on `bufferReleased`.
     void commitDeferred(const QString &surface);
@@ -847,10 +849,11 @@ private:
     bool ensureShmSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
                        const QSize &size);
     void destroyShmSlot(ShellSurfaceBuffer *buffer, int slot, bool destroyBuffer = true);
-    // T-21.1d dmabuf buffer lifecycle (one buffer per surface).
-    bool createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *buffer,
+    // T-21.1d dmabuf buffer lifecycle (one reusable buffer per ring slot).
+    bool createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
                           const ChromeDmabufFrame &frame, QString *reason);
-    void destroyDmabufSlot(ShellSurfaceBuffer *buffer, bool destroyBuffer = true);
+    void destroyDmabufSlot(ShellSurfaceBuffer *buffer, int slot,
+                           bool destroyBuffer = true);
     void applyDmabufScale(wl_surface *surface, const QSize &logicalSize,
                           const QRect &sourceRect, const QSize &bufferSize);
     static void onDmabufCreated(void *data, zwp_linux_buffer_params_v1 *params,
@@ -1073,8 +1076,17 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // probe above binds a temporary read-only object; this one lives for the
     // connection and creates the Dock's wl_buffer.
     zwp_linux_dmabuf_v1 *m_dmabuf = nullptr;
-    QHash<zwp_linux_buffer_params_v1 *, wl_surface *> m_dmabufParams;
-    QHash<wl_buffer *, wl_surface *> m_dmabufOwners;
+    struct DmabufParamOwner {
+        wl_surface *surface = nullptr;
+        int slot = -1;
+    };
+    struct DmabufBufferOwner {
+        wl_surface *surface = nullptr;
+        int slot = -1;
+        quint64 serial = 0;
+    };
+    QHash<zwp_linux_buffer_params_v1 *, DmabufParamOwner> m_dmabufParams;
+    QHash<wl_buffer *, DmabufBufferOwner> m_dmabufOwners;
     wl_compositor *m_compositor = nullptr;
     wl_shm *m_shm = nullptr;
     wp_fractional_scale_manager_v1 *m_fractionalScaleManager = nullptr;

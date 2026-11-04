@@ -64,9 +64,18 @@ FourCC/modifier from the compositor feedback, `y_invert` for the GL origin).
 Dock's viewporter source rect; the other surfaces still read back and use the
 T185 shm pool. Any export/format/viewporter/import failure falls back to shm
 and is reported as `gpu=shm gpu_reason=<token>` in `chrome stats`
-([ADR 0195](adr/0195-dmabuf-export-and-single-buffer-dock-commit.md)). The
-2–3 buffer ring, release-driven reuse, and explicit sync remain T186c; the
-menu bar/popover rollout remains T186d. The default rail stays off. Per-output
+([ADR 0195](adr/0195-dmabuf-export-and-single-buffer-dock-commit.md)). T186c
+turns that one buffer into a bounded three-slot per-surface ring: each slot
+owns an FBO/export and a reusable `wl_buffer`, `wl_buffer.release` returns the
+slot, and a resize/format change retires the old generation until its release.
+The producer waits on a GL fence before the compositor samples the buffer;
+only implicit dma-buf sync is available (the compositor advertises no
+`linux-drm-syncobj-v1`), so the GL fence plus the driver's implicit dma-fence
+is the sync contract. Ring exhaustion commits the last complete frame through
+shm for that frame and retries on release; hard export/import/format failures
+abandon the rail. Both carry a `gpu_reason`; the surface never goes black
+([ADR 0196](adr/0196-dmabuf-ring-release-reuse-and-sync.md)). The menu
+bar/popover rollout remains T186d. The default rail stays off. Per-output
 shell scenes with different scales on one desktop remain a follow-up; a chrome
 surface shares one scale. The T-21.1c close-out also retired the old
 `FrameCommitGate` double-render workaround: no runtime path used it after the

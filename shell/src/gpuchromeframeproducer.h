@@ -15,6 +15,7 @@
 // surface.
 #pragma once
 
+#include <QHash>
 #include <QImage>
 #include <QQuickRenderTarget>
 #include <QSize>
@@ -72,10 +73,17 @@ public:
     // Renders once into the reusable FBO and returns a verification/readback
     // image (the non-Dock surfaces still use the T185 shm commit path).
     QImage renderFrame() override;
-    // Renders once and exports the current FBO as a dmabuf. No CPU readback.
-    // The returned frame's fd stays owned by this producer and is valid until
-    // the FBO is resized/recreated or the producer is destroyed.
+    // Renders once into a free ring slot and exports that slot as a dmabuf.
+    // No CPU readback. The returned frame names its producer slot; the fd
+    // stays owned by this producer and is valid until the slot is retired.
+    // The slot remains busy until `releaseDmabufFrame()` (from
+    // `wl_buffer.release`) or `abandonDmabufFrame()` (deferred/failed commit).
     bool exportFrame(ChromeDmabufFrame *frame, QString *reason = nullptr);
+    // Return a committed slot to the ring. `serial` must match the frame that
+    // was committed; stale releases are ignored.
+    void releaseDmabufFrame(int slot, uint64_t serial);
+    // Return an exported but not committed slot to the ring.
+    void abandonDmabufFrame(int slot);
     // Read the FBO last rendered by exportFrame()/renderFrame() without
     // rendering again. Used for the one-frame SHM fallback after a failed
     // export/import.
@@ -85,16 +93,29 @@ public:
 
     QSize framebufferSize() const;
     unsigned int framebufferTexture() const;
+    int dmabufRingCapacity() const { return m_ring.capacity(); }
+    int dmabufRingLiveCount() const { return m_ring.liveCount(); }
+    quint64 dmabufRingAllocations() const { return m_ring.allocations(); }
 
     // `DRAGONFRUIT_CHROME_GPU` is opt-in; unset or "0" keeps the T185 path.
     static bool environmentRequested();
     static QString environmentValue();
 
 private:
-    bool renderToFramebuffer();
-    void ensureFramebuffer();
-    bool ensureDmabufExport();
-    void releaseDmabuf();
+    struct SlotResources {
+        QOpenGLFramebufferObject *fbo = nullptr;
+        ChromeDmabufFrame frame;
+        bool rendered = false;
+    };
+
+    bool configureRing(const QSize &physical);
+    bool renderToFramebuffer(int slot);
+    bool ensureFramebuffer(int slot, const QSize &physical);
+    bool ensureDmabufExport(int slot);
+    bool syncGpuWork();
+    QImage readbackSlot(int slot);
+    void collectRetiredSlots();
+    void destroySlotResources(int slot);
     void releaseGpu();
     void setFailure(const QString &reason);
 
@@ -106,15 +127,16 @@ private:
     QOffscreenSurface *m_surface = nullptr;
     QQuickRenderControl *m_renderControl = nullptr;
     QQuickWindow *m_window = nullptr;
-    QOpenGLFramebufferObject *m_fbo = nullptr;
-    QQuickRenderTarget m_target;
+    ChromeDmabufRing m_ring{3};
+    QHash<int, SlotResources> m_slots;
+    int m_lastRenderedSlot = -1;
     ChromeDmabufExporter m_exporter;
-    ChromeDmabufFrame m_dmabufFrame;
     uint64_t m_dmabufSerial = 0;
     QVector<GpuChromeCapabilities::FormatModifier> m_dmabufFormats;
     qreal m_dpr = 1.0;
     bool m_initialized = false;
     bool m_exporterInitialized = false;
+    bool m_geometryDirty = true;
     QString m_reason;
     QString m_exportReason;
     QImage m_lastFrame;
