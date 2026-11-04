@@ -213,6 +213,55 @@ void ChromeStats::recordDmabufFallback(const QString &surface, const QString &re
     setGpuFallbackReason(reason);
 }
 
+void ChromeStats::recordDmabufBufferCreated(const QString &surface)
+{
+    if (!m_enabled)
+        return;
+    ++m_dmabufBuffers;
+    ++m_dmabufAllocs;
+    SurfaceStats &stats = m_surfaces[surface];
+    ++stats.dmabufBuffers;
+    ++stats.dmabufAllocs;
+}
+
+void ChromeStats::recordDmabufBufferDestroyed(const QString &surface)
+{
+    if (!m_enabled)
+        return;
+    if (m_dmabufBuffers > 0)
+        --m_dmabufBuffers;
+    if (surface.isEmpty())
+        return;
+    SurfaceStats &stats = m_surfaces[surface];
+    if (stats.dmabufBuffers > 0)
+        --stats.dmabufBuffers;
+}
+
+void ChromeStats::recordDmabufReuse(const QString &surface)
+{
+    if (!m_enabled)
+        return;
+    ++m_dmabufReuses;
+    ++m_surfaces[surface].dmabufReuses;
+}
+
+void ChromeStats::setDmabufSyncMode(const QString &mode)
+{
+    if (!m_enabled || mode.isEmpty())
+        return;
+    m_dmabufSyncMode = mode;
+}
+
+void ChromeStats::recordDmabufSyncWait(qint64 waitUs, bool timeout)
+{
+    if (!m_enabled)
+        return;
+    ++m_dmabufSyncWaits;
+    if (timeout)
+        ++m_dmabufSyncTimeouts;
+    Q_UNUSED(waitUs);
+}
+
 void ChromeStats::recordFrameCallback(const QString &surface, qint64 callbackUs)
 {
     if (!m_enabled)
@@ -244,7 +293,9 @@ void ChromeStats::emitStats(const QString &label)
                "damage_pixels=%9 frame_callbacks=%10 fallback_renders=%11 "
                "skipped_commits=%12 dmabuf_commits=%13 dmabuf_bytes=%14 "
                "dmabuf_deferred=%15 dmabuf_fallbacks=%16 gpu=%17 "
-               "gpu_reason=%18 %19 %20")
+               "gpu_reason=%18 %19 %20 dmabuf_buffers=%21 dmabuf_allocs=%22 "
+               "dmabuf_reuses=%23 dmabuf_sync=%24 dmabuf_sync_waits=%25 "
+               "dmabuf_sync_timeouts=%26")
                .arg(label)
                .arg(m_transportPath)
                .arg(m_sceneFrames)
@@ -264,7 +315,13 @@ void ChromeStats::emitStats(const QString &label)
                .arg(m_gpuPath)
                .arg(m_gpuReason.isEmpty() ? QStringLiteral("none") : m_gpuReason)
                .arg(timingText("commit_us", m_commitUs))
-               .arg(timingText("frame_callback_us", m_frameCallbackUs));
+               .arg(timingText("frame_callback_us", m_frameCallbackUs))
+               .arg(m_dmabufBuffers)
+               .arg(m_dmabufAllocs)
+               .arg(m_dmabufReuses)
+               .arg(m_dmabufSyncMode)
+               .arg(m_dmabufSyncWaits)
+               .arg(m_dmabufSyncTimeouts);
 
     QStringList names = m_surfaces.keys();
     names.sort();
@@ -276,7 +333,8 @@ void ChromeStats::emitStats(const QString &label)
                    "buffer_scale=%5 scale=%6 viewport=%7 commits=%8 shm_allocs=%9 "
                    "shm_bytes=%10 copy_bytes=%11 damage_pixels=%12 skipped=%13 "
                    "fallback=%14 renders=%15 dmabuf_commits=%16 dmabuf_bytes=%17 "
-                   "dmabuf_deferred=%18 dmabuf_fallbacks=%19 %20 %21")
+                   "dmabuf_deferred=%18 dmabuf_fallbacks=%19 %20 %21 "
+                   "dmabuf_buffers=%22 dmabuf_allocs=%23 dmabuf_reuses=%24")
                    .arg(label)
                    .arg(name)
                    .arg(sizeText(stats.logicalSize))
@@ -297,7 +355,10 @@ void ChromeStats::emitStats(const QString &label)
                    .arg(stats.dmabufDeferred)
                    .arg(stats.dmabufFallbacks)
                    .arg(timingText("commit_us", stats.commitUs))
-                   .arg(timingText("frame_callback_us", stats.frameCallbackUs));
+                   .arg(timingText("frame_callback_us", stats.frameCallbackUs))
+                   .arg(stats.dmabufBuffers)
+                   .arg(stats.dmabufAllocs)
+                   .arg(stats.dmabufReuses);
     }
 
     // The next dump describes the interval after this one. Counters stay

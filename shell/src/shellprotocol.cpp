@@ -79,7 +79,10 @@ struct ShellDmabufSlot {
 struct ShellSurfaceBuffer {
     ChromeBufferPool pool{3};
     QHash<int, ShellShmSlot> slotResources;
-    ShellDmabufSlot dmabuf;
+    // One reusable wl_buffer per producer ring slot (T186c). Keyed by the
+    // producer's slot id; a slot is recreated only when its size/format
+    // changes or its import failed.
+    QHash<int, ShellDmabufSlot> dmabufSlots;
     QImage lastImage;
     QRect lastSourceRect;
     wl_callback *frameCallback = nullptr;
@@ -1479,7 +1482,13 @@ bool ShellProtocol::dockDmabufBusy() const
     if (!m_dockSurface)
         return false;
     auto it = m_surfaceBuffers.constFind(m_dockSurface);
-    return it != m_surfaceBuffers.constEnd() && it.value()->dmabuf.busy;
+    if (it == m_surfaceBuffers.constEnd())
+        return false;
+    for (const ShellDmabufSlot &slot : it.value()->dmabufSlots) {
+        if (slot.busy)
+            return true;
+    }
+    return false;
 }
 
 ShellProtocol::DmabufCommitResult ShellProtocol::commitDockDmabuf(
@@ -1510,6 +1519,11 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     if (!m_dmabuf) {
         if (reason)
             *reason = QStringLiteral("no-dmabuf");
+        return DmabufCommitResult::Failed;
+    }
+    if (frame.slot < 0) {
+        if (reason)
+            *reason = QStringLiteral("no-slot");
         return DmabufCommitResult::Failed;
     }
 
@@ -1558,29 +1572,44 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
             *reason = QStringLiteral("no-buffer-state");
         return DmabufCommitResult::Failed;
     }
-    ShellDmabufSlot &slot = buffer->dmabuf;
-    if (slot.failed) {
+    const QString label = surfaceLabel(surface);
+    auto slotIt = buffer->dmabufSlots.find(frame.slot);
+    if (slotIt != buffer->dmabufSlots.end() && slotIt.value().failed) {
         if (reason)
-            *reason = slot.failReason.isEmpty() ? QStringLiteral("import-failed")
-                                                : slot.failReason;
+            *reason = slotIt.value().failReason.isEmpty()
+                ? QStringLiteral("import-failed")
+                : slotIt.value().failReason;
         return DmabufCommitResult::Failed;
     }
 
-    // A size/format/export-identity change retires the old buffer. T186b
-    // commits one buffer and does not yet keep a ring, so a replaced buffer
-    // is destroyed even if the compositor still holds a reference: the
-    // compositor owns the underlying dmabuf fd, and the next commit attaches
-    // the new buffer. The release-driven ring is T186c.
-    if (slot.buffer
-        && (slot.size != frame.size || slot.format != frame.format
-            || slot.modifier != frame.modifier || slot.serial != frame.serial)) {
-        destroyDmabufSlot(buffer);
+    if (slotIt != buffer->dmabufSlots.end() && slotIt.value().busy) {
+        // The producer ring should never hand us a busy slot. If it does, do
+        // not attach it again or write into it; retry after the release.
+        if (reason)
+            *reason = QStringLiteral("slot-busy");
+        return DmabufCommitResult::Deferred;
     }
 
-    if (!slot.buffer) {
-        if (!createDmabufSlot(surface, buffer, frame, reason))
+    // A size/format change recreates this slot's buffer. The producer only
+    // reuses a retired slot after its release, so this is not a busy buffer.
+    if (slotIt != buffer->dmabufSlots.end() && slotIt.value().buffer
+        && (slotIt.value().size != frame.size
+            || slotIt.value().format != frame.format
+            || slotIt.value().modifier != frame.modifier)) {
+        destroyDmabufSlot(buffer, frame.slot);
+        slotIt = buffer->dmabufSlots.end();
+    }
+
+    const bool reused = slotIt != buffer->dmabufSlots.end()
+        && slotIt.value().buffer;
+    if (!reused) {
+        if (!createDmabufSlot(surface, buffer, frame.slot, frame, reason))
+            return DmabufCommitResult::Failed;
+        slotIt = buffer->dmabufSlots.find(frame.slot);
+        if (slotIt == buffer->dmabufSlots.end())
             return DmabufCommitResult::Failed;
     }
+    ShellDmabufSlot &slot = slotIt.value();
 
     const bool statsEnabled = ChromeStats::instance().enabled();
     QElapsedTimer commitTimer;
@@ -1597,17 +1626,21 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     wl_surface_commit(surface);
     wl_display_flush(m_display);
     slot.busy = true;
+    slot.serial = frame.serial;
+    m_dmabufOwners.insert(slot.buffer, DmabufBufferOwner{surface, frame.slot,
+                                                         frame.serial});
 
     if (statsEnabled) {
         qint64 commitUs = ChromeStats::instance().commitUsSinceRender();
         if (commitUs < 0)
             commitUs = commitTimer.nsecsElapsed() / 1000;
-        const QString label = surfaceLabel(surface);
         const qint64 bytes = qint64(frame.stride) * frame.size.height();
         ChromeStats::instance().recordCommit(
             label, logicalSize, frame.size, 1, 1.0, true, commitUs, 0,
             qint64(source.width()) * source.height());
         ChromeStats::instance().recordDmabufCommit(label, bytes);
+        if (reused)
+            ChromeStats::instance().recordDmabufReuse(label);
     }
     if (reason)
         reason->clear();
@@ -1615,11 +1648,12 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
 }
 
 bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *buffer,
-                                     const ChromeDmabufFrame &frame, QString *reason)
+                                     int slotIndex, const ChromeDmabufFrame &frame,
+                                     QString *reason)
 {
-    if (!surface || !buffer || !m_dmabuf || !frame.valid())
+    if (!surface || !buffer || !m_dmabuf || !frame.valid() || slotIndex < 0)
         return false;
-    ShellDmabufSlot &slot = buffer->dmabuf;
+    ShellDmabufSlot &slot = buffer->dmabufSlots[slotIndex];
     slot.failed = false;
     slot.failReason.clear();
     slot.buffer = nullptr;
@@ -1632,7 +1666,7 @@ bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *bu
         return false;
     }
     slot.params = params;
-    m_dmabufParams.insert(params, surface);
+    m_dmabufParams.insert(params, DmabufParamOwner{surface, slotIndex});
 
     const int fd = ::dup(frame.fd);
     if (fd < 0) {
@@ -1685,9 +1719,11 @@ bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *bu
     slot.format = frame.format;
     slot.modifier = frame.modifier;
     slot.serial = frame.serial;
+    ChromeStats::instance().recordDmabufBufferCreated(surfaceLabel(surface));
     qInfo().noquote() << QStringLiteral(
-        "chrome dmabuf: buffer created format=%1 modifier=%2 stride=%3 offset=%4 "
-        "size=%5x%6 surface=%7")
+        "chrome dmabuf: buffer created slot=%1 format=%2 modifier=%3 stride=%4 "
+        "offset=%5 size=%6x%7 surface=%8")
+        .arg(slotIndex)
         .arg(GpuChromeCapabilities::formatName(frame.format),
              GpuChromeCapabilities::modifierName(frame.modifier))
         .arg(frame.stride)
@@ -1698,30 +1734,32 @@ bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *bu
     return true;
 }
 
-void ShellProtocol::destroyDmabufSlot(ShellSurfaceBuffer *buffer, bool destroyBuffer)
+void ShellProtocol::destroyDmabufSlot(ShellSurfaceBuffer *buffer, int slotIndex,
+                                      bool destroyBuffer)
 {
     if (!buffer)
         return;
-    ShellDmabufSlot &slot = buffer->dmabuf;
+    auto it = buffer->dmabufSlots.find(slotIndex);
+    if (it == buffer->dmabufSlots.end())
+        return;
+    ShellDmabufSlot &slot = it.value();
     if (slot.params) {
         m_dmabufParams.remove(slot.params);
         zwp_linux_buffer_params_v1_destroy(slot.params);
         slot.params = nullptr;
     }
     if (slot.buffer) {
+        const auto owner = m_dmabufOwners.constFind(slot.buffer);
+        const QString label = owner != m_dmabufOwners.constEnd() && owner.value().surface
+            ? surfaceLabel(owner.value().surface)
+            : QString();
         m_dmabufOwners.remove(slot.buffer);
+        ChromeStats::instance().recordDmabufBufferDestroyed(label);
         if (destroyBuffer)
             wl_buffer_destroy(slot.buffer);
         slot.buffer = nullptr;
     }
-    slot.size = QSize();
-    slot.format = 0;
-    slot.modifier = 0;
-    slot.serial = 0;
-    slot.busy = false;
-    slot.failed = false;
-    slot.creating = false;
-    slot.failReason.clear();
+    buffer->dmabufSlots.erase(it);
 }
 
 void ShellProtocol::applyDmabufScale(wl_surface *surface, const QSize &logicalSize,
@@ -2344,7 +2382,9 @@ void ShellProtocol::destroySurfaceBuffer(wl_surface *surface)
         wl_callback_destroy(buffer->frameCallback);
         buffer->frameCallback = nullptr;
     }
-    destroyDmabufSlot(buffer);
+    const QList<int> dmabufSlotIds = buffer->dmabufSlots.keys();
+    for (int slot : dmabufSlotIds)
+        destroyDmabufSlot(buffer, slot);
     const QList<int> slotIds = buffer->slotResources.keys();
     for (int slot : slotIds)
         destroyShmSlot(buffer, slot);
@@ -4368,19 +4408,23 @@ void ShellProtocol::onDmabufCreated(void *data, zwp_linux_buffer_params_v1 *para
                                    wl_buffer *buffer)
 {
     auto *self = static_cast<ShellProtocol *>(data);
-    wl_surface *surface = self->m_dmabufParams.take(params);
-    if (surface) {
-        auto it = self->m_surfaceBuffers.find(surface);
+    const DmabufParamOwner owner = self->m_dmabufParams.take(params);
+    if (owner.surface && owner.slot >= 0) {
+        auto it = self->m_surfaceBuffers.find(owner.surface);
         if (it != self->m_surfaceBuffers.end()) {
-            ShellDmabufSlot &slot = it.value()->dmabuf;
-            slot.buffer = buffer;
-            slot.creating = false;
-            slot.params = nullptr;
-            self->m_dmabufOwners.insert(buffer, surface);
-            static const wl_buffer_listener bufferListener = { onBufferRelease };
-            wl_buffer_add_listener(buffer, &bufferListener, self);
-            zwp_linux_buffer_params_v1_destroy(params);
-            return;
+            auto slotIt = it.value()->dmabufSlots.find(owner.slot);
+            if (slotIt != it.value()->dmabufSlots.end()) {
+                ShellDmabufSlot &slot = slotIt.value();
+                slot.buffer = buffer;
+                slot.creating = false;
+                slot.params = nullptr;
+                self->m_dmabufOwners.insert(
+                    buffer, DmabufBufferOwner{owner.surface, owner.slot, 0});
+                static const wl_buffer_listener bufferListener = { onBufferRelease };
+                wl_buffer_add_listener(buffer, &bufferListener, self);
+                zwp_linux_buffer_params_v1_destroy(params);
+                return;
+            }
         }
     }
     if (buffer)
@@ -4391,15 +4435,18 @@ void ShellProtocol::onDmabufCreated(void *data, zwp_linux_buffer_params_v1 *para
 void ShellProtocol::onDmabufFailed(void *data, zwp_linux_buffer_params_v1 *params)
 {
     auto *self = static_cast<ShellProtocol *>(data);
-    wl_surface *surface = self->m_dmabufParams.take(params);
-    if (surface) {
-        auto it = self->m_surfaceBuffers.find(surface);
+    const DmabufParamOwner owner = self->m_dmabufParams.take(params);
+    if (owner.surface && owner.slot >= 0) {
+        auto it = self->m_surfaceBuffers.find(owner.surface);
         if (it != self->m_surfaceBuffers.end()) {
-            ShellDmabufSlot &slot = it.value()->dmabuf;
-            slot.creating = false;
-            slot.failed = true;
-            slot.params = nullptr;
-            slot.failReason = QStringLiteral("import-failed");
+            auto slotIt = it.value()->dmabufSlots.find(owner.slot);
+            if (slotIt != it.value()->dmabufSlots.end()) {
+                ShellDmabufSlot &slot = slotIt.value();
+                slot.creating = false;
+                slot.failed = true;
+                slot.params = nullptr;
+                slot.failReason = QStringLiteral("import-failed");
+            }
         }
     }
     zwp_linux_buffer_params_v1_destroy(params);
@@ -4409,20 +4456,27 @@ void ShellProtocol::onBufferRelease(void *data, wl_buffer *buffer)
 {
     auto *self = static_cast<ShellProtocol *>(data);
     // T-21.1d: a dmabuf buffer is reusable and stays owned by the shell. Its
-    // release only clears the busy flag; the next Dock frame may render into
-    // the same FBO again.
+    // release clears the slot's busy flag and returns it to the producer ring;
+    // the next frame may render into that FBO again.
     auto dmabufOwner = self->m_dmabufOwners.constFind(buffer);
     if (dmabufOwner != self->m_dmabufOwners.constEnd()) {
-        wl_surface *surface = dmabufOwner.value();
+        const DmabufBufferOwner owner = dmabufOwner.value();
         QString label;
-        if (surface) {
-            label = self->surfaceLabel(surface);
-            auto it = self->m_surfaceBuffers.find(surface);
-            if (it != self->m_surfaceBuffers.end())
-                it.value()->dmabuf.busy = false;
+        if (owner.surface) {
+            label = self->surfaceLabel(owner.surface);
+            auto it = self->m_surfaceBuffers.find(owner.surface);
+            if (it != self->m_surfaceBuffers.end()) {
+                auto slotIt = it.value()->dmabufSlots.find(owner.slot);
+                if (slotIt != it.value()->dmabufSlots.end()
+                    && slotIt.value().serial == owner.serial) {
+                    slotIt.value().busy = false;
+                }
+            }
         }
-        if (!label.isEmpty())
+        if (!label.isEmpty()) {
+            emit self->dmabufReleased(label, owner.slot, owner.serial);
             emit self->bufferReleased(label);
+        }
         return;
     }
 

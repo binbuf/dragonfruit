@@ -541,6 +541,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onChromeFramePresented);
     connect(m_protocol, &ShellProtocol::bufferReleased, this,
             &ShellController::onChromeBufferReleased);
+    connect(m_protocol, &ShellProtocol::dmabufReleased, this,
+            &ShellController::onChromeDmabufReleased);
     connect(m_protocol, &ShellProtocol::commitDeferred, this,
             &ShellController::onChromeCommitDeferred);
     connect(m_protocol, &ShellProtocol::materialStateChanged, this,
@@ -7211,6 +7213,18 @@ void ShellController::onChromeBufferReleased(const QString &surface)
     }
 }
 
+void ShellController::onChromeDmabufReleased(const QString &surface, int slot,
+                                             quint64 serial)
+{
+    for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
+        ChromePace &pace = it.value();
+        if (pace.primaryLabel != surface)
+            continue;
+        if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(pace.producer))
+            gpu->releaseDmabufFrame(slot, serial);
+    }
+}
+
 void ShellController::onChromeCommitDeferred(const QString &surface)
 {
     for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
@@ -7375,15 +7389,21 @@ void ShellController::renderDock()
         if (gpuProducer->exportFrame(&dmabufFrame, &gpuReason)) {
             dmabufFrameReady = true;
         } else {
-            // The FBO still holds the rendered frame; read it back once and
-            // commit through the T185 shm pool so the Dock never goes black.
+            // The FBO still holds the last rendered frame; read it back once
+            // and commit through the T185 shm pool so the Dock never goes
+            // black. A full ring or a slow fence is transient: keep the
+            // dmabuf rail enabled and retry on the next release.
+            const bool transient = gpuReason == QLatin1String("ring-exhausted")
+                || gpuReason == QLatin1String("sync-timeout");
             image = gpuProducer->readbackCurrentFrame();
             ChromeStats::instance().recordDmabufFallback(QStringLiteral("dock"),
                                                          gpuReason);
             ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
-            ChromeStats::instance().setTransportPath(
-                QStringLiteral("render-control+shm"));
-            m_dockDmabufEnabled = false;
+            if (!transient) {
+                ChromeStats::instance().setTransportPath(
+                    QStringLiteral("render-control+shm"));
+                m_dockDmabufEnabled = false;
+            }
         }
     } else {
         image = renderChromeFrame(m_dockWindow);
@@ -7434,9 +7454,11 @@ void ShellController::renderDock()
             ChromeStats::instance().setTransportPath(
                 QStringLiteral("render-control+dmabuf"));
         } else if (result == ShellProtocol::DmabufCommitResult::Deferred) {
-            // A ring/release-aware commit (T186c) can defer while the
-            // compositor holds the buffer. Keep the Dock dirty; the release
-            // handler schedules the retry.
+            // The ring slot is still held by the compositor. Return the
+            // producer slot without marking it committed, keep the Dock
+            // dirty, and retry on the release signal.
+            if (gpuProducer)
+                gpuProducer->abandonDmabufFrame(dmabufFrame.slot);
             auto it = m_chromePaces.find(m_producers.value(m_dockWindow));
             if (it != m_chromePaces.end())
                 it.value().dirty = true;
@@ -7445,6 +7467,8 @@ void ShellController::renderDock()
         } else {
             // Import/format failure: abandon the dmabuf rail for the session
             // and commit this already-rendered frame through shm.
+            if (gpuProducer)
+                gpuProducer->abandonDmabufFrame(dmabufFrame.slot);
             ChromeStats::instance().recordDmabufFallback(QStringLiteral("dock"),
                                                          gpuReason);
             ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
