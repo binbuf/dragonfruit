@@ -1,0 +1,69 @@
+T-21.2b VRR, chrome callbacks, and mixed-refresh trace (T188c)
+timestamp: 2026-11-04T12:02:02-08:00
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+session: XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=dragonfruit WAYLAND_DISPLAY=dragonfruit-wayland
+DRM nodes: by-path card1 renderD128 ; connected outputs: card1-DP-1
+command: DRAGONFRUIT_REFRESH_HZ=144 target/debug/dragonfruit-compositor --backend nested; target/debug/dragonfruit-compositor --backend headless
+
+## 1. Nested single-output (144 Hz): VRR report and chrome callbacks
+nested socket: dragonfruit-t21-vrr-nested-37665 (compositor + shell)
+idle sample:
+  dragonfruit-compositor: frame request (SIGUSR1-1): output=NESTED-1 refresh_hz=144.000 period_us=6944 last_presented_us=2386465929 next_deadline_us=2386472874 idle=0 due=0 urgent=0 animation=0 in_flight=0 presentations=6 last_interval_us=1000330 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame scheduler stats (SIGUSR1-1): outputs=1 urgent=0 animation=0 in_flight=0 timer_armed=0
+live sample (Dock sweep):
+  dragonfruit-compositor: frame request (SIGUSR1-2): output=NESTED-1 refresh_hz=144.000 period_us=6944 last_presented_us=2401508817 next_deadline_us=2401515761 idle=0 due=0 urgent=0 animation=0 in_flight=0 presentations=19 last_interval_us=1006697 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame scheduler stats (SIGUSR1-2): outputs=1 urgent=0 animation=0 in_flight=0 timer_armed=1
+settled sample:
+  dragonfruit-compositor: frame request (SIGUSR1-7): output=NESTED-1 refresh_hz=144.000 period_us=6944 last_presented_us=2454696810 next_deadline_us=2454703755 idle=0 due=1 urgent=0 animation=0 in_flight=0 presentations=80 last_interval_us=2723339 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame scheduler stats (SIGUSR1-7): outputs=1 urgent=0 animation=0 in_flight=0 timer_armed=0
+chrome_frame_callbacks: before=1 after=5 delta=4
+presentations delta during the sweep: 13
+note: the nested host throttles submit() (last_interval_us is ~1 s);
+      the derived 144 Hz period and VRR report are the single-output evidence.
+
+## 2. Headless synthetic mixed refresh: 60 Hz + 144 Hz
+outputs: HEADLESS-1 (60 Hz) and MIXED-144 (144 Hz)
+before:
+  dragonfruit-compositor: frame request (SIGUSR1-1): output=HEADLESS-1 refresh_hz=60.000 period_us=16666 last_presented_us=2470986584 next_deadline_us=2471003250 idle=0 due=1 urgent=0 animation=0 in_flight=0 presentations=2 last_interval_us=82179 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame request (SIGUSR1-1): output=MIXED-144 refresh_hz=144.000 period_us=6944 last_presented_us=2470986616 next_deadline_us=2470993561 idle=0 due=1 urgent=0 animation=0 in_flight=0 presentations=1 last_interval_us=-1 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+A. only 144 Hz animates (800 ms):
+  dragonfruit-compositor: frame request (SIGUSR1-2): output=HEADLESS-1 refresh_hz=60.000 period_us=16666 last_presented_us=2470986584 next_deadline_us=2471003250 idle=0 due=1 urgent=0 animation=0 in_flight=0 presentations=2 last_interval_us=82179 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame request (SIGUSR1-2): output=MIXED-144 refresh_hz=144.000 period_us=6944 last_presented_us=2472538771 next_deadline_us=2472545716 idle=0 due=0 urgent=0 animation=1 in_flight=0 presentations=49 last_interval_us=7329 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame scheduler stats (SIGUSR1-2): outputs=2 urgent=0 animation=1 in_flight=0 timer_armed=1
+  presentations delta: 60 Hz=0 (idle, must be 0), 144 Hz=48
+  last_interval_us: 144 Hz=7329
+B. only 60 Hz animates (800 ms):
+  dragonfruit-compositor: frame request (SIGUSR1-5): output=HEADLESS-1 refresh_hz=60.000 period_us=16666 last_presented_us=2499586945 next_deadline_us=2499603612 idle=0 due=0 urgent=0 animation=1 in_flight=0 presentations=23 last_interval_us=17037 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame request (SIGUSR1-5): output=MIXED-144 refresh_hz=144.000 period_us=6944 last_presented_us=2472992410 next_deadline_us=2472999355 idle=0 due=1 urgent=0 animation=0 in_flight=0 presentations=111 last_interval_us=7271 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame scheduler stats (SIGUSR1-5): outputs=2 urgent=0 animation=1 in_flight=0 timer_armed=1
+  presentations delta: 60 Hz=21, 144 Hz=0 (idle, must be 0)
+  last_interval_us: 60 Hz=17037
+C. both animate on the same clock (800 ms):
+  dragonfruit-compositor: frame request (SIGUSR1-8): output=HEADLESS-1 refresh_hz=60.000 period_us=16666 last_presented_us=2527156673 next_deadline_us=2527173340 idle=0 due=0 urgent=0 animation=1 in_flight=0 presentations=71 last_interval_us=16945 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame request (SIGUSR1-8): output=MIXED-144 refresh_hz=144.000 period_us=6944 last_presented_us=2527164476 next_deadline_us=2527171421 idle=0 due=0 urgent=0 animation=1 in_flight=0 presentations=158 last_interval_us=7490 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame scheduler stats (SIGUSR1-8): outputs=2 urgent=0 animation=2 in_flight=0 timer_armed=1
+  presentations delta: 60 Hz=21, 144 Hz=47
+settled:
+  dragonfruit-compositor: frame request (SIGUSR1-11): output=HEADLESS-1 refresh_hz=60.000 period_us=16666 last_presented_us=2527616750 next_deadline_us=2527633417 idle=0 due=1 urgent=0 animation=0 in_flight=0 presentations=98 last_interval_us=17031 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame request (SIGUSR1-11): output=MIXED-144 refresh_hz=144.000 period_us=6944 last_presented_us=2527604926 next_deadline_us=2527611870 idle=0 due=1 urgent=0 animation=0 in_flight=0 presentations=218 last_interval_us=7296 vrr=unsupported vrr_interval_us=-1 vrr_min_us=-1 vrr_max_us=-1
+  dragonfruit-compositor: frame scheduler stats (SIGUSR1-11): outputs=2 urgent=0 animation=0 in_flight=0 timer_armed=0
+presentations delta after settling: 60 Hz=0 144 Hz=0
+
+## 3. Native mixed refresh
+verdict: OPEN
+artifact: docs/captures/t21-vrr-mixed-refresh-native.txt
+reason: the host is already a native Dragonfruit session; restarting its compositor to run the 60 Hz + 144 Hz trace would end the session this task is executing in
+rerun: on a free DRM seat with a 60 Hz + 144 Hz pair, run
+  DRAGONFRUIT_T21_NATIVE=1 make t21-vrr-mixed-refresh
+  (or attach the DRM 'presentation stats' lines from a native two-output session)
+
+## Verdict
+chrome callbacks: PASS (delta=4 on presented nested frames)
+nested VRR report: PASS (vrr=unsupported, fixed 144 Hz period)
+nested settle: PASS (animation=0 timer_armed=0)
+144 Hz-only animation: PASS (60 Hz stayed idle, 144 Hz cadence ~7329 us)
+60 Hz-only animation: PASS (144 Hz stayed idle, 60 Hz cadence ~17037 us)
+mixed cadence: PASS (60 Hz=21, 144 Hz=47 in the same window)
+settled outputs: PASS (both presentation counters flat)
+synthetic VRR report: PASS (vrr=unsupported on both outputs)
+PASS: chrome callbacks follow presented frames; mixed refresh keeps per-output cadence; VRR is not claimed without backend support.

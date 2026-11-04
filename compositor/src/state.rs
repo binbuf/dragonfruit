@@ -125,7 +125,7 @@ use crate::window::{
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
 use dragonfruit_compositor::frame_scheduler::FrameScheduler;
-use dragonfruit_compositor::presentation::PresentationClocks;
+use dragonfruit_compositor::presentation::{PresentationClocks, VrrRange};
 use dragonfruit_compositor::refresh::{
     ModeRefresh, OutputRefresh, RefreshSchedule, RefreshSource, VrrState, ENV_REFRESH_HZ,
 };
@@ -185,6 +185,8 @@ pub struct PresentationStats {
     refresh_mhz: u32,
     /// Where the refresh came from (mode/fallback/override).
     source: Option<RefreshSource>,
+    /// The backend's VRR state when the sample was recorded (T188c).
+    vrr: VrrState,
 }
 
 impl PresentationStats {
@@ -203,6 +205,7 @@ impl PresentationStats {
         self.budget_us = budget_us;
         self.refresh_mhz = refresh.refresh_mhz;
         self.source = Some(refresh.source);
+        self.vrr = refresh.vrr;
         if u64::from(interval_us) * 2 > u64::from(budget_us) * 3 {
             self.missed += 1;
         }
@@ -218,7 +221,7 @@ impl PresentationStats {
         if count == 0 {
             return "samples=0 samples_total=0 avg_us=0 p50_us=0 p95_us=0 \
                     p99_us=0 max_us=0 window_max_us=0 missed=0 budget_us=0 \
-                    refresh_hz=0.000 source=fallback"
+                    refresh_hz=0.000 source=fallback vrr=unsupported"
                 .to_owned();
         }
         let mut intervals: Vec<u32> = self.samples.iter().copied().collect();
@@ -231,7 +234,7 @@ impl PresentationStats {
         format!(
             "samples={count} samples_total={} avg_us={avg_us} p50_us={} \
              p95_us={} p99_us={} max_us={} window_max_us={window_max_us} \
-             missed={} budget_us={} refresh_hz={refresh_hz:.3} source={}",
+             missed={} budget_us={} refresh_hz={refresh_hz:.3} source={} vrr={}",
             self.samples_total,
             frame_percentile(&intervals, 50),
             frame_percentile(&intervals, 95),
@@ -240,6 +243,7 @@ impl PresentationStats {
             self.missed,
             self.budget_us,
             source.as_str(),
+            self.vrr.as_str(),
         )
     }
 }
@@ -650,6 +654,10 @@ pub struct DfState {
     /// The shared animation clock: frame interval, reduced-motion policy,
     /// the running-animation set, and the frame counters (T-02.1a).
     pub animation_clock: AnimationClock<DfState>,
+    /// Test-only scope for the scene-free calibration animation: when set,
+    /// only that output receives animation requests. `None` in a normal
+    /// session (and for the unscoped `animate-dummy` command).
+    pub dummy_animation_output: Option<String>,
     /// Per-output refresh periods, keyed by output name (T-21.2a). The
     /// fastest active period drives the animation tick and the degrade
     /// budget; the schedule is recomputed on hotplug, mode/scale/transform
@@ -664,6 +672,11 @@ pub struct DfState {
     /// backends record real presentations here; the frame scheduler consumes
     /// the map for earliest-deadline timer arming.
     pub presentation_clocks: PresentationClocks,
+    /// Per-output VRR capability/state reported by the backend (T188c).
+    /// Only the DRM rail reports `On` (after confirming the connector is
+    /// VRR-capable); nested/headless stay `Unknown`, which is reported as
+    /// `vrr=unsupported` and keeps the fixed period.
+    pub output_vrr: HashMap<String, VrrState>,
     /// Per-output frame requests (T-21.2b, T188b): urgent work (input,
     /// client/chrome commit, resize, global scene change) is separate from
     /// animation work, which is gated by the output's own presentation clock.
@@ -886,9 +899,11 @@ impl DfState {
             hot_corner_timer: None,
             animation_timer: None,
             animation_clock: AnimationClock::new(),
+            dummy_animation_output: None,
             refresh_schedule: RefreshSchedule::new(),
             refresh_override,
             presentation_clocks: PresentationClocks::new(),
+            output_vrr: HashMap::new(),
             frame_scheduler: FrameScheduler::new(),
             window_motion_driver: false,
             dock_tiles: HashMap::new(),
@@ -1340,13 +1355,58 @@ impl DfState {
     /// An active override applies to every output so the trace shows what the
     /// clock and budget actually used.
     pub fn refresh_for_output(&self, output: &str) -> OutputRefresh {
-        if let Some(refresh) = self.refresh_override {
+        let vrr = self
+            .output_vrr
+            .get(output)
+            .copied()
+            .unwrap_or(VrrState::Unknown);
+        if let Some(mut refresh) = self.refresh_override {
+            // The override replaces the period, not the backend's VRR state:
+            // a VRR test override must still report the real capability.
+            refresh.vrr = vrr;
             return refresh;
         }
         self.refresh_schedule
             .for_output(output)
             .copied()
-            .unwrap_or_else(|| OutputRefresh::fallback(VrrState::Unknown))
+            .map(|mut refresh| {
+                refresh.vrr = vrr;
+                refresh
+            })
+            .unwrap_or_else(|| OutputRefresh::fallback(vrr))
+    }
+
+    /// Install the backend's VRR state for `output` and recompute its clock
+    /// range. `Unknown` means the backend does not expose a variable interval
+    /// (nested/headless, or an unsupported connector) and is reported as
+    /// `vrr=unsupported`; `Off` keeps the fixed period; `On` installs the
+    /// 24 Hz–mode range and lets the presentation clock adapt.
+    pub fn set_output_vrr(&mut self, output: &str, vrr: VrrState) {
+        if vrr == VrrState::Unknown {
+            self.output_vrr.remove(output);
+        } else {
+            self.output_vrr.insert(output.to_owned(), vrr);
+        }
+        let output = self
+            .space
+            .outputs()
+            .find(|candidate| candidate.name() == output)
+            .cloned();
+        if let Some(output) = output {
+            self.on_output_mode_changed(&output);
+        }
+    }
+
+    /// Reinstall the presentation clock's VRR range from the backend state.
+    /// A clock whose output is `On` gets the mode-to-24 Hz range; every other
+    /// state clears the range and returns to the fixed period.
+    fn apply_clock_vrr(&mut self, output: &str, refresh: OutputRefresh) {
+        let range = (refresh.vrr == VrrState::On)
+            .then(|| VrrRange::for_mode_period(refresh.period))
+            .flatten();
+        if let Some(clock) = self.presentation_clocks.get_mut(output) {
+            clock.set_vrr_range(range);
+        }
     }
 
     /// Record one output's presented frame (T-21.2b). The DRM vblank path and
@@ -1401,6 +1461,17 @@ impl DfState {
             || self.overview.desktop_revealed()
         {
             return self.space.outputs().map(|output| output.name()).collect();
+        }
+        // The synthetic `animate-dummy-on` hook scopes the calibration
+        // animation to one output so a mixed-refresh capture can prove the
+        // other output stays idle. Test plumbing only; a normal session never
+        // sets this field.
+        if self.animations_active() {
+            if let Some(name) = &self.dummy_animation_output {
+                if self.space.outputs().any(|output| output.name() == *name) {
+                    return vec![name.clone()];
+                }
+            }
         }
         let mut names = BTreeSet::new();
         for (window, _) in self.windows.active_motions() {
@@ -1481,11 +1552,16 @@ impl DfState {
             .space
             .outputs()
             .map(|output| {
+                let vrr = self
+                    .output_vrr
+                    .get(&output.name())
+                    .copied()
+                    .unwrap_or(VrrState::Unknown);
                 (
                     output.name(),
                     output
                         .current_mode()
-                        .map(|mode| ModeRefresh::new(mode.refresh)),
+                        .map(|mode| ModeRefresh::with_vrr(mode.refresh, vrr)),
                 )
             })
             .collect();
@@ -1494,6 +1570,7 @@ impl DfState {
             self.refresh_schedule.update(&name, mode);
             let refresh = self.refresh_for_output(&name);
             self.presentation_clocks.update(&name, refresh);
+            self.apply_clock_vrr(&name, refresh);
         }
         let stale: Vec<String> = self
             .presentation_clocks
@@ -1513,12 +1590,18 @@ impl DfState {
     /// latter do not change the period but keep one recompute path).
     pub fn on_output_mode_changed(&mut self, output: &Output) {
         let name = output.name();
+        let vrr = self
+            .output_vrr
+            .get(&name)
+            .copied()
+            .unwrap_or(VrrState::Unknown);
         let mode = output
             .current_mode()
-            .map(|mode| ModeRefresh::new(mode.refresh));
+            .map(|mode| ModeRefresh::with_vrr(mode.refresh, vrr));
         self.refresh_schedule.update(&name, mode);
         let refresh = self.refresh_for_output(&name);
         self.presentation_clocks.update(&name, refresh);
+        self.apply_clock_vrr(&name, refresh);
         self.sync_refresh_policy();
     }
 
@@ -1557,6 +1640,7 @@ impl DfState {
         let removed = output.name();
         self.refresh_schedule.remove(&removed);
         self.presentation_clocks.remove(&removed);
+        self.output_vrr.remove(&removed);
         self.frame_scheduler.clear(&removed);
         let primary = self
             .space
@@ -2891,6 +2975,14 @@ impl DfState {
     /// drives (`animate-dummy <ms>`). Test plumbing; a session never calls it.
     /// Reduced motion collapses it to a single step, as every transition must.
     pub fn start_dummy_animation(&mut self, duration_ms: u64) {
+        self.start_dummy_animation_on(None, duration_ms);
+    }
+
+    /// Start the calibration animation scoped to one output
+    /// (`animate-dummy-on <output> <ms>`), leaving every other output idle.
+    /// Test plumbing for the mixed-refresh capture.
+    pub fn start_dummy_animation_on(&mut self, output: Option<&str>, duration_ms: u64) {
+        self.dummy_animation_output = output.map(str::to_owned);
         let now = self.now_msec();
         let duration_ms = if self.animation_clock.reduced_motion() {
             0
@@ -3296,11 +3388,25 @@ impl DfState {
             let next_deadline_us = clock
                 .next_deadline
                 .map_or(-1, |deadline| deadline.as_micros() as i128);
+            let vrr_interval_us = clock
+                .vrr_interval
+                .map_or(-1, |interval| interval.as_micros() as i128);
+            let vrr_min_us = clock
+                .vrr_range
+                .map_or(-1, |range| range.min_period.as_micros() as i128);
+            let vrr_max_us = clock
+                .vrr_range
+                .map_or(-1, |range| range.max_period.as_micros() as i128);
+            let last_interval_us = clock
+                .last_interval
+                .map_or(-1, |interval| interval.as_micros() as i128);
             println!(
                 "dragonfruit-compositor: frame request ({label}): output={output} \
                  refresh_hz={:.3} period_us={} last_presented_us={last_presented_us} \
                  next_deadline_us={next_deadline_us} idle={} due={} urgent={} \
-                 animation={} in_flight={}",
+                 animation={} in_flight={} presentations={} last_interval_us={last_interval_us} \
+                 vrr={} vrr_interval_us={vrr_interval_us} vrr_min_us={vrr_min_us} \
+                 vrr_max_us={vrr_max_us}",
                 clock.refresh_hz,
                 clock.period.as_micros(),
                 clock.is_idle() as u32,
@@ -3308,6 +3414,8 @@ impl DfState {
                 self.frame_scheduler.is_urgent(output) as u32,
                 self.frame_scheduler.is_animating(output) as u32,
                 self.frame_scheduler.is_in_flight(output) as u32,
+                clock.presentations,
+                clock.vrr_report(),
             );
         }
         // Backdrop material pass (T-04.2): `backdrop_passes` is the number of
@@ -5327,7 +5435,14 @@ mod tests {
         assert_eq!(field(&summary, "budget_us"), "6944");
         assert_eq!(field(&summary, "refresh_hz"), "143.999");
         assert_eq!(field(&summary, "source"), "mode");
+        assert_eq!(field(&summary, "vrr"), "unsupported");
         assert_eq!(field(&summary, "max_us"), "20000");
+
+        // The DRM presentation summary reports the backend's actual VRR state
+        // (T188c); it is never inferred from the intervals above.
+        let vrr = OutputRefresh::from_mhz(144_000, RefreshSource::Mode, VrrState::On);
+        stats.record(Duration::from_micros(6_944), vrr);
+        assert_eq!(field(&stats.summary(), "vrr"), "on");
     }
 
     #[test]

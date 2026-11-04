@@ -49,7 +49,7 @@ The executable v0.1.1 task set is in
 | P2B DRM Kawase blur | **done, default-on** | Per-panel chain reuses `BLUR_SHADER`; `blur_draws` counts built elements. |
 | P2C glass compose | **done, default-on** | Reuses `GLASS_SHADER` and `GlassSpec`; `DRAGONFRUIT_DRM_GLASS=0` disables. |
 | P3 shell transport | **baseline + HiDPI done (T-21.1a/b)** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + fresh `wl_shm` per commit. HiDPI chrome now commits physical buffers with `buffer_scale`/`wp_viewport` ([ADR 0192](design/adr/0192-chrome-scale-physical-buffer-and-viewport.md)); pooling, frame callbacks, and GPU transport remain T185/T186. Measured in [`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt); transport decision [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md). |
-| P4 refresh-aware scheduling | **partial (T-21.2b)** | The animation clock and degrade budget use the fastest active output's period, with `DRAGONFRUIT_REFRESH_HZ` test overrides and `refresh_hz`/`source` stats ([ADR 0199](design/adr/0199-refresh-clock-wiring.md)). Per-output urgent/animation requests and earliest-deadline arming are wired ([ADR 0201](design/adr/0201-per-output-frame-requests-and-earliest-deadline.md)); VRR adaptation and native mixed-refresh evidence remain T188c. |
+| P4 refresh-aware scheduling | **wired (T-21.2b)** | The animation clock and degrade budget use the fastest active output's period, with `DRAGONFRUIT_REFRESH_HZ` test overrides and `refresh_hz`/`source` stats ([ADR 0199](design/adr/0199-refresh-clock-wiring.md)). Per-output urgent/animation requests and earliest-deadline arming are wired ([ADR 0201](design/adr/0201-per-output-frame-requests-and-earliest-deadline.md)); VRR adaptation, chrome callbacks, and synthetic 60+144 evidence are wired ([ADR 0202](design/adr/0202-vrr-adaptation-and-mixed-refresh-evidence.md)). Native mixed-refresh remains an explicit `OPEN` artifact until a free two-output DRM seat runs it. |
 | P5 multi-GPU | **single-GPU only** | Material path disables itself on a multi-GPU seat; shell falls back. |
 | P6 native visual verification | **not implemented** | No trusted native capture path. |
 
@@ -437,13 +437,21 @@ deadline is 6.94 ms.
 - Schedule per output, not from a single global clock. Done in T188b: the
   scheduler arms one timer from the earliest due request and presents each
   output only at its own deadline (ADR 0201).
-- Account for VRR state where the backend exposes it (T188c).
-- Test a 60 Hz + 144 Hz mixed setup if hardware is available (T188c).
+- Account for VRR state where the backend exposes it. Done in T188c (ADR 0202):
+  a `VrrState::On` output with a backend range adopts an in-range presentation
+  interval; every other output keeps the fixed period and reports
+  `vrr=unsupported`/`off`.
+- Test a 60 Hz + 144 Hz mixed setup. The pure scheduler test and the headless
+  synthetic 60/144 trace are committed; the native two-output run is an explicit
+  `OPEN` artifact (`docs/captures/t21-vrr-mixed-refresh-native.txt`) until a
+  free DRM seat with both outputs is available.
 
 **Acceptance**
 
 - A slow output does not throttle a fast output's animation cadence.
 - No double-damage or clock drift when one output is idle.
+- Chrome frame callbacks follow every presented output frame and the no-damage
+  callback path; the shell is not left waiting for a presentation.
 
 ---
 

@@ -1173,9 +1173,20 @@ and the settled output returns to `animation=0 timer_armed=0` with flat
 `frames_rendered`/`animation_frames_stepped`. Two headless controls show the
 same scheduler pacing at 144 Hz and 60 Hz. The nested rail is a single-output
 correctness trace, not mixed-refresh proof; the pure 60+144 scheduler test is
-`compositor/src/frame_scheduler.rs`, and native mixed-refresh evidence is
-T188c. The policy is
+`compositor/src/frame_scheduler.rs`. The policy is
 [ADR 0201](../design/adr/0201-per-output-frame-requests-and-earliest-deadline.md).
+
+T-21.2b's VRR/chrome-callback/mixed-refresh trace is
+`scripts/t21-vrr-mixed-refresh.sh` (`make t21-vrr-mixed-refresh`). Part 1 runs
+a nested compositor + shell at 144 Hz, drives a Dock sweep, and records the
+single-output clock, `vrr=unsupported`, and a chrome frame-callback delta. Part
+2 runs the headless backend with the default 60 Hz output plus a synthetic
+144 Hz output and three scoped animations: 144 Hz-only (60 Hz stays flat),
+60 Hz-only (144 Hz stays flat), and both (each keeps its cadence); the final
+idle window proves both presentation counters are flat. Part 3 writes
+`t21-vrr-mixed-refresh-native.txt` as an explicit `OPEN` artifact with the
+exact rerun command when no free two-output DRM seat is available. The policy
+is [ADR 0202](../design/adr/0202-vrr-adaptation-and-mixed-refresh-evidence.md).
 
 Guidelines:
 

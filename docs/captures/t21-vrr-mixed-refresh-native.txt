@@ -1,0 +1,11 @@
+T-21.2b native mixed-refresh trace (T188c)
+timestamp: 2026-11-04T12:02:02-08:00
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+session: XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=dragonfruit
+DRM nodes: by-path card1 renderD128 
+connected outputs: card1-DP-1
+verdict: OPEN
+reason: the host is already a native Dragonfruit session; restarting its compositor to run the 60 Hz + 144 Hz trace would end the session this task is executing in
+rerun: on a free DRM seat with a 60 Hz + 144 Hz pair, run
+  DRAGONFRUIT_T21_NATIVE=1 make t21-vrr-mixed-refresh
+  (or attach the DRM 'presentation stats' lines from a native two-output session)

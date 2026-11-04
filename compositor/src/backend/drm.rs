@@ -25,6 +25,7 @@ use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::{DrmOutput, DrmOutputManager, DrmOutputRenderElements};
 use smithay::backend::drm::{
     DrmDevice, DrmDeviceFd, DrmError, DrmEvent, DrmEventMetadata, DrmEventTime, DrmNode, NodeType,
+    VrrSupport,
 };
 use smithay::backend::egl::{context::ContextPriority, EGLDevice, EGLDisplay};
 use smithay::backend::input::InputEvent;
@@ -1094,6 +1095,42 @@ fn connector_connected(
         }
     };
 
+    // VRR (T188c): the DRM connector is the only backend that can expose a
+    // variable presentation interval. `Supported` means the property can be
+    // toggled without a modeset, so enable it now; `RequiresModeset` and
+    // `NotSupported` keep the fixed mode period. The presentation clock only
+    // adapts when the state is `On` and a range is installed, and it never
+    // infers `On` from a measured interval.
+    let vrr = drm_output.with_compositor(|compositor| {
+        match compositor.vrr_supported(connector.handle()) {
+            Ok(VrrSupport::Supported) => match compositor.use_vrr(true) {
+                Ok(()) => dragonfruit_compositor::refresh::VrrState::On,
+                Err(err) => {
+                    eprintln!(
+                        "dragonfruit-compositor: VRR enable failed on {output_name}: {err:?}; \
+                         keeping the fixed period"
+                    );
+                    dragonfruit_compositor::refresh::VrrState::Off
+                }
+            },
+            Ok(VrrSupport::RequiresModeset) => {
+                eprintln!(
+                    "dragonfruit-compositor: VRR on {output_name} requires a modeset; \
+                     keeping the fixed period"
+                );
+                dragonfruit_compositor::refresh::VrrState::Off
+            }
+            Ok(VrrSupport::NotSupported) => dragonfruit_compositor::refresh::VrrState::Unknown,
+            Err(err) => {
+                eprintln!(
+                    "dragonfruit-compositor: VRR capability query failed on {output_name}: \
+                     {err:?}; reporting vrr=unsupported"
+                );
+                dragonfruit_compositor::refresh::VrrState::Unknown
+            }
+        }
+    });
+
     let global = output.create_global::<crate::state::DfState>(&state.display_handle);
 
     device.surfaces.insert(
@@ -1108,6 +1145,7 @@ fn connector_connected(
             material: DrmMaterialCache::default(),
         },
     );
+    state.set_output_vrr(&output_name, vrr);
 
     // Kick off the first frame.
     let shared = drm_shared_slot();
