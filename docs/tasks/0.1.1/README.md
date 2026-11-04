@@ -53,8 +53,10 @@ deliverables.
 ## Commands
 
 ```bash
+make gates                       # full gate: e2e + qml-test (run once on the final tree)
 make e2e                         # required global verify
 make qml-test                    # shell/QML tests
+make t21-doctor                  # preflight a T-21 nested/host capture session
 cargo test -p dragonfruit-compositor
 make idle-trace                  # idle zero-wakeup evidence
 make native-rebuild              # release session install/relogin

@@ -23,6 +23,8 @@ One or two sentences: what exists at the end of the session that did not exist b
 
 ## Design notes
 Decisions the implementer must follow (names, signatures, constraints).
+- Freeze the code before the final gate; run the full project gate once on the
+  final tree. Do not rerun it after docs-only or hand-off edits.
 
 ## Done when
 - [ ] Tests named here pass, with the commands to run them
