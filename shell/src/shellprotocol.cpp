@@ -48,6 +48,8 @@
 // The vendored standard protocol (MIT); the shell's clipboard history
 // observes and forwards the selection through it (T-13.5b, ADR 0082).
 #include "wlr-data-control-unstable-v1-client-protocol.h"
+// The vendored standard protocol (MIT) for the T-21.1d dmabuf transport.
+#include "linux-dmabuf-unstable-v1-client-protocol.h"
 
 #ifndef DF_LOCKSTEP_VERSION
 #define DF_LOCKSTEP_VERSION 1
@@ -61,9 +63,23 @@ struct ShellShmSlot {
     int generation = -1;
 };
 
+struct ShellDmabufSlot {
+    wl_buffer *buffer = nullptr;
+    zwp_linux_buffer_params_v1 *params = nullptr;
+    QSize size;
+    uint32_t format = 0;
+    uint64_t modifier = 0;
+    uint64_t serial = 0;
+    bool busy = false;
+    bool failed = false;
+    bool creating = false;
+    QString failReason;
+};
+
 struct ShellSurfaceBuffer {
     ChromeBufferPool pool{3};
     QHash<int, ShellShmSlot> slotResources;
+    ShellDmabufSlot dmabuf;
     QImage lastImage;
     QRect lastSourceRect;
     wl_callback *frameCallback = nullptr;
@@ -1458,6 +1474,288 @@ bool ShellProtocol::commitDockImage(const QImage &image, const QSize &logicalSiz
     return true;
 }
 
+bool ShellProtocol::dockDmabufBusy() const
+{
+    if (!m_dockSurface)
+        return false;
+    auto it = m_surfaceBuffers.constFind(m_dockSurface);
+    return it != m_surfaceBuffers.constEnd() && it.value()->dmabuf.busy;
+}
+
+ShellProtocol::DmabufCommitResult ShellProtocol::commitDockDmabuf(
+    const ChromeDmabufFrame &frame, const QSize &logicalSize,
+    const QRect &sourceRect, QString *reason)
+{
+    if (!m_dockSurface) {
+        if (reason)
+            *reason = QStringLiteral("no-dock-surface");
+        return DmabufCommitResult::Failed;
+    }
+    const DmabufCommitResult result = commitDmabufTo(
+        m_dockSurface, frame, logicalSize, sourceRect, reason);
+    if (result == DmabufCommitResult::Committed)
+        m_dockMapped = true;
+    return result;
+}
+
+ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
+    wl_surface *surface, const ChromeDmabufFrame &frame, const QSize &logicalSize,
+    const QRect &sourceRect, QString *reason)
+{
+    if (!surface) {
+        if (reason)
+            *reason = QStringLiteral("no-surface");
+        return DmabufCommitResult::Failed;
+    }
+    if (!m_dmabuf) {
+        if (reason)
+            *reason = QStringLiteral("no-dmabuf");
+        return DmabufCommitResult::Failed;
+    }
+
+    const ChromeDmabufCheck check =
+        ChromeDmabuf::validate(frame, m_gpuCapabilities.formats);
+    if (!check.valid) {
+        if (reason)
+            *reason = check.reason;
+        return DmabufCommitResult::Failed;
+    }
+
+    const QRect source = (sourceRect.isEmpty()
+                              ? QRect(QPoint(0, 0), frame.size)
+                              : sourceRect)
+                             .intersected(QRect(QPoint(0, 0), frame.size));
+    if (source.isEmpty() || logicalSize.isEmpty()) {
+        if (reason)
+            *reason = QStringLiteral("bad-source");
+        return DmabufCommitResult::Failed;
+    }
+
+    const auto scaleIt = m_surfaceScales.constFind(surface);
+    const bool hasViewport =
+        scaleIt != m_surfaceScales.constEnd() && scaleIt.value().viewport;
+    if (!hasViewport) {
+        // Without a viewporter only a full-buffer integer-scale mapping is
+        // expressible. The Dock always has a gutter/headroom sub-rect, so this
+        // is a recorded fallback rather than a silently stretched frame.
+        const bool fullBuffer = source == QRect(QPoint(0, 0), frame.size);
+        const bool integerScale =
+            logicalSize.width() > 0 && logicalSize.height() > 0
+            && frame.size.width() % logicalSize.width() == 0
+            && frame.size.height() % logicalSize.height() == 0
+            && frame.size.width() / logicalSize.width()
+                == frame.size.height() / logicalSize.height();
+        if (!fullBuffer || !integerScale) {
+            if (reason)
+                *reason = QStringLiteral("no-viewporter");
+            return DmabufCommitResult::Failed;
+        }
+    }
+
+    ShellSurfaceBuffer *buffer = surfaceBuffer(surface);
+    if (!buffer) {
+        if (reason)
+            *reason = QStringLiteral("no-buffer-state");
+        return DmabufCommitResult::Failed;
+    }
+    ShellDmabufSlot &slot = buffer->dmabuf;
+    if (slot.failed) {
+        if (reason)
+            *reason = slot.failReason.isEmpty() ? QStringLiteral("import-failed")
+                                                : slot.failReason;
+        return DmabufCommitResult::Failed;
+    }
+
+    // A size/format/export-identity change retires the old buffer. T186b
+    // commits one buffer and does not yet keep a ring, so a replaced buffer
+    // is destroyed even if the compositor still holds a reference: the
+    // compositor owns the underlying dmabuf fd, and the next commit attaches
+    // the new buffer. The release-driven ring is T186c.
+    if (slot.buffer
+        && (slot.size != frame.size || slot.format != frame.format
+            || slot.modifier != frame.modifier || slot.serial != frame.serial)) {
+        destroyDmabufSlot(buffer);
+    }
+
+    if (!slot.buffer) {
+        if (!createDmabufSlot(surface, buffer, frame, reason))
+            return DmabufCommitResult::Failed;
+    }
+
+    const bool statsEnabled = ChromeStats::instance().enabled();
+    QElapsedTimer commitTimer;
+    if (statsEnabled)
+        commitTimer.start();
+
+    applyDmabufScale(surface, logicalSize, source, frame.size);
+
+    // Request the callback before the commit it should pace, exactly like the
+    // shm path. The compositor answers it after this frame presents.
+    requestFrameInternal(surface, buffer);
+    wl_surface_attach(surface, slot.buffer, 0, 0);
+    wl_surface_damage_buffer(surface, 0, 0, frame.size.width(), frame.size.height());
+    wl_surface_commit(surface);
+    wl_display_flush(m_display);
+    slot.busy = true;
+
+    if (statsEnabled) {
+        qint64 commitUs = ChromeStats::instance().commitUsSinceRender();
+        if (commitUs < 0)
+            commitUs = commitTimer.nsecsElapsed() / 1000;
+        const QString label = surfaceLabel(surface);
+        const qint64 bytes = qint64(frame.stride) * frame.size.height();
+        ChromeStats::instance().recordCommit(
+            label, logicalSize, frame.size, 1, 1.0, true, commitUs, 0,
+            qint64(source.width()) * source.height());
+        ChromeStats::instance().recordDmabufCommit(label, bytes);
+    }
+    if (reason)
+        reason->clear();
+    return DmabufCommitResult::Committed;
+}
+
+bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *buffer,
+                                     const ChromeDmabufFrame &frame, QString *reason)
+{
+    if (!surface || !buffer || !m_dmabuf || !frame.valid())
+        return false;
+    ShellDmabufSlot &slot = buffer->dmabuf;
+    slot.failed = false;
+    slot.failReason.clear();
+    slot.buffer = nullptr;
+
+    zwp_linux_buffer_params_v1 *params =
+        zwp_linux_dmabuf_v1_create_params(m_dmabuf);
+    if (!params) {
+        if (reason)
+            *reason = QStringLiteral("no-params");
+        return false;
+    }
+    slot.params = params;
+    m_dmabufParams.insert(params, surface);
+
+    const int fd = ::dup(frame.fd);
+    if (fd < 0) {
+        m_dmabufParams.remove(params);
+        slot.params = nullptr;
+        zwp_linux_buffer_params_v1_destroy(params);
+        if (reason)
+            *reason = QStringLiteral("dup-failed");
+        return false;
+    }
+    zwp_linux_buffer_params_v1_add(
+        params, fd, 0, frame.offset, frame.stride,
+        ChromeDmabuf::modifierHigh(frame.modifier),
+        ChromeDmabuf::modifierLow(frame.modifier));
+    ::close(fd);
+
+    static const zwp_linux_buffer_params_v1_listener paramsListener = {
+        onDmabufCreated,
+        onDmabufFailed,
+    };
+    zwp_linux_buffer_params_v1_add_listener(params, &paramsListener, this);
+
+    slot.creating = true;
+    const uint32_t flags = frame.yInverted
+        ? ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_Y_INVERT
+        : 0;
+    zwp_linux_buffer_params_v1_create(params, frame.size.width(), frame.size.height(),
+                                      frame.format, flags);
+    // `create` reports success/failure asynchronously. This is the only
+    // roundtrip on the dmabuf path; the buffer is reused for later frames.
+    while (slot.creating && m_display) {
+        if (wl_display_roundtrip(m_display) < 0)
+            break;
+    }
+    if (slot.params) {
+        m_dmabufParams.remove(slot.params);
+        zwp_linux_buffer_params_v1_destroy(slot.params);
+        slot.params = nullptr;
+    }
+    if (!slot.buffer) {
+        slot.creating = false;
+        slot.failed = true;
+        if (slot.failReason.isEmpty())
+            slot.failReason = QStringLiteral("import-failed");
+        if (reason)
+            *reason = slot.failReason;
+        return false;
+    }
+    slot.size = frame.size;
+    slot.format = frame.format;
+    slot.modifier = frame.modifier;
+    slot.serial = frame.serial;
+    qInfo().noquote() << QStringLiteral(
+        "chrome dmabuf: buffer created format=%1 modifier=%2 stride=%3 offset=%4 "
+        "size=%5x%6 surface=%7")
+        .arg(GpuChromeCapabilities::formatName(frame.format),
+             GpuChromeCapabilities::modifierName(frame.modifier))
+        .arg(frame.stride)
+        .arg(frame.offset)
+        .arg(frame.size.width())
+        .arg(frame.size.height())
+        .arg(surfaceLabel(surface));
+    return true;
+}
+
+void ShellProtocol::destroyDmabufSlot(ShellSurfaceBuffer *buffer, bool destroyBuffer)
+{
+    if (!buffer)
+        return;
+    ShellDmabufSlot &slot = buffer->dmabuf;
+    if (slot.params) {
+        m_dmabufParams.remove(slot.params);
+        zwp_linux_buffer_params_v1_destroy(slot.params);
+        slot.params = nullptr;
+    }
+    if (slot.buffer) {
+        m_dmabufOwners.remove(slot.buffer);
+        if (destroyBuffer)
+            wl_buffer_destroy(slot.buffer);
+        slot.buffer = nullptr;
+    }
+    slot.size = QSize();
+    slot.format = 0;
+    slot.modifier = 0;
+    slot.serial = 0;
+    slot.busy = false;
+    slot.failed = false;
+    slot.creating = false;
+    slot.failReason.clear();
+}
+
+void ShellProtocol::applyDmabufScale(wl_surface *surface, const QSize &logicalSize,
+                                     const QRect &sourceRect, const QSize &bufferSize)
+{
+    if (!surface)
+        return;
+    auto it = m_surfaceScales.find(surface);
+    if (it != m_surfaceScales.end() && it.value().viewport) {
+        // The dmabuf is the whole render target; the viewport selects the Dock
+        // sub-rect and maps it onto the logical surface. This also covers
+        // fractional scales, so the buffer scale stays 1.
+        wl_surface_set_buffer_scale(surface, 1);
+        wp_viewport_set_source(it.value().viewport,
+                               wl_fixed_from_int(sourceRect.x()),
+                               wl_fixed_from_int(sourceRect.y()),
+                               wl_fixed_from_int(sourceRect.width()),
+                               wl_fixed_from_int(sourceRect.height()));
+        wp_viewport_set_destination(it.value().viewport,
+                                    logicalSize.width(), logicalSize.height());
+        return;
+    }
+    // Without a viewporter only a full-buffer integer-scale mapping is
+    // expressible. The Dock always has a gutter/headroom sub-rect, so this is
+    // a recorded fallback rather than a silently stretched frame.
+    if (sourceRect == QRect(QPoint(0, 0), bufferSize)
+        && bufferSize.width() % logicalSize.width() == 0
+        && bufferSize.height() % logicalSize.height() == 0
+        && bufferSize.width() / logicalSize.width()
+            == bufferSize.height() / logicalSize.height()) {
+        wl_surface_set_buffer_scale(surface, bufferSize.width() / logicalSize.width());
+    }
+}
+
 bool ShellProtocol::setDockInputRegion(const QList<QRect> &rects)
 {
     if (!m_dockSurface || !m_compositor)
@@ -2046,6 +2344,7 @@ void ShellProtocol::destroySurfaceBuffer(wl_surface *surface)
         wl_callback_destroy(buffer->frameCallback);
         buffer->frameCallback = nullptr;
     }
+    destroyDmabufSlot(buffer);
     const QList<int> slotIds = buffer->slotResources.keys();
     for (int slot : slotIds)
         destroyShmSlot(buffer, slot);
@@ -2357,6 +2656,8 @@ void ShellProtocol::teardown()
     for (wl_surface *surface : bufferedSurfaces)
         destroySurfaceBuffer(surface);
     m_bufferOwners.clear();
+    m_dmabufOwners.clear();
+    m_dmabufParams.clear();
     m_frameCallbackSurfaces.clear();
     // Session lock (T-12.3a): while locked, neither the lock object nor its
     // surfaces may be destroyed — that is a protocol error, and leaving them
@@ -2455,6 +2756,8 @@ void ShellProtocol::teardown()
         df_core_destroy(m_core);
     if (m_shm)
         wl_shm_destroy(m_shm);
+    if (m_dmabuf)
+        zwp_linux_dmabuf_v1_destroy(m_dmabuf);
     if (m_viewporter)
         wp_viewporter_destroy(m_viewporter);
     if (m_fractionalScaleManager)
@@ -2527,6 +2830,7 @@ void ShellProtocol::teardown()
     m_core = nullptr;
     m_fractionalScaleManager = nullptr;
     m_viewporter = nullptr;
+    m_dmabuf = nullptr;
     m_surfaceScales.clear();
     m_pointer = nullptr;
     m_keyboard = nullptr;
@@ -2597,6 +2901,15 @@ void ShellProtocol::onRegistryGlobal(void *data, wl_registry *registry, uint32_t
         self->m_viewporter = static_cast<wp_viewporter *>(
             wl_registry_bind(registry, name, &wp_viewporter_interface,
                              std::min(version, 1u)));
+    } else if (iface == QLatin1String("zwp_linux_dmabuf_v1")) {
+        // T-21.1d: only bind the transport object when the opt-in GPU rail is
+        // requested. The default shell never creates a dmabuf.
+        const QByteArray gpu = qgetenv("DRAGONFRUIT_CHROME_GPU").trimmed();
+        if (!gpu.isEmpty() && gpu != "0") {
+            self->m_dmabuf = static_cast<zwp_linux_dmabuf_v1 *>(
+                wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface,
+                                 std::min(version, 5u)));
+        }
     }
 }
 
@@ -4051,9 +4364,68 @@ df_toplevel *ShellProtocol::toplevelForId(quintptr windowId) const
 
 // --- wl_buffer --------------------------------------------------------------
 
+void ShellProtocol::onDmabufCreated(void *data, zwp_linux_buffer_params_v1 *params,
+                                   wl_buffer *buffer)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    wl_surface *surface = self->m_dmabufParams.take(params);
+    if (surface) {
+        auto it = self->m_surfaceBuffers.find(surface);
+        if (it != self->m_surfaceBuffers.end()) {
+            ShellDmabufSlot &slot = it.value()->dmabuf;
+            slot.buffer = buffer;
+            slot.creating = false;
+            slot.params = nullptr;
+            self->m_dmabufOwners.insert(buffer, surface);
+            static const wl_buffer_listener bufferListener = { onBufferRelease };
+            wl_buffer_add_listener(buffer, &bufferListener, self);
+            zwp_linux_buffer_params_v1_destroy(params);
+            return;
+        }
+    }
+    if (buffer)
+        wl_buffer_destroy(buffer);
+    zwp_linux_buffer_params_v1_destroy(params);
+}
+
+void ShellProtocol::onDmabufFailed(void *data, zwp_linux_buffer_params_v1 *params)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    wl_surface *surface = self->m_dmabufParams.take(params);
+    if (surface) {
+        auto it = self->m_surfaceBuffers.find(surface);
+        if (it != self->m_surfaceBuffers.end()) {
+            ShellDmabufSlot &slot = it.value()->dmabuf;
+            slot.creating = false;
+            slot.failed = true;
+            slot.params = nullptr;
+            slot.failReason = QStringLiteral("import-failed");
+        }
+    }
+    zwp_linux_buffer_params_v1_destroy(params);
+}
+
 void ShellProtocol::onBufferRelease(void *data, wl_buffer *buffer)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    // T-21.1d: a dmabuf buffer is reusable and stays owned by the shell. Its
+    // release only clears the busy flag; the next Dock frame may render into
+    // the same FBO again.
+    auto dmabufOwner = self->m_dmabufOwners.constFind(buffer);
+    if (dmabufOwner != self->m_dmabufOwners.constEnd()) {
+        wl_surface *surface = dmabufOwner.value();
+        QString label;
+        if (surface) {
+            label = self->surfaceLabel(surface);
+            auto it = self->m_surfaceBuffers.find(surface);
+            if (it != self->m_surfaceBuffers.end())
+                it.value()->dmabuf.busy = false;
+        }
+        if (!label.isEmpty())
+            emit self->bufferReleased(label);
+        return;
+    }
+
     // The owner mapping lives for the whole buffer lifetime; a current-size
     // buffer returns to the pool and will be released again on a later frame.
     const auto owner = self->m_bufferOwners.value(buffer);

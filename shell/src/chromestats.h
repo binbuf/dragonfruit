@@ -27,6 +27,12 @@ public:
     // pre-T-21.1c fallback `offscreen-qpa+shm`).
     void setTransportPath(const QString &path);
 
+    // T-21.1d: the GPU rail state in the summary line. `path` is `off`,
+    // `dmabuf`, or `shm` (GPU requested but the Dock fell back); `reason` is
+    // the first fallback token (`no-egl-export`, `no-format`, ...).
+    void setGpuPath(const QString &path);
+    void setGpuFallbackReason(const QString &reason);
+
     // The QML scene-graph produced a frame (one renderFrame()).
     void recordSceneFrame();
     // One producer rendered a frame for `surface` (the stable label).
@@ -51,6 +57,12 @@ public:
     void recordSkippedCommit(const QString &surface, const QSize &logicalSize,
                              const QSize &bufferSize, int bufferScale, qreal scale,
                              bool viewport);
+    // T-21.1d: one dmabuf-backed Dock frame was committed, deferred because
+    // the single reusable buffer was still busy, or fell back to shm.
+    void recordDmabufCommit(const QString &surface, qint64 bytes);
+    void recordDmabufDeferred(const QString &surface);
+    void recordDmabufFallback(const QString &surface, const QString &reason);
+
     // A `wl_surface.frame` callback was delivered for `surface`.
     void recordFrameCallback(const QString &surface, qint64 callbackUs);
     // A render driven by the bounded safety tick because no frame callback
@@ -89,6 +101,10 @@ private:
         quint64 damagePixels = 0;
         quint64 skippedCommits = 0;
         quint64 fallbackRenders = 0;
+        quint64 dmabufCommits = 0;
+        quint64 dmabufBytes = 0;
+        quint64 dmabufDeferred = 0;
+        quint64 dmabufFallbacks = 0;
         QVector<qint64> commitUs;
         QVector<qint64> frameCallbackUs;
     };
@@ -97,6 +113,8 @@ private:
 
     bool m_enabled = false;
     QString m_transportPath = QStringLiteral("offscreen-qpa+shm");
+    QString m_gpuPath = QStringLiteral("off");
+    QString m_gpuReason;
     quint64 m_sceneFrames = 0;
     quint64 m_commits = 0;
     quint64 m_grabRenders = 0;
@@ -106,6 +124,10 @@ private:
     quint64 m_damagePixels = 0;
     quint64 m_skippedCommits = 0;
     quint64 m_fallbackRenders = 0;
+    quint64 m_dmabufCommits = 0;
+    quint64 m_dmabufBytes = 0;
+    quint64 m_dmabufDeferred = 0;
+    quint64 m_dmabufFallbacks = 0;
     quint64 m_frameCallbacks = 0;
     quint64 m_signalDumps = 0;
     QVector<qint64> m_commitUs;

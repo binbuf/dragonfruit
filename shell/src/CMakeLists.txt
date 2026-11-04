@@ -64,6 +64,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     chooserbridge.cpp
     chromebufferpool.cpp
     chromebufferpool.h
+    chromedmabuf.cpp
+    chromedmabuf.h
     chromescale.cpp
     chromescale.h
     chromestats.cpp
@@ -212,6 +214,8 @@ add_custom_command(
 # library so the shell and the nested GL smoke rail exercise the same code.
 # The smoke target is not part of `make e2e`; it needs a host Wayland/GL rail.
 add_library(dragonfruit-shell-chromegpu STATIC
+    chromedmabufexport.cpp
+    chromedmabufexport.h
     chromeframeproducer.cpp
     chromeframeproducer.h
     gpuchromeframeproducer.cpp
@@ -224,7 +228,7 @@ target_include_directories(dragonfruit-shell-chromegpu PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${DF_PROTOCOL_DIR}"
 )
-target_include_directories(dragonfruit-shell-chromegpu PRIVATE "${EGL_INCLUDE_DIR}")
+target_include_directories(dragonfruit-shell-chromegpu PUBLIC "${EGL_INCLUDE_DIR}")
 target_link_libraries(dragonfruit-shell-chromegpu PUBLIC
     Qt6::Core Qt6::Gui Qt6::Quick
     dragonfruit-shell-dockcore

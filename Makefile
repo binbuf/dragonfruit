@@ -51,7 +51,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-chrome-baseline t21-gpu-probe drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
+        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-chrome-baseline t21-gpu-probe t21-dmabuf-dock drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
@@ -233,6 +233,14 @@ t21-chrome-baseline: build
 # host Wayland/GL session; not part of `make e2e`.
 t21-gpu-probe: build
 	bash scripts/t21-gpu-probe.sh
+
+# T-21.1d dmabuf export + single-buffer Dock commit (T186b). Runs the real
+# shell with DRAGONFRUIT_CHROME_GPU=1 (Dock dmabuf, compositor imports > 0)
+# and =0 (T185 shm fallback, imports = 0), writing
+# docs/captures/t21-dmabuf-dock.txt and the two host stills. Needs a host
+# Wayland session with a GL driver.
+t21-dmabuf-dock: build
+	bash scripts/t21-dmabuf-dock.sh
 
 # T-03.2: the DRM first bring-up probe. On a host with a free seat it starts
 # the DRM backend and records the capture/trace; with no free seat it records

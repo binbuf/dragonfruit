@@ -12,6 +12,7 @@
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
 #include <QtMath>
+#include <QtGui/qopenglcontext_platform.h>
 
 #include "chromestats.h"
 
@@ -65,10 +66,10 @@ bool GpuChromeFrameProducer::initialize(QString *reason)
     }
     m_reason.clear();
 
-    // The scene-graph adaptation is process-global. The smoke rail creates no
-    // QQuickWindow before this point, so the API selection takes effect. In a
-    // process that already created a window this may be too late; initialize
-    // then fails cleanly and the caller stays on the T185 shm path.
+    // The scene-graph adaptation is process-global. The shell chooses this
+    // rail at startup (before the first chrome window) when the GPU transport
+    // is requested; a process that already created a software window fails
+    // cleanly here and the caller stays on the T185 shm path.
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     m_context = new QOpenGLContext(this);
@@ -160,12 +161,19 @@ void GpuChromeFrameProducer::setDevicePixelRatio(qreal dpr)
         QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
         if (context && m_surface)
             context->makeCurrent(m_surface);
+        releaseDmabuf();
         delete m_fbo;
         m_fbo = nullptr;
         m_target = QQuickRenderTarget();
         if (context)
             context->doneCurrent();
     }
+}
+
+void GpuChromeFrameProducer::setDmabufFormats(
+    const QVector<GpuChromeCapabilities::FormatModifier> &formats)
+{
+    m_dmabufFormats = formats;
 }
 
 void GpuChromeFrameProducer::resize(const QSize &bufferSize)
@@ -196,6 +204,7 @@ void GpuChromeFrameProducer::ensureFramebuffer()
     if (m_fbo && m_fbo->size() == physical)
         return;
 
+    releaseDmabuf();
     delete m_fbo;
     m_fbo = nullptr;
     QOpenGLFramebufferObjectFormat format;
@@ -214,20 +223,20 @@ void GpuChromeFrameProducer::ensureFramebuffer()
     m_target.setDevicePixelRatio(m_dpr);
 }
 
-QImage GpuChromeFrameProducer::renderFrame()
+bool GpuChromeFrameProducer::renderToFramebuffer()
 {
     if (!m_initialized || !m_window || !m_context || !m_surface || !m_renderContext)
-        return QImage();
+        return false;
     if (QOpenGLContext::currentContext() != m_renderContext
         && !m_renderContext->makeCurrent(m_surface)) {
         setFailure(QStringLiteral("no-current-context"));
-        return QImage();
+        return false;
     }
 
     ensureFramebuffer();
     if (!m_fbo) {
         m_renderContext->doneCurrent();
-        return QImage();
+        return false;
     }
 
     m_window->setRenderTarget(m_target);
@@ -238,21 +247,116 @@ QImage GpuChromeFrameProducer::renderFrame()
         m_renderControl->render();
     m_renderControl->endFrame();
 
-    // The readback is verification-only in T186a. T186b replaces it with an
-    // EGL fence + export, so no production frame copies pixels to the CPU.
+    // T186b's first-frame contract: the GL work must be complete before the
+    // compositor can sample the exported dmabuf. T186c replaces this with an
+    // explicit fence/sync path.
     m_renderContext->functions()->glFinish();
+    ChromeStats::instance().recordSceneFrame();
+    ChromeStats::instance().recordRenderComplete();
+    return true;
+}
+
+QImage GpuChromeFrameProducer::renderFrame()
+{
+    if (!renderToFramebuffer())
+        return QImage();
+
+    QImage image = readbackCurrentFrame();
+    m_renderContext->doneCurrent();
+    if (!image.isNull())
+        m_lastFrame = image;
+    return image;
+}
+
+QImage GpuChromeFrameProducer::readbackCurrentFrame()
+{
+    if (!m_fbo || !m_renderContext || !m_surface)
+        return QImage();
+    const bool wasCurrent = QOpenGLContext::currentContext() == m_renderContext;
+    if (!wasCurrent && !m_renderContext->makeCurrent(m_surface))
+        return QImage();
+
     QImage image = m_fbo->toImage(true);
     if (!image.isNull()) {
         image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
         image.setDevicePixelRatio(m_dpr);
     }
-    m_renderContext->doneCurrent();
-
-    if (!image.isNull())
-        m_lastFrame = image;
-    ChromeStats::instance().recordSceneFrame();
-    ChromeStats::instance().recordRenderComplete();
+    if (!wasCurrent)
+        m_renderContext->doneCurrent();
     return image;
+}
+
+bool GpuChromeFrameProducer::ensureDmabufExport()
+{
+    if (m_dmabufFrame.valid())
+        return true;
+    if (!m_fbo || !m_renderContext)
+        return false;
+
+    if (!m_exporterInitialized) {
+        auto *native = m_renderContext->nativeInterface<QNativeInterface::QEGLContext>();
+        if (!native) {
+            m_exportReason = QStringLiteral("no-egl-context");
+            return false;
+        }
+        if (!m_exporter.initialize(native->display(), native->nativeContext(),
+                                   &m_exportReason)) {
+            m_exporterInitialized = true;
+            return false;
+        }
+        m_exporterInitialized = true;
+    }
+    if (!m_exporter.ready()) {
+        if (m_exportReason.isEmpty())
+            m_exportReason = QStringLiteral("no-egl-export");
+        return false;
+    }
+
+    ChromeDmabufFrame frame = m_exporter.exportTexture(
+        m_fbo->texture(), m_fbo->size(), &m_exportReason);
+    if (!frame.valid())
+        return false;
+    frame.serial = ++m_dmabufSerial;
+
+    // The compositor accepts only an exact pair from its feedback table. Check
+    // it before creating a wl_buffer so an unsupported export is a clean
+    // shm fallback rather than an import failure.
+    const ChromeDmabufCheck check = ChromeDmabuf::validate(frame, m_dmabufFormats);
+    if (!check.valid) {
+        ChromeDmabufExporter::closeFrame(&frame);
+        m_exportReason = check.reason;
+        return false;
+    }
+
+    m_dmabufFrame = frame;
+    m_exportReason.clear();
+    return true;
+}
+
+bool GpuChromeFrameProducer::exportFrame(ChromeDmabufFrame *frame, QString *reason)
+{
+    if (!frame) {
+        if (reason)
+            *reason = QStringLiteral("bad-frame");
+        return false;
+    }
+    if (!renderToFramebuffer()) {
+        if (reason)
+            *reason = m_reason.isEmpty() ? QStringLiteral("render-failed") : m_reason;
+        return false;
+    }
+    if (!ensureDmabufExport()) {
+        if (reason)
+            *reason = m_exportReason.isEmpty() ? QStringLiteral("no-egl-export")
+                                               : m_exportReason;
+        m_renderContext->doneCurrent();
+        return false;
+    }
+    *frame = m_dmabufFrame;
+    m_renderContext->doneCurrent();
+    if (reason)
+        reason->clear();
+    return true;
 }
 
 QSize GpuChromeFrameProducer::framebufferSize() const
@@ -265,6 +369,12 @@ unsigned int GpuChromeFrameProducer::framebufferTexture() const
     return m_fbo ? m_fbo->texture() : 0;
 }
 
+void GpuChromeFrameProducer::releaseDmabuf()
+{
+    ChromeDmabufExporter::closeFrame(&m_dmabufFrame);
+    m_exportReason.clear();
+}
+
 void GpuChromeFrameProducer::releaseGpu()
 {
     QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
@@ -273,6 +383,7 @@ void GpuChromeFrameProducer::releaseGpu()
 
     if (m_renderControl)
         m_renderControl->invalidate();
+    releaseDmabuf();
     delete m_fbo;
     m_fbo = nullptr;
     m_target = QQuickRenderTarget();

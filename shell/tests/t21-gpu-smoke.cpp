@@ -82,11 +82,15 @@ int main(int argc, char *argv[])
     QCommandLineOption fallbackOption(
         QStringLiteral("expect-fallback"),
         QStringLiteral("Require initialize() to fail cleanly (no-GL rail)"));
+    QCommandLineOption exportOption(
+        QStringLiteral("export"),
+        QStringLiteral("Export the rendered FBO as a dmabuf"));
     parser.addOption(outOption);
     parser.addOption(dprOption);
     parser.addOption(framesOption);
     parser.addOption(probeOnlyOption);
     parser.addOption(fallbackOption);
+    parser.addOption(exportOption);
     parser.process(app);
 
     const qreal dpr = qMax(0.25, parser.value(dprOption).toDouble());
@@ -183,8 +187,32 @@ Rectangle {
              .arg(producer.window()->contentItem()->isVisible() ? 1 : 0));
 
     QImage image;
-    for (int i = 0; i < frames; ++i)
-        image = producer.renderFrame();
+    if (parser.isSet(exportOption)) {
+        producer.setDmabufFormats(probe.formats);
+        ChromeDmabufFrame frame;
+        QString exportReason;
+        const bool exported = producer.exportFrame(&frame, &exportReason);
+        line(QStringLiteral(
+                 "export=%1 fd=%2 format=%3 modifier=%4 stride=%5 offset=%6 "
+                 "size=%7x%8 reason=%9")
+                 .arg(exported ? 1 : 0)
+                 .arg(frame.fd)
+                 .arg(GpuChromeCapabilities::formatName(frame.format))
+                 .arg(GpuChromeCapabilities::modifierName(frame.modifier))
+                 .arg(frame.stride)
+                 .arg(frame.offset)
+                 .arg(frame.size.width())
+                 .arg(frame.size.height())
+                 .arg(exportReason.isEmpty() ? QStringLiteral("none") : exportReason));
+        if (!exported) {
+            line(QStringLiteral("verdict=fail reason=dmabuf-export"));
+            return 1;
+        }
+        image = producer.readbackCurrentFrame();
+    } else {
+        for (int i = 0; i < frames; ++i)
+            image = producer.renderFrame();
+    }
     const QSize expected(qCeil(kLogicalWidth * dpr), qCeil(kLogicalHeight * dpr));
     const bool sizeOk = image.size() == expected;
     const bool dprOk = qFuzzyCompare(image.devicePixelRatio(), dpr);

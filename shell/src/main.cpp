@@ -19,6 +19,7 @@
 #include "shellcontroller.h"
 #include "systemfont.h"
 #include "i18n.h"
+#include "gpuchromeframeproducer.h"
 
 int main(int argc, char *argv[])
 {
@@ -27,10 +28,20 @@ int main(int argc, char *argv[])
         fprintf(stderr, "dragonfruit-shell: %s\n", message.toLocal8Bit().constData());
     });
 
-    // Force the offscreen QPA: the private protocol connection is ours, and
-    // the Qt Wayland platform plugin would create an unrelated toplevel.
-    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
-        qputenv("QT_QPA_PLATFORM", "offscreen");
+    // The private protocol connection is ours, so the default QPA is the
+    // offscreen platform. The T-21.1d GPU rail needs a GL-capable Qt platform:
+    // when `DRAGONFRUIT_CHROME_GPU` is opt-in and a host Wayland display is
+    // present, use the Wayland QPA for the Qt-side GL context only. The chrome
+    // surfaces stay on the shell's own libwayland connection (ADR 0195); no
+    // QQuickWindow is shown, so the QPA creates no toplevel.
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
+        if (GpuChromeFrameProducer::environmentRequested()
+            && !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
+            qputenv("QT_QPA_PLATFORM", "wayland");
+        } else {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+        }
+    }
 
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("dragonfruit-shell"));

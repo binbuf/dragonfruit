@@ -898,6 +898,16 @@ private:
     // length is exposed to the lock scene (`passwordLength`).
     QString m_lockPassword;
     QSocketNotifier *m_notifier = nullptr;
+    // T-21.1d: the opt-in GPU rail. `Unknown` until the first producer tries
+    // to initialize; `Failed` keeps every later surface on the T185 producer.
+    enum class GpuChromeState { Unknown, Active, Failed };
+    GpuChromeState m_gpuChromeState = GpuChromeState::Unknown;
+    bool m_gpuChromeRequested = false;
+    QString m_gpuChromeReason;
+    // The Dock's single dmabuf buffer can be abandoned for the rest of the
+    // session after an export/import/format failure. The Dock then uses the
+    // GPU producer's readback + T185 shm path; it never goes black.
+    bool m_dockDmabufEnabled = false;
     // T-21.1c: producer lookup and per-producer pacing state.
     QHash<QQuickWindow *, ChromeFrameProducer *> m_producers;
     struct ChromePace {
