@@ -43,7 +43,7 @@ done.
 - [x] T185a1 — T-21.1c close-out verification → [../tasks/0.1.1/185a1-t-21.1c-closeout-verify.md](../tasks/0.1.1/185a1-t-21.1c-closeout-verify.md)
 - [x] T186a — T-21.1d GPU transport: capability probe and render-control spike → [../tasks/0.1.1/186a-t-21.1d-gpu-probe.md](../tasks/0.1.1/186a-t-21.1d-gpu-probe.md)
 - [x] T186b — T-21.1d GPU transport: dmabuf export and single-buffer Dock commit → [../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md](../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md)
-- [ ] T186c — T-21.1d GPU transport: dmabuf ring, sync, and fallback → [../tasks/0.1.1/186c-t-21.1d-dmabuf-ring-sync.md](../tasks/0.1.1/186c-t-21.1d-dmabuf-ring-sync.md)
+- [x] T186c — T-21.1d GPU transport: dmabuf ring, sync, and fallback → [../tasks/0.1.1/186c-t-21.1d-dmabuf-ring-sync.md](../tasks/0.1.1/186c-t-21.1d-dmabuf-ring-sync.md)
 - [ ] T186d — T-21.1d GPU transport: rollout, stats, and docs → [../tasks/0.1.1/186d-t-21.1d-gpu-rollout.md](../tasks/0.1.1/186d-t-21.1d-gpu-rollout.md)
 
 ## Phase 21.2 — Refresh-aware scheduling and material floor
@@ -89,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-04T12:34:54Z · 6/30 done
+**Pipeline status** — updated 2026-11-04T14:06:02Z · 7/30 done
 
-- Completed: T183, T184, T185, T185a1, T186a, T186b
+- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c
 - Blocked: none
 - Failed: none
-- Remaining: T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
-- Last finished: T186b — done · Dock dmabuf export/commit, SHM fallback, stats, unit test, nested GPU/fallback captures, and docs are landed; ring/release/sync remain T186c.
+- Remaining: T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Last finished: T186c — done · dmabuf ring, release-driven reuse, GL-fence sync, shm fallback, stats, unit tests, and nested GPU/fallback captures landed; all gates pass.
 <!-- /symphony:status -->

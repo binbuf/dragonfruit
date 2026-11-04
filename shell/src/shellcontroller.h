@@ -716,6 +716,7 @@ private:
     void renderChromeProducer(ChromeFrameProducer *producer, bool fallback);
     void onChromeFramePresented(const QString &surface, uint32_t time);
     void onChromeBufferReleased(const QString &surface);
+    void onChromeDmabufReleased(const QString &surface, int slot, quint64 serial);
     void onChromeCommitDeferred(const QString &surface);
     void onChromeFallbackTick();
     QImage renderChromeFrame(QQuickWindow *window);

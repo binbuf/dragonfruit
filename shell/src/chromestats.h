@@ -58,10 +58,21 @@ public:
                              const QSize &bufferSize, int bufferScale, qreal scale,
                              bool viewport);
     // T-21.1d: one dmabuf-backed Dock frame was committed, deferred because
-    // the single reusable buffer was still busy, or fell back to shm.
+    // the ring had no free buffer, or fell back to shm.
     void recordDmabufCommit(const QString &surface, qint64 bytes);
     void recordDmabufDeferred(const QString &surface);
     void recordDmabufFallback(const QString &surface, const QString &reason);
+    // T186c: the live dmabuf buffer ring. `dmabuf_buffers` is the current
+    // count (flat after warm-up); `dmabuf_allocs`/`dmabuf_reuses` are
+    // cumulative, so a steady-state frame allocates nothing.
+    void recordDmabufBufferCreated(const QString &surface);
+    void recordDmabufBufferDestroyed(const QString &surface);
+    void recordDmabufReuse(const QString &surface);
+    // The producer's pre-sample sync mode (`gl-fence` or `gl-finish`) and one
+    // fence wait. `timeout` counts a wait that did not complete in time; such
+    // a frame is not committed.
+    void setDmabufSyncMode(const QString &mode);
+    void recordDmabufSyncWait(qint64 waitUs, bool timeout);
 
     // A `wl_surface.frame` callback was delivered for `surface`.
     void recordFrameCallback(const QString &surface, qint64 callbackUs);
@@ -105,6 +116,9 @@ private:
         quint64 dmabufBytes = 0;
         quint64 dmabufDeferred = 0;
         quint64 dmabufFallbacks = 0;
+        quint64 dmabufBuffers = 0;
+        quint64 dmabufAllocs = 0;
+        quint64 dmabufReuses = 0;
         QVector<qint64> commitUs;
         QVector<qint64> frameCallbackUs;
     };
@@ -128,6 +142,12 @@ private:
     quint64 m_dmabufBytes = 0;
     quint64 m_dmabufDeferred = 0;
     quint64 m_dmabufFallbacks = 0;
+    quint64 m_dmabufBuffers = 0;
+    quint64 m_dmabufAllocs = 0;
+    quint64 m_dmabufReuses = 0;
+    quint64 m_dmabufSyncWaits = 0;
+    quint64 m_dmabufSyncTimeouts = 0;
+    QString m_dmabufSyncMode = QStringLiteral("none");
     quint64 m_frameCallbacks = 0;
     quint64 m_signalDumps = 0;
     QVector<qint64> m_commitUs;

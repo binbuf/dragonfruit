@@ -29,11 +29,14 @@ struct ChromeDmabufFrame {
     // convention. The linux-dmabuf `y_invert` flag tells the compositor to
     // flip it when sampling.
     bool yInverted = false;
-    // Monotonic identity of the producer-side export. A new FBO export gets a
-    // new serial even when its size/format/modifier happen to match the old
-    // one, so the shell recreates its wl_buffer instead of reusing a buffer
-    // that points at deleted storage.
+    // Monotonic identity of the producer-side export. Every committed frame
+    // gets a new serial; the shell uses it to match a `wl_buffer.release` to
+    // the slot that produced it.
     uint64_t serial = 0;
+    // Producer-side ring slot that owns this export. The shell keeps one
+    // reusable wl_buffer per (surface, slot), so a reused slot does not
+    // allocate a new buffer.
+    int slot = -1;
 
     bool valid() const
     {
@@ -64,9 +67,9 @@ uint32_t modifierLow(uint64_t modifier);
 
 } // namespace ChromeDmabuf
 
-// The reuse state of one dmabuf-backed surface buffer. T186b commits a single
-// buffer: it may be rendered into only while it is not held by the compositor.
-// The ring and release-driven pooling are T186c.
+// The reuse state of one dmabuf-backed surface buffer. Kept as the small
+// single-buffer state machine used by the export smoke test; the production
+// transport uses `ChromeDmabufRing` below.
 class ChromeDmabufSlot
 {
 public:
@@ -94,4 +97,85 @@ public:
 private:
     State m_state = State::Empty;
     QString m_reason;
+};
+
+// A bounded, per-surface dmabuf ring (T186c).
+//
+// The producer owns one FBO/export per slot and the shell owns one reusable
+// `wl_buffer` per slot. A slot is only acquired for rendering while it is
+// free; the compositor holds it from commit until `wl_buffer.release`, which
+// returns the slot through `release(serial)`. A size or format change retires
+// the current generation: free retired slots can be dropped immediately,
+// busy ones stay alive until their release. Allocation is bounded by
+// `capacity` (2-3; the transport uses 3).
+class ChromeDmabufRing
+{
+public:
+    explicit ChromeDmabufRing(int capacity = 3);
+
+    // Change the geometry. Returns true when live slots were retired.
+    bool setSize(const QSize &size);
+    // Change the exported format/modifier. The first format is adopted
+    // without retiring (all slots share the FBO's internal format); a later
+    // change retires the old generation. Returns true when slots were retired.
+    bool setFormat(uint32_t format, uint64_t modifier);
+    // Convenience for tests: setSize() followed by setFormat().
+    bool configure(const QSize &size, uint32_t format, uint64_t modifier);
+    // Retire every live slot without changing the geometry.
+    bool retireAll();
+
+    QSize size() const { return m_size; }
+    uint32_t format() const { return m_format; }
+    uint64_t modifier() const { return m_modifier; }
+    int capacity() const { return m_capacity; }
+
+    // Acquire a free current-generation slot and mark it in use. Returns -1
+    // when every slot is busy/retired; the caller must wait for a release.
+    int acquire();
+    // Attach the frame serial to an acquired slot. False when it is not busy.
+    bool setSerial(int slot, uint64_t serial);
+    // `wl_buffer.release` returns the busy slot with this serial.
+    bool release(uint64_t serial);
+    bool releaseSlot(int slot);
+    // Return an acquired slot that was not committed (deferred/failure).
+    bool abandon(int slot);
+
+    // Retired slots that are already free, dropped from the ring so the caller
+    // can destroy their FBO/export/wl_buffer. Busy retired slots are returned
+    // by a later call after their release.
+    QVector<int> takeRetired();
+
+    bool isBusy(int slot) const;
+    bool isRetired(int slot) const;
+    bool isFree(int slot) const;
+    bool contains(int slot) const;
+
+    int liveCount() const;
+    int busyCount() const;
+    int freeCount() const;
+    quint64 allocations() const { return m_allocations; }
+    quint64 reuses() const { return m_reuses; }
+    quint64 resets() const { return m_resets; }
+    void reset();
+
+private:
+    struct Slot {
+        bool used = false;
+        bool busy = false;
+        bool retired = false;
+        uint64_t serial = 0;
+    };
+
+    int allocateSlot();
+    int findFreeCurrent() const;
+    void retireLiveSlots();
+
+    int m_capacity;
+    QSize m_size;
+    uint32_t m_format = 0;
+    uint64_t m_modifier = 0;
+    QVector<Slot> m_slots;
+    quint64 m_allocations = 0;
+    quint64 m_reuses = 0;
+    quint64 m_resets = 0;
 };

@@ -311,8 +311,30 @@ and is reported as `gpu=shm gpu_reason=<token>`; `chrome stats` also carries
 [`t21-dmabuf-dock.png`](captures/t21-dmabuf-dock.png) /
 [`t21-dmabuf-dock-fallback.png`](captures/t21-dmabuf-dock-fallback.png).
 Contract: [ADR 0195](design/adr/0195-dmabuf-export-and-single-buffer-dock-commit.md).
-The 2–3 buffer ring, release-driven reuse, and explicit sync remain T186c;
-the menu bar/popover rollout remains T186d.
+
+**Dock dmabuf ring (T186c).** The Dock now uses a bounded three-slot
+per-surface `ChromeDmabufRing`. Each slot owns an FBO/export and one reusable
+`wl_buffer`; `wl_buffer.release` returns the slot to the ring, and a stale
+serial never frees a newer commit. A size or export-format change retires the
+old generation: free slots are destroyed immediately, busy ones stay alive
+until release. The producer waits on a GL fence (`glFenceSync` /
+`glClientWaitSync`, 100 ms bound) before handing the buffer over; if fences are
+unavailable it falls back to `glFinish`. The compositor exposes only implicit
+dma-buf sync (no `linux-drm-syncobj-v1`), so the exported buffer carries the
+driver's implicit dma-fence and the GL fence closes the producer-side race; that
+implicit-only limitation is recorded in `04-shell.md`. Ring exhaustion commits
+the last complete frame through the T185 shm pool for that frame and retries on
+release; export/import/format failures abandon the rail for the session. Both
+are counted in `dmabuf_fallbacks` with a `gpu_reason`, and no path goes black.
+`chrome stats` now carries `dmabuf_buffers`, `dmabuf_allocs`, `dmabuf_reuses`,
+`dmabuf_sync`, `dmabuf_sync_waits`, and `dmabuf_sync_timeouts`. Evidence:
+[`captures/t21-dmabuf-ring.txt`](captures/t21-dmabuf-ring.txt) (warm/steady
+`dmabuf_buffers=3`, flat `dmabuf_allocs`, advancing commits/reuses; fallback
+run `gpu=off`, zero dmabuf imports) and the two host stills
+[`t21-dmabuf-ring.png`](captures/t21-dmabuf-ring.png) /
+[`t21-dmabuf-ring-fallback.png`](captures/t21-dmabuf-ring-fallback.png).
+Contract: [ADR 0196](design/adr/0196-dmabuf-ring-release-reuse-and-sync.md).
+The menu bar/popover rollout remains T186d.
 
 **Close-out (T185a).** The final-tree rerun was host-throttled: the nested
 window was not presented at 60 Hz, so the shell's 100 ms safety tick is visible

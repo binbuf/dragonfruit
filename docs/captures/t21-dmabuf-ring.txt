@@ -1,0 +1,60 @@
+T-21.1d dmabuf ring + release reuse (T186c)
+timestamp: 2026-11-04T06:01:28-08:00
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+distro: Fedora Linux 44 (KDE Plasma Desktop Edition)
+host session: WAYLAND_DISPLAY=kwin-t186c
+nested socket: dragonfruit-t21-dmabuf-197160
+
+## GPU run: DRAGONFRUIT_CHROME_GPU=1 (Qt Wayland GL rail, 3-slot ring)
+command: QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=dragonfruit-t21-dmabuf-197160 DRAGONFRUIT_CHROME_GPU=1 DRAGONFRUIT_CHROME_STATS=1 ./build/shell/src/dragonfruit-shell --socket-name dragonfruit-t21-dmabuf-197160
+dragonfruit-shell: chrome gpu probe (startup): dmabuf_global=yes version=5 feedback=yes tranches=1 formats=AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,... main_device=226:128 egl_display=yes egl_vendor=Mesa Project egl_export=yes egl_import=yes egl_modifiers=yes selected=ABGR8888:linear compositor_import=advertised verdict=gpu-ready reason=none
+dragonfruit-shell: chrome gpu probe (startup) formats: AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,AB4H:linear,AB4H:invalid,XB4H:0x020000044051ba01,XB4H:0x020000044051b901,XB4H:0x020000044051b601,XB4H:0x0200000000401a01,XB4H:0x0200000000401901,XB4H:0x0200000000401601,...
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: shell: chrome transport: QQuickRenderControl + GPU (Dock dmabuf, other surfaces shm)
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome dmabuf: buffer created slot=1 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x445 surface=dock
+dragonfruit-shell: chrome dmabuf: buffer created slot=0 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x445 surface=dock
+dragonfruit-shell: chrome dmabuf: buffer created slot=1 format=ABGR8888 modifier=invalid stride=6144 offset=0 size=1494x445 surface=dock
+dragonfruit-shell: chrome dmabuf: buffer created slot=2 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x445 surface=dock
+
+warm stats (after one Dock sweep):
+dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+dmabuf scene_frames=175 commits=209 grab_renders=0 shm_allocs=11 shm_bytes=2573980 copy_bytes=44959708 damage_pixels=42981618 frame_callbacks=78 fallback_renders=0 skipped_commits=25 dmabuf_commits=154 dmabuf_bytes=936430080 dmabuf_deferred=0 dmabuf_fallbacks=60 gpu=shm gpu_reason=ring-exhausted commit_us_samples=209 commit_us_p50=135 commit_us_p95=17277 commit_us_p99=18398 commit_us_max=3316700 frame_callback_us_samples=78 frame_callback_us_p50=29334 frame_callback_us_p95=31841 frame_callback_us_p99=33778 frame_callback_us_max=77955 dmabuf_buffers=3 dmabuf_allocs=7 dmabuf_reuses=147 dmabuf_sync=gl-fence dmabuf_sync_waits=175 dmabuf_sync_timeouts=0
+
+steady stats (after a second Dock sweep):
+dragonfruit-shell: chrome stats (SIGUSR1-2): path=render-control+dmabuf scene_frames=333 commits=417 grab_renders=0 shm_allocs=19 shm_bytes=3011308 copy_bytes=87782764 damage_pixels=86439064 frame_callbacks=155 fallback_renders=0 skipped_commits=33 dmabuf_commits=310 dmabuf_bytes=1896811008 dmabuf_deferred=0 dmabuf_fallbacks=111 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=208 commit_us_p50=121 commit_us_p95=17121 commit_us_p99=18063 commit_us_max=18284 frame_callback_us_samples=77 frame_callback_us_p50=29678 frame_callback_us_p95=31973 frame_callback_us_p99=33082 frame_callback_us_max=33541 dmabuf_buffers=3 dmabuf_allocs=7 dmabuf_reuses=303 dmabuf_sync=gl-fence dmabuf_sync_waits=333 dmabuf_sync_timeouts=0
+
+ring: dmabuf_buffers=3->3 dmabuf_allocs=7->7 dmabuf_reuses=147->303 dmabuf_commits=154->310
+
+compositor imports:
+dragonfruit-compositor: chrome stats (exit): chrome_shm_imports=107 chrome_shm_bytes=87782764 chrome_dmabuf_imports=310 chrome_frame_callbacks=157
+
+## Fallback run: DRAGONFRUIT_CHROME_GPU=0 (offscreen QPA, T185 shm)
+command: QT_QPA_PLATFORM=offscreen WAYLAND_DISPLAY=dragonfruit-t21-dmabuf-197160 DRAGONFRUIT_CHROME_GPU=0 DRAGONFRUIT_CHROME_STATS=1 ./build/shell/src/dragonfruit-shell --socket-name dragonfruit-t21-dmabuf-197160
+dragonfruit-shell: chrome gpu probe (startup): dmabuf_global=yes version=5 feedback=yes tranches=1 formats=AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,... main_device=226:128 egl_display=yes egl_vendor=Mesa Project egl_export=yes egl_import=yes egl_modifiers=yes selected=ABGR8888:linear compositor_import=advertised verdict=gpu-ready reason=none
+dragonfruit-shell: chrome gpu probe (startup) formats: AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,AB4H:linear,AB4H:invalid,XB4H:0x020000044051ba01,XB4H:0x020000044051b901,XB4H:0x020000044051b601,XB4H:0x0200000000401a01,XB4H:0x0200000000401901,XB4H:0x0200000000401601,...
+dragonfruit-shell: shell: chrome transport: QQuickRenderControl + pooled shm
+
+shell stats:
+dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+shm scene_frames=2102 commits=7 grab_renders=0 shm_allocs=7 shm_bytes=3124528 copy_bytes=3124528 damage_pixels=678666 frame_callbacks=4 fallback_renders=0 skipped_commits=22 dmabuf_commits=0 dmabuf_bytes=0 dmabuf_deferred=0 dmabuf_fallbacks=0 gpu=off gpu_reason=none commit_us_samples=7 commit_us_p50=789 commit_us_p95=911 commit_us_p99=911 commit_us_max=1062 frame_callback_us_samples=4 frame_callback_us_p50=11594 frame_callback_us_p95=130167 frame_callback_us_p99=130167 frame_callback_us_max=3420048 dmabuf_buffers=0 dmabuf_allocs=0 dmabuf_reuses=0 dmabuf_sync=none dmabuf_sync_waits=0 dmabuf_sync_timeouts=0
+
+compositor imports:
+dragonfruit-compositor: chrome stats (exit): chrome_shm_imports=7 chrome_shm_bytes=3124528 chrome_dmabuf_imports=0 chrome_frame_callbacks=4
+
+## Verdict
+gpu_path_ok=1 gpu_dmabuf_imports_ok=1 (chrome_dmabuf_imports=310)
+fallback_path_ok=1 fallback_dmabuf_imports_ok=1 (chrome_dmabuf_imports=0)
+ring_flat_ok=1 ring_alloc_flat_ok=1 ring_work_ok=1
+PASS: the Dock committed dmabufs through a bounded ring whose
+buffer/allocation counts stayed flat after warm-up, and the
+GPU=0 run stayed on the pooled shm path with zero dmabuf imports.

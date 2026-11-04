@@ -2,8 +2,10 @@
 #include "gpuchromeframeproducer.h"
 
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QOffscreenSurface>
 #include <QOpenGLContext>
+#include <QOpenGLExtraFunctions>
 #include <QOpenGLFramebufferObject>
 #include <QOpenGLFunctions>
 #include <QQuickItem>
@@ -155,19 +157,9 @@ void GpuChromeFrameProducer::setDevicePixelRatio(qreal dpr)
     if (qFuzzyCompare(m_dpr, dpr))
         return;
     m_dpr = dpr;
-    // The target is rebuilt on the next frame; the window keeps its logical
-    // size and only the physical rasterization changes.
-    if (m_fbo) {
-        QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
-        if (context && m_surface)
-            context->makeCurrent(m_surface);
-        releaseDmabuf();
-        delete m_fbo;
-        m_fbo = nullptr;
-        m_target = QQuickRenderTarget();
-        if (context)
-            context->doneCurrent();
-    }
+    // The ring is reconfigured on the next frame. Busy slots stay alive until
+    // the compositor releases them; only then may their FBO be recreated.
+    m_geometryDirty = true;
 }
 
 void GpuChromeFrameProducer::setDmabufFormats(
@@ -194,36 +186,103 @@ void GpuChromeFrameProducer::resize(const QSize &bufferSize)
     }
 }
 
-void GpuChromeFrameProducer::ensureFramebuffer()
+bool GpuChromeFrameProducer::configureRing(const QSize &physical)
 {
-    if (!m_window || !m_context)
-        return;
-    const QSize physical = physicalSize(m_window->size(), m_dpr);
     if (physical.isEmpty())
-        return;
-    if (m_fbo && m_fbo->size() == physical)
-        return;
+        return false;
+    const bool sizeRetired = m_ring.setSize(physical);
+    m_geometryDirty = false;
+    if (sizeRetired)
+        collectRetiredSlots();
+    return true;
+}
 
-    releaseDmabuf();
-    delete m_fbo;
-    m_fbo = nullptr;
+bool GpuChromeFrameProducer::ensureFramebuffer(int slot, const QSize &physical)
+{
+    if (!m_window || !m_context || physical.isEmpty())
+        return false;
+    SlotResources &resources = m_slots[slot];
+    if (resources.fbo && resources.fbo->size() == physical)
+        return true;
+
+    if (resources.fbo) {
+        ChromeDmabufExporter::closeFrame(&resources.frame);
+        m_window->setRenderTarget(QQuickRenderTarget());
+        delete resources.fbo;
+        resources.fbo = nullptr;
+        resources.rendered = false;
+        if (m_lastRenderedSlot == slot)
+            m_lastRenderedSlot = -1;
+    }
+
     QOpenGLFramebufferObjectFormat format;
     format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
     format.setInternalTextureFormat(GL_RGBA8);
     format.setSamples(0);
     format.setMipmap(false);
-    m_fbo = new QOpenGLFramebufferObject(physical, format);
-    if (!m_fbo->isValid()) {
-        delete m_fbo;
-        m_fbo = nullptr;
+    resources.fbo = new QOpenGLFramebufferObject(physical, format);
+    if (!resources.fbo->isValid()) {
+        delete resources.fbo;
+        resources.fbo = nullptr;
         setFailure(QStringLiteral("fbo-create-failed"));
-        return;
+        return false;
     }
-    m_target = QQuickRenderTarget::fromOpenGLTexture(m_fbo->texture(), physical);
-    m_target.setDevicePixelRatio(m_dpr);
+    // A fresh render target starts transparent, not with driver garbage. Qt
+    // clears the target on a normal frame; this covers the first one.
+    resources.fbo->bind();
+    if (QOpenGLFunctions *functions = m_renderContext->functions()) {
+        functions->glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        functions->glClear(GL_COLOR_BUFFER_BIT);
+    }
+    resources.fbo->release();
+    resources.rendered = false;
+    return true;
 }
 
-bool GpuChromeFrameProducer::renderToFramebuffer()
+bool GpuChromeFrameProducer::syncGpuWork()
+{
+    if (!m_renderContext)
+        return false;
+    QOpenGLExtraFunctions *functions = m_renderContext->extraFunctions();
+    if (!functions) {
+        m_renderContext->functions()->glFinish();
+        ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-finish"));
+        return true;
+    }
+
+    GLsync sync = functions->glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!sync) {
+        m_renderContext->functions()->glFinish();
+        ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-finish"));
+        return true;
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+    GLenum status = GL_TIMEOUT_EXPIRED;
+    constexpr qint64 kFenceTimeoutUs = 100000;
+    while (timer.nsecsElapsed() / 1000 < kFenceTimeoutUs) {
+        status = functions->glClientWaitSync(
+            sync, GL_SYNC_FLUSH_COMMANDS_BIT, 10000000);
+        if (status != GL_TIMEOUT_EXPIRED)
+            break;
+    }
+    functions->glDeleteSync(sync);
+
+    const qint64 waitUs = timer.nsecsElapsed() / 1000;
+    const bool ok = status == GL_ALREADY_SIGNALED || status == GL_CONDITION_SATISFIED;
+    ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-fence"));
+    ChromeStats::instance().recordDmabufSyncWait(waitUs, !ok);
+    if (!ok) {
+        // Do not hand an unfinished buffer to the compositor. The controller
+        // commits the last complete frame through shm instead.
+        m_exportReason = QStringLiteral("sync-timeout");
+        return false;
+    }
+    return true;
+}
+
+bool GpuChromeFrameProducer::renderToFramebuffer(int slot)
 {
     if (!m_initialized || !m_window || !m_context || !m_surface || !m_renderContext)
         return false;
@@ -233,24 +292,37 @@ bool GpuChromeFrameProducer::renderToFramebuffer()
         return false;
     }
 
-    ensureFramebuffer();
-    if (!m_fbo) {
+    const QSize physical = physicalSize(m_window->size(), m_dpr);
+    if (!ensureFramebuffer(slot, physical)) {
         m_renderContext->doneCurrent();
         return false;
     }
+    SlotResources &resources = m_slots[slot];
 
-    m_window->setRenderTarget(m_target);
+    QQuickRenderTarget target =
+        QQuickRenderTarget::fromOpenGLTexture(resources.fbo->texture(), physical);
+    target.setDevicePixelRatio(m_dpr);
+    m_window->setRenderTarget(target);
+    if (!resources.rendered)
+        m_window->update();
     m_renderControl->polishItems();
     m_renderControl->beginFrame();
     const bool synced = m_renderControl->sync();
-    if (synced)
+    if (synced || !resources.rendered)
         m_renderControl->render();
     m_renderControl->endFrame();
 
-    // T186b's first-frame contract: the GL work must be complete before the
-    // compositor can sample the exported dmabuf. T186c replaces this with an
-    // explicit fence/sync path.
-    m_renderContext->functions()->glFinish();
+    if (!syncGpuWork()) {
+        // The target may hold an unfinished frame. Force a full render into it
+        // on the next attempt instead of treating it as a valid static frame.
+        resources.rendered = false;
+        m_renderContext->doneCurrent();
+        return false;
+    }
+    resources.rendered = true;
+    // Only a fence-complete frame becomes the readback fallback; a timed-out
+    // render must not be handed to the compositor or to the shm fallback.
+    m_lastRenderedSlot = slot;
     ChromeStats::instance().recordSceneFrame();
     ChromeStats::instance().recordRenderComplete();
     return true;
@@ -258,25 +330,45 @@ bool GpuChromeFrameProducer::renderToFramebuffer()
 
 QImage GpuChromeFrameProducer::renderFrame()
 {
-    if (!renderToFramebuffer())
+    if (!m_initialized || !m_window) {
+        m_exportReason = m_reason.isEmpty() ? QStringLiteral("render-failed") : m_reason;
         return QImage();
+    }
+    const QSize physical = physicalSize(m_window->size(), m_dpr);
+    if (!configureRing(physical)) {
+        m_exportReason = QStringLiteral("bad-size");
+        return QImage();
+    }
+    const int slot = m_ring.acquire();
+    if (slot < 0) {
+        m_exportReason = QStringLiteral("ring-exhausted");
+        return QImage();
+    }
+    if (!renderToFramebuffer(slot)) {
+        m_ring.abandon(slot);
+        collectRetiredSlots();
+        return QImage();
+    }
 
-    QImage image = readbackCurrentFrame();
+    QImage image = readbackSlot(slot);
+    m_ring.abandon(slot);
+    collectRetiredSlots();
     m_renderContext->doneCurrent();
     if (!image.isNull())
         m_lastFrame = image;
     return image;
 }
 
-QImage GpuChromeFrameProducer::readbackCurrentFrame()
+QImage GpuChromeFrameProducer::readbackSlot(int slot)
 {
-    if (!m_fbo || !m_renderContext || !m_surface)
+    auto it = m_slots.find(slot);
+    if (it == m_slots.end() || !it.value().fbo || !m_renderContext || !m_surface)
         return QImage();
     const bool wasCurrent = QOpenGLContext::currentContext() == m_renderContext;
     if (!wasCurrent && !m_renderContext->makeCurrent(m_surface))
         return QImage();
 
-    QImage image = m_fbo->toImage(true);
+    QImage image = it.value().fbo->toImage(true);
     if (!image.isNull()) {
         image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
         image.setDevicePixelRatio(m_dpr);
@@ -286,12 +378,19 @@ QImage GpuChromeFrameProducer::readbackCurrentFrame()
     return image;
 }
 
-bool GpuChromeFrameProducer::ensureDmabufExport()
+QImage GpuChromeFrameProducer::readbackCurrentFrame()
 {
-    if (m_dmabufFrame.valid())
-        return true;
-    if (!m_fbo || !m_renderContext)
+    return readbackSlot(m_lastRenderedSlot);
+}
+
+bool GpuChromeFrameProducer::ensureDmabufExport(int slot)
+{
+    auto it = m_slots.find(slot);
+    if (it == m_slots.end() || !it.value().fbo || !m_renderContext)
         return false;
+    SlotResources &resources = it.value();
+    if (resources.frame.valid())
+        return true;
 
     if (!m_exporterInitialized) {
         auto *native = m_renderContext->nativeInterface<QNativeInterface::QEGLContext>();
@@ -313,10 +412,9 @@ bool GpuChromeFrameProducer::ensureDmabufExport()
     }
 
     ChromeDmabufFrame frame = m_exporter.exportTexture(
-        m_fbo->texture(), m_fbo->size(), &m_exportReason);
+        resources.fbo->texture(), resources.fbo->size(), &m_exportReason);
     if (!frame.valid())
         return false;
-    frame.serial = ++m_dmabufSerial;
 
     // The compositor accepts only an exact pair from its feedback table. Check
     // it before creating a wl_buffer so an unsupported export is a clean
@@ -328,7 +426,7 @@ bool GpuChromeFrameProducer::ensureDmabufExport()
         return false;
     }
 
-    m_dmabufFrame = frame;
+    resources.frame = frame;
     m_exportReason.clear();
     return true;
 }
@@ -340,39 +438,136 @@ bool GpuChromeFrameProducer::exportFrame(ChromeDmabufFrame *frame, QString *reas
             *reason = QStringLiteral("bad-frame");
         return false;
     }
-    if (!renderToFramebuffer()) {
+    if (!m_initialized || !m_window) {
         if (reason)
             *reason = m_reason.isEmpty() ? QStringLiteral("render-failed") : m_reason;
         return false;
     }
-    if (!ensureDmabufExport()) {
+
+    const QSize physical = physicalSize(m_window->size(), m_dpr);
+    if (!configureRing(physical)) {
+        if (reason)
+            *reason = QStringLiteral("bad-size");
+        return false;
+    }
+
+    const int slot = m_ring.acquire();
+    if (slot < 0) {
+        if (reason)
+            *reason = QStringLiteral("ring-exhausted");
+        return false;
+    }
+    if (!renderToFramebuffer(slot)) {
+        m_ring.abandon(slot);
+        collectRetiredSlots();
+        if (reason)
+            *reason = m_exportReason.isEmpty()
+                ? (m_reason.isEmpty() ? QStringLiteral("render-failed") : m_reason)
+                : m_exportReason;
+        return false;
+    }
+    if (!ensureDmabufExport(slot)) {
+        m_ring.abandon(slot);
+        collectRetiredSlots();
         if (reason)
             *reason = m_exportReason.isEmpty() ? QStringLiteral("no-egl-export")
                                                : m_exportReason;
         m_renderContext->doneCurrent();
         return false;
     }
-    *frame = m_dmabufFrame;
+
+    SlotResources &resources = m_slots[slot];
+    resources.frame.slot = slot;
+    resources.frame.serial = ++m_dmabufSerial;
+    if (!m_ring.setSerial(slot, resources.frame.serial)) {
+        m_ring.abandon(slot);
+        if (reason)
+            *reason = QStringLiteral("ring-serial");
+        m_renderContext->doneCurrent();
+        return false;
+    }
+    // The first export establishes the ring format. A later change retires
+    // the old generation; the just-exported frame is still committed below.
+    if (m_ring.setFormat(resources.frame.format, resources.frame.modifier))
+        collectRetiredSlots();
+
+    *frame = resources.frame;
     m_renderContext->doneCurrent();
     if (reason)
         reason->clear();
     return true;
 }
 
+void GpuChromeFrameProducer::releaseDmabufFrame(int slot, uint64_t serial)
+{
+    if (!m_ring.release(serial))
+        return;
+    QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
+    const bool madeCurrent = context && m_surface
+        && QOpenGLContext::currentContext() != context
+        && context->makeCurrent(m_surface);
+    collectRetiredSlots();
+    if (madeCurrent)
+        context->doneCurrent();
+    Q_UNUSED(slot);
+}
+
+void GpuChromeFrameProducer::abandonDmabufFrame(int slot)
+{
+    if (!m_ring.abandon(slot))
+        return;
+    QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
+    const bool madeCurrent = context && m_surface
+        && QOpenGLContext::currentContext() != context
+        && context->makeCurrent(m_surface);
+    collectRetiredSlots();
+    if (madeCurrent)
+        context->doneCurrent();
+}
+
 QSize GpuChromeFrameProducer::framebufferSize() const
 {
-    return m_fbo ? m_fbo->size() : QSize();
+    auto it = m_slots.constFind(m_lastRenderedSlot);
+    return it != m_slots.constEnd() && it.value().fbo ? it.value().fbo->size()
+                                                      : QSize();
 }
 
 unsigned int GpuChromeFrameProducer::framebufferTexture() const
 {
-    return m_fbo ? m_fbo->texture() : 0;
+    auto it = m_slots.constFind(m_lastRenderedSlot);
+    return it != m_slots.constEnd() && it.value().fbo ? it.value().fbo->texture()
+                                                      : 0;
 }
 
-void GpuChromeFrameProducer::releaseDmabuf()
+void GpuChromeFrameProducer::collectRetiredSlots()
 {
-    ChromeDmabufExporter::closeFrame(&m_dmabufFrame);
-    m_exportReason.clear();
+    const QVector<int> retired = m_ring.takeRetired();
+    for (int slot : retired)
+        destroySlotResources(slot);
+}
+
+void GpuChromeFrameProducer::destroySlotResources(int slot)
+{
+    auto it = m_slots.find(slot);
+    if (it == m_slots.end())
+        return;
+    QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
+    const bool madeCurrent = context && m_surface && context->isValid()
+        && QOpenGLContext::currentContext() != context
+        && context->makeCurrent(m_surface);
+    SlotResources &resources = it.value();
+    ChromeDmabufExporter::closeFrame(&resources.frame);
+    if (resources.fbo) {
+        if (m_window)
+            m_window->setRenderTarget(QQuickRenderTarget());
+        delete resources.fbo;
+        resources.fbo = nullptr;
+    }
+    if (m_lastRenderedSlot == slot)
+        m_lastRenderedSlot = -1;
+    m_slots.erase(it);
+    if (madeCurrent)
+        context->doneCurrent();
 }
 
 void GpuChromeFrameProducer::releaseGpu()
@@ -383,10 +578,12 @@ void GpuChromeFrameProducer::releaseGpu()
 
     if (m_renderControl)
         m_renderControl->invalidate();
-    releaseDmabuf();
-    delete m_fbo;
-    m_fbo = nullptr;
-    m_target = QQuickRenderTarget();
+    const QList<int> slotIds = m_slots.keys();
+    for (int slot : slotIds)
+        destroySlotResources(slot);
+    m_ring.reset();
+    m_lastRenderedSlot = -1;
+    m_exportReason.clear();
     delete m_window;
     m_window = nullptr;
     if (context && context->isValid())
