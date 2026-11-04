@@ -1,16 +1,42 @@
 # Dragonfruit
 
-Dragonfruit is a Linux desktop environment: a Rust/Smithay compositor, a
-Qt Quick (QML) shell and first-party apps, and small Rust services over
-D-Bus — macOS-inspired interaction, original assets and code, built on
-the Linux stack (Wayland, logind, NetworkManager, PipeWire, …).
+A modern Linux desktop environment inpired by macOS, built with Rust and Qt Quick
 
-**Status: pre-alpha.** The compositor core, input, window model, Spaces,
-Xwayland, private shell protocols, design system, menu bar, and Dock are
-built (the inherited foundation). The current plan is a sequence of vertical
-slices that turn that machinery into a testable desktop — see the
-[roadmap](docs/ROADMAP.md). The design docs in
-[docs/design/](docs/design/) are the source of truth for what to build.
+## Why Dragonfruit?
+
+Dragonfruit brings the elegance, meticulous aeshetics, and intuitive workflow of macOS to Linux.
+
+**Beautiful by design.** A fluid Dock, elegant animations, beautiful materials, intuitive workspaces, and a carefully coordinated visual language.
+
+**Linux first.** Dragonfruit integrates with your existing distro. We are a semi opinionated, meaning we trade off some of the macOS inspired vertical integration for customizability that Linux users typically prefer. Our goal is for you to keep the applications, tools, and distro you trust.
+
+**Built for performance.** A Rust/Smithay Wayland compositor, GPU accelerated shell, and a design focused on responsive rendering, efficient resource usage, and smooth animation.
+
+**Designed for resilience.** The desktop shell and supporting services run independently. If something goes wrong, the blast radius is reduced keeping your desktop stable.
+
+### Built on open source
+
+Every component in the DE is a build vs buy argument. We try to "buy" (in this acquire for free) when there's a high quality open source project with permissisble licensing. We tend to build when we can't find something that fits well into the project's goals. 
+
+| Project | How Dragonfruit uses it |
+|---|---|
+| **Smithay** (MIT) | Rust Wayland compositor building blocks |
+| **Qt 6 / Qt Quick** (LGPL/commercial and module-dependent) | Shell, design system, Settings, and Files interfaces |
+| **Wayland / Xwayland** | Native display protocols and X11 application compatibility |
+| **Mesa, DRM/KMS, libinput** | Graphics, display hardware, and input |
+| **NetworkManager** | Networking and Wi-Fi |
+| **BlueZ** | Bluetooth |
+| **PipeWire / WirePlumber** | Audio and multimedia |
+| **UPower / UDisks2** | Power and storage integration |
+| **systemd / logind** | Session and process management |
+| **xdg-desktop-portal** | Sandboxed application integration |
+| **Inter** (SIL OFL 1.1) | Typography |
+| **Tabler Icons** (MIT) | Interface line icons |
+| **Phosphor Icons** (MIT) | Filled interface and Settings glyphs |
+| **Capitaine Cursors** (LGPL) | Cursor theme |
+| **Wikimedia Commons** (asset-specific licenses) | Optional online wallpaper discovery |
+
+Dragonfruit's original compositor, shell, services, protocols, and design-system code are intended to use the MIT license. Third-party components and assets retain their respective licenses.
 
 ## Repository layout
 
@@ -52,7 +78,9 @@ without the DRM `-devel` packages, a user-space sysroot at
 `~/.local/df-devroot/lib64` is picked up automatically — see
 `docs/tasks/legacy/PROGRESS.md`, T-02.)
 
-## Build
+## Getting Started
+
+### Build
 
 One command builds the full desktop — the Cargo workspace (compositor,
 services, tools) and the CMake/Qt side (design system, shell, apps):
@@ -61,7 +89,8 @@ services, tools) and the CMake/Qt side (design system, shell, apps):
 make build
 ```
 
-## Run it
+
+### Run it
 
 Pick the workflow and command that matches what you are doing:
 
@@ -113,7 +142,7 @@ The native session uses systemd user units and works from any normal user
 account with sudo for the system install. On a non-systemd host, use the
 nested `make dev` loop instead.
 
-## Test
+### Test
 
 One command runs all tests — Rust unit tests plus the QML lint suite
 (run via `ctest`):
@@ -122,47 +151,14 @@ One command runs all tests — Rust unit tests plus the QML lint suite
 make test
 ```
 
-## Lint and gates
+### Lint and gates
 
 ```bash
 make lint    # cargo fmt --check, clippy -D warnings, qmllint, desktop-name gate
 make check   # lint + tests + 100-cycle teardown soak
 ```
 
-## Premium experience gate (T-17)
-
-The full loop — window lifecycle, Spaces/Mission Control/app switch, a Flatpak
-browser, materials in light/dark/reduced motion, absence/crash/leak/lock
-robustness — is gated by the T-17 track
-([design/tracks/17-premium-gate.md](docs/design/tracks/17-premium-gate.md)). The
-reviewed sign-off is
-[docs/captures/t17-premium-gate.md](docs/captures/t17-premium-gate.md); the
-gate is agent-signed with the DRM and baseline-frame-budget rows left open on
-the hardware rail (T-17.2/T-17.4).
-
-```bash
-make check                      # lint + tests + 100-cycle teardown soak (green)
-make e2e                        # the foundation + conformance suites (green)
-make t17-premium-gate-capture   # assembled-desktop still + sign-off transcript
-
-# the per-unit evidence the report indexes
-make t17-window-loop-capture
-make t17-navigation-capture
-make t17-flatpak-browser-capture
-make t17-visual-floor-capture
-make t17-robustness-matrix
-make t17-leak-lock-soak
-```
-
-Requires a host Wayland session, `spectacle`, python3 + Pillow for the capture
-targets; `make check`/`make e2e` are headless.
-
-The **desktop-name gate** (`scripts/check-desktop-names.sh`) fails on
-any hardcoded desktop name — `dragonfruit` is the only legal value
-(`XDG_CURRENT_DESKTOP` is a public contract; see
-[docs/ipc-versioning.md](docs/ipc-versioning.md)).
-
-## The daily dev workflow: nested sessions
+### The daily dev workflow: nested sessions
 
 ```bash
 make dev      # = dragonfruit dev --nested
@@ -186,7 +182,7 @@ dragonfruit dev --soak 50               # same gate, headless (what CI runs)
 Higher rungs of the testing ladder — dedicated-user real sessions, VMs,
 hardware matrix — are in [docs/testing-ladder.md](docs/testing-ladder.md).
 
-## CI
+### CI
 
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every PR:
 `cargo fmt --check`, `clippy -D warnings`, Rust unit tests, the
