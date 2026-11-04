@@ -40,7 +40,7 @@ done.
 - [x] T183 — T-21.1a Chrome transport baseline and decision → [../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md](../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md)
 - [x] T184 — T-21.1b Chrome HiDPI and fractional scale → [../tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md](../tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md)
 - [x] T185 — T-21.1c Chrome SHM transport hygiene and frame pacing → [../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md](../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md) ⟵ accepted
-- [ ] T185a — T-21.1c close-out: final gates, after-report, visual sign-off → [../tasks/0.1.1/185a-t-21.1c-closeout.md](../tasks/0.1.1/185a-t-21.1c-closeout.md)
+- [~] T185a — T-21.1c close-out: final gates, after-report, visual sign-off → [../tasks/0.1.1/185a-t-21.1c-closeout.md](../tasks/0.1.1/185a-t-21.1c-closeout.md) ⟵ failed
 - [ ] T186 — T-21.1d GPU-backed chrome transport → [../tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md](../tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md)
 
 ## Phase 21.2 — Refresh-aware scheduling and material floor
@@ -71,11 +71,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-04T00:07:20Z · 2/11 done
+**Pipeline status** — updated 2026-11-04T03:34:33Z · 3/12 done
 
-- Completed: T183, T184
+- Completed: T183, T184, T185
 - Blocked: none
-- Failed: none
-- Remaining: T185, T186, T187, T188, T189, T190, T191, T192, T193
-- Last finished: T184 — done · Chrome now commits physical buffers with correct buffer-scale/viewport at 1x/1.5x/2x; unit, QML, visual, and e2e gates pass and nested captures are committed.
+- Failed: T185a
+- Remaining: T186, T187, T188, T189, T190, T191, T192, T193
+- Last finished: T185a — failed · interrupted by the run view
 <!-- /symphony:status -->
