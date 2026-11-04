@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// GPU chrome frame producer skeleton (T-21.1d, spike only).
+// GPU chrome frame producer (T-21.1d).
 //
 // This is the T185 `ChromeFrameProducer` with a GPU render target instead of
 // the software ping-pong QImage pair: one shared QOpenGLContext, one
@@ -8,18 +8,22 @@
 // target's device-pixel-ratio keeps QML layout logical while rasterization is
 // physical (T184/ADR 0192).
 //
-// T186a stops at the rendered texture. `renderFrame()` reads it back only so
-// the smoke rail can verify pixels/DPR; T186b replaces that readback with the
-// EGLImage/dmabuf export and `wl_buffer` commit. Nothing in the normal shell
-// path instantiates this class yet, and `DRAGONFRUIT_CHROME_GPU` stays unset
-// by default.
+// T186b adds the EGLImage/dmabuf export of the rendered FBO. `renderFrame()`
+// remains the readback path used by the non-Dock surfaces (they still commit
+// through T185 shm); `exportFrame()` renders once and exports the FBO without
+// a CPU readback. A failed export is a recorded fallback, never a black
+// surface.
 #pragma once
 
 #include <QImage>
 #include <QQuickRenderTarget>
 #include <QSize>
+#include <QVector>
 
+#include "chromedmabuf.h"
+#include "chromedmabufexport.h"
 #include "chromeframeproducer.h"
+#include "gpuchromecapabilities.h"
 
 class QOffscreenSurface;
 class QOpenGLContext;
@@ -39,6 +43,7 @@ public:
     // the object inert; the caller keeps the T185 shm producer.
     bool initialize(QString *reason = nullptr);
     bool initialized() const { return m_initialized; }
+    bool hasWindow() const { return m_window != nullptr; }
 
     QQuickWindow *window() const override { return m_window; }
     QQuickRenderControl *renderControl() const { return m_renderControl; }
@@ -53,11 +58,30 @@ public:
     void setDevicePixelRatio(qreal dpr);
     qreal devicePixelRatio() const { return m_dpr; }
 
+    // The compositor's linux-dmabuf feedback table. An exported frame is only
+    // committed when its exact format/modifier pair appears here; T186b sets
+    // this once from `ShellProtocol::gpuCapabilities()`.
+    void setDmabufFormats(
+        const QVector<GpuChromeCapabilities::FormatModifier> &formats);
+    QVector<GpuChromeCapabilities::FormatModifier> dmabufFormats() const
+    {
+        return m_dmabufFormats;
+    }
+
     void resize(const QSize &bufferSize) override;
-    // Renders once into the reusable FBO and returns a verification readback.
-    // T186b will render without this readback and export the texture instead.
+    // Renders once into the reusable FBO and returns a verification/readback
+    // image (the non-Dock surfaces still use the T185 shm commit path).
     QImage renderFrame() override;
+    // Renders once and exports the current FBO as a dmabuf. No CPU readback.
+    // The returned frame's fd stays owned by this producer and is valid until
+    // the FBO is resized/recreated or the producer is destroyed.
+    bool exportFrame(ChromeDmabufFrame *frame, QString *reason = nullptr);
+    // Read the FBO last rendered by exportFrame()/renderFrame() without
+    // rendering again. Used for the one-frame SHM fallback after a failed
+    // export/import.
+    QImage readbackCurrentFrame();
     QImage readbackFrame() const { return m_lastFrame; }
+    QString exportReason() const { return m_exportReason; }
 
     QSize framebufferSize() const;
     unsigned int framebufferTexture() const;
@@ -67,7 +91,10 @@ public:
     static QString environmentValue();
 
 private:
+    bool renderToFramebuffer();
     void ensureFramebuffer();
+    bool ensureDmabufExport();
+    void releaseDmabuf();
     void releaseGpu();
     void setFailure(const QString &reason);
 
@@ -81,8 +108,14 @@ private:
     QQuickWindow *m_window = nullptr;
     QOpenGLFramebufferObject *m_fbo = nullptr;
     QQuickRenderTarget m_target;
+    ChromeDmabufExporter m_exporter;
+    ChromeDmabufFrame m_dmabufFrame;
+    uint64_t m_dmabufSerial = 0;
+    QVector<GpuChromeCapabilities::FormatModifier> m_dmabufFormats;
     qreal m_dpr = 1.0;
     bool m_initialized = false;
+    bool m_exporterInitialized = false;
     QString m_reason;
+    QString m_exportReason;
     QImage m_lastFrame;
 };

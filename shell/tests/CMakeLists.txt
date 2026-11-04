@@ -104,6 +104,26 @@ set_tests_properties(tst_gpucapabilities PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# dmabuf format/commit rules (T-21.1d): exported frame validation against the
+# compositor feedback table, modifier packing, and the single reusable
+# buffer's busy/reuse/fallback state. Pure; no Wayland, EGL, or compositor.
+qt_add_executable(tst_dmabufcommit
+    tst_dmabufcommit.cpp
+)
+target_link_libraries(tst_dmabufcommit PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_dmabufcommit
+    COMMAND tst_dmabufcommit
+)
+set_tests_properties(tst_dmabufcommit PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Nested GL smoke rail (T-21.1d). Not a ctest: it needs a host Wayland/GL
 # compositor and writes docs/captures/t21-gpu-smoke.png through
 # scripts/t21-gpu-probe.sh. It links the same producer/probe library as the

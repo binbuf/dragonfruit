@@ -8,6 +8,7 @@
 - **T185a — T-21.1c close-out**: Final-tree gates: `make build`, `make qml-test` (79/79), `make e2e`; `FrameCommitGate` retired: `shell/src/framecommitgate.h` deleted, its CMake
 - **T185a1 — T-21.1c close-out verification**: Verified the committed T185a tree (`c6c87e9`; re-checked at the docs-only; `make build` — pass, 0.35 s.
 - **T186a — T-21.1d GPU probe and render-control spike**: `shell/src/gpuchromecapabilities.{h,cpp}`: pure linux-dmabuf feedback-table; `shell/src/gpuchromeprobe.{h,cpp}`: read-only runtime probe. It binds
+- **T186b — T-21.1d dmabuf export and single-buffer Dock commit**: `shell/src/chromedmabuf.{h,cpp}`: pure `ChromeDmabufFrame` validation; `shell/src/chromedmabufexport.{h,cpp}`: EGLImage from the FBO texture +
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -16,6 +17,7 @@
 - [T185a](progress/T185a.md) — Final-tree gates: `make build`, `make qml-test` (79/79), `make e2e`
 - [T185a1](progress/T185a1.md) — Verified the committed T185a tree (`c6c87e9`; re-checked at the docs-only
 - [T186a](progress/T186a.md) — `shell/src/gpuchromecapabilities.{h,cpp}`: pure linux-dmabuf feedback-table
+- [T186b](progress/T186b.md) — `shell/src/chromedmabuf.{h,cpp}`: pure `ChromeDmabufFrame` validation
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

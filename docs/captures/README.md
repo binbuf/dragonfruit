@@ -1116,6 +1116,19 @@ rail is a clean fallback. No `wl_buffer` is committed: the compositor exit
 stats show `chrome_dmabuf_imports=0`. The contract is
 [ADR 0194](../design/adr/0194-gpu-chrome-probe-and-render-control-spike.md).
 
+T-21.1d's dmabuf Dock transport is `scripts/t21-dmabuf-dock.sh`
+(`make t21-dmabuf-dock`). It runs the real shell twice against a nested
+Dragonfruit compositor: `DRAGONFRUIT_CHROME_GPU=1` exports the Dock FBO as a
+dmabuf and the compositor reports `chrome_dmabuf_imports>0`; `=0` stays on the
+T185 pooled shm path with zero dmabuf imports. `t21-dmabuf-dock.txt` records
+the probe, the shell `chrome stats` (`path=render-control+dmabuf`, `gpu=dmabuf`,
+`dmabuf_commits`, `grab_renders=0`, Dock `copy_bytes=0`) and both compositor
+import counters; `t21-dmabuf-dock.png` / `t21-dmabuf-dock-fallback.png` are
+host stills of the two runs. The contract is
+[ADR 0195](../design/adr/0195-dmabuf-export-and-single-buffer-dock-commit.md).
+The buffer ring and explicit sync are T186c; the other chrome surfaces still
+use the shm commit.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

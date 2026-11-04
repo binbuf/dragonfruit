@@ -23,6 +23,7 @@
 #include <cstdint>
 
 #include "chromebufferpool.h"
+#include "chromedmabuf.h"
 #include "gpuchromeprobe.h"
 
 // The listener signatures mirror the libwayland C API exactly (wl_fixed_t,
@@ -47,6 +48,8 @@ struct wp_fractional_scale_manager_v1;
 struct wp_fractional_scale_v1;
 struct wp_viewporter;
 struct wp_viewport;
+struct zwp_linux_dmabuf_v1;
+struct zwp_linux_buffer_params_v1;
 
 class QSocketNotifier;
 
@@ -151,6 +154,32 @@ public:
     // ARGB32(_Premultiplied).
     bool commitDockImage(const QImage &image, const QSize &logicalSize = QSize(),
                          const QRect &sourceRect = QRect());
+
+    // T-21.1d: the result of a dmabuf commit. `Deferred` means the single
+    // reusable buffer is still held by the compositor; the controller retries
+    // on `bufferReleased`. `Failed` means the caller must fall back to shm.
+    enum class DmabufCommitResult { Committed, Deferred, Failed };
+
+    // Attach a dmabuf-backed buffer to the Dock surface and commit it. The
+    // buffer is created once from the exported format/modifier/stride/offset
+    // and reused; a resize recreates it after the compositor releases it.
+    // `sourceRect` selects the physical sub-rect shown through the surface's
+    // viewport (the Dock FBO includes the popover headroom/gutter).
+    DmabufCommitResult commitDockDmabuf(const ChromeDmabufFrame &frame,
+                                        const QSize &logicalSize,
+                                        const QRect &sourceRect,
+                                        QString *reason = nullptr);
+    // True while the Dock's single dmabuf buffer is held by the compositor.
+    // The controller checks this before rendering into its FBO.
+    bool dockDmabufBusy() const;
+
+    // The generic dmabuf commit (T186b exposes it for the Dock; T186d uses the
+    // same path for the other chrome surfaces).
+    DmabufCommitResult commitDmabufTo(wl_surface *surface,
+                                      const ChromeDmabufFrame &frame,
+                                      const QSize &logicalSize,
+                                      const QRect &sourceRect,
+                                      QString *reason = nullptr);
 
     // Set the Dock surface's input region to the union of `rects` in
     // surface-local coordinates. An empty list makes the whole surface pass
@@ -818,6 +847,15 @@ private:
     bool ensureShmSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
                        const QSize &size);
     void destroyShmSlot(ShellSurfaceBuffer *buffer, int slot, bool destroyBuffer = true);
+    // T-21.1d dmabuf buffer lifecycle (one buffer per surface).
+    bool createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *buffer,
+                          const ChromeDmabufFrame &frame, QString *reason);
+    void destroyDmabufSlot(ShellSurfaceBuffer *buffer, bool destroyBuffer = true);
+    void applyDmabufScale(wl_surface *surface, const QSize &logicalSize,
+                          const QRect &sourceRect, const QSize &bufferSize);
+    static void onDmabufCreated(void *data, zwp_linux_buffer_params_v1 *params,
+                                wl_buffer *buffer);
+    static void onDmabufFailed(void *data, zwp_linux_buffer_params_v1 *params);
     void destroySurfaceBuffer(wl_surface *surface);
     void requestFrameInternal(wl_surface *surface, ShellSurfaceBuffer *buffer);
     static QRect changedPixelRect(const QImage &previous, const QRect &previousRect,
@@ -1031,6 +1069,12 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // T-21.1d: one startup probe of the compositor's dmabuf feedback and the
     // EGL export extensions. It creates no buffers and commits nothing.
     GpuChromeProbeResult m_gpuCapabilities;
+    // The shell's own linux-dmabuf binding for the T-21.1d transport. The
+    // probe above binds a temporary read-only object; this one lives for the
+    // connection and creates the Dock's wl_buffer.
+    zwp_linux_dmabuf_v1 *m_dmabuf = nullptr;
+    QHash<zwp_linux_buffer_params_v1 *, wl_surface *> m_dmabufParams;
+    QHash<wl_buffer *, wl_surface *> m_dmabufOwners;
     wl_compositor *m_compositor = nullptr;
     wl_shm *m_shm = nullptr;
     wp_fractional_scale_manager_v1 *m_fractionalScaleManager = nullptr;

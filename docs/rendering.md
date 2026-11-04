@@ -290,7 +290,29 @@ black frame. Evidence:
 [`captures/t21-gpu-probe.txt`](captures/t21-gpu-probe.txt) and
 [`captures/t21-gpu-smoke.png`](captures/t21-gpu-smoke.png); contract
 [ADR 0194](design/adr/0194-gpu-chrome-probe-and-render-control-spike.md).
-The dmabuf export/commit and the Dock rollout remain T186b/T186c/T186d.
+
+**Dock dmabuf transport (T186b).** With `DRAGONFRUIT_CHROME_GPU=1` and a host
+`WAYLAND_DISPLAY`, the shell uses the Wayland QPA for the Qt GL context only
+and renders every chrome scene through `GpuChromeFrameProducer`. The Dock
+exports its FBO texture as an EGLImage, queries/exports it with the Mesa
+dmabuf entry points, validates the exact FourCC/modifier against the
+compositor feedback, and creates one reusable `zwp_linux_buffer_params_v1`
+buffer (with `y_invert` for the GL texture origin). `ShellProtocol::
+commitDmabufTo()` attaches that buffer through the Dock's viewporter source
+rect; `glFinish()` completes the GL work before each commit. The other chrome
+surfaces still read back and commit through the T185 shm pool. Any export,
+format/modifier, viewporter, or import failure falls back to the same shm path
+and is reported as `gpu=shm gpu_reason=<token>`; `chrome stats` also carries
+`dmabuf_commits/bytes/deferred/fallbacks`. Evidence:
+[`captures/t21-dmabuf-dock.txt`](captures/t21-dmabuf-dock.txt) (GPU run
+`path=render-control+dmabuf`, `dmabuf_commits=13`, `grab_renders=0`, Dock
+`copy_bytes=0`, compositor `chrome_dmabuf_imports=13`; fallback run
+`gpu=off`, zero dmabuf imports) and the two host stills
+[`t21-dmabuf-dock.png`](captures/t21-dmabuf-dock.png) /
+[`t21-dmabuf-dock-fallback.png`](captures/t21-dmabuf-dock-fallback.png).
+Contract: [ADR 0195](design/adr/0195-dmabuf-export-and-single-buffer-dock-commit.md).
+The 2–3 buffer ring, release-driven reuse, and explicit sync remain T186c;
+the menu bar/popover rollout remains T186d.
 
 **Close-out (T185a).** The final-tree rerun was host-throttled: the nested
 window was not presented at 60 Hz, so the shell's 100 ms safety tick is visible

@@ -6,6 +6,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QSocketNotifier>
 #include <QVariantList>
 #include <QVariantMap>
@@ -37,9 +38,11 @@
 #include "appindexclient.h"
 #include "apppicker.h"
 #include "appsdrawer.h"
+#include "chromedmabuf.h"
 #include "chromeframeproducer.h"
 #include "chromescale.h"
 #include "chromestats.h"
+#include "gpuchromeframeproducer.h"
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
@@ -328,6 +331,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 {
     m_barHeight = barHeight;
     m_waylandDisplay = socketName;
+    // T-21.1d: the GPU rail is opt-in and decided before the first chrome
+    // producer. A requested-but-unavailable rail records a reason and keeps
+    // every surface on the T185 producer.
+    m_gpuChromeRequested = GpuChromeFrameProducer::environmentRequested();
+    if (!m_gpuChromeRequested) {
+        ChromeStats::instance().setGpuPath(QStringLiteral("off"));
+    }
     if (ChromeStats::instance().enabled()) {
         // The signal handler writes one byte to a self-pipe; the notifier
         // emits from the Qt thread so the stats line cannot race rendering.
@@ -465,13 +475,22 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_window->setColor(Qt::transparent);
     ChromeFrameProducer *menuProducer = m_producers.value(m_window);
     if (menuProducer && menuProducer->renderControlActive()) {
-        ChromeStats::instance().setTransportPath(QStringLiteral("render-control+shm"));
-        qInfo() << "shell: chrome transport: QQuickRenderControl + pooled shm";
+        if (m_gpuChromeState == GpuChromeState::Active) {
+            ChromeStats::instance().setTransportPath(
+                QStringLiteral("render-control+gpu"));
+            qInfo() << "shell: chrome transport: QQuickRenderControl + GPU"
+                    << "(Dock dmabuf, other surfaces shm)";
+        } else {
+            ChromeStats::instance().setTransportPath(
+                QStringLiteral("render-control+shm"));
+            qInfo() << "shell: chrome transport: QQuickRenderControl + pooled shm";
+        }
     } else {
         ChromeStats::instance().setTransportPath(QStringLiteral("offscreen-qpa+shm"));
         qWarning() << "shell: chrome transport: render control unavailable; using the"
                    << "grabWindow fallback";
     }
+    m_dockDmabufEnabled = (m_gpuChromeState == GpuChromeState::Active);
 
     QQmlComponent component(m_engine);
     component.loadFromModule(QStringLiteral("Dragonfruit.MenuBar"), QStringLiteral("MenuBar"));
@@ -4312,7 +4331,14 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
         || surface == ShellProtocol::PointerSurface::DockPopup) {
         logical += QPointF(m_dockItemOffsetX, m_dockItemOffsetY);
     }
-    const QPointF pos = ChromeScale::logicalToBuffer(logical, m_chromeScale);
+    // T-21.1d: the GPU producer keeps its QQuickWindow in logical units while
+    // its FBO is physical; the software producer's window is the physical
+    // buffer. Only scale the injected coordinate for the latter.
+    const bool logicalWindow =
+        qobject_cast<GpuChromeFrameProducer *>(m_producers.value(window)) != nullptr;
+    const QPointF pos = logicalWindow
+        ? logical
+        : ChromeScale::logicalToBuffer(logical, m_chromeScale);
     QWheelEvent event(pos, pos, QPoint(pixelX, pixelY),
                       QPoint(angleX, angleY), Qt::NoButton, Qt::NoModifier,
                       Qt::NoScrollPhase, false);
@@ -6999,13 +7025,22 @@ void ShellController::prepareChromeScene(QQuickWindow *window, QQuickItem *item,
         item->setHeight(itemLogical.height());
     // Scale the root item, not the layout: QML anchors, popup rects, and
     // pointer handlers keep their logical coordinates while the scene graph
-    // rasterizes at the physical resolution.
+    // rasterizes at the physical resolution. The GPU producer's render target
+    // already carries the scale as its device pixel ratio, so the item stays
+    // at 1.0 there; scaling it twice would double the physical geometry.
     item->setTransformOrigin(QQuickItem::TopLeft);
-    if (!qFuzzyCompare(item->scale(), scale))
-        item->setScale(scale);
-    const QSize buffer = ChromeScale::bufferSize(windowLogical, scale);
     ChromeFrameProducer *producer = m_producers.value(window);
+    auto *gpu = qobject_cast<GpuChromeFrameProducer *>(producer);
+    const qreal itemScale = gpu ? 1.0 : scale;
+    if (!qFuzzyCompare(item->scale(), itemScale))
+        item->setScale(itemScale);
+    const QSize buffer = ChromeScale::bufferSize(windowLogical, scale);
     if (producer) {
+        // T-21.1d: the GPU producer renders a physical FBO but keeps the QML
+        // scene in logical units; it needs the same scale the software path
+        // bakes into the QImage DPR.
+        if (gpu)
+            gpu->setDevicePixelRatio(scale);
         // Render-control windows are never shown; the producer owns the
         // offscreen target. Fallback windows still need their render loop.
         producer->resize(buffer);
@@ -7024,6 +7059,41 @@ QRect ShellController::chromeBufferRect(const QRect &logical) const
 
 ChromeFrameProducer *ShellController::createChromeProducer()
 {
+    // T-21.1d: one opt-in attempt at the GPU producer. The scene-graph API is
+    // process-global, so this must happen before any other QQuickWindow is
+    // constructed. If the context/export prerequisites are missing the whole
+    // shell stays on the T185 software producer; a failed attempt that already
+    // created a window falls back to the producer's grabWindow rail.
+    if (m_gpuChromeRequested && m_gpuChromeState != GpuChromeState::Failed) {
+        auto *gpu = new GpuChromeFrameProducer(this);
+        gpu->setDmabufFormats(m_protocol ? m_protocol->gpuCapabilities().formats
+                                         : QVector<GpuChromeCapabilities::FormatModifier>());
+        QString reason;
+        if (gpu->initialize(&reason)) {
+            m_gpuChromeState = GpuChromeState::Active;
+            m_gpuChromeReason.clear();
+            ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
+            m_producers.insert(gpu->window(), gpu);
+            if (!m_chromeFallbackTimer) {
+                m_chromeFallbackTimer = new QTimer(this);
+                m_chromeFallbackTimer->setInterval(100);
+                connect(m_chromeFallbackTimer, &QTimer::timeout, this,
+                        &ShellController::onChromeFallbackTick);
+            }
+            return gpu;
+        }
+        m_gpuChromeState = GpuChromeState::Failed;
+        m_gpuChromeReason = reason;
+        ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
+        ChromeStats::instance().setGpuFallbackReason(reason);
+        // No window was created before the failure: restore the software
+        // scene graph so the T185 producer can still render. If a window did
+        // exist, the producer's non-software grabWindow fallback takes over.
+        if (!gpu->hasWindow())
+            QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
+        delete gpu;
+    }
+
     auto *producer = new ChromeFrameProducer(this);
     m_producers.insert(producer->window(), producer);
     if (!m_chromeFallbackTimer) {
@@ -7194,12 +7264,17 @@ void ShellController::sendChromePointer(QQuickWindow *window, QEvent::Type type,
                                         Qt::MouseButtons buttons,
                                         Qt::KeyboardModifiers modifiers)
 {
-    // The offscreen window's coordinate space is physical (its size is the
-    // scaled buffer); the root item transform maps it back to logical QML
-    // coordinates. Negative sentinels (pointer left) stay off-screen.
+    // The software producer's offscreen window is the physical buffer, so its
+    // coordinate space is physical; the GPU producer keeps the QQuickWindow
+    // logical (the FBO is physical). Negative sentinels (pointer left) stay
+    // off-screen.
     QPointF pos = logical;
-    if (logical.x() >= 0.0 && logical.y() >= 0.0)
-        pos = ChromeScale::logicalToBuffer(logical, m_chromeScale);
+    if (logical.x() >= 0.0 && logical.y() >= 0.0) {
+        const bool logicalWindow =
+            qobject_cast<GpuChromeFrameProducer *>(m_producers.value(window)) != nullptr;
+        if (!logicalWindow)
+            pos = ChromeScale::logicalToBuffer(logical, m_chromeScale);
+    }
     ChromePointer::send(window, type, pos, button, buttons, modifiers);
 }
 
@@ -7278,13 +7353,41 @@ void ShellController::renderDock()
     const int windowHeight = m_dockHeight + headroom;
     prepareChromeScene(m_dockWindow, m_dockItem, QSize(m_dockWidth, m_dockHeight),
                        QSize(windowWidth, windowHeight), m_chromeScale);
-    // The scene is offset inside the physical window; the item's position is
-    // in window pixels, while its contents stay logical.
+    auto *gpuProducer =
+        qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_dockWindow));
+    const bool gpuDock = m_dockDmabufEnabled && gpuProducer && gpuProducer->gpuActive();
+    // The software producer's window is the physical buffer, so the scene
+    // offset is physical too. The GPU producer keeps the QQuickWindow in
+    // logical units (the FBO is physical), so the same offset stays logical.
     const QPointF itemOrigin =
-        ChromeScale::logicalToBuffer(QPointF(leftGutter, headroom), m_chromeScale);
+        gpuProducer ? QPointF(leftGutter, headroom)
+                    : ChromeScale::logicalToBuffer(QPointF(leftGutter, headroom),
+                                                   m_chromeScale);
     m_dockItem->setX(itemOrigin.x());
     m_dockItem->setY(itemOrigin.y());
-    const QImage image = renderChromeFrame(m_dockWindow);
+
+    QImage image;
+    ChromeDmabufFrame dmabufFrame;
+    QString gpuReason;
+    bool dmabufFrameReady = false;
+    if (gpuDock) {
+        ChromeStats::instance().recordRender(QStringLiteral("dock"));
+        if (gpuProducer->exportFrame(&dmabufFrame, &gpuReason)) {
+            dmabufFrameReady = true;
+        } else {
+            // The FBO still holds the rendered frame; read it back once and
+            // commit through the T185 shm pool so the Dock never goes black.
+            image = gpuProducer->readbackCurrentFrame();
+            ChromeStats::instance().recordDmabufFallback(QStringLiteral("dock"),
+                                                         gpuReason);
+            ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
+            ChromeStats::instance().setTransportPath(
+                QStringLiteral("render-control+shm"));
+            m_dockDmabufEnabled = false;
+        }
+    } else {
+        image = renderChromeFrame(m_dockWindow);
+    }
 
     // The input region is the visible bar plus the currently magnified or
     // bouncing icon rectangles; the transparent magnified band and the hidden
@@ -7318,8 +7421,47 @@ void ShellController::renderDock()
         }
     }
     const QRect dockRect(leftGutter, headroom, m_dockWidth, m_dockHeight);
-    if (!m_protocol->commitDockImage(image, QSize(m_dockWidth, m_dockHeight),
-                                     chromeBufferRect(dockRect)))
+    const QRect dockSource = chromeBufferRect(dockRect);
+    bool committed = false;
+    if (dmabufFrameReady) {
+        const ShellProtocol::DmabufCommitResult result =
+            m_protocol->commitDockDmabuf(dmabufFrame,
+                                         QSize(m_dockWidth, m_dockHeight),
+                                         dockSource, &gpuReason);
+        if (result == ShellProtocol::DmabufCommitResult::Committed) {
+            committed = true;
+            ChromeStats::instance().setGpuPath(QStringLiteral("dmabuf"));
+            ChromeStats::instance().setTransportPath(
+                QStringLiteral("render-control+dmabuf"));
+        } else if (result == ShellProtocol::DmabufCommitResult::Deferred) {
+            // A ring/release-aware commit (T186c) can defer while the
+            // compositor holds the buffer. Keep the Dock dirty; the release
+            // handler schedules the retry.
+            auto it = m_chromePaces.find(m_producers.value(m_dockWindow));
+            if (it != m_chromePaces.end())
+                it.value().dirty = true;
+            ChromeStats::instance().recordDmabufDeferred(QStringLiteral("dock"));
+            return;
+        } else {
+            // Import/format failure: abandon the dmabuf rail for the session
+            // and commit this already-rendered frame through shm.
+            ChromeStats::instance().recordDmabufFallback(QStringLiteral("dock"),
+                                                         gpuReason);
+            ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
+            ChromeStats::instance().setTransportPath(
+                QStringLiteral("render-control+shm"));
+            m_dockDmabufEnabled = false;
+            image = gpuProducer ? gpuProducer->readbackCurrentFrame() : QImage();
+        }
+    }
+    if (!committed) {
+        if (!image.isNull()
+            && m_protocol->commitDockImage(image, QSize(m_dockWidth, m_dockHeight),
+                                           dockSource)) {
+            committed = true;
+        }
+    }
+    if (!committed)
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 
     // Place and commit the popover on the Dock's overlay surface. The
