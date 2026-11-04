@@ -74,8 +74,22 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 // asked for a frame, so the FR-2 idle trace (steady state
                 // with no clients must produce zero damage) can be asserted
                 // on this backend without a display.
-                if state.needs_redraw {
+                //
+                // Per-output requests (T-21.2b): a global urgent request
+                // renders every output; animation requests wait for that
+                // output's own deadline. The headless rail has no hardware
+                // vblank, so the render pass itself is the presentation
+                // timestamp source, exactly like nested's submit completion.
+                let outputs: Vec<_> = state.space.outputs().cloned().collect();
+                let mut rendered_any = false;
+                for output in outputs {
+                    let now = std::time::Duration::from(state.clock.now());
+                    if !state.output_should_render(&output.name(), now) {
+                        continue;
+                    }
+                    state.note_output_frame(&output.name());
                     state.stats.frames_rendered += 1;
+                    rendered_any = true;
                     // T-13.3b: the headless backend has no render target, so a
                     // requested capture cannot be produced. Fail it explicitly
                     // rather than leaving the shell's presenter waiting.
@@ -89,12 +103,13 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                     // so a client's `wl_surface.frame` callbacks are delivered
                     // in CI (FR-2: a playing video keeps playing). No pixels
                     // are rendered or presented.
-                    let output = state.space.outputs().next().cloned();
-                    if let Some(output) = output {
-                        let now = state.clock.now();
-                        crate::render::post_repaint_headless(state, &output, now.into());
-                    }
-                } else {
+                    crate::render::post_repaint_headless(state, &output, now);
+                    // T-21.2b: the render pass is this backend's presentation;
+                    // updating the clock here lets the scheduler arm the next
+                    // animation deadline instead of free-running.
+                    state.note_presentation(&output.name(), now);
+                }
+                if !rendered_any {
                     state.stats.frames_skipped_no_damage += 1;
                 }
                 state.needs_redraw = false;

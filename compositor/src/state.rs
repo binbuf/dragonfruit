@@ -85,7 +85,7 @@ use smithay::wayland::xdg_activation::{
     XdgActivationToken, XdgActivationTokenData, XdgActivationHandler, XdgActivationState,
 };
 use smithay::xwayland::XWaylandClientData;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -124,6 +124,7 @@ use crate::window::{
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
+use dragonfruit_compositor::frame_scheduler::FrameScheduler;
 use dragonfruit_compositor::presentation::PresentationClocks;
 use dragonfruit_compositor::refresh::{
     ModeRefresh, OutputRefresh, RefreshSchedule, RefreshSource, VrrState, ENV_REFRESH_HZ,
@@ -660,9 +661,15 @@ pub struct DfState {
     pub refresh_override: Option<OutputRefresh>,
     /// Per-output presentation clocks (T-21.2b): last presented timestamp,
     /// next deadline, period/refresh/VRR, and the pure due queries. The
-    /// backends record real presentations here; T188b consumes the map for
-    /// earliest-deadline timer arming. T188a changes no scheduling.
+    /// backends record real presentations here; the frame scheduler consumes
+    /// the map for earliest-deadline timer arming.
     pub presentation_clocks: PresentationClocks,
+    /// Per-output frame requests (T-21.2b, T188b): urgent work (input,
+    /// client/chrome commit, resize, global scene change) is separate from
+    /// animation work, which is gated by the output's own presentation clock.
+    /// The DRM rail also tracks frames in flight here so one output-frame is
+    /// queued exactly once.
+    pub frame_scheduler: FrameScheduler,
     /// True while a single window-lifecycle motion driver is registered with
     /// the clock (T-02.2). The driver steps *every* window motion once per
     /// frame; without this guard, one registered closure per motion would
@@ -882,6 +889,7 @@ impl DfState {
             refresh_schedule: RefreshSchedule::new(),
             refresh_override,
             presentation_clocks: PresentationClocks::new(),
+            frame_scheduler: FrameScheduler::new(),
             window_motion_driver: false,
             dock_tiles: HashMap::new(),
             pending_capture: None,
@@ -1347,10 +1355,121 @@ impl DfState {
     ///
     /// A presentation for an output that has already been removed is ignored
     /// rather than resurrecting a stale clock; output add/mode change/resume
-    /// installs clocks. T188a only records; it does not arm or re-arm
-    /// anything.
+    /// installs clocks. A successful presentation re-arms the animation timer
+    /// from the updated deadlines, and clears the output's animation request
+    /// once the transition has settled and its final frame is on screen.
     pub fn note_presentation(&mut self, output: &str, timestamp: Duration) {
-        self.presentation_clocks.note_presented(output, timestamp);
+        if !self.presentation_clocks.note_presented(output, timestamp) {
+            return;
+        }
+        if !self.animations_active() {
+            self.frame_scheduler.clear_animation(output);
+        }
+        self.reschedule_animation_timer();
+    }
+
+    /// Whether `output` should be handed to the renderer now. A global scene
+    /// change (`needs_redraw`) marks every output urgent; otherwise the
+    /// per-output request set decides, and animation work waits for that
+    /// output's own deadline.
+    pub fn output_should_render(&self, output: &str, now: Duration) -> bool {
+        self.needs_redraw
+            || self
+                .frame_scheduler
+                .should_present(output, now, &self.presentation_clocks)
+    }
+
+    /// Consume one output's request after it has been rendered. Urgent is
+    /// always consumed; animation stays live until the transition settles,
+    /// then the output's final frame drains the request.
+    pub fn note_output_frame(&mut self, output: &str) {
+        self.frame_scheduler.clear_urgent(output);
+        if !self.animations_active() {
+            self.frame_scheduler.clear_animation(output);
+        }
+    }
+
+    /// The outputs a live compositor animation actually moves. Overview and
+    /// workspace transitions transform every output's scene; window lifecycle
+    /// motions belong to the output that holds the window. A scene-free
+    /// animation (the calibration dummy) has no owner, so it keeps every
+    /// output's clock alive rather than arming a timer with no candidate.
+    pub(crate) fn animation_output_names(&self) -> Vec<String> {
+        if self.overview.is_discrete()
+            || self.overview.is_active()
+            || self.overview.overview_active()
+            || self.overview.desktop_revealed()
+        {
+            return self.space.outputs().map(|output| output.name()).collect();
+        }
+        let mut names = BTreeSet::new();
+        for (window, _) in self.windows.active_motions() {
+            let mut found = false;
+            for output in self.space.outputs_for_element(window) {
+                names.insert(output.name());
+                found = true;
+            }
+            if !found {
+                // A minimize/close ghost is already out of the Space, so
+                // `outputs_for_element` cannot place it. Attribute it by its
+                // model geometry instead of silently dropping the motion;
+                // fall back to the same primary-output rule as window
+                // placement when the geometry is off every output.
+                let by_geometry = self.windows.geometry(window).and_then(|geometry| {
+                    let center = Point::from((
+                        geometry.loc.x + geometry.size.w / 2,
+                        geometry.loc.y + geometry.size.h / 2,
+                    ));
+                    self.space
+                        .outputs()
+                        .find(|output| {
+                            self.space
+                                .output_geometry(output)
+                                .is_some_and(|bounds| bounds.contains(center))
+                        })
+                        .map(|output| output.name())
+                });
+                if let Some(name) = by_geometry.or_else(|| self.output_name_for(window)) {
+                    names.insert(name);
+                }
+            }
+        }
+        if names.is_empty() && self.animations_active() {
+            return self.space.outputs().map(|output| output.name()).collect();
+        }
+        names.into_iter().collect()
+    }
+
+    /// Reconcile the per-output animation request set with the animations
+    /// that are actually live. Called after every clock tick. A settled
+    /// output's request is left in place only until its final frame presents,
+    /// so it is never rendered again after that.
+    pub fn sync_animation_requests(&mut self) {
+        if !self.animations_active() {
+            return;
+        }
+        let outputs = self.animation_output_names();
+        self.frame_scheduler
+            .retain_animation(outputs.iter().map(String::as_str));
+        for output in &outputs {
+            self.frame_scheduler.request_animation(output);
+        }
+    }
+
+    /// Cancel any armed animation timer and re-arm it from the earliest due
+    /// animation deadline. Used after a presentation updates an output clock.
+    pub fn reschedule_animation_timer(&mut self) {
+        if let Some(token) = self.animation_timer.take() {
+            self.loop_handle.remove(token);
+        }
+        crate::input::schedule_animation_timer(self);
+    }
+
+    /// The next interval the animation timer should wait for, or `None` when
+    /// no output has an animation request.
+    pub fn next_animation_interval(&self) -> Option<Duration> {
+        self.frame_scheduler
+            .next_interval(Duration::from(self.clock.now()), &self.presentation_clocks)
     }
 
     /// Re-read every output's current mode into the schedule. Used on resume
@@ -1384,6 +1503,7 @@ impl DfState {
             .collect();
         for name in stale {
             self.presentation_clocks.remove(&name);
+            self.frame_scheduler.clear(&name);
         }
         self.sync_refresh_policy();
     }
@@ -1437,6 +1557,7 @@ impl DfState {
         let removed = output.name();
         self.refresh_schedule.remove(&removed);
         self.presentation_clocks.remove(&removed);
+        self.frame_scheduler.clear(&removed);
         let primary = self
             .space
             .outputs()
@@ -2734,6 +2855,9 @@ impl DfState {
     /// "one frame per animation frame" path.
     pub fn start_animation(&mut self, animation: impl Animation<DfState> + 'static) {
         self.animation_clock.start(animation);
+        // The first request is made by the clock tick, after the animation has
+        // stepped once. Marking it here would render an idle clock's "first
+        // frame due" before the animation has advanced (one extra frame).
         crate::input::schedule_animation_timer(self);
     }
 
@@ -2905,6 +3029,7 @@ impl DfState {
     /// remains live (the clock's liveness predicate).
     pub fn step_window_motions(&mut self, now_ms: u64) -> bool {
         let (done, mut active) = self.windows.step_motions(now_ms);
+        let completed = !done.is_empty();
         for window in done {
             // A close ghost owns the model entry: at completion the window is
             // removed exactly once and the shell is told it closed (T-02.4a).
@@ -2934,10 +3059,15 @@ impl DfState {
         if self.windows.active_motions().next().is_some() {
             active = true;
         }
-        if active {
-            self.needs_redraw = true;
-        } else {
+        if !active {
             self.window_motion_driver = false;
+        }
+        if completed {
+            // A completed motion commits a scene change (a mapped element is
+            // re-asserted or a close ghost is removed). That final frame is
+            // urgent for every output, not an animation deadline: the motion
+            // that owned it is no longer live.
+            self.needs_redraw = true;
         }
         active
     }
@@ -3145,6 +3275,41 @@ impl DfState {
             self.refresh_schedule.len(),
             self.refresh_override.is_some() as u32,
         );
+        // Per-output frame requests (T-21.2b): urgent vs animation, the
+        // in-flight marker, and the clock deadline each backend gates on. The
+        // per-output lines carry `refresh_hz` so a nested single-output trace
+        // records the same period/missed evidence as DRM `presentation stats`.
+        let now = Duration::from(self.clock.now());
+        println!(
+            "dragonfruit-compositor: frame scheduler stats ({label}): \
+             outputs={} urgent={} animation={} in_flight={} timer_armed={}",
+            self.presentation_clocks.len(),
+            self.frame_scheduler.urgent_count(),
+            self.frame_scheduler.animation_count(),
+            self.frame_scheduler.in_flight_count(),
+            self.animation_timer.is_some() as u32,
+        );
+        for (output, clock) in self.presentation_clocks.iter() {
+            let last_presented_us = clock
+                .last_presented
+                .map_or(-1, |timestamp| timestamp.as_micros() as i128);
+            let next_deadline_us = clock
+                .next_deadline
+                .map_or(-1, |deadline| deadline.as_micros() as i128);
+            println!(
+                "dragonfruit-compositor: frame request ({label}): output={output} \
+                 refresh_hz={:.3} period_us={} last_presented_us={last_presented_us} \
+                 next_deadline_us={next_deadline_us} idle={} due={} urgent={} \
+                 animation={} in_flight={}",
+                clock.refresh_hz,
+                clock.period.as_micros(),
+                clock.is_idle() as u32,
+                clock.is_due(now) as u32,
+                self.frame_scheduler.is_urgent(output) as u32,
+                self.frame_scheduler.is_animating(output) as u32,
+                self.frame_scheduler.is_in_flight(output) as u32,
+            );
+        }
         // Backdrop material pass (T-04.2): `backdrop_passes` is the number of
         // output-frames that applied the chrome backdrop and `backdrop_skipped`
         // counts duplicate requests, which must stay zero (one effect pass per
@@ -3248,7 +3413,8 @@ impl DfState {
                 } else if self.overview.is_discrete() {
                     // The transition is animated on the compositor clock
                     // (T-11): the timer advances the same pipeline a gesture
-                    // would, so keyboard/hot-corner switches slide.
+                    // would, so keyboard/hot-corner switches slide. The first
+                    // tick requests the per-output frames.
                     crate::input::schedule_animation_timer(self);
                 }
             }
