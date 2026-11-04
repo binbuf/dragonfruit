@@ -587,7 +587,19 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
             }
             state.stats.frames_rendered += 1;
 
+            // T-21.2b presentation timestamp source: Smithay's winit
+            // `submit()` swaps the buffer and returns only
+            // `Result<(), SwapBuffersError>`; it exposes no platform vblank
+            // timestamp. The completion of `submit()` is therefore the
+            // closest presentation time the nested rail has. Capture it
+            // immediately after the successful swap, before frame-callback
+            // work, and feed it to the per-output presentation clock. Only a
+            // damage frame is a presentation: the no-damage branch below
+            // swaps without new pixels and must not create a clock sample.
+            // The fixed mode period remains the deadline source; T188b/c must
+            // not infer VRR from this interval.
             let now = state.clock.now();
+            state.note_presentation(&output.name(), now.into());
             let frame_duration = output
                 .current_mode()
                 .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))

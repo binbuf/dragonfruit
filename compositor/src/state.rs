@@ -124,6 +124,7 @@ use crate::window::{
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
+use dragonfruit_compositor::presentation::PresentationClocks;
 use dragonfruit_compositor::refresh::{
     ModeRefresh, OutputRefresh, RefreshSchedule, RefreshSource, VrrState, ENV_REFRESH_HZ,
 };
@@ -657,6 +658,11 @@ pub struct DfState {
     /// from a normal session. When present it replaces the fastest active
     /// output's period and reports `source=override`.
     pub refresh_override: Option<OutputRefresh>,
+    /// Per-output presentation clocks (T-21.2b): last presented timestamp,
+    /// next deadline, period/refresh/VRR, and the pure due queries. The
+    /// backends record real presentations here; T188b consumes the map for
+    /// earliest-deadline timer arming. T188a changes no scheduling.
+    pub presentation_clocks: PresentationClocks,
     /// True while a single window-lifecycle motion driver is registered with
     /// the clock (T-02.2). The driver steps *every* window motion once per
     /// frame; without this guard, one registered closure per motion would
@@ -875,6 +881,7 @@ impl DfState {
             animation_clock: AnimationClock::new(),
             refresh_schedule: RefreshSchedule::new(),
             refresh_override,
+            presentation_clocks: PresentationClocks::new(),
             window_motion_driver: false,
             dock_tiles: HashMap::new(),
             pending_capture: None,
@@ -1334,8 +1341,22 @@ impl DfState {
             .unwrap_or_else(|| OutputRefresh::fallback(VrrState::Unknown))
     }
 
+    /// Record one output's presented frame (T-21.2b). The DRM vblank path and
+    /// the nested submit path call this only when a queued/rendered frame was
+    /// actually presented; idle vblanks and no-damage swaps must not.
+    ///
+    /// A presentation for an output that has already been removed is ignored
+    /// rather than resurrecting a stale clock; output add/mode change/resume
+    /// installs clocks. T188a only records; it does not arm or re-arm
+    /// anything.
+    pub fn note_presentation(&mut self, output: &str, timestamp: Duration) {
+        self.presentation_clocks.note_presented(output, timestamp);
+    }
+
     /// Re-read every output's current mode into the schedule. Used on resume
-    /// and as the hotplug safety net.
+    /// and as the hotplug safety net. Existing presentation clocks keep their
+    /// last timestamp and rebase their deadline onto the new period; clocks
+    /// for outputs that disappeared while suspended are dropped.
     pub fn recompute_refresh_schedule(&mut self) {
         let outputs: Vec<(String, Option<ModeRefresh>)> = self
             .space
@@ -1352,6 +1373,17 @@ impl DfState {
         self.refresh_schedule.clear();
         for (name, mode) in outputs {
             self.refresh_schedule.update(&name, mode);
+            let refresh = self.refresh_for_output(&name);
+            self.presentation_clocks.update(&name, refresh);
+        }
+        let stale: Vec<String> = self
+            .presentation_clocks
+            .iter()
+            .map(|(name, _)| name.to_owned())
+            .filter(|name| self.refresh_schedule.for_output(name).is_none())
+            .collect();
+        for name in stale {
+            self.presentation_clocks.remove(&name);
         }
         self.sync_refresh_policy();
     }
@@ -1360,10 +1392,13 @@ impl DfState {
     /// Called for add/remove, mode changes, and scale/transform changes (the
     /// latter do not change the period but keep one recompute path).
     pub fn on_output_mode_changed(&mut self, output: &Output) {
+        let name = output.name();
         let mode = output
             .current_mode()
             .map(|mode| ModeRefresh::new(mode.refresh));
-        self.refresh_schedule.update(&output.name(), mode);
+        self.refresh_schedule.update(&name, mode);
+        let refresh = self.refresh_for_output(&name);
+        self.presentation_clocks.update(&name, refresh);
         self.sync_refresh_policy();
     }
 
@@ -1401,6 +1436,7 @@ impl DfState {
     pub fn on_output_removed(&mut self, output: &Output) {
         let removed = output.name();
         self.refresh_schedule.remove(&removed);
+        self.presentation_clocks.remove(&removed);
         let primary = self
             .space
             .outputs()
