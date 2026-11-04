@@ -8,6 +8,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QHash>
 #include <QImage>
 #include <QList>
@@ -20,6 +21,8 @@
 #include <QVariantList>
 
 #include <cstdint>
+
+#include "chromebufferpool.h"
 
 // The listener signatures mirror the libwayland C API exactly (wl_fixed_t,
 // wl_array), so pull in the client header rather than re-declaring them.
@@ -46,6 +49,8 @@ struct wp_viewport;
 
 class QSocketNotifier;
 
+struct ShellSurfaceBuffer;
+
 class ShellProtocol : public QObject
 {
     Q_OBJECT
@@ -67,6 +72,17 @@ public:
     // The output scale announced by `df_output.scale`. It seeds the initial
     // chrome render before the first `wp_fractional_scale` event arrives.
     qreal outputScale() const { return m_outputScale; }
+    // Ask the compositor for one `wl_surface.frame` callback on `surface`.
+    // The callback is requested before the commit that should be paced and is
+    // answered after that commit presents. A second request while one is
+    // pending is a no-op (one callback per frame).
+    void requestFrame(wl_surface *surface);
+    // True while `surface` (the stable `chrome stats` label) has an unanswered
+    // frame callback. The controller uses this to decide whether a scene
+    // change can render immediately (idle) or must wait for presentation.
+    bool hasPendingFrame(const QString &surface) const;
+    // Drop a pending frame callback (surface hidden or torn down).
+    void cancelPendingFrame(const QString &surface);
     // The first output's logical geometry (`df_output.geometry`); empty until
     // the manager has announced it. Used to fit transient panels below the
     // menu bar when a fractional scale shrinks the logical output.
@@ -88,7 +104,9 @@ public:
     // Attach `image` to the popup surface and commit. The image must be
     // ARGB32(_Premultiplied). `logicalSize` is the surface contract; the image
     // may be a physical-size buffer mapped by buffer scale/viewport (T-21.1b).
-    bool commitPopupImage(const QImage &image, const QSize &logicalSize = QSize());
+    // `sourceRect` selects the physical sub-rect to commit (empty = all).
+    bool commitPopupImage(const QImage &image, const QSize &logicalSize = QSize(),
+                          const QRect &sourceRect = QRect());
 
     // Unmap the popup surface (attach a null buffer).
     bool hidePopup();
@@ -122,14 +140,16 @@ public:
     bool setDockPopupGeometry(int top, int right, int bottom, int left, int width, int height);
 
     // Attach `image` to the Dock popup surface and commit.
-    bool commitDockPopupImage(const QImage &image, const QSize &logicalSize = QSize());
+    bool commitDockPopupImage(const QImage &image, const QSize &logicalSize = QSize(),
+                              const QRect &sourceRect = QRect());
 
     // Unmap the Dock popup surface (attach a null buffer).
     bool hideDockPopup();
 
     // Attach `image` to the Dock surface and commit. The image must be
     // ARGB32(_Premultiplied).
-    bool commitDockImage(const QImage &image, const QSize &logicalSize = QSize());
+    bool commitDockImage(const QImage &image, const QSize &logicalSize = QSize(),
+                         const QRect &sourceRect = QRect());
 
     // Set the Dock surface's input region to the union of `rects` in
     // surface-local coordinates. An empty list makes the whole surface pass
@@ -145,8 +165,10 @@ public:
     bool setDockPanelRect(int x, int y, int width, int height);
 
     // Attach `image` to the menu-bar surface and commit. The image must be
-    // ARGB32(_Premultiplied).
-    bool commitImage(const QImage &image, const QSize &logicalSize = QSize());
+    // ARGB32(_Premultiplied). `sourceRect` selects the physical sub-rect to
+    // commit (empty = all).
+    bool commitImage(const QImage &image, const QSize &logicalSize = QSize(),
+                     const QRect &sourceRect = QRect());
 
     // Create the Mission Control overview chrome surface (T-11 Slice B): a
     // full-output `overlay` layer surface, namespace "overview", that starts
@@ -625,6 +647,16 @@ signals:
     // `surface` is the stable `chrome stats` label; the controller rerenders
     // the mapped scene at the new physical resolution (T-21.1b).
     void preferredScaleChanged(const QString &surface, qreal scale);
+    // One `wl_surface.frame` callback was presented (T-21.1c). `surface` is
+    // the stable `chrome stats` label; `time` is the compositor's callback
+    // timestamp. The controller schedules the next QML render from here.
+    void framePresented(const QString &surface, uint32_t time);
+    // A pooled buffer was returned by the compositor. A commit skipped because
+    // every buffer was busy can retry now.
+    void bufferReleased(const QString &surface);
+    // A commit could not acquire a pooled buffer (all still busy). The
+    // controller keeps the surface dirty and retries on `bufferReleased`.
+    void commitDeferred(const QString &surface);
     // The compositor announced a new output scale (`df_output.scale`).
     void outputScaleChanged(qreal scale);
     void surfaceClosed();
@@ -768,9 +800,23 @@ private:
     void emitDockState();
     // Resolve a window handle back to its `df_toplevel` (null when gone).
     df_toplevel *toplevelForId(quintptr windowId) const;
-    // Attach `image` to `surface` as a fresh shm buffer and commit it.
+
+    // Attach `image` to `surface` from the pooled buffer, copy the source rect
+    // once, damage only the changed pixels, request a frame callback, and
+    // commit. Returns false when every pooled buffer is busy (retry on
+    // `bufferReleased`) or the image is invalid.
     bool commitTo(wl_surface *surface, const QImage &image,
-                  const QSize &logicalSize = QSize());
+                  const QSize &logicalSize = QSize(),
+                  const QRect &sourceRect = QRect());
+    ShellSurfaceBuffer *surfaceBuffer(wl_surface *surface);
+    bool ensureShmSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
+                       const QSize &size);
+    void destroyShmSlot(ShellSurfaceBuffer *buffer, int slot, bool destroyBuffer = true);
+    void destroySurfaceBuffer(wl_surface *surface);
+    void requestFrameInternal(wl_surface *surface, ShellSurfaceBuffer *buffer);
+    static QRect changedPixelRect(const QImage &previous, const QRect &previousRect,
+                                  const QImage &current, const QRect &currentRect);
+    static void onFrameCallback(void *data, wl_callback *callback, uint32_t time);
     // Bind fractional-scale/viewporter objects for a newly created surface.
     // Called from every chrome surface factory before its first commit.
     void ensureScaleObjects(wl_surface *surface);
@@ -1239,5 +1285,13 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     uint32_t m_materialTier = 0;
     bool m_materialBlurActive = true;
     uint32_t m_materialFallback = 0;
-    QSet<wl_buffer *> m_buffers;
+    // Per-surface pooled shm transport (T-21.1c). A surface is keyed by its
+    // wl_surface; its buffer pool, previous frame, and pending callback live
+    // together so a Dock commit never waits on a menu-bar buffer.
+    QHash<wl_surface *, ShellSurfaceBuffer *> m_surfaceBuffers;
+    // wl_buffer -> (surface, slot) for `wl_buffer.release` routing.
+    QHash<wl_buffer *, QPair<wl_surface *, int>> m_bufferOwners;
+    // Pending wl_surface.frame callback -> surface.
+    QHash<wl_callback *, wl_surface *> m_frameCallbackSurfaces;
+
 };

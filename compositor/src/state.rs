@@ -287,8 +287,9 @@ pub struct RenderStats {
     pub chrome_shm_bytes: u64,
     /// Chrome buffers received as dmabuf (expected 0 before T-21.1d).
     pub chrome_dmabuf_imports: u64,
-    /// Frame callbacks sent to chrome surfaces (expected 0 before T-21.1c:
-    /// the shell does not request `wl_surface.frame` yet).
+    /// Frame callbacks sent to chrome surfaces. T-21.1c makes these the
+    /// shell's presentation pacing source; before it this stayed 0 because
+    /// the shell did not request `wl_surface.frame`.
     pub chrome_frame_callbacks: u64,
     /// Actual vblank intervals per DRM output (T-03.1b/P0 baseline). Nested
     /// and headless have no hardware vblank, so this map stays empty there.
@@ -1443,7 +1444,7 @@ impl DfState {
     /// keep a frame cadence alive just long enough for such a client to paint
     /// (see `session.rs`). With no pending callbacks it stays fully idle.
     pub fn has_pending_frame_callbacks(&self) -> bool {
-        self.space.elements().any(|window| {
+        if self.space.elements().any(|window| {
             let mut wants_frame = false;
             window.with_surfaces(|_surface, data| {
                 let mut attributes = data.cached_state.get::<SurfaceAttributes>();
@@ -1454,7 +1455,29 @@ impl DfState {
                 }
             });
             wants_frame
-        })
+        }) {
+            return true;
+        }
+        // Chrome surfaces are not `Space` members, but they pace the shell the
+        // same way a window does (T-21.1c). Without this an idle compositor
+        // could skip the render that would answer the shell's callback.
+        let outputs: Vec<Output> = self.space.outputs().cloned().collect();
+        for output in outputs {
+            let Some(geometry) = self.space.output_geometry(&output) else {
+                continue;
+            };
+            for chrome in self.chrome_surfaces(output.name().as_str(), geometry) {
+                let pending = with_states(&chrome.surface, |states| {
+                    let mut attributes = states.cached_state.get::<SurfaceAttributes>();
+                    !attributes.current().frame_callbacks.is_empty()
+                        || !attributes.pending().frame_callbacks.is_empty()
+                });
+                if pending {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Answer the `wl_surface.frame` requests of toplevels that have
@@ -2881,8 +2904,8 @@ impl DfState {
         );
         // Chrome transport imports (T-21.1a): the shell side reports the same
         // commits as `chrome stats`; this line is the compositor's import and
-        // frame-callback half of the baseline. The expected pre-T-21.1c
-        // `chrome_frame_callbacks` is 0.
+        // frame-callback half of the baseline. T-21.1c advances
+        // `chrome_frame_callbacks` with the presented chrome frames.
         println!(
             "dragonfruit-compositor: chrome stats ({label}): \
              chrome_shm_imports={} chrome_shm_bytes={} chrome_dmabuf_imports={} \

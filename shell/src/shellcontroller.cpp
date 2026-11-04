@@ -37,6 +37,7 @@
 #include "appindexclient.h"
 #include "apppicker.h"
 #include "appsdrawer.h"
+#include "chromeframeproducer.h"
 #include "chromescale.h"
 #include "chromestats.h"
 #include "controlcenterpolicy.h"
@@ -460,8 +461,17 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // T-09.5: forward the persisted display selection. The protocol retries
     // once the manager has announced its outputs.
     applyDisplayPolicy();
-    m_window = new QQuickWindow;
+    m_window = createChromeProducer()->window();
     m_window->setColor(Qt::transparent);
+    ChromeFrameProducer *menuProducer = m_producers.value(m_window);
+    if (menuProducer && menuProducer->renderControlActive()) {
+        ChromeStats::instance().setTransportPath(QStringLiteral("render-control+shm"));
+        qInfo() << "shell: chrome transport: QQuickRenderControl + pooled shm";
+    } else {
+        ChromeStats::instance().setTransportPath(QStringLiteral("offscreen-qpa+shm"));
+        qWarning() << "shell: chrome transport: render control unavailable; using the"
+                   << "grabWindow fallback";
+    }
 
     QQmlComponent component(m_engine);
     component.loadFromModule(QStringLiteral("Dragonfruit.MenuBar"), QStringLiteral("MenuBar"));
@@ -495,10 +505,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onAppMenuTriggered(int,int,QVariant)));
     if (QObject *clock = m_item->findChild<QObject *>(QStringLiteral("clock")))
         connect(clock, SIGNAL(nowChanged()), this, SLOT(onClockTick()));
-    // Scene-graph render path (FR-14): the menu-bar dropdown's open/close
-    // fade is committed from the scene graph, not a sampling timer.
-    connect(m_window, &QQuickWindow::afterRendering, this,
-            &ShellController::onMenuAfterRendering);
+    // T-21.1c: the menu-bar producer renders once per requested frame and the
+    // compositor's wl_surface.frame callback paces the next one.
+    bindChromePacing(m_producers.value(m_window), QStringLiteral("menubar"),
+                     [this]() { render(); });
 
     connect(m_protocol, &ShellProtocol::configured, this, &ShellController::onConfigured);
     // T-21.1b: chrome renders at the output's physical scale. The output
@@ -508,6 +518,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             [this](const QString &, qreal scale) { onChromeScaleChanged(scale); });
     connect(m_protocol, &ShellProtocol::outputScaleChanged, this,
             &ShellController::onChromeScaleChanged);
+    connect(m_protocol, &ShellProtocol::framePresented, this,
+            &ShellController::onChromeFramePresented);
+    connect(m_protocol, &ShellProtocol::bufferReleased, this,
+            &ShellController::onChromeBufferReleased);
+    connect(m_protocol, &ShellProtocol::commitDeferred, this,
+            &ShellController::onChromeCommitDeferred);
     connect(m_protocol, &ShellProtocol::materialStateChanged, this,
             &ShellController::onMaterialStateChanged);
     connect(m_protocol, &ShellProtocol::focusedAppChanged, this,
@@ -658,7 +674,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The Dock is a second offscreen QML scene and its own `top` chrome
     // surface (T-10). It is created before the surfaces so the shell can read
     // the bar thickness and magnified band out of the QML tokens.
-    m_dockWindow = new QQuickWindow;
+    m_dockWindow = createChromeProducer()->window();
     m_dockWindow->setColor(Qt::transparent);
     QQmlComponent dockComponent(m_engine);
     dockComponent.loadFromModule(QStringLiteral("Dragonfruit.Dock"), QStringLiteral("Dock"));
@@ -731,11 +747,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockSizePreview(qreal)));
     connect(m_dockItem, SIGNAL(dockSizeChanged(qreal)), this,
             SLOT(onDockSizeChanged(qreal)));
-    // Scene-graph render path (FR-14): commit a frame whenever the Dock scene
-    // graph renders one, so QML-driven animation (magnification, popover
-    // fade/scale, drag gaps) reaches the compositor without a sampling timer.
-    connect(m_dockWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::onDockAfterRendering);
+    // T-21.1c: the Dock producer renders once per requested frame; the
+    // compositor's wl_surface.frame callback paces the next one.
+    bindChromePacing(m_producers.value(m_dockWindow), QStringLiteral("dock"),
+                     [this]() { renderDock(); });
     // The Trash entry's state comes from files-core/GVfs (section 16); a
     // deletion by any application updates the full/count state, and the shell
     // and Files share the one Trash store (T-10.6a).
@@ -774,7 +789,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // Mission Control overview chrome (T-11 Slice B): a third offscreen scene.
     // It is a pure projection of the compositor's workspace/window state; the
     // compositor renders the live surfaces underneath.
-    m_overviewWindow = new QQuickWindow;
+    m_overviewWindow = createChromeProducer()->window();
     m_overviewWindow->setColor(Qt::transparent);
     QQmlComponent overviewComponent(m_engine);
     overviewComponent.loadFromModule(QStringLiteral("Dragonfruit.Overview"),
@@ -799,8 +814,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onOverviewWindowMovedToWorkspace(QString,int)));
     connect(m_overviewItem, SIGNAL(dismissRequested()), this,
             SLOT(onOverviewDismissRequested()));
-    connect(m_overviewWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::renderOverview);
+    bindChromePacing(m_producers.value(m_overviewWindow), QStringLiteral("overview"),
+                     [this]() { renderOverview(); });
     connect(m_protocol, &ShellProtocol::overviewConfigured, this,
             &ShellController::onOverviewConfigured);
     connect(m_protocol, &ShellProtocol::overviewChanged, this,
@@ -822,7 +837,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // App-switcher overlay (T-06.2a): a fourth offscreen scene. It draws only
     // the centered app cards and scrim; the compositor renders the live
     // preview surfaces underneath from the same recency projection.
-    m_switcherWindow = new QQuickWindow;
+    m_switcherWindow = createChromeProducer()->window();
     m_switcherWindow->setColor(Qt::transparent);
     QQmlComponent switcherComponent(m_engine);
     switcherComponent.loadFromModule(QStringLiteral("Dragonfruit.Switcher"),
@@ -839,8 +854,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_switcherItem->setParentItem(m_switcherWindow->contentItem());
-    connect(m_switcherWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::renderSwitcher);
+    bindChromePacing(m_producers.value(m_switcherWindow), QStringLiteral("switcher"),
+                     [this]() { renderSwitcher(); });
     connect(m_protocol, &ShellProtocol::switcherConfigured, this,
             &ShellController::onSwitcherConfigured);
     connect(m_protocol, &ShellProtocol::appSwitcherChanged, this,
@@ -849,7 +864,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // Applications drawer overlay (T-19.2): a full-output launcher scene. The
     // list is a pure app-index projection (`buildAppsDrawerList`); the scene is
     // mapped only while the drawer is open.
-    m_appsDrawerWindow = new QQuickWindow;
+    m_appsDrawerWindow = createChromeProducer()->window();
     m_appsDrawerWindow->setColor(Qt::transparent);
     QQmlComponent appsDrawerComponent(m_engine);
     appsDrawerComponent.loadFromModule(QStringLiteral("Dragonfruit.AppsDrawer"),
@@ -870,8 +885,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onAppsDrawerActivated(QString,qreal,qreal,qreal,qreal)));
     connect(appsDrawerObject, SIGNAL(dismissRequested()), this,
             SLOT(onAppsDrawerDismissed()));
-    connect(m_appsDrawerWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::renderAppsDrawer);
+    bindChromePacing(m_producers.value(m_appsDrawerWindow),
+                     QStringLiteral("apps-drawer"),
+                     [this]() { renderAppsDrawer(); });
     connect(m_protocol, &ShellProtocol::appsDrawerConfigured, this,
             &ShellController::onAppsDrawerConfigured);
     connect(m_protocol, &ShellProtocol::appsDrawerPointerMoved, this,
@@ -918,7 +934,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_notificationClient, &NotificationClient::focusPolicyChanged, this,
             &ShellController::onNotificationFocusPolicy);
 
-    m_bannerWindow = new QQuickWindow;
+    m_bannerWindow = createChromeProducer()->window();
     m_bannerWindow->setColor(Qt::transparent);
     QQmlComponent bannerComponent(m_engine);
     bannerComponent.loadFromModule(QStringLiteral("Dragonfruit.Notifications"),
@@ -938,8 +954,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(bannerObject, SIGNAL(actionInvoked(QString)), this,
             SLOT(onBannerActionInvoked(QString)));
     connect(bannerObject, SIGNAL(activated()), this, SLOT(onBannerActivated()));
-    connect(m_bannerWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::renderBanner);
+    bindChromePacing(m_producers.value(m_bannerWindow), QStringLiteral("banner"),
+                     [this]() { renderBanner(); });
     connect(m_protocol, &ShellProtocol::bannerConfigured, this,
             &ShellController::onBannerConfigured);
     connect(m_protocol, &ShellProtocol::bannerPointerMoved, this,
@@ -956,7 +972,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // Control Center panel (T-11.3a): a top-right offscreen scene rendered
     // into its own overlay surface. It is a pure view; the taps/gestures it
     // raises are forwarded to the bridge host or written to settingsd here.
-    m_controlCenterWindow = new QQuickWindow;
+    m_controlCenterWindow = createChromeProducer()->window();
     m_controlCenterWindow->setColor(Qt::transparent);
     QQmlComponent controlCenterComponent(m_engine);
     controlCenterComponent.loadFromModule(QStringLiteral("Dragonfruit.ControlCenter"),
@@ -1044,8 +1060,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onClipboardPinToggled(int, bool)));
     connect(controlCenterObject, SIGNAL(clipboardClearRequested()), this,
             SLOT(onClipboardClearRequested()));
-    connect(m_controlCenterWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::renderControlCenter);
+    bindChromePacing(m_producers.value(m_controlCenterWindow),
+                     QStringLiteral("control-center"),
+                     [this]() { renderControlCenter(); });
     connect(m_protocol, &ShellProtocol::controlCenterConfigured, this,
             &ShellController::onControlCenterConfigured);
     connect(m_protocol, &ShellProtocol::controlCenterPointerMoved, this,
@@ -1070,7 +1087,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // OSD overlay (T-11.4a): a centered offscreen scene rendered into its own
     // `overlay` surface while a volume/brightness change is presented. It is a
     // pure view; the controller drives it from the pure OSD model.
-    m_osdWindow = new QQuickWindow;
+    m_osdWindow = createChromeProducer()->window();
     m_osdWindow->setColor(Qt::transparent);
     QQmlComponent osdComponent(m_engine);
     osdComponent.loadFromModule(QStringLiteral("Dragonfruit.Osd"), QStringLiteral("Osd"));
@@ -1086,7 +1103,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_osdItem->setParentItem(m_osdWindow->contentItem());
-    connect(m_osdWindow, &QQuickWindow::afterRendering, this, &ShellController::renderOsd);
+    bindChromePacing(m_producers.value(m_osdWindow), QStringLiteral("osd"),
+                     [this]() { renderOsd(); });
     connect(m_protocol, &ShellProtocol::osdConfigured, this,
             &ShellController::onOsdConfigured);
     // T-11.4b: an AT-SPI press action (or the view's own Escape handler) clears
@@ -1105,7 +1123,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_chooser, &ChooserBridge::finished, this, &ShellController::onChooserFinished);
     connect(m_chooser, &ChooserBridge::changed, this, &ShellController::onChooserChanged);
 
-    m_chooserWindow = new QQuickWindow;
+    m_chooserWindow = createChromeProducer()->window();
     m_chooserWindow->setColor(Qt::transparent);
     QQmlComponent chooserComponent(m_engine);
     chooserComponent.loadFromModule(QStringLiteral("Dragonfruit.Screenshot"),
@@ -1133,8 +1151,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onChooserNameEdited(QString)));
     connect(chooserObject, SIGNAL(accepted()), this, SLOT(onChooserAccepted()));
     connect(chooserObject, SIGNAL(cancelled()), this, SLOT(onChooserCancelled()));
-    connect(m_chooserWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::renderChooser);
+    bindChromePacing(m_producers.value(m_chooserWindow), QStringLiteral("chooser"),
+                     [this]() { renderChooser(); });
     connect(m_protocol, &ShellProtocol::chooserConfigured, this,
             &ShellController::onChooserConfigured);
     connect(m_protocol, &ShellProtocol::chooserPointerMoved, this,
@@ -1162,7 +1180,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onScreenshotCaptureRequested);
     m_screenshotWriter = new ScreenshotWriter(this);
 
-    m_screenshotWindow = new QQuickWindow;
+    m_screenshotWindow = createChromeProducer()->window();
     m_screenshotWindow->setColor(Qt::transparent);
     QQmlComponent screenshotComponent(m_engine);
     screenshotComponent.loadFromModule(QStringLiteral("Dragonfruit.Screenshot"),
@@ -1182,8 +1200,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(screenshotObject, SIGNAL(accepted(int, int, int, int)), m_screenshot,
             SLOT(accept(int, int, int, int)));
     connect(screenshotObject, SIGNAL(cancelled()), m_screenshot, SLOT(cancel()));
-    connect(m_screenshotWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::renderScreenshot);
+    bindChromePacing(m_producers.value(m_screenshotWindow),
+                     QStringLiteral("screenshot"),
+                     [this]() { renderScreenshot(); });
     connect(m_protocol, &ShellProtocol::screenshotConfigured, this,
             &ShellController::onScreenshotConfigured);
     connect(m_protocol, &ShellProtocol::screenshotPointerMoved, this,
@@ -1214,7 +1233,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_screencast, &ScreenCastBridge::changed, this,
             &ShellController::onScreenCastChanged);
 
-    m_screencastWindow = new QQuickWindow;
+    m_screencastWindow = createChromeProducer()->window();
     m_screencastWindow->setColor(Qt::transparent);
     QQmlComponent screencastComponent(m_engine);
     screencastComponent.loadFromModule(QStringLiteral("Dragonfruit.Screenshot"),
@@ -1235,8 +1254,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onScreenCastSourceToggled(QString)));
     connect(screencastObject, SIGNAL(accepted()), this, SLOT(onScreenCastAccepted()));
     connect(screencastObject, SIGNAL(cancelled()), this, SLOT(onScreenCastCancelled()));
-    connect(m_screencastWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::renderScreenCast);
+    bindChromePacing(m_producers.value(m_screencastWindow),
+                     QStringLiteral("screencast"),
+                     [this]() { renderScreenCast(); });
     connect(m_protocol, &ShellProtocol::screencastConfigured, this,
             &ShellController::onScreenCastConfigured);
     connect(m_protocol, &ShellProtocol::screencastPointerMoved, this,
@@ -1259,7 +1279,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_polkit, &PolkitAgent::finished, this, &ShellController::onPolkitFinished);
     connect(m_polkit, &PolkitAgent::changed, this, &ShellController::onPolkitChanged);
 
-    m_polkitWindow = new QQuickWindow;
+    m_polkitWindow = createChromeProducer()->window();
     m_polkitWindow->setColor(Qt::transparent);
     QQmlComponent polkitComponent(m_engine);
     polkitComponent.loadFromModule(QStringLiteral("Dragonfruit.Screenshot"),
@@ -1278,8 +1298,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_polkitItem->setParentItem(m_polkitWindow->contentItem());
     connect(polkitObject, SIGNAL(submitted()), this, SLOT(onPolkitSubmitted()));
     connect(polkitObject, SIGNAL(cancelled()), this, SLOT(onPolkitCancelled()));
-    connect(m_polkitWindow, &QQuickWindow::afterRendering, this,
-            &ShellController::renderPolkit);
+    bindChromePacing(m_producers.value(m_polkitWindow), QStringLiteral("polkit"),
+                     [this]() { renderPolkit(); });
     connect(m_protocol, &ShellProtocol::polkitConfigured, this,
             &ShellController::onPolkitConfigured);
     connect(m_protocol, &ShellProtocol::polkitPointerMoved, this,
@@ -1300,7 +1320,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // Session lock (T-12.3a): a full-output offscreen scene rendered into one
     // `ext-session-lock-v1` surface per output. Authentication and input
     // capture are T-12.3b/T-12.3c; this is the fail-secure presentation.
-    m_lockWindow = new QQuickWindow;
+    m_lockWindow = createChromeProducer()->window();
     m_lockWindow->setColor(Qt::transparent);
     QQmlComponent lockComponent(m_engine);
     lockComponent.loadFromModule(QStringLiteral("Dragonfruit.Lock"), QStringLiteral("LockScreen"));
@@ -1316,18 +1336,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_lockItem->setParentItem(m_lockWindow->contentItem());
-    connect(m_lockWindow, &QQuickWindow::afterRendering, this, [this]() {
-        // Repaint every configured lock surface from the scene-graph frame.
-        if (!m_lockFrameGate.frameRendered())
-            return;
-        if (!m_lockSceneGraphCommitLogged) {
-            m_lockSceneGraphCommitLogged = true;
-            qInfo() << "shell: lock scene-graph commit path active";
-        }
-        const auto ids = m_lockSurfaceSizes.keys();
-        for (quintptr id : ids)
-            renderLockSurface(id);
-    });
+    bindChromePacing(m_producers.value(m_lockWindow), QStringLiteral("lock"),
+                     [this]() { repaintLockSurfaces(); });
     connect(m_protocol, &ShellProtocol::sessionLocked, this, &ShellController::onSessionLocked);
     connect(m_protocol, &ShellProtocol::sessionFinished, this, &ShellController::onSessionFinished);
     connect(m_protocol, &ShellProtocol::lockSurfaceConfigured, this,
@@ -1766,8 +1776,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // `dockAttentionBouncePhase`), so it cannot drift from the committed
     // frames, and the tick now advances only the phase map rather than
     // rebuilding the entry model (T-14.7c). The resulting QML change renders
-    // through the scene-graph commit path (`afterRendering`, FR-14), not a
-    // render timer.
+    // through the producer's frame-callback pacing (T-21.1c), not a render
+    // timer.
     m_dockAnimTimer = new QTimer(this);
     m_dockAnimTimer->setInterval(16);
     connect(m_dockAnimTimer, &QTimer::timeout, this, &ShellController::onDockAnimationTick);
@@ -2659,20 +2669,10 @@ void ShellController::renderControlCenter()
         return;
     if (m_controlCenterWidth <= 0 || m_controlCenterHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
-    if (!m_controlCenterFrameGate.frameRendered())
-        return;
-    if (!m_controlCenterSceneGraphCommitLogged) {
-        m_controlCenterSceneGraphCommitLogged = true;
-        qInfo() << "shell: Control Center scene-graph commit path active";
-    }
     prepareChromeScene(m_controlCenterWindow, m_controlCenterItem,
                        QSize(m_controlCenterWidth, m_controlCenterHeight),
                        QSize(m_controlCenterWidth, m_controlCenterHeight), m_chromeScale);
-    m_controlCenterFrameGate.beginCommit();
-    const QImage image = m_controlCenterWindow->grabWindow();
-    m_controlCenterFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_controlCenterWindow);
     if (!image.isNull() && m_protocol)
         m_protocol->commitControlCenterImage(image, QSize(m_controlCenterWidth, m_controlCenterHeight));
 }
@@ -2774,19 +2774,9 @@ void ShellController::renderOsd()
         return;
     if (m_osdWidth <= 0 || m_osdHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
-    if (!m_osdFrameGate.frameRendered())
-        return;
-    if (!m_osdSceneGraphCommitLogged) {
-        m_osdSceneGraphCommitLogged = true;
-        qInfo() << "shell: OSD scene-graph commit path active";
-    }
     prepareChromeScene(m_osdWindow, m_osdItem, QSize(m_osdWidth, m_osdHeight),
                        QSize(m_osdWidth, m_osdHeight), m_chromeScale);
-    m_osdFrameGate.beginCommit();
-    const QImage image = m_osdWindow->grabWindow();
-    m_osdFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_osdWindow);
     // Declare the visible card so the compositor's backdrop frosts the card,
     // not the transparent shadow margin (T-20.3). The card never moves, so
     // only a changed integer rect is sent.
@@ -2892,19 +2882,9 @@ void ShellController::renderChooser()
         return;
     if (m_chooserWidth <= 0 || m_chooserHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
-    if (!m_chooserFrameGate.frameRendered())
-        return;
-    if (!m_chooserSceneGraphCommitLogged) {
-        m_chooserSceneGraphCommitLogged = true;
-        qInfo() << "shell: FileChooser scene-graph commit path active";
-    }
     prepareChromeScene(m_chooserWindow, m_chooserItem, QSize(m_chooserWidth, m_chooserHeight),
                        QSize(m_chooserWidth, m_chooserHeight), m_chromeScale);
-    m_chooserFrameGate.beginCommit();
-    const QImage image = m_chooserWindow->grabWindow();
-    m_chooserFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_chooserWindow);
     if (!image.isNull() && m_protocol)
         m_protocol->commitChooserImage(image, QSize(m_chooserWidth, m_chooserHeight));
 }
@@ -3173,19 +3153,9 @@ void ShellController::renderScreenshot()
         return;
     if (m_screenshotWidth <= 0 || m_screenshotHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
-    if (!m_screenshotFrameGate.frameRendered())
-        return;
-    if (!m_screenshotSceneGraphCommitLogged) {
-        m_screenshotSceneGraphCommitLogged = true;
-        qInfo() << "shell: Screenshot scene-graph commit path active";
-    }
     prepareChromeScene(m_screenshotWindow, m_screenshotItem, QSize(m_screenshotWidth, m_screenshotHeight),
                        QSize(m_screenshotWidth, m_screenshotHeight), m_chromeScale);
-    m_screenshotFrameGate.beginCommit();
-    const QImage image = m_screenshotWindow->grabWindow();
-    m_screenshotFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_screenshotWindow);
     if (!image.isNull() && m_protocol)
         m_protocol->commitScreenshotImage(image, QSize(m_screenshotWidth, m_screenshotHeight));
 }
@@ -3417,19 +3387,9 @@ void ShellController::renderScreenCast()
         return;
     if (m_screencastWidth <= 0 || m_screencastHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
-    if (!m_screencastFrameGate.frameRendered())
-        return;
-    if (!m_screencastSceneGraphCommitLogged) {
-        m_screencastSceneGraphCommitLogged = true;
-        qInfo() << "shell: ScreenCast scene-graph commit path active";
-    }
     prepareChromeScene(m_screencastWindow, m_screencastItem, QSize(m_screencastWidth, m_screencastHeight),
                        QSize(m_screencastWidth, m_screencastHeight), m_chromeScale);
-    m_screencastFrameGate.beginCommit();
-    const QImage image = m_screencastWindow->grabWindow();
-    m_screencastFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_screencastWindow);
     if (!image.isNull() && m_protocol)
         m_protocol->commitScreenCastImage(image, QSize(m_screencastWidth, m_screencastHeight));
 }
@@ -3633,19 +3593,9 @@ void ShellController::renderPolkit()
         return;
     if (m_polkitWidth <= 0 || m_polkitHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
-    if (!m_polkitFrameGate.frameRendered())
-        return;
-    if (!m_polkitSceneGraphCommitLogged) {
-        m_polkitSceneGraphCommitLogged = true;
-        qInfo() << "shell: polkit dialog scene-graph commit path active";
-    }
     prepareChromeScene(m_polkitWindow, m_polkitItem, QSize(m_polkitWidth, m_polkitHeight),
                        QSize(m_polkitWidth, m_polkitHeight), m_chromeScale);
-    m_polkitFrameGate.beginCommit();
-    const QImage image = m_polkitWindow->grabWindow();
-    m_polkitFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_polkitWindow);
     if (!image.isNull() && m_protocol)
         m_protocol->commitPolkitImage(image, QSize(m_polkitWidth, m_polkitHeight));
 }
@@ -3931,10 +3881,7 @@ void ShellController::renderLockSurface(quintptr lockSurfaceId)
     // wp_fractional_scale event; they follow the output scale directly.
     const qreal scale = m_protocol ? m_protocol->outputScale() : m_chromeScale;
     prepareChromeScene(m_lockWindow, m_lockItem, size, size, scale);
-    // Skip the re-entrant frame the readback itself renders (FR-14).
-    m_lockFrameGate.beginCommit();
-    const QImage image = m_lockWindow->grabWindow();
-    m_lockFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_lockWindow);
     if (!image.isNull() && m_protocol->commitLockImage(lockSurfaceId, image, size))
         m_lockCommitted.insert(lockSurfaceId);
 }
@@ -4174,16 +4121,6 @@ void ShellController::scheduleRender()
     });
 }
 
-void ShellController::onMenuAfterRendering()
-{
-    if (!m_menuFrameGate.frameRendered())
-        return;
-    if (!m_menuSceneGraphCommitLogged) {
-        m_menuSceneGraphCommitLogged = true;
-        qInfo() << "shell: menu-bar scene-graph commit path active (FR-14)";
-    }
-    scheduleRender();
-}
 
 void ShellController::updatePopupGeometry()
 {
@@ -6146,19 +6083,9 @@ void ShellController::renderOverview()
         return;
     if (m_overviewWidth <= 0 || m_overviewHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (FR-14 pattern shared with the Dock).
-    if (!m_overviewFrameGate.frameRendered())
-        return;
-    if (!m_overviewSceneGraphCommitLogged) {
-        m_overviewSceneGraphCommitLogged = true;
-        qInfo() << "shell: overview scene-graph commit path active";
-    }
     prepareChromeScene(m_overviewWindow, m_overviewItem, QSize(m_overviewWidth, m_overviewHeight),
                        QSize(m_overviewWidth, m_overviewHeight), m_chromeScale);
-    m_overviewFrameGate.beginCommit();
-    const QImage image = m_overviewWindow->grabWindow();
-    m_overviewFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_overviewWindow);
     if (!image.isNull() && m_protocol)
         m_protocol->commitOverviewImage(image, QSize(m_overviewWidth, m_overviewHeight));
 }
@@ -6411,19 +6338,9 @@ void ShellController::renderBanner()
         return;
     if (m_bannerWidth <= 0 || m_bannerHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (the Dock/switcher FR-14 pattern).
-    if (!m_bannerFrameGate.frameRendered())
-        return;
-    if (!m_bannerSceneGraphCommitLogged) {
-        m_bannerSceneGraphCommitLogged = true;
-        qInfo() << "shell: notification banner scene-graph commit path active";
-    }
     prepareChromeScene(m_bannerWindow, m_bannerItem, QSize(m_bannerWidth, m_bannerHeight),
                        QSize(m_bannerWidth, m_bannerHeight), m_chromeScale);
-    m_bannerFrameGate.beginCommit();
-    const QImage image = m_bannerWindow->grabWindow();
-    m_bannerFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_bannerWindow);
     if (!image.isNull() && m_protocol)
         m_protocol->commitBannerImage(image, QSize(m_bannerWidth, m_bannerHeight));
 }
@@ -6434,19 +6351,9 @@ void ShellController::renderSwitcher()
         return;
     if (m_switcherWidth <= 0 || m_switcherHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (FR-14 pattern shared with the Dock).
-    if (!m_switcherFrameGate.frameRendered())
-        return;
-    if (!m_switcherSceneGraphCommitLogged) {
-        m_switcherSceneGraphCommitLogged = true;
-        qInfo() << "shell: app-switcher scene-graph commit path active";
-    }
     prepareChromeScene(m_switcherWindow, m_switcherItem, QSize(m_switcherWidth, m_switcherHeight),
                        QSize(m_switcherWidth, m_switcherHeight), m_chromeScale);
-    m_switcherFrameGate.beginCommit();
-    const QImage image = m_switcherWindow->grabWindow();
-    m_switcherFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_switcherWindow);
     if (!image.isNull() && m_protocol)
         m_protocol->commitSwitcherImage(image, QSize(m_switcherWidth, m_switcherHeight));
 }
@@ -6711,19 +6618,9 @@ void ShellController::renderAppsDrawer()
         return;
     if (m_appsDrawerWidth <= 0 || m_appsDrawerHeight <= 0)
         return;
-    // The scene graph just rendered; skip the re-entrant frame our own
-    // `grabWindow` readback produces (FR-14 pattern shared with the Dock).
-    if (!m_appsDrawerFrameGate.frameRendered())
-        return;
-    if (!m_appsDrawerSceneGraphCommitLogged) {
-        m_appsDrawerSceneGraphCommitLogged = true;
-        qInfo() << "shell: apps-drawer scene-graph commit path active";
-    }
     prepareChromeScene(m_appsDrawerWindow, m_appsDrawerItem, QSize(m_appsDrawerWidth, m_appsDrawerHeight),
                        QSize(m_appsDrawerWidth, m_appsDrawerHeight), m_chromeScale);
-    m_appsDrawerFrameGate.beginCommit();
-    const QImage image = m_appsDrawerWindow->grabWindow();
-    m_appsDrawerFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_appsDrawerWindow);
     if (!image.isNull() && m_protocol) {
         // Declare the card's live rect before the buffer commit, so the
         // compositor's backdrop blur follows it (T-20.1). The card is centred
@@ -7042,16 +6939,6 @@ void ShellController::onDockDownloadsFolderRequested()
     launchFiles(folder);
 }
 
-void ShellController::onDockAfterRendering()
-{
-    if (!m_dockFrameGate.frameRendered())
-        return;
-    if (!m_dockSceneGraphCommitLogged) {
-        m_dockSceneGraphCommitLogged = true;
-        qInfo() << "shell: Dock scene-graph commit path active (FR-14)";
-    }
-    scheduleDockRender();
-}
 
 void ShellController::scheduleDockRender()
 {
@@ -7070,23 +6957,203 @@ void ShellController::prepareChromeScene(QQuickWindow *window, QQuickItem *item,
 {
     if (!window || !item || itemLogical.isEmpty() || windowLogical.isEmpty())
         return;
-    item->setWidth(itemLogical.width());
-    item->setHeight(itemLogical.height());
+    // Setting a QQuickItem property to its current value can still mark a text
+    // item for relayout, which feeds the scene-changed signal back into the
+    // pacer. Only touch geometry/scale when it actually changes.
+    if (!qFuzzyCompare(item->width(), qreal(itemLogical.width())))
+        item->setWidth(itemLogical.width());
+    if (!qFuzzyCompare(item->height(), qreal(itemLogical.height())))
+        item->setHeight(itemLogical.height());
     // Scale the root item, not the layout: QML anchors, popup rects, and
     // pointer handlers keep their logical coordinates while the scene graph
     // rasterizes at the physical resolution.
     item->setTransformOrigin(QQuickItem::TopLeft);
-    item->setScale(scale);
+    if (!qFuzzyCompare(item->scale(), scale))
+        item->setScale(scale);
     const QSize buffer = ChromeScale::bufferSize(windowLogical, scale);
-    if (window->width() != buffer.width() || window->height() != buffer.height())
-        window->resize(buffer);
-    if (!window->isVisible())
-        window->show();
+    ChromeFrameProducer *producer = m_producers.value(window);
+    if (producer) {
+        // Render-control windows are never shown; the producer owns the
+        // offscreen target. Fallback windows still need their render loop.
+        producer->resize(buffer);
+    } else {
+        if (window->width() != buffer.width() || window->height() != buffer.height())
+            window->resize(buffer);
+        if (!window->isVisible())
+            window->show();
+    }
 }
 
 QRect ShellController::chromeBufferRect(const QRect &logical) const
 {
     return ChromeScale::bufferRect(logical, m_chromeScale);
+}
+
+ChromeFrameProducer *ShellController::createChromeProducer()
+{
+    auto *producer = new ChromeFrameProducer(this);
+    m_producers.insert(producer->window(), producer);
+    if (!m_chromeFallbackTimer) {
+        // The safety tick is not an animation source: it only runs while a
+        // dirty producer is waiting on a frame callback the compositor never
+        // answered, and every render it drives is counted.
+        m_chromeFallbackTimer = new QTimer(this);
+        m_chromeFallbackTimer->setInterval(100);
+        connect(m_chromeFallbackTimer, &QTimer::timeout, this,
+                &ShellController::onChromeFallbackTick);
+    }
+    return producer;
+}
+
+void ShellController::bindChromePacing(ChromeFrameProducer *producer,
+                                       const QString &primaryLabel,
+                                       std::function<void()> render)
+{
+    if (!producer)
+        return;
+    ChromePace pace;
+    pace.producer = producer;
+    pace.primaryLabel = primaryLabel;
+    pace.render = std::move(render);
+    m_chromePaces.insert(producer, pace);
+    producer->window()->setObjectName(primaryLabel);
+    if (primaryLabel == QLatin1String("dock"))
+        qInfo() << "shell: Dock scene-graph commit path active (FR-14)";
+    connect(producer, &ChromeFrameProducer::sceneChanged, this,
+            [this, producer]() { markChromeDirty(producer); });
+}
+
+void ShellController::markChromeDirty(ChromeFrameProducer *producer)
+{
+    auto it = m_chromePaces.find(producer);
+    if (it == m_chromePaces.end())
+        return;
+    ChromePace &pace = it.value();
+    if (pace.rendering) {
+        // A scene change raised synchronously inside polish/sync/render is a
+        // re-entrant update, not a new presentation request. Ignoring it is
+        // what keeps the render loop from feeding itself; the QML animation
+        // driver raises the next real change on its next tick.
+        return;
+    }
+    pace.dirty = true;
+    if (pace.scheduled)
+        return;
+    if (!m_protocol->hasPendingFrame(pace.primaryLabel))
+        scheduleChromeRender(producer);
+    else if (m_chromeFallbackTimer)
+        m_chromeFallbackTimer->start();
+}
+
+void ShellController::scheduleChromeRender(ChromeFrameProducer *producer)
+{
+    auto it = m_chromePaces.find(producer);
+    if (it == m_chromePaces.end() || it.value().scheduled)
+        return;
+    it.value().scheduled = true;
+    QTimer::singleShot(0, this, [this, producer]() {
+        auto pace = m_chromePaces.find(producer);
+        if (pace == m_chromePaces.end())
+            return;
+        pace.value().scheduled = false;
+        if (!pace.value().dirty)
+            return;
+        renderChromeProducer(producer, false);
+    });
+}
+
+void ShellController::renderChromeProducer(ChromeFrameProducer *producer, bool fallback)
+{
+    auto it = m_chromePaces.find(producer);
+    if (it == m_chromePaces.end())
+        return;
+    ChromePace &pace = it.value();
+    if (!pace.dirty)
+        return;
+    pace.dirty = false;
+    pace.rendering = true;
+    if (pace.render)
+        pace.render();
+    pace.rendering = false;
+    if (fallback)
+        ChromeStats::instance().recordFallbackRender();
+    if (pace.dirty) {
+        if (!m_protocol->hasPendingFrame(pace.primaryLabel))
+            scheduleChromeRender(producer);
+        else if (m_chromeFallbackTimer)
+            m_chromeFallbackTimer->start();
+    }
+}
+
+void ShellController::onChromeFramePresented(const QString &surface, uint32_t time)
+{
+    Q_UNUSED(time);
+    for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
+        ChromePace &pace = it.value();
+        if (pace.primaryLabel != surface || !pace.dirty || pace.scheduled)
+            continue;
+        // The compositor presented the frame we asked to be paced. Render the
+        // next QML state only now, not on a free-running timer.
+        scheduleChromeRender(it.key());
+    }
+}
+
+void ShellController::onChromeBufferReleased(const QString &surface)
+{
+    for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
+        ChromePace &pace = it.value();
+        if (pace.primaryLabel != surface || !pace.dirty || pace.scheduled)
+            continue;
+        scheduleChromeRender(it.key());
+    }
+}
+
+void ShellController::onChromeCommitDeferred(const QString &surface)
+{
+    for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
+        ChromePace &pace = it.value();
+        if (pace.primaryLabel != surface)
+            continue;
+        pace.dirty = true;
+        if (!pace.scheduled && !m_protocol->hasPendingFrame(pace.primaryLabel))
+            scheduleChromeRender(it.key());
+        else if (m_chromeFallbackTimer)
+            m_chromeFallbackTimer->start();
+    }
+}
+
+void ShellController::onChromeFallbackTick()
+{
+    const QList<ChromeFrameProducer *> producers = m_chromePaces.keys();
+    for (ChromeFrameProducer *producer : producers) {
+        auto it = m_chromePaces.find(producer);
+        if (it == m_chromePaces.end() || !it.value().dirty)
+            continue;
+        if (!m_protocol->hasPendingFrame(it.value().primaryLabel))
+            scheduleChromeRender(producer);
+        else
+            renderChromeProducer(producer, true);
+    }
+    bool waiting = false;
+    for (auto it = m_chromePaces.constBegin(); it != m_chromePaces.constEnd(); ++it) {
+        if (it.value().dirty
+                && m_protocol->hasPendingFrame(it.value().primaryLabel)) {
+            waiting = true;
+            break;
+        }
+    }
+    if (!waiting && m_chromeFallbackTimer)
+        m_chromeFallbackTimer->stop();
+}
+
+QImage ShellController::renderChromeFrame(QQuickWindow *window)
+{
+    ChromeFrameProducer *producer = m_producers.value(window);
+    if (producer) {
+        ChromeStats::instance().recordRender(window ? window->objectName() : QString());
+        return producer->renderFrame();
+    }
+    return window ? window->grabWindow() : QImage();
 }
 
 void ShellController::sendChromePointer(QQuickWindow *window, QEvent::Type type,
@@ -7151,8 +7218,10 @@ void ShellController::renderDock()
     // output coordinates, so the tile rect it reports for the launch-origin
     // hand-off is already in that space (T-14.7l).
     const QPoint origin = dockSurfaceOutputOrigin();
-    m_dockItem->setProperty("outputOriginX", origin.x());
-    m_dockItem->setProperty("outputOriginY", origin.y());
+    if (qRound(m_dockItem->property("outputOriginX").toReal()) != origin.x())
+        m_dockItem->setProperty("outputOriginX", origin.x());
+    if (qRound(m_dockItem->property("outputOriginY").toReal()) != origin.y())
+        m_dockItem->setProperty("outputOriginY", origin.y());
 
     // The Dock popover (context menu / window chooser) in Dock-scene
     // coordinates; empty when nothing is open. `popoverRect` keys on the
@@ -7182,12 +7251,7 @@ void ShellController::renderDock()
         ChromeScale::logicalToBuffer(QPointF(leftGutter, headroom), m_chromeScale);
     m_dockItem->setX(itemOrigin.x());
     m_dockItem->setY(itemOrigin.y());
-    // `grabWindow()` renders the scene again, which emits `afterRendering`;
-    // the gate suppresses that re-entrant schedule so the commit cannot loop
-    // (FR-14).
-    m_dockFrameGate.beginCommit();
-    const QImage image = m_dockWindow->grabWindow();
-    m_dockFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_dockWindow);
 
     // The input region is the visible bar plus the currently magnified or
     // bouncing icon rectangles; the transparent magnified band and the hidden
@@ -7221,8 +7285,8 @@ void ShellController::renderDock()
         }
     }
     const QRect dockRect(leftGutter, headroom, m_dockWidth, m_dockHeight);
-    if (!m_protocol->commitDockImage(image.copy(chromeBufferRect(dockRect)),
-                                     QSize(m_dockWidth, m_dockHeight)))
+    if (!m_protocol->commitDockImage(image, QSize(m_dockWidth, m_dockHeight),
+                                     chromeBufferRect(dockRect)))
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 
     // Place and commit the popover on the Dock's overlay surface. The
@@ -7257,8 +7321,8 @@ void ShellController::renderDock()
         }
         m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph);
         const QRect popupRect(leftGutter + px, headroom + py, pw, ph);
-        if (!m_protocol->commitDockPopupImage(image.copy(chromeBufferRect(popupRect)),
-                                              QSize(pw, ph)))
+        if (!m_protocol->commitDockPopupImage(image, QSize(pw, ph),
+                                              chromeBufferRect(popupRect)))
             qWarning() << "shell: failed to commit the Dock popover:"
                        << m_protocol->lastError();
         m_dockPopoverMapped = true;
@@ -7279,18 +7343,15 @@ void ShellController::render()
         popupShown ? qMax(m_barHeight, m_popupY + m_popupHeight) : m_barHeight;
     prepareChromeScene(m_window, m_item, QSize(m_width, m_barHeight),
                        QSize(m_width, windowHeight), m_chromeScale);
-    // See `renderDock()`: the readback re-renders and must not re-schedule.
-    m_menuFrameGate.beginCommit();
-    const QImage image = m_window->grabWindow();
-    m_menuFrameGate.endCommit();
+    const QImage image = renderChromeFrame(m_window);
     const QRect barRect(0, 0, m_width, m_barHeight);
-    if (!m_protocol->commitImage(image.copy(chromeBufferRect(barRect)),
-                                 QSize(m_width, m_barHeight)))
+    if (!m_protocol->commitImage(image, QSize(m_width, m_barHeight),
+                                 chromeBufferRect(barRect)))
         qWarning() << "shell: failed to commit the menu bar:" << m_protocol->lastError();
     if (popupShown) {
         const QRect popupRect(m_popupX, m_popupY, m_popupWidth, m_popupHeight);
-        if (!m_protocol->commitPopupImage(image.copy(chromeBufferRect(popupRect)),
-                                          QSize(m_popupWidth, m_popupHeight)))
+        if (!m_protocol->commitPopupImage(image, QSize(m_popupWidth, m_popupHeight),
+                                          chromeBufferRect(popupRect)))
             qWarning() << "shell: failed to commit the menu popup:" << m_protocol->lastError();
     }
 }

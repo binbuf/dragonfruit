@@ -53,6 +53,23 @@
 #define DF_LOCKSTEP_VERSION 1
 #endif
 
+struct ShellShmSlot {
+    wl_buffer *buffer = nullptr;
+    void *data = nullptr;
+    int fd = -1;
+    size_t bytes = 0;
+    int generation = -1;
+};
+
+struct ShellSurfaceBuffer {
+    ChromeBufferPool pool{3};
+    QHash<int, ShellShmSlot> slotResources;
+    QImage lastImage;
+    QRect lastSourceRect;
+    wl_callback *frameCallback = nullptr;
+    QElapsedTimer frameRequested;
+};
+
 namespace {
 
 constexpr uint32_t kAnchorTop = 1;
@@ -294,11 +311,12 @@ bool ShellProtocol::setPopupGeometry(int x, int y, int width, int height)
     return true;
 }
 
-bool ShellProtocol::commitPopupImage(const QImage &image, const QSize &logicalSize)
+bool ShellProtocol::commitPopupImage(const QImage &image, const QSize &logicalSize,
+                                     const QRect &sourceRect)
 {
     if (!m_popupSurface)
         return false;
-    if (!commitTo(m_popupSurface, image, logicalSize))
+    if (!commitTo(m_popupSurface, image, logicalSize, sourceRect))
         return false;
     m_popupMapped = true;
     return true;
@@ -310,6 +328,7 @@ bool ShellProtocol::hidePopup()
         return false;
     if (!m_popupMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("menubar-popup"));
     wl_surface_attach(m_popupSurface, nullptr, 0, 0);
     wl_surface_commit(m_popupSurface);
     resetSurfaceScale(m_popupSurface);
@@ -319,11 +338,12 @@ bool ShellProtocol::hidePopup()
     return true;
 }
 
-bool ShellProtocol::commitImage(const QImage &image, const QSize &logicalSize)
+bool ShellProtocol::commitImage(const QImage &image, const QSize &logicalSize,
+                                const QRect &sourceRect)
 {
     if (!m_surface)
         return false;
-    return commitTo(m_surface, image, logicalSize);
+    return commitTo(m_surface, image, logicalSize, sourceRect);
 }
 
 bool ShellProtocol::createOverviewSurface()
@@ -373,6 +393,7 @@ bool ShellProtocol::hideOverview()
         return false;
     if (!m_overviewMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("overview"));
     wl_surface_attach(m_overviewSurface, nullptr, 0, 0);
     wl_surface_commit(m_overviewSurface);
     resetSurfaceScale(m_overviewSurface);
@@ -429,6 +450,7 @@ bool ShellProtocol::hideSwitcher()
         return false;
     if (!m_switcherMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("switcher"));
     wl_surface_attach(m_switcherSurface, nullptr, 0, 0);
     wl_surface_commit(m_switcherSurface);
     resetSurfaceScale(m_switcherSurface);
@@ -491,6 +513,7 @@ bool ShellProtocol::hideBanner()
         return false;
     if (!m_bannerMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("banner"));
     wl_surface_attach(m_bannerSurface, nullptr, 0, 0);
     wl_surface_commit(m_bannerSurface);
     resetSurfaceScale(m_bannerSurface);
@@ -597,6 +620,7 @@ bool ShellProtocol::hideControlCenter()
         return false;
     if (!m_controlCenterMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("control-center"));
     wl_surface_attach(m_controlCenterSurface, nullptr, 0, 0);
     wl_surface_commit(m_controlCenterSurface);
     resetSurfaceScale(m_controlCenterSurface);
@@ -669,6 +693,7 @@ bool ShellProtocol::hideOsd()
         return false;
     if (!m_osdMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("osd"));
     wl_surface_attach(m_osdSurface, nullptr, 0, 0);
     wl_surface_commit(m_osdSurface);
     resetSurfaceScale(m_osdSurface);
@@ -748,6 +773,7 @@ bool ShellProtocol::hideChooser()
         return false;
     if (!m_chooserMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("chooser"));
     wl_surface_attach(m_chooserSurface, nullptr, 0, 0);
     wl_surface_commit(m_chooserSurface);
     resetSurfaceScale(m_chooserSurface);
@@ -821,6 +847,7 @@ bool ShellProtocol::hideScreenshot()
         return false;
     if (!m_screenshotMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("screenshot"));
     wl_surface_attach(m_screenshotSurface, nullptr, 0, 0);
     wl_surface_commit(m_screenshotSurface);
     resetSurfaceScale(m_screenshotSurface);
@@ -900,6 +927,7 @@ bool ShellProtocol::hideScreenCast()
         return false;
     if (!m_screencastMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("screencast"));
     wl_surface_attach(m_screencastSurface, nullptr, 0, 0);
     wl_surface_commit(m_screencastSurface);
     resetSurfaceScale(m_screencastSurface);
@@ -976,6 +1004,7 @@ bool ShellProtocol::hidePolkit()
         return false;
     if (!m_polkitMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("polkit"));
     wl_surface_attach(m_polkitSurface, nullptr, 0, 0);
     wl_surface_commit(m_polkitSurface);
     resetSurfaceScale(m_polkitSurface);
@@ -1070,6 +1099,7 @@ bool ShellProtocol::hideAppsDrawer()
         return false;
     if (!m_appsDrawerMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("apps-drawer"));
     wl_surface_attach(m_appsDrawerSurface, nullptr, 0, 0);
     wl_surface_commit(m_appsDrawerSurface);
     resetSurfaceScale(m_appsDrawerSurface);
@@ -1166,8 +1196,10 @@ void ShellProtocol::unlockSession()
         m_sessionLock = nullptr;
     }
     for (auto it = m_lockSurfaces.begin(); it != m_lockSurfaces.end(); ++it) {
-        if (it.value().surface)
+        if (it.value().surface) {
+            destroySurfaceBuffer(it.value().surface);
             wl_surface_destroy(it.value().surface);
+        }
     }
     m_lockSurfaces.clear();
     m_sessionLocked = false;
@@ -1409,11 +1441,12 @@ bool ShellProtocol::configureDockSurface(DockPosition position, int thickness, i
     return true;
 }
 
-bool ShellProtocol::commitDockImage(const QImage &image, const QSize &logicalSize)
+bool ShellProtocol::commitDockImage(const QImage &image, const QSize &logicalSize,
+                                    const QRect &sourceRect)
 {
     if (!m_dockSurface)
         return false;
-    if (!commitTo(m_dockSurface, image, logicalSize))
+    if (!commitTo(m_dockSurface, image, logicalSize, sourceRect))
         return false;
     m_dockMapped = true;
     return true;
@@ -1490,11 +1523,12 @@ bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int lef
     return true;
 }
 
-bool ShellProtocol::commitDockPopupImage(const QImage &image, const QSize &logicalSize)
+bool ShellProtocol::commitDockPopupImage(const QImage &image, const QSize &logicalSize,
+                                         const QRect &sourceRect)
 {
     if (!m_dockPopupSurface)
         return false;
-    if (!commitTo(m_dockPopupSurface, image, logicalSize))
+    if (!commitTo(m_dockPopupSurface, image, logicalSize, sourceRect))
         return false;
     m_dockPopupMapped = true;
     return true;
@@ -1506,6 +1540,7 @@ bool ShellProtocol::hideDockPopup()
         return false;
     if (!m_dockPopupMapped)
         return true;
+    cancelPendingFrame(QStringLiteral("dock-popup"));
     wl_surface_attach(m_dockPopupSurface, nullptr, 0, 0);
     wl_surface_commit(m_dockPopupSurface);
     resetSurfaceScale(m_dockPopupSurface);
@@ -1757,9 +1792,9 @@ void ShellProtocol::destroyScaleObjects()
 }
 
 bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
-                             const QSize &logicalSize)
+                             const QSize &logicalSize, const QRect &sourceRect)
 {
-    if (!surface || !m_shm)
+    if (!surface || !m_shm || image.isNull())
         return false;
 
     const bool statsEnabled = ChromeStats::instance().enabled();
@@ -1767,11 +1802,19 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     if (statsEnabled)
         commitTimer.start();
 
-    QImage frame = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-    const int width = frame.width();
-    const int height = frame.height();
-    if (width <= 0 || height <= 0)
+    // QQuickRenderControl already hands us ARGB32_Premultiplied; only convert
+    // when a caller actually passes another format (the conversion is a full
+    // copy, so it must not run on the normal path).
+    QImage frame = image;
+    if (frame.format() != QImage::Format_ARGB32_Premultiplied)
+        frame = frame.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const QRect source = (sourceRect.isEmpty() ? frame.rect() : sourceRect)
+                             .intersected(frame.rect());
+    if (source.isEmpty())
         return false;
+
+    const int width = source.width();
+    const int height = source.height();
     // The logical surface size is the compositor contract. Callers pass it
     // explicitly because a fractional physical buffer cannot be divided back
     // to an exact logical size (1.5x: 188 physical -> 125.33 logical).
@@ -1791,66 +1834,338 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
                         .arg(width)
                         .arg(height));
     const size_t stride = static_cast<size_t>(width) * 4u;
-    const size_t size = stride * static_cast<size_t>(height);
-    if (size > static_cast<size_t>(INT32_MAX))
+    const size_t bytes = stride * static_cast<size_t>(height);
+    if (bytes > static_cast<size_t>(INT32_MAX))
         return fail(QStringLiteral("surface image is too large for wl_shm: %1x%2")
                         .arg(width)
                         .arg(height));
 
-    int fd = createShmFile(size);
-    if (fd < 0)
-        return fail(QStringLiteral("cannot allocate a shared-memory buffer: %1")
-                        .arg(QString::fromLocal8Bit(strerror(errno))));
-
-    void *data = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (data == MAP_FAILED) {
-        ::close(fd);
-        return fail(QStringLiteral("cannot map the shared-memory buffer"));
-    }
-    std::memcpy(data, frame.constBits(), size);
-    munmap(data, size);
-
-    wl_shm_pool *pool = wl_shm_create_pool(m_shm, fd, static_cast<int32_t>(size));
-    if (!pool) {
-        ::close(fd);
-        return fail(QStringLiteral("cannot create the shared-memory pool"));
-    }
-    wl_buffer *buffer = wl_shm_pool_create_buffer(
-        pool, 0, width, height, static_cast<int32_t>(stride), WL_SHM_FORMAT_ARGB8888);
-    wl_shm_pool_destroy(pool);
-    ::close(fd);
+    ShellSurfaceBuffer *buffer = surfaceBuffer(surface);
     if (!buffer)
-        return fail(QStringLiteral("cannot create the shared-memory buffer"));
-    if (!m_display)
         return false;
+    const QString label = surfaceLabel(surface);
 
-    static const wl_buffer_listener bufferListener = { onBufferRelease };
-    wl_buffer_add_listener(buffer, &bufferListener, this);
-    m_buffers.insert(buffer);
+    // A resize retires the old pool. Free old buffers are destroyed now; busy
+    // ones are destroyed from `onBufferRelease` when the compositor returns
+    // them, so the pool never grows past its bound.
+    if (buffer->pool.size() != QSize(width, height)) {
+        buffer->pool.setSize(QSize(width, height));
+        const QVector<int> retired = buffer->pool.takeRetired();
+        for (int slot : retired)
+            destroyShmSlot(buffer, slot);
+        buffer->lastImage = QImage();
+        buffer->lastSourceRect = QRect();
+    }
+
+    // Damage is the bounding box of changed pixels against the previous frame
+    // this surface committed. The previous image is a shallow reference to the
+    // producer's other ping-pong target, so this comparison costs no copy.
+    QRect damage = changedPixelRect(buffer->lastImage, buffer->lastSourceRect,
+                                    frame, source);
+    if (damage.isEmpty() && !buffer->lastImage.isNull()) {
+        // Nothing visible changed: no buffer, no copy, no commit. Remember the
+        // new frame so the next producer target is not kept alive by us.
+        buffer->lastImage = frame;
+        buffer->lastSourceRect = source;
+        ChromeStats::instance().recordSkippedCommit(label, logical, QSize(width, height),
+                                                    geometry.bufferScale, geometry.scale,
+                                                    geometry.useViewport);
+        return true;
+    }
+    if (damage.isEmpty())
+        damage = QRect(0, 0, width, height);
+
+    const int slot = buffer->pool.acquire();
+    if (slot < 0) {
+        // Every buffer is still held by the compositor. Do not write into a
+        // busy buffer; the controller keeps the surface dirty and retries on
+        // `bufferReleased`. This is a deferred frame, not a transport error.
+        emit commitDeferred(label);
+        return true;
+    }
+    if (!ensureShmSlot(surface, buffer, slot, QSize(width, height))) {
+        buffer->pool.release(slot);
+        return false;
+    }
+    ShellShmSlot &resource = buffer->slotResources[slot];
+
+    // Exactly one full-surface CPU copy into the pooled buffer. The damage
+    // region tells the compositor which part it must sample; unchanged pixels
+    // still travel in the buffer so a different pool slot is always complete.
+    for (int y = 0; y < height; ++y) {
+        const uchar *sourceLine = frame.constScanLine(source.y() + y)
+            + static_cast<qsizetype>(source.x()) * 4;
+        std::memcpy(static_cast<uchar *>(resource.data)
+                        + static_cast<size_t>(y) * stride,
+                    sourceLine, stride);
+    }
 
     // Buffer scale / viewport must be set before the attach+commit that makes
     // them current. At 1x this is the default (scale 1, viewport unset), so
     // the existing frame is bit-identical.
-    applySurfaceScale(surface, logical, frame.size());
+    applySurfaceScale(surface, logical, QSize(width, height));
 
-    wl_surface_attach(surface, buffer, 0, 0);
-    wl_surface_damage_buffer(surface, 0, 0, width, height);
+    // Request the callback before the commit it should pace. The compositor
+    // answers it after this frame presents; the controller then schedules the
+    // next QML render.
+    requestFrameInternal(surface, buffer);
+
+    wl_surface_attach(surface, resource.buffer, 0, 0);
+    wl_surface_damage_buffer(surface, damage.x(), damage.y(),
+                             damage.width(), damage.height());
     wl_surface_commit(surface);
     wl_display_flush(m_display);
+    buffer->lastImage = frame;
+    buffer->lastSourceRect = source;
     if (statsEnabled) {
-        // `commit_us` is measured from the readback's completion (the frame
-        // gate records it) to the surface commit. The fallback covers a
-        // commit with no preceding `grabWindow()`.
+        // `commit_us` is measured from the render completion to the surface
+        // commit; the fallback covers a commit with no preceding render.
         qint64 commitUs = ChromeStats::instance().commitUsSinceRender();
         if (commitUs < 0)
             commitUs = commitTimer.nsecsElapsed() / 1000;
-        ChromeStats::instance().recordCommit(surfaceLabel(surface), logical,
-                                             frame.size(), geometry.bufferScale,
-                                             geometry.scale, geometry.useViewport,
-                                             commitUs, static_cast<qint64>(size));
+        ChromeStats::instance().recordCommit(label, logical, QSize(width, height),
+                                             geometry.bufferScale, geometry.scale,
+                                             geometry.useViewport, commitUs,
+                                             static_cast<qint64>(bytes),
+                                             qint64(damage.width()) * damage.height());
     }
     return true;
 }
+
+ShellSurfaceBuffer *ShellProtocol::surfaceBuffer(wl_surface *surface)
+{
+    if (!surface)
+        return nullptr;
+    auto it = m_surfaceBuffers.find(surface);
+    if (it != m_surfaceBuffers.end())
+        return it.value();
+    auto *buffer = new ShellSurfaceBuffer;
+    m_surfaceBuffers.insert(surface, buffer);
+    return buffer;
+}
+
+bool ShellProtocol::ensureShmSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
+                                  const QSize &size)
+{
+    if (!surface || !buffer || !m_shm || size.isEmpty())
+        return false;
+    auto it = buffer->slotResources.find(slot);
+    if (it != buffer->slotResources.end()) {
+        ShellShmSlot &existing = it.value();
+        if (existing.buffer && existing.bytes
+                == static_cast<size_t>(size.width()) * 4u
+                       * static_cast<size_t>(size.height()))
+            return true;
+        destroyShmSlot(buffer, slot);
+    }
+
+    const int width = size.width();
+    const int height = size.height();
+    const size_t stride = static_cast<size_t>(width) * 4u;
+    const size_t bytes = stride * static_cast<size_t>(height);
+    int fd = createShmFile(bytes);
+    if (fd < 0) {
+        fail(QStringLiteral("cannot allocate a shared-memory buffer: %1")
+                 .arg(QString::fromLocal8Bit(strerror(errno))));
+        return false;
+    }
+    void *data = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (data == MAP_FAILED) {
+        ::close(fd);
+        fail(QStringLiteral("cannot map the shared-memory buffer"));
+        return false;
+    }
+    wl_shm_pool *pool = wl_shm_create_pool(m_shm, fd, static_cast<int32_t>(bytes));
+    if (!pool) {
+        munmap(data, bytes);
+        ::close(fd);
+        fail(QStringLiteral("cannot create the shared-memory pool"));
+        return false;
+    }
+    wl_buffer *wlBuffer = wl_shm_pool_create_buffer(
+        pool, 0, width, height, static_cast<int32_t>(stride), WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool_destroy(pool);
+    ::close(fd);
+    if (!wlBuffer) {
+        munmap(data, bytes);
+        fail(QStringLiteral("cannot create the shared-memory buffer"));
+        return false;
+    }
+
+    static const wl_buffer_listener bufferListener = { onBufferRelease };
+    wl_buffer_add_listener(wlBuffer, &bufferListener, this);
+
+    ShellShmSlot resource;
+    resource.buffer = wlBuffer;
+    resource.data = data;
+    resource.fd = -1;
+    resource.bytes = bytes;
+    resource.generation = 0;
+    buffer->slotResources.insert(slot, resource);
+    m_bufferOwners.insert(wlBuffer, qMakePair(surface, slot));
+    ChromeStats::instance().recordShmAlloc(surfaceLabel(surface),
+                                           static_cast<qint64>(bytes));
+    return true;
+}
+
+void ShellProtocol::destroyShmSlot(ShellSurfaceBuffer *buffer, int slot, bool destroyBuffer)
+{
+    if (!buffer)
+        return;
+    auto it = buffer->slotResources.find(slot);
+    if (it == buffer->slotResources.end())
+        return;
+    ShellShmSlot &resource = it.value();
+    if (resource.buffer) {
+        m_bufferOwners.remove(resource.buffer);
+        if (destroyBuffer)
+            wl_buffer_destroy(resource.buffer);
+    }
+    if (resource.data)
+        munmap(resource.data, resource.bytes);
+    if (resource.fd >= 0)
+        ::close(resource.fd);
+    buffer->slotResources.erase(it);
+}
+
+void ShellProtocol::destroySurfaceBuffer(wl_surface *surface)
+{
+    auto it = m_surfaceBuffers.find(surface);
+    if (it == m_surfaceBuffers.end())
+        return;
+    ShellSurfaceBuffer *buffer = it.value();
+    m_surfaceBuffers.erase(it);
+    if (buffer->frameCallback) {
+        m_frameCallbackSurfaces.remove(buffer->frameCallback);
+        wl_callback_destroy(buffer->frameCallback);
+        buffer->frameCallback = nullptr;
+    }
+    const QList<int> slotIds = buffer->slotResources.keys();
+    for (int slot : slotIds)
+        destroyShmSlot(buffer, slot);
+    delete buffer;
+}
+
+void ShellProtocol::requestFrameInternal(wl_surface *surface, ShellSurfaceBuffer *buffer)
+{
+    if (!surface || !buffer || buffer->frameCallback || !m_display)
+        return;
+    wl_callback *callback = wl_surface_frame(surface);
+    if (!callback)
+        return;
+    static const wl_callback_listener listener = { onFrameCallback };
+    wl_callback_add_listener(callback, &listener, this);
+    buffer->frameCallback = callback;
+    buffer->frameRequested.start();
+    m_frameCallbackSurfaces.insert(callback, surface);
+}
+
+void ShellProtocol::requestFrame(wl_surface *surface)
+{
+    if (!surface)
+        return;
+    requestFrameInternal(surface, surfaceBuffer(surface));
+}
+
+bool ShellProtocol::hasPendingFrame(const QString &surface) const
+{
+    if (surface.isEmpty())
+        return false;
+    for (auto it = m_surfaceBuffers.constBegin(); it != m_surfaceBuffers.constEnd(); ++it) {
+        if (it.value()->frameCallback && surfaceLabel(it.key()) == surface)
+            return true;
+    }
+    return false;
+}
+
+void ShellProtocol::cancelPendingFrame(const QString &surface)
+{
+    if (surface.isEmpty())
+        return;
+    QList<wl_surface *> matches;
+    for (auto it = m_surfaceBuffers.constBegin(); it != m_surfaceBuffers.constEnd(); ++it) {
+        if (surfaceLabel(it.key()) == surface)
+            matches.append(it.key());
+    }
+    for (wl_surface *match : matches) {
+        ShellSurfaceBuffer *buffer = m_surfaceBuffers.value(match);
+        if (!buffer)
+            continue;
+        if (buffer->frameCallback) {
+            wl_callback *callback = buffer->frameCallback;
+            buffer->frameCallback = nullptr;
+            m_frameCallbackSurfaces.remove(callback);
+            wl_callback_destroy(callback);
+        }
+        // The hidden surface's damage baseline is stale; the next commit after
+        // it is shown again must be a full frame.
+        buffer->lastImage = QImage();
+        buffer->lastSourceRect = QRect();
+    }
+}
+
+QRect ShellProtocol::changedPixelRect(const QImage &previous, const QRect &previousRect,
+                                      const QImage &current, const QRect &currentRect)
+{
+    const QSize size = currentRect.size();
+    if (size.isEmpty())
+        return QRect();
+    if (previous.isNull() || previousRect.size() != size
+            || previous.format() != current.format())
+        return QRect(QPoint(0, 0), size);
+
+    int minX = size.width();
+    int minY = size.height();
+    int maxX = -1;
+    int maxY = -1;
+    const int rowBytes = size.width() * 4;
+    for (int y = 0; y < size.height(); ++y) {
+        const uchar *a = previous.constScanLine(previousRect.y() + y)
+            + static_cast<qsizetype>(previousRect.x()) * 4;
+        const uchar *b = current.constScanLine(currentRect.y() + y)
+            + static_cast<qsizetype>(currentRect.x()) * 4;
+        if (std::memcmp(a, b, static_cast<size_t>(rowBytes)) == 0)
+            continue;
+        int first = 0;
+        while (first < size.width()
+               && std::memcmp(a + first * 4, b + first * 4, 4) == 0)
+            ++first;
+        int last = size.width() - 1;
+        while (last >= first && std::memcmp(a + last * 4, b + last * 4, 4) == 0)
+            --last;
+        minX = qMin(minX, first);
+        maxX = qMax(maxX, last);
+        minY = qMin(minY, y);
+        maxY = qMax(maxY, y);
+    }
+    if (maxX < minX || maxY < minY)
+        return QRect();
+    return QRect(minX, minY, maxX - minX + 1, maxY - minY + 1);
+}
+
+void ShellProtocol::onFrameCallback(void *data, wl_callback *callback, uint32_t time)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    wl_surface *surface = self->m_frameCallbackSurfaces.take(callback);
+    if (!surface) {
+        wl_callback_destroy(callback);
+        return;
+    }
+    auto it = self->m_surfaceBuffers.find(surface);
+    qint64 callbackUs = -1;
+    if (it != self->m_surfaceBuffers.end()) {
+        ShellSurfaceBuffer *buffer = it.value();
+        if (buffer->frameCallback == callback) {
+            buffer->frameCallback = nullptr;
+            if (buffer->frameRequested.isValid())
+                callbackUs = buffer->frameRequested.nsecsElapsed() / 1000;
+        }
+    }
+    wl_callback_destroy(callback);
+    ChromeStats::instance().recordFrameCallback(self->surfaceLabel(surface), callbackUs);
+    emit self->framePresented(self->surfaceLabel(surface), time);
+}
+
 
 bool ShellProtocol::dispatch()
 {
@@ -2031,9 +2346,12 @@ void ShellProtocol::teardown()
 {
     // Destroy the per-surface scale helpers before their wl_surfaces.
     destroyScaleObjects();
-    for (wl_buffer *buffer : std::as_const(m_buffers))
-        wl_buffer_destroy(buffer);
-    m_buffers.clear();
+    // Pooled buffers and their pending frame callbacks are per surface.
+    const QList<wl_surface *> bufferedSurfaces = m_surfaceBuffers.keys();
+    for (wl_surface *surface : bufferedSurfaces)
+        destroySurfaceBuffer(surface);
+    m_bufferOwners.clear();
+    m_frameCallbackSurfaces.clear();
     // Session lock (T-12.3a): while locked, neither the lock object nor its
     // surfaces may be destroyed — that is a protocol error, and leaving them
     // alive lets the connection drop keep the compositor locked (the
@@ -3730,8 +4048,36 @@ df_toplevel *ShellProtocol::toplevelForId(quintptr windowId) const
 void ShellProtocol::onBufferRelease(void *data, wl_buffer *buffer)
 {
     auto *self = static_cast<ShellProtocol *>(data);
-    self->m_buffers.remove(buffer);
-    wl_buffer_destroy(buffer);
+    // The owner mapping lives for the whole buffer lifetime; a current-size
+    // buffer returns to the pool and will be released again on a later frame.
+    const auto owner = self->m_bufferOwners.value(buffer);
+    wl_surface *surface = owner.first;
+    const int slot = owner.second;
+    QString label;
+    bool destroyBuffer = true;
+    if (surface) {
+        label = self->surfaceLabel(surface);
+        auto it = self->m_surfaceBuffers.find(surface);
+        if (it != self->m_surfaceBuffers.end()) {
+            ShellSurfaceBuffer *surfaceBuffer = it.value();
+            surfaceBuffer->pool.release(slot);
+            if (surfaceBuffer->pool.isRetired(slot)) {
+                // The buffer belongs to a retired size era; its memory can go
+                // now that the compositor is done with it. The release
+                // listener owns the single wl_buffer_destroy below.
+                self->destroyShmSlot(surfaceBuffer, slot, false);
+                surfaceBuffer->pool.remove(slot);
+            } else {
+                // A current-size buffer returns to the pool with its
+                // wl_buffer intact; the next commit attaches it again.
+                destroyBuffer = false;
+            }
+        }
+    }
+    if (destroyBuffer)
+        wl_buffer_destroy(buffer);
+    if (!label.isEmpty())
+        emit self->bufferReleased(label);
 }
 
 // --- df_output / df_workspace (unused properties) ---------------------------

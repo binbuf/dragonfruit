@@ -20,13 +20,14 @@ use smithay::backend::renderer::element::{AsRenderElements, Kind, RenderElementS
 use smithay::backend::renderer::utils::{with_renderer_surface_state, CommitCounter};
 use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer};
 use smithay::desktop::utils::{
-    surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
-    OutputPresentationFeedback,
+    send_frames_surface_tree, surface_presentation_feedback_flags_from_states,
+    surface_primary_scanout_output, OutputPresentationFeedback,
 };
 use smithay::output::Output;
 use smithay::render_elements;
 use smithay::utils::{IsAlive, Logical, Rectangle, Scale};
 use smithay::wayland::fractional_scale::with_fractional_scale;
+use smithay::wayland::compositor::{with_states, SurfaceAttributes};
 
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
@@ -709,6 +710,40 @@ pub fn take_presentation_feedback(
     feedback
 }
 
+/// Send the pending `wl_surface.frame` callbacks of every chrome surface
+/// composited on `output` and return how many were answered.
+///
+/// Chrome is paced by presentation just like a window: the shell requests a
+/// callback before each commit, and only renders the next QML frame when this
+/// callback arrives. There is deliberately no 1 s throttle here (the window
+/// path's throttle is for occluded/background windows); a chrome surface that
+/// is visible on the output is the shell's pacing source. The callback count
+/// feeds the T-21.1a `chrome_frame_callbacks` counter.
+fn send_chrome_frame_callbacks(state: &DfState, output: &Output, time: Duration) -> u64 {
+    let Some(geometry) = state.space.output_geometry(output) else {
+        return 0;
+    };
+    let mut sent = 0u64;
+    for chrome in state.chrome_surfaces(output.name().as_str(), geometry) {
+        let pending = with_states(&chrome.surface, |states| {
+            states
+                .cached_state
+                .get::<SurfaceAttributes>()
+                .current()
+                .frame_callbacks
+                .len()
+        });
+        if pending == 0 {
+            continue;
+        }
+        send_frames_surface_tree(&chrome.surface, output, time, None, |_, _| {
+            Some(output.clone())
+        });
+        sent += pending as u64;
+    }
+    sent
+}
+
 /// Send frame callbacks for the live windows of `output` on a backend with no
 /// render report (headless).
 ///
@@ -735,6 +770,8 @@ pub fn post_repaint_headless(state: &mut DfState, output: &Output, time: Duratio
     // One frame-callback batch per live window: the idle budget's direct
     // "client wakeups" counter (T-03.1a).
     state.stats.client_wakeups += wakeups;
+    // Chrome surfaces are paced by the same presented frame (T-21.1c).
+    state.stats.chrome_frame_callbacks += send_chrome_frame_callbacks(state, output, time);
     // This is a presented frame (headless's stand-in for the photon): credit
     // any pending input with its input-to-photon round trip (T-03.1b).
     state.stats.latency.note_present(Instant::now());
@@ -772,6 +809,9 @@ pub fn send_frame_callbacks(
         }
     }
     state.stats.client_wakeups += wakeups;
+    // A no-damage frame still answers chrome callbacks, otherwise the shell
+    // would wait for a presentation that the idle compositor never produces.
+    state.stats.chrome_frame_callbacks += send_chrome_frame_callbacks(state, output, time);
 }
 
 /// Whether the compositor may advertise a fractional preferred scale to
@@ -851,6 +891,9 @@ pub fn post_repaint(
     // One frame-callback batch per live window: the idle budget's direct
     // "client wakeups" counter (T-03.1a).
     state.stats.client_wakeups += wakeups;
+    // Chrome surfaces are paced by this presented frame (T-21.1c). No 1 s
+    // throttle: a visible chrome surface is the shell's animation clock.
+    state.stats.chrome_frame_callbacks += send_chrome_frame_callbacks(state, output, time);
     // This frame was presented (nested `submit`): credit any pending input
     // with its input-to-photon round trip (T-03.1b).
     state.stats.latency.note_present(Instant::now());

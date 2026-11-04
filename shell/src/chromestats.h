@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
-// Opt-in chrome transport counters (T-21.1a).
+// Opt-in chrome transport counters (T-21.1a, extended by T-21.1c).
 //
-// The shell's chrome presentation path is deliberately measured, not guessed:
 // `DRAGONFRUIT_CHROME_STATS=1` turns on the counters below and a greppable
 // `chrome stats` line on SIGUSR1/exit. When the variable is unset the class is
 // inert (every recorder returns immediately), so the normal path keeps its
@@ -24,22 +23,39 @@ public:
     // True when `DRAGONFRUIT_CHROME_STATS` is set to a non-zero value.
     bool enabled() const { return m_enabled; }
 
-    // The QML scene-graph produced a frame (one `afterRendering`).
+    // The transport label in the summary line (`render-control+shm` or the
+    // pre-T-21.1c fallback `offscreen-qpa+shm`).
+    void setTransportPath(const QString &path);
+
+    // The QML scene-graph produced a frame (one renderFrame()).
     void recordSceneFrame();
-    // `grabWindow()` is about to re-render the scene for a commit.
+    // One producer rendered a frame for `surface` (the stable label).
+    void recordRender(const QString &surface);
+    // `grabWindow()` is about to re-render the scene for a commit. Stays zero
+    // on the render-control path.
     void recordGrabRender();
-    // The readback finished; `commit_us` is measured from here.
+    // The render finished; `commit_us` is measured from here.
     void recordRenderComplete();
-    // One chrome buffer commit. `logicalSize` is the surface contract the
-    // compositor configured; `bufferSize` is the physical buffer committed;
-    // `bufferScale` is the wl_surface integer scale (1 when a wp_viewport
-    // carries a fractional mapping). `shmBytes` is the fresh shared-memory
-    // buffer this commit allocated and copied (0 for a non-shm path).
+    // A new pooled shm buffer was allocated (not a reuse).
+    void recordShmAlloc(const QString &surface, qint64 bytes);
+    // One committed chrome frame. `copyBytes` is the bytes copied into the
+    // pooled buffer, `damagePixels` the changed region the compositor is told
+    // about. Allocation is recorded separately, so a steady-state frame has
+    // `recordShmAlloc` count 0 and a non-zero `copyBytes`.
     void recordCommit(const QString &surface, const QSize &logicalSize,
                       const QSize &bufferSize, int bufferScale, qreal scale,
-                      bool viewport, qint64 commitUs, qint64 shmBytes);
-    // A `wl_surface.frame` callback was delivered (none before T-21.1c).
-    void recordFrameCallback(qint64 callbackUs);
+                      bool viewport, qint64 commitUs, qint64 copyBytes,
+                      qint64 damagePixels);
+    // A frame whose pixels were identical to the previous commit: no buffer,
+    // copy, or commit was needed.
+    void recordSkippedCommit(const QString &surface, const QSize &logicalSize,
+                             const QSize &bufferSize, int bufferScale, qreal scale,
+                             bool viewport);
+    // A `wl_surface.frame` callback was delivered for `surface`.
+    void recordFrameCallback(const QString &surface, qint64 callbackUs);
+    // A render driven by the bounded safety tick because no frame callback
+    // arrived (a degraded compositor).
+    void recordFallbackRender();
 
     // Microseconds since the last render completion, or -1 when no readback
     // has completed yet.
@@ -66,8 +82,13 @@ private:
         qreal scale = 1.0;
         bool viewport = false;
         quint64 commits = 0;
+        quint64 renders = 0;
         quint64 shmAllocs = 0;
         quint64 shmBytes = 0;
+        quint64 copyBytes = 0;
+        quint64 damagePixels = 0;
+        quint64 skippedCommits = 0;
+        quint64 fallbackRenders = 0;
         QVector<qint64> commitUs;
         QVector<qint64> frameCallbackUs;
     };
@@ -75,11 +96,16 @@ private:
     ChromeStats();
 
     bool m_enabled = false;
+    QString m_transportPath = QStringLiteral("offscreen-qpa+shm");
     quint64 m_sceneFrames = 0;
     quint64 m_commits = 0;
     quint64 m_grabRenders = 0;
     quint64 m_shmAllocs = 0;
     quint64 m_shmBytes = 0;
+    quint64 m_copyBytes = 0;
+    quint64 m_damagePixels = 0;
+    quint64 m_skippedCommits = 0;
+    quint64 m_fallbackRenders = 0;
     quint64 m_frameCallbacks = 0;
     quint64 m_signalDumps = 0;
     QVector<qint64> m_commitUs;

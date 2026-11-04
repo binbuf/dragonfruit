@@ -46,6 +46,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     apppicker.cpp
     appsdrawer.cpp
     chooserbridge.cpp
+    chromebufferpool.cpp
+    chromebufferpool.h
     chromescale.cpp
     chromescale.h
     chromestats.cpp
@@ -173,6 +175,8 @@ endforeach()
 
 qt_add_executable(dragonfruit-shell
     main.cpp
+    chromeframeproducer.cpp
+    chromeframeproducer.h
     shellcontroller.cpp
     shellprotocol.cpp
     systemstatusclient.cpp

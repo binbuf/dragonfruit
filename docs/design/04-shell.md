@@ -34,20 +34,26 @@ Dock, Control Center quick-settings sheets, Spotlight, About This System):
 local-only macOS screenshots that never ship.
 
 **Known presentation limits (2026-11).** The shell forces
-`QT_QPA_PLATFORM=offscreen` and commits each chrome surface as a
-`QImage` readback: `grabWindow()` renders the QML scene, the image is copied,
-and `commitTo()` allocates a fresh `wl_shm` buffer. That keeps the shell
-independent of the Qt Wayland platform plugin, but it is still expensive per
-frame. T-21.1b fixed the fractional-scale softness: the shell binds
+`QT_QPA_PLATFORM=offscreen` and owns the chrome transport itself. Since
+T-21.1c every chrome surface renders through one `ChromeFrameProducer`
+(`QQuickRenderControl` into a ping-pong `QImage` pair, one render per requested
+frame) and commits through a per-surface three-buffer `wl_shm` pool. A commit
+copies the source rectangle once, damages only the changed pixel bounding box,
+and is skipped when nothing changed; `wl_surface.frame` callbacks pace the next
+QML render, with a counted 100 ms safety tick for a compositor that never
+answers. This keeps the shell independent of the Qt Wayland platform plugin and
+removes the old `grabWindow()` double render and per-commit allocation. T-21.1b
+fixed the fractional-scale softness: the shell binds
 `wp_fractional_scale_manager_v1`/`wp_viewporter`, renders the QML scene at the
 preferred physical resolution while keeping layout in logical units, uses
 `wl_surface.set_buffer_scale` for exact integers and a `wp_viewport` for
 fractional scales, and keeps reserved zones, panel rects, and input regions
 logical ([ADR 0192](adr/0192-chrome-scale-physical-buffer-and-viewport.md)).
-The remaining transport work is P0 in [STATUS.md](STATUS.md) (G-01): pooled shm
-plus damage and `wl_surface.frame` callbacks (T185), then the GPU-backed path
-(T186). Per-output shell scenes with different scales on one desktop remain a
-follow-up; a chrome surface shares one scale.
+The remaining transport work is the GPU/dmabuf path (T186); the pooled shm path
+is its fallback ([ADR 0191](adr/0191-chrome-transport-render-control-and-shm-fallback.md),
+[ADR 0193](adr/0193-chrome-frame-producer-pooled-shm-pacing.md)). Per-output
+shell scenes with different scales on one desktop remain a follow-up; a chrome
+surface shares one scale.
 
 **Chrome materials (T-20.3).** Every one of these surfaces is
 [a compositor-material surface](../design/02-compositor.md#backdrop-blur-pass-t-042),
