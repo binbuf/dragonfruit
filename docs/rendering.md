@@ -274,6 +274,24 @@ Before/after evidence:
 [`captures/t21-chrome-transport-after.txt`](captures/t21-chrome-transport-after.txt).
 The GPU/dmabuf transport remains T186; the pooled shm path is its fallback.
 
+**Spike (T186a).** The GPU path now has a capability probe and a
+`QQuickRenderControl` render-control skeleton. `GpuChromeProbe` binds
+`zwp_linux_dmabuf_v1` read-only on the shell's existing Wayland connection,
+logs its feedback formats/modifiers and the EGL export/import extensions, and
+records a fallback reason when any prerequisite is missing. The pure
+`GpuChromeCapabilities` helper selects `ABGR8888`/`ARGB8888` with a
+deterministic modifier preference and is covered by `tst_gpucapabilities`.
+`GpuChromeFrameProducer` subclasses the T185 producer with a `QOpenGLContext`,
+`QOffscreenSurface`, hidden `QQuickWindow`, reusable FBO and
+`QQuickRenderTarget` DPR handling; one QML scene renders once at 320x180 from
+a 160x90 logical scene at DPR 2. The flag stays off, no `wl_buffer` is
+committed, and the offscreen shell rail records `no-gl-context` instead of a
+black frame. Evidence:
+[`captures/t21-gpu-probe.txt`](captures/t21-gpu-probe.txt) and
+[`captures/t21-gpu-smoke.png`](captures/t21-gpu-smoke.png); contract
+[ADR 0194](design/adr/0194-gpu-chrome-probe-and-render-control-spike.md).
+The dmabuf export/commit and the Dock rollout remain T186b/T186c/T186d.
+
 **Close-out (T185a).** The final-tree rerun was host-throttled: the nested
 window was not presented at 60 Hz, so the shell's 100 ms safety tick is visible
 as `fallback_renders` and the Dock sweep commits fewer frames than the accepted

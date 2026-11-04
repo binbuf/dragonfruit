@@ -177,6 +177,12 @@ bool ShellProtocol::connectToCompositor(const QString &socketName)
         return fail(QStringLiteral("failed to bind df_core"));
     static const df_core_listener coreListener = { onCoreAuthenticated, onCoreRefused };
     df_core_add_listener(m_core, &coreListener, this);
+
+    // T-21.1d capability probe: one extra registry on the same connection,
+    // no buffer creation and no commit. A failed probe is a recorded fallback
+    // reason, never a startup failure.
+    m_gpuCapabilities = GpuChromeProbe::probeDisplay(m_display);
+    GpuChromeProbe::logResult(m_gpuCapabilities, QStringLiteral("startup"));
     return true;
 }
 

@@ -1,0 +1,33 @@
+T-21.1d GPU chrome capability probe (T186a)
+timestamp: 2026-11-04T02:31:27-08:00
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+distro: Fedora Linux 44 (KDE Plasma Desktop Edition)
+session: XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=kwin-t21
+nested socket: dragonfruit-t21-gpu-69216
+smoke command: QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=dragonfruit-t21-gpu-69216 DRAGONFRUIT_CHROME_GPU=1 build/shell/tests/t21-gpu-smoke --out docs/captures/t21-gpu-smoke.png --dpr 2
+
+## Capability probe and render-control spike (nested GL)
+t21 gpu smoke: platform=wayland chrome_gpu=1 dpr=2
+t21-gpu-smoke: chrome gpu probe (smoke): dmabuf_global=yes version=5 feedback=yes tranches=1 formats=AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,... main_device=226:128 egl_display=yes egl_vendor=Mesa Project egl_export=yes egl_import=yes egl_modifiers=yes selected=ABGR8888:linear compositor_import=advertised verdict=gpu-ready reason=none
+t21-gpu-smoke: chrome gpu probe (smoke) formats: AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,AB4H:linear,AB4H:invalid,XB4H:0x020000044051ba01,XB4H:0x020000044051b901,XB4H:0x020000044051b601,XB4H:0x0200000000401a01,XB4H:0x0200000000401901,XB4H:0x0200000000401601,...
+t21-gpu-smoke: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=2 gpu_env=1
+t21 gpu smoke: scene root visible=1 size=160x90 parent=160x90 window_ok=1 children=2 opacity=1 enabled=1 content_visible=1
+t21 gpu smoke: framebuffer=320x180 logical=160x90 dpr=2 expected=320x180 pixel_tl=#ff00ff00 pixel_tr=#ffff0000 pixel_br=#ff0000ff size_ok=1 dpr_ok=1 pixels_ok=1 saved=1 frames=1 probe_verdict=gpu-ready selected=ABGR8888:linear
+t21 gpu smoke: capture=/home/user/repos/binbuf/dragonfruit/docs/captures/t21-gpu-smoke.png
+t21 gpu smoke: verdict=pass
+
+## Clean no-GL fallback (offscreen QPA, same compositor)
+t21 gpu smoke: platform=offscreen chrome_gpu=1 dpr=2
+t21-gpu-smoke: chrome gpu probe (smoke): dmabuf_global=yes version=5 feedback=yes tranches=1 formats=AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,... main_device=226:128 egl_display=yes egl_vendor=Mesa Project egl_export=yes egl_import=yes egl_modifiers=yes selected=ABGR8888:linear compositor_import=advertised verdict=gpu-ready reason=none
+t21-gpu-smoke: chrome gpu probe (smoke) formats: AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,AB4H:linear,AB4H:invalid,XB4H:0x020000044051ba01,XB4H:0x020000044051b901,XB4H:0x020000044051b601,XB4H:0x0200000000401a01,XB4H:0x0200000000401901,XB4H:0x0200000000401601,...
+t21-gpu-smoke: chrome gpu producer: fallback reason=no-gl-context
+t21 gpu smoke: verdict=fallback reason=no-gl-context probe_verdict=gpu-ready
+
+## Compositor dmabuf advertisement / exit stats
+dragonfruit-compositor: render stats (exit): frames_rendered=2 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=0 client_wakeups=0 latency_us_last=0 latency_us_max=0 latency_samples=0 latency_dropped=0 scene_transforms=0 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (exit): chrome_shm_imports=0 chrome_shm_bytes=0 chrome_dmabuf_imports=0 chrome_frame_callbacks=0
+dragonfruit-compositor: frame timing (exit): samples=2 samples_total=2 avg_us=3561 p50_us=794 p95_us=794 p99_us=794 max_us=6328 window_max_us=6328 max_interval_ms=15
+
+## Verdict
+PASS: nested GL render-control frame verified at physical resolution;
+the offscreen rail recorded a clean fallback reason.

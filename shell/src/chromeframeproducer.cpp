@@ -9,8 +9,16 @@
 #include "chromestats.h"
 
 ChromeFrameProducer::ChromeFrameProducer(QObject *parent)
+    : ChromeFrameProducer(Construction::Default, parent)
+{
+}
+
+ChromeFrameProducer::ChromeFrameProducer(Construction construction, QObject *parent)
     : QObject(parent)
 {
+    if (construction == Construction::External)
+        return;
+
     // The scene-graph adaptation is chosen when the first QQuickWindow is
     // constructed. A throwaway probe window answers "software or not" without
     // forcing a backend: on a host with no GPU Qt falls back to software here

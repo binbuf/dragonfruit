@@ -1104,6 +1104,18 @@ logical/buffer pair (`1280x125 -> 1920x188`, scale 1, viewport 1 at 1.5x;
 `960x125 -> 1920x250`, scale 2 at 2x). The contract is
 [ADR 0192](../design/adr/0192-chrome-scale-physical-buffer-and-viewport.md).
 
+T-21.1d's GPU probe and render-control spike is
+`scripts/t21-gpu-probe.sh` (`make t21-gpu-probe`). It starts one nested
+Dragonfruit compositor, runs `build/shell/tests/t21-gpu-smoke` against it with
+`QT_QPA_PLATFORM=wayland DRAGONFRUIT_CHROME_GPU=1`, and records the
+`zwp_linux_dmabuf_v1` feedback, EGL export/import extensions, selected
+format/modifier, and the 320x180/DPR-2 pixel verification in
+`t21-gpu-probe.txt`; `t21-gpu-smoke.png` is the rendered scene. A second run on
+the offscreen QPA records `fallback reason=no-gl-context`, proving the no-GL
+rail is a clean fallback. No `wl_buffer` is committed: the compositor exit
+stats show `chrome_dmabuf_imports=0`. The contract is
+[ADR 0194](../design/adr/0194-gpu-chrome-probe-and-render-control-spike.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

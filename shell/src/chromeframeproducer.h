@@ -18,6 +18,7 @@
 #include <QImage>
 #include <QObject>
 #include <QSize>
+#include <QString>
 
 class QQuickRenderControl;
 class QQuickWindow;
@@ -30,23 +31,34 @@ public:
     explicit ChromeFrameProducer(QObject *parent = nullptr);
     ~ChromeFrameProducer() override;
 
-    QQuickWindow *window() const { return m_window; }
-    bool renderControlActive() const { return m_renderControl != nullptr; }
-    bool softwareSceneGraph() const { return m_software; }
+    virtual QQuickWindow *window() const { return m_window; }
+    virtual bool renderControlActive() const { return m_renderControl != nullptr; }
+    virtual bool softwareSceneGraph() const { return m_software; }
+    // True when this producer renders through a GPU context. The T185 shm
+    // producer is always false; GpuChromeFrameProducer overrides it.
+    virtual bool gpuActive() const { return false; }
+    // A short reason the GPU path fell back, or an empty string.
+    virtual QString fallbackReason() const { return QString(); }
 
     // Resize the offscreen window. A render-control window is never shown; a
     // fallback window is shown once so its render loop can drive it.
-    void resize(const QSize &bufferSize);
+    virtual void resize(const QSize &bufferSize);
 
     // Render one frame. The returned image is a shallow reference to the
     // producer's ping-pong target and stays valid until the same target is
     // reused two frames later. Null when no frame could be produced.
-    QImage renderFrame();
+    virtual QImage renderFrame();
 
 signals:
     // QML asked for a new frame (render control) or the fallback window
     // finished one. Coalesced by the controller; this is not a timer.
     void sceneChanged();
+
+protected:
+    // External lets a subclass own the window/context instead of the T185
+    // software producer. It creates no window and probes no backend.
+    enum class Construction { Default, External };
+    explicit ChromeFrameProducer(Construction construction, QObject *parent = nullptr);
 
 private:
     void ensureImages();
