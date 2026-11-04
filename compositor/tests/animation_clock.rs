@@ -89,6 +89,10 @@ impl Drop for CompositorProcess {
 
 impl CompositorProcess {
     fn start(socket_name: &str) -> Self {
+        Self::start_with_env(socket_name, &[])
+    }
+
+    fn start_with_env(socket_name: &str, env: &[(&str, &str)]) -> Self {
         let socket_name = format!("{socket_name}-{}", std::process::id());
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
         let socket_path = PathBuf::from(&runtime_dir).join(&socket_name);
@@ -97,16 +101,19 @@ impl CompositorProcess {
         let _ = std::fs::remove_file(&synthetic_path);
         let _ = std::fs::remove_file(&sender_path);
 
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
+        command
             .arg("--backend")
             .arg("headless")
             .arg("--socket-name")
             .arg(&socket_name)
             .env("DRAGONFRUIT_SYNTHETIC_INPUT", &synthetic_path)
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("failed to start compositor");
+            .stderr(Stdio::null());
+        for (key, value) in env {
+            command.env(key, value);
+        }
+        let mut child = command.spawn().expect("failed to start compositor");
         let stdout = child.stdout.take().expect("stdout piped");
 
         let (tx, rx) = mpsc::channel();
@@ -280,5 +287,54 @@ fn a_zero_duration_animation_takes_one_step() {
         "one compositor frame per animation frame"
     );
 
+    proc.shutdown();
+}
+
+/// T-21.2a acceptance: the test refresh override makes the clock tick at the
+/// derived period. A 300 ms animation at 144 Hz is ~43 steps; the old fixed
+/// 16 ms clock would step it ~18 times, so the threshold separates the two
+/// without depending on a precise frame count.
+#[test]
+fn a_144_hz_override_steps_the_clock_at_the_derived_interval() {
+    let proc = CompositorProcess::start_with_env(
+        "dragonfruit-test-animation-144hz",
+        &[("DRAGONFRUIT_REFRESH_HZ", "144")],
+    );
+
+    std::thread::sleep(Duration::from_millis(1500));
+    proc.signal(SIGUSR1);
+    let _warmup = proc.sample();
+
+    std::thread::sleep(Duration::from_millis(300));
+    proc.signal(SIGUSR1);
+    let first = proc.sample();
+
+    proc.animate("animate-dummy 300");
+    std::thread::sleep(Duration::from_millis(600));
+    proc.signal(SIGUSR1);
+    let second = proc.sample();
+
+    let stepped = second.animation_frames_stepped - first.animation_frames_stepped;
+    assert!(
+        stepped >= 30,
+        "a 300 ms animation at the 6.944 ms period stepped only {stepped} frames \
+         (a fixed 16 ms clock would be ~18): {first:?} -> {second:?}"
+    );
+    assert_eq!(
+        second.frames_rendered - first.frames_rendered,
+        stepped,
+        "one compositor frame per animation frame at the derived interval"
+    );
+
+    // Settled: the derived-interval timer is disarmed just like the 60 Hz one.
+    std::thread::sleep(Duration::from_millis(300));
+    proc.signal(SIGUSR1);
+    let third = proc.sample();
+    assert_eq!(
+        third.animation_frames_stepped, second.animation_frames_stepped,
+        "the 144 Hz clock kept ticking after the animation settled"
+    );
+
+    eprintln!("144 Hz animation clock trace: stepped +{stepped} over 300 ms");
     proc.shutdown();
 }

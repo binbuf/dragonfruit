@@ -1152,6 +1152,18 @@ rollout contract is
 The capture-only `DRAGONFRUIT_CHROME_GPU_SURFACES` filter isolates one surface
 per run; it does not change the shipping default.
 
+T-21.2a's simulated refresh trace is `scripts/t21-refresh-144.sh`
+(`make t21-refresh-144`). The first section starts one nested compositor with
+`DRAGONFRUIT_REFRESH_HZ=144` and records the derived `refresh stats`
+(`refresh_hz=144.000 source=override interval_us=6944 deadline_us=6944`) and
+`degrade stats` (`budget_us=6944 budget_source=refresh`). A nested host that
+does not present at 144 Hz can throttle the dummy animation's rendered frames,
+so the trace also runs two headless controls: 144 Hz steps ~43 frames over
+300 ms, 60 Hz steps ~18 (16.666 ms). The override is test-only and absent from
+a normal session; the cadence is pinned by
+`compositor/tests/animation_clock.rs` in `make e2e`. The policy is
+[ADR 0199](../design/adr/0199-refresh-clock-wiring.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

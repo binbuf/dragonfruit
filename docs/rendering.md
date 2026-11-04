@@ -49,7 +49,7 @@ The executable v0.1.1 task set is in
 | P2B DRM Kawase blur | **done, default-on** | Per-panel chain reuses `BLUR_SHADER`; `blur_draws` counts built elements. |
 | P2C glass compose | **done, default-on** | Reuses `GLASS_SHADER` and `GlassSpec`; `DRAGONFRUIT_DRM_GLASS=0` disables. |
 | P3 shell transport | **baseline + HiDPI done (T-21.1a/b)** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + fresh `wl_shm` per commit. HiDPI chrome now commits physical buffers with `buffer_scale`/`wp_viewport` ([ADR 0192](design/adr/0192-chrome-scale-physical-buffer-and-viewport.md)); pooling, frame callbacks, and GPU transport remain T185/T186. Measured in [`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt); transport decision [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md). |
-| P4 refresh-aware scheduling | **not started** | Global 16 ms animation/degrade budget; output is 4K @ 144 Hz. |
+| P4 refresh-aware scheduling | **partial (T-21.2a)** | The animation clock and degrade budget use the fastest active output's period, with `DRAGONFRUIT_REFRESH_HZ` test overrides and `refresh_hz`/`source` stats ([ADR 0199](design/adr/0199-refresh-clock-wiring.md)). Per-output deadlines, mixed refresh, and VRR remain T188. |
 | P5 multi-GPU | **single-GPU only** | Material path disables itself on a multi-GPU seat; shell falls back. |
 | P6 native visual verification | **not implemented** | No trusted native capture path. |
 
@@ -385,8 +385,10 @@ evidence.
 
 ## R3 — Refresh-aware animation and scheduling (P4)
 
-The compositor still uses a global 16 ms animation/degrade budget. The live
-output is 4K @ 143.999 Hz, where the deadline is 6.94 ms.
+The animation clock and degrade budget now derive from the fastest active
+output's refresh period (T187b); per-output presentation deadlines, mixed
+refresh, and VRR are still T188. The live output is 4K @ 143.999 Hz, where the
+deadline is 6.94 ms.
 
 ### R3.1 Per-output deadline
 
@@ -646,7 +648,8 @@ Each slice should be independently testable and have a rollback:
 - material: `DRAGONFRUIT_DRM_MATERIAL=0`
 - glass: `DRAGONFRUIT_DRM_GLASS=0`
 - shell: revert the transport change without touching the private protocol
-- scheduling: keep the 16 ms path until the per-output path is proven
+- scheduling: `DRAGONFRUIT_REFRESH_HZ` pins a test rate; the 60 Hz fallback is
+  the safe default until per-output deadlines are proven
 
 ---
 

@@ -1,0 +1,36 @@
+T-21.2a simulated 144 Hz refresh trace (T187b)
+timestamp: 2026-11-04T09:15:59-08:00
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+session: XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=dragonfruit-wayland
+command: DRAGONFRUIT_REFRESH_HZ=<hz> target/debug/dragonfruit-compositor --backend <nested|headless>
+synthetic command: animate-dummy 300
+derived period: 1e12 / 144000 mHz = 6944 ns = 6.944 ms
+derived budget: 6944 us (degrade stats budget_us, source=refresh)
+
+## Nested simulated 144 Hz: derived interval and budget
+nested socket: dragonfruit-t21-refresh-nested-332263
+dragonfruit-compositor: refresh override active (DRAGONFRUIT_REFRESH_HZ=144 -> 144.000 Hz, source=override)
+dragonfruit-compositor: animation stats (SIGUSR1-1): frames_stepped=0 animations_started=0 animations_completed=0 reduced_motion=false interval_us=6944
+dragonfruit-compositor: refresh stats (SIGUSR1-1): refresh_hz=144.000 source=override interval_us=6944 deadline_us=6944 outputs=1 override=1
+dragonfruit-compositor: degrade stats (SIGUSR1-1): tier=full forced=0 budget_us=6944 samples=1 over_budget=1 downgrades=0 upgrades=0 tiers=full:1,reduced:0,minimal:0 budget_source=refresh
+
+## Headless simulated 144 Hz: clock cadence
+dragonfruit-compositor: refresh override active (DRAGONFRUIT_REFRESH_HZ=144 -> 144.000 Hz, source=override)
+dragonfruit-compositor: refresh stats (SIGUSR1-1): refresh_hz=144.000 source=override interval_us=6944 deadline_us=6944 outputs=1 override=1
+dragonfruit-compositor: degrade stats (SIGUSR1-1): tier=full forced=0 budget_us=6944 samples=1 over_budget=0 downgrades=0 upgrades=0 tiers=full:1,reduced:0,minimal:0 budget_source=refresh
+dragonfruit-compositor: animation stats (SIGUSR1-2): frames_stepped=43 animations_started=1 animations_completed=1 reduced_motion=false interval_us=6944
+dragonfruit-compositor: frame timing (SIGUSR1-2): samples=44 samples_total=44 avg_us=14 p50_us=16 p95_us=21 p99_us=23 max_us=54 window_max_us=54 max_interval_ms=1378
+animation_frames_stepped delta=43 over 300 ms (~42 frames at 6.944 ms)
+
+## Headless simulated 60 Hz: baseline cadence
+dragonfruit-compositor: refresh stats (SIGUSR1-1): refresh_hz=60.000 source=override interval_us=16666 deadline_us=16666 outputs=1 override=1
+dragonfruit-compositor: degrade stats (SIGUSR1-1): tier=full forced=0 budget_us=16666 samples=1 over_budget=0 downgrades=0 upgrades=0 tiers=full:1,reduced:0,minimal:0 budget_source=refresh
+dragonfruit-compositor: animation stats (SIGUSR1-2): frames_stepped=18 animations_started=1 animations_completed=1 reduced_motion=false interval_us=16666
+dragonfruit-compositor: frame timing (SIGUSR1-2): samples=19 samples_total=19 avg_us=23 p50_us=21 p95_us=26 p99_us=26 max_us=71 window_max_us=71 max_interval_ms=1390
+animation_frames_stepped delta=18 over 300 ms (~17 frames at 16.666 ms)
+
+## Verdict
+nested derived-interval frames_stepped delta=3 (host-vblank throttled; interval/budget are the evidence)
+nested interval/budget: PASS (refresh_hz=144.000 interval_us=6944 budget_us=6944)
+headless cadence: PASS (144 Hz delta=43 >= 30; 60 Hz delta=18 in 12..24)
+PASS: the clock and degrade budget use the derived 144 Hz period.

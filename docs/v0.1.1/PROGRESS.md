@@ -12,6 +12,7 @@
 - **T186c — T-21.1d dmabuf ring, sync, and fallback**: `shell/src/chromedmabuf.{h,cpp}`: `ChromeDmabufRing` (capacity 3): acquire/; `GpuChromeFrameProducer` owns one FBO/export per ring slot. `exportFrame()`
 - **T186d — T-21.1d GPU transport: rollout, stats, and docs**: `ShellController::commitChromeScene()` is the single commit path for every; `ShellProtocol::commitDmabufFor(label, ...)` and `commitLockDmabuf(id, ...)`
 - **T187a — T-21.2a per-output refresh model (pure)**: New pure library module `compositor/src/refresh.rs`, exported as; `OutputRefresh { refresh_mhz, period, deadline, source, vrr }`,
+- **T187b — T-21.2a refresh clock wiring**: `AnimationClock` now owns `frame_interval` (default `FRAME_INTERVAL`), with; `DfState` owns `RefreshSchedule` and an optional `DRAGONFRUIT_REFRESH_HZ`
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -24,6 +25,7 @@
 - [T186c](progress/T186c.md) — `shell/src/chromedmabuf.{h,cpp}`: `ChromeDmabufRing` (capacity 3): acquire/
 - [T186d](progress/T186d.md) — `ShellController::commitChromeScene()` is the single commit path for every
 - [T187a](progress/T187a.md) — New pure library module `compositor/src/refresh.rs`, exported as
+- [T187b](progress/T187b.md) — `AnimationClock` now owns `frame_interval` (default `FRAME_INTERVAL`), with
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/
