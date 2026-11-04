@@ -30,10 +30,14 @@ public:
     void recordGrabRender();
     // The readback finished; `commit_us` is measured from here.
     void recordRenderComplete();
-    // One chrome buffer commit. `shmBytes` is the fresh shared-memory buffer
-    // this commit allocated and copied (0 for a non-shm path).
-    void recordCommit(const QString &surface, const QSize &bufferSize, int bufferScale,
-                      qint64 commitUs, qint64 shmBytes);
+    // One chrome buffer commit. `logicalSize` is the surface contract the
+    // compositor configured; `bufferSize` is the physical buffer committed;
+    // `bufferScale` is the wl_surface integer scale (1 when a wp_viewport
+    // carries a fractional mapping). `shmBytes` is the fresh shared-memory
+    // buffer this commit allocated and copied (0 for a non-shm path).
+    void recordCommit(const QString &surface, const QSize &logicalSize,
+                      const QSize &bufferSize, int bufferScale, qreal scale,
+                      bool viewport, qint64 commitUs, qint64 shmBytes);
     // A `wl_surface.frame` callback was delivered (none before T-21.1c).
     void recordFrameCallback(qint64 callbackUs);
 
@@ -59,6 +63,8 @@ private:
         QSize logicalSize;
         QSize bufferSize;
         int bufferScale = 1;
+        qreal scale = 1.0;
+        bool viewport = false;
         quint64 commits = 0;
         quint64 shmAllocs = 0;
         quint64 shmBytes = 0;

@@ -784,20 +784,30 @@ Item {
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
 
-        Column {
-            id: content
-            objectName: "controlCenterContent"
+        // T-21.1b: the panel keeps its full 1x content but scrolls when a
+        // fractional scale leaves less logical output height than the 1164 px
+        // design. At 1x the content fits exactly, so there is no scrollbar and
+        // the layout is unchanged.
+        Flickable {
+            id: contentScroll
+            objectName: "controlCenterScroll"
             anchors.fill: parent
             anchors.margins: Theme.primitive.spacing.md
-            // The panel now carries eighteen tiles (T-15.15b). Every tile's
-            // vertical padding is the compact `xxs` step and the intermediate
-            // gap is the compact `xxs` step too; the Accessibility and Network
-            // advanced (VPN) tiles are compact single-row summaries (no
-            // separate link line), and the shell surface is 1164 px (the nested
-            // output leaves 1164 px below the bar), so the content still fits
-            // without a scrolling panel (the compositor forwards no
-            // pointer-axis events, ADR 0139/0141).
-            spacing: Theme.primitive.spacing.xxs
+            contentWidth: width
+            contentHeight: content.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            Column {
+                id: content
+                objectName: "controlCenterContent"
+                width: contentScroll.width
+                // The panel now carries eighteen tiles (T-15.15b). Every tile's
+                // vertical padding is the compact `xxs` step and the
+                // intermediate gap is the compact `xxs` step too; the
+                // Accessibility and Network advanced (VPN) tiles are compact
+                // single-row summaries (no separate link line).
+                spacing: Theme.primitive.spacing.xxs
 
             // ── Wi-Fi ────────────────────────────────────────────────────
             Rectangle {
@@ -2286,6 +2296,7 @@ Item {
                     }
                 }
             }
+        }
         }
     }
 

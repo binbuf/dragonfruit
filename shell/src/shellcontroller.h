@@ -6,6 +6,7 @@
 #pragma once
 
 #include <QObject>
+#include <QEvent>
 #include <QHash>
 #include <QRect>
 #include <QSet>
@@ -429,6 +430,24 @@ private:
                            const QVariantMap &map = {});
     void render();
     void renderDock();
+    // T-21.1b: the one physical-resolution scene setup. The QML item keeps its
+    // logical size; `scale` is applied as the item transform so the window
+    // renders physical pixels. `windowLogical` is the offscreen window's
+    // logical extent (the Dock includes its popover headroom/gutter).
+    void prepareChromeScene(QQuickWindow *window, QQuickItem *item,
+                            const QSize &itemLogical, const QSize &windowLogical,
+                            qreal scale);
+    // A logical scene rect -> the physical crop in `grabWindow()`'s image.
+    QRect chromeBufferRect(const QRect &logical) const;
+    // Inject a pointer event in logical surface coordinates. The offscreen
+    // window is physical-size, so the position is scaled here; QML still sees
+    // logical item coordinates through the root item transform.
+    void sendChromePointer(QQuickWindow *window, QEvent::Type type, const QPointF &logical,
+                           Qt::MouseButton button, Qt::MouseButtons buttons,
+                           Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+    // A preferred-scale or output-scale change: rerender every mapped scene.
+    void onChromeScaleChanged(qreal scale);
+    void rerenderChrome();
     // Mission Control overview chrome (T-11 Slice B): re-read the workspace /
     // minimized-window projection from the protocol into the QML, and commit
     // the transparent chrome surface while the overview is open.
@@ -475,6 +494,9 @@ private:
     void applyControlCenterData();
     void renderControlCenter();
     void scheduleControlCenterRender();
+    // Fit the fixed-height panel below the menu bar when a fractional scale
+    // leaves less logical output than the 1x design assumed (T-21.1b).
+    void updateControlCenterGeometry();
     // Clipboard history (T-13.5b): the store's persistence file, loaded once
     // and re-written on every change (best effort; a missing/unwritable file
     // is not an error).
@@ -1032,6 +1054,9 @@ private:
     int m_width = 0;
     int m_height = 0;
     int m_barHeight = 28;
+    // T-21.1b: the chrome scene's physical scale. Seeded from the compositor's
+    // output scale, then kept live by wp_fractional_scale.preferred_scale.
+    qreal m_chromeScale = 1.0;
     // Dock surface geometry (T-10): the surface extent perpendicular to its
     // edge (`m_dockThickness`, the floating plate plus the magnify band and
     // the edge margin; Dock.qml owns the math) and the configured surface
