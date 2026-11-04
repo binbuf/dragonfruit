@@ -222,6 +222,13 @@ transition reads it when it builds its tween and takes one step through the
 same commit path, never a second "instant" path. See
 [ADR 0003](adr/0003-shared-animation-clock.md).
 
+T-21.2a adds the pure per-output refresh model in `compositor/src/refresh.rs`
+(ADR [0198](adr/0198-per-output-refresh-model.md)): each output resolves its
+Smithay millihertz mode into a period and deadline, with a 60 Hz fallback when
+no mode is known and a 24–500 Hz clamp around the exact mode value. T187b wires
+the fastest active period into this clock and the degrade budget; animation
+progress remains monotonic elapsed time, not a tick count.
+
 #### Idle and animation frame trace (T-03.1a)
 
 The render-path counters emitted on `SIGUSR1`/clean exit are the trace

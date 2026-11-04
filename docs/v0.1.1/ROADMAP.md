@@ -48,7 +48,7 @@ done.
 
 ## Phase 21.2 — Refresh-aware scheduling and material floor
 
-- [ ] T187a — T-21.2a Per-output refresh model (pure) → [../tasks/0.1.1/187a-t-21.2a-refresh-model.md](../tasks/0.1.1/187a-t-21.2a-refresh-model.md)
+- [x] T187a — T-21.2a Per-output refresh model (pure) → [../tasks/0.1.1/187a-t-21.2a-refresh-model.md](../tasks/0.1.1/187a-t-21.2a-refresh-model.md)
 - [ ] T187b — T-21.2a Wire the refresh model into the clock and budget → [../tasks/0.1.1/187b-t-21.2a-refresh-clock-wiring.md](../tasks/0.1.1/187b-t-21.2a-refresh-clock-wiring.md)
 - [ ] T188a — T-21.2b Per-output presentation clock (pure) → [../tasks/0.1.1/188a-t-21.2b-presentation-clock.md](../tasks/0.1.1/188a-t-21.2b-presentation-clock.md)
 - [ ] T188b — T-21.2b Per-output frame requests and timer arming → [../tasks/0.1.1/188b-t-21.2b-frame-requests.md](../tasks/0.1.1/188b-t-21.2b-frame-requests.md)
@@ -89,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-04T16:00:18Z · 8/30 done
+**Pipeline status** — updated 2026-11-04T16:20:59Z · 9/30 done
 
-- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d
+- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a
 - Blocked: none
 - Failed: none
-- Remaining: T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
-- Last finished: T186d — done · Rolled dmabuf commits out to every chrome surface with per-surface path/copy/reason stats, shared-scene release tracking, ADR 0197, updated docs, and GPU/fallback stills+stats; `make e2e` and `make qml-test` (81/81) pass. Explicit sync/default-on remain T192/T193.
+- Remaining: T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Last finished: T187a — done · Landed the pure OutputRefresh/RefreshSchedule model with fallback/clamp/VRR fields and 9 tests; cargo test and make e2e pass; T187b owns clock/budget wiring.
 <!-- /symphony:status -->
