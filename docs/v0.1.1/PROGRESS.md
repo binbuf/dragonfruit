@@ -15,6 +15,7 @@
 - **T187b — T-21.2a refresh clock wiring**: `AnimationClock` now owns `frame_interval` (default `FRAME_INTERVAL`), with; `DfState` owns `RefreshSchedule` and an optional `DRAGONFRUIT_REFRESH_HZ`
 - **T188a — T-21.2b per-output presentation clock (pure)**: New pure library module `compositor/src/presentation.rs`, exported as; `PresentationClock { last_presented, next_deadline, period, refresh_hz, vrr }`
 - **T188b — T-21.2b per-output frame requests and earliest-deadline arming**: New pure library module `compositor/src/frame_scheduler.rs` (exported as; `FrameScheduler` keyed by output name with independent `urgent` and
+- **T188c — T-21.2b VRR, chrome callbacks, and mixed-refresh evidence**: `PresentationClock` (T188a) now owns a backend-supplied `VrrRange` plus the; `DfState` owns `output_vrr`. `refresh_for_output`, `on_output_mode_changed`,
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -30,6 +31,7 @@
 - [T187b](progress/T187b.md) — `AnimationClock` now owns `frame_interval` (default `FRAME_INTERVAL`), with
 - [T188a](progress/T188a.md) — New pure library module `compositor/src/presentation.rs`, exported as
 - [T188b](progress/T188b.md) — New pure library module `compositor/src/frame_scheduler.rs` (exported as
+- [T188c](progress/T188c.md) — `PresentationClock` (T188a) now owns a backend-supplied `VrrRange` plus the
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

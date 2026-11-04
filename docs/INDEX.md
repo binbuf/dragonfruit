@@ -50,6 +50,7 @@ _Maintained from the working tree; reconciled by hand on 2026-11-03. The design 
 
 ## Proposals
 - `docs/design/proposals/native-drm-dock-glass.md` — Proposal — Native DRM Dock material: why it does not read as the premium macOS Dock
+- `docs/dock-learnings.md` — Proposal — Cutefish glass study and a transparency setting
 
 ## Architecture decision records
 - `docs/design/adr/0000-template.md` — 0000 — ADR template
