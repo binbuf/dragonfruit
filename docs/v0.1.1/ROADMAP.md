@@ -40,27 +40,40 @@ done.
 - [x] T183 — T-21.1a Chrome transport baseline and decision → [../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md](../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md)
 - [x] T184 — T-21.1b Chrome HiDPI and fractional scale → [../tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md](../tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md)
 - [x] T185 — T-21.1c Chrome SHM transport hygiene and frame pacing → [../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md](../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md) ⟵ accepted
-- [~] T185a — T-21.1c close-out: final gates, after-report, visual sign-off → [../tasks/0.1.1/185a-t-21.1c-closeout.md](../tasks/0.1.1/185a-t-21.1c-closeout.md) ⟵ failed
-- [ ] T186 — T-21.1d GPU-backed chrome transport → [../tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md](../tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md)
+- [ ] T185a1 — T-21.1c close-out verification → [../tasks/0.1.1/185a1-t-21.1c-closeout-verify.md](../tasks/0.1.1/185a1-t-21.1c-closeout-verify.md)
+- [ ] T186a — T-21.1d GPU transport: capability probe and render-control spike → [../tasks/0.1.1/186a-t-21.1d-gpu-probe.md](../tasks/0.1.1/186a-t-21.1d-gpu-probe.md)
+- [ ] T186b — T-21.1d GPU transport: dmabuf export and Dock commit → [../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md](../tasks/0.1.1/186b-t-21.1d-dmabuf-export-dock.md)
+- [ ] T186c — T-21.1d GPU transport: rollout, stats, and docs → [../tasks/0.1.1/186c-t-21.1d-gpu-rollout.md](../tasks/0.1.1/186c-t-21.1d-gpu-rollout.md)
 
 ## Phase 21.2 — Refresh-aware scheduling and material floor
 
-- [ ] T187 — T-21.2a Per-output refresh model and animation clock → [../tasks/0.1.1/187-t-21.2a-per-output-refresh-clock.md](../tasks/0.1.1/187-t-21.2a-per-output-refresh-clock.md)
-- [ ] T188 — T-21.2b Presentation-paced mixed-refresh scheduling → [../tasks/0.1.1/188-t-21.2b-presentation-paced-mixed-refresh.md](../tasks/0.1.1/188-t-21.2b-presentation-paced-mixed-refresh.md)
-- [ ] T189 — T-21.2c Persistent-chrome material floor and degrade → [../tasks/0.1.1/189-t-21.2c-persistent-chrome-material-floor.md](../tasks/0.1.1/189-t-21.2c-persistent-chrome-material-floor.md)
+- [ ] T187a — T-21.2a Per-output refresh model (pure) → [../tasks/0.1.1/187a-t-21.2a-refresh-model.md](../tasks/0.1.1/187a-t-21.2a-refresh-model.md)
+- [ ] T187b — T-21.2a Wire the refresh model into the clock and budget → [../tasks/0.1.1/187b-t-21.2a-refresh-clock-wiring.md](../tasks/0.1.1/187b-t-21.2a-refresh-clock-wiring.md)
+- [ ] T188a — T-21.2b Per-output presentation clock (pure) → [../tasks/0.1.1/188a-t-21.2b-presentation-clock.md](../tasks/0.1.1/188a-t-21.2b-presentation-clock.md)
+- [ ] T188b — T-21.2b Per-output frame requests and timer arming → [../tasks/0.1.1/188b-t-21.2b-frame-requests.md](../tasks/0.1.1/188b-t-21.2b-frame-requests.md)
+- [ ] T188c — T-21.2b VRR, chrome callbacks, and mixed-refresh evidence → [../tasks/0.1.1/188c-t-21.2b-vrr-mixed-refresh.md](../tasks/0.1.1/188c-t-21.2b-vrr-mixed-refresh.md)
+- [ ] T189a — T-21.2c Persistent/transient role classification and per-role state → [../tasks/0.1.1/189a-t-21.2c-role-classification.md](../tasks/0.1.1/189a-t-21.2c-role-classification.md)
+- [ ] T189b — T-21.2c Shell per-role application and fallback coverage → [../tasks/0.1.1/189b-t-21.2c-shell-role-application.md](../tasks/0.1.1/189b-t-21.2c-shell-role-application.md)
+- [ ] T189c — T-21.2c Refresh-aware hysteresis and load tests → [../tasks/0.1.1/189c-t-21.2c-refresh-aware-hysteresis.md](../tasks/0.1.1/189c-t-21.2c-refresh-aware-hysteresis.md)
 
 ## Phase 21.3 — Panel-region material
 
-- [ ] T190 — T-21.3 Panel-region material and direct-scanout preservation → [../tasks/0.1.1/190-t-21.3-panel-region-material-and-scanout.md](../tasks/0.1.1/190-t-21.3-panel-region-material-and-scanout.md)
+- [ ] T190a — T-21.3 Pure MaterialRegion helper → [../tasks/0.1.1/190a-t-21.3-material-region.md](../tasks/0.1.1/190a-t-21.3-material-region.md)
+- [ ] T190b — T-21.3 Region-sized scene render and stable IDs → [../tasks/0.1.1/190b-t-21.3-region-render.md](../tasks/0.1.1/190b-t-21.3-region-render.md)
+- [ ] T190c — T-21.3 Direct-scanout preservation and material counters → [../tasks/0.1.1/190c-t-21.3-scanout-and-counters.md](../tasks/0.1.1/190c-t-21.3-scanout-and-counters.md)
 
 ## Phase 21.4 — Native evidence and benchmarks
 
-- [ ] T191 — T-21.4a Native DRM material acceptance → [../tasks/0.1.1/191-t-21.4a-native-material-acceptance.md](../tasks/0.1.1/191-t-21.4a-native-material-acceptance.md)
-- [ ] T192 — T-21.4b Presentation benchmark and soak → [../tasks/0.1.1/192-t-21.4b-presentation-benchmark-and-soak.md](../tasks/0.1.1/192-t-21.4b-presentation-benchmark-and-soak.md)
+- [ ] T191a — T-21.4a Native rebuild, diagnostics, and rollback → [../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md](../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md)
+- [ ] T191b — T-21.4a Native visual sweep and evidence boundary → [../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md](../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md)
+- [ ] T192a — T-21.4b GPU/chrome timing counters and benchmark harness → [../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md](../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md)
+- [ ] T192b — T-21.4b Baseline comparison and native benchmark rows → [../tasks/0.1.1/192b-t-21.4b-baseline-and-native.md](../tasks/0.1.1/192b-t-21.4b-baseline-and-native.md)
+- [ ] T192c — T-21.4b Presentation soak and final report → [../tasks/0.1.1/192c-t-21.4b-soak-and-report.md](../tasks/0.1.1/192c-t-21.4b-soak-and-report.md)
 
 ## Phase 21.5 — Release close-out
 
-- [ ] T193 — T-21.5 Regression matrix and v0.1.1 close-out → [../tasks/0.1.1/193-t-21.5-regression-matrix-and-closeout.md](../tasks/0.1.1/193-t-21.5-regression-matrix-and-closeout.md)
+- [ ] T193a — T-21.5 Regression matrix execution → [../tasks/0.1.1/193a-t-21.5-regression-matrix.md](../tasks/0.1.1/193a-t-21.5-regression-matrix.md)
+- [ ] T193b — T-21.5 Docs reconciliation and v0.1.1 close-out → [../tasks/0.1.1/193b-t-21.5-docs-and-closeout.md](../tasks/0.1.1/193b-t-21.5-docs-and-closeout.md)
 
 ## Release definition of done
 
