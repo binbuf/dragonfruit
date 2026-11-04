@@ -638,7 +638,10 @@ render path resolves each chrome panel through `effective_material_for_role`,
 so the floor applies to the actual backdrop/blur pass, not just the protocol.
 `df_output` is v4: the additive `material_role_state` event carries
 `role/tier/blur_active/fallback` per output, emitted only on effective change;
-the legacy v3 `material_state` keeps its global meaning.
+the legacy v3 `material_state` keeps its global meaning. The shell applies the
+`Chrome`/`Dock` roles through one `MaterialPolicy` (ADR
+[0204](adr/0204-shell-role-material-application-policy.md)); the popup family
+is T189c.
 
 `DegradeController` selects the tier from rendered-frame durations against a
 frame budget. The budget is the fastest active output's refresh deadline

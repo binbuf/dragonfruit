@@ -289,6 +289,31 @@ void sendChromeKeyEvent(QQuickWindow *window, quint32 key, bool pressed,
 // pane (T-15.10); Sleep/Restart/Shut Down/Log Out await the real-session work
 // (T-12.6/T-16.4). Unlanded items dispatch as logged stubs.
 
+// T-21.2c: push one applied material state into a chrome QML item. Returns
+// true when a property changed so the caller only repaints the affected
+// surface.
+bool setMaterialProperties(QQuickItem *item, const AppliedMaterial &material)
+{
+    if (!item)
+        return false;
+    const int tier = static_cast<int>(material.tier);
+    const int fallback = static_cast<int>(material.fallback);
+    bool changed = false;
+    if (item->property("materialBlurActive").toBool() != material.blurActive) {
+        item->setProperty("materialBlurActive", material.blurActive);
+        changed = true;
+    }
+    if (item->property("materialTier").toInt() != tier) {
+        item->setProperty("materialTier", tier);
+        changed = true;
+    }
+    if (item->property("materialFallback").toInt() != fallback) {
+        item->setProperty("materialFallback", fallback);
+        changed = true;
+    }
+    return changed;
+}
+
 } // namespace
 
 ShellController::ShellController(QObject *parent)
@@ -454,6 +479,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // per-surface preferred scale corrects this as soon as the compositor
     // presents the first frame.
     m_chromeScale = m_protocol->outputScale();
+    // T-21.2c: the role table may already be populated (initial output
+    // events dispatch during authentication). Seed the policy before the
+    // first scene so the menu bar and Dock start on their own role state.
+    seedMaterialPolicy();
 
     m_engine = new QQmlEngine(this);
 #ifdef DF_QML_IMPORT_DIR
@@ -513,12 +542,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     }
     m_item->setParentItem(m_window->contentItem());
     m_item->setProperty("showDate", true);
-    // P1: apply the compositor's effective material before the first commit.
-    // The default is translucent glass; the first `material_state` event
-    // corrects it (DRM reports blurActive=false).
-    m_item->setProperty("materialBlurActive", m_protocol->materialBlurActive());
-    m_item->setProperty("materialTier", static_cast<int>(m_protocol->materialTier()));
-    m_item->setProperty("materialFallback", static_cast<int>(m_protocol->materialFallback()));
+    // T-21.2c: one role-keyed application policy for the persistent chrome.
+    // The Dock and menu bar read the same decision; QML never re-derives it.
+    const AppliedMaterial menuMaterial =
+        m_materialPolicy.applied(MaterialPolicy::Chrome);
+    m_item->setProperty("materialBlurActive", menuMaterial.blurActive);
+    m_item->setProperty("materialTier", static_cast<int>(menuMaterial.tier));
+    m_item->setProperty("materialFallback", static_cast<int>(menuMaterial.fallback));
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
@@ -553,6 +583,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onChromeCommitDeferred);
     connect(m_protocol, &ShellProtocol::materialStateChanged, this,
             &ShellController::onMaterialStateChanged);
+    connect(m_protocol, &ShellProtocol::materialRoleStateChanged, this,
+            &ShellController::onMaterialRoleStateChanged);
     connect(m_protocol, &ShellProtocol::focusedAppChanged, this,
             &ShellController::onFocusedAppChanged);
     connect(m_protocol, &ShellProtocol::appAccelerator, this,
@@ -717,12 +749,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_dockItem->setParentItem(m_dockWindow->contentItem());
-    // P1: the same effective material state as the menu bar, applied before
-    // the Dock's first commit so the fallback never flashes the wrong plate.
-    m_dockItem->setProperty("materialBlurActive", m_protocol->materialBlurActive());
-    m_dockItem->setProperty("materialTier", static_cast<int>(m_protocol->materialTier()));
+    // P1/T-21.2c: the Dock's own role state, applied before its first commit
+    // so the fallback never flashes the wrong plate.
+    const AppliedMaterial dockMaterial =
+        m_materialPolicy.applied(MaterialPolicy::Dock);
+    m_dockItem->setProperty("materialBlurActive", dockMaterial.blurActive);
+    m_dockItem->setProperty("materialTier", static_cast<int>(dockMaterial.tier));
     m_dockItem->setProperty("materialFallback",
-                            static_cast<int>(m_protocol->materialFallback()));
+                            static_cast<int>(dockMaterial.fallback));
     // The popover budget the Dock clamps into (T-14.7c); fixed for the
     // session so the offscreen window never grows on a popover open.
     m_dockItem->setProperty("popoverHeadroom", kDockPopoverHeadroom);
@@ -1535,8 +1569,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             const QRect rect = m_protocol->primaryOutputGeometry();
             if (rect.isEmpty())
                 return;
-            m_protocol->captureScreenshot(path, rect.x(), rect.y(), rect.width(),
-                                          rect.height(), QStringLiteral("fullscreen"));
+            // The fixture is the same capture path as the user shortcut: the
+            // output geometry is logical, the compositor crops physical output
+            // pixels. Convert, or a 1.5x/2x output captures only the top-left
+            // logical-sized corner (T-21.1b).
+            const QRect physical =
+                ChromeScale::bufferRect(rect, m_protocol->outputScale());
+            m_protocol->captureScreenshot(path, physical.x(), physical.y(),
+                                          physical.width(), physical.height(),
+                                          QStringLiteral("fullscreen"));
         };
         if (interval > 0) {
             auto *timer = new QTimer(this);
@@ -4748,21 +4789,48 @@ void ShellController::onInputAction(const QString &action, const QString &)
 
 void ShellController::onMaterialStateChanged(quint32 tier, bool blurActive, quint32 fallback)
 {
-    const int tierValue = static_cast<int>(tier);
-    const int fallbackValue = static_cast<int>(fallback);
-    for (QQuickItem *item : {m_item, m_dockItem}) {
-        if (!item)
+    // The legacy v3 event is the compatibility source for a compositor that
+    // does not send role state. Once a role has a v4 state, `applied()` keeps
+    // it and this snapshot cannot pull the persistent chrome down.
+    m_materialPolicy.setGlobal(tier, blurActive, fallback);
+    applyMaterialState();
+}
+
+void ShellController::onMaterialRoleStateChanged(quint32 role, quint32 tier,
+                                                 bool blurActive, quint32 fallback)
+{
+    m_materialPolicy.setRole(role, tier, blurActive, fallback);
+    applyMaterialState();
+}
+
+void ShellController::seedMaterialPolicy()
+{
+    if (!m_protocol)
+        return;
+    m_materialPolicy.setGlobal(m_protocol->materialTier(),
+                               m_protocol->materialBlurActive(),
+                               m_protocol->materialFallback());
+    for (quint32 role = 0; role < MaterialPolicy::RoleCount; ++role) {
+        if (!m_protocol->materialRoleKnown(role))
             continue;
-        item->setProperty("materialBlurActive", blurActive);
-        item->setProperty("materialTier", tierValue);
-        item->setProperty("materialFallback", fallbackValue);
+        m_materialPolicy.setRole(role, m_protocol->materialRoleTier(role),
+                                 m_protocol->materialRoleBlurActive(role),
+                                 m_protocol->materialRoleFallback(role));
     }
+}
+
+void ShellController::applyMaterialState()
+{
+    const bool menuChanged =
+        setMaterialProperties(m_item, m_materialPolicy.applied(MaterialPolicy::Chrome));
+    const bool dockChanged =
+        setMaterialProperties(m_dockItem, m_materialPolicy.applied(MaterialPolicy::Dock));
     // The event arrives from the Wayland dispatch, outside the render path;
-    // repaint both persistent chrome surfaces so the new plate is committed
-    // immediately rather than waiting for an unrelated scene change.
-    if (m_dockItem)
+    // repaint the affected persistent chrome surface so the new plate is
+    // committed immediately rather than waiting for an unrelated scene change.
+    if (dockChanged)
         scheduleDockRender();
-    if (m_item && m_window)
+    if (menuChanged && m_window)
         render();
 }
 

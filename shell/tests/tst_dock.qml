@@ -1414,6 +1414,51 @@ Item {
                    "the fallback tone follows the scheme");
         }
 
+        function test_forced_material_tiers_apply_the_dock_role() {
+            // T-21.2c: the Dock applies its own role state from the same
+            // shell policy. Full/Reduced keep the sampled glass; the
+            // persistent floor-missed state (reason 4) and software/headless
+            // both draw the milky complement in light and dark.
+            var tiers = [
+                { tier: 0, blur: true, fallback: 0, label: "full" },
+                { tier: 1, blur: true, fallback: 0, label: "reduced" },
+                { tier: 1, blur: false, fallback: 4, label: "floor-missed" },
+                { tier: 2, blur: false, fallback: 2, label: "software" }
+            ];
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                for (var i = 0; i < tiers.length; ++i) {
+                    var state = tiers[i];
+                    var dock = make(dockComponent, {
+                        width: 400, height: 240,
+                        materialTier: state.tier,
+                        materialBlurActive: state.blur,
+                        materialFallback: state.fallback,
+                        entries: [ app("a", "A", true) ]
+                    });
+                    compare(dock.materialTier, state.tier, state.label);
+                    compare(dock.materialBlurActive, state.blur, state.label);
+                    compare(dock.materialFallback, state.fallback, state.label);
+                    var bar = findChild(dock, "dockBar");
+                    if (state.blur) {
+                        compare(bar.color, Theme.color.dockFill, state.label);
+                        fuzzyCompare(bar.opacity,
+                                     Theme.controls.dock.plate.fillOpacity,
+                                     0.0001, state.label);
+                    } else {
+                        compare(bar.color, Theme.color.dockFallbackFill,
+                                state.label);
+                        fuzzyCompare(bar.opacity,
+                                     Theme.material.dockFallbackOpacity,
+                                     0.0001, state.label);
+                        verify(bar.opacity >= 0.8,
+                               state.label + " must read as a material");
+                    }
+                }
+            }
+            Theme.dark = false;
+        }
+
         function test_glyph_tile_is_a_token_squircle_with_inset() {
             // The placeholder tile draws at the icon radius ratio and spans the
             // icon box less the token inset; the themed artwork is masked into

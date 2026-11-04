@@ -86,6 +86,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     launchfailure.cpp
     lockauth.cpp
     lockinput.cpp
+    materialpolicy.cpp
     menubrokerclient.cpp
     menubrokerpolicy.cpp
     notificationclient.cpp

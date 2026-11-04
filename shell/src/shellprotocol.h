@@ -557,6 +557,12 @@ public:
     {
         return m_materialRoles.value(role).fallback;
     }
+    // Whether a v4 role event has arrived. Until it does, the legacy v3
+    // `material_state` snapshot is the compatibility source.
+    bool materialRoleKnown(uint32_t role) const
+    {
+        return m_materialRoles.contains(role);
+    }
 
     // Mirror the menu-broker's focus-scoped accelerator table for `appId`
     // (T-14.2b, `df_toplevel_manager.set_app_accelerators`, additive in v7).
