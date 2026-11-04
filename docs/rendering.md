@@ -416,6 +416,10 @@ deadline is 6.94 ms.
 - Count missed deadlines at 1.5x the refresh period.
 - Distinguish CPU render duration, GPU execution, and presentation interval.
 - Add p50/p95/p99 and missed counts to the native acceptance report.
+- The pure per-output presentation clock (`last_presented`, `next_deadline`,
+  `is_due`, `time_until_due`) is in place (T-21.2b, ADR 0200); DRM records the
+  vblank timestamp and nested records the successful `submit()` completion.
+  Earliest-deadline timer arming is T188b.
 
 **Acceptance**
 

@@ -50,7 +50,7 @@ done.
 
 - [x] T187a — T-21.2a Per-output refresh model (pure) → [../tasks/0.1.1/187a-t-21.2a-refresh-model.md](../tasks/0.1.1/187a-t-21.2a-refresh-model.md)
 - [x] T187b — T-21.2a Wire the refresh model into the clock and budget → [../tasks/0.1.1/187b-t-21.2a-refresh-clock-wiring.md](../tasks/0.1.1/187b-t-21.2a-refresh-clock-wiring.md)
-- [ ] T188a — T-21.2b Per-output presentation clock (pure) → [../tasks/0.1.1/188a-t-21.2b-presentation-clock.md](../tasks/0.1.1/188a-t-21.2b-presentation-clock.md)
+- [x] T188a — T-21.2b Per-output presentation clock (pure) → [../tasks/0.1.1/188a-t-21.2b-presentation-clock.md](../tasks/0.1.1/188a-t-21.2b-presentation-clock.md)
 - [ ] T188b — T-21.2b Per-output frame requests and timer arming → [../tasks/0.1.1/188b-t-21.2b-frame-requests.md](../tasks/0.1.1/188b-t-21.2b-frame-requests.md)
 - [ ] T188c — T-21.2b VRR, chrome callbacks, and mixed-refresh evidence → [../tasks/0.1.1/188c-t-21.2b-vrr-mixed-refresh.md](../tasks/0.1.1/188c-t-21.2b-vrr-mixed-refresh.md)
 - [ ] T189a — T-21.2c Persistent/transient role classification and per-role state → [../tasks/0.1.1/189a-t-21.2c-role-classification.md](../tasks/0.1.1/189a-t-21.2c-role-classification.md)
@@ -89,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-04T17:26:39Z · 10/30 done
+**Pipeline status** — updated 2026-11-04T17:55:12Z · 11/30 done
 
-- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b
+- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a
 - Blocked: none
 - Failed: none
-- Remaining: T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
-- Last finished: T187b — done · Refresh schedule now drives the animation clock and degrade budget, with pinned overrides, refresh stats, a 144 Hz trace, and all acceptance checks passing.
+- Remaining: T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Last finished: T188a — done · Added the pure per-output presentation clock and due/deadline logic, wired DRM/nested presentation timestamps without scheduling changes, and passed all required tests and `make e2e`.
 <!-- /symphony:status -->
