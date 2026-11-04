@@ -759,7 +759,16 @@ impl DfState {
                 mode.refresh.max(0) as u32,
             );
         }
-        resource.vrr(0);
+        // Report the backend's actual VRR state (T188c), not a hardcoded 0.
+        // Nested/headless and unsupported connectors stay 0.
+        let vrr = self
+            .output_vrr
+            .get(&output.name())
+            .copied()
+            .unwrap_or(dragonfruit_compositor::refresh::VrrState::Unknown);
+        resource.vrr(u32::from(
+            vrr == dragonfruit_compositor::refresh::VrrState::On,
+        ));
         resource.night_light(0, 6500);
         // The compositor owns brightness (T-11.3a); absent means full
         // brightness. The event is v2 (`df_output`).

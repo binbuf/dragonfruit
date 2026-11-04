@@ -440,6 +440,14 @@ mod tests {
     }
 
     #[test]
+    fn vrr_states_have_stable_stats_tokens() {
+        assert_eq!(VrrState::Unknown.as_str(), "unsupported");
+        assert_eq!(VrrState::Off.as_str(), "off");
+        assert_eq!(VrrState::On.as_str(), "on");
+        assert_eq!(SLOWEST_PERIOD, Duration::from_nanos(41_666_666));
+    }
+
+    #[test]
     fn sources_have_stable_stats_tokens() {
         assert_eq!(RefreshSource::Mode.as_str(), "mode");
         assert_eq!(RefreshSource::Fallback.as_str(), "fallback");

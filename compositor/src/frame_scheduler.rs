@@ -447,6 +447,86 @@ mod tests {
     }
 
     #[test]
+    fn mixed_refresh_60_and_144_with_one_idle_and_one_animating() {
+        // The T188c mixed-refresh hook: a 60 Hz output and a 144 Hz output
+        // both animate, while a third 60 Hz output stays idle. The scheduler
+        // must present each animating output at its own period and never wake
+        // the idle output. The simulation advances in 100 us steps, so the
+        // counts are the real cadence, not a single-interval inference.
+        let mut clocks = PresentationClocks::new();
+        clocks.update("slow-60", refresh(60_000));
+        clocks.update("fast-144", refresh(144_000));
+        clocks.update("idle-60", refresh(60_000));
+
+        let mut scheduler = FrameScheduler::new();
+        scheduler.request_animation("slow-60");
+        scheduler.request_animation("fast-144");
+        // No request for idle-60: it must never be a timer or render candidate.
+
+        let start = Duration::from_secs(1);
+        assert!(clocks.note_presented("slow-60", start));
+        assert!(clocks.note_presented("fast-144", start));
+
+        let mut now = start;
+        let mut slow_frames = 0;
+        let mut fast_frames = 0;
+        let mut idle_frames = 0;
+        for _ in 0..10_000 {
+            now += Duration::from_micros(100);
+            if scheduler.should_present("slow-60", now, &clocks) {
+                slow_frames += 1;
+                assert!(clocks.note_presented("slow-60", now));
+            }
+            if scheduler.should_present("fast-144", now, &clocks) {
+                fast_frames += 1;
+                assert!(clocks.note_presented("fast-144", now));
+            }
+            if scheduler.should_present("idle-60", now, &clocks) {
+                idle_frames += 1;
+                assert!(clocks.note_presented("idle-60", now));
+            }
+        }
+
+        assert!(
+            (58..=60).contains(&slow_frames),
+            "the 60 Hz output presents about 60 times in one second, got {slow_frames}"
+        );
+        assert!(
+            (140..=144).contains(&fast_frames),
+            "the 144 Hz output presents about 144 times in one second, got {fast_frames}"
+        );
+        assert_eq!(
+            idle_frames, 0,
+            "an output with no animation request is never presented"
+        );
+        assert_eq!(clocks.get("idle-60").unwrap().presentations, 0);
+
+        // Settle the fast output: only the slow one keeps animating. The fast
+        // output must not be presented again, and the idle output still stays
+        // untouched.
+        scheduler.clear_animation("fast-144");
+        let fast_before = fast_frames;
+        let slow_before = slow_frames;
+        for _ in 0..10_000 {
+            now += Duration::from_micros(100);
+            if scheduler.should_present("slow-60", now, &clocks) {
+                slow_frames += 1;
+                assert!(clocks.note_presented("slow-60", now));
+            }
+            assert!(!scheduler.should_present("fast-144", now, &clocks));
+            assert!(!scheduler.should_present("idle-60", now, &clocks));
+        }
+        assert!(
+            (58..=60).contains(&(slow_frames - slow_before)),
+            "the remaining 60 Hz animation keeps its cadence"
+        );
+        assert_eq!(
+            fast_frames, fast_before,
+            "a settled 144 Hz output is not woken by the 60 Hz animation"
+        );
+    }
+
+    #[test]
     fn retaining_animation_drops_outputs_that_settled() {
         let clocks = clocks();
         let mut scheduler = FrameScheduler::new();

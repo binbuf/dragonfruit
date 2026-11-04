@@ -114,6 +114,9 @@ pub struct PresentationClock {
     /// The last measured presentation interval accepted as a VRR interval.
     /// `None` means the nominal mode period is in use.
     pub vrr_interval: Option<Duration>,
+    /// The measured interval between the last two presentations, before any
+    /// VRR range filtering. `None` until the second presentation.
+    pub last_interval: Option<Duration>,
     /// Presented frames recorded over the lifetime of this clock. This is the
     /// per-output cadence evidence for synthetic/headless mixed-refresh runs.
     pub presentations: u64,
@@ -130,6 +133,7 @@ impl PresentationClock {
             vrr: refresh.vrr,
             vrr_range: None,
             vrr_interval: None,
+            last_interval: None,
             presentations: 0,
         }
     }
@@ -223,6 +227,7 @@ impl PresentationClock {
         let interval = self
             .last_presented
             .map(|last| timestamp.saturating_sub(last));
+        self.last_interval = interval;
         if self.vrr_active() {
             let range = self.vrr_range.expect("vrr_active requires a range");
             self.vrr_interval = interval.filter(|interval| range.contains(*interval));
@@ -563,5 +568,151 @@ mod tests {
         assert_eq!(clock.period, resolved.period);
         assert_eq!(clock.period, Duration::from_nanos(6_944_492));
         assert_eq!(clock.vrr, resolved.vrr);
+    }
+
+    fn vrr_clock(mhz: i32, vrr: VrrState) -> PresentationClock {
+        let mut clock =
+            PresentationClock::new(OutputRefresh::from_mhz(mhz, RefreshSource::Mode, vrr));
+        if vrr == VrrState::On {
+            clock.set_vrr_range(VrrRange::for_mode_period(clock.period));
+        }
+        clock
+    }
+
+    #[test]
+    fn vrr_on_adapts_the_next_deadline_to_the_measured_interval() {
+        // A 144 Hz panel with VRR on presenting at 60 Hz: the next deadline
+        // follows the measured 16.67 ms interval, not the nominal 6.94 ms.
+        let mut clock = vrr_clock(144_000, VrrState::On);
+        assert_eq!(clock.vrr_report(), "on");
+        assert!(clock.note_presented(Duration::ZERO));
+
+        let sixty_hz = Duration::from_nanos(16_666_666);
+        assert!(clock.note_presented(sixty_hz));
+        assert_eq!(clock.vrr_interval, Some(sixty_hz));
+        assert_eq!(clock.effective_period(), sixty_hz);
+        assert_eq!(
+            clock.next_deadline,
+            Some(sixty_hz + sixty_hz),
+            "the next VRR deadline uses the observed 60 Hz interval"
+        );
+
+        // A faster VRR interval (144 Hz) is also inside the range and is
+        // adopted on the next presentation.
+        let fast = Duration::from_nanos(6_944_444);
+        assert!(clock.note_presented(sixty_hz + fast));
+        assert_eq!(clock.vrr_interval, Some(fast));
+        assert_eq!(clock.next_deadline, Some(sixty_hz + fast + fast));
+    }
+
+    #[test]
+    fn vrr_off_and_unknown_keep_the_fixed_period() {
+        // An explicit fixed-refresh output does not adapt, even when the
+        // measured interval is different from the mode period.
+        let mut off = vrr_clock(144_000, VrrState::Off);
+        assert_eq!(off.vrr_report(), "off");
+        assert!(off.note_presented(Duration::ZERO));
+        assert!(off.note_presented(Duration::from_nanos(16_666_666)));
+        assert_eq!(off.vrr_interval, None);
+        assert_eq!(
+            off.next_deadline,
+            Some(Duration::from_nanos(16_666_666) + Duration::from_nanos(6_944_444))
+        );
+
+        // No backend VRR state is `unsupported`: the fixed mode period stays
+        // authoritative and the measured interval is never claimed as VRR.
+        let mut unknown = vrr_clock(144_000, VrrState::Unknown);
+        assert_eq!(unknown.vrr_report(), "unsupported");
+        assert!(unknown.note_presented(Duration::ZERO));
+        assert!(unknown.note_presented(Duration::from_nanos(2_000_000)));
+        assert_eq!(unknown.vrr_interval, None);
+        assert_eq!(
+            unknown.next_deadline,
+            Some(Duration::from_nanos(2_000_000) + Duration::from_nanos(6_944_444)),
+            "a single short interval cannot turn VRR on"
+        );
+    }
+
+    #[test]
+    fn an_interval_outside_the_vrr_range_falls_back_to_the_nominal_period() {
+        let mut clock = vrr_clock(144_000, VrrState::On);
+        let period = clock.period;
+        assert!(clock.note_presented(Duration::ZERO));
+
+        // A five-second idle gap is far outside the 24 Hz floor; the clock
+        // must not turn that gap into a five-second deadline.
+        let idle_gap = Duration::from_secs(5);
+        assert!(clock.note_presented(idle_gap));
+        assert_eq!(clock.vrr_interval, None);
+        assert_eq!(clock.next_deadline, Some(idle_gap + period));
+
+        // A period below the mode's fastest end is likewise not adopted.
+        let too_fast = Duration::from_nanos(1_000_000);
+        assert!(clock.note_presented(idle_gap + too_fast));
+        assert_eq!(clock.vrr_interval, None);
+        assert_eq!(clock.next_deadline, Some(idle_gap + too_fast + period));
+    }
+
+    #[test]
+    fn vrr_ranges_normalize_and_reject_zero_periods() {
+        let fast = Duration::from_nanos(6_944_444);
+        let slow = Duration::from_nanos(41_666_666);
+        let range = VrrRange::new(slow, fast).expect("reversed bounds normalize");
+        assert_eq!(range.min_period, fast);
+        assert_eq!(range.max_period, slow);
+        assert!(range.contains(fast));
+        assert!(range.contains(slow));
+        assert_eq!(range.clamp(Duration::from_nanos(1)), fast);
+        assert_eq!(range.clamp(Duration::from_secs(1)), slow);
+
+        assert!(VrrRange::new(Duration::ZERO, slow).is_none());
+        assert!(VrrRange::new(fast, Duration::ZERO).is_none());
+        assert_eq!(
+            VrrRange::for_mode_period(fast),
+            Some(VrrRange {
+                min_period: fast,
+                max_period: SLOWEST_PERIOD,
+            })
+        );
+    }
+
+    #[test]
+    fn a_mode_change_clears_the_adapted_vrr_interval_until_the_range_is_reinstalled() {
+        let mut clock = vrr_clock(144_000, VrrState::On);
+        assert!(clock.note_presented(Duration::ZERO));
+        assert!(clock.note_presented(Duration::from_nanos(16_666_666)));
+        assert_eq!(clock.vrr_interval, Some(Duration::from_nanos(16_666_666)));
+
+        // `set_refresh` drops both the stale range and the adapted interval;
+        // the caller must reinstall the range from the new backend state.
+        clock.set_refresh(OutputRefresh::from_mhz(
+            60_000,
+            RefreshSource::Mode,
+            VrrState::On,
+        ));
+        assert_eq!(clock.vrr_range, None);
+        assert_eq!(clock.vrr_interval, None);
+        assert_eq!(clock.vrr_report(), "unsupported");
+        assert_eq!(clock.effective_period(), clock.period);
+
+        clock.set_vrr_range(VrrRange::for_mode_period(clock.period));
+        assert_eq!(clock.vrr_report(), "on");
+        assert_eq!(clock.effective_period(), clock.period);
+    }
+
+    #[test]
+    fn presentations_are_counted_per_output() {
+        let mut clocks = PresentationClocks::new();
+        clocks.update("slow", refresh(60_000));
+        clocks.update("fast", refresh(144_000));
+
+        for tick in 0..3 {
+            let at = Duration::from_millis(tick * 16);
+            assert!(clocks.note_presented("slow", at));
+            assert!(clocks.note_presented("fast", at));
+        }
+        assert_eq!(clocks.get("slow").unwrap().presentations, 3);
+        assert_eq!(clocks.get("fast").unwrap().presentations, 3);
+        assert_eq!(clocks.get("idle").map(|clock| clock.presentations), None);
     }
 }
