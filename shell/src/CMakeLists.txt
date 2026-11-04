@@ -46,6 +46,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     apppicker.cpp
     appsdrawer.cpp
     chooserbridge.cpp
+    chromescale.cpp
+    chromescale.h
     chromestats.cpp
     chromestats.h
     clipboardhistory.cpp
@@ -150,6 +152,24 @@ add_custom_command(
     COMMENT "wayland-scanner wlr-data-control-unstable-v1"
     VERBATIM)
 list(APPEND DF_PROTOCOL_SOURCES "${_data_control_source}")
+
+# The standard fractional-scale-v1 and viewporter XML is vendored (MIT) so the
+# chrome surfaces can commit a physical-resolution buffer and map it onto the
+# logical surface at 1.5x (T-21.1b). The compositor advertises both globals.
+foreach(_scale_proto fractional-scale-v1 viewporter)
+    set(_scale_xml "${CMAKE_SOURCE_DIR}/protocols/wayland-protocols/${_scale_proto}.xml")
+    set(_scale_header "${DF_PROTOCOL_DIR}/${_scale_proto}-client-protocol.h")
+    set(_scale_source "${DF_PROTOCOL_DIR}/${_scale_proto}-protocol.c")
+    add_custom_command(
+        OUTPUT "${_scale_header}" "${_scale_source}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${DF_PROTOCOL_DIR}"
+        COMMAND "${WAYLAND_SCANNER}" client-header "${_scale_xml}" "${_scale_header}"
+        COMMAND "${WAYLAND_SCANNER}" private-code "${_scale_xml}" "${_scale_source}"
+        DEPENDS "${_scale_xml}"
+        COMMENT "wayland-scanner ${_scale_proto}"
+        VERBATIM)
+    list(APPEND DF_PROTOCOL_SOURCES "${_scale_source}")
+endforeach()
 
 qt_add_executable(dragonfruit-shell
     main.cpp

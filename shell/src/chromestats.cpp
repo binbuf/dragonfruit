@@ -102,8 +102,9 @@ qint64 ChromeStats::commitUsSinceRender() const
     return m_renderTimer.nsecsElapsed() / 1000;
 }
 
-void ChromeStats::recordCommit(const QString &surface, const QSize &bufferSize, int bufferScale,
-                               qint64 commitUs, qint64 shmBytes)
+void ChromeStats::recordCommit(const QString &surface, const QSize &logicalSize,
+                               const QSize &bufferSize, int bufferScale, qreal scale,
+                               bool viewport, qint64 commitUs, qint64 shmBytes)
 {
     if (!m_enabled)
         return;
@@ -113,10 +114,11 @@ void ChromeStats::recordCommit(const QString &surface, const QSize &bufferSize, 
     if (commitUs >= 0)
         m_commitUs.append(commitUs);
     SurfaceStats &stats = m_surfaces[surface];
-    stats.logicalSize = QSize(bufferSize.width() / qMax(1, bufferScale),
-                              bufferSize.height() / qMax(1, bufferScale));
+    stats.logicalSize = logicalSize;
     stats.bufferSize = bufferSize;
     stats.bufferScale = bufferScale;
+    stats.scale = scale;
+    stats.viewport = viewport;
     ++stats.commits;
     ++stats.shmAllocs;
     stats.shmBytes += quint64(qMax<qint64>(0, shmBytes));
@@ -161,12 +163,15 @@ void ChromeStats::emitStats(const QString &label)
         qInfo().noquote()
             << QStringLiteral(
                    "chrome surface (%1): surface=%2 logical_size=%3 buffer_size=%4 "
-                   "buffer_scale=%5 commits=%6 shm_allocs=%7 shm_bytes=%8 %9 %10")
+                   "buffer_scale=%5 scale=%6 viewport=%7 commits=%8 shm_allocs=%9 "
+                   "shm_bytes=%10 %11 %12")
                    .arg(label)
                    .arg(name)
                    .arg(sizeText(stats.logicalSize))
                    .arg(sizeText(stats.bufferSize))
                    .arg(stats.bufferScale)
+                   .arg(stats.scale, 0, 'g', 4)
+                   .arg(stats.viewport ? 1 : 0)
                    .arg(stats.commits)
                    .arg(stats.shmAllocs)
                    .arg(stats.shmBytes)
