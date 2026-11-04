@@ -51,7 +51,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
+        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
@@ -66,6 +66,7 @@ help:
 	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
 	@echo "  make t21-chrome-baseline — T-21.1a chrome transport counters + report"
 	@echo "  make t21-refresh-144 — T-21.2a simulated-144 Hz clock/budget trace"
+	@echo "  make t21-frame-scheduler — T-21.2b per-output request/earliest-deadline trace"
 	@echo "  make multi-gpu-validation — T-03.4 multi-GPU import/fallback validation"
 	@echo "  make drm-soak — T-03.4 100-cycle teardown soak + one DRM session cycle"
 	@echo "  make second-vt-validation — T-12.6c second-VT preflight/selection + one real cycle"
@@ -261,6 +262,14 @@ t21-gpu-rollout: build
 # `make e2e`.
 t21-refresh-144: build
 	bash scripts/t21-refresh-144.sh
+
+# T-21.2b per-output frame request trace (T188b). Runs one nested compositor at
+# 144 Hz and samples the request lifecycle before/during/after the synthetic
+# dummy animation, plus headless 144/60 Hz cadence controls. Writes
+# docs/captures/t21-frame-scheduler.txt. Needs a host Wayland session; not part
+# of `make e2e`.
+t21-frame-scheduler: cargo-build
+	bash scripts/t21-frame-scheduler.sh
 
 # T-03.2: the DRM first bring-up probe. On a host with a free seat it starts
 # the DRM backend and records the capture/trace; with no free seat it records
