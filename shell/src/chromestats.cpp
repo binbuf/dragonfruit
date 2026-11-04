@@ -133,6 +133,22 @@ void ChromeStats::setGpuFallbackReason(const QString &reason)
         m_gpuReason = reason;
 }
 
+void ChromeStats::setSurfacePath(const QString &surface, const QString &path,
+                                 const QString &reason)
+{
+    if (!m_enabled || surface.isEmpty() || path.isEmpty())
+        return;
+    SurfaceStats &stats = m_surfaces[surface];
+    stats.path = path;
+    if (path == QLatin1String("dmabuf")) {
+        // A successful GPU frame is the answer; do not keep an old transient
+        // fallback as the surface's reason.
+        stats.reason.clear();
+    } else if (stats.reason.isEmpty() && !reason.isEmpty()) {
+        stats.reason = reason;
+    }
+}
+
 void ChromeStats::recordShmAlloc(const QString &surface, qint64 bytes)
 {
     if (!m_enabled)
@@ -329,14 +345,17 @@ void ChromeStats::emitStats(const QString &label)
         const SurfaceStats &stats = m_surfaces.value(name);
         qInfo().noquote()
             << QStringLiteral(
-                   "chrome surface (%1): surface=%2 logical_size=%3 buffer_size=%4 "
-                   "buffer_scale=%5 scale=%6 viewport=%7 commits=%8 shm_allocs=%9 "
-                   "shm_bytes=%10 copy_bytes=%11 damage_pixels=%12 skipped=%13 "
-                   "fallback=%14 renders=%15 dmabuf_commits=%16 dmabuf_bytes=%17 "
-                   "dmabuf_deferred=%18 dmabuf_fallbacks=%19 %20 %21 "
-                   "dmabuf_buffers=%22 dmabuf_allocs=%23 dmabuf_reuses=%24")
+                   "chrome surface (%1): surface=%2 path=%3 gpu_reason=%4 "
+                   "logical_size=%5 buffer_size=%6 "
+                   "buffer_scale=%7 scale=%8 viewport=%9 commits=%10 shm_allocs=%11 "
+                   "shm_bytes=%12 copy_bytes=%13 damage_pixels=%14 skipped=%15 "
+                   "fallback=%16 renders=%17 dmabuf_commits=%18 dmabuf_bytes=%19 "
+                   "dmabuf_deferred=%20 dmabuf_fallbacks=%21 %22 %23 "
+                   "dmabuf_buffers=%24 dmabuf_allocs=%25 dmabuf_reuses=%26")
                    .arg(label)
                    .arg(name)
+                   .arg(stats.path)
+                   .arg(stats.reason.isEmpty() ? QStringLiteral("none") : stats.reason)
                    .arg(sizeText(stats.logicalSize))
                    .arg(sizeText(stats.bufferSize))
                    .arg(stats.bufferScale)

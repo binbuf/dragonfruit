@@ -61,3 +61,8 @@ changing the visual result or the private protocol.
 - T186d can move the remaining surfaces onto the same commit path; the ring is
   per producer/surface, not global. Default-on and native acceptance remain
   T191/T192.
+
+T186d extends this decision to every chrome surface and adds the per-surface
+`path=` stats; the shared-scene release bookkeeping and the capture-only
+surface filter are recorded in
+[ADR 0197](0197-gpu-chrome-rollout-and-per-surface-stats.md).

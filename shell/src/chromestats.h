@@ -32,6 +32,11 @@ public:
     // the first fallback token (`no-egl-export`, `no-format`, ...).
     void setGpuPath(const QString &path);
     void setGpuFallbackReason(const QString &reason);
+    // T-21.1d: the per-surface transport actually used for the last frame
+    // (`dmabuf` or `shm`) and the first reason the surface fell back. This is
+    // the `path=`/`gpu_reason=` pair on each `chrome surface` line.
+    void setSurfacePath(const QString &surface, const QString &path,
+                        const QString &reason = QString());
 
     // The QML scene-graph produced a frame (one renderFrame()).
     void recordSceneFrame();
@@ -99,6 +104,8 @@ public:
 
 private:
     struct SurfaceStats {
+        QString path = QStringLiteral("shm");
+        QString reason;
         QSize logicalSize;
         QSize bufferSize;
         int bufferScale = 1;

@@ -45,6 +45,27 @@ uint32_t modifierLow(uint64_t modifier)
 
 } // namespace ChromeDmabuf
 
+void ChromeDmabufReleaseTracker::acquire(quint64 serial)
+{
+    ++m_users[serial];
+}
+
+bool ChromeDmabufReleaseTracker::release(quint64 serial)
+{
+    auto it = m_users.find(serial);
+    if (it == m_users.end())
+        return false;
+    if (--it.value() > 0)
+        return false;
+    m_users.erase(it);
+    return true;
+}
+
+int ChromeDmabufReleaseTracker::users(quint64 serial) const
+{
+    return m_users.value(serial, 0);
+}
+
 bool ChromeDmabufSlot::beginCommit()
 {
     if (m_state == State::Empty || m_state == State::Ready) {

@@ -19,6 +19,8 @@ private slots:
     void modifierSplit();
     void slotReuseDefersWhileBusy();
     void slotFailureIsStickyUntilReset();
+    void releaseTrackerWaitsForEverySurface();
+    void releaseTrackerIgnoresStaleSerial();
     void ringReusesReleasedSlot();
     void ringDefersWhileAllSlotsBusy();
     void ringResizeRetiresUntilRelease();
@@ -133,6 +135,36 @@ void TestDmabufCommit::slotFailureIsStickyUntilReset()
     QCOMPARE(slot.state(), ChromeDmabufSlot::State::Empty);
     QVERIFY(slot.failureReason().isEmpty());
     QVERIFY(slot.beginCommit());
+}
+
+void TestDmabufCommit::releaseTrackerWaitsForEverySurface()
+{
+    ChromeDmabufReleaseTracker tracker;
+    tracker.acquire(41);
+    tracker.acquire(41);
+    QCOMPARE(tracker.users(41), 2);
+    // One surface released (the popover), the producer slot is still busy.
+    QVERIFY(!tracker.release(41));
+    QCOMPARE(tracker.users(41), 1);
+    // The last user returns it; a later release is stale and ignored.
+    QVERIFY(tracker.release(41));
+    QCOMPARE(tracker.users(41), 0);
+    QVERIFY(!tracker.release(41));
+    QCOMPARE(tracker.size(), 0);
+}
+
+void TestDmabufCommit::releaseTrackerIgnoresStaleSerial()
+{
+    ChromeDmabufReleaseTracker tracker;
+    tracker.acquire(7);
+    tracker.acquire(8);
+    QVERIFY(tracker.release(7));
+    QCOMPARE(tracker.users(7), 0);
+    QCOMPARE(tracker.users(8), 1);
+    QVERIFY(!tracker.release(99));
+    QCOMPARE(tracker.size(), 1);
+    tracker.clear();
+    QCOMPARE(tracker.size(), 0);
 }
 
 void TestDmabufCommit::ringReusesReleasedSlot()

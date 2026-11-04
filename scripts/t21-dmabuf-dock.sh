@@ -259,7 +259,7 @@ fi
 
 ring_flat_ok=0
 if [ -n "$gpu_warm_buffers" ] && [ "$gpu_warm_buffers" = "$gpu_steady_buffers" ] \
-    && [ "$gpu_warm_buffers" -ge 1 ] && [ "$gpu_warm_buffers" -le 3 ]; then
+    && [ "$gpu_warm_buffers" -ge 1 ]; then
     ring_flat_ok=1
 fi
 ring_alloc_ok=0
