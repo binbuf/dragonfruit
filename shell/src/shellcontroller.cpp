@@ -37,6 +37,7 @@
 #include "appindexclient.h"
 #include "apppicker.h"
 #include "appsdrawer.h"
+#include "chromescale.h"
 #include "chromestats.h"
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
@@ -432,6 +433,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     if (!m_protocol->authenticate(tokenHex))
         return false;
+    // Seed the physical scale before the first scene is created. The live
+    // per-surface preferred scale corrects this as soon as the compositor
+    // presents the first frame.
+    m_chromeScale = m_protocol->outputScale();
 
     m_engine = new QQmlEngine(this);
 #ifdef DF_QML_IMPORT_DIR
@@ -496,6 +501,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onMenuAfterRendering);
 
     connect(m_protocol, &ShellProtocol::configured, this, &ShellController::onConfigured);
+    // T-21.1b: chrome renders at the output's physical scale. The output
+    // scale seeds the first frame; the per-surface preferred scale keeps it
+    // live across Displays changes and hotplug.
+    connect(m_protocol, &ShellProtocol::preferredScaleChanged, this,
+            [this](const QString &, qreal scale) { onChromeScaleChanged(scale); });
+    connect(m_protocol, &ShellProtocol::outputScaleChanged, this,
+            &ShellController::onChromeScaleChanged);
     connect(m_protocol, &ShellProtocol::materialStateChanged, this,
             &ShellController::onMaterialStateChanged);
     connect(m_protocol, &ShellProtocol::focusedAppChanged, this,
@@ -1786,7 +1798,7 @@ void ShellController::settleInitialState()
     // Clear any hover the window inherited from its default cursor position:
     // move the synthesized pointer off the bar. Real motion re-establishes
     // hover as soon as the user interacts.
-    ChromePointer::send(m_window, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton, Qt::NoButton);
+    sendChromePointer(m_window, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton, Qt::NoButton);
     render();
 }
 
@@ -2227,6 +2239,7 @@ void ShellController::showControlCenter()
         return;
     m_controlCenterOpen = true;
     m_controlCenterPending = true;
+    updateControlCenterGeometry();
     applyControlCenterData();
     if (m_controlCenterWidth > 0 && m_controlCenterHeight > 0)
         renderControlCenter();
@@ -2342,14 +2355,31 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("storageWritable", true);
 }
 
+void ShellController::updateControlCenterGeometry()
+{
+    if (!m_protocol)
+        return;
+    const QSize output = m_protocol->outputLogicalSize();
+    if (output.isEmpty())
+        return;
+    const int available = output.height() - m_barHeight - kControlCenterTopGap;
+    const int target = qMin(kControlCenterHeight, available);
+    if (target <= 0 || target == m_controlCenterHeight)
+        return;
+    m_controlCenterHeight = target;
+    m_protocol->setControlCenterSize(kControlCenterWidth, target);
+}
+
 void ShellController::onControlCenterConfigured(int width, int height, quint32)
 {
-    // The compositor's pre-layout configure is the full output; skip it (the
-    // same rule as the banner and Dock).
-    if (width != kControlCenterWidth || height != kControlCenterHeight)
+    // The compositor's pre-layout configure is the full output; the panel's
+    // own size follows. At 1.5x/2x the fixed 1164 px panel would run past the
+    // bottom edge, so fit it below the menu bar and wait for the matching
+    // configure (T-21.1b).
+    updateControlCenterGeometry();
+    if (width != kControlCenterWidth || height != m_controlCenterHeight)
         return;
     m_controlCenterWidth = width;
-    m_controlCenterHeight = height;
     // The surface exists now; apply the panel-sized input region for a pending
     // open and render the first frame.
     if (m_protocol)
@@ -2363,7 +2393,7 @@ void ShellController::onControlCenterPointerMoved(qreal x, qreal y)
     if (!m_controlCenterWindow)
         return;
     const QPointF p(x, y);
-    ChromePointer::send(m_controlCenterWindow, QEvent::MouseMove, p, Qt::NoButton,
+    sendChromePointer(m_controlCenterWindow, QEvent::MouseMove, p, Qt::NoButton,
                         m_controlCenterButtons);
     scheduleControlCenterRender();
 }
@@ -2380,7 +2410,7 @@ void ShellController::onControlCenterPointerButton(qreal x, qreal y, quint32 but
     else
         m_controlCenterButtons &= ~qtButton;
     const QPointF p(x, y);
-    ChromePointer::send(m_controlCenterWindow,
+    sendChromePointer(m_controlCenterWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
                         qtButton, m_controlCenterButtons);
     scheduleControlCenterRender();
@@ -2390,7 +2420,7 @@ void ShellController::onControlCenterPointerLeft()
 {
     if (!m_controlCenterWindow)
         return;
-    ChromePointer::send(m_controlCenterWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    sendChromePointer(m_controlCenterWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                         m_controlCenterButtons);
     scheduleControlCenterRender();
 }
@@ -2637,18 +2667,14 @@ void ShellController::renderControlCenter()
         m_controlCenterSceneGraphCommitLogged = true;
         qInfo() << "shell: Control Center scene-graph commit path active";
     }
-    m_controlCenterItem->setWidth(m_controlCenterWidth);
-    m_controlCenterItem->setHeight(m_controlCenterHeight);
-    if (m_controlCenterWindow->width() != m_controlCenterWidth
-        || m_controlCenterWindow->height() != m_controlCenterHeight)
-        m_controlCenterWindow->resize(m_controlCenterWidth, m_controlCenterHeight);
-    if (!m_controlCenterWindow->isVisible())
-        m_controlCenterWindow->show();
+    prepareChromeScene(m_controlCenterWindow, m_controlCenterItem,
+                       QSize(m_controlCenterWidth, m_controlCenterHeight),
+                       QSize(m_controlCenterWidth, m_controlCenterHeight), m_chromeScale);
     m_controlCenterFrameGate.beginCommit();
     const QImage image = m_controlCenterWindow->grabWindow();
     m_controlCenterFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
-        m_protocol->commitControlCenterImage(image);
+        m_protocol->commitControlCenterImage(image, QSize(m_controlCenterWidth, m_controlCenterHeight));
 }
 
 void ShellController::scheduleControlCenterRender()
@@ -2756,12 +2782,8 @@ void ShellController::renderOsd()
         m_osdSceneGraphCommitLogged = true;
         qInfo() << "shell: OSD scene-graph commit path active";
     }
-    m_osdItem->setWidth(m_osdWidth);
-    m_osdItem->setHeight(m_osdHeight);
-    if (m_osdWindow->width() != m_osdWidth || m_osdWindow->height() != m_osdHeight)
-        m_osdWindow->resize(m_osdWidth, m_osdHeight);
-    if (!m_osdWindow->isVisible())
-        m_osdWindow->show();
+    prepareChromeScene(m_osdWindow, m_osdItem, QSize(m_osdWidth, m_osdHeight),
+                       QSize(m_osdWidth, m_osdHeight), m_chromeScale);
     m_osdFrameGate.beginCommit();
     const QImage image = m_osdWindow->grabWindow();
     m_osdFrameGate.endCommit();
@@ -2782,7 +2804,7 @@ void ShellController::renderOsd()
         }
     }
     if (!image.isNull() && m_protocol) {
-        m_protocol->commitOsdImage(image);
+        m_protocol->commitOsdImage(image, QSize(m_osdWidth, m_osdHeight));
         m_osdMapped = true;
     }
 }
@@ -2878,18 +2900,13 @@ void ShellController::renderChooser()
         m_chooserSceneGraphCommitLogged = true;
         qInfo() << "shell: FileChooser scene-graph commit path active";
     }
-    m_chooserItem->setWidth(m_chooserWidth);
-    m_chooserItem->setHeight(m_chooserHeight);
-    if (m_chooserWindow->width() != m_chooserWidth
-        || m_chooserWindow->height() != m_chooserHeight)
-        m_chooserWindow->resize(m_chooserWidth, m_chooserHeight);
-    if (!m_chooserWindow->isVisible())
-        m_chooserWindow->show();
+    prepareChromeScene(m_chooserWindow, m_chooserItem, QSize(m_chooserWidth, m_chooserHeight),
+                       QSize(m_chooserWidth, m_chooserHeight), m_chromeScale);
     m_chooserFrameGate.beginCommit();
     const QImage image = m_chooserWindow->grabWindow();
     m_chooserFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
-        m_protocol->commitChooserImage(image);
+        m_protocol->commitChooserImage(image, QSize(m_chooserWidth, m_chooserHeight));
 }
 
 void ShellController::scheduleChooserRender()
@@ -2926,7 +2943,7 @@ void ShellController::onChooserPointerMoved(qreal x, qreal y)
     if (!m_chooserWindow)
         return;
     const QPointF p(x, y);
-    ChromePointer::send(m_chooserWindow, QEvent::MouseMove, p, Qt::NoButton, m_chooserButtons);
+    sendChromePointer(m_chooserWindow, QEvent::MouseMove, p, Qt::NoButton, m_chooserButtons);
     scheduleChooserRender();
 }
 
@@ -2942,7 +2959,7 @@ void ShellController::onChooserPointerButton(qreal x, qreal y, quint32 button, b
     else
         m_chooserButtons &= ~qtButton;
     const QPointF p(x, y);
-    ChromePointer::send(m_chooserWindow,
+    sendChromePointer(m_chooserWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
                         qtButton, m_chooserButtons);
     scheduleChooserRender();
@@ -2952,7 +2969,7 @@ void ShellController::onChooserPointerLeft()
 {
     if (!m_chooserWindow)
         return;
-    ChromePointer::send(m_chooserWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    sendChromePointer(m_chooserWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                         m_chooserButtons);
     scheduleChooserRender();
 }
@@ -3069,7 +3086,14 @@ void ShellController::onScreenshotCaptureRequested(const QString &mode, int x, i
                     + QString::number(QCoreApplication::applicationPid()) + QLatin1Char('-')
                     + QString::number(QDateTime::currentMSecsSinceEpoch())
                     + QStringLiteral(".png");
-    if (!m_protocol->captureScreenshot(m_capturePath, x, y, width, height, mode))
+    // The overlay selects in logical surface coordinates; the compositor
+    // renders and crops in physical output pixels. Convert before asking for
+    // the frame, or a fullscreen capture at 1.5x would crop the top-left
+    // 1280x800 of the 1920x1200 output (T-21.1b).
+    const QRect physical =
+        ChromeScale::bufferRect(QRect(x, y, width, height), m_protocol->outputScale());
+    if (!m_protocol->captureScreenshot(m_capturePath, physical.x(), physical.y(),
+                                       physical.width(), physical.height(), mode))
         onScreenshotFailed(tr("The compositor capture path is unavailable."));
 }
 
@@ -3157,18 +3181,13 @@ void ShellController::renderScreenshot()
         m_screenshotSceneGraphCommitLogged = true;
         qInfo() << "shell: Screenshot scene-graph commit path active";
     }
-    m_screenshotItem->setWidth(m_screenshotWidth);
-    m_screenshotItem->setHeight(m_screenshotHeight);
-    if (m_screenshotWindow->width() != m_screenshotWidth
-        || m_screenshotWindow->height() != m_screenshotHeight)
-        m_screenshotWindow->resize(m_screenshotWidth, m_screenshotHeight);
-    if (!m_screenshotWindow->isVisible())
-        m_screenshotWindow->show();
+    prepareChromeScene(m_screenshotWindow, m_screenshotItem, QSize(m_screenshotWidth, m_screenshotHeight),
+                       QSize(m_screenshotWidth, m_screenshotHeight), m_chromeScale);
     m_screenshotFrameGate.beginCommit();
     const QImage image = m_screenshotWindow->grabWindow();
     m_screenshotFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
-        m_protocol->commitScreenshotImage(image);
+        m_protocol->commitScreenshotImage(image, QSize(m_screenshotWidth, m_screenshotHeight));
 }
 
 void ShellController::scheduleScreenshotRender()
@@ -3202,7 +3221,7 @@ void ShellController::onScreenshotPointerMoved(qreal x, qreal y)
     if (!m_screenshotWindow)
         return;
     const QPointF p(x, y);
-    ChromePointer::send(m_screenshotWindow, QEvent::MouseMove, p, Qt::NoButton, m_screenshotButtons);
+    sendChromePointer(m_screenshotWindow, QEvent::MouseMove, p, Qt::NoButton, m_screenshotButtons);
     scheduleScreenshotRender();
 }
 
@@ -3218,7 +3237,7 @@ void ShellController::onScreenshotPointerButton(qreal x, qreal y, quint32 button
     else
         m_screenshotButtons &= ~qtButton;
     const QPointF p(x, y);
-    ChromePointer::send(m_screenshotWindow,
+    sendChromePointer(m_screenshotWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
                         qtButton, m_screenshotButtons);
     scheduleScreenshotRender();
@@ -3228,7 +3247,7 @@ void ShellController::onScreenshotPointerLeft()
 {
     if (!m_screenshotWindow)
         return;
-    ChromePointer::send(m_screenshotWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    sendChromePointer(m_screenshotWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                         m_screenshotButtons);
     scheduleScreenshotRender();
 }
@@ -3406,18 +3425,13 @@ void ShellController::renderScreenCast()
         m_screencastSceneGraphCommitLogged = true;
         qInfo() << "shell: ScreenCast scene-graph commit path active";
     }
-    m_screencastItem->setWidth(m_screencastWidth);
-    m_screencastItem->setHeight(m_screencastHeight);
-    if (m_screencastWindow->width() != m_screencastWidth
-        || m_screencastWindow->height() != m_screencastHeight)
-        m_screencastWindow->resize(m_screencastWidth, m_screencastHeight);
-    if (!m_screencastWindow->isVisible())
-        m_screencastWindow->show();
+    prepareChromeScene(m_screencastWindow, m_screencastItem, QSize(m_screencastWidth, m_screencastHeight),
+                       QSize(m_screencastWidth, m_screencastHeight), m_chromeScale);
     m_screencastFrameGate.beginCommit();
     const QImage image = m_screencastWindow->grabWindow();
     m_screencastFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
-        m_protocol->commitScreenCastImage(image);
+        m_protocol->commitScreenCastImage(image, QSize(m_screencastWidth, m_screencastHeight));
 }
 
 void ShellController::scheduleScreenCastRender()
@@ -3454,7 +3468,7 @@ void ShellController::onScreenCastPointerMoved(qreal x, qreal y)
     if (!m_screencastWindow)
         return;
     const QPointF p(x, y);
-    ChromePointer::send(m_screencastWindow, QEvent::MouseMove, p, Qt::NoButton, m_screencastButtons);
+    sendChromePointer(m_screencastWindow, QEvent::MouseMove, p, Qt::NoButton, m_screencastButtons);
     scheduleScreenCastRender();
 }
 
@@ -3470,7 +3484,7 @@ void ShellController::onScreenCastPointerButton(qreal x, qreal y, quint32 button
     else
         m_screencastButtons &= ~qtButton;
     const QPointF p(x, y);
-    ChromePointer::send(m_screencastWindow,
+    sendChromePointer(m_screencastWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
                         qtButton, m_screencastButtons);
     scheduleScreenCastRender();
@@ -3480,7 +3494,7 @@ void ShellController::onScreenCastPointerLeft()
 {
     if (!m_screencastWindow)
         return;
-    ChromePointer::send(m_screencastWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    sendChromePointer(m_screencastWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                         m_screencastButtons);
     scheduleScreenCastRender();
 }
@@ -3627,18 +3641,13 @@ void ShellController::renderPolkit()
         m_polkitSceneGraphCommitLogged = true;
         qInfo() << "shell: polkit dialog scene-graph commit path active";
     }
-    m_polkitItem->setWidth(m_polkitWidth);
-    m_polkitItem->setHeight(m_polkitHeight);
-    if (m_polkitWindow->width() != m_polkitWidth
-        || m_polkitWindow->height() != m_polkitHeight)
-        m_polkitWindow->resize(m_polkitWidth, m_polkitHeight);
-    if (!m_polkitWindow->isVisible())
-        m_polkitWindow->show();
+    prepareChromeScene(m_polkitWindow, m_polkitItem, QSize(m_polkitWidth, m_polkitHeight),
+                       QSize(m_polkitWidth, m_polkitHeight), m_chromeScale);
     m_polkitFrameGate.beginCommit();
     const QImage image = m_polkitWindow->grabWindow();
     m_polkitFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
-        m_protocol->commitPolkitImage(image);
+        m_protocol->commitPolkitImage(image, QSize(m_polkitWidth, m_polkitHeight));
 }
 
 void ShellController::schedulePolkitRender()
@@ -3675,7 +3684,7 @@ void ShellController::onPolkitPointerMoved(qreal x, qreal y)
     if (!m_polkitWindow)
         return;
     const QPointF p(x, y);
-    ChromePointer::send(m_polkitWindow, QEvent::MouseMove, p, Qt::NoButton, m_polkitButtons);
+    sendChromePointer(m_polkitWindow, QEvent::MouseMove, p, Qt::NoButton, m_polkitButtons);
     schedulePolkitRender();
 }
 
@@ -3691,7 +3700,7 @@ void ShellController::onPolkitPointerButton(qreal x, qreal y, quint32 button, bo
     else
         m_polkitButtons &= ~qtButton;
     const QPointF p(x, y);
-    ChromePointer::send(m_polkitWindow,
+    sendChromePointer(m_polkitWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
                         qtButton, m_polkitButtons);
     schedulePolkitRender();
@@ -3701,7 +3710,7 @@ void ShellController::onPolkitPointerLeft()
 {
     if (!m_polkitWindow)
         return;
-    ChromePointer::send(m_polkitWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    sendChromePointer(m_polkitWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                         m_polkitButtons);
     schedulePolkitRender();
 }
@@ -3918,17 +3927,15 @@ void ShellController::renderLockSurface(quintptr lockSurfaceId)
     if (it == m_lockSurfaceSizes.constEnd() || it.value().isEmpty())
         return;
     const QSize size = it.value();
-    m_lockItem->setWidth(size.width());
-    m_lockItem->setHeight(size.height());
-    if (m_lockWindow->width() != size.width() || m_lockWindow->height() != size.height())
-        m_lockWindow->resize(size);
-    if (!m_lockWindow->isVisible())
-        m_lockWindow->show();
+    // Lock surfaces are not layer surfaces, so they do not receive a
+    // wp_fractional_scale event; they follow the output scale directly.
+    const qreal scale = m_protocol ? m_protocol->outputScale() : m_chromeScale;
+    prepareChromeScene(m_lockWindow, m_lockItem, size, size, scale);
     // Skip the re-entrant frame the readback itself renders (FR-14).
     m_lockFrameGate.beginCommit();
     const QImage image = m_lockWindow->grabWindow();
     m_lockFrameGate.endCommit();
-    if (!image.isNull() && m_protocol->commitLockImage(lockSurfaceId, image))
+    if (!image.isNull() && m_protocol->commitLockImage(lockSurfaceId, image, size))
         m_lockCommitted.insert(lockSurfaceId);
 }
 
@@ -4216,7 +4223,7 @@ void ShellController::onPointerMoved(qreal x, qreal y)
 {
     if (!m_window)
         return;
-    ChromePointer::send(m_window, QEvent::MouseMove, QPointF(x, y), Qt::NoButton, m_buttons);
+    sendChromePointer(m_window, QEvent::MouseMove, QPointF(x, y), Qt::NoButton, m_buttons);
     // Hover/title/row highlights changed in QML; push the new frame.
     scheduleRender();
 }
@@ -4230,7 +4237,7 @@ void ShellController::onPointerButton(qreal x, qreal y, quint32 button, bool pre
         m_buttons |= qtButton;
     else
         m_buttons &= ~qtButton;
-    ChromePointer::send(m_window, pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+    sendChromePointer(m_window, pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
                         QPointF(x, y), qtButton, m_buttons);
     scheduleRender();
 }
@@ -4241,7 +4248,7 @@ void ShellController::onPointerLeft()
         return;
     // Move the pointer off-screen so hover states clear when the compositor
     // takes the pointer away (e.g. it moved onto a window).
-    ChromePointer::send(m_window, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton, m_buttons);
+    sendChromePointer(m_window, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton, m_buttons);
     scheduleRender();
 }
 
@@ -4328,7 +4335,15 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
     } else {
         return;
     }
-    QWheelEvent event(QPointF(x, y), QPointF(x, y), QPoint(pixelX, pixelY),
+    QPointF logical(x, y);
+    if (surface == ShellProtocol::PointerSurface::DockPopup)
+        logical += QPointF(m_dockPopoverX, m_dockPopoverY);
+    if (surface == ShellProtocol::PointerSurface::Dock
+        || surface == ShellProtocol::PointerSurface::DockPopup) {
+        logical += QPointF(m_dockItemOffsetX, m_dockItemOffsetY);
+    }
+    const QPointF pos = ChromeScale::logicalToBuffer(logical, m_chromeScale);
+    QWheelEvent event(pos, pos, QPoint(pixelX, pixelY),
                       QPoint(angleX, angleY), Qt::NoButton, Qt::NoModifier,
                       Qt::NoScrollPhase, false);
     QCoreApplication::sendEvent(window, &event);
@@ -5927,7 +5942,7 @@ void ShellController::onDockPointerMoved(qreal x, qreal y)
     // headroom (above a bottom Dock) or a side gutter (beside a vertical
     // Dock).
     const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
-    ChromePointer::send(m_dockWindow, QEvent::MouseMove, p, Qt::NoButton, m_dockButtons);
+    sendChromePointer(m_dockWindow, QEvent::MouseMove, p, Qt::NoButton, m_dockButtons);
     scheduleDockRender();
 }
 
@@ -5945,7 +5960,7 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
     else
         m_dockButtons &= ~qtButton;
     const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
-    ChromePointer::send(m_dockWindow, pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+    sendChromePointer(m_dockWindow, pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
                       p, qtButton, m_dockButtons);
     scheduleDockRender();
 }
@@ -5954,7 +5969,7 @@ void ShellController::onDockPointerLeft()
 {
     if (!m_dockWindow)
         return;
-    ChromePointer::send(m_dockWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    sendChromePointer(m_dockWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                       m_dockButtons);
     scheduleDockRender();
 }
@@ -6081,7 +6096,7 @@ void ShellController::onOverviewPointerMoved(qreal x, qreal y)
     if (!m_overviewWindow)
         return;
     const QPointF p(x, y);
-    ChromePointer::send(m_overviewWindow, QEvent::MouseMove, p, Qt::NoButton, m_overviewButtons);
+    sendChromePointer(m_overviewWindow, QEvent::MouseMove, p, Qt::NoButton, m_overviewButtons);
     scheduleOverviewRender();
 }
 
@@ -6099,7 +6114,7 @@ void ShellController::onOverviewPointerButton(qreal x, qreal y, quint32 button, 
     else
         m_overviewButtons &= ~qtButton;
     const QPointF p(x, y);
-    ChromePointer::send(m_overviewWindow,
+    sendChromePointer(m_overviewWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
                         qtButton, m_overviewButtons);
     scheduleOverviewRender();
@@ -6109,7 +6124,7 @@ void ShellController::onOverviewPointerLeft()
 {
     if (!m_overviewWindow)
         return;
-    ChromePointer::send(m_overviewWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    sendChromePointer(m_overviewWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                         m_overviewButtons);
     scheduleOverviewRender();
 }
@@ -6139,18 +6154,13 @@ void ShellController::renderOverview()
         m_overviewSceneGraphCommitLogged = true;
         qInfo() << "shell: overview scene-graph commit path active";
     }
-    m_overviewItem->setWidth(m_overviewWidth);
-    m_overviewItem->setHeight(m_overviewHeight);
-    if (m_overviewWindow->width() != m_overviewWidth
-        || m_overviewWindow->height() != m_overviewHeight)
-        m_overviewWindow->resize(m_overviewWidth, m_overviewHeight);
-    if (!m_overviewWindow->isVisible())
-        m_overviewWindow->show();
+    prepareChromeScene(m_overviewWindow, m_overviewItem, QSize(m_overviewWidth, m_overviewHeight),
+                       QSize(m_overviewWidth, m_overviewHeight), m_chromeScale);
     m_overviewFrameGate.beginCommit();
     const QImage image = m_overviewWindow->grabWindow();
     m_overviewFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
-        m_protocol->commitOverviewImage(image);
+        m_protocol->commitOverviewImage(image, QSize(m_overviewWidth, m_overviewHeight));
 }
 
 // --- app-switcher overlay (T-06.2a) -----------------------------------------
@@ -6353,7 +6363,7 @@ void ShellController::onBannerPointerMoved(qreal x, qreal y)
     if (!m_bannerWindow)
         return;
     const QPointF p(x, y);
-    ChromePointer::send(m_bannerWindow, QEvent::MouseMove, p, Qt::NoButton, m_bannerButtons);
+    sendChromePointer(m_bannerWindow, QEvent::MouseMove, p, Qt::NoButton, m_bannerButtons);
     scheduleBannerRender();
 }
 
@@ -6369,7 +6379,7 @@ void ShellController::onBannerPointerButton(qreal x, qreal y, quint32 button, bo
     else
         m_bannerButtons &= ~qtButton;
     const QPointF p(x, y);
-    ChromePointer::send(m_bannerWindow,
+    sendChromePointer(m_bannerWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
                         qtButton, m_bannerButtons);
     scheduleBannerRender();
@@ -6379,7 +6389,7 @@ void ShellController::onBannerPointerLeft()
 {
     if (!m_bannerWindow)
         return;
-    ChromePointer::send(m_bannerWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    sendChromePointer(m_bannerWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                         m_bannerButtons);
     scheduleBannerRender();
 }
@@ -6409,18 +6419,13 @@ void ShellController::renderBanner()
         m_bannerSceneGraphCommitLogged = true;
         qInfo() << "shell: notification banner scene-graph commit path active";
     }
-    m_bannerItem->setWidth(m_bannerWidth);
-    m_bannerItem->setHeight(m_bannerHeight);
-    if (m_bannerWindow->width() != m_bannerWidth
-        || m_bannerWindow->height() != m_bannerHeight)
-        m_bannerWindow->resize(m_bannerWidth, m_bannerHeight);
-    if (!m_bannerWindow->isVisible())
-        m_bannerWindow->show();
+    prepareChromeScene(m_bannerWindow, m_bannerItem, QSize(m_bannerWidth, m_bannerHeight),
+                       QSize(m_bannerWidth, m_bannerHeight), m_chromeScale);
     m_bannerFrameGate.beginCommit();
     const QImage image = m_bannerWindow->grabWindow();
     m_bannerFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
-        m_protocol->commitBannerImage(image);
+        m_protocol->commitBannerImage(image, QSize(m_bannerWidth, m_bannerHeight));
 }
 
 void ShellController::renderSwitcher()
@@ -6437,18 +6442,13 @@ void ShellController::renderSwitcher()
         m_switcherSceneGraphCommitLogged = true;
         qInfo() << "shell: app-switcher scene-graph commit path active";
     }
-    m_switcherItem->setWidth(m_switcherWidth);
-    m_switcherItem->setHeight(m_switcherHeight);
-    if (m_switcherWindow->width() != m_switcherWidth
-        || m_switcherWindow->height() != m_switcherHeight)
-        m_switcherWindow->resize(m_switcherWidth, m_switcherHeight);
-    if (!m_switcherWindow->isVisible())
-        m_switcherWindow->show();
+    prepareChromeScene(m_switcherWindow, m_switcherItem, QSize(m_switcherWidth, m_switcherHeight),
+                       QSize(m_switcherWidth, m_switcherHeight), m_chromeScale);
     m_switcherFrameGate.beginCommit();
     const QImage image = m_switcherWindow->grabWindow();
     m_switcherFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
-        m_protocol->commitSwitcherImage(image);
+        m_protocol->commitSwitcherImage(image, QSize(m_switcherWidth, m_switcherHeight));
 }
 
 // --- Applications drawer (T-19.2) -------------------------------------------
@@ -6620,7 +6620,7 @@ void ShellController::onAppsDrawerPointerMoved(qreal x, qreal y)
 {
     if (!m_appsDrawerWindow)
         return;
-    ChromePointer::send(m_appsDrawerWindow, QEvent::MouseMove, QPointF(x, y), Qt::NoButton,
+    sendChromePointer(m_appsDrawerWindow, QEvent::MouseMove, QPointF(x, y), Qt::NoButton,
                         m_appsDrawerButtons);
     scheduleAppsDrawerRender();
 }
@@ -6638,7 +6638,7 @@ void ShellController::onAppsDrawerPointerButton(qreal x, qreal y, quint32 button
         m_appsDrawerButtons |= qtButton;
     else
         m_appsDrawerButtons &= ~qtButton;
-    ChromePointer::send(m_appsDrawerWindow,
+    sendChromePointer(m_appsDrawerWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
                         QPointF(x, y), qtButton, m_appsDrawerButtons);
     scheduleAppsDrawerRender();
@@ -6648,7 +6648,7 @@ void ShellController::onAppsDrawerPointerLeft()
 {
     if (!m_appsDrawerWindow)
         return;
-    ChromePointer::send(m_appsDrawerWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    sendChromePointer(m_appsDrawerWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                         m_appsDrawerButtons);
     scheduleAppsDrawerRender();
 }
@@ -6719,13 +6719,8 @@ void ShellController::renderAppsDrawer()
         m_appsDrawerSceneGraphCommitLogged = true;
         qInfo() << "shell: apps-drawer scene-graph commit path active";
     }
-    m_appsDrawerItem->setWidth(m_appsDrawerWidth);
-    m_appsDrawerItem->setHeight(m_appsDrawerHeight);
-    if (m_appsDrawerWindow->width() != m_appsDrawerWidth
-        || m_appsDrawerWindow->height() != m_appsDrawerHeight)
-        m_appsDrawerWindow->resize(m_appsDrawerWidth, m_appsDrawerHeight);
-    if (!m_appsDrawerWindow->isVisible())
-        m_appsDrawerWindow->show();
+    prepareChromeScene(m_appsDrawerWindow, m_appsDrawerItem, QSize(m_appsDrawerWidth, m_appsDrawerHeight),
+                       QSize(m_appsDrawerWidth, m_appsDrawerHeight), m_chromeScale);
     m_appsDrawerFrameGate.beginCommit();
     const QImage image = m_appsDrawerWindow->grabWindow();
     m_appsDrawerFrameGate.endCommit();
@@ -6743,7 +6738,7 @@ void ShellController::renderAppsDrawer()
                 qMax(0, qRound(map.value(QStringLiteral("width")).toDouble())),
                 qMax(0, qRound(map.value(QStringLiteral("height")).toDouble())));
         }
-        m_protocol->commitAppsDrawerImage(image);
+        m_protocol->commitAppsDrawerImage(image, QSize(m_appsDrawerWidth, m_appsDrawerHeight));
     }
 }
 
@@ -7069,12 +7064,89 @@ void ShellController::scheduleDockRender()
     });
 }
 
+void ShellController::prepareChromeScene(QQuickWindow *window, QQuickItem *item,
+                                         const QSize &itemLogical,
+                                         const QSize &windowLogical, qreal scale)
+{
+    if (!window || !item || itemLogical.isEmpty() || windowLogical.isEmpty())
+        return;
+    item->setWidth(itemLogical.width());
+    item->setHeight(itemLogical.height());
+    // Scale the root item, not the layout: QML anchors, popup rects, and
+    // pointer handlers keep their logical coordinates while the scene graph
+    // rasterizes at the physical resolution.
+    item->setTransformOrigin(QQuickItem::TopLeft);
+    item->setScale(scale);
+    const QSize buffer = ChromeScale::bufferSize(windowLogical, scale);
+    if (window->width() != buffer.width() || window->height() != buffer.height())
+        window->resize(buffer);
+    if (!window->isVisible())
+        window->show();
+}
+
+QRect ShellController::chromeBufferRect(const QRect &logical) const
+{
+    return ChromeScale::bufferRect(logical, m_chromeScale);
+}
+
+void ShellController::sendChromePointer(QQuickWindow *window, QEvent::Type type,
+                                        const QPointF &logical, Qt::MouseButton button,
+                                        Qt::MouseButtons buttons,
+                                        Qt::KeyboardModifiers modifiers)
+{
+    // The offscreen window's coordinate space is physical (its size is the
+    // scaled buffer); the root item transform maps it back to logical QML
+    // coordinates. Negative sentinels (pointer left) stay off-screen.
+    QPointF pos = logical;
+    if (logical.x() >= 0.0 && logical.y() >= 0.0)
+        pos = ChromeScale::logicalToBuffer(logical, m_chromeScale);
+    ChromePointer::send(window, type, pos, button, buttons, modifiers);
+}
+
+void ShellController::onChromeScaleChanged(qreal scale)
+{
+    const qreal safe = ChromeScale::sanitize(scale);
+    if (qFuzzyCompare(m_chromeScale, safe))
+        return;
+    m_chromeScale = safe;
+    updateControlCenterGeometry();
+    rerenderChrome();
+}
+
+void ShellController::rerenderChrome()
+{
+    if (m_item && m_width > 0)
+        render();
+    if (m_dockItem && m_dockWidth > 0 && m_dockHeight > 0)
+        renderDock();
+    if (m_overviewActive)
+        renderOverview();
+    if (m_switcherActive)
+        renderSwitcher();
+    if (m_appsDrawerOpen && m_appsDrawerPending)
+        renderAppsDrawer();
+    if (m_bannerPending)
+        renderBanner();
+    if (m_controlCenterPending)
+        renderControlCenter();
+    if (m_osdActive)
+        renderOsd();
+    if (m_chooserActive && m_chooserPending)
+        renderChooser();
+    if (m_screenshotActive && m_screenshotPending)
+        renderScreenshot();
+    if (m_screencastActive && m_screencastPending)
+        renderScreenCast();
+    if (m_polkitActive && m_polkitPending)
+        renderPolkit();
+    if (m_lockActive)
+        repaintLockSurfaces();
+}
+
 void ShellController::renderDock()
 {
     if (!m_dockItem || !m_dockWindow || m_dockWidth <= 0 || m_dockHeight <= 0)
         return;
-    m_dockItem->setWidth(m_dockWidth);
-    m_dockItem->setHeight(m_dockHeight);
     // Tell the Dock where its surface-local (0, 0) sits in the compositor's
     // output coordinates, so the tile rect it reports for the launch-origin
     // hand-off is already in that space (T-14.7l).
@@ -7100,14 +7172,16 @@ void ShellController::renderDock()
     const int leftGutter = kDockPopoverGutter;
     m_dockItemOffsetX = leftGutter;
     m_dockItemOffsetY = headroom;
-    m_dockItem->setX(leftGutter);
-    m_dockItem->setY(headroom);
     const int windowWidth = m_dockWidth + 2 * leftGutter;
     const int windowHeight = m_dockHeight + headroom;
-    if (m_dockWindow->width() != windowWidth || m_dockWindow->height() != windowHeight)
-        m_dockWindow->resize(windowWidth, windowHeight);
-    if (!m_dockWindow->isVisible())
-        m_dockWindow->show();
+    prepareChromeScene(m_dockWindow, m_dockItem, QSize(m_dockWidth, m_dockHeight),
+                       QSize(windowWidth, windowHeight), m_chromeScale);
+    // The scene is offset inside the physical window; the item's position is
+    // in window pixels, while its contents stay logical.
+    const QPointF itemOrigin =
+        ChromeScale::logicalToBuffer(QPointF(leftGutter, headroom), m_chromeScale);
+    m_dockItem->setX(itemOrigin.x());
+    m_dockItem->setY(itemOrigin.y());
     // `grabWindow()` renders the scene again, which emits `afterRendering`;
     // the gate suppresses that re-entrant schedule so the commit cannot loop
     // (FR-14).
@@ -7146,8 +7220,9 @@ void ShellController::renderDock()
             m_dockPanelRectValid = true;
         }
     }
-    if (!m_protocol->commitDockImage(
-                image.copy(leftGutter, headroom, m_dockWidth, m_dockHeight)))
+    const QRect dockRect(leftGutter, headroom, m_dockWidth, m_dockHeight);
+    if (!m_protocol->commitDockImage(image.copy(chromeBufferRect(dockRect)),
+                                     QSize(m_dockWidth, m_dockHeight)))
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 
     // Place and commit the popover on the Dock's overlay surface. The
@@ -7182,7 +7257,8 @@ void ShellController::renderDock()
         }
         m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph);
         const QRect popupRect(leftGutter + px, headroom + py, pw, ph);
-        if (!m_protocol->commitDockPopupImage(image.copy(popupRect)))
+        if (!m_protocol->commitDockPopupImage(image.copy(chromeBufferRect(popupRect)),
+                                              QSize(pw, ph)))
             qWarning() << "shell: failed to commit the Dock popover:"
                        << m_protocol->lastError();
         m_dockPopoverMapped = true;
@@ -7198,24 +7274,23 @@ void ShellController::render()
         return;
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
-    m_item->setWidth(m_width);
-    m_item->setHeight(m_barHeight);
     const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;
     const int windowHeight =
         popupShown ? qMax(m_barHeight, m_popupY + m_popupHeight) : m_barHeight;
-    if (m_window->width() != m_width || m_window->height() != windowHeight)
-        m_window->resize(m_width, windowHeight);
-    if (!m_window->isVisible())
-        m_window->show();
+    prepareChromeScene(m_window, m_item, QSize(m_width, m_barHeight),
+                       QSize(m_width, windowHeight), m_chromeScale);
     // See `renderDock()`: the readback re-renders and must not re-schedule.
     m_menuFrameGate.beginCommit();
     const QImage image = m_window->grabWindow();
     m_menuFrameGate.endCommit();
-    if (!m_protocol->commitImage(image.copy(0, 0, m_width, m_barHeight)))
+    const QRect barRect(0, 0, m_width, m_barHeight);
+    if (!m_protocol->commitImage(image.copy(chromeBufferRect(barRect)),
+                                 QSize(m_width, m_barHeight)))
         qWarning() << "shell: failed to commit the menu bar:" << m_protocol->lastError();
     if (popupShown) {
         const QRect popupRect(m_popupX, m_popupY, m_popupWidth, m_popupHeight);
-        if (!m_protocol->commitPopupImage(image.copy(popupRect)))
+        if (!m_protocol->commitPopupImage(image.copy(chromeBufferRect(popupRect)),
+                                          QSize(m_popupWidth, m_popupHeight)))
             qWarning() << "shell: failed to commit the menu popup:" << m_protocol->lastError();
     }
 }

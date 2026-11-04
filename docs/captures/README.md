@@ -1070,6 +1070,20 @@ stills are `t21-chrome-baseline-dock.png`, `-menu.png`, and
 (not a screencopy client). The transport decision is
 [ADR 0191](../design/adr/0191-chrome-transport-render-control-and-shm-fallback.md).
 
+T-21.1b's HiDPI chrome stills are `t21-hidpi-1x.png`, `t21-hidpi-1_5x.png`,
+and `t21-hidpi-2x.png` (the menu bar, Dock, and Dock popover at each scale),
+plus `t21-hidpi-1_5x-dock.png` and `t21-hidpi-1_5x-control-center.png` for the
+live visual check. `t21-hidpi-1_5x-before-after.png` compares the menu popup
+rendered by the pre-T184 shell (1x buffer upscaled by the compositor) with the
+new physical buffer at 2x nearest-neighbour zoom. The main stills are full
+**physical** captures (1920x1200) through the trusted compositor screenshot
+path, so text/icon edges and the Dock rim can be inspected without a
+compositor upscale. The run seeded `display.scale` and
+`DRAGONFRUIT_NESTED_SCALE` together; `chrome stats` records the matching
+logical/buffer pair (`1280x125 -> 1920x188`, scale 1, viewport 1 at 1.5x;
+`960x125 -> 1920x250`, scale 2 at 2x). The contract is
+[ADR 0192](../design/adr/0192-chrome-scale-physical-buffer-and-viewport.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

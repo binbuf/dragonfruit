@@ -4,10 +4,12 @@
 ## Key facts (maintained by symphony — do not edit)
 
 - **T183 — T-21.1a chrome transport baseline and decision**: Opt-in shell transport counters (`DRAGONFRUIT_CHROME_STATS=1`) in; `FrameCommitGate` records scene frames, `grabWindow()` readbacks, and the
+- **T184 — T-21.1b Chrome HiDPI and fractional scale**: Vendored `fractional-scale-v1.xml` and `viewporter.xml` (MIT) under; `shell/src/chromescale.{h,cpp}`: pure logical -> physical mapping,
 
 ## Task notes (maintained by symphony — do not edit)
 
 - [T183](progress/T183.md) — Opt-in shell transport counters (`DRAGONFRUIT_CHROME_STATS=1`) in
+- [T184](progress/T184.md) — Vendored `fractional-scale-v1.xml` and `viewporter.xml` (MIT) under
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

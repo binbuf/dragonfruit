@@ -541,13 +541,15 @@ per-output awareness.
 
 ### 9.5 Shell HiDPI
 
-The shell receives logical `2560x1440` at a 1.5x output scale, renders at that
-logical size, and commits a buffer with no `wl_surface.set_buffer_scale`. The
-compositor upscales the chrome by 1.5. This softens text, icons, and the rim
-independently of the material path. Fix this before judging P1/P2 visual
-quality: either render the shell at physical resolution with the correct
-buffer scale, or set an explicit fractional scale path that Qt supports.
-This is not a reason to rewrite the shell; it is a correctness fix.
+**Resolved by T-21.1b.** The shell now binds `wp_fractional_scale_manager_v1`
+and `wp_viewporter`, keeps QML layout logical, and commits physical buffers:
+exact integers use `wl_surface.set_buffer_scale`; fractional scales use a
+`wp_viewport` mapping the physical buffer onto the logical surface. The pure
+`ChromeScale` helper owns the rounding and pointer mapping. The original audit
+observed the shell receiving logical `2560x1440` at 1.5x and committing a 1x
+buffer, which the compositor upscaled; that is no longer the path. See
+[ADR 0192](adr/0192-chrome-scale-physical-buffer-and-viewport.md) and
+[`captures/t21-hidpi-*.png`](../captures/).
 
 ---
 

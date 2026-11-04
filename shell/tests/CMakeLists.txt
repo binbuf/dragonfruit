@@ -45,6 +45,26 @@ set_tests_properties(tst_dock PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Chrome scale geometry tests (T-21.1b): logical surface size -> physical
+# buffer size, 1x/1.5x/2x buffer-scale/viewport choice, and the pointer
+# round-trip. No Wayland, QML, or compositor.
+qt_add_executable(tst_chromescale
+    tst_chromescale.cpp
+)
+target_link_libraries(tst_chromescale PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_chromescale
+    COMMAND tst_chromescale
+)
+set_tests_properties(tst_chromescale PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Chrome pointer injection unit tests (T-16.12): the shared helper owns every
 # injected event's timestamp (nonzero, strictly increasing) and never hands a
 # zero-timestamp `QMouseEvent` to a chrome window. No QML, Wayland, or

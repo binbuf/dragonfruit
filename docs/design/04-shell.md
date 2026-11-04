@@ -36,12 +36,18 @@ local-only macOS screenshots that never ship.
 **Known presentation limits (2026-11).** The shell forces
 `QT_QPA_PLATFORM=offscreen` and commits each chrome surface as a
 `QImage` readback: `grabWindow()` renders the QML scene, the image is copied,
-and `commitTo()` allocates a fresh `wl_shm` buffer. It does not set
-`wl_surface.set_buffer_scale` and does not consume `wl_surface.frame`
-callbacks. That keeps the shell independent of the Qt Wayland platform plugin,
-but it is expensive per frame and soft at fractional scale. The transport and
-HiDPI fix is P0 in [STATUS.md](STATUS.md) (G-01); it must land before judging
-shell sharpness or frame pacing on real hardware.
+and `commitTo()` allocates a fresh `wl_shm` buffer. That keeps the shell
+independent of the Qt Wayland platform plugin, but it is still expensive per
+frame. T-21.1b fixed the fractional-scale softness: the shell binds
+`wp_fractional_scale_manager_v1`/`wp_viewporter`, renders the QML scene at the
+preferred physical resolution while keeping layout in logical units, uses
+`wl_surface.set_buffer_scale` for exact integers and a `wp_viewport` for
+fractional scales, and keeps reserved zones, panel rects, and input regions
+logical ([ADR 0192](adr/0192-chrome-scale-physical-buffer-and-viewport.md)).
+The remaining transport work is P0 in [STATUS.md](STATUS.md) (G-01): pooled shm
+plus damage and `wl_surface.frame` callbacks (T185), then the GPU-backed path
+(T186). Per-output shell scenes with different scales on one desktop remain a
+follow-up; a chrome surface shares one scale.
 
 **Chrome materials (T-20.3).** Every one of these surfaces is
 [a compositor-material surface](../design/02-compositor.md#backdrop-blur-pass-t-042),

@@ -27,6 +27,7 @@
 
 #include <wayland-client.h>
 
+#include "chromescale.h"
 #include "chromestats.h"
 #include "dockdrops.h"
 #include "dockprojection.h"
@@ -40,6 +41,10 @@
 #include "dragonfruit-toplevel-client-protocol.h"
 // The vendored standard protocol (MIT); the shell is the first-party lock UI.
 #include "ext-session-lock-v1-client-protocol.h"
+// The vendored standard protocols (MIT) for physical-resolution chrome
+// buffers (T-21.1b).
+#include "fractional-scale-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
 // The vendored standard protocol (MIT); the shell's clipboard history
 // observes and forwards the selection through it (T-13.5b, ADR 0082).
 #include "wlr-data-control-unstable-v1-client-protocol.h"
@@ -224,6 +229,7 @@ bool ShellProtocol::createMenuBarSurface(int height, int exclusiveZone)
         return fail(QStringLiteral("df_shell is not available"));
 
     m_surface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_surface);
     m_layer = df_shell_get_layer_surface(m_shell, m_surface, nullptr, DF_SHELL_LAYER_TOP,
                                          "menubar");
     if (!m_layer)
@@ -251,6 +257,7 @@ bool ShellProtocol::createPopupSurface()
         return fail(QStringLiteral("df_shell is not available"));
 
     m_popupSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_popupSurface);
     m_popupLayer = df_shell_get_layer_surface(m_shell, m_popupSurface, nullptr,
                                               DF_SHELL_LAYER_OVERLAY, "menubar-popup");
     if (!m_popupLayer)
@@ -287,11 +294,11 @@ bool ShellProtocol::setPopupGeometry(int x, int y, int width, int height)
     return true;
 }
 
-bool ShellProtocol::commitPopupImage(const QImage &image)
+bool ShellProtocol::commitPopupImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_popupSurface)
         return false;
-    if (!commitTo(m_popupSurface, image))
+    if (!commitTo(m_popupSurface, image, logicalSize))
         return false;
     m_popupMapped = true;
     return true;
@@ -305,17 +312,18 @@ bool ShellProtocol::hidePopup()
         return true;
     wl_surface_attach(m_popupSurface, nullptr, 0, 0);
     wl_surface_commit(m_popupSurface);
+    resetSurfaceScale(m_popupSurface);
     m_popupMapped = false;
     if (m_display)
         wl_display_flush(m_display);
     return true;
 }
 
-bool ShellProtocol::commitImage(const QImage &image)
+bool ShellProtocol::commitImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_surface)
         return false;
-    return commitTo(m_surface, image);
+    return commitTo(m_surface, image, logicalSize);
 }
 
 bool ShellProtocol::createOverviewSurface()
@@ -326,6 +334,7 @@ bool ShellProtocol::createOverviewSurface()
         return fail(QStringLiteral("df_shell is not available"));
 
     m_overviewSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_overviewSurface);
     m_overviewLayer = df_shell_get_layer_surface(m_shell, m_overviewSurface, nullptr,
                                                  DF_SHELL_LAYER_OVERLAY, "overview");
     if (!m_overviewLayer)
@@ -348,11 +357,11 @@ bool ShellProtocol::createOverviewSurface()
     return true;
 }
 
-bool ShellProtocol::commitOverviewImage(const QImage &image)
+bool ShellProtocol::commitOverviewImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_overviewSurface)
         return false;
-    if (!commitTo(m_overviewSurface, image))
+    if (!commitTo(m_overviewSurface, image, logicalSize))
         return false;
     m_overviewMapped = true;
     return true;
@@ -366,6 +375,7 @@ bool ShellProtocol::hideOverview()
         return true;
     wl_surface_attach(m_overviewSurface, nullptr, 0, 0);
     wl_surface_commit(m_overviewSurface);
+    resetSurfaceScale(m_overviewSurface);
     m_overviewMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -380,6 +390,7 @@ bool ShellProtocol::createSwitcherSurface()
         return fail(QStringLiteral("df_shell is not available"));
 
     m_switcherSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_switcherSurface);
     m_switcherLayer = df_shell_get_layer_surface(m_shell, m_switcherSurface, nullptr,
                                                  DF_SHELL_LAYER_OVERLAY, "app-switcher");
     if (!m_switcherLayer)
@@ -402,11 +413,11 @@ bool ShellProtocol::createSwitcherSurface()
     return true;
 }
 
-bool ShellProtocol::commitSwitcherImage(const QImage &image)
+bool ShellProtocol::commitSwitcherImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_switcherSurface)
         return false;
-    if (!commitTo(m_switcherSurface, image))
+    if (!commitTo(m_switcherSurface, image, logicalSize))
         return false;
     m_switcherMapped = true;
     return true;
@@ -420,6 +431,7 @@ bool ShellProtocol::hideSwitcher()
         return true;
     wl_surface_attach(m_switcherSurface, nullptr, 0, 0);
     wl_surface_commit(m_switcherSurface);
+    resetSurfaceScale(m_switcherSurface);
     m_switcherMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -434,6 +446,7 @@ bool ShellProtocol::createBannerSurface(int width, int height, int topMargin)
         return fail(QStringLiteral("df_shell is not available"));
 
     m_bannerSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_bannerSurface);
     m_bannerLayer = df_shell_get_layer_surface(m_shell, m_bannerSurface, nullptr,
                                                DF_SHELL_LAYER_OVERLAY, "notification");
     if (!m_bannerLayer)
@@ -462,11 +475,11 @@ bool ShellProtocol::createBannerSurface(int width, int height, int topMargin)
     return true;
 }
 
-bool ShellProtocol::commitBannerImage(const QImage &image)
+bool ShellProtocol::commitBannerImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_bannerSurface)
         return false;
-    if (!commitTo(m_bannerSurface, image))
+    if (!commitTo(m_bannerSurface, image, logicalSize))
         return false;
     m_bannerMapped = true;
     return true;
@@ -480,6 +493,7 @@ bool ShellProtocol::hideBanner()
         return true;
     wl_surface_attach(m_bannerSurface, nullptr, 0, 0);
     wl_surface_commit(m_bannerSurface);
+    resetSurfaceScale(m_bannerSurface);
     m_bannerMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -511,6 +525,7 @@ bool ShellProtocol::createControlCenterSurface(int width, int height, int topMar
         return fail(QStringLiteral("df_shell is not available"));
 
     m_controlCenterSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_controlCenterSurface);
     m_controlCenterLayer = df_shell_get_layer_surface(m_shell, m_controlCenterSurface, nullptr,
                                                       DF_SHELL_LAYER_OVERLAY, "control-center");
     if (!m_controlCenterLayer)
@@ -541,6 +556,16 @@ bool ShellProtocol::createControlCenterSurface(int width, int height, int topMar
     return true;
 }
 
+bool ShellProtocol::setControlCenterSize(int width, int height)
+{
+    if (!m_controlCenterLayer || width <= 0 || height <= 0)
+        return false;
+    df_layer_surface_set_size(m_controlCenterLayer, width, height);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 bool ShellProtocol::setControlCenterInputRegion(int width, int height)
 {
     if (!m_controlCenterSurface || !m_compositor)
@@ -556,11 +581,11 @@ bool ShellProtocol::setControlCenterInputRegion(int width, int height)
     return true;
 }
 
-bool ShellProtocol::commitControlCenterImage(const QImage &image)
+bool ShellProtocol::commitControlCenterImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_controlCenterSurface)
         return false;
-    if (!commitTo(m_controlCenterSurface, image))
+    if (!commitTo(m_controlCenterSurface, image, logicalSize))
         return false;
     m_controlCenterMapped = true;
     return true;
@@ -574,6 +599,7 @@ bool ShellProtocol::hideControlCenter()
         return true;
     wl_surface_attach(m_controlCenterSurface, nullptr, 0, 0);
     wl_surface_commit(m_controlCenterSurface);
+    resetSurfaceScale(m_controlCenterSurface);
     m_controlCenterMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -590,6 +616,7 @@ bool ShellProtocol::createOsdSurface(int width, int height)
         return fail(QStringLiteral("df_shell is not available"));
 
     m_osdSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_osdSurface);
     m_osdLayer = df_shell_get_layer_surface(m_shell, m_osdSurface, nullptr,
                                             DF_SHELL_LAYER_OVERLAY, "osd");
     if (!m_osdLayer)
@@ -626,11 +653,11 @@ bool ShellProtocol::setOsdPanelRect(int x, int y, int width, int height)
     return true;
 }
 
-bool ShellProtocol::commitOsdImage(const QImage &image)
+bool ShellProtocol::commitOsdImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_osdSurface)
         return false;
-    if (!commitTo(m_osdSurface, image))
+    if (!commitTo(m_osdSurface, image, logicalSize))
         return false;
     m_osdMapped = true;
     return true;
@@ -644,6 +671,7 @@ bool ShellProtocol::hideOsd()
         return true;
     wl_surface_attach(m_osdSurface, nullptr, 0, 0);
     wl_surface_commit(m_osdSurface);
+    resetSurfaceScale(m_osdSurface);
     m_osdMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -660,6 +688,7 @@ bool ShellProtocol::createChooserSurface(int width, int height)
         return fail(QStringLiteral("df_shell is not available"));
 
     m_chooserSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_chooserSurface);
     m_chooserLayer = df_shell_get_layer_surface(m_shell, m_chooserSurface, nullptr,
                                                 DF_SHELL_LAYER_OVERLAY, "file-chooser");
     if (!m_chooserLayer)
@@ -703,11 +732,11 @@ bool ShellProtocol::setChooserInputRegion(int width, int height)
     return true;
 }
 
-bool ShellProtocol::commitChooserImage(const QImage &image)
+bool ShellProtocol::commitChooserImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_chooserSurface)
         return false;
-    if (!commitTo(m_chooserSurface, image))
+    if (!commitTo(m_chooserSurface, image, logicalSize))
         return false;
     m_chooserMapped = true;
     return true;
@@ -721,6 +750,7 @@ bool ShellProtocol::hideChooser()
         return true;
     wl_surface_attach(m_chooserSurface, nullptr, 0, 0);
     wl_surface_commit(m_chooserSurface);
+    resetSurfaceScale(m_chooserSurface);
     m_chooserMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -737,6 +767,7 @@ bool ShellProtocol::createScreenshotSurface()
         return fail(QStringLiteral("df_shell is not available"));
 
     m_screenshotSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_screenshotSurface);
     m_screenshotLayer = df_shell_get_layer_surface(m_shell, m_screenshotSurface, nullptr,
                                                    DF_SHELL_LAYER_OVERLAY, "screenshot");
     if (!m_screenshotLayer)
@@ -774,11 +805,11 @@ bool ShellProtocol::setScreenshotInputRegion(int width, int height)
     return true;
 }
 
-bool ShellProtocol::commitScreenshotImage(const QImage &image)
+bool ShellProtocol::commitScreenshotImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_screenshotSurface)
         return false;
-    if (!commitTo(m_screenshotSurface, image))
+    if (!commitTo(m_screenshotSurface, image, logicalSize))
         return false;
     m_screenshotMapped = true;
     return true;
@@ -792,6 +823,7 @@ bool ShellProtocol::hideScreenshot()
         return true;
     wl_surface_attach(m_screenshotSurface, nullptr, 0, 0);
     wl_surface_commit(m_screenshotSurface);
+    resetSurfaceScale(m_screenshotSurface);
     m_screenshotMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -808,6 +840,7 @@ bool ShellProtocol::createScreenCastSurface(int width, int height)
         return fail(QStringLiteral("df_shell is not available"));
 
     m_screencastSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_screencastSurface);
     m_screencastLayer = df_shell_get_layer_surface(m_shell, m_screencastSurface, nullptr,
                                                    DF_SHELL_LAYER_OVERLAY, "screencast");
     if (!m_screencastLayer)
@@ -851,11 +884,11 @@ bool ShellProtocol::setScreenCastInputRegion(int width, int height)
     return true;
 }
 
-bool ShellProtocol::commitScreenCastImage(const QImage &image)
+bool ShellProtocol::commitScreenCastImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_screencastSurface)
         return false;
-    if (!commitTo(m_screencastSurface, image))
+    if (!commitTo(m_screencastSurface, image, logicalSize))
         return false;
     m_screencastMapped = true;
     return true;
@@ -869,6 +902,7 @@ bool ShellProtocol::hideScreenCast()
         return true;
     wl_surface_attach(m_screencastSurface, nullptr, 0, 0);
     wl_surface_commit(m_screencastSurface);
+    resetSurfaceScale(m_screencastSurface);
     m_screencastMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -885,6 +919,7 @@ bool ShellProtocol::createPolkitSurface(int width, int height)
         return fail(QStringLiteral("df_shell is not available"));
 
     m_polkitSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_polkitSurface);
     m_polkitLayer = df_shell_get_layer_surface(m_shell, m_polkitSurface, nullptr,
                                                DF_SHELL_LAYER_OVERLAY, "polkit");
     if (!m_polkitLayer)
@@ -925,11 +960,11 @@ bool ShellProtocol::setPolkitInputRegion(int width, int height)
     return true;
 }
 
-bool ShellProtocol::commitPolkitImage(const QImage &image)
+bool ShellProtocol::commitPolkitImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_polkitSurface)
         return false;
-    if (!commitTo(m_polkitSurface, image))
+    if (!commitTo(m_polkitSurface, image, logicalSize))
         return false;
     m_polkitMapped = true;
     return true;
@@ -943,6 +978,7 @@ bool ShellProtocol::hidePolkit()
         return true;
     wl_surface_attach(m_polkitSurface, nullptr, 0, 0);
     wl_surface_commit(m_polkitSurface);
+    resetSurfaceScale(m_polkitSurface);
     m_polkitMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -957,6 +993,7 @@ bool ShellProtocol::createAppsDrawerSurface()
         return fail(QStringLiteral("df_shell is not available"));
 
     m_appsDrawerSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_appsDrawerSurface);
     m_appsDrawerLayer = df_shell_get_layer_surface(m_shell, m_appsDrawerSurface, nullptr,
                                                    DF_SHELL_LAYER_OVERLAY, "apps-drawer");
     if (!m_appsDrawerLayer)
@@ -1017,11 +1054,11 @@ bool ShellProtocol::setAppsDrawerPanelRect(int x, int y, int width, int height)
     return true;
 }
 
-bool ShellProtocol::commitAppsDrawerImage(const QImage &image)
+bool ShellProtocol::commitAppsDrawerImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_appsDrawerSurface)
         return false;
-    if (!commitTo(m_appsDrawerSurface, image))
+    if (!commitTo(m_appsDrawerSurface, image, logicalSize))
         return false;
     m_appsDrawerMapped = true;
     return true;
@@ -1035,6 +1072,7 @@ bool ShellProtocol::hideAppsDrawer()
         return true;
     wl_surface_attach(m_appsDrawerSurface, nullptr, 0, 0);
     wl_surface_commit(m_appsDrawerSurface);
+    resetSurfaceScale(m_appsDrawerSurface);
     m_appsDrawerMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -1072,6 +1110,7 @@ void ShellProtocol::createLockSurfaces()
         if (alreadyCovered)
             continue;
         wl_surface *surface = wl_compositor_create_surface(m_compositor);
+        ensureScaleObjects(surface);
         if (!surface)
             continue;
         ext_session_lock_surface_v1 *lockSurface =
@@ -1137,13 +1176,14 @@ void ShellProtocol::unlockSession()
         wl_display_flush(m_display);
 }
 
-bool ShellProtocol::commitLockImage(quintptr lockSurfaceId, const QImage &image)
+bool ShellProtocol::commitLockImage(quintptr lockSurfaceId, const QImage &image,
+                         const QSize &logicalSize)
 {
     auto *lockSurface = reinterpret_cast<ext_session_lock_surface_v1 *>(lockSurfaceId);
     auto it = m_lockSurfaces.find(lockSurface);
     if (it == m_lockSurfaces.end() || !it.value().surface)
         return false;
-    return commitTo(it.value().surface, image);
+    return commitTo(it.value().surface, image, logicalSize);
 }
 
 bool ShellProtocol::fullscreenOverlayActive() const
@@ -1321,6 +1361,7 @@ bool ShellProtocol::createDockSurface(DockPosition position, int thickness, int 
         return fail(QStringLiteral("df_shell is not available"));
 
     m_dockSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_dockSurface);
     m_dockLayer = df_shell_get_layer_surface(m_shell, m_dockSurface, nullptr, DF_SHELL_LAYER_TOP,
                                              "dock");
     if (!m_dockLayer)
@@ -1368,11 +1409,11 @@ bool ShellProtocol::configureDockSurface(DockPosition position, int thickness, i
     return true;
 }
 
-bool ShellProtocol::commitDockImage(const QImage &image)
+bool ShellProtocol::commitDockImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_dockSurface)
         return false;
-    if (!commitTo(m_dockSurface, image))
+    if (!commitTo(m_dockSurface, image, logicalSize))
         return false;
     m_dockMapped = true;
     return true;
@@ -1414,6 +1455,7 @@ bool ShellProtocol::createDockPopupSurface(DockPosition position)
         return fail(QStringLiteral("df_shell is not available"));
 
     m_dockPopupSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_dockPopupSurface);
     m_dockPopupLayer = df_shell_get_layer_surface(m_shell, m_dockPopupSurface, nullptr,
                                                   DF_SHELL_LAYER_OVERLAY, "dock-popup");
     if (!m_dockPopupLayer)
@@ -1448,11 +1490,11 @@ bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int lef
     return true;
 }
 
-bool ShellProtocol::commitDockPopupImage(const QImage &image)
+bool ShellProtocol::commitDockPopupImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_dockPopupSurface)
         return false;
-    if (!commitTo(m_dockPopupSurface, image))
+    if (!commitTo(m_dockPopupSurface, image, logicalSize))
         return false;
     m_dockPopupMapped = true;
     return true;
@@ -1466,6 +1508,7 @@ bool ShellProtocol::hideDockPopup()
         return true;
     wl_surface_attach(m_dockPopupSurface, nullptr, 0, 0);
     wl_surface_commit(m_dockPopupSurface);
+    resetSurfaceScale(m_dockPopupSurface);
     m_dockPopupMapped = false;
     if (m_display)
         wl_display_flush(m_display);
@@ -1610,7 +1653,111 @@ QString ShellProtocol::surfaceLabel(wl_surface *surface) const
     return QStringLiteral("unknown");
 }
 
-bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
+QSize ShellProtocol::outputLogicalSize() const
+{
+    if (m_outputs.isEmpty())
+        return QSize();
+    const OutputInfo info = m_outputInfo.value(m_outputs.first());
+    if (info.geometryWidth <= 0 || info.geometryHeight <= 0)
+        return QSize();
+    return QSize(info.geometryWidth, info.geometryHeight);
+}
+
+qreal ShellProtocol::preferredScaleFor(const QString &surface) const
+{
+    if (surface.isEmpty())
+        return 1.0;
+    for (auto it = m_surfaceScales.constBegin(); it != m_surfaceScales.constEnd(); ++it) {
+        if (surfaceLabel(it.key()) == surface)
+            return it.value().preferredKnown ? it.value().preferredScale : 1.0;
+    }
+    return 1.0;
+}
+
+void ShellProtocol::ensureScaleObjects(wl_surface *surface)
+{
+    if (!surface || m_surfaceScales.contains(surface))
+        return;
+    SurfaceScale scale;
+    if (m_fractionalScaleManager) {
+        scale.fractional =
+            wp_fractional_scale_manager_v1_get_fractional_scale(m_fractionalScaleManager,
+                                                                surface);
+        if (scale.fractional) {
+            static const wp_fractional_scale_v1_listener listener = { onPreferredScale };
+            wp_fractional_scale_v1_add_listener(scale.fractional, &listener, this);
+        }
+    }
+    if (m_viewporter)
+        scale.viewport = wp_viewporter_get_viewport(m_viewporter, surface);
+    m_surfaceScales.insert(surface, scale);
+}
+
+void ShellProtocol::applySurfaceScale(wl_surface *surface, const QSize &logicalSize,
+                                      const QSize &bufferSize)
+{
+    if (!surface)
+        return;
+    auto it = m_surfaceScales.find(surface);
+    if (it == m_surfaceScales.end())
+        return;
+
+    const qreal scale = it.value().preferredKnown ? it.value().preferredScale
+                                                   : m_outputScale;
+    const ChromeScale::Geometry geometry =
+        ChromeScale::geometry(logicalSize.isEmpty() ? bufferSize : logicalSize, scale);
+
+    // `wl_surface.set_buffer_scale` accepts integers only. Exact integers use
+    // it directly; fractional scales keep scale 1 and map the physical buffer
+    // onto the logical surface with the viewport.
+    wl_surface_set_buffer_scale(surface, geometry.bufferScale);
+    if (it.value().viewport) {
+        if (geometry.useViewport) {
+            wp_viewport_set_source(it.value().viewport, wl_fixed_from_int(0),
+                                   wl_fixed_from_int(0),
+                                   wl_fixed_from_int(geometry.viewportSource.width()),
+                                   wl_fixed_from_int(geometry.viewportSource.height()));
+            wp_viewport_set_destination(it.value().viewport,
+                                        geometry.viewportDestination.width(),
+                                        geometry.viewportDestination.height());
+        } else {
+            // Unset the viewport: -1 in both source and destination restores
+            // the surface's native buffer-scale mapping.
+            wp_viewport_set_source(it.value().viewport, wl_fixed_from_int(-1),
+                                   wl_fixed_from_int(-1), wl_fixed_from_int(-1),
+                                   wl_fixed_from_int(-1));
+            wp_viewport_set_destination(it.value().viewport, -1, -1);
+        }
+    }
+}
+
+void ShellProtocol::resetSurfaceScale(wl_surface *surface)
+{
+    if (!surface)
+        return;
+    wl_surface_set_buffer_scale(surface, 1);
+    auto it = m_surfaceScales.find(surface);
+    if (it != m_surfaceScales.end() && it.value().viewport) {
+        wp_viewport_set_source(it.value().viewport, wl_fixed_from_int(-1),
+                               wl_fixed_from_int(-1), wl_fixed_from_int(-1),
+                               wl_fixed_from_int(-1));
+        wp_viewport_set_destination(it.value().viewport, -1, -1);
+    }
+}
+
+void ShellProtocol::destroyScaleObjects()
+{
+    for (auto it = m_surfaceScales.begin(); it != m_surfaceScales.end(); ++it) {
+        if (it.value().fractional)
+            wp_fractional_scale_v1_destroy(it.value().fractional);
+        if (it.value().viewport)
+            wp_viewport_destroy(it.value().viewport);
+    }
+    m_surfaceScales.clear();
+}
+
+bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
+                             const QSize &logicalSize)
 {
     if (!surface || !m_shm)
         return false;
@@ -1625,6 +1772,16 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
     const int height = frame.height();
     if (width <= 0 || height <= 0)
         return false;
+    // The logical surface size is the compositor contract. Callers pass it
+    // explicitly because a fractional physical buffer cannot be divided back
+    // to an exact logical size (1.5x: 188 physical -> 125.33 logical).
+    const QSize logical = logicalSize.isEmpty() ? QSize(width, height) : logicalSize;
+    const auto scaleIt = m_surfaceScales.constFind(surface);
+    const qreal surfaceScale =
+        (scaleIt != m_surfaceScales.constEnd() && scaleIt.value().preferredKnown)
+            ? scaleIt.value().preferredScale
+            : m_outputScale;
+    const ChromeScale::Geometry geometry = ChromeScale::geometry(logical, surfaceScale);
     // A first-party QML scene should never produce more than an 8K output,
     // but a bad geometry property must not overflow the shm/pool arithmetic
     // or ask the compositor for an absurd allocation.
@@ -1671,6 +1828,11 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
     wl_buffer_add_listener(buffer, &bufferListener, this);
     m_buffers.insert(buffer);
 
+    // Buffer scale / viewport must be set before the attach+commit that makes
+    // them current. At 1x this is the default (scale 1, viewport unset), so
+    // the existing frame is bit-identical.
+    applySurfaceScale(surface, logical, frame.size());
+
     wl_surface_attach(surface, buffer, 0, 0);
     wl_surface_damage_buffer(surface, 0, 0, width, height);
     wl_surface_commit(surface);
@@ -1682,8 +1844,10 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
         qint64 commitUs = ChromeStats::instance().commitUsSinceRender();
         if (commitUs < 0)
             commitUs = commitTimer.nsecsElapsed() / 1000;
-        ChromeStats::instance().recordCommit(surfaceLabel(surface), QSize(width, height),
-                                             1, commitUs, static_cast<qint64>(size));
+        ChromeStats::instance().recordCommit(surfaceLabel(surface), logical,
+                                             frame.size(), geometry.bufferScale,
+                                             geometry.scale, geometry.useViewport,
+                                             commitUs, static_cast<qint64>(size));
     }
     return true;
 }
@@ -1865,6 +2029,8 @@ int ShellProtocol::displayFd() const
 
 void ShellProtocol::teardown()
 {
+    // Destroy the per-surface scale helpers before their wl_surfaces.
+    destroyScaleObjects();
     for (wl_buffer *buffer : std::as_const(m_buffers))
         wl_buffer_destroy(buffer);
     m_buffers.clear();
@@ -1965,6 +2131,10 @@ void ShellProtocol::teardown()
         df_core_destroy(m_core);
     if (m_shm)
         wl_shm_destroy(m_shm);
+    if (m_viewporter)
+        wp_viewporter_destroy(m_viewporter);
+    if (m_fractionalScaleManager)
+        wp_fractional_scale_manager_v1_destroy(m_fractionalScaleManager);
     if (m_compositor)
         wl_compositor_destroy(m_compositor);
     if (m_registry)
@@ -2031,6 +2201,9 @@ void ShellProtocol::teardown()
     m_manager = nullptr;
     m_shell = nullptr;
     m_core = nullptr;
+    m_fractionalScaleManager = nullptr;
+    m_viewporter = nullptr;
+    m_surfaceScales.clear();
     m_pointer = nullptr;
     m_keyboard = nullptr;
     m_seat = nullptr;
@@ -2092,6 +2265,14 @@ void ShellProtocol::onRegistryGlobal(void *data, wl_registry *registry, uint32_t
     } else if (iface == QLatin1String("ext_session_lock_manager_v1")) {
         self->m_lockManager = static_cast<ext_session_lock_manager_v1 *>(
             wl_registry_bind(registry, name, &ext_session_lock_manager_v1_interface, 1u));
+    } else if (iface == QLatin1String("wp_fractional_scale_manager_v1")) {
+        self->m_fractionalScaleManager = static_cast<wp_fractional_scale_manager_v1 *>(
+            wl_registry_bind(registry, name, &wp_fractional_scale_manager_v1_interface,
+                             std::min(version, 1u)));
+    } else if (iface == QLatin1String("wp_viewporter")) {
+        self->m_viewporter = static_cast<wp_viewporter *>(
+            wl_registry_bind(registry, name, &wp_viewporter_interface,
+                             std::min(version, 1u)));
     }
 }
 
@@ -3584,7 +3765,48 @@ void ShellProtocol::onOutputMode(void *data, df_output *output, uint32_t, uint32
     info.width = static_cast<int>(width);
     info.height = static_cast<int>(height);
 }
-void ShellProtocol::onOutputScale(void *, df_output *, int32_t) {}
+void ShellProtocol::onOutputScale(void *data, df_output *output, wl_fixed_t scale)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    OutputInfo &info = self->m_outputInfo[output];
+    info.scale = wl_fixed_to_double(scale);
+    if (!qIsFinite(info.scale) || info.scale <= 0.0)
+        info.scale = 1.0;
+    // The chrome surfaces are anchored to the output set as a whole; the
+    // first announced output is the primary and owns the shared chrome
+    // scale. Per-output differing scales remain a shell limitation (the
+    // surfaces themselves are single Wayland surfaces).
+    if (self->m_outputs.isEmpty() || output == self->m_outputs.first()) {
+        if (!qFuzzyCompare(self->m_outputScale, info.scale)) {
+            self->m_outputScale = info.scale;
+            emit self->outputScaleChanged(info.scale);
+        } else {
+            self->m_outputScale = info.scale;
+        }
+    }
+}
+
+void ShellProtocol::onPreferredScale(void *data, wp_fractional_scale_v1 *fractional,
+                                     uint32_t scale)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    // The protocol sends the numerator of a fraction with denominator 120.
+    const qreal preferred = qreal(scale) / 120.0;
+    if (!qIsFinite(preferred) || preferred <= 0.0)
+        return;
+    for (auto it = self->m_surfaceScales.begin(); it != self->m_surfaceScales.end(); ++it) {
+        if (it.value().fractional != fractional)
+            continue;
+        if (it.value().preferredKnown
+            && qFuzzyCompare(it.value().preferredScale, preferred)) {
+            return;
+        }
+        it.value().preferredScale = preferred;
+        it.value().preferredKnown = true;
+        emit self->preferredScaleChanged(self->surfaceLabel(it.key()), preferred);
+        return;
+    }
+}
 void ShellProtocol::onOutputTransform(void *, df_output *, uint32_t) {}
 void ShellProtocol::onOutputVrr(void *, df_output *, uint32_t) {}
 void ShellProtocol::onOutputNightLight(void *, df_output *, uint32_t, uint32_t) {}

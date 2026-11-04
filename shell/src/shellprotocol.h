@@ -39,6 +39,10 @@ struct zwlr_data_control_manager_v1;
 struct zwlr_data_control_device_v1;
 struct zwlr_data_control_offer_v1;
 struct zwlr_data_control_source_v1;
+struct wp_fractional_scale_manager_v1;
+struct wp_fractional_scale_v1;
+struct wp_viewporter;
+struct wp_viewport;
 
 class QSocketNotifier;
 
@@ -56,6 +60,18 @@ public:
     bool authenticate(const QString &tokenHex);
     bool isAuthenticated() const { return m_authenticated; }
 
+    // The last preferred scale the compositor sent for a chrome surface
+    // (T-21.1b). The label is the same stable name `chrome stats` uses
+    // ("menubar", "dock", ...). Returns 1.0 before the first event.
+    qreal preferredScaleFor(const QString &surface) const;
+    // The output scale announced by `df_output.scale`. It seeds the initial
+    // chrome render before the first `wp_fractional_scale` event arrives.
+    qreal outputScale() const { return m_outputScale; }
+    // The first output's logical geometry (`df_output.geometry`); empty until
+    // the manager has announced it. Used to fit transient panels below the
+    // menu bar when a fractional scale shrinks the logical output.
+    QSize outputLogicalSize() const;
+
     // Create the menu-bar layer surface (top | left | right) with the given
     // height and exclusive zone. The compositor answers with `configure`.
     bool createMenuBarSurface(int height, int exclusiveZone);
@@ -70,8 +86,9 @@ public:
     bool setPopupGeometry(int x, int y, int width, int height);
 
     // Attach `image` to the popup surface and commit. The image must be
-    // ARGB32(_Premultiplied).
-    bool commitPopupImage(const QImage &image);
+    // ARGB32(_Premultiplied). `logicalSize` is the surface contract; the image
+    // may be a physical-size buffer mapped by buffer scale/viewport (T-21.1b).
+    bool commitPopupImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the popup surface (attach a null buffer).
     bool hidePopup();
@@ -105,14 +122,14 @@ public:
     bool setDockPopupGeometry(int top, int right, int bottom, int left, int width, int height);
 
     // Attach `image` to the Dock popup surface and commit.
-    bool commitDockPopupImage(const QImage &image);
+    bool commitDockPopupImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the Dock popup surface (attach a null buffer).
     bool hideDockPopup();
 
     // Attach `image` to the Dock surface and commit. The image must be
     // ARGB32(_Premultiplied).
-    bool commitDockImage(const QImage &image);
+    bool commitDockImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Set the Dock surface's input region to the union of `rects` in
     // surface-local coordinates. An empty list makes the whole surface pass
@@ -129,7 +146,7 @@ public:
 
     // Attach `image` to the menu-bar surface and commit. The image must be
     // ARGB32(_Premultiplied).
-    bool commitImage(const QImage &image);
+    bool commitImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Create the Mission Control overview chrome surface (T-11 Slice B): a
     // full-output `overlay` layer surface, namespace "overview", that starts
@@ -140,7 +157,7 @@ public:
 
     // Attach `image` to the overview surface and commit. The image must be
     // ARGB32(_Premultiplied).
-    bool commitOverviewImage(const QImage &image);
+    bool commitOverviewImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the overview surface (attach a null buffer).
     bool hideOverview();
@@ -153,7 +170,7 @@ public:
     bool createSwitcherSurface();
 
     // Attach `image` to the switcher surface and commit.
-    bool commitSwitcherImage(const QImage &image);
+    bool commitSwitcherImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the switcher surface (attach a null buffer).
     bool hideSwitcher();
@@ -173,7 +190,7 @@ public:
 
     // Attach `image` to the banner surface and commit. The image must be
     // ARGB32(_Premultiplied).
-    bool commitBannerImage(const QImage &image);
+    bool commitBannerImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the banner surface (attach a null buffer).
     bool hideBanner();
@@ -186,13 +203,18 @@ public:
     // `topMargin` clears the menu bar.
     bool createControlCenterSurface(int width, int height, int topMargin);
 
+    // Re-apply the panel surface size after a scale change reduces the
+    // logical output height (T-21.1b). The compositor answers with a fresh
+    // configure for the new size.
+    bool setControlCenterSize(int width, int height);
+
     // Set the panel's clickable input region to the full `width` x `height`
     // top-left rect (a non-positive size passes everything through). Applied
     // with the next buffer commit.
     bool setControlCenterInputRegion(int width, int height);
 
     // Attach `image` to the control-center surface and commit.
-    bool commitControlCenterImage(const QImage &image);
+    bool commitControlCenterImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the control-center surface (attach a null buffer).
     bool hideControlCenter();
@@ -210,7 +232,7 @@ public:
     bool setOsdPanelRect(int x, int y, int width, int height);
 
     // Attach `image` to the OSD surface and commit.
-    bool commitOsdImage(const QImage &image);
+    bool commitOsdImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the OSD surface (attach a null buffer).
     bool hideOsd();
@@ -228,7 +250,7 @@ public:
     bool setChooserInputRegion(int width, int height);
 
     // Attach `image` to the chooser surface and commit.
-    bool commitChooserImage(const QImage &image);
+    bool commitChooserImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the chooser surface (attach a null buffer).
     bool hideChooser();
@@ -245,7 +267,7 @@ public:
     bool setScreenshotInputRegion(int width, int height);
 
     // Attach `image` to the screenshot surface and commit.
-    bool commitScreenshotImage(const QImage &image);
+    bool commitScreenshotImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the screenshot surface (attach a null buffer).
     bool hideScreenshot();
@@ -263,7 +285,7 @@ public:
     bool setScreenCastInputRegion(int width, int height);
 
     // Attach `image` to the screencast surface and commit.
-    bool commitScreenCastImage(const QImage &image);
+    bool commitScreenCastImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the screencast surface (attach a null buffer).
     bool hideScreenCast();
@@ -281,7 +303,7 @@ public:
     bool setPolkitInputRegion(int width, int height);
 
     // Attach `image` to the polkit surface and commit.
-    bool commitPolkitImage(const QImage &image);
+    bool commitPolkitImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the polkit surface (attach a null buffer).
     bool hidePolkit();
@@ -313,7 +335,7 @@ public:
     bool setAppsDrawerPanelRect(int x, int y, int width, int height);
 
     // Attach `image` to the apps-drawer surface and commit.
-    bool commitAppsDrawerImage(const QImage &image);
+    bool commitAppsDrawerImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the apps-drawer surface (attach a null buffer).
     bool hideAppsDrawer();
@@ -356,7 +378,8 @@ public:
     // Attach `image` to the lock surface identified by `lockSurfaceId` (the
     // opaque id from `lockSurfaceConfigured`) and commit it. The image must be
     // ARGB32(_Premultiplied) and match the configured size.
-    bool commitLockImage(quintptr lockSurfaceId, const QImage &image);
+    bool commitLockImage(quintptr lockSurfaceId, const QImage &image,
+                         const QSize &logicalSize = QSize());
 
     // True while a fullscreen surface owns the active Space (T-11.4a). The
     // OSD is suppressed then: a brief volume/brightness overlay must not
@@ -598,6 +621,12 @@ signals:
     void sessionLocked();
     void sessionFinished();
     void lockSurfaceConfigured(quintptr lockSurfaceId, int width, int height, uint32_t serial);
+    // A chrome surface's `wp_fractional_scale_v1.preferred_scale` changed.
+    // `surface` is the stable `chrome stats` label; the controller rerenders
+    // the mapped scene at the new physical resolution (T-21.1b).
+    void preferredScaleChanged(const QString &surface, qreal scale);
+    // The compositor announced a new output scale (`df_output.scale`).
+    void outputScaleChanged(qreal scale);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // A matched application accelerator for the focused app (T-14.2b): the
@@ -740,7 +769,19 @@ private:
     // Resolve a window handle back to its `df_toplevel` (null when gone).
     df_toplevel *toplevelForId(quintptr windowId) const;
     // Attach `image` to `surface` as a fresh shm buffer and commit it.
-    bool commitTo(wl_surface *surface, const QImage &image);
+    bool commitTo(wl_surface *surface, const QImage &image,
+                  const QSize &logicalSize = QSize());
+    // Bind fractional-scale/viewporter objects for a newly created surface.
+    // Called from every chrome surface factory before its first commit.
+    void ensureScaleObjects(wl_surface *surface);
+    // Apply the surface's current scale to a commit: `set_buffer_scale` for
+    // exact integers, `wp_viewport` source/destination for fractional scales.
+    void applySurfaceScale(wl_surface *surface, const QSize &logicalSize,
+                           const QSize &bufferSize);
+    // Unmap-safe reset: buffer scale back to 1 and the viewport unset, so a
+    // hidden surface never carries stale physical geometry.
+    void resetSurfaceScale(wl_surface *surface);
+    void destroyScaleObjects();
     // A stable name for the opt-in `chrome stats` per-surface line.
     QString surfaceLabel(wl_surface *surface) const;
     // Send the remembered wallpaper selection to every targeted Space. Safe to
@@ -910,7 +951,9 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
                                  int32_t width, int32_t height);
     static void onOutputMode(void *data, df_output *output, uint32_t flags, uint32_t width,
                              uint32_t height, uint32_t refresh);
-    static void onOutputScale(void *data, df_output *output, int32_t scale);
+    static void onOutputScale(void *data, df_output *output, wl_fixed_t scale);
+    static void onPreferredScale(void *data, wp_fractional_scale_v1 *fractional,
+                                 uint32_t scale);
     static void onOutputTransform(void *data, df_output *output, uint32_t transform);
     static void onOutputVrr(void *data, df_output *output, uint32_t enabled);
     static void onOutputNightLight(void *data, df_output *output, uint32_t enabled,
@@ -935,6 +978,8 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     wl_registry *m_registry = nullptr;
     wl_compositor *m_compositor = nullptr;
     wl_shm *m_shm = nullptr;
+    wp_fractional_scale_manager_v1 *m_fractionalScaleManager = nullptr;
+    wp_viewporter *m_viewporter = nullptr;
     df_core *m_core = nullptr;
     df_shell *m_shell = nullptr;
     df_toplevel_manager *m_manager = nullptr;
@@ -1158,6 +1203,9 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
         // Last mode size (physical pixels) for the ScreenCast labels.
         int width = 0;
         int height = 0;
+        // Last `df_output.scale` (fractional) for lock surfaces and the
+        // initial chrome render before `wp_fractional_scale` arrives.
+        qreal scale = 1.0;
         // `df_output.geometry` (logical layout space) for the Dock's
         // launch-origin translation (T-14.7l).
         int x = 0;
@@ -1168,7 +1216,20 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     QHash<df_output *, OutputInfo> m_outputInfo;
     bool m_displayKnown = false;
     double m_displayScale = 1.0;
+    // The live output scale from `df_output.scale`; seeds chrome rendering
+    // before the first per-surface preferred-scale event (T-21.1b).
+    qreal m_outputScale = 1.0;
     uint32_t m_displayTransform = 0;
+    // Per-surface scale objects. The map is keyed by the wl_surface so the
+    // fractional-scale listener can route its event back to the controller's
+    // stable surface label.
+    struct SurfaceScale {
+        wp_fractional_scale_v1 *fractional = nullptr;
+        wp_viewport *viewport = nullptr;
+        qreal preferredScale = 1.0;
+        bool preferredKnown = false;
+    };
+    QHash<wl_surface *, SurfaceScale> m_surfaceScales;
     // The last brightness forwarded (T-11.3a), re-sent with the scale/transform
     // once outputs are announced.
     double m_displayBrightness = 1.0;

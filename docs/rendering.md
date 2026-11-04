@@ -48,7 +48,7 @@ The executable v0.1.1 task set is in
 | P2A DRM offscreen scene | **done, default-on** | Per-output scene texture; custom `SceneTextureElement`; feather fallback on failure. |
 | P2B DRM Kawase blur | **done, default-on** | Per-panel chain reuses `BLUR_SHADER`; `blur_draws` counts built elements. |
 | P2C glass compose | **done, default-on** | Reuses `GLASS_SHADER` and `GlassSpec`; `DRAGONFRUIT_DRM_GLASS=0` disables. |
-| P3 shell transport | **baseline done (T-21.1a)** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + fresh `wl_shm` per commit. Measured in [`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt); transport decision [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md). Rewrite is T184–T186. |
+| P3 shell transport | **baseline + HiDPI done (T-21.1a/b)** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + fresh `wl_shm` per commit. HiDPI chrome now commits physical buffers with `buffer_scale`/`wp_viewport` ([ADR 0192](design/adr/0192-chrome-scale-physical-buffer-and-viewport.md)); pooling, frame callbacks, and GPU transport remain T185/T186. Measured in [`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt); transport decision [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md). |
 | P4 refresh-aware scheduling | **not started** | Global 16 ms animation/degrade budget; output is 4K @ 144 Hz. |
 | P5 multi-GPU | **single-GPU only** | Material path disables itself on a multi-GPU seat; shell falls back. |
 | P6 native visual verification | **not implemented** | No trusted native capture path. |
@@ -221,16 +221,31 @@ decision are in [ADR 0191](design/adr/0191-chrome-transport-render-control-and-s
 
 ### R2.2 HiDPI chrome
 
+**Status (T-21.1b): done.** The shell binds `wp_fractional_scale_manager_v1`
+and `wp_viewporter`, keeps the QML scene in logical coordinates, and commits
+physical buffers: exact integers use `wl_surface.set_buffer_scale`; fractional
+scales commit `ceil(logical * scale)` and map it with one `wp_viewport` per
+surface. The pure `ChromeScale` helper owns the rounding and pointer mapping.
+The menu bar, Dock, Dock/menu popovers, Control Center, notifications, OSD,
+overview/switcher, Applications drawer, and lock/portal overlays all use the
+same scene setup. `chrome stats` reports the resulting `logical_size`,
+`buffer_size`, `buffer_scale`, `scale`, and `viewport` per surface.
+
 **Work**
 
 - Render the shell at physical resolution with the correct buffer scale, or
   use a Qt-supported fractional-scale path.
 - Apply the same treatment to the menu bar, Dock, popovers, and overlays.
+- Recompute on `preferred_scale`, output-scale changes, configure, and hotplug;
+  keep reserved zones, panel rects, and input regions logical.
 
 **Acceptance**
 
 - Dock/menu-bar text, icons, and rim are native-resolution at 1.5x and 2x.
 - No layout or hit-testing regression at 1.0x, 1.5x, or 2x.
+- Nested stills: `docs/captures/t21-hidpi-{1x,1_5x,2x}.png`, plus the 1.5x Dock
+  popover and Control Center stills. Design contract:
+  [ADR 0192](design/adr/0192-chrome-scale-physical-buffer-and-viewport.md).
 
 ### R2.3 Remove full-surface copies
 
