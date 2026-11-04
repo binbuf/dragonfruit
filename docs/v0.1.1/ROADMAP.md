@@ -39,7 +39,8 @@ done.
 
 - [x] T183 — T-21.1a Chrome transport baseline and decision → [../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md](../tasks/0.1.1/183-t-21.1a-chrome-transport-baseline.md)
 - [x] T184 — T-21.1b Chrome HiDPI and fractional scale → [../tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md](../tasks/0.1.1/184-t-21.1b-chrome-hidpi-and-fractional-scale.md)
-- [ ] T185 — T-21.1c Chrome SHM transport hygiene and frame pacing → [../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md](../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md)
+- [x] T185 — T-21.1c Chrome SHM transport hygiene and frame pacing → [../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md](../tasks/0.1.1/185-t-21.1c-chrome-shm-transport-hygiene.md) ⟵ accepted
+- [ ] T185a — T-21.1c close-out: final gates, after-report, visual sign-off → [../tasks/0.1.1/185a-t-21.1c-closeout.md](../tasks/0.1.1/185a-t-21.1c-closeout.md)
 - [ ] T186 — T-21.1d GPU-backed chrome transport → [../tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md](../tasks/0.1.1/186-t-21.1d-gpu-backed-chrome-transport.md)
 
 ## Phase 21.2 — Refresh-aware scheduling and material floor
