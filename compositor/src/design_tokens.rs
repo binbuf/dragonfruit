@@ -165,6 +165,7 @@ pub mod semantic {
             pub const DOCK_BLUR: f32 = 30.0_f32;
             pub const CHROME_FALLBACK_OPACITY: f32 = 0.86_f32;
             pub const DOCK_FALLBACK_OPACITY: f32 = 0.88_f32;
+            pub const POPUP_FALLBACK_OPACITY: f32 = 0.92_f32;
             pub const CHROME_REFRACTION: f32 = 6.0_f32;
             pub const POPUP_REFRACTION: f32 = 8.0_f32;
             pub const DOCK_REFRACTION: f32 = 8.0_f32;
@@ -245,6 +246,7 @@ pub mod semantic {
             pub const DOCK_BLUR: f32 = 34.0_f32;
             pub const CHROME_FALLBACK_OPACITY: f32 = 0.82_f32;
             pub const DOCK_FALLBACK_OPACITY: f32 = 0.84_f32;
+            pub const POPUP_FALLBACK_OPACITY: f32 = 0.9_f32;
             pub const CHROME_REFRACTION: f32 = 8.0_f32;
             pub const POPUP_REFRACTION: f32 = 10.0_f32;
             pub const DOCK_REFRACTION: f32 = 10.0_f32;

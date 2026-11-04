@@ -430,5 +430,48 @@ Item {
             waitForRendering(stage);
             compare(drawer.currentIndex, -1);
         }
+
+        function compareColor(actual, expected, label) {
+            fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
+            fuzzyCompare(actual.g, expected.g, 0.001, label + " green");
+            fuzzyCompare(actual.b, expected.b, 0.001, label + " blue");
+            fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
+        }
+
+        function test_drawer_role_material_covers_the_applications_drawer() {
+            // T-21.2c: the Applications drawer is the transient Drawer role.
+            // It keeps its scrim and tile grid; the card fill switches to the
+            // milky plate when the sampled pass is absent.
+            var states = [
+                { tier: 0, blur: true, fallback: 0, reason: "none", label: "full" },
+                { tier: 1, blur: true, fallback: 0, reason: "none", label: "reduced" },
+                { tier: 2, blur: false, fallback: 0, reason: "minimal", label: "minimal" },
+                { tier: 2, blur: false, fallback: 2, reason: "software", label: "software" }
+            ];
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                for (var i = 0; i < states.length; ++i) {
+                    var state = states[i];
+                    var drawer = make({
+                        apps: sampleApps,
+                        materialTier: state.tier,
+                        materialBlurActive: state.blur,
+                        materialFallback: state.fallback
+                    });
+                    compare(drawer.materialTier, state.tier, state.label);
+                    compare(drawer.materialBlurActive, state.blur, state.label);
+                    compare(drawer.materialFallback, state.fallback, state.label);
+                    compare(drawer.materialFallbackReason, state.reason,
+                            state.label);
+                    var panel = findChild(drawer, "appsDrawerPanel");
+                    verify(panel !== null);
+                    compareColor(panel.color, Material.drawerFill(state.blur),
+                                 state.label);
+                    verify(panel.color.a >= 0.9 || state.blur,
+                           state.label + " fallback must read as a plate");
+                }
+            }
+            Theme.dark = false;
+        }
     }
 }

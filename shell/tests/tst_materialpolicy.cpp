@@ -18,6 +18,7 @@ private slots:
     void explicitFallbackForcesTheMilkyFallback();
     void softwareKeepsMinimalButMilky();
     void transientRoleMayReachMinimal();
+    void transientRoleUsesTheExplicitFallbackWithoutAFloor();
     void unknownRoleValuesAreIgnored();
 };
 
@@ -148,6 +149,25 @@ void TestMaterialPolicy::transientRoleMayReachMinimal()
         QCOMPARE(material.blurActive, false);
         QCOMPARE(material.fallback, std::uint32_t(0));
     }
+}
+
+void TestMaterialPolicy::transientRoleUsesTheExplicitFallbackWithoutAFloor()
+{
+    // T-21.2c: a popup/drawer keeps the compositor's transient tier (including
+    // Minimal) but any explicit reason still selects the milky complement.
+    MaterialPolicy policy;
+    policy.setRole(MaterialPolicy::Popup, 2, true, MaterialPolicy::NoSampledBlur);
+    policy.setRole(MaterialPolicy::Drawer, 2, false, MaterialPolicy::Software);
+    for (std::uint32_t role : {std::uint32_t(MaterialPolicy::Popup),
+                               std::uint32_t(MaterialPolicy::Drawer)}) {
+        const AppliedMaterial material = policy.applied(role);
+        QCOMPARE(material.tier, std::uint32_t(2));
+        QCOMPARE(material.blurActive, false);
+    }
+    QCOMPARE(policy.applied(MaterialPolicy::Popup).fallback,
+             std::uint32_t(MaterialPolicy::NoSampledBlur));
+    QCOMPARE(policy.applied(MaterialPolicy::Drawer).fallback,
+             std::uint32_t(MaterialPolicy::Software));
 }
 
 void TestMaterialPolicy::unknownRoleValuesAreIgnored()

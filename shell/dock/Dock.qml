@@ -40,6 +40,15 @@ Rectangle {
     property bool materialBlurActive: true
     property int materialTier: 0
     property int materialFallback: 0
+    // T-21.2c: the transient Popup role state for every Dock popover. The
+    // shell applies it through the same MaterialPolicy as the Dock role above;
+    // the popovers bind to these, so QML never re-derives the tier.
+    property bool popupMaterialBlurActive: true
+    property int popupMaterialTier: 0
+    property int popupMaterialFallback: 0
+    readonly property string popupMaterialFallbackReason:
+        Material.fallbackReason(popupMaterialFallback, popupMaterialBlurActive,
+                                popupMaterialTier)
     // [{ id, appId, name, kind, running, active, minimized, launch, attention,
     //    badge, pinned, trashFull }]
     property var entries: []
@@ -3910,6 +3919,9 @@ Rectangle {
         id: entryMenu
         objectName: "entryMenu"
         model: dock.menuModel
+        materialBlurActive: dock.popupMaterialBlurActive
+        materialTier: dock.popupMaterialTier
+        materialFallback: dock.popupMaterialFallback
         accessibleName: dock.menuEntry && dock.menuEntry.name !== undefined
                         ? dock.menuEntry.name : qsTr("Dock options")
         // Above the entry on a bottom Dock, beside it on a vertical Dock,
@@ -4003,6 +4015,9 @@ Rectangle {
         objectName: "windowChooser"
         entry: dock.chooserEntry
         anchorItem: dock.chooserAnchor
+        materialBlurActive: dock.popupMaterialBlurActive
+        materialTier: dock.popupMaterialTier
+        materialFallback: dock.popupMaterialFallback
         x: {
             if (!dock.chooserAnchor)
                 return 0;
@@ -4060,6 +4075,9 @@ Rectangle {
         items: dock.stackPopoverItems
         title: dock.stackPopoverTitle
         anchorItem: dock.stackAnchor
+        materialBlurActive: dock.popupMaterialBlurActive
+        materialTier: dock.popupMaterialTier
+        materialFallback: dock.popupMaterialFallback
         x: {
             if (!dock.stackAnchor)
                 return 0;
@@ -4110,6 +4128,9 @@ Rectangle {
         items: dock.appPickerItems
         available: dock.appIndexAvailable
         anchorItem: dock.appPickerAnchor
+        materialBlurActive: dock.popupMaterialBlurActive
+        materialTier: dock.popupMaterialTier
+        materialFallback: dock.popupMaterialFallback
         x: {
             if (!dock.appPickerAnchor)
                 return 0;
@@ -4152,6 +4173,9 @@ Rectangle {
         objectName: "overflowPopover"
         groups: dock.overflowGroups
         anchorItem: dock.overflowAnchor
+        materialBlurActive: dock.popupMaterialBlurActive
+        materialTier: dock.popupMaterialTier
+        materialFallback: dock.popupMaterialFallback
         x: {
             if (!dock.overflowAnchor)
                 return 0;
@@ -4197,6 +4221,9 @@ Rectangle {
         removedCount: dock.trashEmptyRemoved
         errorMessage: dock.trashEmptyError
         anchorItem: dock.trashEmptyAnchor
+        materialBlurActive: dock.popupMaterialBlurActive
+        materialTier: dock.popupMaterialTier
+        materialFallback: dock.popupMaterialFallback
         x: {
             if (!dock.trashEmptyAnchor)
                 return 0;

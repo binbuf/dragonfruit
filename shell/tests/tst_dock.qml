@@ -1459,6 +1459,75 @@ Item {
             Theme.dark = false;
         }
 
+        function compareColor(actual, expected, label) {
+            fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
+            fuzzyCompare(actual.g, expected.g, 0.001, label + " green");
+            fuzzyCompare(actual.b, expected.b, 0.001, label + " blue");
+            fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
+        }
+
+        function test_popup_role_material_covers_every_dock_popover() {
+            // T-21.2c: every Dock popover is the transient Popup role. The
+            // shell pushes one applied state into the Dock scene; each
+            // surface (and its arrow) must take the glass scrim on the
+            // sampled path and the milky plate when blur is absent.
+            var states = [
+                { tier: 0, blur: true, fallback: 0, reason: "none", label: "full" },
+                { tier: 1, blur: true, fallback: 0, reason: "none", label: "reduced" },
+                { tier: 2, blur: false, fallback: 0, reason: "minimal", label: "minimal" },
+                { tier: 2, blur: false, fallback: 2, reason: "software", label: "software" }
+            ];
+            var popovers = [
+                { name: "entryMenu", surface: "contextMenuSurface" },
+                { name: "windowChooser", surface: "chooserSurface" },
+                { name: "stackPopover", surface: "stackSurface" },
+                { name: "appPicker", surface: "appPickerSurface" },
+                { name: "overflowPopover", surface: "overflowSurface" },
+                { name: "trashEmptyPopover", surface: "trashEmptySurface" }
+            ];
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                for (var i = 0; i < states.length; ++i) {
+                    var state = states[i];
+                    var dock = make(dockComponent, {
+                        width: 1280, height: 240,
+                        popupMaterialTier: state.tier,
+                        popupMaterialBlurActive: state.blur,
+                        popupMaterialFallback: state.fallback,
+                        downloadsItems: stackItems(),
+                        downloadsCount: 2,
+                        entries: [ app("a", "A", true) ]
+                    });
+                    compare(dock.popupMaterialTier, state.tier, state.label);
+                    compare(dock.popupMaterialBlurActive, state.blur, state.label);
+                    compare(dock.popupMaterialFallback, state.fallback, state.label);
+                    compare(dock.popupMaterialFallbackReason, state.reason,
+                            state.label);
+                    var expected = Material.popupFill(state.blur);
+                    for (var j = 0; j < popovers.length; ++j) {
+                        var popover = findChild(dock, popovers[j].name);
+                        verify(popover !== null, popovers[j].name + " exists");
+                        compare(popover.materialTier, state.tier,
+                                popovers[j].name + " " + state.label);
+                        compare(popover.materialBlurActive, state.blur,
+                                popovers[j].name + " " + state.label);
+                        compare(popover.materialFallback, state.fallback,
+                                popovers[j].name + " " + state.label);
+                        compare(popover.materialFallbackReason, state.reason,
+                                popovers[j].name + " " + state.label);
+                        var surface = findChild(popover, popovers[j].surface);
+                        verify(surface !== null,
+                               popovers[j].surface + " exists");
+                        compareColor(surface.color, expected,
+                                     popovers[j].name + " " + state.label);
+                        verify(surface.color.a >= 0.9 || state.blur,
+                               popovers[j].name + " fallback must read as a plate");
+                    }
+                }
+            }
+            Theme.dark = false;
+        }
+
         function test_glyph_tile_is_a_token_squircle_with_inset() {
             // The placeholder tile draws at the icon radius ratio and spans the
             // icon box less the token inset; the themed artwork is masked into

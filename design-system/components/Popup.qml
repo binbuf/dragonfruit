@@ -19,6 +19,15 @@ Item {
     // When false the owner handles Escape itself (e.g. a menu with an open
     // submenu closes the submenu first) and the popup stays open.
     property bool escapeCloses: true
+    // T-21.2c: the shell applies the compositor's Popup role state. When the
+    // sampled pass is absent the surface uses the token-driven milky plate;
+    // `materialFallback` records why (0=none, 1=no-sampled-blur, 2=software,
+    // 3=multi-gpu, 4=floor-missed). QML never re-derives the degrade policy.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
     default property alias contentData: contentColumn.data
     property alias content: contentColumn
@@ -84,13 +93,14 @@ Item {
     }
 
     Rectangle {
+        objectName: "popupSurface"
         anchors.fill: parent
         radius: Theme.controls.popup.radius
         // The panel is the compositor material's scrim: the fill carries the
         // token alpha (`material.popupOpacity`) so the sampled backdrop blur
         // and liquid-glass pass show through; the rim/hairline stays opaque.
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        // Without the sampled pass it switches to the milky complement.
+        color: Material.popupFill(root.materialBlurActive)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true

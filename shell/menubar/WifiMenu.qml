@@ -17,6 +17,12 @@ Item {
     property Item anchorItem: null
     property alias popup: popup
     property alias open: popup.open
+    // T-21.2c: the menu bar pushes the compositor's Popup role state here.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
     // The selected network awaiting a password (a secured SSID). Empty when
     // no join is in progress.
@@ -119,6 +125,9 @@ Item {
         accessibleRole: Accessible.PopupMenu
         accessibleName: qsTr("Wi-Fi")
         escapeCloses: true
+        materialBlurActive: root.materialBlurActive
+        materialTier: root.materialTier
+        materialFallback: root.materialFallback
 
         onOpened: {
             root.selectedSsid = "";

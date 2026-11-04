@@ -245,6 +245,78 @@ Item {
             Theme.dark = false;
         }
 
+        function compareColor(actual, expected, label) {
+            fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
+            fuzzyCompare(actual.g, expected.g, 0.001, label + " green");
+            fuzzyCompare(actual.b, expected.b, 0.001, label + " blue");
+            fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
+        }
+
+        function test_popup_role_material_covers_every_menu_popover() {
+            // T-21.2c: the bar scene hosts the top-level dropdowns, their
+            // submenus, the status menus, and the tray context menu. All of
+            // them apply the one transient Popup state the shell pushes.
+            var states = [
+                { tier: 0, blur: true, fallback: 0, reason: "none", label: "full" },
+                { tier: 1, blur: true, fallback: 0, reason: "none", label: "reduced" },
+                { tier: 2, blur: false, fallback: 0, reason: "minimal", label: "minimal" },
+                { tier: 2, blur: false, fallback: 2, reason: "software", label: "software" }
+            ];
+            var fixed = fixedMenus();
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                for (var i = 0; i < states.length; ++i) {
+                    var state = states[i];
+                    var bar = make(menuBarComponent, {
+                        width: 800,
+                        appName: "Test",
+                        appMenuModel: sampleModel(),
+                        systemMenuItems: fixed.systemMenuItems,
+                        applicationMenuItems: fixed.applicationMenuItems,
+                        statusItems: defaultStatus(),
+                        trayMenu: [ { id: 1, type: "item", label: "Show", enabled: true } ],
+                        popupMaterialTier: state.tier,
+                        popupMaterialBlurActive: state.blur,
+                        popupMaterialFallback: state.fallback
+                    });
+                    compare(bar.popupMaterialTier, state.tier, state.label);
+                    compare(bar.popupMaterialBlurActive, state.blur, state.label);
+                    compare(bar.popupMaterialFallback, state.fallback, state.label);
+                    compare(bar.popupMaterialFallbackReason, state.reason,
+                            state.label);
+
+                    var expected = Material.popupFill(state.blur);
+                    var menus = [
+                        { item: bar.appMenuAt(0), surface: "popupSurface", label: "dropdown" },
+                        { item: bar.appMenuAt(0), surface: "submenuSurface", label: "submenu" },
+                        { item: findChild(bar, "wifiMenu"), surface: "popupSurface", label: "wifi" },
+                        { item: findChild(bar, "volumeMenu"), surface: "popupSurface", label: "volume" },
+                        { item: findChild(bar, "batteryMenu"), surface: "popupSurface", label: "battery" },
+                        { item: findChild(bar, "trayContextMenu"), surface: "contextMenuSurface", label: "tray" }
+                    ];
+                    for (var j = 0; j < menus.length; ++j) {
+                        var menu = menus[j].item;
+                        verify(menu !== null, menus[j].label + " exists");
+                        compare(menu.materialTier, state.tier,
+                                menus[j].label + " " + state.label);
+                        compare(menu.materialBlurActive, state.blur,
+                                menus[j].label + " " + state.label);
+                        compare(menu.materialFallback, state.fallback,
+                                menus[j].label + " " + state.label);
+                        compare(menu.materialFallbackReason, state.reason,
+                                menus[j].label + " " + state.label);
+                        var surface = findChild(menu, menus[j].surface);
+                        verify(surface !== null, menus[j].surface + " exists");
+                        compareColor(surface.color, expected,
+                                     menus[j].label + " " + state.label);
+                        verify(surface.color.a >= 0.9 || state.blur,
+                               menus[j].label + " fallback must read as a plate");
+                    }
+                }
+            }
+            Theme.dark = false;
+        }
+
         function test_app_menu_renders_after_fixed_menus() {
             var fixed = fixedMenus();
             var bar = make(menuBarComponent, {

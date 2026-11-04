@@ -29,6 +29,13 @@ Item {
     property string query: ""
     // The highlighted tile; -1 = none.
     property int currentIndex: -1
+    // T-21.2c: the shell applies the compositor's Drawer role state. Without
+    // the sampled pass the card takes the token-driven milky plate.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
     signal appLaunched(string desktopId, real tileX, real tileY, real tileW, real tileH)
     signal dismissRequested()
@@ -375,10 +382,8 @@ Item {
         // (blur + edge lens + specular rim + adaptive tint, T-20.2) and the
         // scrim/desktop ghost through, while the children (search, pills,
         // tiles) stay fully opaque because the opacity is in the fill, not on
-        // the item.
-        color: Qt.rgba(Theme.color.surface.r, Theme.color.surface.g,
-                       Theme.color.surface.b,
-                       Theme.controls.appsDrawer.panelOpacity)
+        // the item. Without the sampled pass it takes the milky complement.
+        color: Material.drawerFill(root.materialBlurActive)
         opacity: root.reveal
         scale: 0.97 + 0.03 * root.reveal
         border.width: Theme.controls.window.borderWidth

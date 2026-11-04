@@ -66,6 +66,15 @@ Rectangle {
     property bool materialBlurActive: true
     property int materialTier: 0
     property int materialFallback: 0
+    // T-21.2c: the transient Popup role state for every dropdown/popover in
+    // the bar scene. The shell applies it through the same MaterialPolicy as
+    // the persistent Chrome role above; QML never re-derives the tier.
+    property bool popupMaterialBlurActive: true
+    property int popupMaterialTier: 0
+    property int popupMaterialFallback: 0
+    readonly property string popupMaterialFallbackReason:
+        Material.fallbackReason(popupMaterialFallback, popupMaterialBlurActive,
+                                popupMaterialTier)
     // The compositor reports when the shell/menu surface holds focus; when
     // it is lost the open menu dismisses (FR-3).
     property bool shellFocused: true
@@ -475,6 +484,9 @@ Rectangle {
                 emphasized: modelData.kind === "app"
                 title: modelData.title !== undefined ? modelData.title : ""
                 model: modelData.items !== undefined ? modelData.items : []
+                materialBlurActive: menuBar.popupMaterialBlurActive
+                materialTier: menuBar.popupMaterialTier
+                materialFallback: menuBar.popupMaterialFallback
 
                 onTriggered: (itemIndex, item) => menuBar.appMenuTriggered(index, itemIndex, item)
                 onOpened: {
@@ -583,6 +595,9 @@ Rectangle {
         objectName: "wifiMenu"
         model: menuBar.wifiMenu
         anchorItem: menuBar.statusItemFor("wifi")
+        materialBlurActive: menuBar.popupMaterialBlurActive
+        materialTier: menuBar.popupMaterialTier
+        materialFallback: menuBar.popupMaterialFallback
         onJoinRequested: (ssid, secret) => menuBar.wifiJoinRequested(ssid, secret)
         onRefreshRequested: menuBar.statusMenuRefreshRequested("wifi")
         onClosed: menuBar.closeStatusMenu()
@@ -593,6 +608,9 @@ Rectangle {
         objectName: "volumeMenu"
         model: menuBar.volumeMenu
         anchorItem: menuBar.statusItemFor("volume")
+        materialBlurActive: menuBar.popupMaterialBlurActive
+        materialTier: menuBar.popupMaterialTier
+        materialFallback: menuBar.popupMaterialFallback
         onVolumeSetRequested: (volume) => menuBar.volumeSetRequested(volume)
         onMuteToggleRequested: menuBar.muteToggleRequested()
         onRefreshRequested: menuBar.statusMenuRefreshRequested("volume")
@@ -604,6 +622,9 @@ Rectangle {
         objectName: "batteryMenu"
         model: menuBar.batteryMenu
         anchorItem: menuBar.statusItemFor("battery")
+        materialBlurActive: menuBar.popupMaterialBlurActive
+        materialTier: menuBar.popupMaterialTier
+        materialFallback: menuBar.popupMaterialFallback
         onRefreshRequested: menuBar.statusMenuRefreshRequested("battery")
         onClosed: menuBar.closeStatusMenu()
     }
@@ -617,6 +638,9 @@ Rectangle {
         objectName: "trayContextMenu"
         model: menuBar.trayMenu
         accessibleName: qsTr("Tray menu")
+        materialBlurActive: menuBar.popupMaterialBlurActive
+        materialTier: menuBar.popupMaterialTier
+        materialFallback: menuBar.popupMaterialFallback
         onTriggered: (index, item) => {
             var id = (item && item.id !== undefined) ? item.id : -1;
             menuBar.trayMenuTriggered(menuBar.trayMenuService, id);

@@ -23,6 +23,14 @@ Item {
     property int submenuHighlightedIndex: -1
     property int preferredWidth: Theme.controls.contextMenu.minWidth
     property string accessibleName: ""
+    // T-21.2c: the shell applies the compositor's Popup role state. The main
+    // panel takes the milky plate when the sampled pass is absent; the nested
+    // submenu stays opaque (it already is) and only records the same reason.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
     signal triggered(int index, var item)
     signal opened()
@@ -295,12 +303,12 @@ Item {
     }
 
     Rectangle {
+        objectName: "contextMenuSurface"
         anchors.fill: parent
         radius: Theme.controls.contextMenu.radius
         // The compositor material's scrim: token alpha in the fill so the
         // sampled backdrop and liquid-glass pass read through (T-20.3).
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        color: Material.popupFill(root.materialBlurActive)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true

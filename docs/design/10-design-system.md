@@ -197,13 +197,18 @@ across the process boundary by construction (see
 [ADR 0011](adr/0011-elevation-shadow-tokens.md)).
 
 The semantic `material` group (`chromeOpacity`/`chromeBlur`,
-`dockOpacity`/`dockBlur`, `popupOpacity`/`popupBlur`, `shadowOpacity`) is the
-shared source for surface materials (T-04.2): the QML `Theme.material` group
-tints the shell chrome and the compositor's backdrop pass reads the same
-values, per color scheme, so the two sides cannot drift (see
-[ADR 0013](adr/0013-backdrop-blur-pass.md)). The Dock's own `dock*` tokens keep
-its frost tunable independently of the menu bar (T-14.7j, ADR
-[0102](adr/0102-dock-material-role-and-qml-glass-layers.md)).
+`dockOpacity`/`dockBlur`, `popupOpacity`/`popupBlur`, `shadowOpacity`, plus
+the `chromeFallbackOpacity`/`dockFallbackOpacity`/`popupFallbackOpacity`
+milky complements) is the shared source for surface materials (T-04.2): the
+QML `Theme.material` group tints the shell chrome and the compositor's
+backdrop pass reads the same values, per color scheme, so the two sides cannot
+drift (see [ADR 0013](adr/0013-backdrop-blur-pass.md)). The Dock's own `dock*`
+tokens keep its frost tunable independently of the menu bar (T-14.7j, ADR
+[0102](adr/0102-dock-material-role-and-qml-glass-layers.md)). The
+`Material` singleton (T-21.2c, ADR
+[0205](adr/0205-popup-family-material-fallback.md)) is the one QML complement:
+it returns the sampled-glass scrim or the milky fallback for the popup family
+and names the recorded reason, so components do not each re-derive a fill.
 
 ## Typography and the system font
 

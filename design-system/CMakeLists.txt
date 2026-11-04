@@ -15,6 +15,8 @@ set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(PhosphorGlyphs.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # The generated Tabler path registry is a singleton too (ADR 0185).
 set_source_files_properties(TablerGlyphs.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# The popup-family material fill/fallback helper (T-21.2c) is a singleton.
+set_source_files_properties(Material.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_library(dragonfruit-design-system STATIC)
 qt_add_qml_module(dragonfruit-design-system
@@ -22,6 +24,7 @@ qt_add_qml_module(dragonfruit-design-system
     VERSION 1.0
     QML_FILES
         Theme.qml
+        Material.qml
         PhosphorGlyphs.qml
         TablerGlyphs.qml
         components/AppWindow.qml
@@ -111,6 +114,7 @@ qt_add_resources(dragonfruit-design-system "app-icons"
 
 df_qml_lint(design-system
     Theme.qml
+    Material.qml
     PhosphorGlyphs.qml
     TablerGlyphs.qml
     components/AppWindow.qml

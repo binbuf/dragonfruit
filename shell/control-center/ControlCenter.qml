@@ -106,6 +106,13 @@ Item {
     // The effective design-system scheme: true when the resolved Theme is
     // dark (`appearance.colorScheme` resolved against the host for `auto`).
     property bool dark: false
+    // T-21.2c: the shell applies the compositor's Popup role state. Without
+    // the sampled pass the panel takes the token-driven milky plate.
+    property bool materialBlurActive: true
+    property int materialTier: 0
+    property int materialFallback: 0
+    readonly property string materialFallbackReason:
+        Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
     // Wi-Fi radio writes are not exposed by the T-07 adapter yet (a T-15
     // follow-up); the toggle reflects state and is inert until then.
@@ -777,9 +784,9 @@ Item {
     // liquid-glass pass show through, while the rim/hairline stays opaque.
     Rectangle {
         id: background
+        objectName: "controlCenterSurface"
         anchors.fill: parent
-        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
-                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
+        color: Material.popupFill(root.materialBlurActive)
         radius: Theme.controls.popover.radius
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border

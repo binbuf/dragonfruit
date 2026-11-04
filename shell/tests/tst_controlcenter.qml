@@ -1367,5 +1367,47 @@ lockPolicy: lockPolicyModel(600),
             verify(clear !== null);
             compare(clear.visible, false);
         }
+
+        function compareColor(actual, expected, label) {
+            fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
+            fuzzyCompare(actual.g, expected.g, 0.001, label + " green");
+            fuzzyCompare(actual.b, expected.b, 0.001, label + " blue");
+            fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
+        }
+
+        function test_popup_role_material_covers_the_control_center() {
+            // T-21.2c: Control Center is the transient Popup role. The panel
+            // keeps its geometry and rim; only the fill switches between the
+            // sampled-glass scrim and the milky fallback.
+            var states = [
+                { tier: 0, blur: true, fallback: 0, reason: "none", label: "full" },
+                { tier: 1, blur: true, fallback: 0, reason: "none", label: "reduced" },
+                { tier: 2, blur: false, fallback: 0, reason: "minimal", label: "minimal" },
+                { tier: 2, blur: false, fallback: 2, reason: "software", label: "software" }
+            ];
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                for (var i = 0; i < states.length; ++i) {
+                    var state = states[i];
+                    var panel = make({
+                        materialTier: state.tier,
+                        materialBlurActive: state.blur,
+                        materialFallback: state.fallback
+                    });
+                    compare(panel.materialTier, state.tier, state.label);
+                    compare(panel.materialBlurActive, state.blur, state.label);
+                    compare(panel.materialFallback, state.fallback, state.label);
+                    compare(panel.materialFallbackReason, state.reason,
+                            state.label);
+                    var surface = findChild(panel, "controlCenterSurface");
+                    verify(surface !== null);
+                    compareColor(surface.color, Material.popupFill(state.blur),
+                                 state.label);
+                    verify(surface.color.a >= 0.9 || state.blur,
+                           state.label + " fallback must read as a plate");
+                }
+            }
+            Theme.dark = false;
+        }
     }
 }

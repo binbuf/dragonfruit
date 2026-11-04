@@ -108,5 +108,48 @@ Item {
             verify(findChild(center, "emptyHistory").visible);
             compare(findChild(center, "historyList").count, 0);
         }
+
+        function compareColor(actual, expected, label) {
+            fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
+            fuzzyCompare(actual.g, expected.g, 0.001, label + " green");
+            fuzzyCompare(actual.b, expected.b, 0.001, label + " blue");
+            fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
+        }
+
+        function test_popup_role_material_covers_the_notification_banner() {
+            // T-21.2c: a banner is the transient Popup role. Its card keeps
+            // the urgency stripe and rim while the fill switches to the
+            // milky plate when the sampled pass is absent.
+            var states = [
+                { tier: 0, blur: true, fallback: 0, reason: "none", label: "full" },
+                { tier: 1, blur: true, fallback: 0, reason: "none", label: "reduced" },
+                { tier: 2, blur: false, fallback: 0, reason: "minimal", label: "minimal" },
+                { tier: 2, blur: false, fallback: 2, reason: "software", label: "software" }
+            ];
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                for (var i = 0; i < states.length; ++i) {
+                    var state = states[i];
+                    var banner = make(bannerComponent, {
+                        summary: "New message",
+                        materialTier: state.tier,
+                        materialBlurActive: state.blur,
+                        materialFallback: state.fallback
+                    });
+                    compare(banner.materialTier, state.tier, state.label);
+                    compare(banner.materialBlurActive, state.blur, state.label);
+                    compare(banner.materialFallback, state.fallback, state.label);
+                    compare(banner.materialFallbackReason, state.reason,
+                            state.label);
+                    var card = findChild(banner, "bannerCard");
+                    verify(card !== null);
+                    compareColor(card.color, Material.popupFill(state.blur),
+                                 state.label);
+                    verify(card.color.a >= 0.9 || state.blur,
+                           state.label + " fallback must read as a plate");
+                }
+            }
+            Theme.dark = false;
+        }
     }
 }
