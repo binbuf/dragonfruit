@@ -249,21 +249,30 @@ same scene setup. `chrome stats` reports the resulting `logical_size`,
 
 ### R2.3 Remove full-surface copies
 
-**Work**
-
-- Avoid `grabWindow()` full-window re-render where a cached scene-graph frame
-  can be reused.
-- Add a small `wl_shm` buffer pool instead of `memfd`/`mmap`/`memcpy` per
-  commit.
-- Damage only the changed region; do not damage the whole buffer.
-- Consider a GPU-backed `QQuickRenderControl` or Qt Wayland path only after
-  R2.1 shows the shell is the bottleneck.
+**Landed (T-21.1c).** Every shell surface now has one `ChromeFrameProducer`:
+a `QQuickRenderControl` scene rendered once into a ping-pong `QImage` pair,
+never `QQuickWindow::grabWindow()`. Each `wl_surface` owns a three-buffer
+`wl_shm` pool; `wl_buffer.release` returns a buffer, a resize retires the old
+generation until the compositor releases it, and steady-state frames allocate
+nothing. `ShellProtocol::commitTo()` copies the source rectangle exactly once,
+compares it with the previous frame to damage only the changed pixel bounding
+box, and skips the commit entirely when nothing changed. `wl_surface.frame`
+callbacks answered by the compositor in `post_repaint()` and the no-damage path
+pace the next QML render; a 100 ms safety tick is counted as
+`fallback_renders` if the compositor never answers. The private layer protocol
+and surface roles are unchanged, and the shell remains independently
+restartable.
 
 **Acceptance**
 
 - One animated Dock frame performs at most one full-surface CPU copy.
 - Copy count and bytes per frame are logged and measurably lower.
 - The private layer protocol and shell restartability are unchanged.
+
+Before/after evidence:
+[`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt) and
+[`captures/t21-chrome-transport-after.txt`](captures/t21-chrome-transport-after.txt).
+The GPU/dmabuf transport remains T186; the pooled shm path is its fallback.
 
 **Do not** build a custom QPA plugin or a second UI renderer without the R2.1
 evidence.

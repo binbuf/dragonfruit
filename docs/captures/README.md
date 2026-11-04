@@ -1070,6 +1070,14 @@ stills are `t21-chrome-baseline-dock.png`, `-menu.png`, and
 (not a screencopy client). The transport decision is
 [ADR 0191](../design/adr/0191-chrome-transport-render-control-and-shm-fallback.md).
 
+T-21.1c's transport-after report is `t21-chrome-transport-after.txt`, produced
+by the same `make t21-chrome-baseline` driver with `OUT` and
+`T21_REPORT_TITLE`/`T21_TRANSPORT_LABEL` set for the render-control + pooled
+shm path. It records `grab_renders=0`, the per-surface `shm_allocs`/`copy_bytes`
+and `damage_pixels` deltas, and the `frame_callbacks` cadence next to the T183
+baseline. The contract is
+[ADR 0193](../design/adr/0193-chrome-frame-producer-pooled-shm-pacing.md).
+
 T-21.1b's HiDPI chrome stills are `t21-hidpi-1x.png`, `t21-hidpi-1_5x.png`,
 and `t21-hidpi-2x.png` (the menu bar, Dock, and Dock popover at each scale),
 plus `t21-hidpi-1_5x-dock.png` and `t21-hidpi-1_5x-control-center.png` for the

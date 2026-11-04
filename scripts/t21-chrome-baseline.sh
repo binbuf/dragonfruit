@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T-21.1a chrome transport baseline (nested).
+# T-21.1a/T-21.1c chrome transport baseline (nested).
 #
 # Runs the nested demo with the synthetic-input harness and the opt-in
 # `DRAGONFRUIT_CHROME_STATS=1` counters, drives the six baseline scenarios
 # (idle, slow Dock sweep, menu-bar dropdown, Dock popover, one app launch,
 # Mission Control with 10+ windows), and brackets every scenario with a
-# SIGUSR1 snapshot on the shell and the compositor. The committed report is
-# docs/captures/t21-chrome-baseline.txt.
+# SIGUSR1 snapshot on the shell and the compositor. The committed baseline is
+# docs/captures/t21-chrome-baseline.txt; T-21.1c's after run sets
+# T21_REPORT_TITLE/T21_TRANSPORT_LABEL and OUT to write the transport-after
+# report without overwriting the baseline.
 #
-# The run is nested: it measures the `offscreen QPA -> grabWindow() -> QImage ->
-# wl_shm` transport honestly, but its presentation interval is not a native
-# vblank. The native half is attempted through `make native-capture`; when the
-# running native compositor cannot be restarted without ending the session it
-# is recorded OPEN, never silently omitted.
+# The run is nested: it measures the shell chrome transport honestly, but its
+# presentation interval is not a native vblank. The native half is attempted
+# through `make native-capture`; when the running native compositor cannot be
+# restarted without ending the session it is recorded OPEN, never silently
+# omitted.
 #
 # Requires a host Wayland session and the built tree (`make build`). Not part
 # of `make e2e`. Overrides: SETTLE (default 10), OUT (report path),
@@ -27,6 +29,8 @@ OUT="${OUT:-docs/captures/t21-chrome-baseline.txt}"
 SETTLE="${SETTLE:-10}"
 KEEP_SCRATCH="${KEEP_SCRATCH:-0}"
 SKIP_NATIVE="${SKIP_NATIVE:-0}"
+TITLE="${T21_REPORT_TITLE:-T-21.1a chrome transport baseline}"
+TRANSPORT="${T21_TRANSPORT_LABEL:-offscreen QPA -> grabWindow() -> QImage -> fresh wl_shm buffer -> wl_surface.commit}"
 SOCKET="${SOCKET:-dragonfruit-t21-baseline-$$}"
 SCRATCH="${SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/dragonfruit-t21-baseline.XXXXXX")}"
 SYNTH="${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must be set}/$SOCKET.synth"
@@ -181,7 +185,9 @@ python3 scripts/t21-chrome-baseline-report.py \
     --host-info "$HOST_INFO" \
     --native "$NATIVE_INFO" \
     --visual "$VISUAL" \
-    --command "make t21-chrome-baseline"
+    --command "make t21-chrome-baseline" \
+    --title "$TITLE" \
+    --transport "$TRANSPORT"
 
 echo "t21-chrome-baseline: report written to $OUT"
 grep -E "^### |shell delta:|compositor delta:|Verdict:" "$OUT" | head -60 || true

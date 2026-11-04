@@ -329,6 +329,17 @@ plugin or a second UI renderer before that measurement.
 > `QQuickRenderControl` + reusable GPU buffers/dmabuf as the primary path,
 > pooled `wl_shm` + frame callbacks as the fallback. The full report is
 > [`../captures/t21-chrome-baseline.txt`](../captures/t21-chrome-baseline.txt).
+>
+> **T-21.1c measurement (2026-11-03).** The fallback is now the
+> `ChromeFrameProducer` + per-surface three-buffer shm pool + frame-callback
+> path: `grab_renders=0`, the Dock sweep allocates only its warm-up buffers
+> (`shm_allocs` flat after that), copies one source rect per committed frame
+> (121,280,880 bytes for 136 commits, vs 268,929,360 for 291 before), and the
+> compositor answers chrome callbacks (`chrome_frame_callbacks=105` in the same
+> sweep). Idle remains zero-wakeup. The report is
+> [`../captures/t21-chrome-transport-after.txt`](../captures/t21-chrome-transport-after.txt);
+> the contract is
+> [ADR 0193](adr/0193-chrome-frame-producer-pooled-shm-pacing.md).
 
 ---
 
