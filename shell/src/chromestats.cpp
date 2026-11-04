@@ -81,6 +81,13 @@ void ChromeStats::recordSceneFrame()
     ++m_sceneFrames;
 }
 
+void ChromeStats::recordRender(const QString &surface)
+{
+    if (!m_enabled || surface.isEmpty())
+        return;
+    ++m_surfaces[surface].renders;
+}
+
 void ChromeStats::recordGrabRender()
 {
     if (!m_enabled)
@@ -102,15 +109,34 @@ qint64 ChromeStats::commitUsSinceRender() const
     return m_renderTimer.nsecsElapsed() / 1000;
 }
 
+void ChromeStats::setTransportPath(const QString &path)
+{
+    if (!m_enabled || path.isEmpty())
+        return;
+    m_transportPath = path;
+}
+
+void ChromeStats::recordShmAlloc(const QString &surface, qint64 bytes)
+{
+    if (!m_enabled)
+        return;
+    ++m_shmAllocs;
+    m_shmBytes += quint64(qMax<qint64>(0, bytes));
+    SurfaceStats &stats = m_surfaces[surface];
+    ++stats.shmAllocs;
+    stats.shmBytes += quint64(qMax<qint64>(0, bytes));
+}
+
 void ChromeStats::recordCommit(const QString &surface, const QSize &logicalSize,
                                const QSize &bufferSize, int bufferScale, qreal scale,
-                               bool viewport, qint64 commitUs, qint64 shmBytes)
+                               bool viewport, qint64 commitUs, qint64 copyBytes,
+                               qint64 damagePixels)
 {
     if (!m_enabled)
         return;
     ++m_commits;
-    ++m_shmAllocs;
-    m_shmBytes += quint64(qMax<qint64>(0, shmBytes));
+    m_copyBytes += quint64(qMax<qint64>(0, copyBytes));
+    m_damagePixels += quint64(qMax<qint64>(0, damagePixels));
     if (commitUs >= 0)
         m_commitUs.append(commitUs);
     SurfaceStats &stats = m_surfaces[surface];
@@ -120,19 +146,44 @@ void ChromeStats::recordCommit(const QString &surface, const QSize &logicalSize,
     stats.scale = scale;
     stats.viewport = viewport;
     ++stats.commits;
-    ++stats.shmAllocs;
-    stats.shmBytes += quint64(qMax<qint64>(0, shmBytes));
+    stats.copyBytes += quint64(qMax<qint64>(0, copyBytes));
+    stats.damagePixels += quint64(qMax<qint64>(0, damagePixels));
     if (commitUs >= 0)
         stats.commitUs.append(commitUs);
 }
 
-void ChromeStats::recordFrameCallback(qint64 callbackUs)
+void ChromeStats::recordSkippedCommit(const QString &surface, const QSize &logicalSize,
+                                      const QSize &bufferSize, int bufferScale,
+                                      qreal scale, bool viewport)
+{
+    if (!m_enabled)
+        return;
+    ++m_skippedCommits;
+    SurfaceStats &stats = m_surfaces[surface];
+    stats.logicalSize = logicalSize;
+    stats.bufferSize = bufferSize;
+    stats.bufferScale = bufferScale;
+    stats.scale = scale;
+    stats.viewport = viewport;
+    ++stats.skippedCommits;
+}
+
+void ChromeStats::recordFrameCallback(const QString &surface, qint64 callbackUs)
 {
     if (!m_enabled)
         return;
     ++m_frameCallbacks;
     if (callbackUs >= 0)
         m_frameCallbackUs.append(callbackUs);
+    if (!surface.isEmpty() && callbackUs >= 0)
+        m_surfaces[surface].frameCallbackUs.append(callbackUs);
+}
+
+void ChromeStats::recordFallbackRender()
+{
+    if (!m_enabled)
+        return;
+    ++m_fallbackRenders;
 }
 
 void ChromeStats::emitStats(const QString &label)
@@ -143,16 +194,22 @@ void ChromeStats::emitStats(const QString &label)
     // logical/buffer sizes of each chrome surface stay readable.
     qInfo().noquote()
         << QStringLiteral(
-               "chrome stats (%1): path=offscreen-qpa+shm scene_frames=%2 commits=%3 "
-               "grab_renders=%4 shm_allocs=%5 shm_bytes=%6 frame_callbacks=%7 "
-               "%8 %9")
+               "chrome stats (%1): path=%2 scene_frames=%3 commits=%4 "
+               "grab_renders=%5 shm_allocs=%6 shm_bytes=%7 copy_bytes=%8 "
+               "damage_pixels=%9 frame_callbacks=%10 fallback_renders=%11 "
+               "skipped_commits=%12 %13 %14")
                .arg(label)
+               .arg(m_transportPath)
                .arg(m_sceneFrames)
                .arg(m_commits)
                .arg(m_grabRenders)
                .arg(m_shmAllocs)
                .arg(m_shmBytes)
+               .arg(m_copyBytes)
+               .arg(m_damagePixels)
                .arg(m_frameCallbacks)
+               .arg(m_fallbackRenders)
+               .arg(m_skippedCommits)
                .arg(timingText("commit_us", m_commitUs))
                .arg(timingText("frame_callback_us", m_frameCallbackUs));
 
@@ -164,7 +221,8 @@ void ChromeStats::emitStats(const QString &label)
             << QStringLiteral(
                    "chrome surface (%1): surface=%2 logical_size=%3 buffer_size=%4 "
                    "buffer_scale=%5 scale=%6 viewport=%7 commits=%8 shm_allocs=%9 "
-                   "shm_bytes=%10 %11 %12")
+                   "shm_bytes=%10 copy_bytes=%11 damage_pixels=%12 skipped=%13 "
+                   "fallback=%14 renders=%15 %16 %17")
                    .arg(label)
                    .arg(name)
                    .arg(sizeText(stats.logicalSize))
@@ -175,6 +233,11 @@ void ChromeStats::emitStats(const QString &label)
                    .arg(stats.commits)
                    .arg(stats.shmAllocs)
                    .arg(stats.shmBytes)
+                   .arg(stats.copyBytes)
+                   .arg(stats.damagePixels)
+                   .arg(stats.skippedCommits)
+                   .arg(stats.fallbackRenders)
+                   .arg(stats.renders)
                    .arg(timingText("commit_us", stats.commitUs))
                    .arg(timingText("frame_callback_us", stats.frameCallbackUs));
     }

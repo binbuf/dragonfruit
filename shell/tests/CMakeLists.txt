@@ -65,6 +65,25 @@ set_tests_properties(tst_chromescale PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Chrome shm buffer-pool state machine (T-21.1c): reuse, busy/release, and
+# resize retirement without a compositor. No QML or Wayland.
+qt_add_executable(tst_chromebufferpool
+    tst_chromebufferpool.cpp
+)
+target_link_libraries(tst_chromebufferpool PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_chromebufferpool
+    COMMAND tst_chromebufferpool
+)
+set_tests_properties(tst_chromebufferpool PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Chrome pointer injection unit tests (T-16.12): the shared helper owns every
 # injected event's timestamp (nonzero, strictly increasing) and never hands a
 # zero-timestamp `QMouseEvent` to a chrome window. No QML, Wayland, or

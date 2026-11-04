@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QEvent>
 #include <QHash>
+#include <QImage>
 #include <QRect>
 #include <QSet>
 #include <QSize>
@@ -15,6 +16,8 @@
 #include <QStringList>
 #include <QVariant>
 #include <QVariantList>
+
+#include <functional>
 
 #include "compositorpolicy.h"
 #include "chooserbridge.h"
@@ -27,7 +30,6 @@
 #include "displayspolicy.h"
 #include "dockmodel.h"
 #include "folderstacks.h"
-#include "framecommitgate.h"
 #include "lockauth.h"
 #include "menubrokerclient.h"
 #include "notificationclient.h"
@@ -49,6 +51,7 @@ class QQuickWindow;
 class QQuickItem;
 class QSocketNotifier;
 class QTimer;
+class ChromeFrameProducer;
 
 class ShellController : public QObject
 {
@@ -691,21 +694,31 @@ private:
     // key, or an out-of-output rect is a no-op, so the launch keeps the
     // centered fallback.
     void sendLaunchOrigin(const QString &desktopId);
-    // Coalesce a render onto the next event-loop turn (QML visual state has
-    // changed but the compositor has not been told yet).
-    void scheduleRender();
-    // Scene-graph frame hooks (FR-14): a frame the Dock/menu-bar window just
-    // rendered is committed on the next event-loop turn, so QML-driven
-    // animation (magnification, popover fade, drag gaps) reaches the
-    // compositor without a sampling timer.
-    void onDockAfterRendering();
-    void onMenuAfterRendering();
     // Force the launch state to neutral (no focus ring, no hover) and commit
     // it, so the first visible frame is not a transient highlight.
     void settleInitialState();
     // Read the open dropdown's rectangle from the bar and place (or hide) the
     // overlay popup surface accordingly.
     void updatePopupGeometry();
+    // Coalesce a render onto the next event-loop turn (QML visual state has
+    // changed but the compositor has not been told yet).
+    void scheduleRender();
+    // T-21.1c: one render-control producer per chrome scene, and one pacer per
+    // producer. A scene change either renders immediately (no callback in
+    // flight, i.e. idle) or marks the producer dirty and waits for the
+    // compositor's `wl_surface.frame` callback. The bounded fallback tick only
+    // runs while a dirty producer is waiting on a callback that never came.
+    ChromeFrameProducer *createChromeProducer();
+    void bindChromePacing(ChromeFrameProducer *producer, const QString &primaryLabel,
+                          std::function<void()> render);
+    void markChromeDirty(ChromeFrameProducer *producer);
+    void scheduleChromeRender(ChromeFrameProducer *producer);
+    void renderChromeProducer(ChromeFrameProducer *producer, bool fallback);
+    void onChromeFramePresented(const QString &surface, uint32_t time);
+    void onChromeBufferReleased(const QString &surface);
+    void onChromeCommitDeferred(const QString &surface);
+    void onChromeFallbackTick();
+    QImage renderChromeFrame(QQuickWindow *window);
 
     ShellProtocol *m_protocol = nullptr;
     // The compositor socket the shell connected on (`--socket-name`, or the
@@ -732,7 +745,6 @@ private:
     bool m_overviewActive = false;
     bool m_overviewRenderPending = false;
     Qt::MouseButtons m_overviewButtons = Qt::NoButton;
-    FrameCommitGate m_overviewFrameGate;
     bool m_overviewSceneGraphCommitLogged = false;
     // App-switcher overlay (T-06.2a): a fourth offscreen scene rendered into
     // the full-output `app-switcher` overlay while the compositor's machine is
@@ -743,7 +755,6 @@ private:
     int m_switcherHeight = 0;
     bool m_switcherActive = false;
     bool m_switcherRenderPending = false;
-    FrameCommitGate m_switcherFrameGate;
     bool m_switcherSceneGraphCommitLogged = false;
     // Applications drawer overlay (T-19.2): a full-output launcher scene, open
     // only while the drawer is up. `m_appsDrawerFixture` is the capture seam.
@@ -755,7 +766,6 @@ private:
     bool m_appsDrawerPending = false;
     bool m_appsDrawerRenderPending = false;
     Qt::MouseButtons m_appsDrawerButtons = Qt::NoButton;
-    FrameCommitGate m_appsDrawerFrameGate;
     bool m_appsDrawerSceneGraphCommitLogged = false;
     bool m_appsDrawerFixture = false;
     // Notification banner (T-11.1a): a fifth offscreen scene rendered into the
@@ -773,7 +783,6 @@ private:
     // banner surface (T-11.1b).
     quint32 m_bannerId = 0;
     Qt::MouseButtons m_bannerButtons = Qt::NoButton;
-    FrameCommitGate m_bannerFrameGate;
     bool m_bannerSceneGraphCommitLogged = false;
     // Control Center panel (T-11.3a): a top-right overlay scene, unmapped
     // until the panel opens.
@@ -786,7 +795,6 @@ private:
     bool m_controlCenterRenderPending = false;
     Qt::MouseButtons m_controlCenterButtons = Qt::NoButton;
     bool m_controlCenterKeyboardFocused = false;
-    FrameCommitGate m_controlCenterFrameGate;
     bool m_controlCenterSceneGraphCommitLogged = false;
     // OSD overlay (T-11.4a): a centered offscreen scene rendered into its own
     // `overlay` surface while a volume/brightness change is presented. The
@@ -804,7 +812,6 @@ private:
     // backdrop frosts. Only a changed rect is sent.
     QRect m_osdPanelRect;
     bool m_osdPanelRectValid = false;
-    FrameCommitGate m_osdFrameGate;
     bool m_osdSceneGraphCommitLogged = false;
     QTimer *m_osdTimer = nullptr;
     // T-21.1a: drains the opt-in SIGUSR1 self-pipe and emits the chrome
@@ -822,7 +829,6 @@ private:
     bool m_chooserPending = false;
     bool m_chooserRenderPending = false;
     Qt::MouseButtons m_chooserButtons = Qt::NoButton;
-    FrameCommitGate m_chooserFrameGate;
     bool m_chooserSceneGraphCommitLogged = false;
     // Screenshot selection overlay (T-13.3a): a full-output scene rendered
     // into the `screenshot` overlay surface while a capture is in progress.
@@ -844,7 +850,6 @@ private:
     bool m_screenshotPending = false;
     bool m_screenshotRenderPending = false;
     Qt::MouseButtons m_screenshotButtons = Qt::NoButton;
-    FrameCommitGate m_screenshotFrameGate;
     bool m_screenshotSceneGraphCommitLogged = false;
     // ScreenCast source picker (T-13.4a): a centered dialog scene rendered
     // into the `screencast` overlay surface while a portal request waits. The
@@ -858,7 +863,6 @@ private:
     bool m_screencastPending = false;
     bool m_screencastRenderPending = false;
     Qt::MouseButtons m_screencastButtons = Qt::NoButton;
-    FrameCommitGate m_screencastFrameGate;
     bool m_screencastSceneGraphCommitLogged = false;
     // polkit authentication dialog (T-13.6): a centered dialog scene rendered
     // into the `polkit` overlay surface while a privileged request waits. The
@@ -873,7 +877,6 @@ private:
     bool m_polkitPending = false;
     bool m_polkitRenderPending = false;
     Qt::MouseButtons m_polkitButtons = Qt::NoButton;
-    FrameCommitGate m_polkitFrameGate;
     bool m_polkitSceneGraphCommitLogged = false;
     QString m_polkitResponse;
     // Session lock (T-12.3a): an offscreen lock scene rendered into one
@@ -886,7 +889,6 @@ private:
     QHash<quintptr, QSize> m_lockSurfaceSizes;
     QSet<quintptr> m_lockCommitted;
     QTimer *m_lockTimer = nullptr;
-    FrameCommitGate m_lockFrameGate;
     bool m_lockSceneGraphCommitLogged = false;
     // T-12.3b: the PAM helper boundary. Owned here; the lock screen feeds it
     // the password once input capture lands (T-12.3c).
@@ -896,6 +898,18 @@ private:
     // length is exposed to the lock scene (`passwordLength`).
     QString m_lockPassword;
     QSocketNotifier *m_notifier = nullptr;
+    // T-21.1c: producer lookup and per-producer pacing state.
+    QHash<QQuickWindow *, ChromeFrameProducer *> m_producers;
+    struct ChromePace {
+        ChromeFrameProducer *producer = nullptr;
+        QString primaryLabel;
+        std::function<void()> render;
+        bool dirty = false;
+        bool scheduled = false;
+        bool rendering = false;
+    };
+    QHash<ChromeFrameProducer *, ChromePace> m_chromePaces;
+    QTimer *m_chromeFallbackTimer = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;
     // The T-08 settings daemon client: the Dock's only settings source
@@ -1087,8 +1101,6 @@ private:
     // Scene-graph frame gates (FR-14): the Dock and menu-bar windows commit
     // from `afterRendering`, and the gate suppresses the re-entrant frame the
     // `grabWindow()` readback itself produces.
-    FrameCommitGate m_dockFrameGate;
-    FrameCommitGate m_menuFrameGate;
     // One-shot diagnostics: confirm the scene-graph commit path is live.
     bool m_dockSceneGraphCommitLogged = false;
     bool m_menuSceneGraphCommitLogged = false;
