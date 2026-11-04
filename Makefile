@@ -50,8 +50,8 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates \
+        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
@@ -62,6 +62,8 @@ help:
 	@echo "  make build    — build everything (Rust workspace + Qt/CMake)"
 	@echo "  make test     — run all tests (cargo + ctest + gallery visual regression)"
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
+	@echo "  make gates    — the full release gate: e2e + qml-test"
+	@echo "  make t21-doctor — preflight a T-21 nested/host capture session"
 	@echo "  make idle-trace — T-03.1a 60 s idle/animation frame budget trace"
 	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
 	@echo "  make t21-chrome-baseline — T-21.1a chrome transport counters + report"
@@ -129,6 +131,13 @@ configure:
 	$(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
 
 test: cargo-test qml-test visual-test
+
+# The release gate pair. `make e2e` is the harness verify; `make qml-test`
+# covers the shell/QML half. Run it once on the final tree, not after
+# docs-only edits.
+gates:
+	$(MAKE) e2e
+	$(MAKE) qml-test
 
 cargo-test:
 	$(CARGO) test --workspace
@@ -221,6 +230,12 @@ t20-frame-budget: build
 # (docs/captures/t20-material-tiers-*.png); needs a host session, not in e2e.
 t20-material-tiers-capture: build
 	bash scripts/capture-t20-material-tiers.sh
+
+# T-21 capture preflight: host Wayland session, built shell/compositor, optional
+# nested-compositor helpers, and the screenshot path. Run it before a nested or
+# host capture task; warnings are non-fatal, failures are blocking.
+t21-doctor:
+	bash scripts/t21-doctor.sh
 
 # T-21.1a: the chrome transport baseline. Runs the nested demo with the
 # opt-in shell/compositor counters, drives the six scenarios, and records
