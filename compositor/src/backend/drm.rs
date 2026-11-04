@@ -1267,9 +1267,10 @@ fn frame_finish(
             // interval only then; an idle vblank is not a presentation.
             if user_data.is_some() {
                 if let Some(interval) = presentation_interval {
+                    let refresh = state.refresh_for_output(&output_name);
                     state
                         .stats
-                        .record_presentation(&output_name, interval, frame_duration);
+                        .record_presentation(&output_name, interval, refresh);
                 }
             }
             if let Some(mut feedback) = user_data.flatten() {

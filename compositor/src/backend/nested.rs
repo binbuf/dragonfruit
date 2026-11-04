@@ -191,7 +191,8 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                         }
                         WinitEvent::Resized { size, .. } => {
                             let mut current_scale = 1.0;
-                            if let Some(output) = state.space.outputs().next().cloned() {
+                            let output = state.space.outputs().next().cloned();
+                            if let Some(output) = output {
                                 let mode = Mode {
                                     size,
                                     refresh: 60_000,
@@ -199,6 +200,10 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                                 output.change_current_state(Some(mode), None, None, None);
                                 output.set_preferred(mode);
                                 current_scale = output.current_scale().fractional_scale();
+                                // A resize changes the output mode; keep the
+                                // animation tick and degrade budget on the
+                                // current fastest period (T-21.2a).
+                                state.on_output_mode_changed(&output);
                             }
                             // The winit/EGL back buffer is bottom-up, so the
                             // damage tracker must render with Flipped180. The
