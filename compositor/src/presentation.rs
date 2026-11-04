@@ -35,7 +35,57 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use crate::refresh::{OutputRefresh, RefreshSource, VrrState};
+use crate::refresh::{OutputRefresh, RefreshSource, VrrState, SLOWEST_PERIOD};
+
+/// The period range a variable-refresh output may use.
+///
+/// `min_period` is the shortest (highest-refresh) end and `max_period` the
+/// longest (lowest-refresh) end. The range is supplied by the backend; the
+/// presentation clock never infers it from a measured interval.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VrrRange {
+    /// Shortest supported period (highest refresh).
+    pub min_period: Duration,
+    /// Longest supported period (lowest refresh).
+    pub max_period: Duration,
+}
+
+impl VrrRange {
+    /// Build a range from two periods. A zero period is invalid (it would let
+    /// the clock spin), and reversed bounds are normalized.
+    pub fn new(min_period: Duration, max_period: Duration) -> Option<Self> {
+        if min_period.is_zero() || max_period.is_zero() {
+            return None;
+        }
+        let (min_period, max_period) = if min_period <= max_period {
+            (min_period, max_period)
+        } else {
+            (max_period, min_period)
+        };
+        Some(Self {
+            min_period,
+            max_period,
+        })
+    }
+
+    /// The range a mode supports when the backend reports VRR capability but
+    /// no explicit panel range: the mode's own period is the fastest end and
+    /// the refresh model's 24 Hz floor is the slowest end. A real panel range
+    /// can replace this through [`PresentationClock::set_vrr_range`].
+    pub fn for_mode_period(period: Duration) -> Option<Self> {
+        Self::new(period, SLOWEST_PERIOD)
+    }
+
+    /// Clamp `period` into this range.
+    pub fn clamp(&self, period: Duration) -> Duration {
+        period.clamp(self.min_period, self.max_period)
+    }
+
+    /// Whether `period` is inside this range.
+    pub fn contains(&self, period: Duration) -> bool {
+        period >= self.min_period && period <= self.max_period
+    }
+}
 
 /// One output's pure presentation clock.
 ///
@@ -55,9 +105,18 @@ pub struct PresentationClock {
     pub period: Duration,
     /// The output's nominal refresh in Hz, for stats/traces.
     pub refresh_hz: f64,
-    /// VRR state carried from the refresh model. It never changes `period`
-    /// here; T188c decides what a variable interval means.
+    /// VRR state carried from the refresh model. A variable interval is only
+    /// used when this is [`VrrState::On`] *and* [`Self::vrr_range`] is set; a
+    /// measured interval alone never turns VRR on.
     pub vrr: VrrState,
+    /// The backend-supplied variable-refresh period range, if any.
+    pub vrr_range: Option<VrrRange>,
+    /// The last measured presentation interval accepted as a VRR interval.
+    /// `None` means the nominal mode period is in use.
+    pub vrr_interval: Option<Duration>,
+    /// Presented frames recorded over the lifetime of this clock. This is the
+    /// per-output cadence evidence for synthetic/headless mixed-refresh runs.
+    pub presentations: u64,
 }
 
 impl PresentationClock {
@@ -69,6 +128,9 @@ impl PresentationClock {
             period: refresh.period,
             refresh_hz: refresh.refresh_hz(),
             vrr: refresh.vrr,
+            vrr_range: None,
+            vrr_interval: None,
+            presentations: 0,
         }
     }
 
@@ -92,9 +154,53 @@ impl PresentationClock {
         self.period = refresh.period;
         self.refresh_hz = refresh.refresh_hz();
         self.vrr = refresh.vrr;
+        // A mode change invalidates the old range and any adapted interval.
+        // `DfState` reinstalls the range from the backend's VRR state.
+        self.vrr_range = None;
+        self.vrr_interval = None;
         self.next_deadline = self
             .last_presented
             .map(|last| last.saturating_add(self.period));
+    }
+
+    /// Install (or clear) the backend-supplied VRR range. Clearing it also
+    /// drops any adapted interval so the clock returns to the fixed period.
+    pub fn set_vrr_range(&mut self, range: Option<VrrRange>) {
+        self.vrr_range = range;
+        match (range, self.vrr_interval) {
+            (None, _) => self.vrr_interval = None,
+            (Some(range), Some(interval)) if !range.contains(interval) => {
+                self.vrr_interval = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether this clock is allowed to use a variable interval: the backend
+    /// reported VRR on *and* supplied a supported range.
+    pub fn vrr_active(&self) -> bool {
+        self.vrr == VrrState::On && self.vrr_range.is_some()
+    }
+
+    /// The period used for the next deadline: the last accepted VRR interval
+    /// when VRR is active, otherwise the nominal mode period.
+    pub fn effective_period(&self) -> Duration {
+        if self.vrr_active() {
+            self.vrr_interval.unwrap_or(self.period)
+        } else {
+            self.period
+        }
+    }
+
+    /// The stable `vrr=` report token. An output that reported `On` without a
+    /// supported range, or that never reported VRR at all, is `unsupported`;
+    /// the compositor never claims VRR from a measured interval.
+    pub fn vrr_report(&self) -> &'static str {
+        match self.vrr {
+            VrrState::On if self.vrr_range.is_some() => "on",
+            VrrState::On | VrrState::Unknown => "unsupported",
+            VrrState::Off => "off",
+        }
     }
 
     /// Record a presented frame at `timestamp` (monotonic). Returns `false`
@@ -103,15 +209,29 @@ impl PresentationClock {
     /// backwards.
     ///
     /// The next deadline is anchored to the actual presentation, not to the
-    /// previous deadline: a late frame does not trigger a catch-up burst.
+    /// previous deadline: a late frame does not trigger a catch-up burst. When
+    /// VRR is explicitly on and the measured interval is inside the supported
+    /// range, that interval becomes the next period; otherwise the nominal
+    /// mode period stays in force. A single short interval can never turn VRR
+    /// on, and an idle gap outside the range falls back to the nominal period.
     pub fn note_presented(&mut self, timestamp: Duration) -> bool {
         if let Some(last) = self.last_presented {
             if timestamp < last {
                 return false;
             }
         }
+        let interval = self
+            .last_presented
+            .map(|last| timestamp.saturating_sub(last));
+        if self.vrr_active() {
+            let range = self.vrr_range.expect("vrr_active requires a range");
+            self.vrr_interval = interval.filter(|interval| range.contains(*interval));
+        } else {
+            self.vrr_interval = None;
+        }
         self.last_presented = Some(timestamp);
-        self.next_deadline = Some(timestamp.saturating_add(self.period));
+        self.next_deadline = Some(timestamp.saturating_add(self.effective_period()));
+        self.presentations = self.presentations.saturating_add(1);
         true
     }
 

@@ -38,6 +38,11 @@ pub const MIN_REFRESH_MHZ: u32 = 24_000;
 /// Highest refresh the model accepts (500 Hz).
 pub const MAX_REFRESH_MHZ: u32 = 500_000;
 
+/// The slowest period the model accepts (24 Hz), used as the long-period end
+/// of a variable-refresh range.
+pub const SLOWEST_PERIOD: Duration =
+    Duration::from_nanos(1_000_000_000_000 / MIN_REFRESH_MHZ as u64);
+
 /// Test/diagnostic override for the animation tick and degrade budget, in Hz.
 /// Unset in a normal session; nested/headless tests set `60`, `120`, `144`, or
 /// `240` to exercise the table without hardware.
@@ -77,6 +82,19 @@ pub enum VrrState {
     Off,
     /// The output may present at a variable interval.
     On,
+}
+
+impl VrrState {
+    /// The stable stats token. `Unknown` is reported as `unsupported`: the
+    /// backend did not expose a variable interval, so the compositor must not
+    /// claim VRR.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            VrrState::Unknown => "unsupported",
+            VrrState::Off => "off",
+            VrrState::On => "on",
+        }
+    }
 }
 
 /// One mode's refresh input, without a Smithay `Output` handle.
