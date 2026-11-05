@@ -302,13 +302,21 @@ SDDM, LightDM, or any spec-compliant greeter. Its `Exec` is the entry script
 ```text
 DM greeter → dragonfruit-session-entry
   1. eval "$(dragonfruit-session --print-env …)"   # base env + fresh token
-  2. systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_TYPE \
+  2. dragonfruit-session --sync-toolkit             # GTK left-side controls
+  3. systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_TYPE \
          WAYLAND_DISPLAY DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
-  3. systemctl --user start dragonfruit-session.target
-  4. wait for dragonfruit-compositor.service to leave the active state
-  5. systemctl --user stop dragonfruit-session.target; reset-failed
-  6. rm "$XDG_RUNTIME_DIR/<socket>"{,.lock,.x11-display,.launch-token}
+  4. systemctl --user start dragonfruit-session.target
+  5. wait for dragonfruit-compositor.service to leave the active state
+  6. systemctl --user stop dragonfruit-session.target; reset-failed
+  7. rm "$XDG_RUNTIME_DIR/<socket>"{,.lock,.x11-display,.launch-token}
 ```
+
+The toolkit step is the GTK steering compatibility bridge: it writes the left-side
+`gtk-decoration-layout` to the user's GTK 3/4 `settings.ini`, the GLib
+GSettings keyfile, and (when `gsettings` is available) the live dconf value,
+so cooperative GTK/libadwaita CSD apps match the compositor and first-party
+titlebars. It is best-effort and never blocks the session; see
+[05-window-decorations.md](05-window-decorations.md).
 
 The compositor is the anchor: when it exits (a clean logout or a crash), the
 entry stops the target, clears its failed state, and removes the runtime
