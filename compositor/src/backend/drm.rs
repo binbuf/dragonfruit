@@ -72,6 +72,7 @@ use smithay::wayland::presentation::Refresh;
 use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
 
 use crate::backend::add_seat_capabilities;
+use crate::gpu_timer::{GpuPass, GpuTimer, GpuTimerTarget};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
     full_output_material_forced, BackdropBlurElement, MaterialRegion, PanelKey, PanelTextureSlots,
@@ -85,6 +86,12 @@ type UdevRenderer<'a> = MultiRenderer<
     GbmGlesBackend<GlesRenderer, DrmDeviceFd>,
     GbmGlesBackend<GlesRenderer, DrmDeviceFd>,
 >;
+
+impl<'a> GpuTimerTarget for UdevRenderer<'a> {
+    fn gles_mut(&mut self) -> &mut GlesRenderer {
+        <Self as AsMut<GlesRenderer>>::as_mut(self)
+    }
+}
 
 /// The DRM renderer's `TextureId` is `MultiTexture`, so the nested
 /// `BlurRenderer` (which required `TextureId = GlesTexture`) cannot be used.
@@ -371,6 +378,8 @@ struct SurfaceData {
     vblank_throttle_timer: Option<RegistrationToken>,
     /// Reused scene/blur textures for the sampled material path.
     material: DrmMaterialCache,
+    /// Opt-in GPU timer queries for the benchmark (T-21.4b).
+    gpu_timer: GpuTimer,
 }
 
 impl Drop for SurfaceData {
@@ -1144,6 +1153,7 @@ fn connector_connected(
             last_presentation_time: None,
             vblank_throttle_timer: None,
             material: DrmMaterialCache::default(),
+            gpu_timer: GpuTimer::new(),
         },
     );
     state.set_output_vrr(&output_name, vrr);
@@ -1439,6 +1449,18 @@ fn render_surface(
 
     let scale = Scale::from(surface.output.current_scale().fractional_scale());
 
+    // Collect GPU timer results from earlier frames before starting this
+    // frame's passes (T-21.4b). Polling is asynchronous and never stalls on
+    // the GPU; an unavailable/disabled timer publishes its reason.
+    for sample in surface.gpu_timer.poll(&mut renderer) {
+        state.stats.gpu.record(sample.pass, sample.nanos);
+    }
+    let (gpu_enabled, gpu_available, gpu_reason) = surface.gpu_timer.status();
+    state
+        .stats
+        .gpu
+        .set_status(gpu_enabled, gpu_available, gpu_reason);
+
     // Open this output's material pass (T-04.2), so the chrome backdrop is
     // applied at most once for it this frame.
     state.begin_render_frame();
@@ -1614,7 +1636,8 @@ fn render_surface(
                 .map(DrmOutputElements::Wallpaper),
         );
 
-        let scene_texture = match crate::backend::nested::render_scene_offscreen(
+        surface.gpu_timer.begin(&mut renderer, GpuPass::Scene);
+        let scene_result = crate::backend::nested::render_scene_offscreen(
             &mut renderer,
             state,
             &material_output,
@@ -1622,7 +1645,9 @@ fn render_surface(
             region,
             &scene_elements,
             &mut surface.material.scene,
-        ) {
+        );
+        surface.gpu_timer.end(&mut renderer);
+        let scene_texture = match scene_result {
             Ok(texture) => texture,
             Err(err) => {
                 eprintln!("dragonfruit-compositor: DRM scene pass failed: {err}");
@@ -1645,7 +1670,8 @@ fn render_surface(
                 continue;
             };
             let slot = surface.material.panels.slot(&panel.key);
-            let (texture, allocations) = match crate::backend::nested::blur_panel_texture(
+            surface.gpu_timer.begin(&mut renderer, GpuPass::Blur);
+            let blur_result = crate::backend::nested::blur_panel_texture(
                 &mut renderer,
                 programs.blur.as_ref(),
                 &scene_texture,
@@ -1653,7 +1679,9 @@ fn render_surface(
                 &panel.spec,
                 output_size,
                 slot.textures_mut(),
-            ) {
+            );
+            surface.gpu_timer.end(&mut renderer);
+            let (texture, allocations) = match blur_result {
                 Ok(texture) => texture,
                 Err(err) => {
                     eprintln!("dragonfruit-compositor: DRM blur pass failed: {err}");
@@ -1762,10 +1790,18 @@ fn render_surface(
 
     let frame_mode = FrameFlags::DEFAULT; // direct scanout where possible
     let wallpaper = state.wallpaper_color_for(&surface.output);
+    surface.gpu_timer.begin(&mut renderer, GpuPass::Composite);
     let result =
         surface
             .drm_output
             .render_frame(&mut renderer, &custom_elements, wallpaper, frame_mode);
+    surface.gpu_timer.end(&mut renderer);
+    // A fast GPU can have the composite result ready by the time the frame
+    // returns; drain it now so a final SIGUSR1 snapshot is not one frame
+    // stale. Still non-blocking.
+    for sample in surface.gpu_timer.poll(&mut renderer) {
+        state.stats.gpu.record(sample.pass, sample.nanos);
+    }
 
     match result {
         Ok(render_frame_result) => {

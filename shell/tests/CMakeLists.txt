@@ -84,6 +84,26 @@ set_tests_properties(tst_chromebufferpool PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Chrome transport counters (T-21.4b): the global/per-surface summary carries
+# path, commit/frame-callback timing, copy count/bytes, shm/dmabuf buffers,
+# fallbacks, and sync timeouts. Pure; no Wayland, QML, or compositor.
+qt_add_executable(tst_chromestats
+    tst_chromestats.cpp
+)
+target_link_libraries(tst_chromestats PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_chromestats
+    COMMAND tst_chromestats
+)
+set_tests_properties(tst_chromestats PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # GPU chrome capability/format selection (T-21.1d): linux-dmabuf feedback
 # parsing, EGL extension parsing, and the deterministic format choice. Pure;
 # no Wayland, EGL, QML, or compositor.
