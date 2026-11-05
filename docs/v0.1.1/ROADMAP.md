@@ -69,7 +69,7 @@ done.
 
 - [x] T191a — T-21.4a Native rebuild, diagnostics, and rollback → [../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md](../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md)
 - [x] T191b — T-21.4a Native visual sweep and evidence boundary → [../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md](../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md)
-- [ ] T192a — T-21.4b GPU/chrome timing counters → [../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md](../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md)
+- [x] T192a — T-21.4b GPU/chrome timing counters → [../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md](../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md)
 - [ ] T192b — T-21.4b Benchmark script and nested scenario run → [../tasks/0.1.1/192b-t-21.4b-bench-harness.md](../tasks/0.1.1/192b-t-21.4b-bench-harness.md)
 - [ ] T192c — T-21.4b Baseline comparison and native benchmark rows → [../tasks/0.1.1/192c-t-21.4b-baseline-and-native.md](../tasks/0.1.1/192c-t-21.4b-baseline-and-native.md)
 - [ ] T192d — T-21.4b Presentation soak and final report → [../tasks/0.1.1/192d-t-21.4b-soak-and-report.md](../tasks/0.1.1/192d-t-21.4b-soak-and-report.md)

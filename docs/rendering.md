@@ -829,6 +829,13 @@ Define a minimum acceptable tier per hardware class and measure it.
 
 - Document `presentation stats` fields and the 1.5x missed-deadline rule.
 - Include a native capture in the acceptance report.
+- `gpu stats` (T-21.4b) is opt-in with `DRAGONFRUIT_GPU_TIMING=1`: it reports
+  `gpu_time=available` with per-pass (`scene`, `blur`, `composite`) p50/p95/p99
+  from asynchronous `GL_TIME_ELAPSED` queries, or `gpu_time=unavailable` plus a
+  reason when the GLES extension/backend does not support timer queries.
+  `chrome stats` carries `path`, `copies`/`copy_bytes`, `commit_us` /
+  `frame_callback_us` percentiles, `shm_bytes`, `dmabuf_buffers`,
+  `dmabuf_fallbacks`, and `dmabuf_sync_timeouts`.
 
 ### R8.3 Docs
 

@@ -92,6 +92,7 @@ use std::time::{Duration, Instant};
 
 use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
 use crate::app_switcher::{AppSwitcher, SwitchStep, SwitcherApp};
+use crate::gpu_timer::GpuStats;
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
 use crate::input::gestures::GestureRecognizer;
@@ -360,6 +361,10 @@ pub struct RenderStats {
     /// Actual vblank intervals per DRM output (T-03.1b/P0 baseline). Nested
     /// and headless have no hardware vblank, so this map stays empty there.
     pub presentation: HashMap<String, PresentationStats>,
+    /// Opt-in GPU timer-query samples and support state (T-21.4b). The line
+    /// reports `gpu_time=unavailable` when the extension or renderer is
+    /// missing; the counters never fall back to CPU timings.
+    pub gpu: GpuStats,
     /// Emit the full per-frame trace from [`DfState::dump_stats`]
     /// (`DRAGONFRUIT_FRAME_TRACE`).
     verbose: bool,
@@ -3672,6 +3677,14 @@ impl DfState {
             self.stats.material_region_px,
             self.stats.material_region.0,
             self.stats.material_region.1,
+        );
+        // GPU timer queries (T-21.4b): opt-in, asynchronous GL_TIME_ELAPSED
+        // samples around the scene, per-panel blur, and final composite
+        // passes. When the driver/extension is missing the line says
+        // `gpu_time=unavailable` instead of inventing a CPU-derived value.
+        println!(
+            "dragonfruit-compositor: gpu stats ({label}): {}",
+            self.stats.gpu.summary(),
         );
         // Live light/dark scheme (T-04.4b): the token set the compositor
         // materials (SSD titlebar, window menu, chrome backdrop, window
