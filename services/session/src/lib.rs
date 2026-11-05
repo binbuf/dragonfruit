@@ -22,6 +22,9 @@
 //!   `PrepareForSleep` (T-12.5a).
 //! * [`entry`] — the display-manager session `.desktop` entry, the entry
 //!   script, and their install layout (T-12.2).
+//! * [`toolkit`] — the third-party toolkit compatibility bridge: the session
+//!   applies the left-side GTK window-control layout so cooperative CSD apps
+//!   match the desktop (the compatibility phase's GTK steering).
 //! * [`supervisor`] — [`Supervisor`], which spawns the services stage by
 //!   stage, reaps exited children, restarts them per policy, and tears down
 //!   whole process groups at logout (T-12.2).
@@ -38,6 +41,7 @@ pub mod idle;
 pub mod plan;
 pub mod supervisor;
 pub mod suspend;
+pub mod toolkit;
 
 pub use env::{generate_launch_token, SessionEnvironment};
 pub use idle::{

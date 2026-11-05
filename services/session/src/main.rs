@@ -29,6 +29,7 @@ use dragonfruit_session::entry;
 use dragonfruit_session::env::{self, SessionEnvironment};
 use dragonfruit_session::plan::{RestartPolicy, ServiceSpec, SessionPlan};
 use dragonfruit_session::supervisor::{ServiceState, SessionState, Supervisor};
+use dragonfruit_session::toolkit::{self, GsettingsOutcome};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const DEFAULT_SOCKET_WAIT: Duration = Duration::from_secs(10);
@@ -55,6 +56,7 @@ fn main() -> ExitCode {
         }
         Some("--print-env") => print_env(&args[1..]),
         Some("--wait-socket") => wait_socket(&args[1..]),
+        Some("--sync-toolkit") => sync_toolkit(&args[1..]),
         Some("--install-session") => install_session(&args[1..]),
         Some("-h") | Some("--help") => {
             print_help();
@@ -236,6 +238,39 @@ fn wait_socket(args: &[String]) -> ExitCode {
     }
 }
 
+/// Apply the desktop's left-side window-control layout to the shared GTK
+/// toolkit settings (the compatibility phase's GTK steering). The session
+/// entry runs this before any app can launch; it is also safe to run by hand
+/// inside a live session to update the dconf value immediately. Best-effort:
+/// the file fallbacks are written even when `gsettings` is unavailable.
+fn sync_toolkit(args: &[String]) -> ExitCode {
+    if let Some(argument) = args.first() {
+        eprintln!("dragonfruit-session: unexpected --sync-toolkit argument {argument:?}");
+        return ExitCode::from(2);
+    }
+    match toolkit::sync_from_env() {
+        Ok(report) => {
+            for path in &report.files {
+                println!("{}", path.display());
+            }
+            match &report.gsettings {
+                GsettingsOutcome::Applied => println!("{}", report.summary()),
+                GsettingsOutcome::Unavailable => {
+                    eprintln!("dragonfruit-session: gsettings not found; wrote the file fallbacks")
+                }
+                GsettingsOutcome::Failed(message) => {
+                    eprintln!("dragonfruit-session: gsettings did not apply: {message}")
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("dragonfruit-session: cannot sync toolkit settings: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// Install the display-manager session entry, its script, and the systemd
 /// user units under `DIR` (T-12.2). Printing every written path makes the
 /// packaging step auditable. `DIR` is the full install prefix, e.g. a
@@ -355,6 +390,8 @@ fn print_help() {
                           login also exports DRAGONFRUIT_DEV_RETURN (T-12.6b)\n\
            --wait-socket NAME [--timeout SECS]\n\
                           block until the compositor's private socket exists\n\
+           --sync-toolkit write the left-side GTK window-control layout to\n\
+                          settings.ini, the GSettings keyfile, and dconf\n\
            --install-session DIR\n\
                           install the DM session entry, its script, and the\n\
                           systemd user units under DIR (T-12.2)\n\

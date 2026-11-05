@@ -25,6 +25,23 @@ application interaction.
 Tier 3 can be improved through GTK/Qt configuration and themes so cooperative
 applications place controls on the left.
 
+### GTK steering (compatibility bridge)
+
+The session applies the standard GTK window-control layout
+(`close,minimize,maximize:` — close, minimize, maximize on the left) before
+any application can launch. `dragonfruit-session --sync-toolkit` writes it to
+the user's `gtk-3.0/settings.ini`, `gtk-4.0/settings.ini`, and the GLib
+GSettings keyfile, then updates the live `org.gnome.desktop.wm.preferences
+button-layout` value through `gsettings` when that tool is available. The
+session entry calls it at login; running the command by hand inside a live
+session updates a dconf-backed desktop immediately. GTK 3/4 and libadwaita
+apps that use `GtkWindowControls`/`AdwHeaderBar` move their controls left.
+
+This remains a best-effort bridge: an application that draws its own controls
+(Electron/Chromium, SDL, some toolkits, and apps with a hard-coded headerbar)
+keeps them where it draws them. We do not inject a second titlebar or fake
+controls into client pixels (the tier-3 dignity rule above).
+
 ## Negotiation
 
 Decoration mode follows `xdg-decoration` the way the protocol defines it:
@@ -196,4 +213,7 @@ geometry; T-20's sampled material is a chrome-panel pass and deliberately does
 not turn the SSD titlebar into glass, so the titlebar fill remains the
 token-opaque surface described above. `_NET_FRAME_EXTENTS` is still not
 published to X11 clients ([STATUS.md](STATUS.md) G-16). The label-less window
-menu is the main decoration gap (G-06).
+menu is the main decoration gap (G-06). The GTK steering bridge now runs from
+the session entry (`dragonfruit-session --sync-toolkit`), so cooperative GTK
+CSD apps place their controls on the left; Electron/Chromium and other
+self-drawn frames remain the documented tier-3 boundary.

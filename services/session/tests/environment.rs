@@ -264,6 +264,65 @@ fn print_env_without_armed_state_leaves_the_return_unset() {
 }
 
 #[test]
+#[cfg(unix)]
+fn sync_toolkit_writes_the_left_layout_and_calls_gsettings() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = unique_path("toolkit-sync");
+    let config = root.join("config");
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&config).expect("config dir");
+    std::fs::create_dir_all(&bin).expect("bin dir");
+
+    // A fake `gsettings` records the live write instead of touching the
+    // developer's dconf. The session binary invokes it through PATH.
+    let record = root.join("gsettings.args");
+    let fake = bin.join("gsettings");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
+            record.display()
+        ),
+    )
+    .expect("write fake gsettings");
+    let mut permissions = std::fs::metadata(&fake).expect("metadata").permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&fake, permissions).expect("chmod");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dragonfruit-session"))
+        .arg("--sync-toolkit")
+        .env("XDG_CONFIG_HOME", &config)
+        .env("HOME", &root)
+        .env("PATH", &bin)
+        .output()
+        .expect("the session binary runs");
+    assert!(output.status.success(), "{output:?}");
+
+    let args = std::fs::read_to_string(&record).expect("gsettings recorded its arguments");
+    assert!(args.contains("org.gnome.desktop.wm.preferences"), "{args}");
+    assert!(args.contains("button-layout"), "{args}");
+    assert!(args.contains("close,minimize,maximize:"), "{args}");
+
+    for directory in ["gtk-3.0", "gtk-4.0"] {
+        let path = config.join(directory).join("settings.ini");
+        let text = std::fs::read_to_string(&path).expect("settings.ini exists");
+        assert!(
+            text.contains("gtk-decoration-layout=close,minimize,maximize:"),
+            "{path:?}: {text}"
+        );
+    }
+    let keyfile = std::fs::read_to_string(config.join("glib-2.0/settings/keyfile"))
+        .expect("the GSettings keyfile exists");
+    assert!(
+        keyfile.contains("button-layout='close,minimize,maximize:'"),
+        "{keyfile}"
+    );
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
 fn shutting_a_session_down_ends_the_state() {
     let plan = SessionPlan::default_session_for(&SessionEnvironment::default_socket());
     plan.validate().expect("the environment plan is valid");
