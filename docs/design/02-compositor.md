@@ -463,6 +463,15 @@ sampled pass, or a material-frame failure keeps the feather stack; `Minimal`
 also keeps blur off. The pre-GPU feather stack is therefore the honest fallback,
 not the only DRM path.
 
+T190a adds the pure region helper for the next step
+(`compositor/src/window/material_region.rs`, ADR 0207). Each resolved
+`BlurPanel` is expanded by its own `BlurSpec::padding()` — the larger of the
+token radius and the `2^iterations` Kawase footprint — before the union, then
+clamped to the output. `MaterialRegion` returns the logical region plus the
+precisely rounded physical rectangle and texture size; T190b uses it to size
+and translate the scene texture. The renderer still uses the full-output path
+until that task.
+
 The Tahoe **liquid-glass pass** landed in **T-20.2**
 ([ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)) as a second custom
 texture program (`GLASS_SHADER`) used on the final compose of each panel's
