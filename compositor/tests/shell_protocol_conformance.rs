@@ -1577,6 +1577,254 @@ fn material_role_state_is_per_role_floor_aware_and_change_only() {
     );
 }
 
+fn material_role_map(
+    states: &[(u32, u32, u32, u32)],
+) -> std::collections::BTreeMap<u32, (u32, u32, u32)> {
+    states
+        .iter()
+        .map(|&(role, tier, blur, fallback)| (role, (tier, blur, fallback)))
+        .collect()
+}
+
+fn material_role_list(map: &std::collections::BTreeMap<u32, (u32, u32, u32)>) -> String {
+    (0..4)
+        .map(|role| {
+            let (tier, blur, fallback) = map.get(&role).copied().unwrap_or((9, 9, 9));
+            format!("{role}:{tier}/{blur}/{fallback}")
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// One load phase for the T-21.2c conformance trace: feed frames through the
+/// synthetic rendered-frame hook, then wait for the four role events and
+/// return the wire-ordered map.
+fn run_degrade_load_phase(
+    conn: &Connection,
+    queue: &mut EventQueue<TestClient>,
+    state: &mut TestClient,
+    input: &SyntheticInput,
+    name: &str,
+    frames: u32,
+    micros: u64,
+) -> std::collections::BTreeMap<u32, (u32, u32, u32)> {
+    state.output_material_role_states.clear();
+    input.send(&format!("set degrade-frames {frames} {micros}"));
+    let report = input.query("query degrade");
+    let line = report.lines().next().unwrap_or("degrade ?").to_string();
+    wait_for(conn, queue, state, Duration::from_secs(5), |state| {
+        state.output_material_role_states.len() >= 4
+    });
+    let roles = material_role_map(&state.output_material_role_states);
+    assert_eq!(roles.len(), 4, "{name}: one event per role: {roles:?}");
+    println!(
+        "degrade-trace: phase={name} frames={frames} frame_us={micros} {line} roles={}",
+        material_role_list(&roles)
+    );
+    roles
+}
+
+/// T-21.2c load acceptance: a headless load sequence through the real
+/// rendered-frame path keeps the hysteresis refresh-aware, holds the
+/// persistent floor, and does not flap a steady Full↔Reduced sweep. The
+/// `degrade-trace:` lines are the committed load trace (`make t21-degrade-load`).
+#[test]
+fn material_role_state_follows_a_refresh_aware_load_sequence() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-material-load-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-material-load",
+        &[],
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.done_count > 0,
+    );
+
+    // Sampled GPU path, manual 60 Hz budget: the load feed is deterministic.
+    input.send("set material-path gpu\nset material-blur-supported on");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_material_role_states.len() >= 4,
+    );
+    input.send("set degrade-budget 16666");
+    println!("degrade-trace: scenario=headless-load budget_us=16666 path=gpu blur_supported=1");
+
+    // Feed a load phase and return the four role states it produced.
+    macro_rules! run_phase {
+        ($name:expr, $frames:expr, $micros:expr) => {
+            run_degrade_load_phase(
+                &conn, &mut queue, &mut state, &input, $name, $frames, $micros,
+            )
+        };
+    }
+
+    // 1. Sustained over-budget load: Full -> Reduced after ~200 ms.
+    let reduced = run_phase!("steady-over", 20, 18_000);
+    for role in 0..4 {
+        assert_eq!(
+            reduced.get(&role),
+            Some(&(1, 1, 0)),
+            "role {role} must be reduced/blur under load: {reduced:?}"
+        );
+    }
+
+    // 2. Clearly-under-budget load: Reduced -> Full after ~3 s.
+    let full = run_phase!("recovery", 900, 4_000);
+    for role in 0..4 {
+        assert_eq!(
+            full.get(&role),
+            Some(&(0, 1, 0)),
+            "role {role} must recover to full/blur: {full:?}"
+        );
+    }
+
+    // 2b. Settle at Full long enough that the next downgrade is not a flap.
+    // The tier does not change, so there must be no role event either.
+    state.output_material_role_states.clear();
+    input.send("set degrade-frames 1500 10000");
+    let settled = input.query("query degrade");
+    assert!(
+        settled.contains("tier=full"),
+        "the settle load must keep Full: {settled}"
+    );
+    std::thread::sleep(Duration::from_millis(100));
+    queue
+        .roundtrip(&mut state)
+        .expect("roundtrip after the settle load");
+    assert!(
+        state.output_material_role_states.is_empty(),
+        "a steady Full load must not emit role changes: {:?}",
+        state.output_material_role_states
+    );
+    println!(
+        "degrade-trace: phase=settled frames=1500 frame_us=10000 {}",
+        settled.lines().next().unwrap_or("degrade ?")
+    );
+
+    // 3. A second sustained over-budget run: Full -> Reduced.
+    let reduced = run_phase!("sweep-down", 20, 18_000);
+    for role in 0..4 {
+        assert_eq!(
+            reduced.get(&role),
+            Some(&(1, 1, 0)),
+            "role {role}: {reduced:?}"
+        );
+    }
+
+    // 4. Recover again, then immediately push Full over budget: this is the
+    // steady-sweep flap the latch exists for.
+    let full = run_phase!("sweep-recover", 900, 4_000);
+    for role in 0..4 {
+        assert_eq!(full.get(&role), Some(&(0, 1, 0)), "role {role}: {full:?}");
+    }
+    let reduced = run_phase!("sweep-flap", 20, 18_000);
+    for role in 0..4 {
+        assert_eq!(
+            reduced.get(&role),
+            Some(&(1, 1, 0)),
+            "role {role}: {reduced:?}"
+        );
+    }
+
+    // 5. The latch holds Reduced: 20 s at 0.6 budget must not climb back to
+    // Full, and must not emit a role event (the state is unchanged).
+    state.output_material_role_states.clear();
+    input.send("set degrade-frames 2000 10000");
+    let latched = input.query("query degrade");
+    assert!(
+        latched.contains("tier=reduced") && latched.contains("latched=1"),
+        "the flap must latch the boundary: {latched}"
+    );
+    std::thread::sleep(Duration::from_millis(150));
+    queue
+        .roundtrip(&mut state)
+        .expect("roundtrip after the latched sweep");
+    assert!(
+        state.output_material_role_states.is_empty(),
+        "a latched steady sweep must not emit role changes: {:?}",
+        state.output_material_role_states
+    );
+    println!(
+        "degrade-trace: phase=sweep-latched frames=2000 frame_us=10000 {}",
+        latched.lines().next().unwrap_or("degrade ?")
+    );
+
+    // 6. A genuinely lighter load (0.24 budget) clears the latch after 10 s.
+    let full = run_phase!("idle-recover", 3_000, 4_000);
+    for role in 0..4 {
+        assert_eq!(full.get(&role), Some(&(0, 1, 0)), "role {role}: {full:?}");
+    }
+
+    // 7. Forced tiers still pin the effective per-role state and respect the
+    // persistent floor; the shell applies these same values.
+    for (tier, expected) in [
+        ("reduced", [(1u32, 1u32, 0u32); 4]),
+        ("minimal", [(1, 0, 4), (1, 0, 4), (2, 0, 0), (2, 0, 0)]),
+        ("full", [(0, 1, 0); 4]),
+    ] {
+        state.output_material_role_states.clear();
+        input.send(&format!("set degrade-tier {tier}"));
+        wait_for(
+            &conn,
+            &mut queue,
+            &mut state,
+            Duration::from_secs(5),
+            |state| state.output_material_role_states.len() >= 4,
+        );
+        let roles = material_role_map(&state.output_material_role_states);
+        assert_eq!(
+            roles.len(),
+            4,
+            "forced {tier}: one event per role: {roles:?}"
+        );
+        for (role, want) in expected.into_iter().enumerate() {
+            assert_eq!(
+                roles.get(&(role as u32)),
+                Some(&want),
+                "forced {tier} role {role}: {roles:?}"
+            );
+        }
+        let summary = input.query("query degrade");
+        println!(
+            "degrade-trace: phase=forced-{tier} roles={} {}",
+            material_role_list(&roles),
+            summary.lines().next().unwrap_or("degrade ?")
+        );
+    }
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 #[test]
 fn dock_surface_reserves_the_bottom_zone_and_coexists_with_the_bar() {
     let token = "1a".repeat(32);

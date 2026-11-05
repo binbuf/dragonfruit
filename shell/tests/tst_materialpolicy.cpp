@@ -19,6 +19,7 @@ private slots:
     void softwareKeepsMinimalButMilky();
     void transientRoleMayReachMinimal();
     void transientRoleUsesTheExplicitFallbackWithoutAFloor();
+    void loadSequenceKeepsTheAppliedProperties();
     void unknownRoleValuesAreIgnored();
 };
 
@@ -168,6 +169,46 @@ void TestMaterialPolicy::transientRoleUsesTheExplicitFallbackWithoutAFloor()
              std::uint32_t(MaterialPolicy::NoSampledBlur));
     QCOMPARE(policy.applied(MaterialPolicy::Drawer).fallback,
              std::uint32_t(MaterialPolicy::Software));
+}
+
+void TestMaterialPolicy::loadSequenceKeepsTheAppliedProperties()
+{
+    // T-21.2c load sequence: Full -> Reduced -> Minimal -> Reduced -> Full.
+    // The compositor emits one change-only event per role; the shell policy
+    // must keep applying the matching tier/blur/fallback at every step.
+    struct Step {
+        std::uint32_t tier;
+        bool blur;
+        std::uint32_t fallback;
+    };
+    const Step sequence[] = {
+        {0, true, MaterialPolicy::NoFallback},
+        {1, true, MaterialPolicy::NoFallback},
+        {1, false, MaterialPolicy::FloorMissed},
+        {1, true, MaterialPolicy::NoFallback},
+        {0, true, MaterialPolicy::NoFallback},
+    };
+
+    MaterialPolicy policy;
+    for (const Step &step : sequence) {
+        for (std::uint32_t role = 0; role < MaterialPolicy::RoleCount; ++role) {
+            const bool persistent = role == MaterialPolicy::Chrome
+                || role == MaterialPolicy::Dock;
+            // At Minimal the compositor sends the persistent floor-missed
+            // state and the transient Minimal state; the shell must not
+            // re-derive either.
+            const Step expected = (step.tier == 1 && !step.blur && persistent)
+                ? step
+                : (step.tier == 1 && !step.blur
+                       ? Step{2, false, MaterialPolicy::NoFallback}
+                       : step);
+            policy.setRole(role, expected.tier, expected.blur, expected.fallback);
+            const AppliedMaterial material = policy.applied(role);
+            QCOMPARE(material.tier, expected.tier);
+            QCOMPARE(material.blurActive, expected.blur);
+            QCOMPARE(material.fallback, expected.fallback);
+        }
+    }
 }
 
 void TestMaterialPolicy::unknownRoleValuesAreIgnored()
