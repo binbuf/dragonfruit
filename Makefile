@@ -53,7 +53,7 @@ endif
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
-        t21-scanout-counters t21-direct-scanout-native \
+        t21-scanout-counters t21-direct-scanout-native t21-presentation-bench \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
@@ -76,6 +76,7 @@ help:
 	@echo "  make t21-refresh-144 — T-21.2a simulated-144 Hz clock/budget trace"
 	@echo "  make t21-frame-scheduler — T-21.2b per-output request/earliest-deadline trace"
 	@echo "  make t21-vrr-mixed-refresh — T-21.2b VRR/chrome-callback + 60/144 mixed trace"
+	@echo "  make t21-presentation-bench — T-21.4b nested presentation benchmark + report"
 	@echo "  make multi-gpu-validation — T-03.4 multi-GPU import/fallback validation"
 	@echo "  make drm-soak — T-03.4 100-cycle teardown soak + one DRM session cycle"
 	@echo "  make second-vt-validation — T-12.6c second-VT preflight/selection + one real cycle"
@@ -341,6 +342,16 @@ t21-frame-scheduler: cargo-build
 # part of `make e2e`.
 t21-vrr-mixed-refresh: build
 	bash scripts/t21-vrr-mixed-refresh.sh
+
+# T-21.4b presentation benchmark (T192b). Runs the nested scenario set (idle
+# 60 s, Dock sweep 10 s, menu/popover, app launch, Mission Control,
+# fullscreen), the 60/120/240 Hz refresh matrix, and the Full/Reduced/Minimal
+# material tiers with the chrome/GPU/frame-trace counters. Writes
+# docs/captures/t21-presentation-bench.md plus the raw logs and the native OPEN
+# artifact. Nested evidence only; native rows are T192c. Needs a host Wayland
+# session and the built tree; not part of `make e2e`.
+t21-presentation-bench: build
+	bash scripts/t21-presentation-bench.sh
 
 # T-03.2: the DRM first bring-up probe. On a host with a free seat it starts
 # the DRM backend and records the capture/trace; with no free seat it records
