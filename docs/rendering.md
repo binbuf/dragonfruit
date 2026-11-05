@@ -51,17 +51,25 @@ The executable v0.1.1 task set is in
 | P3 shell transport | **baseline + HiDPI done (T-21.1a/b)** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + fresh `wl_shm` per commit. HiDPI chrome now commits physical buffers with `buffer_scale`/`wp_viewport` ([ADR 0192](design/adr/0192-chrome-scale-physical-buffer-and-viewport.md)); pooling, frame callbacks, and GPU transport remain T185/T186. Measured in [`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt); transport decision [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md). |
 | P4 refresh-aware scheduling | **wired (T-21.2b)** | The animation clock and degrade budget use the fastest active output's period, with `DRAGONFRUIT_REFRESH_HZ` test overrides and `refresh_hz`/`source` stats ([ADR 0199](design/adr/0199-refresh-clock-wiring.md)). Per-output urgent/animation requests and earliest-deadline arming are wired ([ADR 0201](design/adr/0201-per-output-frame-requests-and-earliest-deadline.md)); VRR adaptation, chrome callbacks, and synthetic 60+144 evidence are wired ([ADR 0202](design/adr/0202-vrr-adaptation-and-mixed-refresh-evidence.md)). Native mixed-refresh remains an explicit `OPEN` artifact until a free two-output DRM seat runs it. |
 | P5 multi-GPU | **single-GPU only** | Material path disables itself on a multi-GPU seat; shell falls back. |
-| P6 native visual verification | **diagnostics native; pixels open** | T191a captured native material/degrade/presentation/chrome stats ([`captures/t21-native-material.txt`](captures/t21-native-material.txt)); no trusted native still exists yet. T191b owns the visual sweep and the explicit visual `OPEN` artifact. Nested captures remain reference only. |
+| P6 native visual verification | **native stills captured (T191b); partial** | T191b read the real DP-1 KMS scanout buffer with a dev-only `pidfd_getfd` + dma-buf readback (not screencopy) and committed light/dark Dock/menu stills over live content, plus menu, drawer, Control Center, OSD, notification, Dock popover, Dock magnification, Mission Control, lock, and fullscreen stills. The Dock/menu bar measurably brighten when a white client is moved behind them (dark menu bar mean 55.0→113.2; Dock 45.4→161.6; light Dock 68.7→183.5). The readback covers the active CRTC's primary plane only, so the hardware cursor and overlay planes are not in the stills; direct scanout stayed 0. Nested captures remain reference only. |
 
-**Status (T191a, 2026-11-05):** the native **diagnostics** half is accepted on
-DP-1 (3840x2160 @ 143.999 Hz, amdgpu): `path=gpu`, `blur_passes=2243`,
-`blur_panels=4694`, `blur_draws=2243`, `backdrop_skipped=0`, `tier=full` at
-startup, and a 6944 us presentation budget. See
-[`captures/t21-native-material.txt`](captures/t21-native-material.txt). The
-native **visual** sweep (light/dark/live content) and the native rollback
-render remain open: T191b owns the visual evidence, and the rollback needs a
-session cycle ([`captures/t21-native-material-rollback.open.txt`](captures/t21-native-material-rollback.open.txt)).
-Diagnostics are not pixel proof.
+**Status (T191b, 2026-11-05):** the native **visual** sweep is captured on
+DP-1 (3840x2160 @ 143.999 Hz, amdgpu Lucienne, scale 2 → 2560x1440 logical).
+The stills are read from the real KMS scanout buffer with a development-only
+`pidfd_getfd` + dma-buf/EGL readback (no screencopy, no portal client, no
+nested window); the menu bar and Dock visibly and measurably sample a white
+client moved behind them (dark menu bar mean 55.0→113.2, Dock 45.4→161.6;
+light Dock 68.7→183.5). The material path stayed `path=gpu`,
+`blur_passes=433308`, `blur_panels=875071`, `blur_draws=433308`,
+`backdrop_skipped=0`, `material_region=3840x2160`; the load snapshot's current
+tier was `reduced` (not `minimal`). See
+[`captures/README.md`](captures/README.md) and
+[`captures/t21-native-*.png`](captures/). The readback covers the primary
+plane only: the hardware cursor and overlay planes are not in the stills, and
+`direct_scanouts=0` (47 candidates) means direct scanout is still T190d/T192.
+The native **rollback render** remains open for the same reason as T191a: it
+needs a session cycle ([`captures/t21-native-material-rollback.open.txt`](captures/t21-native-material-rollback.open.txt)).
+Nested captures remain reference only; diagnostics are not pixel proof.
 
 ---
 
@@ -90,6 +98,12 @@ blur sampling, and fallback behavior on the real seat.
 6. Visually inspect the Dock and menu bar over a light and a dark wallpaper.
 7. Exercise a pointer sweep, app launch, popover, Applications drawer,
    Mission Control with 10+ windows, fullscreen video, and lock/unlock.
+
+**Status (T191b, 2026-11-05):** steps 1–5 are T191a's diagnostics; steps 6–7
+are evidenced by `captures/t21-native-*.png`. The fullscreen still is not
+direct-scanout proof (`direct_scanouts=0`, 47 candidates), and the hardware
+cursor is not in the KMS readback. The native rollback render remains the
+T191a OPEN artifact.
 
 **Acceptance**
 
@@ -717,14 +731,21 @@ the intended safe fallback, not the final behavior.
 
 ## R6 — Native visual verification (P6)
 
-**Status (T191a, 2026-11-05):** native **diagnostics** exist
-([`captures/t21-native-material.txt`](captures/t21-native-material.txt)), but
-there is still no native still/photograph. Nested captures remain reference
-evidence only. T191b owns the native visual sweep and must write an explicit
-`OPEN` visual artifact if no trusted native capture path is available.
+**Status (T191b, 2026-11-05):** native **stills** exist. The sweep used an
+isolated, development-only KMS readback: it duplicates the compositor's DRM
+fd with `pidfd_getfd`, imports the active CRTC's current framebuffer as a
+dma-buf, and reads it back through EGL. It is not a screencopy client, not a
+portal grant, and not a nested window; the tool lives outside the tree and is
+only run by hand. The stills cover light/dark Dock and menu bar over live
+content, the menu dropdown, Applications drawer, Control Center, OSD,
+notification banner, Dock window chooser, Dock magnification, Mission Control,
+lock, and fullscreen. T191a's
+[`captures/t21-native-material.txt`](captures/t21-native-material.txt) remains
+the diagnostics half.
 
-Nested screenshots are not native proof. The project prohibits unrestricted
-client screenshot access, so the capture path must stay trusted.
+The readback shows the **primary plane only**. The hardware cursor, overlay
+planes, and direct-scanout buffers are not in these stills; cursor sharpness
+and direct scanout remain T190d/T192. Nested captures are reference only.
 
 ### R6.1 Trusted native capture
 
@@ -736,17 +757,23 @@ client screenshot access, so the capture path must stay trusted.
 
 **Acceptance**
 
-- A native capture exists for light/dark, Full/Reduced/Minimal, and 1080p/4K.
+- A native capture exists for light/dark at the native 2x mode. The 1x/1.5x
+  modes and forced Full/Reduced tier stills remain open (T193; the tier
+  reference is the nested `t21-material-tiers.txt`).
 - The capture path is opt-in, trusted, and does not expose arbitrary clients.
+  The T191b readback requires the compositor's own DRM fd (same user,
+  `pidfd_getfd`) and is not shipped.
 
 ### R6.2 External evidence
 
-If native capture is not practical yet:
-
-- Use external photographs/video of the actual panel.
-- Use native material/frame diagnostics.
-- Use nested captures only as reference evidence.
-- Never label native glass verified from a nested screenshot.
+The native stills are the `t21-native-*` files. The nested `t21-chrome-*`,
+`t21-region-*`, and `t21-material-*` stills are reference only. T191a's
+`t21-native-material.txt` is diagnostics, not pixel proof. The Mission Control
+grid still (`t21-native-mission-control-grid.png`, 12 windows) was captured at
+07:56 during the same native session; the 09:xx sweep re-entered Mission
+Control with two windows. The light/dark live-content deltas are measured from
+the committed baseline/under pairs (dark menu bar mean 55.0→113.2, Dock
+45.4→161.6; light Dock 68.7→183.5).
 
 **Acceptance**
 
@@ -764,6 +791,12 @@ If native capture is not practical yet:
 **Acceptance**
 
 - Blur sampling, panel edges, and specular rim can be compared across backends.
+
+**T191b note:** the live-content probe is an override-redirect white X11 panel
+created behind the chrome. A managed window is clamped below the reserved
+menu-bar zone by the XWM, so it cannot be moved under the bar; the
+override-redirect panel can. The panel is a real client surface in the
+compositor scene, and the measured mean change is the blur sampling it.
 
 ---
 

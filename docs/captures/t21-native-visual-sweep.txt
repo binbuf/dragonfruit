@@ -1,0 +1,99 @@
+T-21.4a native visual sweep (T191b)
+===================================
+
+Date: 2026-11-05
+Session: native DRM, release profile, no material env flags
+Output: DP-1 3840x2160 @ 143.999 Hz, scale 2 -> 2560x1440 logical
+GPU: amdgpu Lucienne (single GPU, normal transform)
+Host: Linux fedora 7.2.13-200.fc44.x86_64
+
+Capture method
+--------------
+Development-only KMS readback, run by hand outside the tree:
+
+  1. pidfd_open(compositor-pid) + pidfd_getfd(drm-fd) duplicates the
+     compositor's own DRM fd.
+  2. drmModeGetResources finds the active CRTC; drmModeGetFB2 + a three-plane
+     dma-buf import (AMD modifier) through EGL.
+  3. glReadPixels writes a PPM; Pillow crops/scales to the committed PNG.
+
+Not a screencopy client, not a portal grant, not a nested window. It reads the
+active CRTC's primary plane only: the hardware cursor and overlay planes are
+not in the stills.
+
+Live-content test
+-----------------
+An override-redirect white X11 panel was placed behind the chrome; the
+wallpaper and scheme stayed fixed and only the panel moved. A managed window
+is clamped below the reserved menu-bar zone by the XWM, so the probe must be
+override-redirect. Mean luminance of the chrome region (0..255):
+
+  scheme  surface   baseline  under panel  delta
+  light   menu bar     226.3        245.5   +19.2  (light glass is already bright)
+  light   Dock          68.7        183.5  +114.8
+  dark    menu bar      55.0        113.2   +58.2
+  dark    Dock          45.4        161.6  +116.2
+
+The menu bar and Dock visibly sample the live panel, not a static image.
+
+Diagnostics (fresh `make native-capture`, SIGUSR1-23, 09:06:33)
+--------------------------------------------------------------
+material stats: path=gpu blur_passes=433308 blur_panels=875071
+  blur_draws=433308 backdrop_skipped=0 material_allocations=678
+  material_region=3840x2160 material_region_px=8294400
+degrade stats: tier=reduced forced=0 budget_us=6944 downgrades=57 upgrades=56
+  (cumulative tiers= includes earlier minimal frames; current tier is reduced)
+presentation stats: output=DP-1 refresh_hz=143.999 budget_us=6944
+  p50/p95/p99=6945/125364/1682839 us missed=31651
+frame timing: p50/p95/p99=3039/4207/6572 us
+chrome stats: chrome_shm_imports=4028 chrome_shm_bytes=15703975796
+  chrome_dmabuf_imports=0 chrome_frame_callbacks=3532
+scanout stats: direct_scanouts=0 direct_scanout_candidates=47
+refresh stats: refresh_hz=143.999 source=mode interval_us=6944
+
+The presentation p95/p99 include the sweep's shell restarts, lock, and
+fullscreen transitions plus the continuously rendering agent UI; they are not
+a steady-state benchmark. T192 owns that.
+
+Evidence boundary
+-----------------
+Native stills: every committed t21-native-*.png.
+Diagnostics only: t21-native-material.txt and the stats above.
+Nested reference only: t21-chrome-*, t21-region-*, t21-material-*.
+Mission Control grid: t21-native-mission-control-grid.png (12 windows) was
+  captured at 07:56 during the same native session, before the provider
+  interruption; the 09:xx sweep re-entered Mission Control with two windows.
+Lock: native lock surface; the auto-unlock returned to the desktop.
+Fullscreen: the client covers the output with chrome suppressed, but
+  direct_scanouts=0 (47 candidates), so this is not direct-scanout proof.
+HiDPI: 2x only (physical 3840 vs logical 2560); 1x/1.5x native modes remain
+  T193.
+Rollback: the native fallback render is still the T191a OPEN artifact
+  (t21-native-material-rollback.open.txt); it needs a session cycle.
+Cursor: not in the KMS readback.
+
+Artifacts
+---------
+t21-native-light.png
+t21-native-dark.png
+t21-native-dark-live-baseline-menubar-2x.png
+t21-native-dark-live-under-menubar-2x.png
+t21-native-dark-live-baseline-dock-2x.png
+t21-native-dark-live-under-dock-2x.png
+t21-native-light-live-under-menubar-2x.png
+t21-native-light-live-under-dock-2x.png
+t21-native-light-live-under-menubar-full.png
+t21-native-light-menu-2x.png
+t21-native-dark-menu-2x.png
+t21-native-light-drawer-2x.png
+t21-native-dark-drawer-2x.png
+t21-native-light-control-center-2x.png
+t21-native-dark-control-center-2x.png
+t21-native-dark-osd-2x.png
+t21-native-dark-notification-2x.png
+t21-native-dark-dock-popover-2x.png
+t21-native-dark-dock-magnify-2x.png
+t21-native-mission-control-grid.png
+t21-native-lock.png
+t21-native-fullscreen.png
+t21-native-minimized-2x.png

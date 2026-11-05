@@ -1282,12 +1282,62 @@ second snapshot is a load observation (its current tier is `reduced`, not
 `minimal`; the cumulative `tiers=` field includes earlier startup minimal
 frames) because
 the agent UI is a continuously rendering client. This is **diagnostics**, not
-native pixel proof; T191b owns the visual sweep. The rollback is
+native pixel proof; T191b captured the visual sweep (below). The rollback is
 `t21-native-material-rollback.open.txt`: the env was applied to `native.env`
 and the unit drop-ins, then removed and the pre-run files restored
 byte-for-byte; the native fallback render needs a session cycle and stays
 OPEN. The nested fallback reference is `t21-material-tiers.txt`
 (`blur=0 fallback=4`).
+
+T-21.4a's native **visual sweep** (T191b) is the `t21-native-*.png` set. The
+stills were read from the real DP-1 KMS scanout buffer (3840x2160 @ 143.999 Hz,
+scale 2 → 2560x1440 logical, amdgpu Lucienne) with an isolated
+development-only readback: `pidfd_getfd` duplicates the compositor's DRM fd,
+the active CRTC's framebuffer is imported as a dma-buf through EGL, and
+`glReadPixels` writes the PPM. It is not a screencopy client, not a portal
+grant, and not a nested window; the tool lives outside the tree and is only
+run by hand. The shell capture seams (`DF_MENUBAR_MENU_FIXTURE`,
+`DF_APPS_DRAWER_FIXTURE`, `DF_CONTROL_CENTER_FIXTURE`, `DF_OSD_FIXTURE`,
+`DF_NOTIFY_FIXTURE`, `DF_DOCK_CHOOSER_FIXTURE`,
+`DF_DOCK_HOVER_FIXTURE`, `DF_MISSION_CONTROL_FIXTURE`, `DF_LOCK_FIXTURE`) are
+test-only and inert in a normal session.
+
+The live-content check moves an override-redirect white X11 panel behind the
+chrome. A managed window is clamped below the reserved menu-bar zone by the
+XWM, so it cannot be moved under the bar; the override-redirect panel can. The
+same wallpaper and scheme are held, and only the panel moves. Mean luminance
+of the chrome region changes by:
+
+- light menu bar 226.3 → 245.5 (the light glass is already bright);
+- light Dock 68.7 → 183.5;
+- dark menu bar 55.0 → 113.2;
+- dark Dock 45.4 → 161.6.
+
+The Dock and menu bar visibly sample the live panel, not a static image.
+Artifacts: `t21-native-light.png`, `t21-native-dark.png`,
+`t21-native-dark-live-{baseline,under}-{menubar,dock}-2x.png`,
+`t21-native-light-live-under-{menubar,dock}-2x.png`,
+`t21-native-light-live-under-menubar-full.png`,
+`t21-native-{light,dark}-menu-2x.png`,
+`t21-native-{light,dark}-drawer-2x.png`,
+`t21-native-{light,dark}-control-center-2x.png`,
+`t21-native-dark-osd-2x.png`, `t21-native-dark-notification-2x.png`,
+`t21-native-dark-dock-popover-2x.png`, `t21-native-dark-dock-magnify-2x.png`,
+`t21-native-mission-control-grid.png`, `t21-native-lock.png`,
+`t21-native-fullscreen.png`, `t21-native-minimized-2x.png`.
+
+Boundary: the readback covers the active CRTC's **primary plane only**. The
+hardware cursor, overlay planes, and direct-scanout buffers are not in these
+stills; cursor sharpness and direct scanout remain T190d/T192. The Mission
+Control grid still (12 windows) was captured at 07:56 during the same native
+session; the 09:xx sweep re-entered Mission Control with two windows. The
+lock still is native; the auto-unlock returned to the desktop. The fullscreen
+still shows the client covering the output with chrome suppressed, but
+`direct_scanouts=0` (47 candidates) in the same session, so it is not
+direct-scanout proof. T191a's `t21-native-material.txt` remains diagnostics;
+nested `t21-chrome-*`, `t21-region-*`, and `t21-material-*` stills are
+reference only. The compact measurements, commands, and boundary are in
+`t21-native-visual-sweep.txt`.
 
 Guidelines:
 
