@@ -67,7 +67,7 @@ done.
 
 ## Phase 21.4 — Native evidence and benchmarks
 
-- [ ] T191a — T-21.4a Native rebuild, diagnostics, and rollback → [../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md](../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md)
+- [x] T191a — T-21.4a Native rebuild, diagnostics, and rollback → [../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md](../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md)
 - [ ] T191b — T-21.4a Native visual sweep and evidence boundary → [../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md](../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md)
 - [ ] T192a — T-21.4b GPU/chrome timing counters → [../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md](../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md)
 - [ ] T192b — T-21.4b Benchmark script and nested scenario run → [../tasks/0.1.1/192b-t-21.4b-bench-harness.md](../tasks/0.1.1/192b-t-21.4b-bench-harness.md)
@@ -89,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-05T06:17:49Z · 21/30 done
+**Pipeline status** — updated 2026-11-05T06:41:26Z · 22/30 done
 
-- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d
+- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a
 - Blocked: none
 - Failed: none
-- Remaining: T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
-- Last finished: T190d — done · Landed fullscreen chrome suppression, pure direct-scanout policy, per-output material counters, 4K region and nested fullscreen traces, native runner, and docs; cargo test and make gates pass, with the native direct_scanouts>0 hardware half recorded OPEN for T191a.
+- Remaining: T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Last finished: T191a — done · Captured the native DP-1 4K/144 release-session material/degrade/presentation/chrome diagnostics, exercised and restored the rollback environment, and recorded the native fallback render as an explicit OPEN artifact; docs/STATUS G-03/G-08 updated.
 <!-- /symphony:status -->

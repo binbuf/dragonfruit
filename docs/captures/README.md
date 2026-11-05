@@ -1271,6 +1271,24 @@ produces the real `direct_scanouts>0` trace on a free seat. Artifacts:
 `t21-direct-scanout.open.txt`. The policy is
 [ADR 0210](../design/adr/0210-fullscreen-chrome-suppression-and-scanout-counters.md).
 
+T-21.4a's native material diagnostics are
+`docs/captures/t21-native-material.txt`. It records the real DP-1 DRM session
+started by `make native-reboot`: release profile, no material env flags,
+`material stats path=gpu blur_passes=2243 blur_panels=4694 blur_draws=2243
+backdrop_skipped=0`, `degrade stats tier=full` at startup, `presentation stats
+output=DP-1 refresh_hz=143.999 budget_us=6944 missed=223`, and `chrome stats`
+(221 SHM imports, 490708696 bytes, 200 callbacks; GPU chrome is opt-in). The
+second snapshot is a load observation (its current tier is `reduced`, not
+`minimal`; the cumulative `tiers=` field includes earlier startup minimal
+frames) because
+the agent UI is a continuously rendering client. This is **diagnostics**, not
+native pixel proof; T191b owns the visual sweep. The rollback is
+`t21-native-material-rollback.open.txt`: the env was applied to `native.env`
+and the unit drop-ins, then removed and the pre-run files restored
+byte-for-byte; the native fallback render needs a session cycle and stays
+OPEN. The nested fallback reference is `t21-material-tiers.txt`
+(`blur=0 fallback=4`).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

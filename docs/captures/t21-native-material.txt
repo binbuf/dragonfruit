@@ -1,0 +1,143 @@
+T-21.4a native material diagnostics (T191a)
+===========================================
+
+This is the **native diagnostics** half of T-21.4a. It is real DRM
+`material stats`, `degrade stats`, `presentation stats`, and `chrome stats`
+from the running release session, not a nested capture. It is not native
+pixel proof; T191b owns the visual sweep and the evidence boundary.
+
+## Host, session, and panel
+
+```text
+recorded:  2026-11-04T22:22:19-08:00
+host:      Linux fedora 7.2.13-200.fc44.x86_64 x86_64
+distro:    Fedora Linux 44 (KDE Plasma Desktop Edition)
+gpu:       04:00.0 VGA compatible controller [0300]:
+           Advanced Micro Devices, Inc. [AMD/ATI] Lucienne [1002:164c] (rev c1)
+driver:    amdgpu
+drm:       card1, renderD128
+output:    DP-1 connected; mode 3840x2160; enabled
+session:   XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=dragonfruit
+           XDG_SESSION_ID=2 XDG_VTNR=2 XDG_SEAT=seat0
+           WAYLAND_DISPLAY=dragonfruit-wayland
+profile:   release
+```
+
+The session is the native Dragonfruit session started by `make native-reboot`
+before this task. The compositor and shell are the release build:
+
+```text
+/usr/bin/dragonfruit-compositor -> target/release/dragonfruit-compositor
+/usr/bin/dragonfruit-shell      -> build-release/shell/src/dragonfruit-shell
+running compositor exe:         target/release/dragonfruit-compositor
+native-session selected profile:  release
+native-session installed profile: release
+```
+
+`~/.config/dragonfruit/native.env` and the per-unit drop-ins carry **no**
+`DRAGONFRUIT_DRM_MATERIAL` / `DRAGONFRUIT_DRM_GLASS` value, so the
+default-on sampled path is active.
+
+## Commands
+
+```bash
+make native-rebuild   # run by the operator before this session (no material flags)
+make native-capture   # fresh snapshot: ~/.local/state/dragonfruit/native-captures/
+```
+
+Canonical startup snapshot (10 s settle):
+
+```text
+~/.local/state/dragonfruit/native-captures/20261104-222207-2352
+```
+
+A second snapshot taken during this task (the agent UI keeps the session
+rendering, so this is a load observation, not idle):
+
+```text
+~/.local/state/dragonfruit/native-captures/20261104-222855-5502
+```
+
+## Required native lines (startup / idle)
+
+Raw `SIGUSR1` lines from the startup snapshot. The `material stats` line
+satisfies the acceptance values exactly.
+
+```text
+material stats (SIGUSR1-1): backdrop_passes=2243 backdrop_skipped=0 path=gpu blur_passes=2243 blur_panels=4694 blur_draws=2243 blur_downsample_max=16 material_allocations=22 material_scene_allocations=3 material_panel_allocations=19 material_region_px=8294400 material_region=3840x2160
+degrade stats (SIGUSR1-1): tier=full forced=0 budget_us=6944 samples=2294 over_budget=14 downgrades=0 upgrades=0 tiers=full:2294,reduced:0,minimal:0 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
+presentation stats (SIGUSR1-1): output=DP-1 samples=801 samples_total=801 avg_us=12051 p50_us=6946 p95_us=20835 p99_us=62506 max_us=597273 window_max_us=597273 missed=223 budget_us=6944 refresh_hz=143.999 source=mode vrr=unsupported
+chrome stats (SIGUSR1-1): chrome_shm_imports=221 chrome_shm_bytes=490708696 chrome_dmabuf_imports=0 chrome_frame_callbacks=200
+frame timing (SIGUSR1-1): samples=2294 samples_total=2294 avg_us=1912 p50_us=1509 p95_us=4301 p99_us=6034 max_us=137853 window_max_us=137853 max_interval_ms=603
+refresh stats (SIGUSR1-1): refresh_hz=143.999 source=mode interval_us=6944 deadline_us=6944 outputs=1 override=0
+output material stats (SIGUSR1-1): output=DP-1 material_frames=2243 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=22 material_region_px=8294400 material_region=3840x2160
+scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=2243 direct_scanout_candidates=0 frames_rendered=2296 frames_skipped_no_damage=41 considered=2337
+```
+
+Reading:
+
+| Required value | Native value | Verdict |
+|---|---|---|
+| `path=gpu` | `path=gpu` | PASS |
+| `blur_passes>0` | `2243` | PASS |
+| `blur_panels>=1` | `4694` | PASS |
+| `blur_draws>0` | `2243` | PASS |
+| `backdrop_skipped=0` | `0` | PASS |
+| `degrade stats` full/reduced, not minimal | `tier=full` at startup; `full:2294,reduced:0,minimal:0` | PASS |
+| `presentation stats` output/mode/refresh/budget/missed | `DP-1`, `3840x2160`, `143.999 Hz`, `6944 us`, `missed=223` | PASS |
+| `chrome stats` path/copies/callbacks | `path=shm` (dmabuf imports 0), `221` shm imports, `200` callbacks | PASS |
+
+Notes:
+
+- `material_region=3840x2160` / `material_region_px=8294400` is the full 4K
+  output. The menu-bar + Dock union is the documented single-union region at
+  this size (T190b/T190d); a Dock-only frame shrinks it.
+- `direct_scanouts=0` here because no fullscreen client is mapped. The
+  native direct-scanout half is the separate free-seat artifact
+  (`docs/captures/t21-direct-scanout.open.txt` for now).
+- `chrome stats` reports the default SHM chrome transport. The T186 GPU
+  chrome transport is opt-in (`DRAGONFRUIT_CHROME_GPU`) and remains off by
+  default until T192/T193 accept it; `chrome_dmabuf_imports=0` is expected.
+- `presentation stats` `missed=223` includes the startup mode set and the
+  first frames. The steady-state window is the second snapshot below.
+
+## Second observation (load, not idle)
+
+The agent UI is a continuously rendering Wayland client, so the later snapshot
+is a load observation. Its **current** tier is `reduced` (not `minimal`), and
+the sampled path remains active.
+
+```text
+material stats (SIGUSR1-2): backdrop_passes=49357 backdrop_skipped=0 path=gpu blur_passes=49357 blur_panels=98922 blur_draws=49357 blur_downsample_max=16 material_allocations=30 material_scene_allocations=3 material_panel_allocations=27 material_region_px=8294400 material_region=3840x2160
+degrade stats (SIGUSR1-2): tier=reduced forced=0 budget_us=6944 samples=54118 over_budget=347 downgrades=4 upgrades=3 tiers=full:4138,reduced:45263,minimal:4717 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=1
+presentation stats (SIGUSR1-2): output=DP-1 samples=4096 samples_total=51344 avg_us=6963 p50_us=6945 p95_us=6946 p99_us=6947 max_us=1409844 window_max_us=20837 missed=1294 budget_us=6944 refresh_hz=143.999 source=mode vrr=unsupported
+chrome stats (SIGUSR1-2): chrome_shm_imports=318 chrome_shm_bytes=743902936 chrome_dmabuf_imports=0 chrome_frame_callbacks=284
+frame timing (SIGUSR1-2): samples=8192 samples_total=54118 avg_us=2550 p50_us=2503 p95_us=2967 p99_us=3339 max_us=137853 window_max_us=4636 max_interval_ms=1411
+```
+
+The `tiers=` field is cumulative across the session (it includes earlier
+minimal frames from the startup transition); the **current** tier is
+`reduced`, and the last 4096 presentation samples pace at
+p50/p95/p99 = 6945/6946/6947 us against the 6944 us budget.
+
+## Evidence boundary
+
+- Native: all `material stats`, `degrade stats`, `presentation stats`,
+  `chrome stats`, `frame timing`, and `scanout stats` lines above. They come
+  from the DRM compositor on DP-1.
+- Native visual proof: **not** produced by this task. There is no KMS
+  readback or trusted native still here; T191b owns the visual sweep and the
+  light/dark/live-content evidence.
+- Nested reference: the T190d/T189 captures and stills are reference
+  evidence only. They are not native proof.
+- Diagnostics-only claims: `path=gpu`, `blur_draws>0`, `blur_panels>=1`,
+  `backdrop_skipped=0`, `tier=full|reduced`, refresh/budget, and the chrome
+  counters. They do not by themselves prove the blur samples live content.
+
+## Rollback
+
+The rollback configuration was exercised and restored without ending the
+live session; the native fallback render needs a session cycle and is
+recorded OPEN in `t21-native-material-rollback.open.txt`. The default is
+restored: the running compositor still reports `path=gpu` and
+`blur_draws=2243`/`49357` above.

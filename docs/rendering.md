@@ -42,7 +42,7 @@ The executable v0.1.1 task set is in
 | Area | State | Notes |
 |---|---|---|
 | P0.1 windowed frame stats | **done** | `frame timing` now reports windowed `avg_us`, `p50_us`, `p95_us`, `p99_us`, `window_max_us`, `samples_total`. |
-| P0.2 presentation stats | **done (instrumentation)** | DRM `frame_finish` records actual vblank intervals per output; `presentation stats` reports `missed` and `budget_us`. Native baseline not yet captured. |
+| P0.2 presentation stats | **done (instrumentation + native baseline)** | DRM `frame_finish` records actual vblank intervals per output; `presentation stats` reports `missed` and `budget_us`. Native DP-1 4K/144 baseline captured by T191a in [`captures/t21-native-material.txt`](captures/t21-native-material.txt). |
 | P1.1 effective material state | **done** | `df_output.material_state` (v3) reports tier, `blur_active`, and fallback reason. |
 | P1.2 milky fallback | **done** | Dock/menu bar use token-driven light/dark fallback when `blur_active=0`. |
 | P2A DRM offscreen scene | **done, default-on** | Per-output scene texture; custom `SceneTextureElement`; feather fallback on failure. |
@@ -51,10 +51,17 @@ The executable v0.1.1 task set is in
 | P3 shell transport | **baseline + HiDPI done (T-21.1a/b)** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + fresh `wl_shm` per commit. HiDPI chrome now commits physical buffers with `buffer_scale`/`wp_viewport` ([ADR 0192](design/adr/0192-chrome-scale-physical-buffer-and-viewport.md)); pooling, frame callbacks, and GPU transport remain T185/T186. Measured in [`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt); transport decision [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md). |
 | P4 refresh-aware scheduling | **wired (T-21.2b)** | The animation clock and degrade budget use the fastest active output's period, with `DRAGONFRUIT_REFRESH_HZ` test overrides and `refresh_hz`/`source` stats ([ADR 0199](design/adr/0199-refresh-clock-wiring.md)). Per-output urgent/animation requests and earliest-deadline arming are wired ([ADR 0201](design/adr/0201-per-output-frame-requests-and-earliest-deadline.md)); VRR adaptation, chrome callbacks, and synthetic 60+144 evidence are wired ([ADR 0202](design/adr/0202-vrr-adaptation-and-mixed-refresh-evidence.md)). Native mixed-refresh remains an explicit `OPEN` artifact until a free two-output DRM seat runs it. |
 | P5 multi-GPU | **single-GPU only** | Material path disables itself on a multi-GPU seat; shell falls back. |
-| P6 native visual verification | **not implemented** | No trusted native capture path. |
+| P6 native visual verification | **diagnostics native; pixels open** | T191a captured native material/degrade/presentation/chrome stats ([`captures/t21-native-material.txt`](captures/t21-native-material.txt)); no trusted native still exists yet. T191b owns the visual sweep and the explicit visual `OPEN` artifact. Nested captures remain reference only. |
 
-**Important:** the default-on native path has not yet been accepted on hardware.
-The first task below is the gate.
+**Status (T191a, 2026-11-05):** the native **diagnostics** half is accepted on
+DP-1 (3840x2160 @ 143.999 Hz, amdgpu): `path=gpu`, `blur_passes=2243`,
+`blur_panels=4694`, `blur_draws=2243`, `backdrop_skipped=0`, `tier=full` at
+startup, and a 6944 us presentation budget. See
+[`captures/t21-native-material.txt`](captures/t21-native-material.txt). The
+native **visual** sweep (light/dark/live content) and the native rollback
+render remain open: T191b owns the visual evidence, and the rollback needs a
+session cycle ([`captures/t21-native-material-rollback.open.txt`](captures/t21-native-material-rollback.open.txt)).
+Diagnostics are not pixel proof.
 
 ---
 
@@ -709,6 +716,12 @@ the intended safe fallback, not the final behavior.
 ---
 
 ## R6 — Native visual verification (P6)
+
+**Status (T191a, 2026-11-05):** native **diagnostics** exist
+([`captures/t21-native-material.txt`](captures/t21-native-material.txt)), but
+there is still no native still/photograph. Nested captures remain reference
+evidence only. T191b owns the native visual sweep and must write an explicit
+`OPEN` visual artifact if no trusted native capture path is available.
 
 Nested screenshots are not native proof. The project prohibits unrestricted
 client screenshot access, so the capture path must stay trusted.

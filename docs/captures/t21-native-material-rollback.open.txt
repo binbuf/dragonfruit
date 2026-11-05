@@ -1,0 +1,110 @@
+T-21.4a native material rollback (T191a): OPEN
+===============================================
+
+recorded: 2026-11-05T06:38:13Z (2026-11-04T22:38:13-08:00)
+host:     Linux fedora 7.2.13-200.fc44.x86_64 x86_64
+panel:    DP-1, 3840x2160 @ 143.999 Hz, amdgpu (Lucienne)
+session:  native Dragonfruit release session, XDG_SESSION_ID=2, VT2, seat0
+
+Result: the rollback **configuration** was exercised and the default was
+restored. The native fallback **render** observation is OPEN because it needs
+a compositor restart/session cycle, and the compositor is the anchor of the
+live session this task is executing in.
+
+## What was exercised (config only, no logout)
+
+The documented rollback command is:
+
+```bash
+DRAGONFRUIT_DRM_MATERIAL=0 make native-rebuild
+```
+
+Running it as-is rebuilds, installs, and then ends the current login session
+(`loginctl terminate-session`), so the agent session and this native capture
+would end before the fallback could be read. To test the persistence/restore
+half safely, the same script was run with `--no-build --no-install
+--no-logout`:
+
+```bash
+# apply the rollback environment
+DRAGONFRUIT_DRM_MATERIAL=0 bash scripts/native-session.sh rebuild \
+    --no-build --no-install --no-logout
+
+# restore the default environment
+bash scripts/native-session.sh rebuild --no-build --no-install --no-logout
+```
+
+The apply run wrote the flag into the session environment and every unit
+drop-in:
+
+```text
+~/.config/dragonfruit/native.env:
+  DRAGONFRUIT_DRM_MATERIAL="0"
+
+~/.config/systemd/user/dragonfruit-compositor.service.d/10-dragonfruit-native-env.conf:
+  Environment="DRAGONFRUIT_DRM_MATERIAL=0"
+```
+
+The restore run removed it:
+
+```text
+grep DRAGONFRUIT_DRM_MATERIAL ~/.config/dragonfruit/native.env \
+    ~/.config/systemd/user/dragonfruit-compositor.service.d/10-dragonfruit-native-env.conf
+# (no matches)
+```
+
+The pre-run files were then copied back byte-for-byte and
+`systemctl --user daemon-reload` was run, so the only diff from the original
+is none. The running compositor was never restarted: its live `material stats`
+still report `path=gpu`, `blur_passes>0`, `blur_draws>0`, and
+`backdrop_skipped=0` (see `t21-native-material.txt`).
+
+## Why the native fallback render is OPEN
+
+`dragonfruit-compositor.service` is the session anchor: stopping or restarting
+it makes `dragonfruit-session-entry` tear down the target and the display
+manager returns to the greeter. The agent cannot complete the re-login (the
+account has a password), and ending the session would destroy the live
+diagnostics this task just captured. This is the same boundary recorded by
+T183 and T188c for native-only scenario runs; it is an operational/session
+boundary, not a missing GPU or panel.
+
+## Exact rerun (operator, from the native seat)
+
+```bash
+# 1. apply the rollback and cycle the session
+DRAGONFRUIT_DRM_MATERIAL=0 make native-rebuild
+#    log back in; the compositor starts with the sampled path disabled
+
+# 2. capture the fallback
+make native-capture
+#    in the newest report, record:
+#      material stats: path=software, blur_passes=0, blur_draws=0,
+#                      backdrop_skipped=0 (or absent)
+#      the shell's material role lines: blur=0, fallback=4
+#      degrade stats: full or reduced, not minimal
+#    then save the lines under docs/captures/t21-native-material-rollback.txt
+
+# 3. restore the default and cycle again
+make native-rebuild
+#    log back in and run `make native-capture`; confirm path=gpu and
+#    blur_draws>0 again
+```
+
+Do not fake the fallback counter: only the native session's own
+`material stats`/shell role lines count.
+
+## Existing fallback evidence (nested, not native)
+
+The shell fallback path is already pinned by the nested forced-tier trace
+`docs/captures/t21-material-tiers.txt` (light and dark), for example:
+
+```text
+dragonfruit-shell: shell: material role=chrome tier=1 blur=0 fallback=4
+dragonfruit-shell: shell: material role=dock tier=1 blur=0 fallback=4
+```
+
+That proves the feather/milky fallback state is applied when the sampled path
+is off, but it is nested reference evidence, not native proof. The
+native capture above is the diagnostics half; this OPEN artifact is the
+rollback half.
