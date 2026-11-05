@@ -298,6 +298,23 @@ clock's calibration animation runs; `scripts/idle-trace.sh` / `make idle-trace`
 records the 60 s acceptance line. See
 [ADR 0009](adr/0009-idle-trace-instrumentation.md).
 
+#### GPU timing and chrome transport counters (T-21.4b)
+
+`DRAGONFRUIT_GPU_TIMING=1` enables asynchronous `GL_TIME_ELAPSED` timer
+queries around the offscreen scene pass, each panel's blur chain, and the
+final output composite. `dump_stats` prints a `gpu stats` line with per-pass
+p50/p95/p99 and max; a result is read only after `GL_QUERY_RESULT_AVAILABLE`,
+so a slow GPU never stalls the frame. When the GLES context lacks
+`GL_EXT_disjoint_timer_query` (and desktop GL lacks `GL_ARB_timer_query`), or
+the backend is headless/software, the line reports `gpu_time=unavailable`
+with a reason instead of inventing a CPU-derived value. On the nested rail the
+timer restores the winit EGL window surface after each query; otherwise the
+next `submit()` sees a lost context. The shell's `chrome stats` line carries
+the transport mix (`path`), copy count/bytes (`copies`, `copy_bytes`),
+`commit_us`/`frame_callback_us` percentiles, `shm_bytes`, `dmabuf_buffers`,
+`dmabuf_fallbacks`, and `dmabuf_sync_timeouts`, with the same fields per
+surface on `chrome surface`.
+
 #### Input-to-photon latency and direct scanout (T-03.1b)
 
 The same trace carries two more instruments. `instrument::LatencyInstrument`

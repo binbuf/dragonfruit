@@ -33,6 +33,7 @@ use smithay::utils::Rectangle;
 use smithay::wayland::presentation::Refresh;
 
 use crate::backend::{add_output, add_seat_capabilities};
+use crate::gpu_timer::{GpuPass, GpuTimer};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
     full_output_material_forced, MaterialRegion, PanelKey, PanelTextureSlots, SceneTextureCache,
@@ -281,6 +282,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                     ),
                     tracker_scale: scale,
                     tracker_size: (window_size.w, window_size.h),
+                    gpu_timer: GpuTimer::new(),
                 });
                 Ok(())
             }),
@@ -352,6 +354,8 @@ struct NestedData {
     tracker_scale: f64,
     /// The physical mode size the tracker was built with.
     tracker_size: (i32, i32),
+    /// Opt-in GPU timer queries for the benchmark (T-21.4b).
+    gpu_timer: GpuTimer,
 }
 
 impl NestedData {
@@ -430,6 +434,17 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
         Ok((renderer, mut framebuffer)) => {
             let scale = smithay::utils::Scale::from(output.current_scale().fractional_scale());
             let output_geometry = state.space.output_geometry(&output).unwrap_or_default();
+            // Collect any GPU timer results from earlier frames before
+            // starting this frame's passes (T-21.4b). Polling never waits on
+            // the GPU; unavailable/disabled timers publish their reason.
+            for sample in data.gpu_timer.poll(renderer) {
+                state.stats.gpu.record(sample.pass, sample.nanos);
+            }
+            let (gpu_enabled, gpu_available, gpu_reason) = data.gpu_timer.status();
+            state
+                .stats
+                .gpu
+                .set_status(gpu_enabled, gpu_available, gpu_reason);
             // GPU sampled backdrop blur (T-20.1): resolve the panels whose
             // material keeps blur on and take the material pass for this
             // output. Empty means "no GPU blur this frame" — the tier is
@@ -490,7 +505,8 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                         .into_iter()
                         .map(NestedOutputElements::Wallpaper),
                 );
-                let scene_texture = render_scene_offscreen(
+                data.gpu_timer.begin(renderer, GpuPass::Scene);
+                let scene_texture_result = render_scene_offscreen(
                     renderer,
                     state,
                     &output,
@@ -498,7 +514,9 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     region,
                     &scene_elements,
                     &mut data.material_textures.scene,
-                )?;
+                );
+                data.gpu_timer.end(renderer);
+                let scene_texture = scene_texture_result?;
                 let scene_size = scene_texture.size();
                 // A locked session composites only the lock surface, prepended
                 // so it sits above every window and chrome surface (T-12.3a).
@@ -520,7 +538,10 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     &scene_texture,
                     region,
                     scale,
-                    &mut data.material_textures,
+                    BlurTargets {
+                        cache: &mut data.material_textures,
+                        timer: &mut data.gpu_timer,
+                    },
                 )?;
                 state.stats.record_material_panel_allocations_for(
                     output.name().as_str(),
@@ -622,13 +643,19 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     capture_rect,
                 ));
             }
-            data.damage_tracker.render_output(
+            data.gpu_timer.begin(renderer, GpuPass::Composite);
+            let render_result = data.damage_tracker.render_output(
                 renderer,
                 &mut framebuffer,
                 age,
                 &frame_elements,
                 state.wallpaper_color_for(&output),
-            )
+            );
+            data.gpu_timer.end(renderer);
+            for sample in data.gpu_timer.poll(renderer) {
+                state.stats.gpu.record(sample.pass, sample.nanos);
+            }
+            render_result
         }
         Err(err) => return Err(format!("nested bind failed: {err}")),
     };
@@ -815,6 +842,13 @@ struct BlurPrograms<'a> {
     chain_size: Size<i32, Physical>,
 }
 
+/// The caches and timers the blur build owns. Bundled so the function keeps a
+/// readable argument list.
+struct BlurTargets<'a> {
+    cache: &'a mut MaterialTextureCache,
+    timer: &'a mut GpuTimer,
+}
+
 /// Build the per-panel blurred backdrop elements from the scene texture
 /// (T-20.1/T-21.3). Each panel's region is downsampled through
 /// `spec.iterations` Kawase passes — the custom [`crate::window::BLUR_SHADER`]
@@ -830,7 +864,7 @@ fn build_blur_elements(
     scene: &GlesTexture,
     region: MaterialRegion,
     scale: smithay::utils::Scale<f64>,
-    cache: &mut MaterialTextureCache,
+    targets: BlurTargets<'_>,
 ) -> Result<(Vec<NestedOutputElements<GlowRenderer>>, u64), String> {
     let mut elements = Vec::new();
     let mut allocations = 0u64;
@@ -839,8 +873,9 @@ fn build_blur_elements(
         let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale) else {
             continue;
         };
-        let slot = cache.panels.slot(&panel.key);
-        let (texture, panel_allocations) = blur_panel_texture(
+        let slot = targets.cache.panels.slot(&panel.key);
+        targets.timer.begin(renderer, GpuPass::Blur);
+        let texture_result = blur_panel_texture(
             renderer,
             programs.blur,
             scene,
@@ -848,7 +883,9 @@ fn build_blur_elements(
             &panel.spec,
             programs.chain_size,
             slot.textures_mut(),
-        )?;
+        );
+        targets.timer.end(renderer);
+        let (texture, panel_allocations) = texture_result?;
         let id = slot.id().clone();
         allocations += panel_allocations;
         let texture_size = texture.size();
@@ -871,7 +908,7 @@ fn build_blur_elements(
     }
     // Release the slots of panels that disappeared this frame. A panel that
     // merely moved or changed stacking order keeps its key, id, and textures.
-    cache.trim_panels(&keys);
+    targets.cache.trim_panels(&keys);
     Ok((elements, allocations))
 }
 

@@ -168,7 +168,10 @@ void ChromeStats::recordCommit(const QString &surface, const QSize &logicalSize,
     if (!m_enabled)
         return;
     ++m_commits;
-    m_copyBytes += quint64(qMax<qint64>(0, copyBytes));
+    const quint64 copied = quint64(qMax<qint64>(0, copyBytes));
+    if (copied > 0)
+        ++m_copies;
+    m_copyBytes += copied;
     m_damagePixels += quint64(qMax<qint64>(0, damagePixels));
     if (commitUs >= 0)
         m_commitUs.append(commitUs);
@@ -179,7 +182,9 @@ void ChromeStats::recordCommit(const QString &surface, const QSize &logicalSize,
     stats.scale = scale;
     stats.viewport = viewport;
     ++stats.commits;
-    stats.copyBytes += quint64(qMax<qint64>(0, copyBytes));
+    if (copied > 0)
+        ++stats.copies;
+    stats.copyBytes += copied;
     stats.damagePixels += quint64(qMax<qint64>(0, damagePixels));
     if (commitUs >= 0)
         stats.commitUs.append(commitUs);
@@ -296,89 +301,99 @@ void ChromeStats::recordFallbackRender()
     ++m_fallbackRenders;
 }
 
-void ChromeStats::emitStats(const QString &label)
+QStringList ChromeStats::summaryLines(const QString &label) const
 {
+    QStringList lines;
     if (!m_enabled)
-        return;
+        return lines;
     // One greppable global line; the per-surface lines follow it so the
     // logical/buffer sizes of each chrome surface stay readable.
-    qInfo().noquote()
-        << QStringLiteral(
-               "chrome stats (%1): path=%2 scene_frames=%3 commits=%4 "
-               "grab_renders=%5 shm_allocs=%6 shm_bytes=%7 copy_bytes=%8 "
-               "damage_pixels=%9 frame_callbacks=%10 fallback_renders=%11 "
-               "skipped_commits=%12 dmabuf_commits=%13 dmabuf_bytes=%14 "
-               "dmabuf_deferred=%15 dmabuf_fallbacks=%16 gpu=%17 "
-               "gpu_reason=%18 %19 %20 dmabuf_buffers=%21 dmabuf_allocs=%22 "
-               "dmabuf_reuses=%23 dmabuf_sync=%24 dmabuf_sync_waits=%25 "
-               "dmabuf_sync_timeouts=%26")
-               .arg(label)
-               .arg(m_transportPath)
-               .arg(m_sceneFrames)
-               .arg(m_commits)
-               .arg(m_grabRenders)
-               .arg(m_shmAllocs)
-               .arg(m_shmBytes)
-               .arg(m_copyBytes)
-               .arg(m_damagePixels)
-               .arg(m_frameCallbacks)
-               .arg(m_fallbackRenders)
-               .arg(m_skippedCommits)
-               .arg(m_dmabufCommits)
-               .arg(m_dmabufBytes)
-               .arg(m_dmabufDeferred)
-               .arg(m_dmabufFallbacks)
-               .arg(m_gpuPath)
-               .arg(m_gpuReason.isEmpty() ? QStringLiteral("none") : m_gpuReason)
-               .arg(timingText("commit_us", m_commitUs))
-               .arg(timingText("frame_callback_us", m_frameCallbackUs))
-               .arg(m_dmabufBuffers)
-               .arg(m_dmabufAllocs)
-               .arg(m_dmabufReuses)
-               .arg(m_dmabufSyncMode)
-               .arg(m_dmabufSyncWaits)
-               .arg(m_dmabufSyncTimeouts);
+    lines << QStringLiteral(
+                 "chrome stats (%1): path=%2 scene_frames=%3 commits=%4 "
+                 "grab_renders=%5 shm_allocs=%6 shm_bytes=%7 copy_bytes=%8 "
+                 "damage_pixels=%9 frame_callbacks=%10 fallback_renders=%11 "
+                 "skipped_commits=%12 dmabuf_commits=%13 dmabuf_bytes=%14 "
+                 "dmabuf_deferred=%15 dmabuf_fallbacks=%16 gpu=%17 "
+                 "gpu_reason=%18 %19 %20 dmabuf_buffers=%21 dmabuf_allocs=%22 "
+                 "dmabuf_reuses=%23 dmabuf_sync=%24 dmabuf_sync_waits=%25 "
+                 "dmabuf_sync_timeouts=%26 copies=%27")
+                 .arg(label)
+                 .arg(m_transportPath)
+                 .arg(m_sceneFrames)
+                 .arg(m_commits)
+                 .arg(m_grabRenders)
+                 .arg(m_shmAllocs)
+                 .arg(m_shmBytes)
+                 .arg(m_copyBytes)
+                 .arg(m_damagePixels)
+                 .arg(m_frameCallbacks)
+                 .arg(m_fallbackRenders)
+                 .arg(m_skippedCommits)
+                 .arg(m_dmabufCommits)
+                 .arg(m_dmabufBytes)
+                 .arg(m_dmabufDeferred)
+                 .arg(m_dmabufFallbacks)
+                 .arg(m_gpuPath)
+                 .arg(m_gpuReason.isEmpty() ? QStringLiteral("none") : m_gpuReason)
+                 .arg(timingText("commit_us", m_commitUs))
+                 .arg(timingText("frame_callback_us", m_frameCallbackUs))
+                 .arg(m_dmabufBuffers)
+                 .arg(m_dmabufAllocs)
+                 .arg(m_dmabufReuses)
+                 .arg(m_dmabufSyncMode)
+                 .arg(m_dmabufSyncWaits)
+                 .arg(m_dmabufSyncTimeouts)
+                 .arg(m_copies);
 
     QStringList names = m_surfaces.keys();
     names.sort();
     for (const QString &name : names) {
         const SurfaceStats &stats = m_surfaces.value(name);
-        qInfo().noquote()
-            << QStringLiteral(
-                   "chrome surface (%1): surface=%2 path=%3 gpu_reason=%4 "
-                   "logical_size=%5 buffer_size=%6 "
-                   "buffer_scale=%7 scale=%8 viewport=%9 commits=%10 shm_allocs=%11 "
-                   "shm_bytes=%12 copy_bytes=%13 damage_pixels=%14 skipped=%15 "
-                   "fallback=%16 renders=%17 dmabuf_commits=%18 dmabuf_bytes=%19 "
-                   "dmabuf_deferred=%20 dmabuf_fallbacks=%21 %22 %23 "
-                   "dmabuf_buffers=%24 dmabuf_allocs=%25 dmabuf_reuses=%26")
-                   .arg(label)
-                   .arg(name)
-                   .arg(stats.path)
-                   .arg(stats.reason.isEmpty() ? QStringLiteral("none") : stats.reason)
-                   .arg(sizeText(stats.logicalSize))
-                   .arg(sizeText(stats.bufferSize))
-                   .arg(stats.bufferScale)
-                   .arg(stats.scale, 0, 'g', 4)
-                   .arg(stats.viewport ? 1 : 0)
-                   .arg(stats.commits)
-                   .arg(stats.shmAllocs)
-                   .arg(stats.shmBytes)
-                   .arg(stats.copyBytes)
-                   .arg(stats.damagePixels)
-                   .arg(stats.skippedCommits)
-                   .arg(stats.fallbackRenders)
-                   .arg(stats.renders)
-                   .arg(stats.dmabufCommits)
-                   .arg(stats.dmabufBytes)
-                   .arg(stats.dmabufDeferred)
-                   .arg(stats.dmabufFallbacks)
-                   .arg(timingText("commit_us", stats.commitUs))
-                   .arg(timingText("frame_callback_us", stats.frameCallbackUs))
-                   .arg(stats.dmabufBuffers)
-                   .arg(stats.dmabufAllocs)
-                   .arg(stats.dmabufReuses);
+        lines << QStringLiteral(
+                     "chrome surface (%1): surface=%2 path=%3 gpu_reason=%4 "
+                     "logical_size=%5 buffer_size=%6 "
+                     "buffer_scale=%7 scale=%8 viewport=%9 commits=%10 shm_allocs=%11 "
+                     "shm_bytes=%12 copy_bytes=%13 damage_pixels=%14 skipped=%15 "
+                     "fallback=%16 renders=%17 dmabuf_commits=%18 dmabuf_bytes=%19 "
+                     "dmabuf_deferred=%20 dmabuf_fallbacks=%21 %22 %23 "
+                     "dmabuf_buffers=%24 dmabuf_allocs=%25 dmabuf_reuses=%26 copies=%27")
+                     .arg(label)
+                     .arg(name)
+                     .arg(stats.path)
+                     .arg(stats.reason.isEmpty() ? QStringLiteral("none") : stats.reason)
+                     .arg(sizeText(stats.logicalSize))
+                     .arg(sizeText(stats.bufferSize))
+                     .arg(stats.bufferScale)
+                     .arg(stats.scale, 0, 'g', 4)
+                     .arg(stats.viewport ? 1 : 0)
+                     .arg(stats.commits)
+                     .arg(stats.shmAllocs)
+                     .arg(stats.shmBytes)
+                     .arg(stats.copyBytes)
+                     .arg(stats.damagePixels)
+                     .arg(stats.skippedCommits)
+                     .arg(stats.fallbackRenders)
+                     .arg(stats.renders)
+                     .arg(stats.dmabufCommits)
+                     .arg(stats.dmabufBytes)
+                     .arg(stats.dmabufDeferred)
+                     .arg(stats.dmabufFallbacks)
+                     .arg(timingText("commit_us", stats.commitUs))
+                     .arg(timingText("frame_callback_us", stats.frameCallbackUs))
+                     .arg(stats.dmabufBuffers)
+                     .arg(stats.dmabufAllocs)
+                     .arg(stats.dmabufReuses)
+                     .arg(stats.copies);
     }
+    return lines;
+}
+
+void ChromeStats::emitStats(const QString &label)
+{
+    if (!m_enabled)
+        return;
+    for (const QString &line : summaryLines(label))
+        qInfo().noquote() << line;
 
     // The next dump describes the interval after this one. Counters stay
     // cumulative; only the timing rings are windowed.

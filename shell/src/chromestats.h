@@ -85,6 +85,10 @@ public:
     // arrived (a degraded compositor).
     void recordFallbackRender();
 
+    // The greppable `chrome stats` / `chrome surface` lines for `label`. The
+    // emit path prints these; tests read them without capturing qInfo.
+    QStringList summaryLines(const QString &label) const;
+
     // Microseconds since the last render completion, or -1 when no readback
     // has completed yet.
     qint64 commitUsSinceRender() const;
@@ -115,6 +119,7 @@ private:
         quint64 renders = 0;
         quint64 shmAllocs = 0;
         quint64 shmBytes = 0;
+        quint64 copies = 0;
         quint64 copyBytes = 0;
         quint64 damagePixels = 0;
         quint64 skippedCommits = 0;
@@ -141,6 +146,7 @@ private:
     quint64 m_grabRenders = 0;
     quint64 m_shmAllocs = 0;
     quint64 m_shmBytes = 0;
+    quint64 m_copies = 0;
     quint64 m_copyBytes = 0;
     quint64 m_damagePixels = 0;
     quint64 m_skippedCommits = 0;
