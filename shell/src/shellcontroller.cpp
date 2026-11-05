@@ -1556,6 +1556,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         });
     }
 
+    // Capture/demo seam (T-21.4a): enter Mission Control once the chrome is up
+    // so the native visual sweep can capture the live-surface grid without a
+    // synthetic keyboard gesture. The compositor owns the overview; this only
+    // forwards the same request the menu-bar item sends. Never set in a normal
+    // session.
+    if (qEnvironmentVariableIsSet("DF_MISSION_CONTROL_FIXTURE")) {
+        QTimer::singleShot(1500, this, &ShellController::onMissionControlRequested);
+    }
+
     // Capture/demo seam (T-21.2c): open the Control Center once the chrome is
     // up so the forced-tier overlay capture can show its material without a
     // synthetic chord. Never set in a normal session.
