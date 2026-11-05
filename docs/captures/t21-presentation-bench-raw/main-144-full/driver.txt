@@ -5,22 +5,22 @@ t21-presentation-bench: material glass role=dock blur=34.0 refraction=10.0 specu
 t21-presentation-bench: material glass role=popup blur=32.0 refraction=10.0 specular=0.34 specular_width=2.5 tint=0.18
 t21-presentation-bench: material glass role=drawer blur=32.0 refraction=10.0 specular=0.34 specular_width=2.5 tint=0.18
 t21-presentation-bench: end
-t21-presentation-bench: degrade tier=full forced=1 budget_us=6944 samples=19 over_budget=13 downgrades=1 upgrades=0 tiers=full:7,reduced:12,minimal:0 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
+t21-presentation-bench: degrade tier=full forced=1 budget_us=6944 samples=20 over_budget=17 downgrades=1 upgrades=0 tiers=full:7,reduced:13,minimal:0 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
 t21-presentation-bench: end
-t21-presentation-bench: scenario 1 warmup elapsed=3.802
+t21-presentation-bench: scenario 1 warmup elapsed=3.801
 t21-presentation-bench: scenario 2 baseline elapsed=0.301
 t21-presentation-bench: scenario 3 idle elapsed=60.301
-t21-presentation-bench: scenario 4 dock-sweep elapsed=10.737
+t21-presentation-bench: scenario 4 dock-sweep elapsed=10.736
 t21-presentation-bench: scenario 5 idle-settled elapsed=60.302
 t21-presentation-bench: scenario 6 menubar-open elapsed=1.503
 t21-presentation-bench: scenario 7 menubar-close elapsed=1.503
-t21-presentation-bench: scenario 8 dock-popover-open elapsed=1.932
+t21-presentation-bench: scenario 8 dock-popover-open elapsed=1.934
 t21-presentation-bench: scenario 9 dock-popover-close elapsed=1.504
-t21-presentation-bench: scenario 10 app-launch elapsed=1.427
+t21-presentation-bench: scenario 10 app-launch elapsed=1.417
 t21-presentation-bench: mission-control windows=10
-t21-presentation-bench: scenario 11 mission-control elapsed=6.502
-t21-presentation-bench: scenario 12 mission-control-close elapsed=3.473
-t21-presentation-bench: scenario 13 fullscreen elapsed=1.892
-t21-presentation-bench: scenario 14 fullscreen-exit elapsed=1.509
+t21-presentation-bench: scenario 11 mission-control elapsed=5.870
+t21-presentation-bench: scenario 12 mission-control-close elapsed=3.309
+t21-presentation-bench: scenario 13 fullscreen elapsed=2.033
+t21-presentation-bench: scenario 14 fullscreen-exit elapsed=1.306
 t21-presentation-bench: saved docs/captures/t21-presentation-bench-dock.png
 t21-presentation-bench: saved docs/captures/t21-presentation-bench-mission-control.png

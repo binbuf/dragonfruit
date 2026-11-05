@@ -5,8 +5,8 @@ t21-presentation-bench: material glass role=dock blur=34.0 refraction=10.0 specu
 t21-presentation-bench: material glass role=popup blur=32.0 refraction=10.0 specular=0.34 specular_width=2.5 tint=0.18
 t21-presentation-bench: material glass role=drawer blur=32.0 refraction=10.0 specular=0.34 specular_width=2.5 tint=0.18
 t21-presentation-bench: end
-t21-presentation-bench: degrade tier=full forced=1 budget_us=16666 samples=20 over_budget=13 downgrades=1 upgrades=0 tiers=full:8,reduced:12,minimal:0 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
+t21-presentation-bench: degrade tier=full forced=1 budget_us=16666 samples=22 over_budget=14 downgrades=1 upgrades=0 tiers=full:8,reduced:14,minimal:0 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
 t21-presentation-bench: end
 t21-presentation-bench: scenario 1 warmup elapsed=3.802
 t21-presentation-bench: scenario 2 baseline elapsed=0.301
-t21-presentation-bench: scenario 3 sweep elapsed=10.740
+t21-presentation-bench: scenario 3 sweep elapsed=10.741
