@@ -12,9 +12,38 @@
 //! panel contributes its own padding before the union, because the menu bar
 //! and a popup can run at different material tiers.
 
+use std::sync::OnceLock;
+
 use smithay::utils::{Buffer, Logical, Physical, Rectangle, Scale, Size};
 
 use crate::render::BlurPanel;
+
+/// Force the full-output material scene texture (diagnostic/rollback).
+///
+/// The region path is the default. Setting this to `1`/`true`/`on`/`yes`
+/// renders the material source into the whole output, exactly as the pre-
+/// T-21.3 path did, so a region-origin regression can be isolated without
+/// changing the rest of the frame. It is read once per process.
+pub const ENV_MATERIAL_FULL_OUTPUT: &str = "DRAGONFRUIT_MATERIAL_FULL_OUTPUT";
+
+/// Whether an explicit environment value enables a default-off flag.
+fn env_flag_enabled(value: Option<&str>) -> bool {
+    matches!(
+        value
+            .map(|value| value.trim().to_ascii_lowercase())
+            .as_deref(),
+        Some("1" | "true" | "on" | "yes" | "enabled")
+    )
+}
+
+/// Whether the full-output material scene texture is forced.
+pub fn full_output_material_forced() -> bool {
+    static FORCED: OnceLock<bool> = OnceLock::new();
+    *FORCED.get_or_init(|| {
+        let value = std::env::var(ENV_MATERIAL_FULL_OUTPUT).ok();
+        env_flag_enabled(value.as_deref())
+    })
+}
 
 /// The output-local rectangle a material pass must render, plus the scene
 /// texture size it needs.
@@ -110,6 +139,83 @@ impl MaterialRegion {
             physical,
             texture_size: Size::from((physical.size.w, physical.size.h)),
         })
+    }
+
+    /// The full-output diagnostic/rollback region.
+    ///
+    /// `output` is output-local logical, exactly like [`Self::from_panels`].
+    /// This is what [`Self::for_material`] uses when the rollback flag is set,
+    /// and the safe fallback when a panel set has no visible area.
+    pub fn full_output(output: Rectangle<i32, Logical>, scale: Scale<f64>) -> Option<Self> {
+        if output.size.w <= 0
+            || output.size.h <= 0
+            || !scale.x.is_finite()
+            || !scale.y.is_finite()
+            || scale.x <= 0.0
+            || scale.y <= 0.0
+        {
+            return None;
+        }
+        let physical = output.to_physical_precise_round(scale);
+        if physical.size.w <= 0 || physical.size.h <= 0 {
+            return None;
+        }
+        Some(Self {
+            rect: output,
+            physical,
+            texture_size: Size::from((physical.size.w, physical.size.h)),
+        })
+    }
+
+    /// Resolve the material region for a frame: the padded panel union by
+    /// default, or the whole output when the diagnostic flag is set.
+    ///
+    /// A panel set with no visible area falls back to the full output rather
+    /// than leaving the caller without a texture; the panel list is already
+    /// filtered for visible panels, so this is a safety net.
+    pub fn for_material(
+        panels: &[BlurPanel],
+        output: Rectangle<i32, Logical>,
+        scale: Scale<f64>,
+    ) -> Option<Self> {
+        if full_output_material_forced() {
+            Self::full_output(output, scale)
+        } else {
+            Self::from_panels(panels, output, scale).or_else(|| Self::full_output(output, scale))
+        }
+    }
+
+    /// Map a panel into this region.
+    ///
+    /// Returns the part of `panel` visible in the region (output-local
+    /// logical) and the source rectangle in the region texture's buffer
+    /// coordinates. The source origin is translated by [`Self::physical`]'s
+    /// origin, which is the key difference from the pre-region path where a
+    /// panel's `src` was already an output-coordinate rectangle.
+    pub fn panel_source(
+        &self,
+        panel: Rectangle<i32, Logical>,
+        scale: Scale<f64>,
+    ) -> Option<(Rectangle<i32, Logical>, Rectangle<f64, Buffer>)> {
+        let visible = panel.intersection(self.rect)?;
+        if visible.size.w <= 0 || visible.size.h <= 0 {
+            return None;
+        }
+        let physical = visible
+            .to_physical_precise_round(scale)
+            .intersection(self.physical)?;
+        if physical.size.w <= 0 || physical.size.h <= 0 {
+            return None;
+        }
+        let src = Rectangle::new(
+            (
+                (physical.loc.x - self.physical.loc.x) as f64,
+                (physical.loc.y - self.physical.loc.y) as f64,
+            )
+                .into(),
+            (physical.size.w as f64, physical.size.h as f64).into(),
+        );
+        Some((visible, src))
     }
 }
 
@@ -291,5 +397,144 @@ mod tests {
             Rectangle::new((1781, 1121).into(), (139, 79).into())
         );
         assert_eq!(rounded_edge.texture_size, (139, 79).into());
+    }
+
+    #[test]
+    fn the_full_output_region_covers_the_output_at_every_scale() {
+        let screen = output(1280, 800);
+        let at_one = MaterialRegion::full_output(screen, 1.0.into()).expect("full output");
+        assert_eq!(at_one.rect, screen);
+        assert_eq!(
+            at_one.physical,
+            Rectangle::new((0, 0).into(), (1280, 800).into())
+        );
+        assert_eq!(at_one.texture_size, (1280, 800).into());
+
+        let at_one_and_a_half =
+            MaterialRegion::full_output(screen, 1.5.into()).expect("full output");
+        assert_eq!(
+            at_one_and_a_half.physical,
+            Rectangle::new((0, 0).into(), (1920, 1200).into())
+        );
+        assert_eq!(at_one_and_a_half.texture_size, (1920, 1200).into());
+
+        let at_two = MaterialRegion::full_output(screen, 2.0.into()).expect("full output");
+        assert_eq!(at_two.texture_size, (2560, 1600).into());
+
+        // Invalid inputs are rejected, never a zero-sized texture.
+        assert_eq!(
+            MaterialRegion::full_output(output(0, 800), 1.0.into()),
+            None
+        );
+        assert_eq!(MaterialRegion::full_output(screen, 0.0.into()), None);
+    }
+
+    #[test]
+    fn a_panel_source_is_translated_by_the_region_origin() {
+        let screen = output(1280, 800);
+        let panel_rect = panel((101, 51, 333, 77), 12.0).panel;
+        let region =
+            MaterialRegion::from_panels(&[panel((101, 51, 333, 77), 12.0)], screen, 1.0.into())
+                .expect("visible panel");
+        assert_eq!(
+            region.panel_source(panel_rect, 1.0.into()),
+            Some((
+                panel_rect,
+                Rectangle::new((12.0, 12.0).into(), (333.0, 77.0).into())
+            ))
+        );
+
+        // At 1.5x the panel physical origin is (152,77), the region origin is
+        // (134,59), so the source starts at (18,18) inside the texture.
+        let region =
+            MaterialRegion::from_panels(&[panel((101, 51, 333, 77), 12.0)], screen, 1.5.into())
+                .expect("visible panel");
+        assert_eq!(
+            region.panel_source(panel_rect, 1.5.into()),
+            Some((
+                panel_rect,
+                Rectangle::new((18.0, 18.0).into(), (500.0, 116.0).into())
+            ))
+        );
+
+        // A panel from a different region has no source here.
+        assert_eq!(
+            region.panel_source(Rectangle::new((10, 10).into(), (40, 40).into()), 1.5.into()),
+            None
+        );
+    }
+
+    #[test]
+    fn a_panel_source_clips_to_the_region() {
+        let screen = output(1280, 800);
+        let panel_rect = Rectangle::new((1200, 760).into(), (200, 100).into());
+        let region = MaterialRegion::from_panels(
+            &[BlurPanel {
+                panel: panel_rect,
+                spec: BlurSpec::new(8.0, 10.0),
+                glass: GlassSpec {
+                    refraction: 0.0,
+                    specular: 0.0,
+                    specular_width: 0.0,
+                    tint: 0.0,
+                    tint_color: [0.0; 3],
+                },
+            }],
+            screen,
+            1.0.into(),
+        )
+        .expect("visible panel");
+
+        // The region is (1192,752,88,48); the panel's visible part is the
+        // bottom-right 80x40, starting 8px into the texture.
+        assert_eq!(
+            region.panel_source(panel_rect, 1.0.into()),
+            Some((
+                Rectangle::new((1200, 760).into(), (80, 40).into()),
+                Rectangle::new((8.0, 8.0).into(), (80.0, 40.0).into())
+            ))
+        );
+
+        // The physical clamp at 1.5x wins over the panel's independently
+        // rounded size: the source never reaches past the texture.
+        let region = MaterialRegion::from_panels(
+            &[BlurPanel {
+                panel: Rectangle::new((1199, 759).into(), (81, 41).into()),
+                spec: BlurSpec::new(12.0, 10.0),
+                glass: GlassSpec {
+                    refraction: 0.0,
+                    specular: 0.0,
+                    specular_width: 0.0,
+                    tint: 0.0,
+                    tint_color: [0.0; 3],
+                },
+            }],
+            screen,
+            1.5.into(),
+        )
+        .expect("visible panel");
+        let (visible, src) = region
+            .panel_source(
+                Rectangle::new((1199, 759).into(), (81, 41).into()),
+                1.5.into(),
+            )
+            .expect("panel source");
+        assert_eq!(visible, Rectangle::new((1199, 759).into(), (81, 41).into()));
+        assert_eq!(src.loc, (18.0, 18.0).into());
+        assert_eq!(src.size, (121.0, 61.0).into());
+        // The source fits inside the region texture.
+        assert!(src.loc.x + src.size.w <= region.texture_size.w as f64);
+        assert!(src.loc.y + src.size.h <= region.texture_size.h as f64);
+    }
+
+    #[test]
+    fn the_full_output_flag_accepts_only_explicit_truthy_values() {
+        for value in ["1", "true", "TRUE", " on ", "yes", "enabled"] {
+            assert!(env_flag_enabled(Some(value)), "{value:?}");
+        }
+        for value in ["", "0", "false", "off", "no", "disabled", "random"] {
+            assert!(!env_flag_enabled(Some(value)), "{value:?}");
+        }
+        assert!(!env_flag_enabled(None));
     }
 }

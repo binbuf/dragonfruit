@@ -21,6 +21,7 @@ pub mod decoration;
 pub mod degrade;
 pub mod events;
 pub mod grab;
+pub mod material_cache;
 pub mod material_region;
 pub mod menu;
 pub mod motion;
@@ -103,8 +104,9 @@ pub use degrade::{
     DegradeController, DegradeTier, EffectiveMaterial, MaterialFallback, MaterialPath,
 };
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
+pub(crate) use material_cache::{PanelTextureSlots, SceneTextureCache, SceneTextureKey};
 #[allow(unused_imports)]
-pub use material_region::MaterialRegion;
+pub use material_region::{full_output_material_forced, MaterialRegion, ENV_MATERIAL_FULL_OUTPUT};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 pub use motion::{MinimizedAnimation, MotionFrame, WindowMotion, WindowMotionKind};
 #[allow(unused_imports)]
