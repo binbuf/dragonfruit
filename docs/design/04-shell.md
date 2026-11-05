@@ -130,7 +130,12 @@ the legacy v3 `material_state` snapshot, which remains the compatibility path
 for an older compositor. Any explicit fallback reason selects the existing
 token-driven milky complement (`blurActive=false`); a persistent role that
 reports `Minimal` with no fallback is guarded to the explicit `floor-missed`
-state (ADR [0204](adr/0204-shell-role-material-application-policy.md)).
+state (ADR [0204](adr/0204-shell-role-material-application-policy.md)). The
+shell has no hysteresis of its own: it applies each change-only role event.
+T189d's load sequence (Full → Reduced → floor-missed → Reduced → Full) drives
+one already-created Dock and menu-bar scene through the same policy object
+(`tst_dock`, `tst_menubar`, `tst_materialpolicy`) to prove the applied
+properties follow every compositor decision without a rebuild.
 
 The QML side has one visual complement, `design-system/Material.qml`:
 `popupFill()`/`drawerFill()` return the sampled-glass scrim when

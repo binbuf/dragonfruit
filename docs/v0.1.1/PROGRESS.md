@@ -19,6 +19,7 @@
 - **T189a — T-21.2c role classification and per-role state**: `MaterialRole` now owns the persistent/transient classification:; `EffectiveMaterial` carries a `role` field and
 - **T189b — T-21.2c Shell per-role application: Dock and menu bar**: `shell/src/materialpolicy.{h,cpp}` is the shell's one application policy for; a known role state wins; an unknown role uses the legacy v3 global state;
 - **T189c — T-21.2c Overlay and popover fallback coverage**: The shell now applies the v4 role state to the whole popup family through the; `Popup` → menu-bar dropdowns/submenus, status menus, tray context menu,
+- **T189d — T-21.2c Refresh-aware hysteresis and load tests**: `DegradeController` hysteresis is now wall-clock, not frame-count:; `DOWNGRADE_WINDOW = 200 ms` (the old 12 frames at 60 Hz),
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -38,6 +39,7 @@
 - [T189a](progress/T189a.md) — `MaterialRole` now owns the persistent/transient classification:
 - [T189b](progress/T189b.md) — `shell/src/materialpolicy.{h,cpp}` is the shell's one application policy for
 - [T189c](progress/T189c.md) — The shell now applies the v4 role state to the whole popup family through the
+- [T189d](progress/T189d.md) — `DegradeController` hysteresis is now wall-clock, not frame-count:
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

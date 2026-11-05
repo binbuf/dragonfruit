@@ -653,14 +653,22 @@ frame budget. The budget is the fastest active output's refresh deadline
 `animation::FRAME_INTERVAL` before the first output mode is known.
 `DRAGONFRUIT_FRAME_BUDGET_US` or the synthetic `set degrade-budget` pins a
 diagnostic budget and is reported as `budget_source=env|manual`; otherwise the
-source is `refresh`. Selection uses an EMA plus hysteresis, so a stray spike
-cannot degrade the UI and a tier cannot oscillate. A tier can be pinned
+source is `refresh`. Selection uses an EMA plus wall-clock hysteresis (T189d):
+**200 ms** of sustained over-budget frames steps down, **3 s** of clearly
+under-budget frames recovers. Those are the original 12/180 frames at 60 Hz;
+at 120/144 Hz the frame count scales so the window does not shrink. A
+downgrade within 10 s of an upgrade across the same boundary latches that
+boundary: recovery then needs the EMA below 0.4 × budget for 10 s, which stops
+a steady pointer sweep from cycling Full↔Reduced. A successful upgrade clears
+the latch. The synthetic `set degrade-frames <count> <microseconds>` hook feeds
+the real rendered-frame path for headless load tests. A tier can be pinned
 (`set degrade-tier` over the synthetic harness, or `set_degrade_tier`) for a
 deterministic test or feature. The selection never forces a redraw, so the
 idle trace stays flat. The state is reported on a `degrade stats` render-stats
-line and by `query degrade`. See
-[ADR 0015](adr/0015-material-degrade-tiers.md) and
-[ADR 0199](adr/0199-refresh-clock-wiring.md).
+line (including `down_window_us`, `up_window_us`, and `latched`) and by
+`query degrade`. See [ADR 0015](adr/0015-material-degrade-tiers.md),
+[ADR 0199](adr/0199-refresh-clock-wiring.md), and
+[ADR 0206](adr/0206-refresh-aware-hysteresis.md).
 
 ### Light/dark and reduced motion (T-04.4b)
 

@@ -1459,6 +1459,52 @@ Item {
             Theme.dark = false;
         }
 
+        function test_load_sequence_keeps_the_applied_material() {
+            // T-21.2c load sequence on one Dock scene: Full -> Reduced ->
+            // floor-missed -> Reduced -> Full. The shell receives change-only
+            // role events; the already-created surface must follow each one
+            // without being rebuilt.
+            var steps = [
+                { tier: 0, blur: true, fallback: 0, label: "full" },
+                { tier: 1, blur: true, fallback: 0, label: "reduced" },
+                { tier: 1, blur: false, fallback: 4, label: "floor-missed" },
+                { tier: 1, blur: true, fallback: 0, label: "recovered" },
+                { tier: 0, blur: true, fallback: 0, label: "full-again" }
+            ];
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                var dock = make(dockComponent, {
+                    width: 400, height: 240,
+                    entries: [ app("a", "A", true) ]
+                });
+                var bar = findChild(dock, "dockBar");
+                for (var i = 0; i < steps.length; ++i) {
+                    var step = steps[i];
+                    dock.materialTier = step.tier;
+                    dock.materialBlurActive = step.blur;
+                    dock.materialFallback = step.fallback;
+                    compare(dock.materialTier, step.tier, step.label);
+                    compare(dock.materialBlurActive, step.blur, step.label);
+                    compare(dock.materialFallback, step.fallback, step.label);
+                    if (step.blur) {
+                        compare(bar.color, Theme.color.dockFill, step.label);
+                        fuzzyCompare(bar.opacity,
+                                     Theme.controls.dock.plate.fillOpacity,
+                                     0.0001, step.label);
+                    } else {
+                        compare(bar.color, Theme.color.dockFallbackFill,
+                                step.label);
+                        fuzzyCompare(bar.opacity,
+                                     Theme.material.dockFallbackOpacity,
+                                     0.0001, step.label);
+                        verify(bar.opacity >= 0.8,
+                               step.label + " must read as a material");
+                    }
+                }
+            }
+            Theme.dark = false;
+        }
+
         function compareColor(actual, expected, label) {
             fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
             fuzzyCompare(actual.g, expected.g, 0.001, label + " green");

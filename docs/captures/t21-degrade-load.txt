@@ -1,0 +1,39 @@
+T-21.2c refresh-aware hysteresis load trace (T189d)
+timestamp: 2026-11-04T16:39:00-08:00
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+session: XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=dragonfruit-wayland
+preflight: make t21-doctor -> PASS: 0 warning(s)
+command: cargo test -p dragonfruit-compositor --bin dragonfruit-compositor window::degrade::tests -- --nocapture
+command: cargo test -p dragonfruit-compositor --test shell_protocol_conformance material_role_state_follows_a_refresh_aware_load_sequence -- --nocapture
+shell: ctest -R '^(tst_materialpolicy|tst_dock|tst_menubar)$' -> PASS (100% tests passed, 0 tests failed out of 3)
+
+## Pure hysteresis: 12/180 frames at 60 Hz = 200 ms down / 3 s up
+The frame counts scale with the refresh period; the wall-clock windows do not.
+degrade-trace: steady_sweep_hz=60 duration_s=60 full_frame_us=20832 reduced_frame_us=9999 downgrades=2 upgrades=1 latched=1 final_tier=reduced
+degrade-trace: steady_sweep_idle_hz=60 idle_frame_us=4999 final_tier=full upgrades=2
+degrade-trace: steady_sweep_hz=120 duration_s=60 full_frame_us=10416 reduced_frame_us=4999 downgrades=2 upgrades=1 latched=1 final_tier=reduced
+degrade-trace: steady_sweep_idle_hz=120 idle_frame_us=2499 final_tier=full upgrades=2
+degrade-trace: steady_sweep_hz=144 duration_s=60 full_frame_us=8680 reduced_frame_us=4166 downgrades=2 upgrades=1 latched=1 final_tier=reduced
+degrade-trace: steady_sweep_idle_hz=144 idle_frame_us=2083 final_tier=full upgrades=2
+degrade-trace: rate_hz=60 period_us=16666 downgrade_frames=10 downgrade_ms=200.000 upgrade_frames=377 upgrade_ms=3016.000
+degrade-trace: rate_hz=120 period_us=8333 downgrade_frames=20 downgrade_ms=200.000 upgrade_frames=752 upgrade_ms=3008.000
+degrade-trace: rate_hz=144 period_us=6944 downgrade_frames=25 downgrade_ms=208.325 upgrade_frames=867 upgrade_ms=3010.224
+
+## Headless compositor: synthetic rendered-frame load sequence
+budget 16666 us, GPU path, sampled blur; roles are tier/blur/fallback.
+degrade-trace: scenario=headless-load budget_us=16666 path=gpu blur_supported=1
+degrade-trace: phase=steady-over frames=20 frame_us=18000 degrade tier=reduced forced=0 budget_us=16666 samples=21 over_budget=13 downgrades=1 upgrades=0 tiers=full:20,reduced:1,minimal:0 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=0 roles=0:1/1/0,1:1/1/0,2:1/1/0,3:1/1/0
+degrade-trace: phase=recovery frames=900 frame_us=4000 degrade tier=full forced=0 budget_us=16666 samples=922 over_budget=13 downgrades=1 upgrades=1 tiers=full:170,reduced:752,minimal:0 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=0 roles=0:0/1/0,1:0/1/0,2:0/1/0,3:0/1/0
+degrade-trace: phase=settled frames=1500 frame_us=10000 degrade tier=full forced=0 budget_us=16666 samples=2422 over_budget=13 downgrades=1 upgrades=1 tiers=full:1670,reduced:752,minimal:0 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=0
+degrade-trace: phase=sweep-down frames=20 frame_us=18000 degrade tier=reduced forced=0 budget_us=16666 samples=2442 over_budget=28 downgrades=2 upgrades=1 tiers=full:1687,reduced:755,minimal:0 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=0 roles=0:1/1/0,1:1/1/0,2:1/1/0,3:1/1/0
+degrade-trace: phase=sweep-recover frames=900 frame_us=4000 degrade tier=full forced=0 budget_us=16666 samples=3342 over_budget=28 downgrades=2 upgrades=2 tiers=full:1836,reduced:1506,minimal:0 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=0 roles=0:0/1/0,1:0/1/0,2:0/1/0,3:0/1/0
+degrade-trace: phase=sweep-flap frames=20 frame_us=18000 degrade tier=reduced forced=0 budget_us=16666 samples=3362 over_budget=42 downgrades=3 upgrades=2 tiers=full:1854,reduced:1508,minimal:0 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=1 roles=0:1/1/0,1:1/1/0,2:1/1/0,3:1/1/0
+degrade-trace: phase=sweep-latched frames=2000 frame_us=10000 degrade tier=reduced forced=0 budget_us=16666 samples=5362 over_budget=42 downgrades=3 upgrades=2 tiers=full:1854,reduced:3508,minimal:0 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=1
+degrade-trace: phase=idle-recover frames=3000 frame_us=4000 degrade tier=full forced=0 budget_us=16666 samples=8362 over_budget=42 downgrades=3 upgrades=3 tiers=full:2352,reduced:6010,minimal:0 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=0 roles=0:0/1/0,1:0/1/0,2:0/1/0,3:0/1/0
+degrade-trace: phase=forced-reduced roles=0:1/1/0,1:1/1/0,2:1/1/0,3:1/1/0 degrade tier=reduced forced=1 budget_us=16666 samples=8363 over_budget=42 downgrades=3 upgrades=3 tiers=full:2352,reduced:6011,minimal:0 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=0
+degrade-trace: phase=forced-minimal roles=0:1/0/4,1:1/0/4,2:2/0/0,3:2/0/0 degrade tier=minimal forced=1 budget_us=16666 samples=8364 over_budget=42 downgrades=3 upgrades=3 tiers=full:2352,reduced:6011,minimal:1 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=0
+degrade-trace: phase=forced-full roles=0:0/1/0,1:0/1/0,2:0/1/0,3:0/1/0 degrade tier=full forced=1 budget_us=16666 samples=8365 over_budget=42 downgrades=3 upgrades=3 tiers=full:2353,reduced:6011,minimal:1 budget_source=manual down_window_us=200000 up_window_us=3000000 latched=0
+
+## Verdict
+PASS: 60/120/144 Hz windows are refresh-aware; the steady sweep is latched;
+      forced Full/Reduced/Minimal keep the per-role floor; shell properties: PASS (100% tests passed, 0 tests failed out of 3).

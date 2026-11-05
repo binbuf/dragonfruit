@@ -459,8 +459,9 @@ deadline is 6.94 ms.
 
 T-21.2c classifies `MaterialRole` as persistent (`Chrome`, `Dock`) or
 transient (`Popup`, `Drawer`) and computes an effective material per role. The
-compositor render path and the v4 protocol carry that state; the shell
-application and refresh-aware hysteresis land in the follow-up tasks.
+compositor render path and the v4 protocol carry that state; the shell applies
+it through one policy, and the degrade hysteresis is refresh-aware with a flap
+latch (T189d).
 
 ### R4.1 Persistent-chrome floor
 
@@ -497,10 +498,33 @@ application and refresh-aware hysteresis land in the follow-up tasks.
 - Prevent Full↔Reduced oscillation during a steady pointer sweep.
 - Ensure expensive glass is disabled or reduced quickly enough under pressure.
 
+**Status (T-21.2c)**
+
+- The 12/180 frame counts are now wall-clock windows accumulated from rendered
+  frame durations: **200 ms** down and **3 s** up. At 60 Hz that is the same
+  12/180 reference; at 120/144 Hz the frame count scales with the refresh
+  period instead of shrinking the window.
+- A downgrade within 10 s of an upgrade across the same ladder boundary
+  latches that boundary. Recovery across a latched boundary needs the EMA below
+  **0.4 × budget** for **10 s** (instead of 0.75 × budget for 3 s), so a steady
+  sweep that keeps returning to the expensive tier stays at `Reduced`. A
+  successful upgrade clears the latch; a forced tier resets the selection
+  memory.
+- `degrade stats` / `query degrade` add `down_window_us=200000`,
+  `up_window_us=3000000`, and `latched=0|1`. The synthetic
+  `set degrade-frames <count> <microseconds>` hook feeds the real
+  `observe_rendered_frame` path for the headless load test.
+- The committed load trace is `docs/captures/t21-degrade-load.txt`
+  (`make t21-degrade-load`): a 60 s simulated sweep at 60/120/144 Hz plus the
+  headless compositor's per-role load sequence. The pure tests assert the
+  ~200 ms/~3 s windows at all three rates; the 60 s sweep is bounded to
+  `downgrades=2 upgrades=1 latched=1` at every rate.
+
 **Acceptance**
 
 - No repeated tier flapping in a 60-second Dock animation.
 - Tier transitions are visible in `degrade stats` and bounded.
+- The same wall-clock windows hold at 60, 120, and 144 Hz.
 
 ### R4.3 Per-role/per-output material state
 

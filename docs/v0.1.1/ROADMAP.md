@@ -56,7 +56,7 @@ done.
 - [x] T189a — T-21.2c Persistent/transient role classification and per-role state → [../tasks/0.1.1/189a-t-21.2c-role-classification.md](../tasks/0.1.1/189a-t-21.2c-role-classification.md)
 - [x] T189b — T-21.2c Shell per-role application: Dock and menu bar → [../tasks/0.1.1/189b-t-21.2c-shell-role-application.md](../tasks/0.1.1/189b-t-21.2c-shell-role-application.md)
 - [x] T189c — T-21.2c Overlay and popover fallback coverage → [../tasks/0.1.1/189c-t-21.2c-overlay-fallback-coverage.md](../tasks/0.1.1/189c-t-21.2c-overlay-fallback-coverage.md)
-- [ ] T189d — T-21.2c Refresh-aware hysteresis and load tests → [../tasks/0.1.1/189d-t-21.2c-refresh-aware-hysteresis.md](../tasks/0.1.1/189d-t-21.2c-refresh-aware-hysteresis.md)
+- [x] T189d — T-21.2c Refresh-aware hysteresis and load tests → [../tasks/0.1.1/189d-t-21.2c-refresh-aware-hysteresis.md](../tasks/0.1.1/189d-t-21.2c-refresh-aware-hysteresis.md)
 
 ## Phase 21.3 — Panel-region material
 
@@ -89,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-04T23:58:22Z · 16/30 done
+**Pipeline status** — updated 2026-11-05T01:09:06Z · 17/30 done
 
-- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c
+- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d
 - Blocked: none
 - Failed: none
-- Remaining: T189d, T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
-- Last finished: T189c — done · Popup-family role application, milky fallbacks with recorded reasons, QML coverage, forced-tier captures, docs, and the full `make gates` run all landed.
+- Remaining: T190a, T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Last finished: T189d — done · Refresh-aware 200 ms/3 s hysteresis with a flap latch, forced-tier/load tests, committed t21-degrade-load trace, and green cargo test plus make gates (e2e + qml-test).
 <!-- /symphony:status -->

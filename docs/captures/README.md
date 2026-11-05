@@ -1109,6 +1109,22 @@ all four roles through one policy (ADR
 popup family shares one QML complement (ADR
 [0205](../design/adr/0205-popup-family-material-fallback.md)).
 
+T-21.2c's refresh-aware hysteresis load trace is
+`scripts/t21-degrade-load.sh` (`make t21-degrade-load`). It is deterministic
+and headless: the first section runs the pure `DegradeController` tests at
+60/120/144 Hz and records the downgrade/recovery wall-clock windows and a 60 s
+steady sweep at each rate; the second feeds synthetic rendered frames through
+the real headless compositor's `observe_rendered_frame` path and records
+`query degrade` plus the per-role `material_role_state` events for the
+over-budget, recovery, flap, latched, idle-recovery, and forced Full/Reduced/
+Minimal phases. `t21-degrade-load.txt` is the committed transcript; the pure
+section shows the frame counts scaling (10/20/25 down, 377/752/867 up) while
+the window stays ~200 ms/~3 s, and the 60 s sweep is bounded to
+`downgrades=2 upgrades=1 latched=1` at every rate. The same run checks the
+shell's applied properties with `tst_materialpolicy`, `tst_dock`, and
+`tst_menubar`. The policy is
+[ADR 0206](../design/adr/0206-refresh-aware-hysteresis.md).
+
 T-21.1b's HiDPI chrome stills are `t21-hidpi-1x.png`, `t21-hidpi-1_5x.png`,
 and `t21-hidpi-2x.png` (the menu bar, Dock, and Dock popover at each scale),
 plus `t21-hidpi-1_5x-dock.png` and `t21-hidpi-1_5x-control-center.png` for the
