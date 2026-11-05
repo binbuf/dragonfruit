@@ -156,6 +156,7 @@ mod tests {
     fn the_entry_script_runs_the_contract_sequence() {
         for needle in [
             "--print-env",
+            "--sync-toolkit",
             "import-environment",
             "XDG_CURRENT_DESKTOP",
             "XDG_SESSION_TYPE",

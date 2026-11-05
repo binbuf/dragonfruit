@@ -59,6 +59,12 @@ done
 #    this shell, then the user manager carries them to every unit.
 eval "$("$session_bin" --print-env --socket-name "$socket")"
 
+# Third-party toolkit defaults: GTK-family CSD apps read their window-control
+# layout from the toolkit settings, not from the compositor. Apply the
+# desktop's left-side layout before any app can launch. Best-effort — the
+# settings.ini/keyfile fallbacks are written even when gsettings is absent.
+"$session_bin" --sync-toolkit >/dev/null 2>&1 || true
+
 # An installed session carries its QML modules under the install prefix; a
 # display-manager login has no build tree and no dev-tool environment, so the
 # shell and every first-party app would otherwise exit before mapping a window.
