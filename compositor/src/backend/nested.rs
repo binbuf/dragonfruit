@@ -436,6 +436,23 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
             // `Minimal`, no chrome is mapped, or another path already took the
             // pass — and the pre-T-20 feather path below applies instead.
             let blur_panels = crate::render::chrome_blur_panels(state, &output);
+            // Direct-scanout policy (T-21.3): a fullscreen client that covers
+            // the output with no visible material panel skips the sampled
+            // pass. The persistent top chrome is already hidden by
+            // `visible_chrome_surfaces`; an overlay (OSD/menu) keeps the
+            // material. Nested records the candidate but never advances the
+            // real `direct_scanouts` counter — only DRM can scan out.
+            let output_local = Rectangle::from_size(output_geometry.size);
+            let direct_candidate = crate::window::direct_scanout_candidate(
+                output_local,
+                state.fullscreen_client_rect(&output),
+                &blur_panels,
+            );
+            if direct_candidate {
+                state
+                    .stats
+                    .record_direct_scanout_candidate(output.name().as_str());
+            }
             let mut custom_elements: Vec<NestedOutputElements<GlowRenderer>>;
             if !blur_panels.is_empty() {
                 // Two-pass composition (T-20.1/T-21.3). Pass one renders the
@@ -505,9 +522,10 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     scale,
                     &mut data.material_textures,
                 )?;
-                state
-                    .stats
-                    .record_material_panel_allocations(blur_allocations);
+                state.stats.record_material_panel_allocations_for(
+                    output.name().as_str(),
+                    blur_allocations,
+                );
                 custom_elements.extend(blur_elements);
                 // The blur elements exist and are in the draw list; this is
                 // the counter to trust over `blur_passes` (which only says the
@@ -520,6 +538,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 state
                     .stats
                     .record_blur_draw(downsample_max, blur_panels.len() as u64);
+                state.stats.record_material_frame(output.name().as_str());
                 if full_output {
                     // Diagnostic/rollback shape: the full-output scene texture
                     // is the output base, exactly like the pre-T-21.3 path.
@@ -737,9 +756,13 @@ where
             .create_buffer(Fourcc::Abgr8888, buffer_size)
             .map_err(|err| format!("scene buffer failed: {err}"))?;
         cache.install(texture, key);
-        state.stats.record_material_scene_allocation();
+        state
+            .stats
+            .record_material_scene_allocation_for(output.name().as_str());
     }
-    state.stats.record_material_region(region.texture_size);
+    state
+        .stats
+        .record_material_region_for(output.name().as_str(), region.texture_size);
     let mut texture = cache
         .texture()
         .cloned()

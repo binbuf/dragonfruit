@@ -102,7 +102,11 @@ pub fn chrome_under(
     // the topmost layer wins the hit test. The Files desktop layer
     // (`background`, T-19.3) composites *below* windows, so it is not chrome
     // here and is hit-tested separately by [`desktop_under`].
-    for chrome in state.chrome_surfaces(&output.name(), geometry).iter().rev() {
+    for chrome in state
+        .visible_chrome_surfaces(&output.name(), geometry)
+        .iter()
+        .rev()
+    {
         if !crate::shell::layer::above_windows(chrome.layer) {
             continue;
         }
@@ -134,7 +138,11 @@ pub fn desktop_under(
             .is_some_and(|geometry| geometry.to_f64().contains(point))
     })?;
     let geometry = state.space.output_geometry(output)?;
-    for chrome in state.chrome_surfaces(&output.name(), geometry).iter().rev() {
+    for chrome in state
+        .visible_chrome_surfaces(&output.name(), geometry)
+        .iter()
+        .rev()
+    {
         if !crate::shell::layer::is_desktop(chrome.layer) {
             continue;
         }

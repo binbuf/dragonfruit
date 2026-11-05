@@ -1533,6 +1533,21 @@ fn render_surface(
             Vec::new()
         };
     let used_material = !blur_panels.is_empty();
+    // Direct-scanout policy (T-21.3): a settled fullscreen client that covers
+    // the output with no visible material panel skips the sampled pass. The
+    // top-layer chrome is hidden by `visible_chrome_surfaces`; a visible
+    // overlay keeps the material. The real `direct_scanouts` counter is
+    // advanced only from the `DrmCompositor` primary-plane result below.
+    let direct_candidate = crate::window::direct_scanout_candidate(
+        Rectangle::from_size(output_geo.size),
+        state.fullscreen_client_rect(&surface.output),
+        &blur_panels,
+    );
+    if direct_candidate {
+        state
+            .stats
+            .record_direct_scanout_candidate(surface.output.name().as_str());
+    }
 
     if !blur_panels.is_empty() {
         let material_output = surface.output.clone();
@@ -1671,11 +1686,15 @@ fn render_surface(
         // moved or changed stacking order keeps its key, id, and textures
         // (T-21.3).
         surface.material.trim_panels(&panel_keys);
-        state
-            .stats
-            .record_material_panel_allocations(blur_allocations);
+        state.stats.record_material_panel_allocations_for(
+            surface.output.name().as_str(),
+            blur_allocations,
+        );
         if blur_drawn > 0 {
             state.stats.record_blur_draw(downsample_max, blur_drawn);
+            state
+                .stats
+                .record_material_frame(surface.output.name().as_str());
         }
 
         if full_output {
@@ -1751,7 +1770,7 @@ fn render_surface(
     match result {
         Ok(render_frame_result) => {
             if let PrimaryPlaneElement::Element(_) = &render_frame_result.primary_element {
-                state.stats.direct_scanouts += 1;
+                state.stats.record_direct_scanout(&output_name);
             }
             // Primary scanout bookkeeping is what `wl_surface.frame` callbacks
             // and presentation feedback key off. Smithay's DrmCompositor does

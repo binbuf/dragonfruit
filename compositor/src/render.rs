@@ -141,7 +141,7 @@ where
     // list is consumed front-to-back: reverse it so overlays (menus, the
     // Applications drawer) render above the persistent menu bar and Dock.
     for chrome in state
-        .chrome_surfaces(output.name().as_str(), geometry)
+        .visible_chrome_surfaces(output.name().as_str(), geometry)
         .into_iter()
         .rev()
     {
@@ -185,7 +185,7 @@ where
         return Vec::new();
     };
     let mut elements = Vec::new();
-    for chrome in state.chrome_surfaces(output.name().as_str(), geometry) {
+    for chrome in state.visible_chrome_surfaces(output.name().as_str(), geometry) {
         if !crate::shell::layer::is_desktop(chrome.layer) {
             continue;
         }
@@ -241,7 +241,7 @@ pub fn chrome_backdrop_render_elements(
     //   frost the entire desktop at every degrade tier except `minimal`.
     let output_size = output_geometry.size;
     let surfaces: Vec<_> = state
-        .chrome_surfaces(output.name().as_str(), output_geometry)
+        .visible_chrome_surfaces(output.name().as_str(), output_geometry)
         .into_iter()
         .filter(|chrome| chrome.layer >= 2)
         .filter(|chrome| is_backdrop_panel(chrome.panel, output_size))
@@ -341,7 +341,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
     };
     let output_size = output_geometry.size;
     let surfaces: Vec<_> = state
-        .chrome_surfaces(output.name().as_str(), output_geometry)
+        .visible_chrome_surfaces(output.name().as_str(), output_geometry)
         .into_iter()
         .filter(|chrome| chrome.layer >= 2)
         .filter(|chrome| is_backdrop_panel(chrome.panel, output_size))
@@ -744,6 +744,10 @@ fn send_chrome_frame_callbacks(state: &DfState, output: &Output, time: Duration)
         return 0;
     };
     let mut sent = 0u64;
+    // Callbacks are answered for every chrome surface, including the
+    // persistent `top` chrome hidden while a fullscreen client owns the
+    // output. Otherwise the shell would wait forever for a callback on a
+    // surface the compositor is deliberately not drawing (T-21.3).
     for chrome in state.chrome_surfaces(output.name().as_str(), geometry) {
         let pending = with_states(&chrome.surface, |states| {
             states

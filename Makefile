@@ -53,6 +53,7 @@ endif
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
+        t21-scanout-counters t21-direct-scanout-native \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
@@ -69,6 +70,8 @@ help:
 	@echo "  make t21-chrome-baseline — T-21.1a chrome transport counters + report"
 	@echo "  make t21-region-render — T-21.3 nested 1x/1.5x/2x region captures + stats"
 	@echo "  make t21-stable-damage — T-21.3 stable-ID/damage test + settled Dock capture"
+	@echo "  make t21-scanout-counters — T-21.3 4K region + fullscreen skip-pass trace"
+	@echo "  make t21-direct-scanout-native — T-21.3 real DRM direct_scanouts trace"
 	@echo "  make t21-degrade-load — T-21.2c refresh-aware hysteresis + load trace"
 	@echo "  make t21-refresh-144 — T-21.2a simulated-144 Hz clock/budget trace"
 	@echo "  make t21-frame-scheduler — T-21.2b per-output request/earliest-deadline trace"
@@ -252,6 +255,21 @@ t21-region-render: build
 # Needs a host Wayland session; not part of e2e.
 t21-stable-damage: build
 	bash scripts/t21-stable-damage.sh
+
+# T-21.3 direct-scanout policy and material counters (T190d): 4K region
+# arithmetic, a flat settled-Dock allocation check, and a fullscreen client
+# that skips the sampled pass. Writes docs/captures/t21-scanout-counters.txt
+# and the two stills. The real DRM direct_scanouts>0 half is OPEN here and
+# swept by T191a on a free seat. Needs a host Wayland session; not in e2e.
+t21-scanout-counters: build
+	bash scripts/t21-scanout-counters.sh
+
+# T-21.3 native direct-scanout half (T190d/T191a): runs the DRM compositor on
+# a free seat with an output-sized client and asserts the real
+# `direct_scanouts` counter advances. On a host whose live session owns DRM
+# master it writes an explicit OPEN artifact instead of faking the counter.
+t21-direct-scanout-native: cargo-build
+	bash scripts/t21-direct-scanout-native.sh
 
 # T-21.2c refresh-aware hysteresis load trace (T189d). Runs the pure
 # 60/120/144 Hz window/sweep tests and the headless compositor load sequence;

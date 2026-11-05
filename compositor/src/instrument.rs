@@ -153,6 +153,15 @@ impl LatencyInstrument {
 pub struct ScanoutCounter {
     /// Frames pushed through the direct-scanout path (DRM only).
     pub direct_scanouts: u64,
+    /// Output-frames that built the sampled material draw list. Reported
+    /// separately from `direct_scanouts` so the two paths can never be
+    /// confused in a trace.
+    pub material_frames: u64,
+    /// Output-frames whose policy selected the no-material direct-scanout
+    /// path. Nested records candidates but cannot scan out; DRM advances
+    /// `direct_scanouts` only when the primary plane actually takes the
+    /// client buffer.
+    pub direct_scanout_candidates: u64,
     /// Frames actually rendered (or scanout-composited).
     pub frames_rendered: u64,
     /// Renders skipped because the damage tracker found no damage.
@@ -164,6 +173,8 @@ impl ScanoutCounter {
     pub fn read(stats: &RenderStats) -> Self {
         Self {
             direct_scanouts: stats.direct_scanouts,
+            material_frames: stats.material_frames,
+            direct_scanout_candidates: stats.direct_scanout_candidates,
             frames_rendered: stats.frames_rendered,
             frames_skipped_no_damage: stats.frames_skipped_no_damage,
         }
@@ -189,8 +200,11 @@ impl ScanoutCounter {
     /// One-line report for the trace.
     pub fn report(&self) -> String {
         format!(
-            "direct_scanouts={} frames_rendered={} frames_skipped_no_damage={} considered={}",
+            "direct_scanouts={} material_frames={} direct_scanout_candidates={} \
+             frames_rendered={} frames_skipped_no_damage={} considered={}",
             self.direct_scanouts,
+            self.material_frames,
+            self.direct_scanout_candidates,
             self.frames_rendered,
             self.frames_skipped_no_damage,
             self.frames_considered()
@@ -457,6 +471,22 @@ mod tests {
         let still = ScanoutCounter::read(&stats_with(7, 20, 2));
         assert_eq!(still.advanced_since(&after), 0);
         assert!(!still.engaged_since(&after));
+    }
+
+    #[test]
+    fn scanout_template_keeps_material_frames_separate() {
+        let mut stats = stats_with(0, 10, 0);
+        stats.record_material_frame("DP-1");
+        stats.record_material_frame("DP-1");
+        stats.record_direct_scanout_candidate("DP-1");
+        let counter = ScanoutCounter::read(&stats);
+        assert_eq!(counter.material_frames, 2);
+        assert_eq!(counter.direct_scanout_candidates, 1);
+        assert_eq!(counter.direct_scanouts, 0);
+        let report = counter.report();
+        assert!(report.contains("direct_scanouts=0"));
+        assert!(report.contains("material_frames=2"));
+        assert!(report.contains("direct_scanout_candidates=1"));
     }
 
     #[test]
