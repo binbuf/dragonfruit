@@ -226,6 +226,7 @@ mod tests {
 
     fn panel(rect: (i32, i32, i32, i32), radius: f32) -> BlurPanel {
         BlurPanel {
+            key: crate::window::PanelKey::new("test", 2, 0),
             panel: Rectangle::new((rect.0, rect.1).into(), (rect.2, rect.3).into()),
             spec: BlurSpec::new(radius, 10.0),
             glass: GlassSpec {
@@ -470,6 +471,7 @@ mod tests {
         let panel_rect = Rectangle::new((1200, 760).into(), (200, 100).into());
         let region = MaterialRegion::from_panels(
             &[BlurPanel {
+                key: crate::window::PanelKey::new("test", 2, 0),
                 panel: panel_rect,
                 spec: BlurSpec::new(8.0, 10.0),
                 glass: GlassSpec {
@@ -499,6 +501,7 @@ mod tests {
         // rounded size: the source never reaches past the texture.
         let region = MaterialRegion::from_panels(
             &[BlurPanel {
+                key: crate::window::PanelKey::new("test", 2, 0),
                 panel: Rectangle::new((1199, 759).into(), (81, 41).into()),
                 spec: BlurSpec::new(12.0, 10.0),
                 glass: GlassSpec {
