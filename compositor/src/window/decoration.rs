@@ -27,7 +27,7 @@
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::Color32F;
-use smithay::utils::{Logical, Point, Rectangle, Scale};
+use smithay::utils::{Logical, Physical, Point, Rectangle, Scale};
 
 use crate::design_tokens::{
     component::{titlebar, traffic_lights},
@@ -473,10 +473,10 @@ impl TitlebarElement {
     /// surface, so the decoration does not detach from a window that is still
     /// scaling in, restoring, or minimizing.
     ///
-    /// The lights are rasterized as circles (stacks of solid strips); the
-    /// chrome is a flat token fill with the top corners clipped to the
-    /// token-derived radius (T-04.1b). T-04.2 adds the material blur on the
-    /// same geometry.
+    /// The lights are rasterized as antialiased circles at the output's
+    /// **physical** pixel resolution; the chrome is a flat token fill with the
+    /// top corners clipped to the token-derived radius (T-04.1b). T-04.2 adds
+    /// the material blur on the same geometry.
     pub fn render_elements(
         &self,
         scale: Scale<f64>,
@@ -498,16 +498,8 @@ impl TitlebarElement {
         let target = self.content;
 
         const TITLEBAR_SALT: u64 = 0x7469_746c_6562_6172; // "titlebar"
-        let mut push = |rect: Rectangle<i32, Logical>, color: Color32F| {
-            let (rect, color) = motion_transform(rect, color, target, motion);
-            let physical = to_physical(local(rect));
-            elements.push(SolidColorRenderElement::new(
-                crate::window::stable_solid_id(TITLEBAR_SALT, physical, color),
-                physical,
-                CommitCounter::default(),
-                color,
-                smithay::backend::renderer::element::Kind::Unspecified,
-            ));
+        let mut push = |physical: Rectangle<i32, Physical>, color: Color32F| {
+            elements.push(solid_element(TITLEBAR_SALT, physical, color));
         };
 
         // Build back-to-front (background → lights → glyphs); reverse at the
@@ -519,18 +511,31 @@ impl TitlebarElement {
         // SSD and the first-party titlebar cannot drift (FR-3). The bottom
         // edge stays square and joins the content below.
         for span in CornerMask::titlebar().spans(self.titlebar) {
-            push(span, color_from_rgba(self.scheme.chrome()));
+            let (rect, color) =
+                motion_transform(span, color_from_rgba(self.scheme.chrome()), target, motion);
+            push(to_physical(local(rect)), color);
         }
 
         let reveal = self.revealed();
         for button in &self.buttons {
             let fill = self.fill_color(button);
-            for strip in circle_rects(button.rect) {
-                push(strip, fill);
+            // Apply the lifecycle transform to the button once, then
+            // rasterize the transformed circle in physical pixels. Scaling
+            // individual logical strips (as this used to) snapped every edge
+            // to the logical grid, which read as a low-resolution circle.
+            let (button_rect, button_fill) = motion_transform(button.rect, fill, target, motion);
+            for span in circle_spans(button_rect, scale, origin) {
+                push(span.rect, button_fill * span.coverage);
             }
             if button.enabled && reveal {
                 for glyph in glyph_rects(button.kind, button.rect) {
-                    push(glyph, color_from_rgba(self.scheme.traffic_glyph()));
+                    let (rect, color) = motion_transform(
+                        glyph,
+                        color_from_rgba(self.scheme.traffic_glyph()),
+                        target,
+                        motion,
+                    );
+                    push(to_physical(local(rect)), color);
                 }
             }
         }
@@ -585,37 +590,123 @@ pub(crate) fn motion_transform(
     }
 }
 
-/// Rasterize the filled circle inscribed in `button` as 1px-tall solid strips.
+/// One physical pixel span of a rasterized circle and how much of that span
+/// the circle covers (`0..=1`). The renderer multiplies the fill's alpha by
+/// this coverage, so the edge pixels blend instead of stair-stepping.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CircleSpan {
+    rect: Rectangle<i32, Physical>,
+    coverage: f32,
+}
+
+/// Build one solid render element with a stable id for `salt`/geometry/color.
+fn solid_element(
+    salt: u64,
+    rect: Rectangle<i32, Physical>,
+    color: Color32F,
+) -> SolidColorRenderElement {
+    SolidColorRenderElement::new(
+        crate::window::stable_solid_id(salt, rect, color),
+        rect,
+        CommitCounter::default(),
+        color,
+        smithay::backend::renderer::element::Kind::Unspecified,
+    )
+}
+
+/// Rasterize the filled circle inscribed in `button` as antialiased physical
+/// pixel spans.
 ///
 /// The compositor has no vector rasterizer yet, so the macOS-style round
-/// traffic lights are built from solid rectangles like the glyphs. The strips
-/// are computed in logical coordinates, so the physical strip count does not
-/// grow with the output scale. T-04's material pass may replace them with a
-/// real (antialiased) texture.
-fn circle_rects(button: Rectangle<i32, Logical>) -> Vec<Rectangle<i32, Logical>> {
-    let diameter = button.size.w.min(button.size.h);
-    if diameter <= 0 {
+/// traffic lights are built from solid rectangles like the glyphs. The old
+/// implementation produced one *logical* row per strip; at 1x that is a
+/// 12-row staircase, and at fractional/HiDPI scales each strip snapped to the
+/// logical grid, so the circles read as low-resolution blocks. This
+/// rasterizer works in physical pixels: it emits one row per physical pixel
+/// (so the circle gains detail with the output scale), and gives the partial
+/// edge pixels a coverage alpha so the silhouette is smooth.
+///
+/// `button` is already in output-local logical coordinates (the caller applies
+/// any lifecycle motion), and the returned rects are output-local physical
+/// coordinates. T-04's material pass may eventually replace this with a
+/// texture.
+fn circle_spans(
+    button: Rectangle<i32, Logical>,
+    scale: Scale<f64>,
+    output_origin: Point<i32, Logical>,
+) -> Vec<CircleSpan> {
+    let diameter_x = f64::from(button.size.w) * scale.x;
+    let diameter_y = f64::from(button.size.h) * scale.y;
+    let diameter = diameter_x.min(diameter_y);
+    if diameter <= 0.0 {
         return Vec::new();
     }
-    let radius = diameter as f64 / 2.0;
-    let center_x = button.loc.x as f64 + radius;
-    let mut rects = Vec::with_capacity(diameter as usize);
-    for row in 0..diameter {
-        // Sample the chord at the row centre, so the widest row spans the
-        // full diameter and the pole rows are the narrowest.
-        let dy = row as f64 + 0.5 - radius;
-        let half = (radius * radius - dy * dy).max(0.0).sqrt();
-        let width = (half * 2.0).round() as i32;
-        if width <= 0 {
+
+    let left = (f64::from(button.loc.x) - f64::from(output_origin.x)) * scale.x;
+    let top = (f64::from(button.loc.y) - f64::from(output_origin.y)) * scale.y;
+    let radius = diameter / 2.0;
+    let center_x = left + diameter_x / 2.0;
+    let center_y = top + diameter_y / 2.0;
+
+    let first_row = (center_y - radius).floor() as i32;
+    let last_row = (center_y + radius).ceil() as i32;
+    let mut spans = Vec::with_capacity((last_row - first_row).max(0) as usize);
+
+    for row in first_row..last_row {
+        let row_top = f64::from(row);
+        let row_bottom = row_top + 1.0;
+        // How much of this physical pixel row the circle covers vertically.
+        let overlap = row_bottom.min(center_y + radius) - row_top.max(center_y - radius);
+        if overlap <= 0.0 {
             continue;
         }
-        let x = (center_x - width as f64 / 2.0).round() as i32;
-        rects.push(Rectangle::new(
-            (x, button.loc.y + row).into(),
-            (width, 1).into(),
-        ));
+        let coverage_y = overlap.min(1.0) as f32;
+
+        // Sample the chord at the middle of the row's covered part, so the
+        // partial pole rows still get their average width rather than a
+        // zero-width sample at the mathematical tangent.
+        let sample_y = row_top.max(center_y - radius) + overlap / 2.0;
+        let dy = sample_y - center_y;
+        let half = (radius * radius - dy * dy).max(0.0).sqrt();
+        let x_left = center_x - half;
+        let x_right = center_x + half;
+        if x_right <= x_left {
+            continue;
+        }
+
+        let first_full = x_left.ceil() as i32;
+        let last_full = x_right.floor() as i32;
+        let mut push_span = |x: i32, width: i32, coverage: f32| {
+            if width > 0 && coverage > 0.0 {
+                spans.push(CircleSpan {
+                    rect: Rectangle::new((x, row).into(), (width, 1).into()),
+                    coverage: (coverage * coverage_y).clamp(0.0, 1.0),
+                });
+            }
+        };
+
+        if first_full < last_full {
+            // A fully covered centre span plus at most one partial pixel on
+            // each side.
+            push_span(first_full, last_full - first_full, 1.0);
+            if x_left < f64::from(first_full) {
+                push_span(first_full - 1, 1, (f64::from(first_full) - x_left) as f32);
+            }
+            if x_right > f64::from(last_full) {
+                push_span(last_full, 1, (x_right - f64::from(last_full)) as f32);
+            }
+        } else {
+            // The chord is narrower than a pixel: split its coverage across
+            // the one or two pixels it touches.
+            let first = x_left.floor() as i32;
+            let last = x_right.floor() as i32;
+            for x in first..=last {
+                let covered = x_right.min(f64::from(x + 1)) - x_left.max(f64::from(x));
+                push_span(x, 1, covered as f32);
+            }
+        }
     }
-    rects
+    spans
 }
 
 /// Axis-aligned marks approximating the control glyphs at token scale. The
@@ -908,12 +999,30 @@ mod tests {
         ))));
     }
 
-    /// The number of solid strips the three rasterized lights contribute.
-    fn light_strip_count(titlebar: &TitlebarElement) -> usize {
+    /// The horizontal extent covered by each physical row of a rasterized
+    /// circle (its spans are split into a centre and partial edge pixels).
+    fn row_extents(spans: &[CircleSpan]) -> std::collections::BTreeMap<i32, i32> {
+        let mut extents: std::collections::BTreeMap<i32, (i32, i32)> =
+            std::collections::BTreeMap::new();
+        for span in spans {
+            let entry = extents
+                .entry(span.rect.loc.y)
+                .or_insert((span.rect.loc.x, span.rect.loc.x));
+            entry.0 = entry.0.min(span.rect.loc.x);
+            entry.1 = entry.1.max(span.rect.loc.x + span.rect.size.w);
+        }
+        extents
+            .into_iter()
+            .map(|(y, (left, right))| (y, right - left))
+            .collect()
+    }
+
+    /// The number of solid spans the three rasterized lights contribute.
+    fn light_span_count(titlebar: &TitlebarElement, scale: Scale<f64>) -> usize {
         titlebar
             .buttons
             .iter()
-            .map(|button| circle_rects(button.rect).len())
+            .map(|button| circle_spans(button.rect, scale, Point::from((0, 0))).len())
             .sum()
     }
 
@@ -928,33 +1037,82 @@ mod tests {
         titlebar.hovered = false;
         titlebar.focused = true;
         let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)), None);
-        // The rounded fill spans + the light strips, no glyphs while not
+        // The rounded fill spans + the light spans, no glyphs while not
         // hovered.
         assert_eq!(
             elements.len(),
-            titlebar_fill_count(&titlebar) + light_strip_count(&titlebar)
+            titlebar_fill_count(&titlebar) + light_span_count(&titlebar, 1.0.into())
         );
     }
 
     #[test]
     fn traffic_lights_are_rasterized_as_circles() {
         let button = rect(10, 10, 12, 12);
-        let strips = circle_rects(button);
-        assert_eq!(strips.len(), 12, "one strip per logical row");
-        let widths: Vec<i32> = strips.iter().map(|strip| strip.size.w).collect();
-        // The widest strip spans the full diameter at the vertical centre;
+        let spans = circle_spans(button, 1.0.into(), Point::from((0, 0)));
+        let widths = row_extents(&spans);
+        // The widest row reaches the full diameter at the vertical centre;
         // the pole rows are narrower, so the silhouette is round, not square.
-        assert_eq!(*widths.iter().max().unwrap(), 12);
+        assert_eq!(*widths.values().max().unwrap(), 12);
         assert!(
-            widths[0] < 12,
+            widths[&button.loc.y] < 12,
             "the top row must be narrower than the middle"
         );
-        assert!(widths[11] < 12, "the bottom row must be narrower");
-        for strip in &strips {
-            assert_eq!(strip.size.h, 1);
-            assert!(strip.loc.x >= button.loc.x);
-            assert!(strip.loc.x + strip.size.w <= button.loc.x + button.size.w);
+        for span in &spans {
+            assert_eq!(span.rect.size.h, 1);
+            assert!(span.rect.loc.x >= button.loc.x);
+            assert!(span.rect.loc.x + span.rect.size.w <= button.loc.x + button.size.w);
+            assert!((0.0..=1.0).contains(&span.coverage));
         }
+    }
+
+    #[test]
+    fn traffic_lights_are_antialiased_at_physical_resolution() {
+        let button = rect(10, 10, 12, 12);
+
+        // At 2x the circle is rasterized into twice as many physical rows
+        // and spans the full 24 physical pixels, so it gains detail instead
+        // of snapping to the logical grid.
+        let spans = circle_spans(button, 2.0.into(), Point::from((0, 0)));
+        let widths = row_extents(&spans);
+        assert_eq!(widths.len(), 24, "one physical row per physical pixel");
+        assert_eq!(*widths.values().max().unwrap(), 24);
+
+        // Edge pixels are partially covered, which is what removes the
+        // staircase. Interior pixels stay fully opaque.
+        assert!(
+            spans
+                .iter()
+                .any(|span| span.coverage > 0.0 && span.coverage < 1.0),
+            "the circle must have antialiased edge spans"
+        );
+        assert!(
+            spans.iter().any(|span| span.coverage == 1.0),
+            "the circle must have fully covered interior spans"
+        );
+
+        // No two spans overlap: each physical pixel is painted at most once.
+        let mut covered = std::collections::BTreeSet::new();
+        for span in &spans {
+            for x in span.rect.loc.x..span.rect.loc.x + span.rect.size.w {
+                assert!(
+                    covered.insert((x, span.rect.loc.y)),
+                    "overlapping spans at ({x}, {})",
+                    span.rect.loc.y
+                );
+            }
+        }
+
+        // The covered area is close to the analytic circle area (coverage is
+        // an area fraction, so summing it approximates the disc).
+        let area: f32 = spans
+            .iter()
+            .map(|span| span.rect.size.w as f32 * span.coverage)
+            .sum();
+        let expected = std::f32::consts::PI * 12.0 * 12.0;
+        assert!(
+            (area - expected).abs() < expected * 0.05,
+            "rasterized area {area} should be close to {expected}"
+        );
     }
 
     #[test]
@@ -1014,7 +1172,7 @@ mod tests {
             .len();
         assert_eq!(
             total,
-            titlebar_fill_count(&titlebar) + light_strip_count(&titlebar) + glyphs
+            titlebar_fill_count(&titlebar) + light_span_count(&titlebar, 1.0.into()) + glyphs
         );
     }
 
@@ -1061,7 +1219,7 @@ mod tests {
         let diameter = traffic_lights::DIAMETER as i32;
         for light in &elements[..elements.len() - fill] {
             let geo = light.geometry(1.0.into());
-            assert_eq!(geo.size.h, 1, "a light strip is one logical pixel tall");
+            assert_eq!(geo.size.h, 1, "a light span is one physical pixel tall");
             assert!(geo.size.w <= diameter);
             assert!(geo.loc.x >= cluster.loc.x);
             assert!(geo.loc.x + geo.size.w <= cluster.loc.x + cluster.size.w);

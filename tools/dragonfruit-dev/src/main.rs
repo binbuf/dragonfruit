@@ -1009,14 +1009,7 @@ fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -
     // Opt-in dev-only log split (T-21.1a): the chrome baseline keeps the
     // shell's long stats lines out of the compositor's dump block.
     let shell_log = std::env::var_os("DF_SHELL_LOG").map(PathBuf::from);
-    launch_program_logged(
-        guard,
-        "shell",
-        &shell,
-        &args,
-        &envs,
-        shell_log.as_deref(),
-    )
+    launch_program_logged(guard, "shell", &shell, &args, &envs, shell_log.as_deref())
 }
 
 /// 32 random bytes as hex, for the compositor's `desktop:` launch token. The
