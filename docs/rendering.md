@@ -211,7 +211,11 @@ render. The DRM material path is single-GPU, so the scene texture and Kawase
 chain share one GL context; each offscreen frame is finished before the next
 bind, and the nested `GlesFrame` waits on its fence when dropped. `material
 stats` reports `material_allocations`, the scene/panel split,
-`material_region_px`, and `material_region=WxH`.
+`material_region_px`, and `material_region=WxH`. T190d adds the monotonic
+per-output `output material stats` line (`material_frames`,
+`direct_scanouts`, `direct_scanout_candidates`, `material_allocations`,
+`material_region_px`); the settled-Dock capture asserts the allocation and
+region counters are flat across two snapshots.
 
 **Acceptance**
 
@@ -229,6 +233,27 @@ scanout for fullscreen clients.
 - Detect a fullscreen client with no overlapping chrome material and skip the
   material pass for that output-frame.
 - Report direct scanouts separately from material frames.
+
+T190d implements the policy (ADR 0210). A settled fullscreen client that
+covers an output hides the persistent `top` chrome (menu bar, Dock) on that
+output; transient `overlay` surfaces still composite and keep the sampled
+material. The pure `window::scanout::direct_scanout_candidate` decides whether
+a frame skips the pass: fullscreen rect covers the output and no visible
+material panel intersects it. Both backends record
+`direct_scanout_candidates`; only DRM advances the real `direct_scanouts`
+counter, from `PrimaryPlaneElement::Element`. `material_frames` is reported
+separately from `direct_scanouts`, and `material stats` keeps
+`material_allocations`/`material_region_px`; `output material stats` carries
+the monotonic per-output split. `DRAGONFRUIT_MATERIAL_FULL_OUTPUT=1` stays the
+full-output diagnostic/rollback switch.
+
+The nested trace (`make t21-scanout-counters`) shows the policy: a settled
+fullscreen client advances `direct_scanout_candidates`, leaves
+`material_frames` flat, and keeps allocations/region flat. The real
+`direct_scanouts>0` DRM trace needs a free seat; `make
+t21-direct-scanout-native` runs it and this host's artifact
+(`captures/t21-direct-scanout.open.txt`) records the hardware half as OPEN
+rather than faking the counter. The T191a native sweep reruns it.
 
 **Acceptance**
 

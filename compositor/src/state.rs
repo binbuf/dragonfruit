@@ -249,6 +249,29 @@ impl PresentationStats {
     }
 }
 
+/// Per-output material and direct-scanout counters (T-21.3).
+///
+/// The global [`RenderStats`] totals stay for the existing trace contract;
+/// this entry is the per-output breakdown the design requires. Every field is
+/// monotonic across the session except `material_region_px`, which is the last
+/// resolved region (a size, not an event), and `material_region`, its
+/// dimensions.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct OutputMaterialStats {
+    /// Output-frames that built the sampled material draw list.
+    pub material_frames: u64,
+    /// Frames the DRM primary plane actually scanned out (never faked).
+    pub direct_scanouts: u64,
+    /// Frames whose policy said "fullscreen client, no material panel".
+    pub direct_scanout_candidates: u64,
+    /// Scene + panel texture allocations attributed to this output.
+    pub material_allocations: u64,
+    /// The last material region's texture area in pixels.
+    pub material_region_px: u64,
+    /// The last material region's texture dimensions.
+    pub material_region: (i32, i32),
+}
+
 /// Render-path counters (FR-5: verified via render-path counters) plus the
 /// per-frame timing trace T-11 U-2 needs for the FR-8 frame budget.
 #[derive(Debug, Default)]
@@ -312,6 +335,16 @@ pub struct RenderStats {
     pub material_region_px: u64,
     /// The last material region's texture dimensions, for the trace.
     pub material_region: (i32, i32),
+    /// Output-frames that built the sampled material draw list (T-21.3).
+    /// `direct_scanouts` is reported separately so a fullscreen frame can
+    /// never be mistaken for a material frame.
+    pub material_frames: u64,
+    /// Output-frames whose policy selected the no-material direct-scanout
+    /// path (a fullscreen client with no overlapping visible material). The
+    /// actual [`Self::direct_scanouts`] counter remains DRM-primary-plane only.
+    pub direct_scanout_candidates: u64,
+    /// Per-output material/direct-scanout breakdown (T-21.3).
+    pub output_material: HashMap<String, OutputMaterialStats>,
     /// Chrome transport imports (T-21.1a): every shell chrome buffer the
     /// compositor received as shared memory, and the bytes those buffers
     /// carried. The current shell allocates a fresh buffer per commit, so this
@@ -483,6 +516,53 @@ impl RenderStats {
     pub fn record_material_region(&mut self, size: Size<i32, Buffer>) {
         self.material_region = (size.w, size.h);
         self.material_region_px = (size.w.max(0) as u64).saturating_mul(size.h.max(0) as u64);
+    }
+
+    fn output_material_mut(&mut self, output: &str) -> &mut OutputMaterialStats {
+        self.output_material.entry(output.to_owned()).or_default()
+    }
+
+    /// Record one output-frame that built the sampled material draw list.
+    pub fn record_material_frame(&mut self, output: &str) {
+        self.material_frames = self.material_frames.saturating_add(1);
+        let entry = self.output_material_mut(output);
+        entry.material_frames = entry.material_frames.saturating_add(1);
+    }
+
+    /// Record one output-frame whose policy selected direct scanout.
+    pub fn record_direct_scanout_candidate(&mut self, output: &str) {
+        self.direct_scanout_candidates = self.direct_scanout_candidates.saturating_add(1);
+        let entry = self.output_material_mut(output);
+        entry.direct_scanout_candidates = entry.direct_scanout_candidates.saturating_add(1);
+    }
+
+    /// Record one actual primary-plane direct scanout (DRM only).
+    pub fn record_direct_scanout(&mut self, output: &str) {
+        self.direct_scanouts = self.direct_scanouts.saturating_add(1);
+        let entry = self.output_material_mut(output);
+        entry.direct_scanouts = entry.direct_scanouts.saturating_add(1);
+    }
+
+    /// Record one scene-texture allocation attributed to `output`.
+    pub fn record_material_scene_allocation_for(&mut self, output: &str) {
+        self.record_material_scene_allocation();
+        let entry = self.output_material_mut(output);
+        entry.material_allocations = entry.material_allocations.saturating_add(1);
+    }
+
+    /// Record `allocations` panel Kawase-chain textures attributed to `output`.
+    pub fn record_material_panel_allocations_for(&mut self, output: &str, allocations: u64) {
+        self.record_material_panel_allocations(allocations);
+        let entry = self.output_material_mut(output);
+        entry.material_allocations = entry.material_allocations.saturating_add(allocations);
+    }
+
+    /// Record the last material region's texture size for `output`.
+    pub fn record_material_region_for(&mut self, output: &str, size: Size<i32, Buffer>) {
+        self.record_material_region(size);
+        let entry = self.output_material_mut(output);
+        entry.material_region = (size.w, size.h);
+        entry.material_region_px = (size.w.max(0) as u64).saturating_mul(size.h.max(0) as u64);
     }
 
     /// Whether [`DfState::dump_stats`] should print the full frame trace.
@@ -1238,6 +1318,66 @@ impl DfState {
             return true;
         };
         self.workspaces.active_space(output) == Some(space)
+    }
+
+    /// The output-local rect of a fullscreen client that covers `output`, or
+    /// `None` when the output's active Space has no settled fullscreen client.
+    ///
+    /// This is the direct-scanout policy input (T-21.3). A fullscreen window
+    /// mid-transition does not cover the output yet, so persistent chrome stays
+    /// visible until the motion lands; after that the client owns the output
+    /// and the compositor hides the top-layer chrome so the client can scan
+    /// out. Transient `overlay` surfaces (OSD, menus, notification) stay
+    /// visible and keep the sampled material.
+    pub fn fullscreen_client_rect(&self, output: &Output) -> Option<Rectangle<i32, Logical>> {
+        self.fullscreen_client_rect_for_name(output.name().as_str())
+    }
+
+    /// [`Self::fullscreen_client_rect`] by output name.
+    pub fn fullscreen_client_rect_for_name(
+        &self,
+        output_name: &str,
+    ) -> Option<Rectangle<i32, Logical>> {
+        let output_geometry = self
+            .space
+            .outputs()
+            .find(|output| output.name() == output_name)
+            .and_then(|output| self.space.output_geometry(output))?;
+        for window in self.space.elements() {
+            if self.windows.state(window) != Some(WindowState::Fullscreen)
+                || self.windows.is_closing(window)
+            {
+                continue;
+            }
+            if !self
+                .space
+                .outputs_for_element(window)
+                .iter()
+                .any(|output| output.name() == output_name)
+            {
+                continue;
+            }
+            let Some(geometry) = self.windows.geometry(window) else {
+                continue;
+            };
+            if !crate::window::covers_output(geometry, output_geometry) {
+                continue;
+            }
+            return Some(Rectangle::new(
+                (
+                    geometry.loc.x - output_geometry.loc.x,
+                    geometry.loc.y - output_geometry.loc.y,
+                )
+                    .into(),
+                geometry.size,
+            ));
+        }
+        None
+    }
+
+    /// Whether a fullscreen client owns `output` (covers it completely).
+    pub fn fullscreen_client_covers_output(&self, output_name: &str) -> bool {
+        self.fullscreen_client_rect_for_name(output_name).is_some()
     }
 
     /// Map only the visible windows of each output's active Space and unmap
@@ -3406,6 +3546,27 @@ impl DfState {
             "dragonfruit-compositor: scanout stats ({label}): {}",
             crate::instrument::ScanoutCounter::read(&self.stats).report(),
         );
+        // Per-output material/direct-scanout breakdown (T-21.3): the global
+        // counters above stay for compatibility; these lines are the
+        // monotonic per-output contract. Sorted by output name so a trace is
+        // deterministic across HashMap iteration order.
+        let mut outputs: Vec<_> = self.stats.output_material.iter().collect();
+        outputs.sort_by_key(|(name, _)| name.as_str());
+        for (name, material) in outputs {
+            println!(
+                "dragonfruit-compositor: output material stats ({label}): \
+                 output={name} material_frames={} direct_scanouts={} \
+                 direct_scanout_candidates={} material_allocations={} \
+                 material_region_px={} material_region={}x{}",
+                material.material_frames,
+                material.direct_scanouts,
+                material.direct_scanout_candidates,
+                material.material_allocations,
+                material.material_region_px,
+                material.material_region.0,
+                material.material_region.1,
+            );
+        }
         // Animation-clock counters (T-02.1a): `frames_stepped` is the number
         // of animation frames the clock advanced; while an animation is live
         // it must equal the render-path frame delta, and while idle it must
@@ -5502,6 +5663,42 @@ mod tests {
         assert_eq!(stats.material_scene_allocations, 2);
         assert_eq!(stats.material_region_px, 400 * 80);
         assert_eq!(stats.material_region, (400, 80));
+    }
+
+    #[test]
+    fn per_output_material_and_scanout_counters_stay_monotonic() {
+        let mut stats = RenderStats::new();
+        stats.record_material_scene_allocation_for("DP-1");
+        stats.record_material_panel_allocations_for("DP-1", 2);
+        stats.record_material_region_for("DP-1", Size::from((1920, 120)));
+        stats.record_material_frame("DP-1");
+        stats.record_material_frame("DP-1");
+        stats.record_direct_scanout_candidate("DP-1");
+        stats.record_direct_scanout("DP-1");
+
+        let output = stats.output_material.get("DP-1").copied().unwrap();
+        assert_eq!(output.material_allocations, 3);
+        assert_eq!(output.material_region_px, 1920 * 120);
+        assert_eq!(output.material_region, (1920, 120));
+        assert_eq!(output.material_frames, 2);
+        assert_eq!(output.direct_scanout_candidates, 1);
+        assert_eq!(output.direct_scanouts, 1);
+
+        // A settled frame adds no allocation and leaves the region flat, so
+        // the warm-up assertion can compare two snapshots directly.
+        let before = stats.output_material.get("DP-1").copied().unwrap();
+        stats.record_material_frame("DP-1");
+        let after = stats.output_material.get("DP-1").copied().unwrap();
+        assert_eq!(after.material_allocations, before.material_allocations);
+        assert_eq!(after.material_region_px, before.material_region_px);
+        assert_eq!(after.material_frames, before.material_frames + 1);
+
+        // Another output has its own counters; nothing leaks across.
+        stats.record_direct_scanout("HDMI-A-1");
+        assert_eq!(stats.output_material["DP-1"].direct_scanouts, 1);
+        assert_eq!(stats.output_material["HDMI-A-1"].direct_scanouts, 1);
+        assert_eq!(stats.direct_scanouts, 2);
+        assert_eq!(stats.material_frames, 3);
     }
 
     #[test]

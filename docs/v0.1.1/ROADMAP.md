@@ -63,7 +63,7 @@ done.
 - [x] T190a — T-21.3 Pure MaterialRegion helper → [../tasks/0.1.1/190a-t-21.3-material-region.md](../tasks/0.1.1/190a-t-21.3-material-region.md)
 - [x] T190b — T-21.3 Region-sized scene render and caching → [../tasks/0.1.1/190b-t-21.3-region-render.md](../tasks/0.1.1/190b-t-21.3-region-render.md)
 - [x] T190c — T-21.3 Stable scene/panel IDs and damage → [../tasks/0.1.1/190c-t-21.3-stable-ids-damage.md](../tasks/0.1.1/190c-t-21.3-stable-ids-damage.md)
-- [ ] T190d — T-21.3 Direct-scanout preservation and material counters → [../tasks/0.1.1/190d-t-21.3-scanout-and-counters.md](../tasks/0.1.1/190d-t-21.3-scanout-and-counters.md)
+- [x] T190d — T-21.3 Direct-scanout preservation and material counters → [../tasks/0.1.1/190d-t-21.3-scanout-and-counters.md](../tasks/0.1.1/190d-t-21.3-scanout-and-counters.md)
 
 ## Phase 21.4 — Native evidence and benchmarks
 
@@ -89,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-05T05:14:33Z · 20/30 done
+**Pipeline status** — updated 2026-11-05T06:17:49Z · 21/30 done
 
-- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c
+- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d
 - Blocked: none
 - Failed: none
-- Remaining: T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
-- Last finished: T190c — done · Stable panel/scene IDs, damage-only commits, persistent scene tracker, damage unit test, nested settled and full-output captures all landed; cargo test, clippy, fmt, and make gates pass.
+- Remaining: T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Last finished: T190d — done · Landed fullscreen chrome suppression, pure direct-scanout policy, per-output material counters, 4K region and nested fullscreen traces, native runner, and docs; cargo test and make gates pass, with the native direct_scanouts>0 hardware half recorded OPEN for T191a.
 <!-- /symphony:status -->

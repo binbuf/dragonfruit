@@ -533,6 +533,28 @@ impl DfState {
         surfaces
     }
 
+    /// Chrome surfaces that are actually visible on `output` this frame.
+    ///
+    /// This is [`Self::chrome_surfaces`] with the fullscreen policy applied:
+    /// when a fullscreen client owns the output, persistent `top` chrome (the
+    /// menu bar and Dock) is hidden so the client can direct-scan out.
+    /// Transient `overlay` surfaces stay, and so does the desktop band.
+    /// Frame-callback bookkeeping still uses the unfiltered list, so a hidden
+    /// chrome surface is not left waiting on a callback forever.
+    pub fn visible_chrome_surfaces(
+        &self,
+        output_name: &str,
+        output_geometry: Rectangle<i32, Logical>,
+    ) -> Vec<ChromeSurface> {
+        let fullscreen = self.fullscreen_client_covers_output(output_name);
+        self.chrome_surfaces(output_name, output_geometry)
+            .into_iter()
+            .filter(|chrome| {
+                !fullscreen || crate::shell::layer::visible_in_fullscreen(chrome.layer)
+            })
+            .collect()
+    }
+
     /// Recompute and send `configure` for a chrome surface.
     fn configure_layer(&mut self, resource: &df_layer_surface::DfLayerSurface) {
         let output_name = self

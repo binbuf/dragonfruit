@@ -1252,6 +1252,25 @@ idle window proves both presentation counters are flat. Part 3 writes
 exact rerun command when no free two-output DRM seat is available. The policy
 is [ADR 0202](../design/adr/0202-vrr-adaptation-and-mixed-refresh-evidence.md).
 
+T-21.3's direct-scanout preservation and material counters are produced by
+`scripts/t21-scanout-counters.sh` (`make t21-scanout-counters`). It records
+the pure 4K `MaterialRegion` arithmetic (a Dock-only 2608x149 region is
+388 592 px against the 8 294 400 px full output; the menu-bar + Dock union is
+the full output, the documented single-union shape), a settled Dock still
+with two material snapshots that assert `material_allocations` and
+`material_region_px` are flat after warm-up, and a settled fullscreen still
+where the menu bar/Dock are hidden and the sampled pass stops. The fullscreen
+snapshots advance `direct_scanout_candidates` while `material_frames` stays
+flat. The nested backend has no primary plane, so `direct_scanouts` remains 0
+there; `scripts/t21-direct-scanout-native.sh`
+(`make t21-direct-scanout-native`) writes `t21-direct-scanout.open.txt` with
+the DRM master probe and the free-seat rerun, and the T191a native sweep
+produces the real `direct_scanouts>0` trace on a free seat. Artifacts:
+`t21-scanout-counters.txt`, `t21-scanout-settled-1x.png`,
+`t21-scanout-fullscreen-1x.png`, the two `-stats.txt` snapshots, and
+`t21-direct-scanout.open.txt`. The policy is
+[ADR 0210](../design/adr/0210-fullscreen-chrome-suppression-and-scanout-counters.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

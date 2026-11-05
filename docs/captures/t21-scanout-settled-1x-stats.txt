@@ -1,0 +1,11 @@
+snapshot
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=15 direct_scanout_candidates=0 frames_rendered=38 frames_skipped_no_damage=0 considered=38
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=15 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=10 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=15 backdrop_skipped=0 path=gpu blur_passes=15 blur_panels=27 blur_draws=15 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=2304000 material_region=1920x1200
+snapshot
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=15 direct_scanout_candidates=0 frames_rendered=38 frames_skipped_no_damage=0 considered=38
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=15 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=10 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=15 backdrop_skipped=0 path=gpu blur_passes=15 blur_panels=27 blur_draws=15 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: scanout stats (SIGUSR1-2): direct_scanouts=0 material_frames=15 direct_scanout_candidates=0 frames_rendered=38 frames_skipped_no_damage=0 considered=38
+dragonfruit-compositor: output material stats (SIGUSR1-2): output=NESTED-1 material_frames=15 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=10 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=15 backdrop_skipped=0 path=gpu blur_passes=15 blur_panels=27 blur_draws=15 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=2304000 material_region=1920x1200

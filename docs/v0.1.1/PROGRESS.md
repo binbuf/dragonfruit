@@ -23,6 +23,7 @@
 - **T190a — T-21.3 pure MaterialRegion helper**: `compositor/src/window/material_region.rs` (new, pure geometry):; `MaterialRegion { rect, physical, texture_size }`;
 - **T190b — T-21.3 Region-sized scene render and caching**: `compositor/src/window/material_region.rs`:; `MaterialRegion::full_output` (diagnostic/rollback region),
 - **T190c — T-21.3 Stable scene/panel IDs and damage**: `compositor/src/window/material_cache.rs`:; `PanelKey` is an allocation-free hash of the chrome surface's
+- **T190d — T-21.3 direct-scanout preservation and material counters**: `compositor/src/window/scanout.rs` (new): pure `covers_output` and; Fullscreen chrome suppression:
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -46,6 +47,7 @@
 - [T190a](progress/T190a.md) — `compositor/src/window/material_region.rs` (new, pure geometry):
 - [T190b](progress/T190b.md) — `compositor/src/window/material_region.rs`:
 - [T190c](progress/T190c.md) — `compositor/src/window/material_cache.rs`:
+- [T190d](progress/T190d.md) — `compositor/src/window/scanout.rs` (new): pure `covers_output` and
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

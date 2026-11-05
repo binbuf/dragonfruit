@@ -21,8 +21,8 @@ cd "$(dirname "$0")/.."
 
 STATE="${1:-motion}"
 case "$STATE" in
-    motion|settled|menu|popover|lock) ;;
-    *) echo "usage: $0 motion|settled|menu|popover|lock" >&2; exit 2 ;;
+    motion|settled|menu|popover|lock|fullscreen) ;;
+    *) echo "usage: $0 motion|settled|menu|popover|lock|fullscreen" >&2; exit 2 ;;
 esac
 
 SETTLE="${SETTLE:-2}"
@@ -79,6 +79,13 @@ case "$STATE" in
     lock)
         DELAY=6000
         EXTRA_ENV=(DF_LOCK_FIXTURE=1000)
+        ;;
+    fullscreen)
+        # A settled fullscreen client with the persistent chrome hidden: the
+        # direct-scanout policy trace (T190d). The driver below picks a window
+        # and sends `fullscreen <id>`; the capture fires after the motion lands.
+        DELAY=14000
+        EXTRA_ENV=()
         ;;
 esac
 # A scaled session has to wait for settingsd -> shell -> df_output.set_scale
@@ -165,7 +172,27 @@ def send(c): s.sendto(c.encode(), synth)
 def motion(x, y): send(f"motion-abs {x / 1280:.6f} {y / 800:.6f}")
 def key(code):
     send(f"key {code} down"); send(f"key {code} up"); time.sleep(0.15)
-if state == "motion":
+if state == "fullscreen":
+    # Ask the compositor for a window and enter its dedicated fullscreen
+    # Space. The persistent menu bar/Dock must disappear and the material
+    # pass must stop; `query scanout` then reports the policy candidate.
+    send("query decorations")
+    end = time.time() + 3.0
+    windows = []
+    while time.time() < end:
+        try:
+            line = s.recv(4096).decode()
+        except socket.timeout:
+            break
+        for row in line.splitlines():
+            parts = row.split()
+            if parts and parts[0] == "decoration" and len(parts) > 11:
+                windows.append((int(parts[1]), parts[11]))
+    if not windows:
+        raise SystemExit("t21-live: no window to fullscreen")
+    send(f"fullscreen {windows[0][0]}")
+    time.sleep(3.0)
+elif state == "motion":
     # Keep the Dock spring moving across the capture instant.
     for index in range(600):
         x = 486 + (806 - 486) * (0.5 + 0.5 * __import__("math").sin(index / 7))
@@ -205,8 +232,43 @@ if [ "${DUMP_COMPOSITOR_STATS:-0}" = "1" ]; then
         for _ in 1 2; do
             kill -USR1 "$COMPOSITOR_PID" 2>/dev/null || true
             sleep 1
-            grep -a "material stats" "$LOG" | tail -1 | tee -a "$SCRATCH/compositor-stats.txt"
+            echo "snapshot" >>"$SCRATCH/compositor-stats.txt"
+            grep -aE "material stats|scanout stats|output material stats" "$LOG" \
+                | tail -n 6 | tee -a "$SCRATCH/compositor-stats.txt"
         done
+        if [ -n "${STATS_OUT:-}" ]; then
+            cp "$SCRATCH/compositor-stats.txt" "$STATS_OUT"
+        fi
+        if [ "${ASSERT_MATERIAL_FLAT:-0}" = "1" ]; then
+            python3 - "$SCRATCH/compositor-stats.txt" <<'PY'
+import re
+import sys
+
+groups = [group for group in open(sys.argv[1]).read().split("snapshot") if group.strip()]
+if len(groups) < 2:
+    raise SystemExit("t21-live: expected two material snapshots")
+
+
+def field(group, key):
+    match = re.search(rf"{key}=(\d+)", group)
+    if not match:
+        raise SystemExit(f"t21-live: missing {key} in snapshot {group!r}")
+    return int(match.group(1))
+
+
+before, after = groups[-2], groups[-1]
+for key in (
+    "material_allocations",
+    "material_scene_allocations",
+    "material_panel_allocations",
+    "material_region_px",
+):
+    a, b = field(before, key), field(after, key)
+    if a != b:
+        raise SystemExit(f"t21-live: {key} not flat after warm-up: {a} -> {b}")
+print("t21-live: material allocations and region are flat across the snapshots")
+PY
+        fi
     fi
 fi
 

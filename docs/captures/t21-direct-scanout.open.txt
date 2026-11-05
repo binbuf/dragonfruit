@@ -1,0 +1,19 @@
+T-21.3 — native direct-scanout trace: OPEN
+==============================================
+
+recorded: 2026-11-05T05:54:30Z
+host:     Linux 7.2.13-200.fc44.x86_64 x86_64
+result:   direct_scanouts>0 OPEN (no free logind seat: no DRM card accepted master)
+
+DRM master probe:
+  - /dev/dri/card1: busy (Permission denied)
+
+Why: the live graphical session owns DRM master, so a second
+     compositor cannot take the primary plane. This is the same
+     boundary as T-03.2/T-03.4. The nested T190d trace proves the
+     fullscreen policy; this artifact is the hardware half.
+
+Reproduce on a free seat / VM:
+  make t21-direct-scanout-native
+
+The successful artifact is docs/captures/t21-direct-scanout.txt.

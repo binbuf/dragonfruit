@@ -1,0 +1,11 @@
+snapshot
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=4 direct_scanout_candidates=14 frames_rendered=87 frames_skipped_no_damage=0 considered=87
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=4 direct_scanouts=0 direct_scanout_candidates=14 material_allocations=10 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=4 backdrop_skipped=0 path=gpu blur_passes=4 blur_panels=6 blur_draws=4 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=1024000 material_region=1280x800
+snapshot
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=4 direct_scanout_candidates=14 frames_rendered=87 frames_skipped_no_damage=0 considered=87
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=4 direct_scanouts=0 direct_scanout_candidates=14 material_allocations=10 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=4 backdrop_skipped=0 path=gpu blur_passes=4 blur_panels=6 blur_draws=4 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: scanout stats (SIGUSR1-2): direct_scanouts=0 material_frames=4 direct_scanout_candidates=15 frames_rendered=88 frames_skipped_no_damage=0 considered=88
+dragonfruit-compositor: output material stats (SIGUSR1-2): output=NESTED-1 material_frames=4 direct_scanouts=0 direct_scanout_candidates=15 material_allocations=10 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=4 backdrop_skipped=0 path=gpu blur_passes=4 blur_panels=6 blur_draws=4 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=1024000 material_region=1280x800

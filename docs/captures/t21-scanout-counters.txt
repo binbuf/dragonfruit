@@ -1,0 +1,105 @@
+T-21.3 direct-scanout preservation and material counters — T190d
+timestamp: 2026-11-04T21:41:16-08:00
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+session: WAYLAND_DISPLAY=dragonfruit-wayland
+
+== make t21-doctor ==
+bash scripts/t21-doctor.sh
+T-21 capture doctor
+root: /home/user/repos/binbuf/dragonfruit
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+session: WAYLAND_DISPLAY=dragonfruit-wayland XDG_RUNTIME_DIR=/run/user/1000
+
+ok    XDG_RUNTIME_DIR exists
+ok    host Wayland socket exists
+ok    build/shell/src/dragonfruit-shell
+ok    target/debug/dragonfruit-compositor
+ok    python3
+ok    kwin_wayland (virtual nested host)
+ok    xmessage (popover fixtures)
+ok    spectacle (host stills)
+ok    screenshot dir writable: /home/user/Pictures/Screenshots
+ok    scripts/t21-capture-lib.sh
+
+PASS: 0 warning(s)
+
+== direct-scanout policy unit tests ==
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running unittests src/main.rs (target/debug/deps/dragonfruit_compositor-95ebf6446de89740)
+
+running 7 tests
+test window::scanout::tests::a_fullscreen_client_with_no_material_panel_scans_out ... ok
+test window::scanout::tests::a_partial_fullscreen_client_keeps_the_material_pass ... ok
+test window::scanout::tests::covers_output_requires_a_positive_output_and_a_full_cover ... ok
+test window::scanout::tests::any_one_of_several_visible_panels_blocks_scanout ... ok
+test window::scanout::tests::zero_area_or_offscreen_panels_do_not_block_scanout ... ok
+test window::scanout::tests::no_fullscreen_client_keeps_the_material_pass ... ok
+test window::scanout::tests::a_visible_material_panel_keeps_the_sampled_pass ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 363 filtered out; finished in 0.00s
+
+
+== 4K full-output vs region arithmetic (MaterialRegion) ==
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running unittests src/main.rs (target/debug/deps/dragonfruit_compositor-95ebf6446de89740)
+
+running 1 test
+t21-region-4k: output=3840x2160 full_px=8294400 both_panels_region=3840x2160 both_panels_px=8294400 ratio=100.0%
+t21-region-4k: dock_only_region=2608x149 dock_only_px=388592 ratio=4.7%
+t21-region-4k: full_output_diagnostic_region=3840x2160 px=8294400
+t21-region-4k: dock_only_region_2x=5216x298 px=1554368
+test window::material_region::tests::a_4k_output_reports_the_full_output_and_dock_only_region_areas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 369 filtered out; finished in 0.00s
+
+
+== settled Dock, 1x: warm-up allocation/region flat check ==
+command: FULL_SESSION=0 SCALE=1 FORCE_TIER=full DUMP_COMPOSITOR_STATS=1 ASSERT_MATERIAL_FLAT=1 STATS_OUT=docs/captures/t21-scanout-settled-1x-stats.txt OUT=docs/captures/t21-scanout-settled-1x.png bash scripts/t21-live-capture.sh settled
+t21-live: settled capture on dragonfruit-t21-live-settled-425710 (scale 1)
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=15 direct_scanout_candidates=0 frames_rendered=38 frames_skipped_no_damage=0 considered=38
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=15 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=10 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=15 backdrop_skipped=0 path=gpu blur_passes=15 blur_panels=27 blur_draws=15 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=15 direct_scanout_candidates=0 frames_rendered=38 frames_skipped_no_damage=0 considered=38
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=15 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=10 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=15 backdrop_skipped=0 path=gpu blur_passes=15 blur_panels=27 blur_draws=15 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: scanout stats (SIGUSR1-2): direct_scanouts=0 material_frames=15 direct_scanout_candidates=0 frames_rendered=38 frames_skipped_no_damage=0 considered=38
+dragonfruit-compositor: output material stats (SIGUSR1-2): output=NESTED-1 material_frames=15 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=10 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=15 backdrop_skipped=0 path=gpu blur_passes=15 blur_panels=27 blur_draws=15 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=2304000 material_region=1920x1200
+t21-live: material allocations and region are flat across the snapshots
+t21-live: wrote docs/captures/t21-scanout-settled-1x.png
+
+== fullscreen client, 1x: skip the sampled pass ==
+command: FULL_SESSION=0 SCALE=1 FORCE_TIER=full DUMP_COMPOSITOR_STATS=1 ASSERT_MATERIAL_FLAT=1 STATS_OUT=docs/captures/t21-scanout-fullscreen-1x-stats.txt OUT=docs/captures/t21-scanout-fullscreen-1x.png bash scripts/t21-live-capture.sh fullscreen
+t21-live: fullscreen capture on dragonfruit-t21-live-fullscreen-428209 (scale 1)
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=4 direct_scanout_candidates=14 frames_rendered=87 frames_skipped_no_damage=0 considered=87
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=4 direct_scanouts=0 direct_scanout_candidates=14 material_allocations=10 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=4 backdrop_skipped=0 path=gpu blur_passes=4 blur_panels=6 blur_draws=4 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=4 direct_scanout_candidates=14 frames_rendered=87 frames_skipped_no_damage=0 considered=87
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=4 direct_scanouts=0 direct_scanout_candidates=14 material_allocations=10 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=4 backdrop_skipped=0 path=gpu blur_passes=4 blur_panels=6 blur_draws=4 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: scanout stats (SIGUSR1-2): direct_scanouts=0 material_frames=4 direct_scanout_candidates=15 frames_rendered=88 frames_skipped_no_damage=0 considered=88
+dragonfruit-compositor: output material stats (SIGUSR1-2): output=NESTED-1 material_frames=4 direct_scanouts=0 direct_scanout_candidates=15 material_allocations=10 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=4 backdrop_skipped=0 path=gpu blur_passes=4 blur_panels=6 blur_draws=4 blur_downsample_max=16 material_allocations=10 material_scene_allocations=2 material_panel_allocations=8 material_region_px=1024000 material_region=1280x800
+t21-live: material allocations and region are flat across the snapshots
+t21-live: wrote docs/captures/t21-scanout-fullscreen-1x.png
+
+== direct-scanout policy assertion ==
+t21-scanout: PASS fullscreen policy: direct_scanout_candidates=14 material_frames=4 (flat) material_allocations=10 (flat) material_region_px=1024000 (flat)
+t21-scanout: nested direct_scanouts=0 (nested has no primary plane; the real counter is DRM-only)
+
+== native direct-scanout (DRM primary plane) ==
+OPEN: no free logind seat on this host (the live session holds DRM master).
+The nested trace above proves the policy and the skipped pass; the real
+direct_scanouts>0 trace is swept by T191a on a free seat.
+Reproduce on a free seat:
+  make t21-direct-scanout-native
+
+== artifacts ==
+-rw-r--r--. 1 user user   92111 Nov  4 21:44 docs/captures/t21-scanout-fullscreen-1x.png
+-rw-r--r--. 1 user user    2082 Nov  4 21:44 docs/captures/t21-scanout-fullscreen-1x-stats.txt
+-rw-r--r--. 1 user user 3076444 Nov  4 21:42 docs/captures/t21-scanout-settled-1x.png
+-rw-r--r--. 1 user user    2100 Nov  4 21:42 docs/captures/t21-scanout-settled-1x-stats.txt
+
+The fullscreen still is the compositor's own render with the menu bar
+and Dock hidden; the stats snapshots show the sampled pass stopped.
+The 4K arithmetic is the helper's output, not a native screenshot.
