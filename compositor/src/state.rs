@@ -37,7 +37,8 @@ use smithay::reexports::wayland_server::backend::{ClientData, ClientId, Disconne
 use smithay::reexports::wayland_server::protocol::{wl_buffer, wl_seat, wl_surface::WlSurface};
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource as _};
 use smithay::utils::{
-    Clock, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Serial, Size, SERIAL_COUNTER,
+    Buffer, Clock, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Serial, Size,
+    SERIAL_COUNTER,
 };
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
@@ -299,6 +300,18 @@ pub struct RenderStats {
     /// (T-20.4): `2^iterations`, so the trace records how aggressive the blur
     /// actually was.
     pub blur_downsample_max: u32,
+    /// Scene/blur texture allocations across the session (T-21.3). The
+    /// steady-state material path must leave this flat after warm-up.
+    pub material_allocations: u64,
+    /// The scene-texture share of [`Self::material_allocations`].
+    pub material_scene_allocations: u64,
+    /// The panel Kawase-chain share of [`Self::material_allocations`].
+    pub material_panel_allocations: u64,
+    /// The last material region's texture area in pixels (T-21.3). A
+    /// Dock-only frame reports the padded panel union, not the full output.
+    pub material_region_px: u64,
+    /// The last material region's texture dimensions, for the trace.
+    pub material_region: (i32, i32),
     /// Chrome transport imports (T-21.1a): every shell chrome buffer the
     /// compositor received as shared memory, and the bytes those buffers
     /// carried. The current shell allocates a fresh buffer per commit, so this
@@ -445,6 +458,31 @@ impl RenderStats {
         self.blur_draws += 1;
         self.blur_downsample_max = self.blur_downsample_max.max(downsample_max);
         debug_assert!(panels > 0);
+    }
+
+    /// Record scene/blur texture allocations (T-21.3). A steady-state frame
+    /// adds zero; a region/mode/scale change may add one or more.
+    pub fn record_material_allocations(&mut self, allocations: u64) {
+        self.material_allocations = self.material_allocations.saturating_add(allocations);
+    }
+
+    /// Record one scene-texture allocation (T-21.3).
+    pub fn record_material_scene_allocation(&mut self) {
+        self.record_material_allocations(1);
+        self.material_scene_allocations = self.material_scene_allocations.saturating_add(1);
+    }
+
+    /// Record `allocations` panel Kawase-chain texture allocations (T-21.3).
+    pub fn record_material_panel_allocations(&mut self, allocations: u64) {
+        self.record_material_allocations(allocations);
+        self.material_panel_allocations =
+            self.material_panel_allocations.saturating_add(allocations);
+    }
+
+    /// Record the last material region's texture size (T-21.3).
+    pub fn record_material_region(&mut self, size: Size<i32, Buffer>) {
+        self.material_region = (size.w, size.h);
+        self.material_region_px = (size.w.max(0) as u64).saturating_mul(size.h.max(0) as u64);
     }
 
     /// Whether [`DfState::dump_stats`] should print the full frame trace.
@@ -3457,7 +3495,9 @@ impl DfState {
         println!(
             "dragonfruit-compositor: material stats ({label}): \
              backdrop_passes={} backdrop_skipped={} path={} blur_passes={} \
-             blur_panels={} blur_draws={} blur_downsample_max={}",
+             blur_panels={} blur_draws={} blur_downsample_max={} \
+             material_allocations={} material_scene_allocations={} \
+             material_panel_allocations={} material_region_px={} material_region={}x{}",
             self.material_pass.applications(),
             self.material_pass.skipped(),
             self.material_path.name(),
@@ -3465,6 +3505,12 @@ impl DfState {
             self.stats.blur_panels,
             self.stats.blur_draws,
             self.stats.blur_downsample_max,
+            self.stats.material_allocations,
+            self.stats.material_scene_allocations,
+            self.stats.material_panel_allocations,
+            self.stats.material_region_px,
+            self.stats.material_region.0,
+            self.stats.material_region.1,
         );
         // Live light/dark scheme (T-04.4b): the token set the compositor
         // materials (SSD titlebar, window menu, chrome backdrop, window
@@ -5434,6 +5480,28 @@ mod tests {
         assert_eq!(stats.blur_panels, 2);
         assert_eq!(stats.blur_draws, 1);
         assert_eq!(stats.blur_downsample_max, 8);
+    }
+
+    #[test]
+    fn material_allocations_and_region_pixels_are_recorded() {
+        let mut stats = RenderStats::new();
+        assert_eq!(stats.material_allocations, 0);
+        assert_eq!(stats.material_region_px, 0);
+        stats.record_material_scene_allocation();
+        stats.record_material_panel_allocations(2);
+        stats.record_material_region(Size::from((848, 72)));
+        assert_eq!(stats.material_allocations, 3);
+        assert_eq!(stats.material_scene_allocations, 1);
+        assert_eq!(stats.material_panel_allocations, 2);
+        assert_eq!(stats.material_region_px, 848 * 72);
+        assert_eq!(stats.material_region, (848, 72));
+        // The allocation count is cumulative; the region is the last frame.
+        stats.record_material_scene_allocation();
+        stats.record_material_region(Size::from((400, 80)));
+        assert_eq!(stats.material_allocations, 4);
+        assert_eq!(stats.material_scene_allocations, 2);
+        assert_eq!(stats.material_region_px, 400 * 80);
+        assert_eq!(stats.material_region, (400, 80));
     }
 
     #[test]

@@ -459,6 +459,11 @@ pub struct BackdropBlurElement {
     texture: GlesTexture,
     /// The panel in output-local logical coordinates.
     panel: Rectangle<i32, Logical>,
+    /// The part of `panel` the texture actually covers. This is the whole
+    /// panel except when the material region clipped it at an output edge
+    /// (T-21.3); the element keeps the full panel for its rounded spans and
+    /// only samples the visible part.
+    texture_panel: Rectangle<i32, Logical>,
     /// The texture's buffer size (the downsampled panel region).
     texture_size: Size<i32, Buffer>,
     /// The panel corner radius in logical pixels.
@@ -484,11 +489,21 @@ impl BackdropBlurElement {
             id: Id::new(),
             texture,
             panel,
+            texture_panel: panel,
             texture_size,
             corner_radius,
             scale,
             glass: None,
         }
+    }
+
+    /// Limit the texture to the part of the panel the material region
+    /// actually rendered (T-21.3). The element still uses the full `panel` for
+    /// its rounded spans, so clipping at an output edge does not invent a new
+    /// rounded corner.
+    pub fn with_texture_panel(mut self, texture_panel: Rectangle<i32, Logical>) -> Self {
+        self.texture_panel = texture_panel;
+        self
     }
 
     /// Apply the Tahoe liquid-glass compose (T-20.2) on top of the blurred
@@ -545,8 +560,8 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
     ) -> Result<(), R::Error> {
         // The Kawase texture is smaller than the panel; each rounded span maps
         // its slice of the panel onto the corresponding slice of the texture.
-        let ratio_x = self.texture_size.w as f64 / f64::from(self.panel.size.w);
-        let ratio_y = self.texture_size.h as f64 / f64::from(self.panel.size.h);
+        // The texture may cover only the visible part of a panel clipped by
+        // the material region, so the span is intersected with that part.
         // The glass uniforms are per-panel, not per-span, so build them once.
         let program = self.glass.as_ref().map(|(_, program)| program);
         let uniforms = self
@@ -561,20 +576,49 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
             })
             .unwrap_or_default();
         for span in self.spans() {
-            let dst = span.to_physical_precise_round(self.scale);
-            let rel_x = f64::from(span.loc.x - self.panel.loc.x);
-            let rel_y = f64::from(span.loc.y - self.panel.loc.y);
-            let src = Rectangle::new(
-                Point::from((rel_x * ratio_x, rel_y * ratio_y)),
-                Size::from((
-                    f64::from(span.size.w) * ratio_x,
-                    f64::from(span.size.h) * ratio_y,
-                )),
-            );
+            let Some((visible, src)) =
+                map_span_to_texture(span, self.texture_panel, self.texture_size)
+            else {
+                continue;
+            };
+            let dst = visible.to_physical_precise_round(self.scale);
             R::draw_texture_from_to(frame, &self.texture, src, dst, damage, program, &uniforms)?;
         }
         Ok(())
     }
+}
+
+/// Map one rounded span of a panel into the blurred texture.
+///
+/// `texture_panel` is the part of the panel the texture covers (the panel
+/// itself unless the material region clipped it at an output edge). The
+/// returned logical rectangle is the visible span and the returned buffer
+/// rectangle is its source slice. `None` means the span lies outside the
+/// rendered part.
+fn map_span_to_texture(
+    span: Rectangle<i32, Logical>,
+    texture_panel: Rectangle<i32, Logical>,
+    texture_size: Size<i32, Buffer>,
+) -> Option<(Rectangle<i32, Logical>, Rectangle<f64, Buffer>)> {
+    if texture_panel.size.w <= 0 || texture_panel.size.h <= 0 {
+        return None;
+    }
+    let visible = span.intersection(texture_panel)?;
+    if visible.size.w <= 0 || visible.size.h <= 0 {
+        return None;
+    }
+    let ratio_x = texture_size.w as f64 / f64::from(texture_panel.size.w);
+    let ratio_y = texture_size.h as f64 / f64::from(texture_panel.size.h);
+    let rel_x = f64::from(visible.loc.x - texture_panel.loc.x);
+    let rel_y = f64::from(visible.loc.y - texture_panel.loc.y);
+    let src = Rectangle::new(
+        Point::from((rel_x * ratio_x, rel_y * ratio_y)),
+        Size::from((
+            f64::from(visible.size.w) * ratio_x,
+            f64::from(visible.size.h) * ratio_y,
+        )),
+    );
+    Some((visible, src))
 }
 
 /// A full-output texture element for the composed scene (P2). The nested
@@ -810,5 +854,40 @@ mod tests {
         for span in &spans {
             assert!(panel.contains_rect(*span));
         }
+    }
+
+    #[test]
+    fn a_span_maps_its_slice_of_the_panel_to_the_blur_texture() {
+        let panel = Rectangle::new(Point::from((100, 20)), Size::from((800, 40)));
+        let texture = Size::from((200, 10));
+
+        // Unclipped: the full panel span maps to the full texture.
+        let (visible, src) = map_span_to_texture(panel, panel, texture).expect("unclipped span");
+        assert_eq!(visible, panel);
+        assert_eq!(src.loc, Point::from((0.0, 0.0)));
+        assert_eq!(src.size, Size::from((200.0, 10.0)));
+
+        // A half-panel span maps to half the texture.
+        let half = Rectangle::new(Point::from((500, 20)), Size::from((400, 40)));
+        let (visible, src) = map_span_to_texture(half, panel, texture).expect("half span");
+        assert_eq!(visible, half);
+        assert_eq!(src.loc, Point::from((100.0, 0.0)));
+        assert_eq!(src.size, Size::from((100.0, 10.0)));
+
+        // A texture panel clipped at an output edge only covers the visible
+        // part; the span is clipped and the source is offset into the texture.
+        let clipped_panel = Rectangle::new(Point::from((100, 20)), Size::from((600, 40)));
+        let (visible, src) =
+            map_span_to_texture(panel, clipped_panel, texture).expect("clipped span");
+        assert_eq!(
+            visible,
+            Rectangle::new(Point::from((100, 20)), Size::from((600, 40)))
+        );
+        assert_eq!(src.loc, Point::from((0.0, 0.0)));
+        assert_eq!(src.size, Size::from((200.0, 10.0)));
+
+        // A span entirely outside the rendered part draws nothing.
+        let outside = Rectangle::new(Point::from((800, 20)), Size::from((50, 40)));
+        assert_eq!(map_span_to_texture(outside, clipped_panel, texture), None);
     }
 }

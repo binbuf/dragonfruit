@@ -73,7 +73,10 @@ use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
 
 use crate::backend::add_seat_capabilities;
 use crate::session::{run_session, BackendHooks};
-use crate::window::{BackdropBlurElement, SceneTextureElement, TextureRenderer};
+use crate::window::{
+    full_output_material_forced, BackdropBlurElement, MaterialRegion, PanelTextureSlots,
+    SceneTextureCache, SceneTextureElement, TextureRenderer,
+};
 use crate::{input, render, LOCKSTEP_VERSION};
 
 type UdevRenderer<'a> = MultiRenderer<
@@ -340,22 +343,20 @@ where
 }
 
 /// Per-output, per-GPU storage for the two-pass material (P2). The scene
-/// texture is output-sized and reused across frames; each panel owns its
+/// texture is region-sized and reused across frames; each panel owns its
 /// Kawase chain textures. This is the DRM analogue of nested's
 /// `MaterialTextureCache`, kept per output so a mode/scale change reallocates
-/// only the affected output.
+/// only the affected output. The cache is per `SurfaceData`, which belongs to
+/// one device, so a texture is never shared across render GPUs.
 #[derive(Default)]
 struct DrmMaterialCache {
-    scene: Option<GlesTexture>,
-    panels: Vec<Vec<GlesTexture>>,
+    scene: SceneTextureCache<GlesTexture>,
+    panels: PanelTextureSlots<GlesTexture>,
 }
 
 impl DrmMaterialCache {
-    fn panel_slot(&mut self, index: usize) -> &mut Vec<GlesTexture> {
-        if self.panels.len() <= index {
-            self.panels.resize_with(index + 1, Vec::new);
-        }
-        &mut self.panels[index]
+    fn trim_panels(&mut self, count: usize) {
+        self.panels.trim(count);
     }
 }
 
@@ -1535,6 +1536,21 @@ fn render_surface(
 
     if !blur_panels.is_empty() {
         let material_output = surface.output.clone();
+        let output_local = Rectangle::from_size(output_geo.size);
+        let Some(region) = MaterialRegion::for_material(&blur_panels, output_local, scale) else {
+            eprintln!(
+                "dragonfruit-compositor: DRM material region unavailable for {}",
+                material_output.name()
+            );
+            state.material_blur_supported = false;
+            reschedule_probe(state, node, crtc, refresh);
+            return;
+        };
+        let full_output = full_output_material_forced();
+        let output_size = material_output
+            .current_mode()
+            .map(|mode| mode.size)
+            .unwrap_or_default();
         // Compile the two-pass programs once per render GPU (P2). A failure is
         // non-fatal: the blur chain uses the built-in bilinear downsample and
         // the glass compose falls back to the plain blurred panel.
@@ -1558,7 +1574,9 @@ fn render_surface(
             MaterialPrograms { blur, glass }
         });
         // Pass one: the live scene (window menu, windows/titlebars/shadows,
-        // desktop, wallpaper) into the reusable output-sized texture.
+        // desktop, wallpaper) into the reusable region-sized texture. The
+        // region is the padded chrome union unless the full-output diagnostic
+        // switch is set.
         let mut scene_elements: Vec<
             DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
         > = Vec::new();
@@ -1586,6 +1604,7 @@ fn render_surface(
             state,
             &material_output,
             scale,
+            region,
             &scene_elements,
             &mut surface.material.scene,
         ) {
@@ -1599,21 +1618,24 @@ fn render_surface(
         };
         let scene_size = scene_texture.size();
 
-        // Pass two: one blurred texture per panel, then the scene below it.
+        // Pass two: one blurred texture per panel. In the default region
+        // shape the live scene elements are the output base; only the
+        // full-output diagnostic shape composites the scene texture below it.
         let mut blur_drawn = 0u64;
         let mut downsample_max = 0u32;
+        let mut blur_allocations = 0u64;
         for (index, panel) in blur_panels.iter().enumerate() {
-            let src_region = panel.panel.to_physical_precise_round(scale);
-            if src_region.size.w <= 0 || src_region.size.h <= 0 {
+            let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale) else {
                 continue;
-            }
-            let slot = surface.material.panel_slot(index);
-            let texture = match crate::backend::nested::blur_panel_texture(
+            };
+            let slot = surface.material.panels.slot(index);
+            let (texture, allocations) = match crate::backend::nested::blur_panel_texture(
                 &mut renderer,
                 programs.blur.as_ref(),
                 &scene_texture,
-                src_region,
+                scene_src,
                 &panel.spec,
+                output_size,
                 slot,
             ) {
                 Ok(texture) => texture,
@@ -1624,6 +1646,7 @@ fn render_surface(
                     return;
                 }
             };
+            blur_allocations += allocations;
             let texture_size = texture.size();
             let element = BackdropBlurElement::new(
                 texture,
@@ -1631,7 +1654,8 @@ fn render_surface(
                 texture_size,
                 panel.spec.corner_radius.round().max(0.0) as i32,
                 scale,
-            );
+            )
+            .with_texture_panel(texture_panel);
             let element = match programs.glass.as_ref() {
                 Some(program) => element.with_glass(panel.glass, program.clone()),
                 None => element,
@@ -1640,23 +1664,34 @@ fn render_surface(
             blur_drawn += 1;
             downsample_max = downsample_max.max(panel.spec.downsample());
         }
+        // A disappeared panel releases its Kawase textures (T-21.3 lifetime
+        // audit); T190c replaces index keying with a stable panel identity.
+        surface.material.trim_panels(blur_panels.len());
+        state
+            .stats
+            .record_material_panel_allocations(blur_allocations);
         if blur_drawn > 0 {
             state.stats.record_blur_draw(downsample_max, blur_drawn);
         }
 
-        let output_size = material_output
-            .current_mode()
-            .map(|mode| mode.size)
-            .unwrap_or_default();
-        custom_elements.push(DrmOutputElements::Scene(SceneTextureElement::new(
-            scene_texture,
-            Rectangle::from_size(output_size),
-            scene_size,
-        )));
+        if full_output {
+            custom_elements.push(DrmOutputElements::Scene(SceneTextureElement::new(
+                scene_texture,
+                Rectangle::from_size(output_size),
+                scene_size,
+            )));
+        } else {
+            // Region shape: the scene elements are the output base and the
+            // region texture is only the blur source. They are already in
+            // front-to-back order, so appending keeps the old stack.
+            custom_elements.extend(scene_elements);
+        }
     } else {
-        // The pre-P2 feather stack: a deterministic tint under the chrome,
-        // above the window space. This remains the fallback when the sampled
-        // pass is unavailable or intentionally off.
+        // No sampled material this frame: release the per-panel Kawase
+        // textures and keep the pre-P2 feather stack, a deterministic tint
+        // under the chrome above the window space. This remains the fallback
+        // when the sampled pass is unavailable or intentionally off.
+        surface.material.trim_panels(0);
         custom_elements.extend(
             crate::render::chrome_backdrop_render_elements(state, &surface.output, scale)
                 .into_iter()

@@ -13,7 +13,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use smithay::backend::allocator::Fourcc;
-use smithay::utils::{Buffer as BufferCoord, Size as BufferSize};
+use smithay::utils::{Buffer as BufferCoord, Physical, Point, Size, Size as BufferSize};
 
 use smithay::backend::egl::EGLDevice;
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -34,7 +34,10 @@ use smithay::wayland::presentation::Refresh;
 
 use crate::backend::{add_output, add_seat_capabilities};
 use crate::session::{run_session, BackendHooks};
-use crate::window::TextureRenderer;
+use crate::window::{
+    full_output_material_forced, MaterialRegion, PanelTextureSlots, SceneTextureCache,
+    SceneTextureKey, TextureRenderer,
+};
 use crate::{render, LOCKSTEP_VERSION};
 
 // Custom elements for the nested output: shell chrome (menu bar, overlays)
@@ -309,20 +312,22 @@ pub fn run(socket_name: &str) -> Result<(), String> {
 /// driver and can end in an allocation failure (or an OOM kill). The textures
 /// are reference-counted, so the render elements can keep a clone while the
 /// cache reuses the backing storage on the next frame.
+///
+/// The scene texture is keyed by region size/output mode/scale (T-21.3), and
+/// panel slots are trimmed when the panel set shrinks, so a removed popover
+/// releases its `GlesTexture` handles instead of holding them for the rest of
+/// the session.
 #[derive(Default)]
 struct MaterialTextureCache {
-    scene: Option<GlesTexture>,
+    scene: SceneTextureCache<GlesTexture>,
     /// One slot per chrome panel; each slot holds the textures for that
     /// panel's Kawase passes (the last one is the composed result).
-    panels: Vec<Vec<GlesTexture>>,
+    panels: PanelTextureSlots<GlesTexture>,
 }
 
 impl MaterialTextureCache {
-    fn panel_slot(&mut self, index: usize) -> &mut Vec<GlesTexture> {
-        if self.panels.len() <= index {
-            self.panels.resize_with(index + 1, Vec::new);
-        }
-        &mut self.panels[index]
+    fn trim_panels(&mut self, count: usize) {
+        self.panels.trim(count);
     }
 }
 
@@ -433,12 +438,24 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
             let blur_panels = crate::render::chrome_blur_panels(state, &output);
             let mut custom_elements: Vec<NestedOutputElements<GlowRenderer>>;
             if !blur_panels.is_empty() {
-                // Two-pass composition. Pass one renders the scene (wallpaper,
-                // desktop, windows, shadows, titlebars) into an output-sized
-                // offscreen texture; pass two composes the output from the
-                // live chrome surfaces + the per-panel blurred samples + that
-                // scene texture. The blur samples the live scene texture
-                // inside this render pass — never a screenshot or screencopy.
+                // Two-pass composition (T-20.1/T-21.3). Pass one renders the
+                // scene (wallpaper, desktop, windows, shadows, titlebars) into
+                // a texture sized to the padded panel union; pass two composes
+                // the output from the live scene elements + the per-panel
+                // blurred samples + the chrome surfaces. The blur samples the
+                // live scene texture inside this render pass — never a
+                // screenshot or screencopy.
+                let output_local = Rectangle::from_size(output_geometry.size);
+                let region = MaterialRegion::for_material(&blur_panels, output_local, scale)
+                    .ok_or_else(|| "material region unavailable".to_owned())?;
+                let full_output = full_output_material_forced();
+                // The Kawase chain's first destination stays full-output
+                // sized: its texture size is part of the panel's visual
+                // result, and T-21.3 must not change the blur at the panel.
+                let chain_size = output
+                    .current_mode()
+                    .map(|mode| mode.size)
+                    .unwrap_or_default();
                 let mut scene_elements: Vec<NestedOutputElements<GlowRenderer>> = Vec::new();
                 scene_elements.extend(
                     crate::render::window_menu_render_elements(state, &output, scale)
@@ -461,6 +478,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     state,
                     &output,
                     scale,
+                    region,
                     &scene_elements,
                     &mut data.material_textures.scene,
                 )?;
@@ -474,15 +492,23 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 custom_elements.extend(crate::render::chrome_render_elements(
                     renderer, state, &output, scale,
                 ));
-                custom_elements.extend(build_blur_elements(
+                let (blur_elements, blur_allocations) = build_blur_elements(
                     renderer,
-                    data.blur_program.as_ref(),
-                    data.glass_program.as_ref(),
+                    BlurPrograms {
+                        blur: data.blur_program.as_ref(),
+                        glass: data.glass_program.as_ref(),
+                        chain_size,
+                    },
                     &blur_panels,
                     &scene_texture,
+                    region,
                     scale,
                     &mut data.material_textures,
-                )?);
+                )?;
+                state
+                    .stats
+                    .record_material_panel_allocations(blur_allocations);
+                custom_elements.extend(blur_elements);
                 // The blur elements exist and are in the draw list; this is
                 // the counter to trust over `blur_passes` (which only says the
                 // panels resolved).
@@ -494,21 +520,33 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 state
                     .stats
                     .record_blur_draw(downsample_max, blur_panels.len() as u64);
-                // The scene composites below the blur as one texture. Its
-                // corner radius is zero, so it covers the whole output.
-                custom_elements.push(NestedOutputElements::Blur(
-                    crate::window::BackdropBlurElement::new(
-                        scene_texture,
-                        Rectangle::new((0, 0).into(), output_geometry.size),
-                        scene_size,
-                        0,
-                        scale,
-                    ),
-                ));
+                if full_output {
+                    // Diagnostic/rollback shape: the full-output scene texture
+                    // is the output base, exactly like the pre-T-21.3 path.
+                    custom_elements.push(NestedOutputElements::Blur(
+                        crate::window::BackdropBlurElement::new(
+                            scene_texture,
+                            Rectangle::new((0, 0).into(), output_geometry.size),
+                            scene_size,
+                            0,
+                            scale,
+                        ),
+                    ));
+                } else {
+                    // Region shape: the scene elements are the output base and
+                    // the region texture is only the blur source. The list is
+                    // already front-to-back (window menu, windows, desktop,
+                    // wallpaper), so appending it below the blur preserves the
+                    // old stacking order.
+                    custom_elements.extend(scene_elements);
+                }
             } else {
-                // The pre-T-20 single-pass path: chrome + the feather backdrop
-                // (no GPU readback). A locked session composites only the lock
+                // No sampled material this frame: release the per-panel Kawase
+                // textures (T-21.3 lifetime audit) and keep the pre-T-20
+                // single-pass path: chrome + the feather backdrop (no GPU
+                // readback). A locked session composites only the lock
                 // surface, prepended so it sits above everything (T-12.3a).
+                data.material_textures.trim_panels(0);
                 custom_elements =
                     crate::lock::lock_render_elements(renderer, state, &output, scale);
                 custom_elements.extend(crate::render::chrome_render_elements(
@@ -646,16 +684,30 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
     Ok(())
 }
 
-/// Render the scene `elements` into an output-sized offscreen texture once per
-/// frame (T-20.1). This is the texture the chrome backdrop blur samples; it
-/// holds the live wallpaper/desktop/window/shadow pixels, never a screenshot.
+/// Render the scene `elements` into the material region's offscreen texture
+/// once per frame (T-20.1/T-21.3). This is the texture the chrome backdrop
+/// blur samples; it holds the live wallpaper/desktop/window/shadow pixels,
+/// never a screenshot.
+///
+/// The elements are output-local physical, so each one is relocated by
+/// `-region.physical.loc` before the tracker sees it. The texture itself stays
+/// in the region's coordinate space; panel sources are translated by
+/// [`MaterialRegion::panel_source`].
+///
+/// Synchronization: the DRM material path is single-GPU (multi-GPU sampled
+/// material is disabled in `drm.rs`), so the scene texture and the Kawase
+/// chain share one GL context. `render_output` finishes its frame before it
+/// returns, and the following blur bind is ordered after it by GL. The nested
+/// `GlesFrame` additionally waits on its fence when dropped. No cross-GPU
+/// copy or fence hand-off is needed on this path.
 pub(crate) fn render_scene_offscreen<R, E>(
     renderer: &mut R,
-    state: &crate::state::DfState,
+    state: &mut crate::state::DfState,
     output: &smithay::output::Output,
     scale: smithay::utils::Scale<f64>,
+    region: MaterialRegion,
     elements: &[E],
-    cache: &mut Option<GlesTexture>,
+    cache: &mut SceneTextureCache<GlesTexture>,
 ) -> Result<GlesTexture, String>
 where
     R: Renderer
@@ -667,61 +719,91 @@ where
 {
     use smithay::utils::Transform;
 
-    let size = output
+    let output_size = output
         .current_mode()
         .map(|mode| mode.size)
         .ok_or_else(|| "output has no mode".to_owned())?;
-    let buffer_size = BufferSize::<i32, BufferCoord>::from((size.w, size.h));
-    let needs_alloc = cache
-        .as_ref()
-        .map(|texture| texture.size() != buffer_size)
-        .unwrap_or(true);
-    if needs_alloc {
-        *cache = Some(
-            renderer
-                .create_buffer(Fourcc::Abgr8888, buffer_size)
-                .map_err(|err| format!("scene buffer failed: {err}"))?,
-        );
+    let buffer_size =
+        BufferSize::<i32, BufferCoord>::from((region.texture_size.w, region.texture_size.h));
+    let key = SceneTextureKey::new(buffer_size, output_size, scale);
+    if cache.needs_alloc(key) {
+        let texture = renderer
+            .create_buffer(Fourcc::Abgr8888, buffer_size)
+            .map_err(|err| format!("scene buffer failed: {err}"))?;
+        cache.install(texture, key);
+        state.stats.record_material_scene_allocation();
     }
+    state.stats.record_material_region(region.texture_size);
     let mut texture = cache
-        .as_ref()
+        .texture()
         .cloned()
         .ok_or_else(|| "scene texture cache unexpectedly empty".to_owned())?;
     let clear = state.wallpaper_color_for(output);
-    let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
+    let tracker_size = Size::<i32, Physical>::from((region.texture_size.w, region.texture_size.h));
+    let mut tracker = OutputDamageTracker::new(tracker_size, scale, Transform::Normal);
+    // Relocate the output-local elements into the region's physical space.
+    // `&E` implements `RenderElement`, so this borrows the caller's list
+    // instead of consuming it; the same list is drawn live in region mode.
+    let offset = Point::<i32, Physical>::from((-region.physical.loc.x, -region.physical.loc.y));
+    let relocated: Vec<_> = elements
+        .iter()
+        .map(|element| RelocateRenderElement::from_element(element, offset, Relocate::Relative))
+        .collect();
     {
         let mut target = renderer
             .bind(&mut texture)
             .map_err(|err| format!("scene bind failed: {err}"))?;
         tracker
-            .render_output(renderer, &mut target, 0, elements, clear)
+            .render_output(renderer, &mut target, 0, &relocated, clear)
             .map_err(|err| format!("scene render failed: {err:?}"))?;
     }
     Ok(texture)
 }
 
+/// The compiled programs and chain base for one blur build.
+struct BlurPrograms<'a> {
+    blur: Option<&'a GlesTexProgram>,
+    glass: Option<&'a GlesTexProgram>,
+    /// The full output's physical size: the Kawase chain keeps that as its
+    /// first destination so the panel's visual blur is unchanged from the
+    /// pre-region path.
+    chain_size: Size<i32, Physical>,
+}
+
 /// Build the per-panel blurred backdrop elements from the scene texture
-/// (T-20.1). Each panel's region is downsampled through `spec.iterations`
-/// Kawase passes — the custom [`crate::window::BLUR_SHADER`] when the renderer
-/// compiled it, otherwise the built-in bilinear downsample — and drawn back
-/// over the panel clipped to its token corners.
+/// (T-20.1/T-21.3). Each panel's region is downsampled through
+/// `spec.iterations` Kawase passes — the custom [`crate::window::BLUR_SHADER`]
+/// when the renderer compiled it, otherwise the built-in bilinear downsample —
+/// and drawn back over the panel clipped to its token corners.
+///
+/// `region` translates each panel's output-coordinate source into the scene
+/// texture.
 fn build_blur_elements(
     renderer: &mut GlowRenderer,
-    program: Option<&GlesTexProgram>,
-    glass_program: Option<&GlesTexProgram>,
+    programs: BlurPrograms<'_>,
     panels: &[crate::render::BlurPanel],
     scene: &GlesTexture,
+    region: MaterialRegion,
     scale: smithay::utils::Scale<f64>,
     cache: &mut MaterialTextureCache,
-) -> Result<Vec<NestedOutputElements<GlowRenderer>>, String> {
+) -> Result<(Vec<NestedOutputElements<GlowRenderer>>, u64), String> {
     let mut elements = Vec::new();
+    let mut allocations = 0u64;
     for (index, panel) in panels.iter().enumerate() {
-        let src_region = panel.panel.to_physical_precise_round(scale);
-        if src_region.size.w <= 0 || src_region.size.h <= 0 {
+        let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale) else {
             continue;
-        }
-        let slot = cache.panel_slot(index);
-        let texture = blur_panel_texture(renderer, program, scene, src_region, &panel.spec, slot)?;
+        };
+        let slot = cache.panels.slot(index);
+        let (texture, panel_allocations) = blur_panel_texture(
+            renderer,
+            programs.blur,
+            scene,
+            scene_src,
+            &panel.spec,
+            programs.chain_size,
+            slot,
+        )?;
+        allocations += panel_allocations;
         let texture_size = texture.size();
         let element = crate::window::BackdropBlurElement::new(
             texture,
@@ -729,29 +811,39 @@ fn build_blur_elements(
             texture_size,
             panel.spec.corner_radius.round().max(0.0) as i32,
             scale,
-        );
+        )
+        .with_texture_panel(texture_panel);
         // Add the liquid-glass compose only when the driver compiled it; a
         // refused shader leaves the plain blurred backdrop (T-20.2).
-        let element = match glass_program {
+        let element = match programs.glass {
             Some(glass) => element.with_glass(panel.glass, glass.clone()),
             None => element,
         };
         elements.push(NestedOutputElements::Blur(element));
     }
-    Ok(elements)
+    // Release the slots of panels that disappeared this frame. T190c replaces
+    // the index keying with a stable panel identity.
+    cache.trim_panels(panels.len());
+    Ok((elements, allocations))
 }
 
-/// Downsample `src_region` of `scene` through a small Kawase chain, returning
+/// Downsample `scene_src` of `scene` through a small Kawase chain, returning
 /// the blurred texture (T-20.1). Each pass halves the resolution and samples
 /// the previous texture with the custom program when available.
+///
+/// `scene_src` is in the scene texture's buffer coordinates (the caller has
+/// already subtracted the material region origin). `chain_size` is the full
+/// output's physical size; the first destination stays output-sized so the
+/// panel's visual blur is pixel-equivalent to the full-output path.
 pub(crate) fn blur_panel_texture<R>(
     renderer: &mut R,
     program: Option<&GlesTexProgram>,
     scene: &GlesTexture,
-    src_region: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
+    scene_src: Rectangle<f64, BufferCoord>,
     spec: &crate::window::BlurSpec,
+    chain_size: Size<i32, Physical>,
     slot: &mut Vec<GlesTexture>,
-) -> Result<GlesTexture, String>
+) -> Result<(GlesTexture, u64), String>
 where
     R: TextureRenderer
         + smithay::backend::renderer::Bind<GlesTexture>
@@ -759,37 +851,41 @@ where
     R::Error: std::fmt::Debug,
 {
     use smithay::backend::renderer::gles::Uniform;
-    use smithay::utils::{Physical, Transform};
+    use smithay::utils::Transform;
 
     let mut current: GlesTexture = scene.clone();
+    let mut allocations = 0u64;
     // The region of `current` the next pass samples. The first pass samples
     // the panel's slice of the scene; later passes sample the whole texture.
-    let mut current_src: Rectangle<f64, BufferCoord> = Rectangle::new(
-        (src_region.loc.x as f64, src_region.loc.y as f64).into(),
-        (src_region.size.w as f64, src_region.size.h as f64).into(),
-    );
+    let mut current_src = scene_src;
+    let mut chain = chain_size;
     for pass in 0..spec.iterations as usize {
         let src_size = current.size();
-        let dst_w = (src_size.w / 2).max(1);
-        let dst_h = (src_size.h / 2).max(1);
+        // The chain base is the output size, not the scene texture size: a
+        // region-sized scene texture must not change the panel's blur result.
+        let dst_w = (chain.w / 2).max(1);
+        let dst_h = (chain.h / 2).max(1);
         let buffer_size = BufferSize::<i32, BufferCoord>::from((dst_w, dst_h));
         // Reuse this pass's texture from the previous frame; only allocate
-        // when the panel (or output scale) changed size.
+        // when the panel (or output scale) changed size. The slot keeps the
+        // texture alive across frames; a removed panel is trimmed by the
+        // caller, which releases the handle.
         while slot.len() <= pass {
             slot.push(
                 renderer
                     .create_buffer(Fourcc::Abgr8888, buffer_size)
                     .map_err(|err| format!("blur buffer failed: {err}"))?,
             );
+            allocations += 1;
         }
         if slot[pass].size() != buffer_size {
             slot[pass] = renderer
                 .create_buffer(Fourcc::Abgr8888, buffer_size)
                 .map_err(|err| format!("blur buffer failed: {err}"))?;
+            allocations += 1;
         }
         let mut texture: GlesTexture = slot[pass].clone();
-        let dst_phys =
-            Rectangle::from_size(smithay::utils::Size::<i32, Physical>::from((dst_w, dst_h)));
+        let dst_phys = Rectangle::from_size(Size::<i32, Physical>::from((dst_w, dst_h)));
         {
             let mut target = renderer
                 .bind(&mut texture)
@@ -817,8 +913,9 @@ where
         }
         current = texture;
         current_src = Rectangle::from_size(current.size().to_f64());
+        chain = Size::<i32, Physical>::from((dst_w, dst_h));
     }
-    Ok(current)
+    Ok((current, allocations))
 }
 
 /// Render `elements` (the same list the live frame drew) into an offscreen
