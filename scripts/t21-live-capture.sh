@@ -7,6 +7,7 @@
 # (`DF_SCREENSHOT_CAPTURE_FIXTURE`) and writes one still:
 #
 #   motion   a Dock sweep still captured while the spring is moving
+#   settled  a stationary Dock with no pointer motion (T190c damage evidence)
 #   menu     the menu-bar dropdown open
 #   popover  the Dock window chooser open
 #   lock     the first-party lock surface with one typed character
@@ -20,8 +21,8 @@ cd "$(dirname "$0")/.."
 
 STATE="${1:-motion}"
 case "$STATE" in
-    motion|menu|popover|lock) ;;
-    *) echo "usage: $0 motion|menu|popover|lock" >&2; exit 2 ;;
+    motion|settled|menu|popover|lock) ;;
+    *) echo "usage: $0 motion|settled|menu|popover|lock" >&2; exit 2 ;;
 esac
 
 SETTLE="${SETTLE:-2}"
@@ -61,6 +62,10 @@ trap cleanup EXIT
 case "$STATE" in
     motion)
         DELAY=12000
+        EXTRA_ENV=()
+        ;;
+    settled)
+        DELAY=10000
         EXTRA_ENV=()
         ;;
     menu)

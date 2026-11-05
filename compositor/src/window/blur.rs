@@ -456,6 +456,7 @@ impl TextureRenderer for GlowRenderer {
 /// draws it stretched back over the panel, clipped to the token corner radius.
 pub struct BackdropBlurElement {
     id: Id,
+    commit: CommitCounter,
     texture: GlesTexture,
     /// The panel in output-local logical coordinates.
     panel: Rectangle<i32, Logical>,
@@ -487,6 +488,7 @@ impl BackdropBlurElement {
     ) -> Self {
         BackdropBlurElement {
             id: Id::new(),
+            commit: CommitCounter::default(),
             texture,
             panel,
             texture_panel: panel,
@@ -495,6 +497,24 @@ impl BackdropBlurElement {
             scale,
             glass: None,
         }
+    }
+
+    /// Use the stable render-element id of the panel slot (T-21.3).
+    ///
+    /// The caller owns the id across frames (the panel texture cache creates
+    /// it once per stable panel key), so rebuilding this element does not make
+    /// Smithay's damage tracker treat an unchanged panel as new damage.
+    pub fn with_id(mut self, id: Id) -> Self {
+        self.id = id;
+        self
+    }
+
+    /// Set the element commit. Panels keep the default; the full-output scene
+    /// base uses the scene cache's commit, which advances only when the
+    /// offscreen scene changed (T-21.3).
+    pub fn with_commit(mut self, commit: CommitCounter) -> Self {
+        self.commit = commit;
+        self
     }
 
     /// Limit the texture to the part of the panel the material region
@@ -529,7 +549,7 @@ impl Element for BackdropBlurElement {
     }
 
     fn current_commit(&self) -> CommitCounter {
-        CommitCounter::default()
+        self.commit
     }
 
     fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
@@ -628,6 +648,7 @@ fn map_span_to_texture(
 /// [`TextureRenderer`] instead of `TextureRenderElement<GlesTexture>`.
 pub struct SceneTextureElement {
     id: Id,
+    commit: CommitCounter,
     texture: GlesTexture,
     /// Output-local physical geometry the texture covers.
     geometry: Rectangle<i32, Physical>,
@@ -643,10 +664,20 @@ impl SceneTextureElement {
     ) -> Self {
         SceneTextureElement {
             id: Id::new(),
+            commit: CommitCounter::default(),
             texture,
             geometry,
             texture_size,
         }
+    }
+
+    /// Use the scene cache's stable id and commit (T-21.3). The commit
+    /// advances only when the offscreen scene changed, so a settled scene
+    /// leaves this full-output element damage-free.
+    pub fn with_identity(mut self, id: Id, commit: CommitCounter) -> Self {
+        self.id = id;
+        self.commit = commit;
+        self
     }
 }
 
@@ -656,7 +687,7 @@ impl Element for SceneTextureElement {
     }
 
     fn current_commit(&self) -> CommitCounter {
-        CommitCounter::default()
+        self.commit
     }
 
     fn geometry(&self, _scale: Scale<f64>) -> Rectangle<i32, Physical> {

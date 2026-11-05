@@ -28,12 +28,13 @@ use smithay::render_elements;
 use smithay::utils::{IsAlive, Logical, Rectangle, Scale};
 use smithay::wayland::compositor::{with_states, SurfaceAttributes};
 use smithay::wayland::fractional_scale::with_fractional_scale;
+use wayland_server::Resource;
 
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
 use crate::window::{
-    backdrop_elements, is_backdrop_panel, shadow_elements, BlurSpec, MaterialRole, SceneTransform,
-    ShadowLevel, ShadowSpec, WindowState,
+    backdrop_elements, is_backdrop_panel, shadow_elements, BlurSpec, MaterialRole, PanelKey,
+    SceneTransform, ShadowLevel, ShadowSpec, WindowState,
 };
 
 // The two kinds of wallpaper element a backend can composite (T-05.4): a
@@ -306,6 +307,10 @@ pub fn chrome_backdrop_render_elements(
 /// (T-20.1): the visible panel rect and its token-resolved blur.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BlurPanel {
+    /// Stable identity of the chrome surface this panel belongs to (T-21.3).
+    /// The panel rect may move (Dock magnification) without changing the
+    /// panel's render-element identity.
+    pub key: PanelKey,
     pub panel: Rectangle<i32, Logical>,
     pub spec: BlurSpec,
     /// The Tahoe liquid-glass parameters for this panel (T-20.2).
@@ -362,6 +367,11 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 .blur(role.blur_spec_for(scheme, &chrome.namespace))?;
             let glass = material.tier.glass(role.glass_spec(scheme))?;
             Some(BlurPanel {
+                key: PanelKey::new(
+                    &chrome.namespace,
+                    chrome.layer,
+                    chrome.surface.id().protocol_id(),
+                ),
                 panel: chrome.panel,
                 spec,
                 glass,

@@ -74,7 +74,7 @@ use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
 use crate::backend::add_seat_capabilities;
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
-    full_output_material_forced, BackdropBlurElement, MaterialRegion, PanelTextureSlots,
+    full_output_material_forced, BackdropBlurElement, MaterialRegion, PanelKey, PanelTextureSlots,
     SceneTextureCache, SceneTextureElement, TextureRenderer,
 };
 use crate::{input, render, LOCKSTEP_VERSION};
@@ -355,8 +355,8 @@ struct DrmMaterialCache {
 }
 
 impl DrmMaterialCache {
-    fn trim_panels(&mut self, count: usize) {
-        self.panels.trim(count);
+    fn trim_panels(&mut self, keys: &[PanelKey]) {
+        self.panels.trim_to(keys);
     }
 }
 
@@ -1624,11 +1624,12 @@ fn render_surface(
         let mut blur_drawn = 0u64;
         let mut downsample_max = 0u32;
         let mut blur_allocations = 0u64;
-        for (index, panel) in blur_panels.iter().enumerate() {
+        let panel_keys: Vec<PanelKey> = blur_panels.iter().map(|panel| panel.key).collect();
+        for panel in &blur_panels {
             let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale) else {
                 continue;
             };
-            let slot = surface.material.panels.slot(index);
+            let slot = surface.material.panels.slot(&panel.key);
             let (texture, allocations) = match crate::backend::nested::blur_panel_texture(
                 &mut renderer,
                 programs.blur.as_ref(),
@@ -1636,7 +1637,7 @@ fn render_surface(
                 scene_src,
                 &panel.spec,
                 output_size,
-                slot,
+                slot.textures_mut(),
             ) {
                 Ok(texture) => texture,
                 Err(err) => {
@@ -1646,6 +1647,7 @@ fn render_surface(
                     return;
                 }
             };
+            let id = slot.id().clone();
             blur_allocations += allocations;
             let texture_size = texture.size();
             let element = BackdropBlurElement::new(
@@ -1655,6 +1657,7 @@ fn render_surface(
                 panel.spec.corner_radius.round().max(0.0) as i32,
                 scale,
             )
+            .with_id(id)
             .with_texture_panel(texture_panel);
             let element = match programs.glass.as_ref() {
                 Some(program) => element.with_glass(panel.glass, program.clone()),
@@ -1664,9 +1667,10 @@ fn render_surface(
             blur_drawn += 1;
             downsample_max = downsample_max.max(panel.spec.downsample());
         }
-        // A disappeared panel releases its Kawase textures (T-21.3 lifetime
-        // audit); T190c replaces index keying with a stable panel identity.
-        surface.material.trim_panels(blur_panels.len());
+        // A disappeared panel releases its Kawase textures; a panel that only
+        // moved or changed stacking order keeps its key, id, and textures
+        // (T-21.3).
+        surface.material.trim_panels(&panel_keys);
         state
             .stats
             .record_material_panel_allocations(blur_allocations);
@@ -1675,11 +1679,16 @@ fn render_surface(
         }
 
         if full_output {
-            custom_elements.push(DrmOutputElements::Scene(SceneTextureElement::new(
-                scene_texture,
-                Rectangle::from_size(output_size),
-                scene_size,
-            )));
+            let scene_id = surface.material.scene.id();
+            let scene_commit = surface.material.scene.commit();
+            custom_elements.push(DrmOutputElements::Scene(
+                SceneTextureElement::new(
+                    scene_texture,
+                    Rectangle::from_size(output_size),
+                    scene_size,
+                )
+                .with_identity(scene_id, scene_commit),
+            ));
         } else {
             // Region shape: the scene elements are the output base and the
             // region texture is only the blur source. They are already in
@@ -1691,7 +1700,7 @@ fn render_surface(
         // textures and keep the pre-P2 feather stack, a deterministic tint
         // under the chrome above the window space. This remains the fallback
         // when the sampled pass is unavailable or intentionally off.
-        surface.material.trim_panels(0);
+        surface.material.trim_panels(&[]);
         custom_elements.extend(
             crate::render::chrome_backdrop_render_elements(state, &surface.output, scale)
                 .into_iter()
