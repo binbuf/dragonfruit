@@ -35,7 +35,7 @@ use smithay::wayland::presentation::Refresh;
 use crate::backend::{add_output, add_seat_capabilities};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
-    full_output_material_forced, MaterialRegion, PanelTextureSlots, SceneTextureCache,
+    full_output_material_forced, MaterialRegion, PanelKey, PanelTextureSlots, SceneTextureCache,
     SceneTextureKey, TextureRenderer,
 };
 use crate::{render, LOCKSTEP_VERSION};
@@ -326,8 +326,8 @@ struct MaterialTextureCache {
 }
 
 impl MaterialTextureCache {
-    fn trim_panels(&mut self, count: usize) {
-        self.panels.trim(count);
+    fn trim_panels(&mut self, keys: &[PanelKey]) {
+        self.panels.trim_to(keys);
     }
 }
 
@@ -523,6 +523,10 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 if full_output {
                     // Diagnostic/rollback shape: the full-output scene texture
                     // is the output base, exactly like the pre-T-21.3 path.
+                    // The scene cache owns the stable id and the commit that
+                    // advances only when the offscreen scene changed (T-21.3).
+                    let scene_id = data.material_textures.scene.id();
+                    let scene_commit = data.material_textures.scene.commit();
                     custom_elements.push(NestedOutputElements::Blur(
                         crate::window::BackdropBlurElement::new(
                             scene_texture,
@@ -530,7 +534,9 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                             scene_size,
                             0,
                             scale,
-                        ),
+                        )
+                        .with_id(scene_id)
+                        .with_commit(scene_commit),
                     ));
                 } else {
                     // Region shape: the scene elements are the output base and
@@ -546,7 +552,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 // single-pass path: chrome + the feather backdrop (no GPU
                 // readback). A locked session composites only the lock
                 // surface, prepended so it sits above everything (T-12.3a).
-                data.material_textures.trim_panels(0);
+                data.material_textures.trim_panels(&[]);
                 custom_elements =
                     crate::lock::lock_render_elements(renderer, state, &output, scale);
                 custom_elements.extend(crate::render::chrome_render_elements(
@@ -740,7 +746,18 @@ where
         .ok_or_else(|| "scene texture cache unexpectedly empty".to_owned())?;
     let clear = state.wallpaper_color_for(output);
     let tracker_size = Size::<i32, Physical>::from((region.texture_size.w, region.texture_size.h));
-    let mut tracker = OutputDamageTracker::new(tracker_size, scale, Transform::Normal);
+    // Keep the scene damage tracker across frames (T-21.3). The first frame
+    // (or the first frame after a reallocation/region change) renders the
+    // whole region; later frames render only the damage the live elements
+    // report, and an unchanged scene renders nothing at all. Age 1 keeps
+    // Smithay from re-damaging the whole output on every call while still
+    // retaining the last element states.
+    if !cache.tracker_matches(key) {
+        cache.set_tracker(
+            key,
+            OutputDamageTracker::new(tracker_size, scale, Transform::Normal),
+        );
+    }
     // Relocate the output-local elements into the region's physical space.
     // `&E` implements `RenderElement`, so this borrows the caller's list
     // instead of consuming it; the same list is drawn live in region mode.
@@ -749,14 +766,19 @@ where
         .iter()
         .map(|element| RelocateRenderElement::from_element(element, offset, Relocate::Relative))
         .collect();
-    {
+    let changed = {
+        let tracker = cache
+            .tracker_mut()
+            .ok_or_else(|| "scene damage tracker missing".to_owned())?;
         let mut target = renderer
             .bind(&mut texture)
             .map_err(|err| format!("scene bind failed: {err}"))?;
-        tracker
-            .render_output(renderer, &mut target, 0, &relocated, clear)
+        let result = tracker
+            .render_output(renderer, &mut target, 1, &relocated, clear)
             .map_err(|err| format!("scene render failed: {err:?}"))?;
-    }
+        result.damage.is_some()
+    };
+    cache.note_scene_change(changed);
     Ok(texture)
 }
 
@@ -789,11 +811,12 @@ fn build_blur_elements(
 ) -> Result<(Vec<NestedOutputElements<GlowRenderer>>, u64), String> {
     let mut elements = Vec::new();
     let mut allocations = 0u64;
-    for (index, panel) in panels.iter().enumerate() {
+    let keys: Vec<PanelKey> = panels.iter().map(|panel| panel.key).collect();
+    for panel in panels {
         let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale) else {
             continue;
         };
-        let slot = cache.panels.slot(index);
+        let slot = cache.panels.slot(&panel.key);
         let (texture, panel_allocations) = blur_panel_texture(
             renderer,
             programs.blur,
@@ -801,8 +824,9 @@ fn build_blur_elements(
             scene_src,
             &panel.spec,
             programs.chain_size,
-            slot,
+            slot.textures_mut(),
         )?;
+        let id = slot.id().clone();
         allocations += panel_allocations;
         let texture_size = texture.size();
         let element = crate::window::BackdropBlurElement::new(
@@ -812,6 +836,7 @@ fn build_blur_elements(
             panel.spec.corner_radius.round().max(0.0) as i32,
             scale,
         )
+        .with_id(id)
         .with_texture_panel(texture_panel);
         // Add the liquid-glass compose only when the driver compiled it; a
         // refused shader leaves the plain blurred backdrop (T-20.2).
@@ -821,9 +846,9 @@ fn build_blur_elements(
         };
         elements.push(NestedOutputElements::Blur(element));
     }
-    // Release the slots of panels that disappeared this frame. T190c replaces
-    // the index keying with a stable panel identity.
-    cache.trim_panels(panels.len());
+    // Release the slots of panels that disappeared this frame. A panel that
+    // merely moved or changed stacking order keeps its key, id, and textures.
+    cache.trim_panels(&keys);
     Ok((elements, allocations))
 }
 

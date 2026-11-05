@@ -1141,6 +1141,19 @@ origin translation, grow-only cache, and panel-slot lifetimes are unit-tested
 in `window::material_region` and `window::material_cache`. The contract is
 [ADR 0208](../design/adr/0208-region-scene-texture-and-grow-only-cache.md).
 
+T-21.3's stable-ID/damage evidence is `scripts/t21-stable-damage.sh`
+(`make t21-stable-damage`). It runs the settled-panel damage unit test against
+a real `OutputDamageTracker`, the `make t21-doctor` preflight, and one nested
+1x capture of a stationary Dock with no synthetic pointer motion. The committed
+still is `t21-stable-dock-1x.png`; `t21-stable-damage.txt` records the test
+result, the preflight, the capture command, and two `material stats` snapshots
+one second apart. A manual full-output diagnostic still
+(`DRAGONFRUIT_MATERIAL_FULL_OUTPUT=1`, same `settled` state) is
+`t21-stable-full-1x.png`; it verifies the rollback base still renders with the
+stable scene id/commit. The identity contract (one `Id` per stable panel key,
+one scene `Id`/commit per output, slots released on removal) is
+[ADR 0209](../design/adr/0209-stable-panel-keys-and-scene-commits.md).
+
 T-21.1b's HiDPI chrome stills are `t21-hidpi-1x.png`, `t21-hidpi-1_5x.png`,
 and `t21-hidpi-2x.png` (the menu bar, Dock, and Dock popover at each scale),
 plus `t21-hidpi-1_5x-dock.png` and `t21-hidpi-1_5x-control-center.png` for the

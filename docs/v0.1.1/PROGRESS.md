@@ -22,6 +22,7 @@
 - **T189d — T-21.2c Refresh-aware hysteresis and load tests**: `DegradeController` hysteresis is now wall-clock, not frame-count:; `DOWNGRADE_WINDOW = 200 ms` (the old 12 frames at 60 Hz),
 - **T190a — T-21.3 pure MaterialRegion helper**: `compositor/src/window/material_region.rs` (new, pure geometry):; `MaterialRegion { rect, physical, texture_size }`;
 - **T190b — T-21.3 Region-sized scene render and caching**: `compositor/src/window/material_region.rs`:; `MaterialRegion::full_output` (diagnostic/rollback region),
+- **T190c — T-21.3 Stable scene/panel IDs and damage**: `compositor/src/window/material_cache.rs`:; `PanelKey` is an allocation-free hash of the chrome surface's
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -44,6 +45,7 @@
 - [T189d](progress/T189d.md) — `DegradeController` hysteresis is now wall-clock, not frame-count:
 - [T190a](progress/T190a.md) — `compositor/src/window/material_region.rs` (new, pure geometry):
 - [T190b](progress/T190b.md) — `compositor/src/window/material_region.rs`:
+- [T190c](progress/T190c.md) — `compositor/src/window/material_cache.rs`:
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

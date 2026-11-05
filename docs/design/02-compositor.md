@@ -488,6 +488,19 @@ smaller. The `material stats` line now also reports `material_allocations`,
 `material_scene_allocations`, `material_panel_allocations`,
 `material_region_px`, and `material_region=WxH`.
 
+T190c adds the stable identity and damage contract (ADR
+[0209](adr/0209-stable-panel-keys-and-scene-commits.md)). Panel texture slots
+are keyed by `PanelKey` — a hash of the chrome surface's namespace, layer, and
+Wayland object id, deliberately not its geometry — and each slot owns one
+render-element `Id` for the panel's lifetime. Moving, reordering, or covering a
+panel keeps that id; removing it drops the slot, its id, and its `GlesTexture`
+handles. `SceneTextureCache` owns one scene id per output and a commit that
+advances only when the persisted offscreen scene tracker reports damage. A
+stationary Dock over an unchanged wallpaper therefore produces no output
+damage, and the full-output diagnostic scene base no longer repaints the whole
+output on every frame. The scene tracker is reset on a texture reallocation or
+region-size/scale change so a fresh texture renders its whole region.
+
 The Tahoe **liquid-glass pass** landed in **T-20.2**
 ([ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)) as a second custom
 texture program (`GLASS_SHADER`) used on the final compose of each panel's

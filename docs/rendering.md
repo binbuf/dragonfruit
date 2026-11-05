@@ -155,10 +155,10 @@ regions are a follow-up, not part of this slice.
 
 ### R1.2 Stable element IDs and cache reuse
 
-**Why.** `SceneTextureElement` and `BackdropBlurElement` currently create a new
-`Id` each frame. The scene changes every frame, but the panel elements and
-texture handles should not force full-output damage when only a small region
-changed.
+**Why.** `SceneTextureElement` and `BackdropBlurElement` used to create a new
+`Id` each frame. The scene changes only when something in it changes, so a
+stationary Dock over an unchanged wallpaper must not repaint its panel — or the
+full output — every frame.
 
 **Work**
 
@@ -166,10 +166,26 @@ changed.
 - Keep the element instances or reuse IDs across frames.
 - Measure `DrmCompositor` damage and `direct_scanouts` before/after.
 
+T190c implements the stable identity (ADR 0209). `PanelKey` hashes the chrome
+surface's namespace, layer, and Wayland object id (never its geometry), and
+`PanelTextureSlots` owns one `Id` per key for the panel's lifetime. A panel
+that moves, changes stacking order, or is covered by a popover keeps its id;
+a removed panel drops its id and Kawase textures, and a returning panel is a
+new element that damages once. `SceneTextureCache` owns one scene `Id` per
+output plus a `CommitCounter` that advances only when the offscreen scene's
+persistent damage tracker reports a change. The tracker is reset on a
+reallocation or region-size/scale change, so a fresh texture always renders its
+whole region. The full-output diagnostic scene base uses that id/commit; the
+default region shape keeps drawing the live scene elements, whose own stable
+ids carry scene damage.
+
 **Acceptance**
 
 - A stationary Dock with an unchanged wallpaper does not damage the full
-  output every frame.
+  output every frame. The damage unit test drives a real
+  `OutputDamageTracker` with the panel cache's id: the settled frame returns
+  no damage, a wallpaper commit damages the full output, and a Dock move
+  damages only the old/new panel rects.
 - No stale pixels at panel edges after a damage-only update.
 
 ### R1.3 Allocation and synchronization audit
@@ -186,7 +202,12 @@ The scene cache is grow-only and keyed by region size, output mode, and scale
 (not the region origin), so a Dock sweep allocates to its maximum once and then
 reuses the texture on the way down; an output mode/scale change reallocates.
 Panel slots are trimmed when a panel disappears, dropping its `GlesTexture`
-handles. The DRM material path is single-GPU, so the scene texture and Kawase
+handles. T190c keys those slots by the stable `PanelKey` rather than list
+position, so a reorder or a popover opening cannot inherit another panel's
+textures or id. The scene cache also keeps the offscreen damage tracker: an
+unchanged scene renders nothing and leaves its commit flat, while a texture
+reallocation or region-size/scale change resets the tracker for one full region
+render. The DRM material path is single-GPU, so the scene texture and Kawase
 chain share one GL context; each offscreen frame is finished before the next
 bind, and the nested `GlesFrame` waits on its fence when dropped. `material
 stats` reports `material_allocations`, the scene/panel split,
