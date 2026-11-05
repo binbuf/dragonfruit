@@ -38,13 +38,26 @@ use crate::window::shadow::ShadowSpec;
 /// A frame is "over budget" when its smoothed duration exceeds the budget by
 /// any amount; the smoothing means a stray scheduling spike does not count.
 const EMA_ALPHA: f64 = 0.3;
-/// Consecutive over-budget frames before the tier steps down.
-const DOWNGRADE_FRAMES: u32 = 12;
-/// Consecutive clearly-under-budget frames before the tier recovers.
-const UPGRADE_FRAMES: u32 = 180;
+/// Sustained over-budget time before the tier steps down. This is the old
+/// 12-frame window at 60 Hz (12 × 16.666 ms); at 120/144 Hz it is the same
+/// wall-clock window, not 12 faster frames (T-21.2c).
+const DOWNGRADE_WINDOW: Duration = Duration::from_millis(200);
+/// Sustained clearly-under-budget time before the tier recovers. This is the
+/// old 180-frame window at 60 Hz (180 × 16.666 ms = 3 s).
+const UPGRADE_WINDOW: Duration = Duration::from_secs(3);
 /// "Clearly under" is this fraction of the budget: recovery needs real
 /// headroom, so a tier does not oscillate around the threshold.
 const RECOVERY_RATIO: f64 = 0.75;
+/// A downgrade this soon after an upgrade is a flap, not a new steady state.
+/// The boundary is latched so a steady pointer sweep cannot keep climbing
+/// back into the tier that just missed the deadline (T-21.2c).
+const PROBATION_WINDOW: Duration = Duration::from_secs(10);
+/// While a boundary is latched, recovery across it needs this much headroom
+/// (a genuine idle/lighter load, not the 0.75 recovery band).
+const LATCHED_RECOVERY_RATIO: f64 = 0.4;
+/// ...and this long, so a sweep that merely dips under the threshold does not
+/// retry every few seconds.
+const LATCHED_UPGRADE_WINDOW: Duration = Duration::from_secs(10);
 /// Bounds an operator/test-provided budget (1 ms..100 ms).
 const MIN_BUDGET_US: u32 = 1_000;
 const MAX_BUDGET_US: u32 = 100_000;
@@ -446,8 +459,18 @@ pub struct DegradeController {
     budget_source: BudgetSource,
     ema_us: f64,
     samples: u64,
-    over_budget_streak: u32,
-    under_budget_streak: u32,
+    /// Time spent continuously over budget / clearly under budget. The
+    /// hysteresis windows are wall-clock, so the same 12/180-frame behavior
+    /// holds at 60 Hz and does not speed up at 120/144 Hz.
+    over_budget_time: Duration,
+    under_budget_time: Duration,
+    /// Time since the last upgrade, and the boundary it crossed. A downgrade
+    /// within [`PROBATION_WINDOW`] means that boundary is unstable.
+    since_upgrade: Duration,
+    upgraded_boundary: Option<usize>,
+    /// The higher-tier index of a boundary that flapped. Recovery across it
+    /// requires the stricter latched gate until a successful upgrade.
+    latched_boundary: Option<usize>,
     over_budget_frames: u64,
     downgrades: u64,
     upgrades: u64,
@@ -490,8 +513,11 @@ impl DegradeController {
             budget_source: BudgetSource::Refresh,
             ema_us: 0.0,
             samples: 0,
-            over_budget_streak: 0,
-            under_budget_streak: 0,
+            over_budget_time: Duration::ZERO,
+            under_budget_time: Duration::ZERO,
+            since_upgrade: Duration::ZERO,
+            upgraded_boundary: None,
+            latched_boundary: None,
             over_budget_frames: 0,
             downgrades: 0,
             upgrades: 0,
@@ -543,21 +569,24 @@ impl DegradeController {
     pub fn force(&mut self, tier: DegradeTier) {
         self.forced = Some(tier);
         self.tier = tier;
-        self.reset_streaks();
+        self.reset_selection_memory();
     }
 
     /// Resume automatic selection. The current tier is kept until the
     /// observations move it, so releasing a pin never causes a jump.
     pub fn release(&mut self) {
         self.forced = None;
-        self.reset_streaks();
+        self.reset_selection_memory();
     }
 
     /// Observe one rendered frame's duration and advance the selection.
     ///
     /// The duration feeds an exponential moving average so a single spike
     /// cannot degrade the UI; sustained pressure (or sustained headroom) walks
-    /// the ladder one tier at a time. While pinned the tier never changes.
+    /// the ladder one tier at a time. The windows are accumulated wall-clock
+    /// time, so the 12-frame/180-frame 60 Hz reference becomes the same
+    /// 200 ms/3 s behavior at 120 and 144 Hz. While pinned the tier never
+    /// changes.
     pub fn observe(&mut self, duration: Duration) {
         let us = duration.as_micros() as f64;
         self.ema_us = if self.samples == 0 {
@@ -570,23 +599,35 @@ impl DegradeController {
         if self.forced.is_some() {
             return;
         }
+        self.since_upgrade = self.since_upgrade.saturating_add(duration);
+
         let budget = f64::from(self.budget_us);
+        let (recovery_ratio, upgrade_window) = self.recovery_gate();
         if self.ema_us > budget {
-            self.over_budget_streak += 1;
-            self.under_budget_streak = 0;
+            self.over_budget_time = self.over_budget_time.saturating_add(duration);
+            self.under_budget_time = Duration::ZERO;
             self.over_budget_frames += 1;
-        } else if self.ema_us < budget * RECOVERY_RATIO {
-            self.under_budget_streak += 1;
-            self.over_budget_streak = 0;
+        } else if self.ema_us < budget * recovery_ratio {
+            self.under_budget_time = self.under_budget_time.saturating_add(duration);
+            self.over_budget_time = Duration::ZERO;
         } else {
             self.reset_streaks();
         }
-        if self.over_budget_streak >= DOWNGRADE_FRAMES {
+
+        if self.over_budget_time >= DOWNGRADE_WINDOW {
+            let from = self.tier;
             self.reset_streaks();
             self.step(1);
-        } else if self.under_budget_streak >= UPGRADE_FRAMES {
+            if self.tier != from {
+                self.note_downgrade(from);
+            }
+        } else if self.tier.index() > 0 && self.under_budget_time >= upgrade_window {
+            let from = self.tier;
             self.reset_streaks();
             self.step(-1);
+            if self.tier != from {
+                self.note_upgrade(from);
+            }
         }
     }
 
@@ -623,7 +664,8 @@ impl DegradeController {
     pub fn summary(&self) -> String {
         format!(
             "tier={} forced={} budget_us={} samples={} over_budget={} downgrades={} \
-             upgrades={} tiers=full:{},reduced:{},minimal:{} budget_source={}",
+             upgrades={} tiers=full:{},reduced:{},minimal:{} budget_source={} \
+             down_window_us={} up_window_us={} latched={}",
             self.tier.name(),
             self.forced.is_some() as u32,
             self.budget_us,
@@ -635,12 +677,58 @@ impl DegradeController {
             self.tier_frames[DegradeTier::Reduced.index()],
             self.tier_frames[DegradeTier::Minimal.index()],
             self.budget_source.name(),
+            DOWNGRADE_WINDOW.as_micros(),
+            UPGRADE_WINDOW.as_micros(),
+            self.latched_boundary.is_some() as u32,
         )
     }
 
+    /// The recovery gate for the boundary immediately above the current
+    /// tier. A boundary that just flapped needs a genuinely lighter load
+    /// (below [`LATCHED_RECOVERY_RATIO`]) for the longer
+    /// [`LATCHED_UPGRADE_WINDOW`], so a steady pointer sweep cannot climb
+    /// back into the tier that just missed the deadline.
+    fn recovery_gate(&self) -> (f64, Duration) {
+        if self.tier.index() > 0 && self.latched_boundary == Some(self.tier.index() - 1) {
+            (LATCHED_RECOVERY_RATIO, LATCHED_UPGRADE_WINDOW)
+        } else {
+            (RECOVERY_RATIO, UPGRADE_WINDOW)
+        }
+    }
+
+    /// Record a real step down. A downgrade shortly after an upgrade across
+    /// the same boundary is a flap: latch that boundary.
+    fn note_downgrade(&mut self, from: DegradeTier) {
+        let boundary = from.index();
+        if self.upgraded_boundary == Some(boundary) && self.since_upgrade <= PROBATION_WINDOW {
+            self.latched_boundary = Some(boundary);
+        }
+        self.upgraded_boundary = None;
+        self.since_upgrade = Duration::ZERO;
+    }
+
+    /// Record a real step up. A successful recovery across a latched
+    /// boundary clears the latch; the next downgrade will latch it again if
+    /// the load has not actually settled.
+    fn note_upgrade(&mut self, from: DegradeTier) {
+        let boundary = from.index() - 1;
+        if self.latched_boundary == Some(boundary) {
+            self.latched_boundary = None;
+        }
+        self.upgraded_boundary = Some(boundary);
+        self.since_upgrade = Duration::ZERO;
+    }
+
     fn reset_streaks(&mut self) {
-        self.over_budget_streak = 0;
-        self.under_budget_streak = 0;
+        self.over_budget_time = Duration::ZERO;
+        self.under_budget_time = Duration::ZERO;
+    }
+
+    fn reset_selection_memory(&mut self) {
+        self.reset_streaks();
+        self.since_upgrade = Duration::ZERO;
+        self.upgraded_boundary = None;
+        self.latched_boundary = None;
     }
 
     /// Move `steps` positions along the ladder (positive = toward degraded),
@@ -917,33 +1005,177 @@ mod tests {
         assert!(minimal.layers >= 1);
     }
 
+    /// Feed frames for `duration` of wall-clock time at `frame_us` per frame,
+    /// at least once. This is how the refresh-aware tests express a window
+    /// without depending on a frame count.
+    fn frames_for(controller: &mut DegradeController, duration: Duration, frame_us: u64) {
+        let frame = Duration::from_micros(frame_us);
+        let mut elapsed = Duration::ZERO;
+        while elapsed < duration {
+            controller.observe(frame);
+            elapsed = elapsed.saturating_add(frame);
+        }
+    }
+
     #[test]
-    fn sustained_over_budget_frames_step_the_ladder_down_to_minimal() {
+    fn sustained_over_budget_time_steps_the_ladder_down_to_minimal() {
         let mut controller = DegradeController::with_budget_us(16_000);
         assert_eq!(controller.tier(), DegradeTier::Full);
 
-        // One full downgrade window of clearly-over-budget frames.
-        frames(&mut controller, DOWNGRADE_FRAMES, 20_000);
+        // One full 200 ms downgrade window of clearly-over-budget frames.
+        frames(&mut controller, 10, 20_000);
         assert_eq!(controller.tier(), DegradeTier::Reduced);
         assert_eq!(controller.downgrades(), 1);
 
-        frames(&mut controller, DOWNGRADE_FRAMES, 20_000);
+        frames(&mut controller, 10, 20_000);
         assert_eq!(controller.tier(), DegradeTier::Minimal);
         assert_eq!(controller.downgrades(), 2);
 
         // Minimal saturates: it cannot degrade further.
-        frames(&mut controller, DOWNGRADE_FRAMES * 4, 50_000);
+        frames(&mut controller, 40, 50_000);
         assert_eq!(controller.tier(), DegradeTier::Minimal);
         assert_eq!(controller.downgrades(), 2);
         assert!(controller.over_budget_frames() > 0);
-        assert!(controller.samples() == u64::from(DOWNGRADE_FRAMES * 6));
+        assert_eq!(controller.samples(), 60);
+    }
+
+    #[test]
+    fn the_hysteresis_windows_are_refresh_aware_at_60_120_and_144_hz() {
+        // The reference is 12 over-budget frames and 180 clearly-under-budget
+        // frames at 60 Hz: 200 ms down and 3 s up. A faster panel must take
+        // the same wall-clock time, not 2.4x fewer milliseconds.
+        for (hz, period_us, over_us, under_us) in [
+            (60u32, 16_666u64, 20_000u64, 8_000u64),
+            (120, 8_333, 10_000, 4_000),
+            (144, 6_944, 8_333, 3_472),
+        ] {
+            let mut controller = DegradeController::with_budget_us(period_us as u32);
+
+            // Downgrade after ~200 ms, independent of the refresh rate.
+            let mut downgrade_at = Duration::ZERO;
+            let mut downgrade_frames = 0u32;
+            let mut elapsed = Duration::ZERO;
+            while controller.tier() == DegradeTier::Full {
+                controller.observe(Duration::from_micros(over_us));
+                elapsed = elapsed.saturating_add(Duration::from_micros(over_us));
+                downgrade_frames += 1;
+                if controller.tier() == DegradeTier::Reduced {
+                    downgrade_at = elapsed;
+                }
+                assert!(elapsed < Duration::from_secs(1), "{hz} Hz never downgraded");
+            }
+            assert!(
+                downgrade_at >= Duration::from_millis(190)
+                    && downgrade_at <= Duration::from_millis(220),
+                "{hz} Hz downgraded after {downgrade_at:?}, not ~200 ms"
+            );
+
+            // Recover after ~3 s of clearly-under-budget frames.
+            let mut upgrade_at = Duration::ZERO;
+            let mut upgrade_frames = 0u32;
+            elapsed = Duration::ZERO;
+            while controller.tier() == DegradeTier::Reduced {
+                controller.observe(Duration::from_micros(under_us));
+                elapsed = elapsed.saturating_add(Duration::from_micros(under_us));
+                upgrade_frames += 1;
+                if controller.tier() == DegradeTier::Full {
+                    upgrade_at = elapsed;
+                }
+                assert!(elapsed < Duration::from_secs(5), "{hz} Hz never recovered");
+            }
+            assert!(
+                upgrade_at >= Duration::from_millis(2_950)
+                    && upgrade_at <= Duration::from_millis(3_150),
+                "{hz} Hz recovered after {upgrade_at:?}, not ~3 s"
+            );
+            println!(
+                "degrade-trace: rate_hz={hz} period_us={period_us} \
+                 downgrade_frames={downgrade_frames} downgrade_ms={:.3} \
+                 upgrade_frames={upgrade_frames} upgrade_ms={:.3}",
+                downgrade_at.as_secs_f64() * 1_000.0,
+                upgrade_at.as_secs_f64() * 1_000.0,
+            );
+        }
+    }
+
+    #[test]
+    fn a_steady_pointer_sweep_does_not_repeat_full_reduced_flapping() {
+        // A steady sweep whose cost depends on the tier: Full misses the
+        // budget, Reduced is comfortably under the recovery threshold, and
+        // Minimal is cheaper still. Without a flap guard this is the classic
+        // Full -> Reduced -> Full -> Reduced limit cycle.
+        for (hz, period_us) in [(60u32, 16_666u64), (120, 8_333), (144, 6_944)] {
+            let budget_us = period_us as u32;
+            let mut controller = DegradeController::with_budget_us(budget_us);
+            let full_us = (period_us as f64 * 1.25) as u64;
+            let reduced_us = (period_us as f64 * 0.6) as u64;
+            let minimal_us = (period_us as f64 * 0.4) as u64;
+
+            let mut elapsed = Duration::ZERO;
+            let sweep = Duration::from_secs(60);
+            while elapsed < sweep {
+                let frame_us = match controller.tier() {
+                    DegradeTier::Full => full_us,
+                    DegradeTier::Reduced => reduced_us,
+                    DegradeTier::Minimal => minimal_us,
+                };
+                controller.observe(Duration::from_micros(frame_us));
+                elapsed = elapsed.saturating_add(Duration::from_micros(frame_us));
+            }
+
+            // One initial downgrade, one probationary recovery, then the
+            // latch holds Reduced for the rest of the sweep.
+            assert_eq!(
+                controller.tier(),
+                DegradeTier::Reduced,
+                "{hz} Hz ended at the wrong tier after a steady sweep"
+            );
+            assert_eq!(
+                controller.downgrades(),
+                2,
+                "{hz} Hz downgrades must stay bounded"
+            );
+            assert_eq!(
+                controller.upgrades(),
+                1,
+                "{hz} Hz upgrades must stay bounded"
+            );
+            assert!(
+                controller.summary().contains("latched=1"),
+                "{hz} Hz must latch the flapping boundary"
+            );
+            println!(
+                "degrade-trace: steady_sweep_hz={hz} duration_s=60 \
+                 full_frame_us={full_us} reduced_frame_us={reduced_us} \
+                 downgrades={} upgrades={} latched=1 final_tier={}",
+                controller.downgrades(),
+                controller.upgrades(),
+                controller.tier().name(),
+            );
+
+            // The latch is not permanent: a genuinely lighter load (below the
+            // 0.4 budget latch threshold) for 10 s recovers to Full.
+            let idle_us = (period_us as f64 * 0.3) as u64;
+            frames_for(&mut controller, Duration::from_secs(11), idle_us);
+            assert_eq!(
+                controller.tier(),
+                DegradeTier::Full,
+                "{hz} Hz must recover after a sustained idle load"
+            );
+            println!(
+                "degrade-trace: steady_sweep_idle_hz={hz} idle_frame_us={idle_us} \
+                 final_tier={} upgrades={}",
+                controller.tier().name(),
+                controller.upgrades(),
+            );
+        }
     }
 
     #[test]
     fn isolated_spikes_do_not_degrade() {
         let mut controller = DegradeController::with_budget_us(16_000);
-        // A single 100 ms hitch, then many fast frames: the streak never
-        // reaches the downgrade window.
+        // A single 100 ms hitch, then many fast frames: the over-budget time
+        // never reaches the downgrade window.
         controller.observe(Duration::from_millis(100));
         frames(&mut controller, 200, 5_000);
         assert_eq!(controller.tier(), DegradeTier::Full);
@@ -953,17 +1185,17 @@ mod tests {
     #[test]
     fn sustained_headroom_recovers_toward_full() {
         let mut controller = DegradeController::with_budget_us(16_000);
-        frames(&mut controller, DOWNGRADE_FRAMES * 2, 25_000);
+        frames(&mut controller, 20, 25_000);
         assert_eq!(controller.tier(), DegradeTier::Minimal);
 
         // Recovery needs the longer under-budget window, and climbs one tier
         // at a time. The extra frames absorb the EMA's warm-up from the
         // degraded frame time before the under-budget streak can start.
-        frames(&mut controller, UPGRADE_FRAMES + 100, 4_000);
+        frames(&mut controller, 900, 4_000);
         assert_eq!(controller.tier(), DegradeTier::Reduced);
         assert_eq!(controller.upgrades(), 1);
 
-        frames(&mut controller, UPGRADE_FRAMES + 100, 4_000);
+        frames(&mut controller, 900, 4_000);
         assert_eq!(controller.tier(), DegradeTier::Full);
         assert_eq!(controller.upgrades(), 2);
     }
@@ -975,7 +1207,7 @@ mod tests {
         assert_eq!(controller.forced(), Some(DegradeTier::Full));
 
         // Heavy load cannot move a pinned tier.
-        frames(&mut controller, DOWNGRADE_FRAMES * 4, 90_000);
+        frames(&mut controller, 40, 90_000);
         assert_eq!(controller.tier(), DegradeTier::Full);
         assert_eq!(controller.downgrades(), 0);
 
@@ -983,7 +1215,7 @@ mod tests {
         controller.release();
         assert_eq!(controller.forced(), None);
         assert_eq!(controller.tier(), DegradeTier::Full);
-        frames(&mut controller, DOWNGRADE_FRAMES, 30_000);
+        frames(&mut controller, 8, 30_000);
         assert_eq!(controller.tier(), DegradeTier::Reduced);
     }
 
@@ -1045,6 +1277,9 @@ mod tests {
             "upgrades=0",
             "tiers=full:3,reduced:0,minimal:0",
             "budget_source=refresh",
+            "down_window_us=200000",
+            "up_window_us=3000000",
+            "latched=0",
         ] {
             assert!(summary.contains(field), "missing {field:?} in {summary:?}");
         }

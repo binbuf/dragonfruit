@@ -245,6 +245,50 @@ Item {
             Theme.dark = false;
         }
 
+        function test_load_sequence_keeps_the_applied_material() {
+            // T-21.2c load sequence on one menu-bar scene: Full -> Reduced ->
+            // floor-missed -> Reduced -> Full. The shell receives change-only
+            // role events; the already-created surface must follow each one
+            // without being rebuilt.
+            var steps = [
+                { tier: 0, blur: true, fallback: 0, label: "full" },
+                { tier: 1, blur: true, fallback: 0, label: "reduced" },
+                { tier: 1, blur: false, fallback: 4, label: "floor-missed" },
+                { tier: 1, blur: true, fallback: 0, label: "recovered" },
+                { tier: 0, blur: true, fallback: 0, label: "full-again" }
+            ];
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                var bar = make(menuBarComponent, { width: 600 });
+                for (var i = 0; i < steps.length; ++i) {
+                    var step = steps[i];
+                    bar.materialTier = step.tier;
+                    bar.materialBlurActive = step.blur;
+                    bar.materialFallback = step.fallback;
+                    compare(bar.materialTier, step.tier, step.label);
+                    compare(bar.materialBlurActive, step.blur, step.label);
+                    compare(bar.materialFallback, step.fallback, step.label);
+                    if (step.blur) {
+                        fuzzyCompare(bar.color.a, Theme.material.chromeOpacity,
+                                     0.001, step.label);
+                    } else {
+                        var expected = Qt.rgba(
+                            Theme.color.chromeFallbackFill.r,
+                            Theme.color.chromeFallbackFill.g,
+                            Theme.color.chromeFallbackFill.b,
+                            Theme.material.chromeFallbackOpacity);
+                        fuzzyCompare(bar.color.a, expected.a, 0.001, step.label);
+                        fuzzyCompare(bar.color.r, expected.r, 0.001, step.label);
+                        fuzzyCompare(bar.color.g, expected.g, 0.001, step.label);
+                        fuzzyCompare(bar.color.b, expected.b, 0.001, step.label);
+                        verify(bar.color.a >= 0.8,
+                               step.label + " must read as a material");
+                    }
+                }
+            }
+            Theme.dark = false;
+        }
+
         function compareColor(actual, expected, label) {
             fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
             fuzzyCompare(actual.g, expected.g, 0.001, label + " green");

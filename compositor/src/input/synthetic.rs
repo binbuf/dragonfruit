@@ -787,6 +787,14 @@ pub enum SyntheticCommand {
     /// Set the frame budget the degrade controller selects against, in
     /// microseconds (T-04.4a test plumbing).
     SetDegradeBudget(u32),
+    /// Feed `count` rendered frames of `micros` each to the timing
+    /// instruments (T-21.2c load-test plumbing). The same path the session
+    /// loop uses, so a headless conformance run can exercise the degrade
+    /// hysteresis without a GPU.
+    SetDegradeFrames {
+        count: u32,
+        micros: u64,
+    },
     /// Override the renderer class the material resolves on (T-21.2c test
     /// plumbing): `gpu` or `software`. The headless backend starts on
     /// `software`, so conformance can still exercise the sampled-path role
@@ -1094,6 +1102,23 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                         "degrade-budget must be an integer number of microseconds".to_string()
                     })?,
             ),
+            Some("degrade-frames") => SyntheticCommand::SetDegradeFrames {
+                count: parts
+                    .next()
+                    .ok_or("set degrade-frames requires a frame count")?
+                    .parse()
+                    .map_err(|_| {
+                        "degrade-frames count must be a non-negative integer".to_string()
+                    })?,
+                micros: parts
+                    .next()
+                    .ok_or("set degrade-frames requires microseconds")?
+                    .parse()
+                    .map_err(|_| {
+                        "degrade-frames duration must be an integer number of microseconds"
+                            .to_string()
+                    })?,
+            },
             Some("material-path") => match parts.next() {
                 Some("gpu") => SyntheticCommand::SetMaterialPath(MaterialPath::Gpu),
                 Some("software") => SyntheticCommand::SetMaterialPath(MaterialPath::Software),
@@ -1130,7 +1155,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             },
             _ => {
                 return Err(
-                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget, material-path, material-blur-supported, color-scheme, magnifier, magnifier-zoom, magnifier-mode, magnifier-center)"
+                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget, degrade-frames, material-path, material-blur-supported, color-scheme, magnifier, magnifier-zoom, magnifier-mode, magnifier-center)"
                         .into(),
                 );
             }
@@ -1300,6 +1325,9 @@ impl SyntheticCommand {
             }
             SyntheticCommand::SetDegradeBudget(_) => {
                 unreachable!("set degrade-budget is handled by apply_datagram")
+            }
+            SyntheticCommand::SetDegradeFrames { .. } => {
+                unreachable!("set degrade-frames is handled by apply_datagram")
             }
             SyntheticCommand::SetMaterialPath(_) => {
                 unreachable!("set material-path is handled by apply_datagram")
@@ -1591,6 +1619,16 @@ fn apply_datagram_reply(
             }
             Ok(SyntheticCommand::SetDegradeBudget(budget_us)) => {
                 state.set_degrade_budget_us(budget_us);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetDegradeFrames { count, micros }) => {
+                // T-21.2c load plumbing: feed the real rendered-frame path,
+                // not a parallel controller, so the degrade counters and the
+                // role broadcasts see the same observations the session loop
+                // would.
+                for _ in 0..count {
+                    state.observe_rendered_frame(std::time::Duration::from_micros(micros));
+                }
                 applied += 1;
             }
             Ok(SyntheticCommand::SetMaterialPath(path)) => {
@@ -2656,6 +2694,13 @@ mod tests {
             SyntheticCommand::SetDegradeBudget(12_000)
         );
         assert_eq!(
+            parse_command("set degrade-frames 12 20000").unwrap(),
+            SyntheticCommand::SetDegradeFrames {
+                count: 12,
+                micros: 20_000,
+            }
+        );
+        assert_eq!(
             parse_command("set material-path gpu").unwrap(),
             SyntheticCommand::SetMaterialPath(MaterialPath::Gpu)
         );
@@ -2749,6 +2794,10 @@ mod tests {
         assert!(parse_command("set degrade-tier ultra").is_err());
         assert!(parse_command("set degrade-tier").is_err());
         assert!(parse_command("set degrade-budget fast").is_err());
+        assert!(parse_command("set degrade-frames").is_err());
+        assert!(parse_command("set degrade-frames 12").is_err());
+        assert!(parse_command("set degrade-frames fast 20000").is_err());
+        assert!(parse_command("set degrade-frames 12 fast").is_err());
         assert!(parse_command("set color-scheme sepia").is_err());
         assert!(parse_command("set color-scheme").is_err());
         assert!(parse_command("set magnifier maybe").is_err());
