@@ -21,6 +21,7 @@
 - **T189c — T-21.2c Overlay and popover fallback coverage**: The shell now applies the v4 role state to the whole popup family through the; `Popup` → menu-bar dropdowns/submenus, status menus, tray context menu,
 - **T189d — T-21.2c Refresh-aware hysteresis and load tests**: `DegradeController` hysteresis is now wall-clock, not frame-count:; `DOWNGRADE_WINDOW = 200 ms` (the old 12 frames at 60 Hz),
 - **T190a — T-21.3 pure MaterialRegion helper**: `compositor/src/window/material_region.rs` (new, pure geometry):; `MaterialRegion { rect, physical, texture_size }`;
+- **T190b — T-21.3 Region-sized scene render and caching**: `compositor/src/window/material_region.rs`:; `MaterialRegion::full_output` (diagnostic/rollback region),
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -42,6 +43,7 @@
 - [T189c](progress/T189c.md) — The shell now applies the v4 role state to the whole popup family through the
 - [T189d](progress/T189d.md) — `DegradeController` hysteresis is now wall-clock, not frame-count:
 - [T190a](progress/T190a.md) — `compositor/src/window/material_region.rs` (new, pure geometry):
+- [T190b](progress/T190b.md) — `compositor/src/window/material_region.rs`:
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

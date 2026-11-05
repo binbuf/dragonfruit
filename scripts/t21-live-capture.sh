@@ -28,6 +28,13 @@ SETTLE="${SETTLE:-2}"
 KEEP_SCRATCH="${KEEP_SCRATCH:-0}"
 SOCKET="${SOCKET:-dragonfruit-t21-live-$STATE-$$}"
 SCRATCH="${SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/dragonfruit-t21-live.XXXXXX")}"
+# T-21.3: optional nested output scale and full-session rail. A scale other
+# than 1 needs settingsd so the shell's display policy does not reset the
+# compositor's scale; FULL_SESSION=1 also uses it for the 1x capture.
+SCALE="${SCALE:-1}"
+FULL_SESSION="${FULL_SESSION:-0}"
+OUT="${OUT:-docs/captures/t21-chrome-$STATE.png}"
+FORCE_TIER="${FORCE_TIER:-}"
 SYNTH="${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must be set}/$SOCKET.synth"
 SHOTS="$SCRATCH/shots"
 LOG="$SCRATCH/demo.log"
@@ -69,18 +76,51 @@ case "$STATE" in
         EXTRA_ENV=(DF_LOCK_FIXTURE=1000)
         ;;
 esac
+# A scaled session has to wait for settingsd -> shell -> df_output.set_scale
+# and the following output-properties event before the capture's physical
+# crop is correct. The scale change lands a few seconds into the session.
+if [ "$SCALE" != "1" ]; then
+    DELAY=$((DELAY + 6000))
+fi
 
-echo "t21-live: $STATE capture on $SOCKET"
+echo "t21-live: $STATE capture on $SOCKET (scale $SCALE)"
+if [ "$FULL_SESSION" = "1" ] || [ "$SCALE" != "1" ]; then
+    # `make dev-full` owns settingsd on a private bus. Seed the display scale
+    # before the shell starts: the shell forwards settingsd's display.scale as
+    # `df_output.set_scale`, which would otherwise reset the compositor's
+    # DRAGONFRUIT_NESTED_SCALE back to 1.0.
+    SESSION_DIR="$XDG_RUNTIME_DIR/$SOCKET.session"
+    mkdir -p "$SESSION_DIR/config/dragonfruit"
+    printf '{"schema":17,"keys":{"display.scale":%s}}\n' "$SCALE" \
+        >"$SESSION_DIR/config/dragonfruit/settings.json"
+    DEMO_CMD=(make dev-full DEV_FULL_ARGS="--socket-name $SOCKET")
+else
+    DEMO_CMD=(make demo DEMO_ARGS="--socket-name $SOCKET --private-bus")
+fi
 env "${EXTRA_ENV[@]}" \
+    DRAGONFRUIT_NESTED_SCALE="$SCALE" \
     DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" \
     DF_SCREENSHOT_DIR="$SHOTS" \
     DF_SCREENSHOT_CAPTURE_FIXTURE="$DELAY:$CAPTURE" \
     DF_SHELL_LOG="$SHELL_LOG" \
-    setsid make demo DEMO_ARGS="--socket-name $SOCKET --private-bus" \
+    setsid "${DEMO_CMD[@]}" \
     >"$LOG" 2>&1 &
 DEMO_PGID=$!
 
 for _ in $(seq 1 600); do [ -e "$SYNTH" ] && break; sleep 0.1; done
+# T-21.3 evidence can pin the material tier: the nested host throttles
+# submit() to roughly 1 Hz, so the degrade controller would otherwise reach
+# Minimal and turn the sampled pass off before a long capture.
+if [ -n "$FORCE_TIER" ]; then
+    python3 - "$SYNTH" "$FORCE_TIER" <<'PY'
+import socket
+import sys
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+sock.sendto(f"set degrade-tier {sys.argv[2]}".encode(), sys.argv[1])
+PY
+    sleep 0.5
+fi
 for _ in $(seq 1 2400); do
     if [ -f "$SHELL_LOG" ] && grep -q "menu bar configured" "$SHELL_LOG"; then
         break
@@ -149,5 +189,22 @@ if [ -z "$SAVED" ]; then
     exit 1
 fi
 
-cp "$SAVED" "docs/captures/t21-chrome-$STATE.png"
-echo "t21-live: wrote docs/captures/t21-chrome-$STATE.png"
+# Optional T-21.3 evidence: dump the live compositor's material counters while
+# the captured frame's chrome is still mapped. `DUMP_COMPOSITOR_STATS=1`.
+if [ "${DUMP_COMPOSITOR_STATS:-0}" = "1" ]; then
+    COMPOSITOR_PID="$(pgrep -f "^$PWD/target/debug/dragonfruit-compositor --backend nested --socket-name $SOCKET$" | head -1)"
+    if [ -n "$COMPOSITOR_PID" ]; then
+        : >"$SCRATCH/compositor-stats.txt"
+        # Two snapshots one second apart: the second is the warm-up check for
+        # scene/panel allocations while the capture frame's chrome is mapped.
+        for _ in 1 2; do
+            kill -USR1 "$COMPOSITOR_PID" 2>/dev/null || true
+            sleep 1
+            grep -a "material stats" "$LOG" | tail -1 | tee -a "$SCRATCH/compositor-stats.txt"
+        done
+    fi
+fi
+
+mkdir -p "$(dirname "$OUT")"
+cp "$SAVED" "$OUT"
+echo "t21-live: wrote $OUT"

@@ -131,8 +131,21 @@ T190a adds the pure `window::MaterialRegion` helper and
 `BlurSpec::padding()`: each panel is expanded by its own
 `max(token radius, 2^iterations)` logical padding, the union is clamped to the
 output, and the helper returns the logical rect plus the precisely rounded
-physical rect/texture size (ADR 0207). T190b wires that region into the scene
-render; the full-output path stays available until then.
+physical rect/texture size (ADR 0207).
+
+T190b wires that region into both backends (ADR 0208). The scene texture is
+allocated at the region's texture size; each panel's `src` is translated by the
+region's physical origin, and the panel element keeps the full panel for its
+rounded spans while sampling only the visible `texture_panel`. The default
+shape draws the live scene elements directly as the output base and uses the
+region texture only as the blur source; the region texture is not also
+composited as the base, so the output is not left empty and the windows are not
+painted twice into the output. The `DRAGONFRUIT_MATERIAL_FULL_OUTPUT=1` diagnostic
+restores the old full-output scene-texture base. The Kawase chain's first
+destination remains full-output sized so the panel blur is visually unchanged.
+A single padded-union rectangle is the full output when the top menu bar and
+bottom Dock are both blurred; a Dock-only frame is smaller. Multi-rect/tiled
+regions are a follow-up, not part of this slice.
 
 **Acceptance**
 
@@ -167,6 +180,17 @@ changed.
 - Check `MultiFrame` synchronization and `GlesTexture` lifetimes under repeated
   panel add/remove.
 - Add a debug assertion or counter for texture allocations per frame.
+
+T190b adds `window::material_cache::{SceneTextureCache, PanelTextureSlots}`.
+The scene cache is grow-only and keyed by region size, output mode, and scale
+(not the region origin), so a Dock sweep allocates to its maximum once and then
+reuses the texture on the way down; an output mode/scale change reallocates.
+Panel slots are trimmed when a panel disappears, dropping its `GlesTexture`
+handles. The DRM material path is single-GPU, so the scene texture and Kawase
+chain share one GL context; each offscreen frame is finished before the next
+bind, and the nested `GlesFrame` waits on its fence when dropped. `material
+stats` reports `material_allocations`, the scene/panel split,
+`material_region_px`, and `material_region=WxH`.
 
 **Acceptance**
 

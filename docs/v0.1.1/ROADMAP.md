@@ -61,7 +61,7 @@ done.
 ## Phase 21.3 — Panel-region material
 
 - [x] T190a — T-21.3 Pure MaterialRegion helper → [../tasks/0.1.1/190a-t-21.3-material-region.md](../tasks/0.1.1/190a-t-21.3-material-region.md)
-- [ ] T190b — T-21.3 Region-sized scene render and caching → [../tasks/0.1.1/190b-t-21.3-region-render.md](../tasks/0.1.1/190b-t-21.3-region-render.md)
+- [x] T190b — T-21.3 Region-sized scene render and caching → [../tasks/0.1.1/190b-t-21.3-region-render.md](../tasks/0.1.1/190b-t-21.3-region-render.md)
 - [ ] T190c — T-21.3 Stable scene/panel IDs and damage → [../tasks/0.1.1/190c-t-21.3-stable-ids-damage.md](../tasks/0.1.1/190c-t-21.3-stable-ids-damage.md)
 - [ ] T190d — T-21.3 Direct-scanout preservation and material counters → [../tasks/0.1.1/190d-t-21.3-scanout-and-counters.md](../tasks/0.1.1/190d-t-21.3-scanout-and-counters.md)
 
@@ -89,11 +89,11 @@ task's `## Hand-off` is filled in. Human sign-off remains batched at the release
 boundary and is not part of an agent task.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-05T01:39:22Z · 18/30 done
+**Pipeline status** — updated 2026-11-05T04:17:17Z · 19/30 done
 
-- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a
+- Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b
 - Blocked: none
 - Failed: none
-- Remaining: T190b, T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
-- Last finished: T190a — done · Pure MaterialRegion padded-union/clamp helper and BlurSpec padding landed with all required tests; cargo test and make gates pass; T190b renderer wiring remains next.
+- Remaining: T190c, T190d, T191a, T191b, T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Last finished: T190b — done · Landed region-sized scene render in nested and DRM with region-origin panel src translation, grow-only scene-texture cache, panel-slot lifetime trimming, full-output rollback flag, material allocation/region counters, region/caching unit tests, and committed 1x/1.5x/2x nested captures; cargo test, clippy, fmt, and make gates all pass.
 <!-- /symphony:status -->

@@ -1,0 +1,71 @@
+T-21.3 region-sized scene render — nested 1x/1.5x/2x
+timestamp: 2026-11-04T19:21:25-08:00
+
+== make t21-doctor ==
+bash scripts/t21-doctor.sh
+T-21 capture doctor
+root: /home/user/repos/binbuf/dragonfruit
+host: Linux 7.2.13-200.fc44.x86_64 x86_64
+session: WAYLAND_DISPLAY=dragonfruit-wayland XDG_RUNTIME_DIR=/run/user/1000
+
+ok    XDG_RUNTIME_DIR exists
+ok    host Wayland socket exists
+ok    build/shell/src/dragonfruit-shell
+ok    target/debug/dragonfruit-compositor
+ok    python3
+ok    kwin_wayland (virtual nested host)
+ok    xmessage (popover fixtures)
+ok    spectacle (host stills)
+ok    screenshot dir writable: /home/user/Pictures/Screenshots
+ok    scripts/t21-capture-lib.sh
+
+PASS: 0 warning(s)
+
+== Dock sweep, 1x (scale 1, motion, full_output=0) ==
+command: FULL_SESSION=0 SCALE=1 FORCE_TIER=full OUT=docs/captures/t21-region-motion-1x.png bash scripts/t21-live-capture.sh motion
+t21-live: motion capture on dragonfruit-t21-live-motion-338262 (scale 1)
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=32 backdrop_skipped=0 path=gpu blur_passes=32 blur_panels=77 blur_draws=32 blur_downsample_max=16 material_allocations=46 material_scene_allocations=2 material_panel_allocations=44 material_region_px=1024000 material_region=1280x800
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=33 backdrop_skipped=0 path=gpu blur_passes=33 blur_panels=79 blur_draws=33 blur_downsample_max=16 material_allocations=46 material_scene_allocations=2 material_panel_allocations=44 material_region_px=1024000 material_region=1280x800
+t21-live: wrote docs/captures/t21-region-motion-1x.png
+
+== Dock sweep, 1.5x (scale 1.5, motion, full_output=0) ==
+command: FULL_SESSION=1 SCALE=1.5 FORCE_TIER=full OUT=docs/captures/t21-region-motion-1_5x.png bash scripts/t21-live-capture.sh motion
+t21-live: motion capture on dragonfruit-t21-live-motion-340339 (scale 1.5)
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=30 backdrop_skipped=0 path=gpu blur_passes=30 blur_panels=67 blur_draws=30 blur_downsample_max=16 material_allocations=31 material_scene_allocations=2 material_panel_allocations=29 material_region_px=1026081 material_region=1281x801
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=31 backdrop_skipped=0 path=gpu blur_passes=31 blur_panels=70 blur_draws=31 blur_downsample_max=16 material_allocations=34 material_scene_allocations=2 material_panel_allocations=32 material_region_px=1026081 material_region=1281x801
+t21-live: wrote docs/captures/t21-region-motion-1_5x.png
+
+== Dock sweep, 2x (scale 2, motion, full_output=0) ==
+command: FULL_SESSION=1 SCALE=2 FORCE_TIER=full OUT=docs/captures/t21-region-motion-2x.png bash scripts/t21-live-capture.sh motion
+t21-live: motion capture on dragonfruit-t21-live-motion-341341 (scale 2)
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=210 backdrop_skipped=0 path=gpu blur_passes=210 blur_panels=464 blur_draws=210 blur_downsample_max=16 material_allocations=40 material_scene_allocations=3 material_panel_allocations=37 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=215 backdrop_skipped=0 path=gpu blur_passes=215 blur_panels=474 blur_draws=215 blur_downsample_max=16 material_allocations=40 material_scene_allocations=3 material_panel_allocations=37 material_region_px=2304000 material_region=1920x1200
+t21-live: wrote docs/captures/t21-region-motion-2x.png
+
+== Menu bar, 1.5x (scale 1.5, menu, full_output=0) ==
+command: FULL_SESSION=1 SCALE=1.5 FORCE_TIER=full OUT=docs/captures/t21-region-menu-1_5x.png bash scripts/t21-live-capture.sh menu
+t21-live: menu capture on dragonfruit-t21-live-menu-342458 (scale 1.5)
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=28 blur_draws=13 blur_downsample_max=16 material_allocations=13 material_scene_allocations=2 material_panel_allocations=11 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=13 backdrop_skipped=0 path=gpu blur_passes=13 blur_panels=28 blur_draws=13 blur_downsample_max=16 material_allocations=13 material_scene_allocations=2 material_panel_allocations=11 material_region_px=2304000 material_region=1920x1200
+t21-live: wrote docs/captures/t21-region-menu-1_5x.png
+
+== Dock sweep, 1x full-output diagnostic (scale 1, motion, full_output=1) ==
+command: FULL_SESSION=0 SCALE=1 FORCE_TIER=full OUT=docs/captures/t21-region-motion-1x-full.png DRAGONFRUIT_MATERIAL_FULL_OUTPUT=1 bash scripts/t21-live-capture.sh motion
+t21-live: motion capture on dragonfruit-t21-live-motion-343468 (scale 1)
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=54 backdrop_skipped=0 path=gpu blur_passes=54 blur_panels=109 blur_draws=54 blur_downsample_max=16 material_allocations=29 material_scene_allocations=1 material_panel_allocations=28 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=55 backdrop_skipped=0 path=gpu blur_passes=55 blur_panels=111 blur_draws=55 blur_downsample_max=16 material_allocations=29 material_scene_allocations=1 material_panel_allocations=28 material_region_px=2304000 material_region=1920x1200
+t21-live: wrote docs/captures/t21-region-motion-1x-full.png
+
+== artifacts ==
+-rw-r--r--. 1 user user 3973678 Nov  4 19:25 docs/captures/t21-region-menu-1_5x.png
+-rw-r--r--. 1 user user 1855713 Nov  4 19:23 docs/captures/t21-region-motion-1_5x.png
+-rw-r--r--. 1 user user 3073144 Nov  4 19:26 docs/captures/t21-region-motion-1x-full.png
+-rw-r--r--. 1 user user  958223 Nov  4 19:23 docs/captures/t21-region-motion-1x.png
+-rw-r--r--. 1 user user 1753823 Nov  4 19:24 docs/captures/t21-region-motion-2x.png
+
+The nested window size follows the host, so the stats line above is the
+authority for the physical output and the material region. Each run dumps two
+material snapshots one second apart: the allocation counts are the warm-up
+check. The region is the padded panel union; with both the top menu bar and the
+bottom Dock blurred that union can be the full output, while a Dock-only frame
+is smaller (the material_region unit tests pin the single-panel case).
