@@ -67,21 +67,11 @@ mkdir -p "$SCRATCH" "$RAW_DIR" "$(dirname "$OUT")" "$(dirname "$OPEN_OUT")"
 
 write_open() {
     local out="$1" reason="$2"
-    {
-        echo "T-21.4b presentation benchmark — native rows (T192b)"
-        echo "timestamp: $(date -Is)"
-        echo "verdict: OPEN"
-        echo "reason: $reason"
-        echo "hardware:"
-        echo "  host: $(uname -srm)"
-        echo "  GPU: $(lspci -nnk 2>/dev/null | grep -A3 -E 'VGA compatible|3D controller|Display controller' | tr '\n' ' ' || echo 'unknown')"
-        echo "  DRM nodes: $(ls /dev/dri 2>/dev/null | tr '\n' ' ' || echo 'none')"
-        echo "  connected outputs: $(for status in /sys/class/drm/card*-*/status; do [ -r "$status" ] || continue; if [ "$(cat "$status" 2>/dev/null)" = "connected" ]; then basename "$(dirname "$status")"; fi; done | tr '\n' ' ' || echo 'none')"
-        echo "  modes: $(for modes in /sys/class/drm/card*-*/modes; do [ -r "$modes" ] || continue; head -1 "$modes"; done | sort -u | tr '\n' ' ' || echo 'none')"
-        echo "rerun: native rows are T192c; on a free DRM seat run the same scenario set"
-        echo "  with the DRM backend and attach its 'presentation stats' lines."
-        echo "  The nested harness is: WAYLAND_DISPLAY=<host-socket> make t21-presentation-bench"
-    } >"$out"
+    python3 scripts/t21-presentation-native-rows.py \
+        --out "$out" \
+        --reason "$reason" \
+        --native-diagnostics "${NATIVE_INFO:-}" \
+        --command "make t21-presentation-bench"
     echo "t21-presentation-bench: OPEN ($reason); wrote $out" >&2
 }
 
@@ -430,4 +420,17 @@ python3 scripts/t21-presentation-bench-report.py \
     --sweep-s "$SWEEP_S"
 
 echo "t21-presentation-bench: report written to $OUT"
+
+# T192c: baseline comparison and native row matrix. The comparison uses the
+# committed T183 report plus this run's raw logs; the native matrix is the
+# explicit OPEN artifact written above. Both are regenerated so a single
+# `make t21-presentation-bench` reproduces the T192c evidence set.
+python3 scripts/t21-presentation-compare.py \
+    --baseline docs/captures/t21-chrome-baseline.txt \
+    --raw-root "$RAW_DIR" \
+    --main-name "main-144-full" \
+    --native-open "$OPEN_OUT" \
+    --out docs/captures/t21-presentation-bench-compare.md \
+    --command "make t21-presentation-bench"
+
 grep -E "^### |^## |shm rate|Verdict:" "$OUT" | head -80 || true
