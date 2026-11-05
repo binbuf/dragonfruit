@@ -29,6 +29,7 @@ pub mod pass;
 pub mod placement;
 pub mod popup;
 pub mod resize;
+pub mod scanout;
 pub mod scene_transform;
 pub mod shadow;
 pub mod state;
@@ -120,6 +121,7 @@ pub use placement::{
 pub use resize::{
     apply_aspect, clamp_move, clamp_within_output, resize_geometry, ResizeEdge, SizeConstraints,
 };
+pub use scanout::{covers_output, direct_scanout_candidate};
 #[allow(unused_imports)]
 pub use scene_transform::{SceneTransform, SceneTransformPass};
 #[allow(unused_imports)]

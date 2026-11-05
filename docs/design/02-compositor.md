@@ -150,9 +150,15 @@ ladder.
 - Effects (blur, shadows, workspace scale/clip transforms) are compositor
   render passes over live surface buffers — never client re-renders, never
   screenshots, never recompositing by a third-party program.
-- Fullscreen surfaces take the direct-scanout path where possible. The
-  `tearing-control` protocol is **not implemented yet**; the design target is
-  to honor it for fullscreen games (see [14-risks.md](14-risks.md) and
+- Fullscreen surfaces take the direct-scanout path where possible. A settled
+  fullscreen client that covers an output hides the persistent `top` chrome
+  (menu bar, Dock) on that output; transient `overlay` surfaces still
+  composite above it. The pure `window::scanout::direct_scanout_candidate`
+  skips the sampled material pass when no visible panel intersects the
+  client, and only the DRM primary-plane result advances the real
+  `direct_scanouts` counter (T-21.3, [ADR 0210](adr/0210-fullscreen-chrome-suppression-and-scanout-counters.md)).
+  The `tearing-control` protocol is **not implemented yet**; the design target
+  is to honor it for fullscreen games (see [14-risks.md](14-risks.md) and
   [STATUS.md](STATUS.md) G-13).
 - Damage tracking keeps the idle path cheap: no damage, no render, no client
   wakeups. Animations drive damage every frame while running. Compositor-drawn
@@ -279,8 +285,11 @@ as windows.
 
 The render-path counters emitted on `SIGUSR1`/clean exit are the trace
 contract (`compositor/src/state.rs::dump_stats`): `frames_rendered`,
-`frames_skipped_no_damage`, `direct_scanouts`, `animation_frames_stepped`
-and `client_wakeups`. `client_wakeups` counts the frame-callback batches
+`frames_skipped_no_damage`, `direct_scanouts`, `material_frames`,
+`direct_scanout_candidates`, `animation_frames_stepped` and
+`client_wakeups`. `direct_scanouts` and `material_frames` are separate
+counters; `output material stats` repeats them per output with the monotonic
+allocation and last-region counters (T-21.3). `client_wakeups` counts the frame-callback batches
 handed to mapped windows, so the idle budget is measured directly instead of
 inferred from the render count. `idle_trace.rs` asserts every budget counter
 flat across a configurable window (`DF_IDLE_TRACE_SECS`) and asserts

@@ -46,6 +46,18 @@ pub const fn is_desktop(layer: u32) -> bool {
     layer == LAYER_BACKGROUND
 }
 
+/// Whether an above-window chrome surface stays visible while a fullscreen
+/// client owns the output (T-21.3).
+///
+/// Persistent `top` chrome (the menu bar and Dock) is hidden: the fullscreen
+/// client owns the display, so the compositor does not paint the bars over it
+/// and the client can take the direct-scanout path. Transient `overlay`
+/// surfaces (OSD, menus, notification, popovers) still composite above the
+/// client and keep the sampled material when they are visible.
+pub const fn visible_in_fullscreen(layer: u32) -> bool {
+    layer != LAYER_TOP
+}
+
 /// The compositing band a `df_shell.layer` value occupies, from the per-Space
 /// wallpaper up. Windows are compositor-stacked between [`StackBand::Desktop`]
 /// and [`StackBand::Chrome`], so the derived order is the layer contract the
@@ -727,6 +739,18 @@ mod tests {
         assert!(above_windows(LAYER_OVERLAY));
         assert!(is_desktop(LAYER_BACKGROUND));
         assert!(!is_desktop(LAYER_TOP));
+    }
+
+    #[test]
+    fn fullscreen_hides_top_chrome_but_keeps_transient_overlays() {
+        // T-21.3 direct scanout: persistent menu bar/Dock (`top`) cannot sit
+        // over a fullscreen client or the client is never the last element on
+        // the primary plane. Transient overlays still composite (and keep the
+        // material pass).
+        assert!(!visible_in_fullscreen(LAYER_TOP));
+        assert!(visible_in_fullscreen(LAYER_OVERLAY));
+        assert!(visible_in_fullscreen(LAYER_BACKGROUND));
+        assert!(visible_in_fullscreen(1));
     }
 
     #[test]

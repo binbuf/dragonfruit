@@ -531,6 +531,62 @@ mod tests {
     }
 
     #[test]
+    fn a_4k_output_reports_the_full_output_and_dock_only_region_areas() {
+        // T-21.3 4K trace: the same helper the backends call. The menu-bar +
+        // Dock union is the full output (the documented single-union shape);
+        // a Dock-only frame is the region the sampled pass actually pays for.
+        let screen = output(3840, 2160);
+        let menu = panel((0, 0, 3840, 32), 24.0);
+        let dock = panel((640, 2035, 2560, 125), 24.0);
+        let full_px = 3840u64 * 2160;
+
+        let both =
+            MaterialRegion::from_panels(&[menu, dock], screen, 1.0.into()).expect("both panels");
+        assert_eq!(both.texture_size, (3840, 2160).into());
+        println!(
+            "t21-region-4k: output=3840x2160 full_px={full_px} \
+             both_panels_region={}x{} both_panels_px={} ratio={:.1}%",
+            both.texture_size.w,
+            both.texture_size.h,
+            both.texture_size.w as u64 * both.texture_size.h as u64,
+            100.0 * (both.texture_size.w as u64 * both.texture_size.h as u64) as f64
+                / full_px as f64
+        );
+
+        let dock_only =
+            MaterialRegion::from_panels(&[dock], screen, 1.0.into()).expect("dock panel");
+        assert_eq!(dock_only.texture_size, (2608, 149).into());
+        let dock_px = 2608u64 * 149;
+        assert_eq!(dock_px, 388_592);
+        println!(
+            "t21-region-4k: dock_only_region={}x{} dock_only_px={dock_px} ratio={:.1}%",
+            dock_only.texture_size.w,
+            dock_only.texture_size.h,
+            100.0 * dock_px as f64 / full_px as f64
+        );
+
+        let diagnostic = MaterialRegion::full_output(screen, 1.0.into()).expect("full output");
+        assert_eq!(diagnostic.texture_size, (3840, 2160).into());
+        println!(
+            "t21-region-4k: full_output_diagnostic_region={}x{} px={}",
+            diagnostic.texture_size.w,
+            diagnostic.texture_size.h,
+            diagnostic.texture_size.w as u64 * diagnostic.texture_size.h as u64
+        );
+
+        // At 2x the same arithmetic scales to physical pixels.
+        let dock_only_2x =
+            MaterialRegion::from_panels(&[dock], screen, 2.0.into()).expect("dock panel at 2x");
+        assert_eq!(dock_only_2x.texture_size, (5216, 298).into());
+        println!(
+            "t21-region-4k: dock_only_region_2x={}x{} px={}",
+            dock_only_2x.texture_size.w,
+            dock_only_2x.texture_size.h,
+            dock_only_2x.texture_size.w as u64 * dock_only_2x.texture_size.h as u64
+        );
+    }
+
+    #[test]
     fn the_full_output_flag_accepts_only_explicit_truthy_values() {
         for value in ["1", "true", "TRUE", " on ", "yes", "enabled"] {
             assert!(env_flag_enabled(Some(value)), "{value:?}");

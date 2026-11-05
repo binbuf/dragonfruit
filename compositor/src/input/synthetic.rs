@@ -1845,7 +1845,7 @@ fn scale_report(state: &DfState) -> String {
                 buffer,
             ));
         }
-        for chrome in state.chrome_surfaces(name.as_str(), geometry) {
+        for chrome in state.visible_chrome_surfaces(name.as_str(), geometry) {
             let rect = chrome.panel;
             let phys: Rectangle<i32, Physical> = rect.to_physical_precise_round(scale);
             out.push_str(&format!(
