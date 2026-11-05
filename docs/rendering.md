@@ -814,6 +814,13 @@ Run after R0 and after each material/scheduling change.
 Do not require every integrated GPU to render full refraction at 144/240 Hz.
 Define a minimum acceptable tier per hardware class and measure it.
 
+The executable nested scenario set is `make t21-presentation-bench`
+(`docs/captures/t21-presentation-bench.md`): idle, Dock sweep, menu/popover,
+app launch, Mission Control, fullscreen, the 60/120/144/240 derived-deadline
+matrix, and the Full/Reduced/Minimal tiers. It is reference evidence, not
+native proof; the native R7 rows (panel modes, 1080p/4K, mixed outputs,
+missed-deadline counts) are T192c.
+
 ---
 
 ## R8 — Observability and documentation cleanup
@@ -836,6 +843,18 @@ Define a minimum acceptable tier per hardware class and measure it.
   `chrome stats` carries `path`, `copies`/`copy_bytes`, `commit_us` /
   `frame_callback_us` percentiles, `shm_bytes`, `dmabuf_buffers`,
   `dmabuf_fallbacks`, and `dmabuf_sync_timeouts`.
+- The T-21.4b benchmark (`make t21-presentation-bench`,
+  `docs/captures/t21-presentation-bench.md`) is the nested scenario harness:
+  per-scenario p50/p95/p99, the 60/120/144/240 Hz derived-deadline matrix, the
+  Full/Reduced/Minimal tiers, and the transport mix. `shm rate` is
+  `commits - dmabuf_commits` over `commits`; `dmabuf_fallbacks` is a failed
+  export-attempt count, so a transient retry can raise it while every counted
+  commit is still dmabuf. The nested backend has no vblank, so its callback
+  cadence is host-paced and its missed-deadline count is not native evidence;
+  native rows are T192c. The full GPU rail currently crashes the shell during
+  Mission Control teardown (null `Shadow.qml` overview material); the
+  benchmark excludes the overview surface from the GPU rail and records the
+  fallback plus the T193 follow-up.
 
 ### R8.3 Docs
 

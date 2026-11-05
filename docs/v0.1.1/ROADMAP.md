@@ -70,7 +70,7 @@ done.
 - [x] T191a — T-21.4a Native rebuild, diagnostics, and rollback → [../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md](../tasks/0.1.1/191a-t-21.4a-native-diagnostics.md)
 - [x] T191b — T-21.4a Native visual sweep and evidence boundary → [../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md](../tasks/0.1.1/191b-t-21.4a-native-visual-sweep.md)
 - [x] T192a — T-21.4b GPU/chrome timing counters → [../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md](../tasks/0.1.1/192a-t-21.4b-timing-and-bench-harness.md)
-- [ ] T192b — T-21.4b Benchmark script and nested scenario run → [../tasks/0.1.1/192b-t-21.4b-bench-harness.md](../tasks/0.1.1/192b-t-21.4b-bench-harness.md)
+- [x] T192b — T-21.4b Benchmark script and nested scenario run → [../tasks/0.1.1/192b-t-21.4b-bench-harness.md](../tasks/0.1.1/192b-t-21.4b-bench-harness.md)
 - [ ] T192c — T-21.4b Baseline comparison and native benchmark rows → [../tasks/0.1.1/192c-t-21.4b-baseline-and-native.md](../tasks/0.1.1/192c-t-21.4b-baseline-and-native.md)
 - [ ] T192d — T-21.4b Presentation soak and final report → [../tasks/0.1.1/192d-t-21.4b-soak-and-report.md](../tasks/0.1.1/192d-t-21.4b-soak-and-report.md)
 
@@ -94,6 +94,6 @@ boundary and is not part of an agent task.
 - Completed: T183, T184, T185, T185a1, T186a, T186b, T186c, T186d, T187a, T187b, T188a, T188b, T188c, T189a, T189b, T189c, T189d, T190a, T190b, T190c, T190d, T191a, T191b
 - Blocked: none
 - Failed: none
-- Remaining: T192a, T192b, T192c, T192d, T193a, T193b, T193c
+- Remaining: T192c, T192d, T193a, T193b, T193c
 - Last finished: T191b — done · Captured 23 native DP-1 KMS-readback stills (light/dark Dock/menu over live content, menu, drawer, Control Center, OSD, notification, popover, magnification, Mission Control, lock, fullscreen) and recorded the evidence boundary; docs/rendering R6, STATUS G-03/G-08, captures README updated.
 <!-- /symphony:status -->

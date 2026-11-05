@@ -1339,6 +1339,25 @@ nested `t21-chrome-*`, `t21-region-*`, and `t21-material-*` stills are
 reference only. The compact measurements, commands, and boundary are in
 `t21-native-visual-sweep.txt`.
 
+T-21.4b's presentation benchmark is `scripts/t21-presentation-bench.sh`
+(`make t21-presentation-bench`). It runs the nested scenario set (60 s idle,
+10 s Dock sweep, a settled idle, menu/popover, app launch, Mission Control
+with 10+ windows, fullscreen), the 60/120/144/240 Hz refresh matrix, and the
+Full/Reduced/Minimal material tiers with the chrome/GPU/frame-trace counters.
+`t21-presentation-bench.md` carries the per-scenario shell `commit_us` /
+`frame_callback_us` percentiles, compositor frame-time percentiles, GPU timer
+percentiles, and the transport mix (`path`, `dmabuf`, `shm`, shm rate,
+`dmabuf_fallbacks`, `sync_timeouts`, `copy_bytes`); the raw compositor, shell,
+and driver logs are committed under `t21-presentation-bench-raw/`. The
+`t21-presentation-bench-dock.png` and `-mission-control.png` stills are the
+trusted compositor captures for the live visual check. Native panel modes,
+1080p/4K, mixed outputs, and missed-deadline counts are T192c and are recorded
+in `t21-presentation-bench.open.txt`. The full GPU rail currently crashes the
+shell during Mission Control teardown (null `Shadow.qml` material state in the
+overview surface); the benchmark excludes the overview surface from the GPU
+rail so the rest of the set completes, and the crash is a filed T193 follow-up.
+The report and raw logs are nested reference evidence, not native proof.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

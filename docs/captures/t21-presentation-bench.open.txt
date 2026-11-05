@@ -1,0 +1,13 @@
+T-21.4b presentation benchmark — native rows (T192b)
+timestamp: 2026-11-05T13:39:04-08:00
+verdict: OPEN
+reason: the host is already a native Dragonfruit session; restarting its DRM compositor to run the benchmark would end the session this task is running in. Native panel-mode, 1080p/4K, mixed-output, and missed-deadline rows are T192c.
+hardware:
+  host: Linux 7.2.13-200.fc44.x86_64 x86_64
+  GPU: 04:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Lucienne [1002:164c] (rev c1) 	Subsystem: Advanced Micro Devices, Inc. [AMD/ATI] Device [1002:0123] 	Kernel driver in use: amdgpu 	Kernel modules: amdgpu 
+  DRM nodes: by-path card1 renderD128 
+  connected outputs: card1-DP-1
+  modes: 3840x2160 
+rerun: native rows are T192c; on a free DRM seat run the same scenario set
+  with the DRM backend and attach its 'presentation stats' lines.
+  The nested harness is: WAYLAND_DISPLAY=<host-socket> make t21-presentation-bench

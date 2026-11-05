@@ -1,0 +1,12 @@
+t21-presentation-bench: tier full
+t21-presentation-bench: material scheme=dark tier=full path=gpu chrome=2d2534ff elevated=2d2534ff border=44394dff accent=e15c98ff
+t21-presentation-bench: material glass role=chrome blur=28.0 refraction=8.0 specular=0.30 specular_width=2.0 tint=0.14
+t21-presentation-bench: material glass role=dock blur=34.0 refraction=10.0 specular=0.34 specular_width=2.5 tint=0.20
+t21-presentation-bench: material glass role=popup blur=32.0 refraction=10.0 specular=0.34 specular_width=2.5 tint=0.18
+t21-presentation-bench: material glass role=drawer blur=32.0 refraction=10.0 specular=0.34 specular_width=2.5 tint=0.18
+t21-presentation-bench: end
+t21-presentation-bench: degrade tier=full forced=1 budget_us=4166 samples=21 over_budget=18 downgrades=1 upgrades=0 tiers=full:7,reduced:14,minimal:0 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
+t21-presentation-bench: end
+t21-presentation-bench: scenario 1 warmup elapsed=3.802
+t21-presentation-bench: scenario 2 baseline elapsed=0.301
+t21-presentation-bench: scenario 3 sweep elapsed=10.734

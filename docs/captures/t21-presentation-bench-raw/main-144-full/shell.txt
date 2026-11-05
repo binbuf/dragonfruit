@@ -1,0 +1,684 @@
+dragonfruit-shell: compositor motion/input policy applied (scheme=light reducedMotion=0 repeat=200/25 gestures=1)
+dragonfruit-shell: wallpaper applied (fit=fill allSpaces=1 source=/usr/share//dragonfruit/wallpapers/Default.jpg)
+dragonfruit-shell: display applied (scale=1.000 rotation=normal brightness=1.000)
+dragonfruit-shell: chrome gpu probe (startup): dmabuf_global=yes version=5 feedback=yes tranches=1 formats=AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,... main_device=226:128 egl_display=yes egl_vendor=Mesa Project egl_export=yes egl_import=yes egl_modifiers=yes selected=ABGR8888:linear compositor_import=advertised verdict=gpu-ready reason=none
+dragonfruit-shell: chrome gpu probe (startup) formats: AB4H:0x020000044051ba01,AB4H:0x020000044051b901,AB4H:0x020000044051b601,AB4H:0x0200000000401a01,AB4H:0x0200000000401901,AB4H:0x0200000000401601,AB4H:0x0200000000000a01,AB4H:0x0200000000000901,AB4H:linear,AB4H:invalid,XB4H:0x020000044051ba01,XB4H:0x020000044051b901,XB4H:0x020000044051b601,XB4H:0x0200000000401a01,XB4H:0x0200000000401901,XB4H:0x0200000000401601,...
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: shell: chrome transport: QQuickRenderControl + GPU (dmabuf chrome, shm fallback)
+dragonfruit-shell: shell: global menu resolved by org.dragonfruit.MenuBroker1 tier "none" for ""
+dragonfruit-shell: menu bar policy applied (globalMenu=1 clockDate=1 clockSeconds=0 background=1 autoHide=full-screen)
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: shell: Dock scene-graph commit path active (FR-14)
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: Member focusPolicy of the object ControlCenter_QMLTYPE_178 overrides a member of the base object. Consider renaming it or adding final or override specifier
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: shell: screenshot portal available true ":1.2"
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: chrome gpu producer: initialized api=OpenGL version=4.6 (Compatibility Profile) Mesa 26.2.5 renderer=AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.13-200.fc44.x86_64) dpr=1 gpu_env=1
+dragonfruit-shell: ignoring pre-layout configure 1920x1200
+dragonfruit-shell: ignoring pre-layout configure 1920x1200
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=0
+dragonfruit-shell: output reserved zone edge=2 thickness=0
+dragonfruit-shell: output reserved zone edge=3 thickness=0
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: shell: material role=chrome tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=1 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=1 blur=1 fallback=0
+dragonfruit-shell: chrome dmabuf: buffer created slot=2 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x28 surface=menubar
+dragonfruit-shell: chrome dmabuf: buffer created slot=1 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x28 surface=menubar
+dragonfruit-shell: chrome dmabuf: buffer created slot=0 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x28 surface=menubar
+dragonfruit-shell: ignoring pre-layout Dock configure 1920x1200
+dragonfruit-shell: ignoring pre-layout Dock configure 1920x1200
+dragonfruit-shell: ignoring pre-layout Dock configure 1920x1200
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=2 thickness=0
+dragonfruit-shell: output reserved zone edge=3 thickness=0
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: chrome dmabuf: buffer created slot=1 format=ABGR8888 modifier=invalid stride=10240 offset=0 size=2560x445 surface=dock
+dragonfruit-shell: chrome dmabuf: buffer created slot=0 format=ABGR8888 modifier=invalid stride=10240 offset=0 size=2560x445 surface=dock
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: ignoring pre-layout notification configure 1920x1200
+dragonfruit-shell: ignoring pre-layout notification configure 1920x1200
+dragonfruit-shell: ignoring pre-layout notification configure 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: ignoring pre-layout OSD configure 1920x1200
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: ignoring pre-layout chooser configure 1920x1200
+dragonfruit-shell: ignoring pre-layout screencast configure 1920x1200
+dragonfruit-shell: ignoring pre-layout polkit configure 1920x1200
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: chrome dmabuf: buffer created slot=2 format=ABGR8888 modifier=invalid stride=10240 offset=0 size=2560x445 surface=dock
+dragonfruit-shell: Failed to register with host portal QDBusError("org.freedesktop.portal.Error.Failed", "Could not register app ID: App info not found for ''")
+dragonfruit-shell: shell: material role=chrome tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=dock tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=popup tier=0 blur=1 fallback=0
+dragonfruit-shell: shell: material role=drawer tier=0 blur=1 fallback=0
+dragonfruit-shell: chrome stats (SIGUSR1-1): path=render-control+dmabuf scene_frames=18 commits=18 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2085120 frame_callbacks=11 fallback_renders=0 skipped_commits=0 dmabuf_commits=18 dmabuf_bytes=29921280 dmabuf_deferred=0 dmabuf_fallbacks=7 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=18 commit_us_p50=87 commit_us_p95=4078017 commit_us_p99=4078017 commit_us_max=4078036 frame_callback_us_samples=11 frame_callback_us_p50=14096 frame_callback_us_p95=18965 frame_callback_us_p99=18965 frame_callback_us_max=31171 dmabuf_buffers=6 dmabuf_allocs=6 dmabuf_reuses=12 dmabuf_sync=gl-fence dmabuf_sync_waits=18 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=6 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1440000 skipped=0 fallback=0 renders=6 dmabuf_commits=6 dmabuf_bytes=27340800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=6 commit_us_p50=108 commit_us_p95=640 commit_us_p99=640 commit_us_max=12612 frame_callback_us_samples=4 frame_callback_us_p50=12941 frame_callback_us_p95=15046 frame_callback_us_p99=15046 frame_callback_us_max=16276 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=3 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-1): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=12 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=645120 skipped=0 fallback=0 renders=19 dmabuf_commits=12 dmabuf_bytes=2580480 dmabuf_deferred=0 dmabuf_fallbacks=7 commit_us_samples=12 commit_us_p50=86 commit_us_p95=4078017 commit_us_p99=4078017 commit_us_max=4078036 frame_callback_us_samples=7 frame_callback_us_p50=14096 frame_callback_us_p95=18965 frame_callback_us_p99=18965 frame_callback_us_max=31171 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=9 copies=0
+dragonfruit-shell: chrome stats (SIGUSR1-2): path=render-control+dmabuf scene_frames=18 commits=18 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2085120 frame_callbacks=11 fallback_renders=0 skipped_commits=0 dmabuf_commits=18 dmabuf_bytes=29921280 dmabuf_deferred=0 dmabuf_fallbacks=7 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=6 dmabuf_allocs=6 dmabuf_reuses=12 dmabuf_sync=gl-fence dmabuf_sync_waits=18 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-2): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=6 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1440000 skipped=0 fallback=0 renders=6 dmabuf_commits=6 dmabuf_bytes=27340800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=3 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-2): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=12 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=645120 skipped=0 fallback=0 renders=19 dmabuf_commits=12 dmabuf_bytes=2580480 dmabuf_deferred=0 dmabuf_fallbacks=7 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=9 copies=0
+dragonfruit-shell: chrome stats (SIGUSR1-3): path=render-control+dmabuf scene_frames=20 commits=20 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2192640 frame_callbacks=12 fallback_renders=0 skipped_commits=0 dmabuf_commits=20 dmabuf_bytes=30351360 dmabuf_deferred=0 dmabuf_fallbacks=7 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=2 commit_us_p50=83 commit_us_p95=83 commit_us_p99=83 commit_us_max=94 frame_callback_us_samples=1 frame_callback_us_p50=6594 frame_callback_us_p95=6594 frame_callback_us_p99=6594 frame_callback_us_max=6594 dmabuf_buffers=6 dmabuf_allocs=6 dmabuf_reuses=14 dmabuf_sync=gl-fence dmabuf_sync_waits=20 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-3): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=6 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1440000 skipped=0 fallback=0 renders=6 dmabuf_commits=6 dmabuf_bytes=27340800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=3 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-3): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=14 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=752640 skipped=0 fallback=0 renders=21 dmabuf_commits=14 dmabuf_bytes=3010560 dmabuf_deferred=0 dmabuf_fallbacks=7 commit_us_samples=2 commit_us_p50=83 commit_us_p95=83 commit_us_p99=83 commit_us_max=94 frame_callback_us_samples=1 frame_callback_us_p50=6594 frame_callback_us_p95=6594 frame_callback_us_p99=6594 frame_callback_us_max=6594 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=11 copies=0
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: chrome dmabuf: buffer created slot=2 format=ABGR8888 modifier=invalid stride=10240 offset=0 size=2560x445 surface=dock-popup
+dragonfruit-shell: chrome dmabuf: buffer created slot=0 format=ABGR8888 modifier=invalid stride=10240 offset=0 size=2560x445 surface=dock-popup
+dragonfruit-shell: chrome dmabuf: buffer created slot=1 format=ABGR8888 modifier=invalid stride=10240 offset=0 size=2560x445 surface=dock-popup
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: chrome stats (SIGUSR1-4): path=render-control+dmabuf scene_frames=791 commits=1279 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=188982000 frame_callbacks=879 fallback_renders=0 skipped_commits=0 dmabuf_commits=1279 dmabuf_bytes=5767362560 dmabuf_deferred=0 dmabuf_fallbacks=39 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=1259 commit_us_p50=82 commit_us_p95=137 commit_us_p99=171 commit_us_max=18175 frame_callback_us_samples=867 frame_callback_us_p50=12778 frame_callback_us_p95=24102 frame_callback_us_p99=27291 frame_callback_us_max=31381 dmabuf_buffers=9 dmabuf_allocs=9 dmabuf_reuses=1270 dmabuf_sync=gl-fence dmabuf_sync_waits=791 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-4): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=777 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=186480000 skipped=0 fallback=0 renders=801 dmabuf_commits=777 dmabuf_bytes=3540633600 dmabuf_deferred=0 dmabuf_fallbacks=24 commit_us_samples=771 commit_us_p50=72 commit_us_p95=118 commit_us_p99=137 commit_us_max=198 frame_callback_us_samples=535 frame_callback_us_p50=12600 frame_callback_us_p95=24364 frame_callback_us_p99=27311 frame_callback_us_max=31381 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=774 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-4): surface=dock-popup path=dmabuf gpu_reason=none logical_size=118x30 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=488 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1749360 skipped=0 fallback=0 renders=0 dmabuf_commits=488 dmabuf_bytes=2223718400 dmabuf_deferred=0 dmabuf_fallbacks=8 commit_us_samples=488 commit_us_p50=95 commit_us_p95=157 commit_us_p99=209 commit_us_max=18175 frame_callback_us_samples=332 frame_callback_us_p50=13036 frame_callback_us_p95=23998 frame_callback_us_p99=26500 frame_callback_us_max=31342 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=485 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-4): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=14 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=752640 skipped=0 fallback=0 renders=21 dmabuf_commits=14 dmabuf_bytes=3010560 dmabuf_deferred=0 dmabuf_fallbacks=7 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=11 copies=0
+dragonfruit-shell: chrome stats (SIGUSR1-5): path=render-control+dmabuf scene_frames=793 commits=1281 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=189089520 frame_callbacks=880 fallback_renders=0 skipped_commits=0 dmabuf_commits=1281 dmabuf_bytes=5767792640 dmabuf_deferred=0 dmabuf_fallbacks=39 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=2 commit_us_p50=26 commit_us_p95=26 commit_us_p99=26 commit_us_max=61 frame_callback_us_samples=1 frame_callback_us_p50=4046 frame_callback_us_p95=4046 frame_callback_us_p99=4046 frame_callback_us_max=4046 dmabuf_buffers=9 dmabuf_allocs=9 dmabuf_reuses=1272 dmabuf_sync=gl-fence dmabuf_sync_waits=793 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-5): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=777 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=186480000 skipped=0 fallback=0 renders=801 dmabuf_commits=777 dmabuf_bytes=3540633600 dmabuf_deferred=0 dmabuf_fallbacks=24 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=774 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-5): surface=dock-popup path=dmabuf gpu_reason=none logical_size=118x30 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=488 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1749360 skipped=0 fallback=0 renders=0 dmabuf_commits=488 dmabuf_bytes=2223718400 dmabuf_deferred=0 dmabuf_fallbacks=8 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=485 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-5): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=16 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=860160 skipped=0 fallback=0 renders=23 dmabuf_commits=16 dmabuf_bytes=3440640 dmabuf_deferred=0 dmabuf_fallbacks=7 commit_us_samples=2 commit_us_p50=26 commit_us_p95=26 commit_us_p99=26 commit_us_max=61 frame_callback_us_samples=1 frame_callback_us_p50=4046 frame_callback_us_p95=4046 frame_callback_us_p99=4046 frame_callback_us_max=4046 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=13 copies=0
+dragonfruit-shell: chrome dmabuf: buffer created slot=0 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x270 surface=menubar
+dragonfruit-shell: chrome dmabuf: buffer created slot=0 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x270 surface=menubar-popup
+dragonfruit-shell: chrome dmabuf: buffer created slot=1 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x270 surface=menubar
+dragonfruit-shell: chrome dmabuf: buffer created slot=1 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x270 surface=menubar-popup
+dragonfruit-shell: chrome dmabuf: buffer created slot=2 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x270 surface=menubar
+dragonfruit-shell: chrome dmabuf: buffer created slot=2 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x270 surface=menubar-popup
+dragonfruit-shell: chrome stats (SIGUSR1-6): path=render-control+dmabuf scene_frames=817 commits=1318 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=192730412 frame_callbacks=916 fallback_renders=0 skipped_commits=0 dmabuf_commits=1318 dmabuf_bytes=5863147520 dmabuf_deferred=0 dmabuf_fallbacks=39 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=37 commit_us_p50=76 commit_us_p95=14612 commit_us_p99=19455 commit_us_max=28457 frame_callback_us_samples=36 frame_callback_us_p50=4948 frame_callback_us_p95=20788 frame_callback_us_p99=21162 frame_callback_us_max=24868 dmabuf_buffers=12 dmabuf_allocs=15 dmabuf_reuses=1303 dmabuf_sync=gl-fence dmabuf_sync_waits=817 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-6): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=786 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=188640000 skipped=0 fallback=0 renders=810 dmabuf_commits=786 dmabuf_bytes=3581644800 dmabuf_deferred=0 dmabuf_fallbacks=24 commit_us_samples=9 commit_us_p50=71 commit_us_p95=79 commit_us_p99=79 commit_us_max=88 frame_callback_us_samples=9 frame_callback_us_p50=16745 frame_callback_us_p95=21162 frame_callback_us_p99=21162 frame_callback_us_max=24868 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=783 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-6): surface=dock-popup path=dmabuf gpu_reason=none logical_size=118x30 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=488 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1749360 skipped=0 fallback=0 renders=0 dmabuf_commits=488 dmabuf_bytes=2223718400 dmabuf_deferred=0 dmabuf_fallbacks=8 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=485 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-6): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=31 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1666560 skipped=0 fallback=0 renders=38 dmabuf_commits=31 dmabuf_bytes=30827520 dmabuf_deferred=0 dmabuf_fallbacks=7 commit_us_samples=15 commit_us_p50=66 commit_us_p95=7608 commit_us_p99=7608 commit_us_max=14493 frame_callback_us_samples=14 frame_callback_us_p50=4738 frame_callback_us_p95=13850 frame_callback_us_p99=13850 frame_callback_us_max=20788 dmabuf_buffers=3 dmabuf_allocs=6 dmabuf_reuses=25 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-6): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=13 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=674492 skipped=0 fallback=0 renders=0 dmabuf_commits=13 dmabuf_bytes=26956800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=13 commit_us_p50=86 commit_us_p95=19455 commit_us_p99=19455 commit_us_max=28457 frame_callback_us_samples=13 frame_callback_us_p50=4718 frame_callback_us_p95=7047 frame_callback_us_p99=7047 frame_callback_us_max=13648 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=10 copies=0
+dragonfruit-shell: chrome dmabuf: buffer created slot=2 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x28 surface=menubar
+dragonfruit-shell: chrome dmabuf: buffer created slot=0 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x28 surface=menubar
+dragonfruit-shell: chrome stats (SIGUSR1-7): path=render-control+dmabuf scene_frames=830 commits=1341 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=193948132 frame_callbacks=938 fallback_renders=0 skipped_commits=0 dmabuf_commits=1341 dmabuf_bytes=5905264640 dmabuf_deferred=0 dmabuf_fallbacks=39 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=23 commit_us_p50=97 commit_us_p95=135 commit_us_p99=1426 commit_us_max=1658 frame_callback_us_samples=22 frame_callback_us_p50=4743 frame_callback_us_p95=14516 frame_callback_us_p99=16591 frame_callback_us_max=18887 dmabuf_buffers=12 dmabuf_allocs=17 dmabuf_reuses=1324 dmabuf_sync=gl-fence dmabuf_sync_waits=830 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-7): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=786 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=188640000 skipped=0 fallback=0 renders=810 dmabuf_commits=786 dmabuf_bytes=3581644800 dmabuf_deferred=0 dmabuf_fallbacks=24 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=783 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-7): surface=dock-popup path=dmabuf gpu_reason=none logical_size=118x30 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=488 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1749360 skipped=0 fallback=0 renders=0 dmabuf_commits=488 dmabuf_bytes=2223718400 dmabuf_deferred=0 dmabuf_fallbacks=8 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=485 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-7): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=44 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2365440 skipped=0 fallback=0 renders=51 dmabuf_commits=44 dmabuf_bytes=52208640 dmabuf_deferred=0 dmabuf_fallbacks=7 commit_us_samples=13 commit_us_p50=88 commit_us_p95=1426 commit_us_p99=1426 commit_us_max=1658 frame_callback_us_samples=13 frame_callback_us_p50=5218 frame_callback_us_p95=16591 frame_callback_us_p99=16591 frame_callback_us_max=18887 dmabuf_buffers=3 dmabuf_allocs=8 dmabuf_reuses=36 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-7): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=23 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1193332 skipped=0 fallback=0 renders=0 dmabuf_commits=23 dmabuf_bytes=47692800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=10 commit_us_p50=108 commit_us_p95=125 commit_us_p99=125 commit_us_max=135 frame_callback_us_samples=9 frame_callback_us_p50=4722 frame_callback_us_p95=5803 frame_callback_us_p99=5803 frame_callback_us_max=7828 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=20 copies=0
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: chrome dmabuf: buffer created slot=1 format=ABGR8888 modifier=invalid stride=7680 offset=0 size=1920x28 surface=menubar
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: chrome stats (SIGUSR1-8): path=render-control+dmabuf scene_frames=844 commits=1359 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=195886612 frame_callbacks=951 fallback_renders=0 skipped_commits=0 dmabuf_commits=1359 dmabuf_bytes=5952552960 dmabuf_deferred=0 dmabuf_fallbacks=49 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=18 commit_us_p50=75 commit_us_p95=178 commit_us_p99=178 commit_us_max=111657 frame_callback_us_samples=13 frame_callback_us_p50=60979 frame_callback_us_p95=116018 frame_callback_us_p99=116018 frame_callback_us_max=173419 dmabuf_buffers=12 dmabuf_allocs=18 dmabuf_reuses=1341 dmabuf_sync=gl-fence dmabuf_sync_waits=844 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-8): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=792 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=190080000 skipped=0 fallback=0 renders=820 dmabuf_commits=792 dmabuf_bytes=3608985600 dmabuf_deferred=0 dmabuf_fallbacks=28 commit_us_samples=6 commit_us_p50=75 commit_us_p95=82 commit_us_p99=82 commit_us_max=83 frame_callback_us_samples=4 frame_callback_us_p50=64190 frame_callback_us_p95=73323 frame_callback_us_p99=73323 frame_callback_us_max=173419 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=789 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-8): surface=dock-popup path=dmabuf gpu_reason=none logical_size=180x95 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=492 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1817760 skipped=0 fallback=0 renders=0 dmabuf_commits=492 dmabuf_bytes=2241945600 dmabuf_deferred=0 dmabuf_fallbacks=10 commit_us_samples=4 commit_us_p50=91 commit_us_p95=106 commit_us_p99=106 commit_us_max=110 frame_callback_us_samples=3 frame_callback_us_p50=64151 frame_callback_us_p95=64151 frame_callback_us_p99=64151 frame_callback_us_max=73286 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=489 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-8): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=52 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2795520 skipped=0 fallback=0 renders=63 dmabuf_commits=52 dmabuf_bytes=53928960 dmabuf_deferred=0 dmabuf_fallbacks=11 commit_us_samples=8 commit_us_p50=67 commit_us_p95=178 commit_us_p99=178 commit_us_max=111657 frame_callback_us_samples=6 frame_callback_us_p50=52448 frame_callback_us_p95=60979 frame_callback_us_p99=60979 frame_callback_us_max=116018 dmabuf_buffers=3 dmabuf_allocs=9 dmabuf_reuses=43 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-8): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=23 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1193332 skipped=0 fallback=0 renders=0 dmabuf_commits=23 dmabuf_bytes=47692800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=20 copies=0
+dragonfruit-shell: chrome stats (SIGUSR1-9): path=render-control+dmabuf scene_frames=844 commits=1359 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=195886612 frame_callbacks=951 fallback_renders=0 skipped_commits=0 dmabuf_commits=1359 dmabuf_bytes=5952552960 dmabuf_deferred=0 dmabuf_fallbacks=49 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=12 dmabuf_allocs=18 dmabuf_reuses=1341 dmabuf_sync=gl-fence dmabuf_sync_waits=844 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=792 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=190080000 skipped=0 fallback=0 renders=820 dmabuf_commits=792 dmabuf_bytes=3608985600 dmabuf_deferred=0 dmabuf_fallbacks=28 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=789 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=dock-popup path=dmabuf gpu_reason=none logical_size=180x95 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=492 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1817760 skipped=0 fallback=0 renders=0 dmabuf_commits=492 dmabuf_bytes=2241945600 dmabuf_deferred=0 dmabuf_fallbacks=10 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=489 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=52 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2795520 skipped=0 fallback=0 renders=63 dmabuf_commits=52 dmabuf_bytes=53928960 dmabuf_deferred=0 dmabuf_fallbacks=11 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=9 dmabuf_reuses=43 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-9): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=23 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1193332 skipped=0 fallback=0 renders=0 dmabuf_commits=23 dmabuf_bytes=47692800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=20 copies=0
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: chrome stats (SIGUSR1-10): path=render-control+dmabuf scene_frames=851 commits=1369 grab_renders=0 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=196886992 frame_callbacks=957 fallback_renders=0 skipped_commits=0 dmabuf_commits=1369 dmabuf_bytes=5980753920 dmabuf_deferred=0 dmabuf_fallbacks=53 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=10 commit_us_p50=44 commit_us_p95=92 commit_us_p99=92 commit_us_max=93 frame_callback_us_samples=6 frame_callback_us_p50=78061 frame_callback_us_p95=93515 frame_callback_us_p99=93515 frame_callback_us_max=93539 dmabuf_buffers=12 dmabuf_allocs=18 dmabuf_reuses=1351 dmabuf_sync=gl-fence dmabuf_sync_waits=851 dmabuf_sync_timeouts=0 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=795 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=190800000 skipped=0 fallback=0 renders=825 dmabuf_commits=795 dmabuf_bytes=3622656000 dmabuf_deferred=0 dmabuf_fallbacks=30 commit_us_samples=3 commit_us_p50=73 commit_us_p95=73 commit_us_p99=73 commit_us_max=76 frame_callback_us_samples=2 frame_callback_us_p50=78079 frame_callback_us_p95=78079 frame_callback_us_p99=78079 frame_callback_us_max=93539 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=792 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=dock-popup path=dmabuf gpu_reason=none logical_size=180x121 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=495 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1883100 skipped=0 fallback=0 renders=0 dmabuf_commits=495 dmabuf_bytes=2255616000 dmabuf_deferred=0 dmabuf_fallbacks=12 commit_us_samples=3 commit_us_p50=92 commit_us_p95=92 commit_us_p99=92 commit_us_max=93 frame_callback_us_samples=2 frame_callback_us_p50=78061 frame_callback_us_p95=78061 frame_callback_us_p99=78061 frame_callback_us_max=93515 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=492 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=56 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=3010560 skipped=0 fallback=0 renders=67 dmabuf_commits=56 dmabuf_bytes=54789120 dmabuf_deferred=0 dmabuf_fallbacks=11 commit_us_samples=4 commit_us_p50=26 commit_us_p95=40 commit_us_p99=40 commit_us_max=44 frame_callback_us_samples=2 frame_callback_us_p50=42921 frame_callback_us_p95=42921 frame_callback_us_p99=42921 frame_callback_us_max=70746 dmabuf_buffers=3 dmabuf_allocs=9 dmabuf_reuses=47 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-10): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=23 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1193332 skipped=0 fallback=0 renders=0 dmabuf_commits=23 dmabuf_bytes=47692800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=20 copies=0
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: chrome stats (SIGUSR1-11): path=render-control+dmabuf scene_frames=880 commits=1404 grab_renders=0 shm_allocs=2 shm_bytes=18432000 copy_bytes=18432000 damage_pixels=205134412 frame_callbacks=970 fallback_renders=12 skipped_commits=5 dmabuf_commits=1402 dmabuf_bytes=6083368960 dmabuf_deferred=0 dmabuf_fallbacks=116 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=35 commit_us_p50=95 commit_us_p95=158 commit_us_p99=16163 commit_us_max=18217 frame_callback_us_samples=13 frame_callback_us_p50=639351 frame_callback_us_p95=685711 frame_callback_us_p99=685711 frame_callback_us_max=693469 dmabuf_buffers=12 dmabuf_allocs=18 dmabuf_reuses=1384 dmabuf_sync=gl-fence dmabuf_sync_waits=880 dmabuf_sync_timeouts=0 copies=2
+dragonfruit-shell: chrome surface (SIGUSR1-11): surface=dock path=shm gpu_reason=ring-exhausted logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=806 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=193440000 skipped=0 fallback=0 renders=855 dmabuf_commits=806 dmabuf_bytes=3672780800 dmabuf_deferred=0 dmabuf_fallbacks=49 commit_us_samples=11 commit_us_p50=91 commit_us_p95=111 commit_us_p99=111 commit_us_max=127 frame_callback_us_samples=4 frame_callback_us_p50=639351 frame_callback_us_p95=677302 frame_callback_us_p99=677302 frame_callback_us_max=682634 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=803 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-11): surface=dock-popup path=shm gpu_reason=ring-exhausted logical_size=180x225 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=506 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2291160 skipped=0 fallback=0 renders=0 dmabuf_commits=506 dmabuf_bytes=2305740800 dmabuf_deferred=0 dmabuf_fallbacks=31 commit_us_samples=11 commit_us_p50=110 commit_us_p95=145 commit_us_p99=145 commit_us_max=158 frame_callback_us_samples=4 frame_callback_us_p50=639306 frame_callback_us_p95=677282 frame_callback_us_p99=677282 frame_callback_us_max=682589 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=503 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-11): surface=menubar path=shm gpu_reason=ring-exhausted logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=67 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=3601920 skipped=0 fallback=0 renders=103 dmabuf_commits=67 dmabuf_bytes=57154560 dmabuf_deferred=0 dmabuf_fallbacks=36 commit_us_samples=11 commit_us_p50=79 commit_us_p95=97 commit_us_p99=97 commit_us_max=100 frame_callback_us_samples=4 frame_callback_us_p50=610742 frame_callback_us_p95=685711 frame_callback_us_p99=685711 frame_callback_us_max=693469 dmabuf_buffers=3 dmabuf_allocs=9 dmabuf_reuses=58 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-11): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=23 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1193332 skipped=0 fallback=0 renders=0 dmabuf_commits=23 dmabuf_bytes=47692800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=20 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-11): surface=overview path=shm gpu_reason=not-selected logical_size=1920x1200 buffer_size=1920x1200 buffer_scale=1 scale=1 viewport=0 commits=2 shm_allocs=2 shm_bytes=18432000 copy_bytes=18432000 damage_pixels=4608000 skipped=5 fallback=0 renders=7 dmabuf_commits=0 dmabuf_bytes=0 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=2 commit_us_p50=16163 commit_us_p95=16163 commit_us_p99=16163 commit_us_max=18217 frame_callback_us_samples=1 frame_callback_us_p50=458201 frame_callback_us_p95=458201 frame_callback_us_p99=458201 frame_callback_us_max=458201 dmabuf_buffers=0 dmabuf_allocs=0 dmabuf_reuses=0 copies=2
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: chrome stats (SIGUSR1-12): path=render-control+dmabuf scene_frames=903 commits=1428 grab_renders=0 shm_allocs=3 shm_bytes=27648000 copy_bytes=36864000 damage_pixels=212135992 frame_callbacks=981 fallback_renders=23 skipped_commits=11 dmabuf_commits=1424 dmabuf_bytes=6148884480 dmabuf_deferred=0 dmabuf_fallbacks=80711 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=24 commit_us_p50=77 commit_us_p95=149 commit_us_p99=7995 commit_us_max=18195 frame_callback_us_samples=11 frame_callback_us_p50=532193 frame_callback_us_p95=923603 frame_callback_us_p99=923603 frame_callback_us_max=940080 dmabuf_buffers=12 dmabuf_allocs=18 dmabuf_reuses=1406 dmabuf_sync=gl-fence dmabuf_sync_waits=903 dmabuf_sync_timeouts=0 copies=4
+dragonfruit-shell: chrome surface (SIGUSR1-12): surface=dock path=shm gpu_reason=ring-exhausted logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=813 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=195120000 skipped=0 fallback=0 renders=866 dmabuf_commits=813 dmabuf_bytes=3704678400 dmabuf_deferred=0 dmabuf_fallbacks=53 commit_us_samples=7 commit_us_p50=78 commit_us_p95=106 commit_us_p99=106 commit_us_max=109 frame_callback_us_samples=3 frame_callback_us_p50=527586 frame_callback_us_p95=527586 frame_callback_us_p99=527586 frame_callback_us_max=896659 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=810 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-12): surface=dock-popup path=shm gpu_reason=ring-exhausted logical_size=180x225 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=513 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2574660 skipped=0 fallback=0 renders=0 dmabuf_commits=513 dmabuf_bytes=2337638400 dmabuf_deferred=0 dmabuf_fallbacks=35 commit_us_samples=7 commit_us_p50=102 commit_us_p95=140 commit_us_p99=140 commit_us_max=149 frame_callback_us_samples=3 frame_callback_us_p50=527529 frame_callback_us_p95=527529 frame_callback_us_p99=527529 frame_callback_us_max=896627 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=510 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-12): surface=menubar path=shm gpu_reason=ring-exhausted logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=75 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=4032000 skipped=0 fallback=0 renders=80698 dmabuf_commits=75 dmabuf_bytes=58874880 dmabuf_deferred=0 dmabuf_fallbacks=80623 commit_us_samples=8 commit_us_p50=75 commit_us_p95=82 commit_us_p99=82 commit_us_max=96 frame_callback_us_samples=4 frame_callback_us_p50=532193 frame_callback_us_p95=870964 frame_callback_us_p99=870964 frame_callback_us_max=923603 dmabuf_buffers=3 dmabuf_allocs=9 dmabuf_reuses=66 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-12): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=23 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1193332 skipped=0 fallback=0 renders=0 dmabuf_commits=23 dmabuf_bytes=47692800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=20 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-12): surface=overview path=shm gpu_reason=not-selected logical_size=1920x1200 buffer_size=1920x1200 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=27648000 copy_bytes=36864000 damage_pixels=9216000 skipped=11 fallback=0 renders=15 dmabuf_commits=0 dmabuf_bytes=0 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=2 commit_us_p50=7995 commit_us_p95=7995 commit_us_p99=7995 commit_us_max=18195 frame_callback_us_samples=1 frame_callback_us_p50=940080 frame_callback_us_p95=940080 frame_callback_us_p99=940080 frame_callback_us_max=940080 dmabuf_buffers=0 dmabuf_allocs=0 dmabuf_reuses=0 copies=4
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: workspace activated index=1
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: chrome stats (SIGUSR1-13): path=render-control+dmabuf scene_frames=913 commits=1443 grab_renders=0 shm_allocs=3 shm_bytes=27648000 copy_bytes=36864000 damage_pixels=213807292 frame_callbacks=992 fallback_renders=26 skipped_commits=11 dmabuf_commits=1439 dmabuf_bytes=6195527680 dmabuf_deferred=0 dmabuf_fallbacks=112200 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=15 commit_us_p50=82 commit_us_p95=119 commit_us_p99=119 commit_us_max=121 frame_callback_us_samples=11 frame_callback_us_p50=84550 frame_callback_us_p95=640163 frame_callback_us_p99=640163 frame_callback_us_max=640192 dmabuf_buffers=12 dmabuf_allocs=18 dmabuf_reuses=1421 dmabuf_sync=gl-fence dmabuf_sync_waits=913 dmabuf_sync_timeouts=0 copies=4
+dragonfruit-shell: chrome surface (SIGUSR1-13): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=818 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=196320000 skipped=0 fallback=0 renders=877 dmabuf_commits=818 dmabuf_bytes=3727462400 dmabuf_deferred=0 dmabuf_fallbacks=59 commit_us_samples=5 commit_us_p50=82 commit_us_p95=82 commit_us_p99=82 commit_us_max=86 frame_callback_us_samples=4 frame_callback_us_p50=84550 frame_callback_us_p95=227015 frame_callback_us_p99=227015 frame_callback_us_max=640192 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=815 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-13): surface=dock-popup path=dmabuf gpu_reason=none logical_size=180x225 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=518 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2777160 skipped=0 fallback=0 renders=0 dmabuf_commits=518 dmabuf_bytes=2360422400 dmabuf_deferred=0 dmabuf_fallbacks=41 commit_us_samples=5 commit_us_p50=105 commit_us_p95=113 commit_us_p99=113 commit_us_max=121 frame_callback_us_samples=4 frame_callback_us_p50=84517 frame_callback_us_p95=227001 frame_callback_us_p99=227001 frame_callback_us_max=640163 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=515 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-13): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=80 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=4300800 skipped=0 fallback=0 renders=112180 dmabuf_commits=80 dmabuf_bytes=59950080 dmabuf_deferred=0 dmabuf_fallbacks=112100 commit_us_samples=5 commit_us_p50=73 commit_us_p95=80 commit_us_p99=80 commit_us_max=119 frame_callback_us_samples=3 frame_callback_us_p50=11026 frame_callback_us_p95=11026 frame_callback_us_p99=11026 frame_callback_us_max=513726 dmabuf_buffers=3 dmabuf_allocs=9 dmabuf_reuses=71 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-13): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=23 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1193332 skipped=0 fallback=0 renders=0 dmabuf_commits=23 dmabuf_bytes=47692800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=20 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-13): surface=overview path=shm gpu_reason=not-selected logical_size=1920x1200 buffer_size=1920x1200 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=27648000 copy_bytes=36864000 damage_pixels=9216000 skipped=11 fallback=0 renders=15 dmabuf_commits=0 dmabuf_bytes=0 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=0 dmabuf_allocs=0 dmabuf_reuses=0 copies=4
+dragonfruit-shell: workspace activated index=0
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: chrome stats (SIGUSR1-14): path=render-control+dmabuf scene_frames=922 commits=1455 grab_renders=0 shm_allocs=3 shm_bytes=27648000 copy_bytes=36864000 damage_pixels=214971352 frame_callbacks=998 fallback_renders=26 skipped_commits=11 dmabuf_commits=1451 dmabuf_bytes=6224158720 dmabuf_deferred=0 dmabuf_fallbacks=112204 gpu=dmabuf gpu_reason=ring-exhausted commit_us_samples=12 commit_us_p50=80 commit_us_p95=107 commit_us_p99=107 commit_us_max=108 frame_callback_us_samples=6 frame_callback_us_p50=148291 frame_callback_us_p95=191356 frame_callback_us_p99=191356 frame_callback_us_max=191374 dmabuf_buffers=12 dmabuf_allocs=18 dmabuf_reuses=1433 dmabuf_sync=gl-fence dmabuf_sync_waits=922 dmabuf_sync_timeouts=0 copies=4
+dragonfruit-shell: chrome surface (SIGUSR1-14): surface=dock path=dmabuf gpu_reason=none logical_size=1920x125 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=821 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=197040000 skipped=0 fallback=0 renders=882 dmabuf_commits=821 dmabuf_bytes=3741132800 dmabuf_deferred=0 dmabuf_fallbacks=61 commit_us_samples=3 commit_us_p50=81 commit_us_p95=81 commit_us_p99=81 commit_us_max=84 frame_callback_us_samples=2 frame_callback_us_p50=148291 frame_callback_us_p95=148291 frame_callback_us_p99=148291 frame_callback_us_max=191374 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=818 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-14): surface=dock-popup path=dmabuf gpu_reason=none logical_size=180x225 buffer_size=2560x445 buffer_scale=1 scale=1 viewport=1 commits=521 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=2898660 skipped=0 fallback=0 renders=0 dmabuf_commits=521 dmabuf_bytes=2374092800 dmabuf_deferred=0 dmabuf_fallbacks=43 commit_us_samples=3 commit_us_p50=107 commit_us_p95=107 commit_us_p99=107 commit_us_max=108 frame_callback_us_samples=2 frame_callback_us_p50=148264 frame_callback_us_p95=148264 frame_callback_us_p99=148264 frame_callback_us_max=191356 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=518 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-14): surface=menubar path=dmabuf gpu_reason=none logical_size=1920x28 buffer_size=1920x28 buffer_scale=1 scale=1 viewport=1 commits=86 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=4623360 skipped=0 fallback=0 renders=112186 dmabuf_commits=86 dmabuf_bytes=61240320 dmabuf_deferred=0 dmabuf_fallbacks=112100 commit_us_samples=6 commit_us_p50=75 commit_us_p95=80 commit_us_p99=80 commit_us_max=89 frame_callback_us_samples=2 frame_callback_us_p50=6280 frame_callback_us_p95=6280 frame_callback_us_p99=6280 frame_callback_us_max=180026 dmabuf_buffers=3 dmabuf_allocs=9 dmabuf_reuses=77 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-14): surface=menubar-popup path=dmabuf gpu_reason=none logical_size=218x238 buffer_size=1920x270 buffer_scale=1 scale=1 viewport=1 commits=23 shm_allocs=0 shm_bytes=0 copy_bytes=0 damage_pixels=1193332 skipped=0 fallback=0 renders=0 dmabuf_commits=23 dmabuf_bytes=47692800 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=3 dmabuf_allocs=3 dmabuf_reuses=20 copies=0
+dragonfruit-shell: chrome surface (SIGUSR1-14): surface=overview path=shm gpu_reason=not-selected logical_size=1920x1200 buffer_size=1920x1200 buffer_scale=1 scale=1 viewport=0 commits=4 shm_allocs=3 shm_bytes=27648000 copy_bytes=36864000 damage_pixels=9216000 skipped=11 fallback=0 renders=15 dmabuf_commits=0 dmabuf_bytes=0 dmabuf_deferred=0 dmabuf_fallbacks=0 commit_us_samples=0 commit_us_p50=0 commit_us_p95=0 commit_us_p99=0 commit_us_max=0 frame_callback_us_samples=0 frame_callback_us_p50=0 frame_callback_us_p95=0 frame_callback_us_p99=0 frame_callback_us_max=0 dmabuf_buffers=0 dmabuf_allocs=0 dmabuf_reuses=0 copies=4
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: screenshot saved /tmp/dragonfruit-t21-bench.SLy9sq/main-144-full/shots/Screenshot_2026-11-05_13-33-09.png (copy=yes)
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: shell: failed to commit the Dock: ""
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: screenshot saved /tmp/dragonfruit-t21-bench.SLy9sq/main-144-full/shots/Screenshot_2026-11-05_13-33-16.png (copy=yes)
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: menu bar configured 1920x28
+dragonfruit-shell: Dock configured 1920x125
+dragonfruit-shell: overview configured 1920x1200
+dragonfruit-shell: app-switcher configured 1920x1200
+dragonfruit-shell: notification banner configured 380x132
+dragonfruit-shell: OSD configured 220x220
+dragonfruit-shell: apps-drawer configured 1920x1200
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
+dragonfruit-shell: output reserved zone edge=0 thickness=28
+dragonfruit-shell: output reserved zone edge=1 thickness=86
