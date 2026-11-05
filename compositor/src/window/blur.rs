@@ -324,6 +324,28 @@ impl BlurSpec {
         let h = (region.h >> self.iterations).max(1);
         Size::from((w, h))
     }
+
+    /// The scene margin the blur needs beyond a panel edge, in logical pixels
+    /// (T-21.3).
+    ///
+    /// Two reaches matter:
+    /// * the token [`Self::radius`] is the requested blur spread, so a region
+    ///   that stops at the panel edge would clamp the soft edge;
+    /// * the Kawase chain's discrete taps reach `2^iterations - 1` source
+    ///   pixels, and the first bilinear downsample adds one more texel, so the
+    ///   chain footprint is `2^iterations` ([`Self::downsample`]).
+    ///
+    /// Taking the larger of the two covers both without a literal padding
+    /// constant. A degenerate radius still keeps the minimum chain footprint.
+    pub fn padding(&self) -> f32 {
+        self.radius.max(0.0).max(self.downsample() as f32)
+    }
+
+    /// The padding rounded up to whole logical pixels, for the region helper.
+    /// Rounding up keeps the full kernel inside the region at the panel edge.
+    pub fn padding_px(&self) -> i32 {
+        self.padding().ceil() as i32
+    }
 }
 
 /// The token-resolved Tahoe liquid-glass parameters for one chrome panel
@@ -655,6 +677,32 @@ mod tests {
         assert_eq!(size, Size::from((240, 3)));
         // A degenerate panel never produces an empty texture.
         assert_eq!(spec.texture_size(Size::from((1, 1))), Size::from((1, 1)));
+    }
+
+    #[test]
+    fn the_padding_comes_from_the_radius_and_iteration_count() {
+        // The token radius is the requested reach; the Kawase chain reaches
+        // `2^iterations` source pixels. The padding is the larger of the two,
+        // never a literal margin.
+        for (radius, iterations, expected) in [
+            (0.0, 1, 2.0),
+            (8.0, 1, 8.0),
+            (12.0, 2, 12.0),
+            (24.0, 3, 24.0),
+            (28.0, 4, 28.0),
+        ] {
+            let spec = BlurSpec::new(radius, 10.0);
+            assert_eq!(spec.iterations, iterations, "radius {radius}");
+            assert_eq!(spec.padding(), expected, "radius {radius}");
+            assert_eq!(spec.padding_px(), expected as i32, "radius {radius}");
+        }
+
+        // A tiny radius still keeps the minimum one-iteration chain footprint.
+        assert_eq!(BlurSpec::new(0.5, 10.0).padding(), 2.0);
+        // Fractional padding rounds up so the region never clips the kernel.
+        assert_eq!(BlurSpec::new(8.2, 10.0).padding_px(), 9);
+        // More blur never means less padding.
+        assert!(BlurSpec::new(24.0, 10.0).padding() > BlurSpec::new(8.0, 10.0).padding());
     }
 
     #[test]

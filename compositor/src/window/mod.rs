@@ -21,6 +21,7 @@ pub mod decoration;
 pub mod degrade;
 pub mod events;
 pub mod grab;
+pub mod material_region;
 pub mod menu;
 pub mod motion;
 pub mod pass;
@@ -102,6 +103,8 @@ pub use degrade::{
     DegradeController, DegradeTier, EffectiveMaterial, MaterialFallback, MaterialPath,
 };
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
+#[allow(unused_imports)]
+pub use material_region::MaterialRegion;
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 pub use motion::{MinimizedAnimation, MotionFrame, WindowMotion, WindowMotionKind};
 #[allow(unused_imports)]

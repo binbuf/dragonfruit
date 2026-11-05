@@ -127,6 +127,13 @@ the full output for a 2560x125 Dock panel wastes bandwidth and GPU time.
   map correctly.
 - Reallocate on panel-union size changes, not every frame.
 
+T190a adds the pure `window::MaterialRegion` helper and
+`BlurSpec::padding()`: each panel is expanded by its own
+`max(token radius, 2^iterations)` logical padding, the union is clamped to the
+output, and the helper returns the logical rect plus the precisely rounded
+physical rect/texture size (ADR 0207). T190b wires that region into the scene
+render; the full-output path stays available until then.
+
 **Acceptance**
 
 - Steady-state Dock magnification does not allocate a new texture per frame.
