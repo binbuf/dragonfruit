@@ -89,6 +89,35 @@ the client must `ack_configure`.
   `on_demand` (focus on click). The compositor tracks the mode; the shell's
   rendering and the seat grab are T-09/T-10.
 
+### Material regions (v3, T197)
+
+`df_layer_surface.set_panel_rect` remains the legacy single-rect material
+hint. The additive v3 `set_panel_region` request declares one independently
+keyed visual region in surface-local logical coordinates: a stable short key,
+an optional known T195 glass preset, a rect, four per-corner radii, and a
+bounded overscan for rim/shadow/veil. `clear_panel_regions` commits an empty
+set. Both are commit-latched with the buffer they describe.
+
+- The compositor validates keys and preset names, bounds the list to eight
+  regions, clips each rect to the surface and the owning output, and ignores
+  invalid metadata without disturbing the committed list. The first request
+  after a commit starts from the committed list; `clear_panel_regions` is the
+  explicit removal path.
+- Visual bounds, the `wl_surface` input region, and the reserved/exclusive
+  zone are independent. A material region never changes hit testing or the
+  usable (Zoom) area.
+- A legacy client that only sends `set_panel_rect` keeps one `panel` region
+  and its existing optics. A surface with no region metadata keeps the derived
+  panel (input-region bounds ∩ reserved strip).
+- Region identity is `(namespace, layer, surface object, region key)`, so a
+  stable key keeps its element id and cached filtered texture across unrelated
+  scene damage and tint-only changes. Removed regions and surfaces drop their
+  slots and textures.
+- The filtered path runs the Kawase/liquid-glass chain; a veil preset resolves
+  to the sharp path, which samples the compositor's region scene texture with
+  no blur allocation. Neither path exposes the texture to QML or reads it back
+  to the CPU.
+
 Layers match `wlr-layer-shell`'s ordering: `background`, `bottom`, `top`,
 `overlay`. The menu bar and Dock are `top`; menus and the OSD are `overlay`.
 

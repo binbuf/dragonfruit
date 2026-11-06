@@ -33,6 +33,8 @@ use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::{Renderer, RendererSuper};
 use smithay::utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform};
 
+use crate::window::corner::CornerRadii;
+
 /// The custom texture shader compiled once per renderer (T-20.1).
 ///
 /// It samples the scene texture with a 4-tap Kawase downsample: the centre
@@ -373,6 +375,15 @@ impl GlassSpec {
         self.refraction * LENS_BAND_FACTOR
     }
 
+    /// The scene reach the refraction/lens kernel needs beyond the panel edge,
+    /// in logical pixels (T197). The shader bends samples inward from the rim
+    /// by up to [`Self::lens_width`], so a region that stops at the panel edge
+    /// would clamp that read. One extra logical pixel covers the bilinear
+    /// footprint of the rim sample.
+    pub fn sample_padding_px(&self) -> i32 {
+        (self.lens_width().max(0.0).ceil() as i32).saturating_add(1)
+    }
+
     /// The shader uniforms for a panel of `physical` size at output `scale`.
     /// The logical tokens are scaled to physical pixels so the SDF, the lens,
     /// and the specular band are device-pixel consistent.
@@ -399,6 +410,35 @@ impl GlassSpec {
             Uniform::new(LENS_FALLOFF_UNIFORM, self.lens_width() * sx),
             Uniform::new(TINT_SCALE_UNIFORM, TINT_ADAPT_SCALE),
         ]
+    }
+}
+
+/// How one material region samples the scene (T197).
+///
+/// The filtered path runs the Kawase chain; the sharp path samples the
+/// compositor's scene texture directly with no blur allocation. A veil-only
+/// region is the sharp path plus its own paint, so T200 can compose it without
+/// ever scheduling a blur pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RegionFilter {
+    /// The filtered backdrop: Kawase downsample + liquid-glass compose.
+    #[default]
+    Filtered,
+    /// The sharp backdrop: direct scene-texture sample, no blur chain.
+    Sharp,
+}
+
+impl RegionFilter {
+    pub const fn name(self) -> &'static str {
+        match self {
+            RegionFilter::Filtered => "filtered",
+            RegionFilter::Sharp => "sharp",
+        }
+    }
+
+    /// Whether this region allocates/runs a Kawase chain.
+    pub const fn schedules_blur(self) -> bool {
+        matches!(self, RegionFilter::Filtered)
     }
 }
 
@@ -460,15 +500,15 @@ pub struct BackdropBlurElement {
     texture: GlesTexture,
     /// The panel in output-local logical coordinates.
     panel: Rectangle<i32, Logical>,
-    /// The part of `panel` the texture actually covers. This is the whole
-    /// panel except when the material region clipped it at an output edge
-    /// (T-21.3); the element keeps the full panel for its rounded spans and
-    /// only samples the visible part.
-    texture_panel: Rectangle<i32, Logical>,
+    /// The logical region the texture covers. For a filtered panel this is
+    /// the visible part of the panel; for a sharp/veil region it is the whole
+    /// scene region, including the sample padding (T197). The element keeps
+    /// the full panel for its rounded spans and only samples the intersection.
+    texture_region: Rectangle<i32, Logical>,
     /// The texture's buffer size (the downsampled panel region).
     texture_size: Size<i32, Buffer>,
-    /// The panel corner radius in logical pixels.
-    corner_radius: i32,
+    /// The panel's per-corner clipping radii in logical pixels (T197).
+    corners: CornerRadii,
     scale: Scale<f64>,
     /// The liquid-glass parameters and compiled program (T-20.2), or `None`
     /// for the plain blurred compose (the scene texture, or a driver that
@@ -491,9 +531,9 @@ impl BackdropBlurElement {
             commit: CommitCounter::default(),
             texture,
             panel,
-            texture_panel: panel,
+            texture_region: panel,
             texture_size,
-            corner_radius,
+            corners: CornerRadii::uniform(corner_radius),
             scale,
             glass: None,
         }
@@ -520,7 +560,22 @@ impl BackdropBlurElement {
     /// its rounded spans, so clipping at an output edge does not invent a new
     /// rounded corner.
     pub fn with_texture_panel(mut self, texture_panel: Rectangle<i32, Logical>) -> Self {
-        self.texture_panel = texture_panel;
+        self.texture_region = texture_panel;
+        self
+    }
+
+    /// Set the logical region a scene texture covers (T197). The sharp/veil
+    /// path passes the whole padded material region; a filtered panel passes
+    /// the visible panel slice through [`Self::with_texture_panel`].
+    pub fn with_texture_region(mut self, texture_region: Rectangle<i32, Logical>) -> Self {
+        self.texture_region = texture_region;
+        self
+    }
+
+    /// Use per-corner clipping radii (T197). The default from [`Self::new`] is
+    /// a uniform radius for the legacy single-rect panel.
+    pub fn with_corners(mut self, corners: CornerRadii) -> Self {
+        self.corners = corners;
         self
     }
 
@@ -531,13 +586,9 @@ impl BackdropBlurElement {
         self
     }
 
-    /// The rounded spans of the panel at the token corner radius.
+    /// The rounded spans of the panel at the token/per-region corner radii.
     fn spans(&self) -> Vec<Rectangle<i32, Logical>> {
-        crate::window::corner::rounded_rect_spans(
-            self.panel,
-            self.corner_radius,
-            crate::window::corner::RoundedCorners::All,
-        )
+        crate::window::corner::rounded_rect_spans_with_radii(self.panel, self.corners)
     }
 }
 
@@ -585,11 +636,17 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
         let uniforms = self
             .glass
             .as_ref()
-            .map(|(spec, _)| spec.uniforms(panel_physical.size, self.corner_radius, self.scale))
+            .map(|(spec, _)| {
+                spec.uniforms(
+                    panel_physical.size,
+                    self.corners.max(),
+                    self.scale,
+                )
+            })
             .unwrap_or_default();
         for span in self.spans() {
             let Some((visible, src)) =
-                map_span_to_texture(span, self.texture_panel, self.texture_size)
+                map_span_to_texture(span, self.texture_region, self.texture_size)
             else {
                 continue;
             };
@@ -658,27 +715,27 @@ fn damage_in_span(
 
 /// Map one rounded span of a panel into the blurred texture.
 ///
-/// `texture_panel` is the part of the panel the texture covers (the panel
-/// itself unless the material region clipped it at an output edge). The
-/// returned logical rectangle is the visible span and the returned buffer
-/// rectangle is its source slice. `None` means the span lies outside the
-/// rendered part.
+/// `texture_region` is the logical region the texture covers (the visible
+/// panel slice for a filtered panel, or the whole padded material region for
+/// a sharp/veil sample). The returned logical rectangle is the visible span
+/// and the returned buffer rectangle is its source slice. `None` means the
+/// span lies outside the rendered part.
 fn map_span_to_texture(
     span: Rectangle<i32, Logical>,
-    texture_panel: Rectangle<i32, Logical>,
+    texture_region: Rectangle<i32, Logical>,
     texture_size: Size<i32, Buffer>,
 ) -> Option<(Rectangle<i32, Logical>, Rectangle<f64, Buffer>)> {
-    if texture_panel.size.w <= 0 || texture_panel.size.h <= 0 {
+    if texture_region.size.w <= 0 || texture_region.size.h <= 0 {
         return None;
     }
-    let visible = span.intersection(texture_panel)?;
+    let visible = span.intersection(texture_region)?;
     if visible.size.w <= 0 || visible.size.h <= 0 {
         return None;
     }
-    let ratio_x = texture_size.w as f64 / f64::from(texture_panel.size.w);
-    let ratio_y = texture_size.h as f64 / f64::from(texture_panel.size.h);
-    let rel_x = f64::from(visible.loc.x - texture_panel.loc.x);
-    let rel_y = f64::from(visible.loc.y - texture_panel.loc.y);
+    let ratio_x = texture_size.w as f64 / f64::from(texture_region.size.w);
+    let ratio_y = texture_size.h as f64 / f64::from(texture_region.size.h);
+    let rel_x = f64::from(visible.loc.x - texture_region.loc.x);
+    let rel_y = f64::from(visible.loc.y - texture_region.loc.y);
     let src = Rectangle::new(
         Point::from((rel_x * ratio_x, rel_y * ratio_y)),
         Size::from((
@@ -933,6 +990,41 @@ mod tests {
         for span in &spans {
             assert!(panel.contains_rect(*span));
         }
+    }
+
+    #[test]
+    fn a_region_keeps_attached_top_corners_square_and_rounds_the_bottom() {
+        use crate::window::corner::{rounded_rect_spans_with_radii, CornerRadii};
+        let panel = Rectangle::new(Point::from((100, 20)), Size::from((800, 120)));
+        let attached = CornerRadii {
+            top_left: 0,
+            top_right: 0,
+            bottom_right: 12,
+            bottom_left: 12,
+        };
+        let spans = rounded_rect_spans_with_radii(panel, attached);
+        assert_eq!(spans.first().unwrap().size.w, panel.size.w);
+        assert_eq!(spans.last().unwrap().loc.y, panel.loc.y + panel.size.h - 1);
+        assert!(spans.last().unwrap().size.w < panel.size.w);
+
+        let detached = CornerRadii::uniform(12);
+        let spans = rounded_rect_spans_with_radii(panel, detached);
+        assert!(spans.first().unwrap().size.w < panel.size.w);
+        assert!(spans.last().unwrap().size.w < panel.size.w);
+    }
+
+    #[test]
+    fn a_sharp_region_maps_the_whole_scene_region_without_a_blur_chain() {
+        // A veil/sharp element covers the padded scene region, not just the
+        // panel slice. The span source is translated into that region.
+        let region = Rectangle::new(Point::from((40, 0)), Size::from((400, 200)));
+        let panel = Rectangle::new(Point::from((100, 20)), Size::from((200, 80)));
+        let texture = Size::from((400, 200));
+        let (visible, src) =
+            map_span_to_texture(panel, region, texture).expect("visible sharp span");
+        assert_eq!(visible, panel);
+        assert_eq!(src.loc, Point::from((60.0, 20.0)));
+        assert_eq!(src.size, Size::from((200.0, 80.0)));
     }
 
     #[test]

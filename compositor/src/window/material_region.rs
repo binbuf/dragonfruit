@@ -75,9 +75,9 @@ impl MaterialRegion {
     ///
     /// Returns `None` when there is no panel with a visible area (empty input,
     /// degenerate panels, or panels entirely outside the output). Each panel
-    /// is expanded by its own [`crate::window::BlurSpec::padding`] before the
-    /// union, so a larger blur on one panel does not silently shrink another
-    /// panel's margin.
+    /// is expanded by its own [`BlurPanel::sample_padding_px`] before the
+    /// union, so a larger blur, lens, or declared overscan on one panel does
+    /// not silently shrink another panel's margin.
     pub fn from_panels(
         panels: &[BlurPanel],
         output: Rectangle<i32, Logical>,
@@ -99,7 +99,7 @@ impl MaterialRegion {
             if panel.size.w <= 0 || panel.size.h <= 0 {
                 continue;
             }
-            let padding = blur_panel.spec.padding_px();
+            let padding = blur_panel.sample_padding_px();
             let expanded = Rectangle::new(
                 (
                     panel.loc.x.saturating_sub(padding),
@@ -222,12 +222,32 @@ impl MaterialRegion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::window::blur::{BlurSpec, GlassSpec};
+    use crate::material_preset::{Preset, RenderMode};
+    use crate::window::blur::{BlurSpec, GlassSpec, RegionFilter};
+    use crate::window::{ColorScheme, CornerRadii, DegradeTier};
+    use crate::render::RegionPaint;
+
+    fn paint() -> RegionPaint {
+        RegionPaint {
+            scheme: ColorScheme::Light,
+            preset: Preset::MenuDetached,
+            tier: DegradeTier::Full,
+            mode: RenderMode::SampledGlass,
+            alpha: 0.5,
+            tint: 0.9,
+            edge: 0.0,
+            edge_width: 0.0,
+            foreground: 0.0,
+            revision: 0,
+        }
+    }
 
     fn panel(rect: (i32, i32, i32, i32), radius: f32) -> BlurPanel {
         BlurPanel {
             key: crate::window::PanelKey::new("test", 2, 0),
             panel: Rectangle::new((rect.0, rect.1).into(), (rect.2, rect.3).into()),
+            corners: CornerRadii::uniform(10),
+            overscan: 0,
             spec: BlurSpec::new(radius, 10.0),
             glass: GlassSpec {
                 refraction: 0.0,
@@ -236,6 +256,8 @@ mod tests {
                 tint: 0.0,
                 tint_color: [0.0; 3],
             },
+            filter: RegionFilter::Filtered,
+            paint: paint(),
         }
     }
 
@@ -293,6 +315,40 @@ mod tests {
             Rectangle::new((76, 0).into(), (848, 72).into())
         );
         assert_eq!(region.texture_size, (848, 72).into());
+    }
+
+    #[test]
+    fn the_sample_padding_includes_refraction_and_declared_overscan() {
+        let screen = output(1920, 1080);
+        let mut region_panel = panel((100, 100, 200, 80), 8.0);
+        // radius 8 -> 1 iteration -> blur padding 8; refraction 10 has a
+        // 25 px lens falloff, plus one sample pixel; overscan adds 5.
+        region_panel.glass.refraction = 10.0;
+        region_panel.overscan = 5;
+        let expected = region_panel.glass.sample_padding_px() + 5;
+        assert!(expected > region_panel.spec.padding_px());
+        let region = MaterialRegion::from_panels(&[region_panel], screen, 1.0.into())
+            .expect("visible panel");
+        assert_eq!(
+            region.rect,
+            Rectangle::new(
+                (100 - expected, 100 - expected).into(),
+                (200 + expected * 2, 80 + expected * 2).into()
+            )
+        );
+
+        // A sharp/veil region does not reserve the blur/lens footprint; only
+        // its declared overscan plus the one-pixel sample edge.
+        let mut veil = panel((100, 100, 200, 80), 24.0);
+        veil.filter = RegionFilter::Sharp;
+        veil.overscan = 7;
+        let region = MaterialRegion::from_panels(&[veil], screen, 1.0.into())
+            .expect("visible veil");
+        assert_eq!(
+            region.rect,
+            Rectangle::new((92, 92).into(), (216, 96).into()),
+            "sharp/veil padding is 1 + overscan, not the blur radius"
+        );
     }
 
     #[test]
@@ -470,18 +526,7 @@ mod tests {
         let screen = output(1280, 800);
         let panel_rect = Rectangle::new((1200, 760).into(), (200, 100).into());
         let region = MaterialRegion::from_panels(
-            &[BlurPanel {
-                key: crate::window::PanelKey::new("test", 2, 0),
-                panel: panel_rect,
-                spec: BlurSpec::new(8.0, 10.0),
-                glass: GlassSpec {
-                    refraction: 0.0,
-                    specular: 0.0,
-                    specular_width: 0.0,
-                    tint: 0.0,
-                    tint_color: [0.0; 3],
-                },
-            }],
+            &[panel((panel_rect.loc.x, panel_rect.loc.y, panel_rect.size.w, panel_rect.size.h), 8.0)],
             screen,
             1.0.into(),
         )
@@ -500,18 +545,7 @@ mod tests {
         // The physical clamp at 1.5x wins over the panel's independently
         // rounded size: the source never reaches past the texture.
         let region = MaterialRegion::from_panels(
-            &[BlurPanel {
-                key: crate::window::PanelKey::new("test", 2, 0),
-                panel: Rectangle::new((1199, 759).into(), (81, 41).into()),
-                spec: BlurSpec::new(12.0, 10.0),
-                glass: GlassSpec {
-                    refraction: 0.0,
-                    specular: 0.0,
-                    specular_width: 0.0,
-                    tint: 0.0,
-                    tint_color: [0.0; 3],
-                },
-            }],
+            &[panel((1199, 759, 81, 41), 12.0)],
             screen,
             1.5.into(),
         )

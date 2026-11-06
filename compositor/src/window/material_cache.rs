@@ -26,7 +26,12 @@ use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::utils::{Buffer, Physical, Point, Rectangle, Scale, Size};
 
-use crate::window::blur::BlurSpec;
+use crate::material_preset::{Preset, RenderMode};
+use crate::render::RegionPaint;
+use crate::window::blur::{BlurSpec, RegionFilter};
+use crate::window::corner::CornerRadii;
+use crate::window::degrade::DegradeTier;
+use crate::window::decoration::ColorScheme;
 
 /// The allocation identity of a scene texture.
 ///
@@ -137,13 +142,13 @@ impl<T> SceneTextureCache<T> {
         &self,
         previous: Option<CommitCounter>,
         source: Rectangle<f64, Buffer>,
-        spec: BlurSpec,
+        padding: i32,
         scale: Scale<f64>,
     ) -> bool {
         match self.commit.distance(previous) {
             Some(0) => false,
             Some(1) => {
-                let padding = f64::from(spec.padding_px());
+                let padding = f64::from(padding.max(0));
                 // The first blur pass reads adjacent texels with linear
                 // filtering, even at scales where the logical padding is small.
                 let pad_x = (padding * scale.x).ceil().max(2.0);
@@ -251,6 +256,33 @@ impl PanelKey {
         surface_id.hash(&mut hasher);
         Self(hasher.finish())
     }
+
+    /// Build a key for one independently keyed region on a chrome surface
+    /// (T197). The region key joins the surface identity, so two cards on the
+    /// same overlay keep separate element ids and blur textures even when
+    /// their geometry swaps.
+    pub fn for_region(
+        namespace: &str,
+        layer: u32,
+        surface_id: u32,
+        region_key: &str,
+    ) -> Self {
+        let mut hasher = DefaultHasher::new();
+        namespace.hash(&mut hasher);
+        layer.hash(&mut hasher);
+        surface_id.hash(&mut hasher);
+        region_key.hash(&mut hasher);
+        Self(hasher.finish())
+    }
+}
+
+/// The sample inputs that decide a region's filtered pixels (T197).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct RegionSample {
+    pub spec: BlurSpec,
+    /// Padded source footprint: blur/lens kernel plus declared overscan.
+    pub padding: i32,
+    pub filter: RegionFilter,
 }
 
 /// Everything that can change a panel's blurred pixels.
@@ -268,6 +300,12 @@ pub(crate) struct PanelBlurKey {
     scene_epoch: u64,
     scene_src: Rectangle<f64, Buffer>,
     spec: BlurSpec,
+    /// The padded source footprint this region samples (T197). A declared
+    /// rim/shadow/veil overscan or a wider refraction kernel enlarges it, so
+    /// damage in the extra margin invalidates the cached texture.
+    padding: i32,
+    /// Filtered vs sharp; a veil never reuses a blurred texture.
+    filter: RegionFilter,
     chain_size: Size<i32, Physical>,
     scale: (u64, u64),
 }
@@ -277,7 +315,7 @@ impl PanelBlurKey {
         scene_generation: u64,
         scene_epoch: u64,
         scene_src: Rectangle<f64, Buffer>,
-        spec: BlurSpec,
+        sample: RegionSample,
         chain_size: Size<i32, Physical>,
         scale: Scale<f64>,
     ) -> Self {
@@ -285,7 +323,9 @@ impl PanelBlurKey {
             scene_generation,
             scene_epoch,
             scene_src,
-            spec,
+            spec: sample.spec,
+            padding: sample.padding,
+            filter: sample.filter,
             chain_size,
             scale: (scale.x.to_bits(), scale.y.to_bits()),
         }
@@ -299,12 +339,64 @@ impl PanelBlurKey {
             Some(BlurMissReason::Scene)
         } else if self.scene_src != previous.scene_src {
             Some(BlurMissReason::Source)
-        } else if self.spec != previous.spec {
+        } else if self.spec != previous.spec || self.filter != previous.filter {
             Some(BlurMissReason::Spec)
         } else if self.chain_size != previous.chain_size || self.scale != previous.scale {
             Some(BlurMissReason::Chain)
         } else {
             None
+        }
+    }
+}
+
+/// Paint-only inputs for one material region (T197).
+///
+/// These are deliberately **not** part of [`PanelBlurKey`]: a scheme, tier,
+/// or tint change repaints the region element and advances its commit, but the
+/// filtered scene texture is unchanged and must be reused. Geometry and radius
+/// are not here either; the element geometry and corner spans carry them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PanelPaintKey {
+    scheme: ColorScheme,
+    preset: Preset,
+    tier: DegradeTier,
+    mode: RenderMode,
+    alpha: u32,
+    tint: u32,
+    edge: u32,
+    edge_width: u32,
+    foreground: u32,
+    revision: u64,
+    corners: CornerRadii,
+    output_generation: u64,
+}
+
+impl PanelPaintKey {
+    pub(crate) fn new(
+        paint: RegionPaint,
+        corners: CornerRadii,
+        output_generation: u64,
+    ) -> Self {
+        let bits = |value: f32| {
+            if value.is_finite() {
+                value.to_bits()
+            } else {
+                f32::NAN.to_bits()
+            }
+        };
+        Self {
+            scheme: paint.scheme,
+            preset: paint.preset,
+            tier: paint.tier,
+            mode: paint.mode,
+            alpha: bits(paint.alpha),
+            tint: bits(paint.tint),
+            edge: bits(paint.edge),
+            edge_width: bits(paint.edge_width),
+            foreground: bits(paint.foreground),
+            revision: paint.revision,
+            corners,
+            output_generation,
         }
     }
 }
@@ -353,6 +445,7 @@ pub(crate) struct PanelTextureSlot<T> {
     commit: CommitCounter,
     textures: Vec<T>,
     blur_key: Option<PanelBlurKey>,
+    paint_key: Option<PanelPaintKey>,
     last_scene_commit: Option<CommitCounter>,
 }
 
@@ -363,6 +456,7 @@ impl<T> PanelTextureSlot<T> {
             commit: CommitCounter::default(),
             textures: Vec::new(),
             blur_key: None,
+            paint_key: None,
             last_scene_commit: None,
         }
     }
@@ -372,9 +466,20 @@ impl<T> PanelTextureSlot<T> {
         &self.id
     }
 
-    /// The panel element's commit, advanced whenever its blur is rebuilt.
+    /// The panel element's commit, advanced whenever its blur is rebuilt or
+    /// its paint-only inputs change.
     pub(crate) fn commit(&self) -> CommitCounter {
         self.commit
+    }
+
+    /// Record paint-only inputs (scheme/tint/tier/radius/output generation).
+    /// The filtered texture is reused; the element commit advances so the
+    /// damage tracker repaints the new paint.
+    pub(crate) fn note_paint(&mut self, key: PanelPaintKey) {
+        if self.paint_key != Some(key) {
+            self.paint_key = Some(key);
+            self.commit.increment();
+        }
     }
 
     /// The Kawase-chain textures for this panel.
@@ -396,16 +501,16 @@ impl<T> PanelTextureSlot<T> {
         &mut self,
         scene: &SceneTextureCache<S>,
         source: Rectangle<f64, Buffer>,
-        spec: BlurSpec,
+        sample: RegionSample,
         chain_size: Size<i32, Physical>,
         scale: Scale<f64>,
     ) -> PanelBlurKey {
         let mut epoch = self.blur_key.map_or(0, |key| key.scene_epoch);
-        if scene.damaged_source_since(self.last_scene_commit, source, spec, scale) {
+        if scene.damaged_source_since(self.last_scene_commit, source, sample.padding, scale) {
             epoch = epoch.wrapping_add(1);
         }
         self.last_scene_commit = Some(scene.commit());
-        PanelBlurKey::new(scene.generation(), epoch, source, spec, chain_size, scale)
+        PanelBlurKey::new(scene.generation(), epoch, source, sample, chain_size, scale)
     }
 
     /// Whether the cached chain can be reused for `key`.
@@ -499,6 +604,14 @@ mod tests {
 
     fn rect(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Physical> {
         Rectangle::new(Point::from((x, y)), Size::from((w, h)))
+    }
+
+    fn sample(spec: BlurSpec, padding: i32, filter: RegionFilter) -> RegionSample {
+        RegionSample {
+            spec,
+            padding,
+            filter,
+        }
     }
 
     #[test]
@@ -634,24 +747,27 @@ mod tests {
         let src: Rectangle<f64, Buffer> = Rectangle::new((0.0, 0.0).into(), (10.0, 10.0).into());
         let chain = Size::<i32, Physical>::from((1920, 1080));
         let scale = Scale::from(1.5);
-        let base = PanelBlurKey::new(1, 0, src, spec, chain, scale);
+        let base = PanelBlurKey::new(1, 0, src, sample(spec, 24, RegionFilter::Filtered), chain, scale);
 
-        assert_eq!(base, PanelBlurKey::new(1, 0, src, spec, chain, scale));
+        assert_eq!(
+            base,
+            PanelBlurKey::new(1, 0, src, sample(spec, 24, RegionFilter::Filtered), chain, scale)
+        );
 
         assert_ne!(
             base,
-            PanelBlurKey::new(1, 1, src, spec, chain, scale),
+            PanelBlurKey::new(1, 1, src, sample(spec, 24, RegionFilter::Filtered), chain, scale),
             "a scene commit must invalidate the cached blur"
         );
         assert_ne!(
             base,
-            PanelBlurKey::new(2, 0, src, spec, chain, scale),
+            PanelBlurKey::new(2, 0, src, sample(spec, 24, RegionFilter::Filtered), chain, scale),
             "a scene generation change must invalidate the cached blur"
         );
         let moved: Rectangle<f64, Buffer> = Rectangle::new((1.0, 0.0).into(), (10.0, 10.0).into());
         assert_ne!(
             base,
-            PanelBlurKey::new(1, 0, moved, spec, chain, scale),
+            PanelBlurKey::new(1, 0, moved, sample(spec, 24, RegionFilter::Filtered), chain, scale),
             "a panel source move must invalidate the cached blur"
         );
         assert_ne!(
@@ -660,7 +776,11 @@ mod tests {
                 1,
                 0,
                 src,
-                crate::window::blur::BlurSpec::new(12.0, 10.0),
+                sample(
+                    crate::window::blur::BlurSpec::new(12.0, 10.0),
+                    12,
+                    RegionFilter::Filtered,
+                ),
                 chain,
                 scale,
             ),
@@ -672,7 +792,7 @@ mod tests {
                 1,
                 0,
                 src,
-                spec,
+                sample(spec, 24, RegionFilter::Filtered),
                 Size::<i32, Physical>::from((1280, 720)),
                 scale,
             ),
@@ -680,7 +800,7 @@ mod tests {
         );
         assert_ne!(
             base,
-            PanelBlurKey::new(1, 0, src, spec, chain, Scale::from(2.0),),
+            PanelBlurKey::new(1, 0, src, sample(spec, 24, RegionFilter::Filtered), chain, Scale::from(2.0),),
             "a scale change must invalidate the cached blur"
         );
     }
@@ -694,7 +814,11 @@ mod tests {
             1,
             0,
             src,
-            crate::window::blur::BlurSpec::new(24.0, 10.0),
+            sample(
+                crate::window::blur::BlurSpec::new(24.0, 10.0),
+                24,
+                RegionFilter::Filtered,
+            ),
             Size::<i32, Physical>::from((1920, 1080)),
             Scale::from(1.0),
         );
@@ -725,27 +849,27 @@ mod tests {
         let spec = BlurSpec::new(8.0, 10.0);
         let chain = output(300, 200);
         let scale = Scale::from(1.5);
-        let base = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        let base = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
         panel.textures_mut().push(1);
         panel.set_blur_key(base);
 
         scene.note_scene_damage(Some(vec![rect(0, 0, 300, 20)]));
-        let unrelated = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        let unrelated = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
         assert!(panel.blur_cache_hit(&unrelated));
 
         // Only the padding intersects; the top edge of the plate still samples it.
         scene.note_scene_damage(Some(vec![rect(100, 90, 10, 5)]));
-        let nearby = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        let nearby = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
         assert_eq!(nearby.miss_reason(&base), Some(BlurMissReason::Scene));
         panel.set_blur_key(nearby);
-        let settled = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        let settled = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
         assert!(panel.blur_cache_hit(&settled));
 
         // The slot missed two scene commits. The latest damage alone would
         // miss a change inside the panel from the earlier commit.
         scene.note_scene_damage(Some(vec![rect(100, 105, 10, 5)]));
         scene.note_scene_damage(Some(vec![rect(0, 0, 300, 20)]));
-        let skipped = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        let skipped = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
         assert_eq!(skipped.miss_reason(&nearby), Some(BlurMissReason::Scene));
     }
 
@@ -766,6 +890,166 @@ mod tests {
         assert!(cache.tracker_matches(key, (0, 0).into()));
         assert!(!cache.tracker_matches(key, (1, 0).into()));
         assert!(!cache.needs_alloc(key));
+    }
+
+    #[test]
+    fn region_keys_keep_independent_identities_on_one_surface() {
+        let surface = PanelKey::new("control-center", 3, 9);
+        let outer = PanelKey::for_region("control-center", 3, 9, "outer");
+        let module = PanelKey::for_region("control-center", 3, 9, "module-wifi");
+        assert_ne!(outer, module);
+        assert_ne!(outer, surface);
+        assert_eq!(
+            outer,
+            PanelKey::for_region("control-center", 3, 9, "outer")
+        );
+        assert_ne!(
+            outer,
+            PanelKey::for_region("control-center", 3, 9, "module-wifi")
+        );
+    }
+
+    #[test]
+    fn paint_only_changes_reuse_the_blur_texture_but_damage_the_element() {
+        let mut slots: PanelTextureSlots<u32> = PanelTextureSlots::default();
+        let key = PanelKey::for_region("control-center", 3, 9, "outer");
+        let src = Rectangle::new((0.0, 0.0).into(), (100.0, 50.0).into());
+        let spec = BlurSpec::new(24.0, 10.0);
+        let blur = PanelBlurKey::new(
+            1,
+            0,
+            src,
+            sample(spec, 24, RegionFilter::Filtered),
+            Size::from((400, 200)),
+            Scale::from(1.0),
+        );
+        let slot = slots.slot(&key);
+        slot.textures_mut().push(7);
+        slot.set_blur_key(blur);
+        let paint = |tint: f32| {
+            PanelPaintKey::new(
+                crate::render::RegionPaint {
+                    scheme: ColorScheme::Light,
+                    preset: Preset::ControlCenterOuter,
+                    tier: DegradeTier::Full,
+                    mode: RenderMode::SampledGlass,
+                    alpha: 0.5,
+                    tint,
+                    edge: 0.0,
+                    edge_width: 0.0,
+                    foreground: 0.0,
+                    revision: 1,
+                },
+                CornerRadii::uniform(20),
+                3,
+            )
+        };
+        slot.note_paint(paint(0.5));
+        let painted = slot.commit();
+        // The same paint does not advance the element commit.
+        slot.note_paint(paint(0.5));
+        assert_eq!(slot.commit(), painted);
+        // A tint-only change advances the element commit, but the cached blur
+        // key (and therefore the Kawase texture) is still a hit.
+        slot.note_paint(paint(0.9));
+        assert_ne!(slot.commit(), painted);
+        assert!(slot.blur_cache_hit(&blur));
+
+        // A scheme/tier/output-generation change is also paint-only.
+        slot.note_paint(PanelPaintKey::new(
+            crate::render::RegionPaint {
+                scheme: ColorScheme::Dark,
+                preset: Preset::ControlCenterOuter,
+                tier: DegradeTier::Reduced,
+                mode: RenderMode::SampledGlass,
+                alpha: 0.5,
+                tint: 0.9,
+                edge: 0.0,
+                edge_width: 0.0,
+                foreground: 0.0,
+                revision: 2,
+            },
+            CornerRadii::uniform(20),
+            4,
+        ));
+        assert!(slot.blur_cache_hit(&blur));
+    }
+
+    #[test]
+    fn declared_overscan_padding_invalidates_on_outer_damage() {
+        let mut scene = SceneTextureCache::<u32>::default();
+        let mut panel = PanelTextureSlot::new();
+        let src = Rectangle::new((80.0, 100.0).into(), (120.0, 40.0).into());
+        let spec = BlurSpec::new(8.0, 10.0);
+        let chain = output(300, 200);
+        let scale = Scale::from(1.0);
+        let base = panel.blur_key_for_scene(
+            &scene,
+            src,
+            sample(spec, 8, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
+        panel.textures_mut().push(1);
+        panel.set_blur_key(base);
+
+        // Damage 20 px outside the source is inside a declared 32 px
+        // overscan but outside the blur radius. It must invalidate the cached
+        // texture when the region declares the larger footprint.
+        scene.note_scene_damage(Some(vec![rect(60, 60, 10, 10)]));
+        let wide = panel.blur_key_for_scene(
+            &scene,
+            src,
+            sample(spec, 32, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
+        assert_eq!(wide.miss_reason(&base), Some(BlurMissReason::Scene));
+
+        // The same damage with only the blur padding is unrelated.
+        let mut narrow = PanelTextureSlot::new();
+        narrow.textures_mut().push(2);
+        let narrow_base = narrow.blur_key_for_scene(
+            &scene,
+            src,
+            sample(spec, 8, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
+        narrow.set_blur_key(narrow_base);
+        scene.note_scene_damage(Some(vec![rect(60, 60, 10, 10)]));
+        let narrow_after = narrow.blur_key_for_scene(
+            &scene,
+            src,
+            sample(spec, 8, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
+        assert!(narrow.blur_cache_hit(&narrow_after));
+    }
+
+    #[test]
+    fn a_sharp_region_never_reuses_a_filtered_blur_key() {
+        let src = Rectangle::new((0.0, 0.0).into(), (10.0, 10.0).into());
+        let spec = BlurSpec::new(8.0, 10.0);
+        let chain = output(300, 200);
+        let filtered = PanelBlurKey::new(
+            1,
+            0,
+            src,
+            sample(spec, 8, RegionFilter::Filtered),
+            chain,
+            Scale::from(1.0),
+        );
+        let sharp = PanelBlurKey::new(
+            1,
+            0,
+            src,
+            sample(spec, 8, RegionFilter::Sharp),
+            chain,
+            Scale::from(1.0),
+        );
+        assert_eq!(sharp.miss_reason(&filtered), Some(BlurMissReason::Spec));
     }
 
     #[test]

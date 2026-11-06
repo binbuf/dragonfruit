@@ -47,10 +47,11 @@ use trust::{Refusal, TrustModel, TrustedRole};
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
-/// `df_shell` is version 2 since `df_layer_surface.set_panel_rect` was added
+/// `df_shell` is version 3 since the multi-region `df_layer_surface` requests
+/// were added; version 2 added `df_layer_surface.set_panel_rect`
 /// (T-14.7b). A Wayland new_id gets its version from the parent object's
 /// version, so the factory bumps in tandem with its child interface.
-const SHELL_INTERFACE_VERSION: u32 = 2;
+const SHELL_INTERFACE_VERSION: u32 = 3;
 
 /// `df_toplevel_manager` is version 9 since `set_appearance_policy` was added
 /// (T196); `activation_result` was the v8 addition (T-14.7g),
@@ -89,6 +90,26 @@ struct LayerEntry {
     surface: WlSurface,
     state: LayerSurfaceState,
     pending_panel_rect: Option<Rectangle<i32, Logical>>,
+    /// Accumulated `set_panel_region` metadata for the next commit. `None`
+    /// means no new region list was sent; `Some(empty)` is an explicit clear
+    /// that commits an empty panel set (T197).
+    pending_panel_regions: Option<Vec<layer::PanelRegion>>,
+}
+
+/// One material region after placement on an output (T197).
+///
+/// `rect` is output-local logical and already clipped to the surface geometry
+/// and the owning output. `key` is stable within the surface; `preset` is the
+/// validated optical preset or `None` to derive it from the namespace/role.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChromeRegion {
+    pub key: String,
+    pub preset: Option<crate::material_preset::Preset>,
+    pub rect: Rectangle<i32, Logical>,
+    /// Per-corner radii from region metadata, or `None` for the legacy
+    /// single-rect path (the renderer then uses the role's token radius).
+    pub corners: Option<crate::window::CornerRadii>,
+    pub overscan: i32,
 }
 
 /// A chrome surface ready to composite on one output (T-09).
@@ -103,8 +124,14 @@ pub struct ChromeSurface {
     /// The output-local rect the surface actually paints — the visible chrome
     /// the backdrop material (T-04.2) belongs behind. For the Dock this is the
     /// bar slab, not the transparent magnification band above it. An empty
-    /// rect means the surface has no backdrop.
+    /// rect means the surface has no backdrop. With multi-region metadata this
+    /// is the union of the regions, kept for legacy consumers; renderers use
+    /// [`Self::regions`].
     pub panel: Rectangle<i32, Logical>,
+    /// Independently keyed material regions (T197), output-local and clipped
+    /// to the owning output. A legacy single-rect surface contributes exactly
+    /// one region with the key `panel`.
+    pub regions: Vec<ChromeRegion>,
     /// The layer the surface requested (`df_shell.layer`).
     pub layer: u32,
     /// The `df_layer_surface` namespace (e.g. `menubar`, `dock`). The
@@ -458,8 +485,17 @@ impl DfState {
             .iter_mut()
             .find(|entry| entry.surface == *surface)
         {
+            // The new multi-region list is commit-latched with the buffer that
+            // describes it. `Some(empty)` is an explicit empty panel set; it
+            // clears any older single rect so removal cannot fall back to a
+            // stale panel (T197).
+            if let Some(regions) = entry.pending_panel_regions.take() {
+                entry.state.panel_regions = Some(regions);
+                entry.state.panel_rect = None;
+            }
             if let Some(rect) = entry.pending_panel_rect.take() {
                 entry.state.panel_rect = Some(rect);
+                entry.state.panel_regions = None;
             }
         }
     }
@@ -505,41 +541,93 @@ impl DfState {
                         .into(),
                     geometry.size,
                 );
-                // The visible panel: an explicitly declared panel rect wins
-                // (the Dock's live plate under magnification, T-14.7b);
-                // otherwise the reserved bar strip narrowed by the part the
-                // client declares interactive. The Dock's input region
-                // excludes its transparent magnification band, so the fallback
-                // keeps the backdrop off the band and off the area beside the
-                // bar.
-                let panel = entry
-                    .state
-                    .panel_rect
-                    .map(|rect| {
-                        crate::window::explicit_panel_bounds(geometry, rect).unwrap_or_default()
-                    })
-                    .unwrap_or_else(|| {
-                        let region =
-                            smithay::wayland::compositor::with_states(&entry.surface, |states| {
-                                states
-                                    .cached_state
-                                    .get::<smithay::wayland::compositor::SurfaceAttributes>()
-                                    .current()
-                                    .input_region
-                                    .clone()
+                // The visible panel: explicit multi-region metadata wins
+                // (T197), then an explicitly declared single panel rect (the
+                // Dock's live plate under magnification, T-14.7b), then the
+                // reserved bar strip narrowed by the part the client declares
+                // interactive. The Dock's input region excludes its
+                // transparent magnification band, so the fallback keeps the
+                // backdrop off the band and off the area beside the bar.
+                let output_rect = Rectangle::from_size(output_geometry.size);
+                let (panel, regions) = match entry.state.panel_regions.as_ref() {
+                    Some(declared) => {
+                        let regions: Vec<ChromeRegion> = declared
+                            .iter()
+                            .filter_map(|region| {
+                                let rect = crate::window::explicit_panel_bounds(
+                                    geometry, region.rect,
+                                )?
+                                .intersection(output_rect)?;
+                                if rect.size.w <= 0 || rect.size.h <= 0 {
+                                    return None;
+                                }
+                                Some(ChromeRegion {
+                                    key: region.key.clone(),
+                                    preset: region.preset,
+                                    rect,
+                                    corners: Some(region.corners),
+                                    overscan: region.overscan,
+                                })
                             })
-                            .and_then(|region| crate::input::constraint::region_bounds(&region));
-                        crate::window::panel_bounds(
-                            geometry,
-                            entry.state.reserved_rect(geometry),
-                            region,
-                        )
-                    });
+                            .collect();
+                        let panel = regions
+                            .iter()
+                            .map(|region| region.rect)
+                            .reduce(|a, b| a.merge(b))
+                            .unwrap_or_default();
+                        (panel, regions)
+                    }
+                    None => {
+                        let panel = entry
+                            .state
+                            .panel_rect
+                            .map(|rect| {
+                                crate::window::explicit_panel_bounds(geometry, rect)
+                                    .unwrap_or_default()
+                            })
+                            .unwrap_or_else(|| {
+                                let region = smithay::wayland::compositor::with_states(
+                                    &entry.surface,
+                                    |states| {
+                                        states
+                                            .cached_state
+                                            .get::<smithay::wayland::compositor::SurfaceAttributes>()
+                                            .current()
+                                            .input_region
+                                            .clone()
+                                    },
+                                )
+                                .and_then(|region| {
+                                    crate::input::constraint::region_bounds(&region)
+                                });
+                                crate::window::panel_bounds(
+                                    geometry,
+                                    entry.state.reserved_rect(geometry),
+                                    region,
+                                )
+                            })
+                            .intersection(output_rect)
+                            .unwrap_or_default();
+                        let regions = if panel.size.w > 0 && panel.size.h > 0 {
+                            vec![ChromeRegion {
+                                key: "panel".to_owned(),
+                                preset: None,
+                                rect: panel,
+                                corners: None,
+                                overscan: 0,
+                            }]
+                        } else {
+                            Vec::new()
+                        };
+                        (panel, regions)
+                    }
+                };
                 ChromeSurface {
                     surface: entry.surface.clone(),
                     location: geometry.loc,
                     geometry,
                     panel,
+                    regions,
                     layer: entry.state.layer,
                     namespace: entry.state.namespace.clone(),
                     keyboard: entry.state.keyboard,
@@ -1764,6 +1852,7 @@ impl Dispatch<df_shell::DfShell, ()> for DfState {
                     resource: resource.clone(),
                     surface,
                     pending_panel_rect: None,
+                    pending_panel_regions: None,
                     state: LayerSurfaceState {
                         layer: layer_value,
                         namespace,
@@ -1853,6 +1942,72 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
                     height,
                 } => {
                     entry.pending_panel_rect = Some(layer::panel_rect(x, y, width, height));
+                }
+                df_layer_surface::Request::SetPanelRegion {
+                    key,
+                    preset,
+                    x,
+                    y,
+                    width,
+                    height,
+                    top_left,
+                    top_right,
+                    bottom_right,
+                    bottom_left,
+                    overscan,
+                } => {
+                    if let Some(region) = layer::panel_region(
+                        &key,
+                        &preset,
+                        x,
+                        y,
+                        width,
+                        height,
+                        top_left,
+                        top_right,
+                        bottom_right,
+                        bottom_left,
+                        overscan,
+                    ) {
+                        // A single-region update is incremental: start from
+                        // the committed list so adding a card does not drop
+                        // its siblings. `clear_panel_regions` is the explicit
+                        // way to remove everything.
+                        if entry.pending_panel_regions.is_none() {
+                            entry.pending_panel_regions = Some(
+                                entry.state.panel_regions.clone().unwrap_or_default(),
+                            );
+                        }
+                        let pending = entry
+                            .pending_panel_regions
+                            .as_mut()
+                            .expect("pending region list initialized above");
+                        if let Some(existing) = pending
+                            .iter_mut()
+                            .find(|existing| existing.key == region.key)
+                        {
+                            *existing = region;
+                        } else if pending.len() < layer::MAX_PANEL_REGIONS {
+                            pending.push(region);
+                        } else {
+                            eprintln!(
+                                "dragonfruit-compositor: shell protocol: ignoring panel region \
+                                 `{}` on `{}` (bound is {})",
+                                region.key,
+                                entry.state.namespace,
+                                layer::MAX_PANEL_REGIONS
+                            );
+                        }
+                    } else {
+                        eprintln!(
+                            "dragonfruit-compositor: shell protocol: rejecting invalid panel \
+                             region metadata on `{}`",
+                            entry.state.namespace
+                        );
+                    }
+                }
+                df_layer_surface::Request::ClearPanelRegions => {
+                    entry.pending_panel_regions = Some(Vec::new());
                 }
                 df_layer_surface::Request::AckConfigure { .. } => {}
                 df_layer_surface::Request::Destroy => {}

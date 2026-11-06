@@ -168,6 +168,17 @@ A single padded-union rectangle is the full output when the top menu bar and
 bottom Dock are both blurred; a Dock-only frame is smaller. Multi-rect/tiled
 regions are a follow-up, not part of this slice.
 
+T197 adds multi-region metadata without changing that single-union texture
+(ADR 0216). A chrome surface may declare up to eight independently keyed
+visual regions with per-corner radii and bounded overscan; each is clipped to
+the surface/output and resolved through the live preset policy. The region
+padding is now the full sample footprint: max(blur radius, Kawase chain,
+refraction/lens reach, declared overscan). A veil preset takes the sharp path,
+sampling the same compositor scene texture directly with no Kawase allocation
+and no `blur_draws`/`blur_passes` increment. `PanelBlurKey` includes the padded
+footprint and filter, while `PanelPaintKey` advances the element commit for
+tint/scheme/tier-only changes so the cached texture is reused.
+
 **Acceptance**
 
 - Steady-state Dock magnification does not allocate a new texture per frame.

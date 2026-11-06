@@ -9,7 +9,7 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [x] T194 — Pin reference evidence and capture a baseline → [194-glass-reference-and-baseline.md](../194-glass-reference-and-baseline.md)
 - [x] T195 — Define role presets and material resolution → [195-glass-presets-and-resolution.md](../195-glass-presets-and-resolution.md)
 - [x] T196 — Connect Appearance and Accessibility to the compositor → [196-glass-live-settings.md](../196-glass-live-settings.md)
-- [ ] T197 — Extend compositor material geometry and composition → [197-glass-panel-composition.md](../197-glass-panel-composition.md)
+- [x] T197 — Extend compositor material geometry and composition → [197-glass-panel-composition.md](../197-glass-panel-composition.md)
 
 ## Phase 2 — Dock and menu surfaces
 
@@ -32,11 +32,11 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-06T08:43:52Z · 3/15 done
+**Pipeline status** — updated 2026-11-06T09:55:48Z · 4/15 done
 
-- Completed: T194, T195, T196
+- Completed: T194, T195, T196, T197
 - Blocked: none
 - Failed: none
-- Remaining: T197, T198, T199, T200, T201, T202, T203, T204, T205, T206, T207, T208
-- Last finished: T196 — done · Landed durable glass/accessibility settings, live Appearance/Accessibility controls and previews, the v9 shell-to-compositor appearance snapshot, full regression coverage, and documentation; `make gates` passes.
+- Remaining: T198, T199, T200, T201, T202, T203, T204, T205, T206, T207, T208
+- Last finished: T197 — done · Landed multi-region material geometry/composition, per-corner clipping, sharp/veil and filtered GPU paths, stable per-region caches, protocol v3 conformance coverage, docs, and a passing `make gates`.
 <!-- /symphony:status -->
