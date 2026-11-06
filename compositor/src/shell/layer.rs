@@ -15,10 +15,12 @@ use crate::material_preset::Preset;
 use crate::window::{CornerRadii, ReservedZones};
 
 /// Upper bound on the independently keyed material regions one chrome surface
-/// may declare (T197). A menu, a Control Center plate, and a notification
-/// stack need a handful; the bound keeps the per-frame region list, damage
-/// union, and panel-slot table small even for a hostile trusted client.
-pub const MAX_PANEL_REGIONS: usize = 8;
+/// may declare (T197, raised by T203). A menu and a notification stack need a
+/// handful; the Control Center declares its outer plate, 18 module capsules,
+/// and up to two expanded lists, so the bound keeps the per-frame region list,
+/// damage union, and panel-slot table bounded even for a hostile trusted
+/// client.
+pub const MAX_PANEL_REGIONS: usize = 32;
 
 /// Maximum length of a region key (T197).
 pub const MAX_PANEL_REGION_KEY: usize = 64;
@@ -888,7 +890,7 @@ mod tests {
         assert_eq!(clamped.corners.bottom_left, 7);
         assert_eq!(clamped.overscan, MAX_PANEL_REGION_OVERSCAN);
         assert!(!clamped.is_visible());
-        assert_eq!(MAX_PANEL_REGIONS, 8);
+        assert_eq!(MAX_PANEL_REGIONS, 32);
     }
 
     #[test]

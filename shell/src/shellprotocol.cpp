@@ -740,6 +740,38 @@ bool ShellProtocol::setControlCenterInputRegion(int width, int height)
     return true;
 }
 
+void ShellProtocol::setControlCenterPanelRegions(const QVariantList &regions)
+{
+    if (!m_controlCenterLayer)
+        return;
+    df_layer_surface_clear_panel_regions(m_controlCenterLayer);
+    for (const QVariant &value : regions) {
+        const QVariantMap region = value.toMap();
+        const QString key = region.value(QStringLiteral("key")).toString();
+        const QString preset = region.value(QStringLiteral("preset")).toString();
+        const int width = qRound(region.value(QStringLiteral("w")).toReal());
+        const int height = qRound(region.value(QStringLiteral("h")).toReal());
+        if (key.isEmpty() || width <= 0 || height <= 0)
+            continue;
+        df_layer_surface_set_panel_region(
+            m_controlCenterLayer, key.toUtf8().constData(),
+            preset.toUtf8().constData(),
+            qRound(region.value(QStringLiteral("x")).toReal()),
+            qRound(region.value(QStringLiteral("y")).toReal()), width, height,
+            qRound(region.value(QStringLiteral("tl")).toReal()),
+            qRound(region.value(QStringLiteral("tr")).toReal()),
+            qRound(region.value(QStringLiteral("br")).toReal()),
+            qRound(region.value(QStringLiteral("bl")).toReal()),
+            qRound(region.value(QStringLiteral("overscan")).toReal()));
+    }
+}
+
+void ShellProtocol::clearControlCenterPanelRegions()
+{
+    if (m_controlCenterLayer)
+        df_layer_surface_clear_panel_regions(m_controlCenterLayer);
+}
+
 bool ShellProtocol::commitControlCenterImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_controlCenterSurface)

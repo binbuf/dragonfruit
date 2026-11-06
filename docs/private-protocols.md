@@ -98,7 +98,7 @@ an optional known T195 glass preset, a rect, four per-corner radii, and a
 bounded overscan for rim/shadow/veil. `clear_panel_regions` commits an empty
 set. Both are commit-latched with the buffer they describe.
 
-- The compositor validates keys and preset names, bounds the list to eight
+- The compositor validates keys and preset names, bounds the list to 32
   regions, clips each rect to the surface and the owning output, and ignores
   invalid metadata without disturbing the committed list. The first request
   after a commit starts from the committed list; `clear_panel_regions` is the

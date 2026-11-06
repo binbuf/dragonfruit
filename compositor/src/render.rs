@@ -477,12 +477,27 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             // A no-blur veil carries its depth LUT; every other preset has no
             // veil and keeps the glass/sharp compose.
             let veil = crate::window::menubar_veil::VeilSpec::for_resolved(&resolved);
-            let dock_fit = preset == Preset::Dock && resolved.look == Rollout::Replacement;
+            // T203: the Control Center family uses the same measured flat-band
+            // + rim + capsule-end lens model as the Dock. Each module is its
+            // own region stacked over the outer plate, so the composite is
+            // built from the resolved own-layer values rather than a second
+            // copy of the measured effective alpha.
+            let flat_fit = resolved.look == Rollout::Replacement
+                && matches!(
+                    preset,
+                    Preset::Dock
+                        | Preset::ControlCenterOuter
+                        | Preset::ControlCenterModule
+                        | Preset::ControlCenterExpanded
+                );
+            let dock_fit = flat_fit && preset == Preset::Dock;
             let base_spec = if dock_fit {
                 BlurSpec::for_dock(
                     resolved.blur,
                     role.corner_radius(&chrome.namespace),
                 )
+            } else if flat_fit {
+                BlurSpec::new(resolved.blur, role.corner_radius(&chrome.namespace))
             } else {
                 role.blur_spec_for(scheme, &chrome.namespace)
             };
@@ -511,6 +526,26 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 glass.rim_half_width = resolved.edge_width;
                 glass.specular = resolved.edge;
                 glass.specular_width = resolved.edge_width;
+                material
+                    .tier
+                    .glass(glass)
+                    .unwrap_or(glass)
+            } else if flat_fit {
+                // T203: every field is the resolver's own-layer value. The
+                // outer, module and expanded-list regions are drawn in that
+                // order, so the module/expanded paint composites over the
+                // outer plate instead of replacing it.
+                let mut glass = GlassSpec::default();
+                glass.flat_band = true;
+                glass.flat_alpha = resolved.alpha;
+                glass.tint = resolved.tint;
+                glass.tint_color = [resolved.tint, resolved.tint, resolved.tint];
+                glass.rim_peak = resolved.edge;
+                glass.rim_half_width = resolved.edge_width;
+                glass.rim_tail = resolved.edge_tail;
+                glass.corner_peak = resolved.corner_lens_peak;
+                glass.corner_distance = resolved.corner_lens_distance;
+                glass.corner_tail = resolved.corner_lens_tail;
                 material
                     .tier
                     .glass(glass)

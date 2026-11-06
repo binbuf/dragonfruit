@@ -293,11 +293,12 @@ def validate(data: dict) -> list[str]:
                     if scheme == "dark" and tint > 0.1:
                         errors.append(f"{scheme_path}.calibration.neutralTint: "
                                       "the Dark veil must be a black wash")
-            # T198: the Dock optical fit. The fields are optional for the
-            # other presets (they keep the legacy adaptive tint/rim), but a
-            # Dock entry without them would silently lose the measured
-            # checker/rim/corner calibration.
-            if name == "dock":
+            # T198/T203: the measured flat-band + rim + corner-lens fits. The
+            # fields are optional for the other presets (they keep the legacy
+            # adaptive tint/rim), but these entries would silently lose the
+            # measured checker/rim/capsule-end calibration without them.
+            if name in ("dock", "controlCenterOuter", "controlCenterModule",
+                        "controlCenterExpanded"):
                 _number(entry, "edgeTail", scheme_path, errors, low=0.0, high=16.0)
                 _number(entry, "sharpFraction", scheme_path, errors, low=0.0, high=1.0)
                 _number(entry, "cornerLensPeak", scheme_path, errors, low=0.0, high=64.0)

@@ -55,6 +55,7 @@ QtObject {
             readonly property int md: 10
             readonly property int lg: 14
             readonly property int xl: 20
+            readonly property int xxl: 28
             readonly property int pill: 999
         }
         readonly property var spacing: QtObject {
@@ -410,7 +411,7 @@ QtObject {
                 readonly property string slider: "none"
                 readonly property var light: QtObject {
                     readonly property string confidence: "measured"
-                    readonly property string provenance: "REFERENCE.md later controlled Control Center light outer fit alpha 0.265 / tint 0.373"
+                    readonly property string provenance: "REFERENCE.md later controlled Control Center light outer fit alpha 0.265 / tint 0.373; REPORT.md 3.5/Appendix A give the 8 pt blur, 0.30 rim and 6 pt/24 pt capsule-end lens"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.265
@@ -419,14 +420,19 @@ QtObject {
                         readonly property real perceptualAlpha: 0.265
                         readonly property real perceptualTint: 0.373
                     }
-                    readonly property real blur: 20.0
-                    readonly property real edge: 0.0
-                    readonly property real edgeWidth: 0.0
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.3
+                    readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 6.0
+                    readonly property real sharpFraction: 0.1
+                    readonly property real cornerLensPeak: 6.0
+                    readonly property real cornerLensDistance: 24.0
+                    readonly property real cornerLensTail: 50.0
                     readonly property real foreground: 0.0
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "measured"
-                    readonly property string provenance: "REFERENCE.md later controlled Control Center dark outer fit alpha 0.489 / tint 0.677"
+                    readonly property string provenance: "REFERENCE.md later controlled Control Center dark outer fit alpha 0.489 / tint 0.677; blur/rim/lens reuse the light capsule fit because the dark end caustic was not separately measured"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.489
@@ -435,9 +441,14 @@ QtObject {
                         readonly property real perceptualAlpha: 0.489
                         readonly property real perceptualTint: 0.677
                     }
-                    readonly property real blur: 20.0
-                    readonly property real edge: 0.0
-                    readonly property real edgeWidth: 0.0
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.3
+                    readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 6.0
+                    readonly property real sharpFraction: 0.1
+                    readonly property real cornerLensPeak: 6.0
+                    readonly property real cornerLensDistance: 24.0
+                    readonly property real cornerLensTail: 50.0
                     readonly property real foreground: 0.0
                 }
             }
@@ -447,7 +458,7 @@ QtObject {
                 readonly property string slider: "none"
                 readonly property var light: QtObject {
                     readonly property string confidence: "measured-effective"
-                    readonly property string provenance: "REFERENCE.md Wi-Fi module light fit 0.391/0.317 is an observed effective stacked response, not an independent layer"
+                    readonly property string provenance: "REFERENCE.md Wi-Fi module light fit 0.391/0.317 is an observed effective stacked response. The compositor flat-band output is opaque, so this preset is the module's final composite in its own region; it is not layered a second time over the outer plate"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.391
@@ -456,25 +467,35 @@ QtObject {
                         readonly property real perceptualAlpha: 0.391
                         readonly property real perceptualTint: 0.317
                     }
-                    readonly property real blur: 12.0
-                    readonly property real edge: 0.0
-                    readonly property real edgeWidth: 0.0
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.3
+                    readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 6.0
+                    readonly property real sharpFraction: 0.1
+                    readonly property real cornerLensPeak: 6.0
+                    readonly property real cornerLensDistance: 24.0
+                    readonly property real cornerLensTail: 50.0
                     readonly property real foreground: 0.0
                 }
                 readonly property var dark: QtObject {
-                    readonly property string confidence: "baseline"
-                    readonly property string provenance: "No reliable dark module decomposition; named baseline 0.52/0.55"
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "No reliable dark module decomposition; adapted effective 0.65/0.44 so the opaque module reads darker than the 0.489/0.677 dark outer plate"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
-                        readonly property real neutralAlpha: 0.52
-                        readonly property real neutralTint: 0.55
+                        readonly property real neutralAlpha: 0.65
+                        readonly property real neutralTint: 0.44
                         readonly property real perceptualWeight: 0.0
-                        readonly property real perceptualAlpha: 0.52
-                        readonly property real perceptualTint: 0.55
+                        readonly property real perceptualAlpha: 0.65
+                        readonly property real perceptualTint: 0.44
                     }
-                    readonly property real blur: 12.0
-                    readonly property real edge: 0.0
-                    readonly property real edgeWidth: 0.0
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.3
+                    readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 6.0
+                    readonly property real sharpFraction: 0.1
+                    readonly property real cornerLensPeak: 6.0
+                    readonly property real cornerLensDistance: 24.0
+                    readonly property real cornerLensTail: 50.0
                     readonly property real foreground: 0.0
                 }
             }
@@ -483,35 +504,45 @@ QtObject {
                 readonly property string render: "sampled"
                 readonly property string slider: "none"
                 readonly property var light: QtObject {
-                    readonly property string confidence: "baseline"
-                    readonly property string provenance: "The expanded list is unmeasured in light; named baseline 0.86/0.20"
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "The expanded list is unmeasured in light; adapted readable near-opaque light plate (0.94/0.96) so dark list text stays legible"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
-                        readonly property real neutralAlpha: 0.86
-                        readonly property real neutralTint: 0.2
+                        readonly property real neutralAlpha: 0.94
+                        readonly property real neutralTint: 0.96
                         readonly property real perceptualWeight: 0.0
-                        readonly property real perceptualAlpha: 0.86
-                        readonly property real perceptualTint: 0.2
+                        readonly property real perceptualAlpha: 0.94
+                        readonly property real perceptualTint: 0.96
                     }
                     readonly property real blur: 8.0
-                    readonly property real edge: 0.0
-                    readonly property real edgeWidth: 0.0
+                    readonly property real edge: 0.22
+                    readonly property real edgeWidth: 0.75
+                    readonly property real edgeTail: 4.0
+                    readonly property real sharpFraction: 0.05
+                    readonly property real cornerLensPeak: 4.0
+                    readonly property real cornerLensDistance: 16.0
+                    readonly property real cornerLensTail: 32.0
                     readonly property real foreground: 0.0
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "observed-luma"
-                    readonly property string provenance: "REFERENCE.md Bluetooth expanded list is dark (~0.13 luma) with no reliable alpha decomposition; named 0.86/0.13 baseline"
+                    readonly property string provenance: "REFERENCE.md Bluetooth expanded list is dark (~0.13 luma) with no reliable alpha decomposition; near-opaque 0.96/0.13 keeps the composite within 0.04 luma over white/black"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
-                        readonly property real neutralAlpha: 0.86
+                        readonly property real neutralAlpha: 0.96
                         readonly property real neutralTint: 0.13
                         readonly property real perceptualWeight: 0.0
-                        readonly property real perceptualAlpha: 0.86
+                        readonly property real perceptualAlpha: 0.96
                         readonly property real perceptualTint: 0.13
                     }
                     readonly property real blur: 8.0
-                    readonly property real edge: 0.0
-                    readonly property real edgeWidth: 0.0
+                    readonly property real edge: 0.22
+                    readonly property real edgeWidth: 0.75
+                    readonly property real edgeTail: 4.0
+                    readonly property real sharpFraction: 0.05
+                    readonly property real cornerLensPeak: 4.0
+                    readonly property real cornerLensDistance: 16.0
+                    readonly property real cornerLensTail: 32.0
                     readonly property real foreground: 0.0
                 }
             }

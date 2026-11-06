@@ -638,7 +638,9 @@ T197 adds the additive v3 **multi-region** metadata
 region with an optional known T195 preset, per-corner radii, and bounded
 overscan; `clear_panel_regions` commits an empty set. Requests are latched with
 the next `wl_surface.commit`, clipped to the surface and owning output, and
-bounded to eight regions. The input region and reserved zone stay independent,
+bounded to 32 regions (raised from eight by T203 for the Control Center's
+outer plate, 19 module capsules and expanded lists). The input region and
+reserved zone stay independent,
 and a legacy `set_panel_rect` client keeps one `panel` region. Each region
 resolves its preset through the live T195/T196 policy and keeps a stable
 `PanelKey` (surface + region key). A filtered region runs Kawase; a veil
@@ -646,6 +648,18 @@ preset resolves to the sharp path, which samples the compositor's region scene
 texture with no blur allocation. `PanelBlurKey` includes the region's full
 sample footprint (blur/lens kernel plus overscan), while `PanelPaintKey` makes
 tint/scheme/tier changes repaint without rebuilding the cached texture.
+
+T203 uses the same multi-region path for the Control Center. The shell declares
+one outer plate, one capsule per visible module, and an expanded Wi-Fi/Bluetooth
+list when open; the module/list regions are clipped to the scroll viewport so a
+scrolled-out item leaves no stale patch. The compositor resolves the three
+Control Center presets through the same T195/T196 policy and, on the
+replacement rail, builds the measured flat-band + rim + capsule-end lens glass
+from the resolved own-layer values. Regions are declared outer → modules →
+expanded, so the compositor draws the outer plate first and the opaque
+module/list materials replace it inside their capsules; the Light module
+composite therefore matches the measured 0.391/0.317 effective fit without
+compounding a second alpha over the outer.
 
 T200 turns the menu bar into the explicit no-blur veil
 ([ADR 0219](adr/0219-menubar-no-blur-veil.md)). The veil preset takes the sharp

@@ -2168,7 +2168,7 @@ fn multi_region_metadata_is_commit_latched_bounded_and_legacy_compatible() {
 fn compositor_max_regions() -> usize {
     // Mirrors `compositor::shell::layer::MAX_PANEL_REGIONS`; the conformance
     // crate is a separate binary and does not link the compositor library.
-    8
+    32
 }
 
 /// T200: the menu bar's layer surface is 95 pt tall for the veil, but the
