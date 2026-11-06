@@ -325,6 +325,14 @@ pub struct RenderStats {
     /// sweep over an unchanged scene should advance this without advancing
     /// `blur_passes`/`blur_draws`.
     pub blur_skips: u64,
+    /// Panel blur cache misses by cause (T-21.5 diagnostics): first use, a
+    /// scene generation/commit change, a panel-source move, a blur-spec
+    /// change, or a chain-size/scale change.
+    pub blur_miss_first: u64,
+    pub blur_miss_scene: u64,
+    pub blur_miss_source: u64,
+    pub blur_miss_spec: u64,
+    pub blur_miss_chain: u64,
     /// The largest linear downsample factor any panel's Kawase chain used
     /// (T-20.4): `2^iterations`, so the trace records how aggressive the blur
     /// actually was.
@@ -508,6 +516,15 @@ impl RenderStats {
     /// changes, but the sampled scene behind it does not.
     pub fn record_blur_skips(&mut self, skips: u64) {
         self.blur_skips = self.blur_skips.saturating_add(skips);
+    }
+
+    /// Record the panel blur cache-miss breakdown for one material frame.
+    pub fn record_blur_misses(&mut self, misses: crate::window::BlurMissCounts) {
+        self.blur_miss_first = self.blur_miss_first.saturating_add(misses.first);
+        self.blur_miss_scene = self.blur_miss_scene.saturating_add(misses.scene);
+        self.blur_miss_source = self.blur_miss_source.saturating_add(misses.source);
+        self.blur_miss_spec = self.blur_miss_spec.saturating_add(misses.spec);
+        self.blur_miss_chain = self.blur_miss_chain.saturating_add(misses.chain);
     }
 
     /// Record scene/blur texture allocations (T-21.3). A steady-state frame
@@ -3673,7 +3690,9 @@ impl DfState {
         println!(
             "dragonfruit-compositor: material stats ({label}): \
              backdrop_passes={} backdrop_skipped={} path={} blur_passes={} \
-             blur_panels={} blur_draws={} blur_skips={} blur_downsample_max={} \
+             blur_panels={} blur_draws={} blur_skips={} blur_miss_first={} \
+             blur_miss_scene={} blur_miss_source={} blur_miss_spec={} \
+             blur_miss_chain={} blur_downsample_max={} \
              material_allocations={} material_scene_allocations={} \
              material_panel_allocations={} material_region_px={} material_region={}x{}",
             self.material_pass.applications(),
@@ -3683,6 +3702,11 @@ impl DfState {
             self.stats.blur_panels,
             self.stats.blur_draws,
             self.stats.blur_skips,
+            self.stats.blur_miss_first,
+            self.stats.blur_miss_scene,
+            self.stats.blur_miss_source,
+            self.stats.blur_miss_spec,
+            self.stats.blur_miss_chain,
             self.stats.blur_downsample_max,
             self.stats.material_allocations,
             self.stats.material_scene_allocations,

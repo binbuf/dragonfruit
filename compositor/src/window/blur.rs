@@ -584,16 +584,11 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
         // the material region, so the span is intersected with that part.
         // The glass uniforms are per-panel, not per-span, so build them once.
         let program = self.glass.as_ref().map(|(_, program)| program);
+        let panel_physical = self.panel.to_physical_precise_round(self.scale);
         let uniforms = self
             .glass
             .as_ref()
-            .map(|(spec, _)| {
-                spec.uniforms(
-                    self.panel.to_physical_precise_round(self.scale).size,
-                    self.corner_radius,
-                    self.scale,
-                )
-            })
+            .map(|(spec, _)| spec.uniforms(panel_physical.size, self.corner_radius, self.scale))
             .unwrap_or_default();
         for span in self.spans() {
             let Some((visible, src)) =
@@ -602,10 +597,49 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
                 continue;
             };
             let dst = visible.to_physical_precise_round(self.scale);
-            R::draw_texture_from_to(frame, &self.texture, src, dst, damage, program, &uniforms)?;
+            // Smithay hands the element damage in the element's local
+            // coordinates, but `render_texture_from_to` expects it local to
+            // `dst`. A rounded panel is a stack of spans whose origins differ
+            // (the central band starts one corner-radius below the panel), so
+            // passing the panel-local damage through unchanged shifts the
+            // scissor and leaves the real damaged strip unfrosted. That read as
+            // the raw scene showing through a tile/cursor-sized area (T-21.5).
+            let span_damage = damage_in_span(damage, panel_physical, dst);
+            if span_damage.is_empty() {
+                continue;
+            }
+            R::draw_texture_from_to(
+                frame,
+                &self.texture,
+                src,
+                dst,
+                &span_damage,
+                program,
+                &uniforms,
+            )?;
         }
         Ok(())
     }
+}
+
+/// Translate element-local damage into one rounded span's local coordinates.
+///
+/// `panel` and `span` are output-local physical rects; `damage` is local to
+/// `panel`. The returned rects are local to `span` and clipped to its bounds,
+/// which is what [`TextureRenderer::draw_texture_from_to`] expects.
+fn damage_in_span(
+    damage: &[Rectangle<i32, Physical>],
+    panel: Rectangle<i32, Physical>,
+    span: Rectangle<i32, Physical>,
+) -> Vec<Rectangle<i32, Physical>> {
+    let offset = Point::from((panel.loc.x - span.loc.x, panel.loc.y - span.loc.y));
+    let span_bounds = Rectangle::from_size(span.size);
+    damage
+        .iter()
+        .filter_map(|damage| {
+            Rectangle::new(damage.loc + offset, damage.size).intersection(span_bounds)
+        })
+        .collect()
 }
 
 /// Map one rounded span of a panel into the blurred texture.
@@ -920,5 +954,33 @@ mod tests {
         // A span entirely outside the rendered part draws nothing.
         let outside = Rectangle::new(Point::from((800, 20)), Size::from((50, 40)));
         assert_eq!(map_span_to_texture(outside, clipped_panel, texture), None);
+    }
+
+    #[test]
+    fn panel_damage_is_translated_into_each_rounded_span() {
+        // A 200x80 panel with radius 14: the central span starts at y=214,
+        // one radius below the panel origin (200).
+        let panel = Rectangle::new(Point::from((100, 200)), Size::from((200, 80)));
+        let central = Rectangle::new(Point::from((100, 214)), Size::from((200, 52)));
+
+        // Damage local to the panel near the cursor/tile area.
+        let damage = [Rectangle::new(Point::from((10, 20)), Size::from((20, 10)))];
+        assert_eq!(
+            damage_in_span(&damage, panel, central),
+            vec![Rectangle::new(Point::from((10, 6)), Size::from((20, 10)))],
+            "the span scissor must be shifted by the panel/span origin delta"
+        );
+
+        // Damage outside the span is clipped away rather than drawn at the
+        // wrong place.
+        let outside = [Rectangle::new(Point::from((10, 0)), Size::from((20, 8)))];
+        assert!(damage_in_span(&outside, panel, central).is_empty());
+
+        // Full-panel damage still covers the central span exactly.
+        let full = [Rectangle::from_size(panel.size)];
+        assert_eq!(
+            damage_in_span(&full, panel, central),
+            vec![Rectangle::from_size(central.size)]
+        );
     }
 }

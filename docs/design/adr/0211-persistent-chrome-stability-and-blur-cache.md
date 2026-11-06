@@ -60,6 +60,13 @@ the GPU work was repeated for identical pixels.
    unchanged scene should advance `blur_skips` without advancing the rebuild
    counters.
 
+> **Follow-up (2026-11-05).** These changes removed the tier-driven glass ↔
+> milky swap but did not fix the remaining hard-edged raw-background patches
+> seen while moving over the Dock. That artifact was a rounded-span damage
+> coordinate bug; see
+> [ADR 0212](0212-rounded-span-damage-translation.md). The material
+> stability and blur cache remain necessary for the stable native material.
+
 ## Consequences
 
 - The Dock and menu bar remain glass under transient load. They can move from

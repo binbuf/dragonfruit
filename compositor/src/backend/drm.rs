@@ -75,8 +75,9 @@ use crate::backend::add_seat_capabilities;
 use crate::gpu_timer::{GpuPass, GpuTimer, GpuTimerTarget};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
-    full_output_material_forced, BackdropBlurElement, MaterialRegion, PanelBlurKey, PanelKey,
-    PanelTextureSlots, SceneTextureCache, SceneTextureElement, TextureRenderer,
+    full_output_material_forced, BackdropBlurElement, BlurMissCounts, BlurMissReason,
+    MaterialRegion, PanelBlurKey, PanelKey, PanelTextureSlots, SceneTextureCache,
+    SceneTextureElement, TextureRenderer,
 };
 use crate::{input, render, LOCKSTEP_VERSION};
 
@@ -1665,6 +1666,7 @@ fn render_surface(
         let mut downsample_max = 0u32;
         let mut blur_allocations = 0u64;
         let mut blur_skips = 0u64;
+        let mut blur_misses = BlurMissCounts::default();
         let scene_generation = surface.material.scene.generation();
         let scene_commit: CommitCounter = surface.material.scene.commit();
         let panel_keys: Vec<PanelKey> = blur_panels.iter().map(|panel| panel.key).collect();
@@ -1694,6 +1696,11 @@ fn render_surface(
                     }
                 }
             } else {
+                let reason = slot
+                    .blur_key()
+                    .and_then(|previous| blur_key.miss_reason(previous))
+                    .unwrap_or(BlurMissReason::First);
+                blur_misses.record(reason);
                 slot.invalidate_blur_cache();
                 surface.gpu_timer.begin(&mut renderer, GpuPass::Blur);
                 let blur_result = crate::backend::nested::blur_panel_texture(
@@ -1749,6 +1756,7 @@ fn render_surface(
             blur_allocations,
         );
         state.stats.record_blur_skips(blur_skips);
+        state.stats.record_blur_misses(blur_misses);
         if blur_drawn > 0 {
             state.stats.record_blur_draw(downsample_max, blur_drawn);
             state

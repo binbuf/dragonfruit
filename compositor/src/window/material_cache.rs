@@ -247,6 +247,57 @@ impl PanelBlurKey {
             scale: (scale.x.to_bits(), scale.y.to_bits()),
         }
     }
+
+    /// Which input invalidated the cached blur relative to `previous`.
+    pub(crate) fn miss_reason(&self, previous: &Self) -> Option<BlurMissReason> {
+        if self.scene_generation != previous.scene_generation
+            || self.scene_commit != previous.scene_commit
+        {
+            Some(BlurMissReason::Scene)
+        } else if self.scene_src != previous.scene_src {
+            Some(BlurMissReason::Source)
+        } else if self.spec != previous.spec {
+            Some(BlurMissReason::Spec)
+        } else if self.chain_size != previous.chain_size || self.scale != previous.scale {
+            Some(BlurMissReason::Chain)
+        } else {
+            None
+        }
+    }
+}
+
+/// Why a panel blur cache entry was rebuilt (T-21.5 diagnostics).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BlurMissReason {
+    First,
+    Scene,
+    Source,
+    Spec,
+    Chain,
+}
+
+/// Per-frame blur miss breakdown. A Dock hover with a static scene should
+/// only advance `skips`; a `source` miss means the plate geometry is moving,
+/// and a `scene` miss means the sampled scene changed.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BlurMissCounts {
+    pub first: u64,
+    pub scene: u64,
+    pub source: u64,
+    pub spec: u64,
+    pub chain: u64,
+}
+
+impl BlurMissCounts {
+    pub(crate) fn record(&mut self, reason: BlurMissReason) {
+        match reason {
+            BlurMissReason::First => self.first = self.first.saturating_add(1),
+            BlurMissReason::Scene => self.scene = self.scene.saturating_add(1),
+            BlurMissReason::Source => self.source = self.source.saturating_add(1),
+            BlurMissReason::Spec => self.spec = self.spec.saturating_add(1),
+            BlurMissReason::Chain => self.chain = self.chain.saturating_add(1),
+        }
+    }
 }
 
 /// One panel's reusable Kawase textures plus its stable render-element id.
@@ -289,6 +340,11 @@ impl<T> PanelTextureSlot<T> {
     /// The composed result of the last successful Kawase chain.
     pub(crate) fn last_texture(&self) -> Option<&T> {
         self.textures.last()
+    }
+
+    /// The key of the cached chain, when one is present.
+    pub(crate) fn blur_key(&self) -> Option<&PanelBlurKey> {
+        self.blur_key.as_ref()
     }
 
     /// Whether the cached chain can be reused for `key`.
