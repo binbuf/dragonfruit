@@ -21,8 +21,8 @@ cd "$(dirname "$0")/.."
 
 STATE="${1:-motion}"
 case "$STATE" in
-    motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context) ;;
-    *) echo "usage: $0 motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context" >&2; exit 2 ;;
+    motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center) ;;
+    *) echo "usage: $0 motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center" >&2; exit 2 ;;
 esac
 
 SETTLE="${SETTLE:-2}"
@@ -90,6 +90,15 @@ case "$STATE" in
     files-context)
         DELAY=8000
         EXTRA_ENV=(DF_STATUS_FIXTURE=1 DF_DEMO_QT_APP=build/apps/files/dragonfruit-files DF_FILES_START_MENU=background)
+        ;;
+    control-center)
+        DELAY=9000
+        EXTRA_ENV=(DF_STATUS_FIXTURE=1
+                   DF_CONTROL_CENTER_FIXTURE="${CONTROL_CENTER_FIXTURE:-hold}"
+                   DF_CONTROL_CENTER_HOLD=1)
+        if [ -n "${CONTROL_CENTER_ABSENT:-}" ]; then
+            EXTRA_ENV+=(DF_CONTROL_CENTER_ABSENT="$CONTROL_CENTER_ABSENT")
+        fi
         ;;
     popover)
         DELAY=16000

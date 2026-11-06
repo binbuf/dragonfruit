@@ -21,7 +21,7 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 
 ## Phase 3 — System panels and first-party windows
 
-- [ ] T203 — Distinguish Control Center panel and module materials → [203-glass-control-center.md](../203-glass-control-center.md)
+- [x] T203 — Distinguish Control Center panel and module materials → [203-glass-control-center.md](../203-glass-control-center.md)
 - [ ] T204 — Map the Notification Center and route its actions → [204-glass-notification-center-integration.md](../204-glass-notification-center-integration.md)
 - [ ] T205 — Calibrate notification banner, stack, and lower panel → [205-glass-notification-materials.md](../205-glass-notification-materials.md)
 - [ ] T206 — Apply restrained glass to Settings and Files chrome → [206-glass-first-party-window-chrome.md](../206-glass-first-party-window-chrome.md)
@@ -32,11 +32,11 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-06T21:15:25Z · 9/15 done
+**Pipeline status** — updated 2026-11-06T23:12:57Z · 10/15 done
 
-- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202
+- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202, T203
 - Blocked: none
 - Failed: none
-- Remaining: T203, T204, T205, T206, T207, T208
-- Last finished: T202 — done · Landed attached/detached/status menu presets, shell region/input metadata, 183 ms 0.95-scale exit with reopen/retarget handling, relative light slider response, calibrated dark attached baseline, Bluetooth status menu, local Files/desktop fallback, nine live captures, ADR 0221 and tests; make gates passes.
+- Remaining: T204, T205, T206, T207, T208
+- Last finished: T203 — done · Landed distinct Control Center outer/module/expanded materials, region metadata, accessibility fallbacks, 14 captures with separate outer/nested errors, tests, ADR and docs; make gates passes.
 <!-- /symphony:status -->

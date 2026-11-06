@@ -285,6 +285,40 @@ for a controlled recapture. ADR
 [0221](adr/0221-menu-family-presets-and-exit.md) records the mapping and the
 fallback boundary.
 
+### Control Center materials (T203)
+
+The Control Center is three distinct materials, not one Popup plate with a
+second alpha layered on it. The outer plate uses `controlCenterOuter`
+(Light 0.265/0.373, Dark 0.489/0.677). Each visible tile is its own
+`controlCenterModule` capsule. The measured Wi-Fi Light fit 0.391/0.317 is the
+*effective* stacked response; because the compositor's flat-band output is
+opaque, the module preset carries that effective fit directly and the module
+region is the final composite in its own area (the outer plate stays visible
+around the capsules). The unmeasured dark module is an adapted effective
+0.65/0.44 so it reads darker than the dark outer. An open Wi-Fi/Bluetooth list
+adds a `controlCenterExpanded` region: the dark list is near-opaque 0.96/0.13
+(background-independent luma ~0.13); the light list is a readable 0.94/0.96
+plate. All three carry the measured 8 pt blur, 0.30 rim and 6 pt / 24 pt
+capsule-end lens family.
+
+The shell declares the regions on the `control-center` layer surface and clips
+them to the scroll viewport; keys are stable (`outer`, `module-*`,
+`expanded-wifi`/`expanded-bluetooth`) and the list is commit-latched with the
+panel image. `MAX_PANEL_REGIONS` is 32 to cover the 19 modules plus the outer
+plate and two lists. On the sampled path QML paints no outer/module/list fill;
+on solid, software-fallback and Reduce Transparency it paints the same resolved
+tint/alpha, and Increase Contrast raises the resolved rim. Light sampled
+modules switch their foreground to the light-on-glass palette because the
+reference modules are dark glass even in Light appearance. ADR
+[0222](adr/0222-control-center-regions-and-module-materials.md) records the
+region and decomposition decision.
+
+`make control-center-materials-capture` records collapsed/expanded
+Light/Dark, Increase Contrast, Reduce Transparency and an absent-adapter case
+over neutral and grid backdrops; `scripts/t203-control-center.py` reports the
+outer and nested composite error separately and checks that the expanded list
+moves the visible material without a stale region.
+
 ### Dock optics fit (T198)
 
 The Dock preset carries the measured optical fit beyond the flat band:

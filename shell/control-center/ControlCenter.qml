@@ -114,6 +114,108 @@ Item {
     readonly property string materialFallbackReason:
         Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
+    // T203: the Control Center resolves the same generated presets the
+    // compositor consumes. The outer plate, every module capsule and an
+    // expanded list are separate regions; on the sampled path the compositor
+    // paints them and the QML fills are transparent. The fallback/solid path
+    // paints the same resolved tint/alpha here so the panel never shows an
+    // unfiltered wallpaper. Legacy keeps the pre-T203 look untouched.
+    readonly property var outerGlass: Glass.resolve("controlCenterOuter", {
+        scheme: root.dark ? "dark" : "light",
+        rollout: Glass.rollout,
+        reduceTransparency: Glass.reduceTransparency,
+        increaseContrast: Glass.increaseContrast,
+        backend: materialFallback === 2 ? "software"
+               : materialBlurActive ? "gpu-sampled" : "gpu-no-sampled-blur",
+        tier: materialTier === 2 ? "minimal" : materialTier === 1 ? "reduced" : "full"
+    })
+    readonly property var moduleGlass: Glass.resolve("controlCenterModule", {
+        scheme: root.dark ? "dark" : "light",
+        rollout: Glass.rollout,
+        reduceTransparency: Glass.reduceTransparency,
+        increaseContrast: Glass.increaseContrast,
+        backend: materialFallback === 2 ? "software"
+               : materialBlurActive ? "gpu-sampled" : "gpu-no-sampled-blur",
+        tier: materialTier === 2 ? "minimal" : materialTier === 1 ? "reduced" : "full"
+    })
+    readonly property var expandedGlass: Glass.resolve("controlCenterExpanded", {
+        scheme: root.dark ? "dark" : "light",
+        rollout: Glass.rollout,
+        reduceTransparency: Glass.reduceTransparency,
+        increaseContrast: Glass.increaseContrast,
+        backend: materialFallback === 2 ? "software"
+               : materialBlurActive ? "gpu-sampled" : "gpu-no-sampled-blur",
+        tier: materialTier === 2 ? "minimal" : materialTier === 1 ? "reduced" : "full"
+    })
+    readonly property bool replacementLook: Glass.rollout === "replacement"
+    readonly property bool sampledGlass: replacementLook && materialBlurActive
+        && outerGlass.renderMode === "sampled-glass"
+    readonly property real outerRadius: replacementLook
+        ? Theme.primitive.radius.xxl : Theme.controls.popover.radius
+    readonly property color outerFill: sampledGlass ? "transparent"
+        : replacementLook
+          ? Qt.rgba(outerGlass.tint, outerGlass.tint, outerGlass.tint, outerGlass.alpha)
+          : Material.popupFill(materialBlurActive)
+    readonly property real outerBorderWidth: sampledGlass ? 0
+        : replacementLook ? Math.max(1, outerGlass.edgeWidth)
+        : Theme.controls.window.borderWidth
+    readonly property color outerBorderColor: replacementLook
+        ? (outerGlass.tint > 0.5 ? Qt.rgba(0, 0, 0, 0.18)
+                                 : Qt.rgba(1, 1, 1, outerGlass.edge))
+        : Theme.color.border
+    readonly property color moduleFill: sampledGlass ? "transparent"
+        : replacementLook
+          ? Qt.rgba(moduleGlass.tint, moduleGlass.tint, moduleGlass.tint, moduleGlass.alpha)
+          : Theme.color.surfaceSunken
+    readonly property color moduleHoverFill: sampledGlass
+        ? Qt.rgba(1, 1, 1, 0.10) : Theme.color.surfaceElevated
+    readonly property real moduleBorderWidth: replacementLook && !sampledGlass
+        ? Math.max(1, moduleGlass.edgeWidth) : 0
+    readonly property color moduleBorderColor: moduleBorderWidth > 0
+        ? (moduleGlass.tint > 0.5 ? Qt.rgba(0, 0, 0, 0.18)
+                                  : Qt.rgba(1, 1, 1, Math.min(1, moduleGlass.edge)))
+        : "transparent"
+    readonly property color expandedFill: sampledGlass ? "transparent"
+        : replacementLook
+          ? Qt.rgba(expandedGlass.tint, expandedGlass.tint, expandedGlass.tint,
+                    expandedGlass.alpha)
+          : Theme.color.surfaceSunken
+    readonly property real expandedBorderWidth: replacementLook && !sampledGlass
+        ? Math.max(1, expandedGlass.edgeWidth) : 0
+    readonly property color expandedBorderColor: expandedBorderWidth > 0
+        ? (expandedGlass.tint > 0.5 ? Qt.rgba(0, 0, 0, 0.18)
+                                    : Qt.rgba(1, 1, 1, Math.min(1, expandedGlass.edge)))
+        : "transparent"
+    // The reference modules are dark glass even in Light appearance. On the
+    // sampled light path the module composite is dark, so the text/icon
+    // foreground switches to the light-on-glass palette; fallback and Dark
+    // keep the scheme's normal foreground.
+    readonly property color moduleTextPrimary:
+        sampledGlass && !root.dark ? "#f8f6fa" : Theme.color.textPrimary
+    readonly property color moduleTextSecondary:
+        sampledGlass && !root.dark ? "#d8d0e0" : Theme.color.textSecondary
+    readonly property color moduleAccent:
+        sampledGlass && !root.dark ? "#f0a6c8" : Theme.color.accent
+    readonly property color moduleAccentHover:
+        sampledGlass && !root.dark ? "#ffd0e2" : Theme.color.accentHover
+    readonly property color moduleAccentMuted:
+        sampledGlass && !root.dark ? Qt.rgba(1, 1, 1, 0.16) : Theme.color.accentMuted
+    readonly property color moduleControlFill:
+        sampledGlass && !root.dark ? Qt.rgba(1, 1, 1, 0.16) : Theme.color.controlFill
+    // The expanded list is a light plate in Light and a dark plate in Dark, so
+    // its rows keep the scheme's normal text/accent rather than the module's
+    // light-on-glass palette.
+    readonly property color expandedTextPrimary: Theme.color.textPrimary
+    readonly property color expandedTextSecondary: Theme.color.textSecondary
+    readonly property color expandedAccent: Theme.color.accent
+
+    // T203: expanded Wi-Fi/Bluetooth lists. Collapsed modules show the same
+    // actions as before; expanding adds the read-only network list and the
+    // existing Bluetooth device rows. The states are local view state, never
+    // service state.
+    property bool wifiExpanded: false
+    property bool bluetoothExpanded: false
+
     // Wi-Fi radio writes are not exposed by the T-07 adapter yet (a T-15
     // follow-up); the toggle reflects state and is inert until then.
     property bool wifiWritable: false
@@ -127,6 +229,11 @@ Item {
 
     readonly property bool wifiAvailable: root.wifi.state === "available"
     readonly property bool wifiOn: root.wifi.radioEnabled === true
+    // T203: the adapter's visible-network rows, shown only in the expanded
+    // module. They are a read-only summary (joining stays in the Settings
+    // pane until the Control Center gets a write path).
+    readonly property var wifiNetworks: root.wifi.networks !== undefined
+        ? root.wifi.networks : []
     readonly property string wifiLabel: {
         if (!root.wifiAvailable)
             return qsTr("Unavailable");
@@ -614,7 +721,103 @@ Item {
         }
     ]
 
-    // Re-seed the local slider from external state without fighting a drag.
+    // T203: clip one module/list rect to the scroll viewport and return the
+    // region shape the shell declares. A scrolled-out item returns null so no
+    // stale material patch is left on the outer plate.
+    function _clipMaterialRegion(item, preset, key, corners) {
+        if (!item || !item.visible)
+            return null
+        // Read the item's own geometry explicitly: `mapToItem` performs the
+        // read inside C++, which does not register a QML binding dependency,
+        // and the Column assigns y during layout. Without these reads the
+        // region list can keep the pre-layout y=0 for every module.
+        var itemX = item.x
+        var itemY = item.y
+        var itemW = item.width
+        var itemH = item.height
+        if (itemW <= 0 || itemH <= 0)
+            return null
+        var viewportX = contentScroll.x
+        var viewportY = contentScroll.y
+        var viewportW = contentScroll.width
+        var viewportH = contentScroll.height
+        var p = item.mapToItem(root, 0, 0)
+        var x1 = Math.max(p.x, viewportX)
+        var y1 = Math.max(p.y, viewportY)
+        var x2 = Math.min(p.x + itemW, viewportX + viewportW)
+        var y2 = Math.min(p.y + itemH, viewportY + viewportH)
+        if (x2 <= x1 || y2 <= y1)
+            return null
+        return {
+            key: key, preset: preset,
+            x: x1, y: y1, w: x2 - x1, h: y2 - y1,
+            tl: corners, tr: corners, br: corners, bl: corners,
+            overscan: 6
+        }
+    }
+
+    // T203: the material regions the shell declares on the control-center
+    // layer surface. The outer plate is one region; every visible module is
+    // its own capsule (the compositor draws them after the outer plate, so the
+    // module composite stacks over it); an expanded list is an additional
+    // inner region. Regions are clipped to the scroll viewport so a module
+    // scrolled out of view cannot leave a stale material patch on the outer
+    // plate. `contentScroll.contentY` is read so a scroll re-declares the
+    // moving regions.
+    readonly property var materialRegions: {
+        var scrollY = contentScroll.contentY
+        var contentHeight = content.implicitHeight
+        var out = [{
+            key: "outer",
+            preset: "controlCenterOuter",
+            x: 0, y: 0, w: root.width, h: root.height,
+            tl: root.outerRadius, tr: root.outerRadius,
+            br: root.outerRadius, bl: root.outerRadius,
+            overscan: 8
+        }]
+        var modules = [
+            { item: wifiTile, key: "module-wifi" },
+            { item: bluetoothTile, key: "module-bluetooth" },
+            { item: storageTile, key: "module-storage" },
+            { item: focusTile, key: "module-focus" },
+            { item: volumeTile, key: "module-sound" },
+            { item: brightnessTile, key: "module-display" },
+            { item: darkTile, key: "module-dark" },
+            { item: keyboardTile, key: "module-keyboard" },
+            { item: missionControlTile, key: "module-mission-control" },
+            { item: batteryTile, key: "module-battery" },
+            { item: lockScreenTile, key: "module-lock-screen" },
+            { item: menuBarTile, key: "module-menu-bar" },
+            { item: updatesTile, key: "module-software-update" },
+            { item: usersTile, key: "module-users" },
+            { item: printersTile, key: "module-printers" },
+            { item: privacyTile, key: "module-privacy" },
+            { item: accessibilityTile, key: "module-accessibility" },
+            { item: vpnTile, key: "module-vpn" },
+            { item: clipboardTile, key: "module-clipboard" }
+        ]
+        for (var i = 0; i < modules.length; ++i) {
+            var region = root._clipMaterialRegion(modules[i].item, "controlCenterModule",
+                                 modules[i].key, Theme.primitive.radius.md)
+            if (region)
+                out.push(region)
+        }
+        if (root.wifiExpanded) {
+            var wifiList = root._clipMaterialRegion(wifiNetworkList, "controlCenterExpanded",
+                                   "expanded-wifi", Theme.primitive.radius.sm)
+            if (wifiList)
+                out.push(wifiList)
+        }
+        if (root.bluetoothExpanded) {
+            var bluetoothList = root._clipMaterialRegion(bluetoothExpandedList,
+                                        "controlCenterExpanded",
+                                        "expanded-bluetooth",
+                                        Theme.primitive.radius.sm)
+            if (bluetoothList)
+                out.push(bluetoothList)
+        }
+        return out
+    }
     onVolumeChanged: volumeSlider.value = root.volume
 
     signal closed()
@@ -702,6 +905,16 @@ Item {
         root.wifiToggleRequested(!root.wifiOn);
     }
 
+    // T203: expand/collapse the Wi-Fi network list. The module stays a normal
+    // toggle; the disclosure link is a separate accessible action.
+    function toggleWifiExpanded() {
+        root.wifiExpanded = !root.wifiExpanded;
+    }
+
+    function toggleBluetoothExpanded() {
+        root.bluetoothExpanded = !root.bluetoothExpanded;
+    }
+
     // Toggle the Bluetooth radio without the switch (keyboard/AT-SPI/tests).
     function toggleBluetooth() {
         if (!root.bluetoothVisible || !root.bluetoothWritable)
@@ -786,10 +999,10 @@ Item {
         id: background
         objectName: "controlCenterSurface"
         anchors.fill: parent
-        color: Material.popupFill(root.materialBlurActive)
-        radius: Theme.controls.popover.radius
-        border.width: Theme.controls.window.borderWidth
-        border.color: Theme.color.border
+        color: root.outerFill
+        radius: root.outerRadius
+        border.width: root.outerBorderWidth
+        border.color: root.outerBorderColor
 
         // T-21.1b: the panel keeps its full 1x content but scrolls when a
         // fractional scale leaves less logical output height than the 1164 px
@@ -817,14 +1030,14 @@ Item {
                 spacing: Theme.primitive.spacing.xxs
 
             // ── Wi-Fi ────────────────────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: wifiTile
                 objectName: "wifiTile"
                 width: parent.width
                 implicitHeight: wifiColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Wi-Fi")
 
@@ -856,7 +1069,7 @@ Item {
                             Text {
                                 objectName: "wifiTitle"
                                 text: qsTr("Wi-Fi")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -865,7 +1078,7 @@ Item {
                                 objectName: "wifiSubtitle"
                                 width: parent.width
                                 text: root.wifiLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -887,17 +1100,101 @@ Item {
                         color: Theme.color.separator
                     }
 
-                    TextLink {
-                        objectName: "wifiSettingsLink"
-                        text: qsTr("Wi-Fi Settings\u2026")
-                        accessibleName: qsTr("Open Wi-Fi Settings")
-                        onActivated: root.wifiSettingsRequested()
+                    // T203: the expanded Wi-Fi list. The network rows are a
+                    // read-only projection of the adapter view; the module
+                    // material region below the header is the distinct
+                    // expanded-list treatment.
+                    Rectangle {
+                        id: wifiNetworkList
+                        objectName: "wifiNetworkList"
+                        width: parent.width
+                        visible: root.wifiExpanded
+                        implicitHeight: wifiNetworkColumn.implicitHeight
+                                        + 2 * Theme.primitive.spacing.xxs
+                        radius: Theme.primitive.radius.sm
+                        color: root.expandedFill
+                        border.width: root.expandedBorderWidth
+                        border.color: root.expandedBorderColor
+
+                        Column {
+                            id: wifiNetworkColumn
+                            anchors.fill: parent
+                            anchors.margins: Theme.primitive.spacing.xxs
+                            spacing: Theme.primitive.spacing.xxs
+
+                            Text {
+                                objectName: "wifiNetworksEmpty"
+                                visible: root.wifiNetworks.length === 0
+                                width: parent.width
+                                text: qsTr("No networks")
+                                color: root.expandedTextSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                            }
+
+                            Repeater {
+                                model: root.wifiNetworks
+                                delegate: Item {
+                                    id: wifiNetworkRow
+                                    required property var modelData
+                                    width: wifiNetworkColumn.width
+                                    height: 22
+
+                                    Text {
+                                        objectName: "wifiNetworkName"
+                                        anchors.left: parent.left
+                                        anchors.right: wifiNetworkStatus.left
+                                        anchors.rightMargin: Theme.primitive.spacing.sm
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: wifiNetworkRow.modelData.ssid
+                                        color: root.expandedTextPrimary
+                                        font.pixelSize: Theme.primitive.font.sizeSm
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Text {
+                                        id: wifiNetworkStatus
+                                        objectName: "wifiNetworkStatus"
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: wifiNetworkRow.modelData.active === true
+                                            ? qsTr("Connected")
+                                            : (wifiNetworkRow.modelData.security !== undefined
+                                               ? wifiNetworkRow.modelData.security : "")
+                                        color: wifiNetworkRow.modelData.active === true
+                                            ? root.expandedAccent : root.expandedTextSecondary
+                                        font.pixelSize: Theme.primitive.font.sizeSm
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Row {
+                        spacing: Theme.primitive.spacing.md
+
+                        TextLink {
+                            objectName: "wifiDisclosure"
+                            visible: root.wifiAvailable
+                            text: root.wifiExpanded ? qsTr("Hide Networks")
+                                                    : qsTr("Show Networks")
+                            accessibleName: root.wifiExpanded
+                                ? qsTr("Hide Wi-Fi networks")
+                                : qsTr("Show Wi-Fi networks")
+                            onActivated: root.toggleWifiExpanded()
+                        }
+
+                        TextLink {
+                            objectName: "wifiSettingsLink"
+                            text: qsTr("Wi-Fi Settings\u2026")
+                            accessibleName: qsTr("Open Wi-Fi Settings")
+                            onActivated: root.wifiSettingsRequested()
+                        }
                     }
                 }
             }
 
             // ── Bluetooth (T-15.1b) ──────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: bluetoothTile
                 objectName: "bluetoothTile"
                 width: parent.width
@@ -905,7 +1202,7 @@ Item {
                 implicitHeight: bluetoothColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Bluetooth")
 
@@ -937,7 +1234,7 @@ Item {
                             Text {
                                 objectName: "bluetoothTitle"
                                 text: qsTr("Bluetooth")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -946,7 +1243,7 @@ Item {
                                 objectName: "bluetoothSubtitle"
                                 width: parent.width
                                 text: root.bluetoothLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -962,75 +1259,114 @@ Item {
                         }
                     }
 
+                    // T203: the expanded Bluetooth list. The known-device rows
+                    // keep their existing connect/disconnect actions; the
+                    // wrapper is the distinct expanded-list material region.
                     Rectangle {
-                        objectName: "bluetoothSeparator"
+                        id: bluetoothExpandedList
+                        objectName: "bluetoothExpandedList"
                         width: parent.width
-                        height: Theme.controls.window.borderWidth
-                        color: Theme.color.separator
-                        visible: bluetoothDeviceList.count > 0
-                    }
+                        visible: root.bluetoothExpanded
+                        implicitHeight: bluetoothDeviceColumn.implicitHeight
+                                        + 2 * Theme.primitive.spacing.xxs
+                        radius: Theme.primitive.radius.sm
+                        color: root.expandedFill
+                        border.width: root.expandedBorderWidth
+                        border.color: root.expandedBorderColor
 
-                    Column {
-                        id: bluetoothDeviceList
-                        objectName: "bluetoothDeviceList"
-                        width: parent.width
-                        spacing: Theme.primitive.spacing.xxs
-                        readonly property int count: root.bluetoothDevices.length
+                        Column {
+                            id: bluetoothDeviceColumn
+                            anchors.fill: parent
+                            anchors.margins: Theme.primitive.spacing.xxs
+                            spacing: Theme.primitive.spacing.xxs
 
-                        Repeater {
-                            model: root.bluetoothDevices
-                            delegate: Item {
-                                id: bluetoothRow
-                                required property var modelData
-                                width: bluetoothDeviceList.width
-                                height: 24
+                            Text {
+                                objectName: "bluetoothDevicesEmpty"
+                                visible: bluetoothDeviceList.count === 0
+                                width: parent.width
+                                text: qsTr("No devices")
+                                color: root.expandedTextSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                            }
 
-                                Text {
-                                    objectName: "bluetoothDeviceName"
-                                    anchors.left: parent.left
-                                    anchors.right: bluetoothDeviceAction.left
-                                    anchors.rightMargin: Theme.primitive.spacing.sm
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: bluetoothRow.modelData.name
-                                    color: Theme.color.textPrimary
-                                    font.pixelSize: Theme.primitive.font.sizeSm
-                                    elide: Text.ElideRight
-                                }
+                            Column {
+                                id: bluetoothDeviceList
+                                objectName: "bluetoothDeviceList"
+                                width: parent.width
+                                spacing: Theme.primitive.spacing.xxs
+                                readonly property int count: root.bluetoothDevices.length
 
-                                Text {
-                                    id: bluetoothDeviceAction
-                                    objectName: "bluetoothDeviceAction"
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    anchors.right: parent.right
-                                    text: bluetoothRow.modelData.connected
-                                        ? qsTr("Connected") : qsTr("Not Connected")
-                                    color: bluetoothRow.modelData.connected
-                                        ? Theme.color.accent : Theme.color.textSecondary
-                                    font.pixelSize: Theme.primitive.font.sizeSm
-                                    Accessible.role: Accessible.Button
-                                    Accessible.name: qsTr("%1, %2")
-                                        .arg(bluetoothRow.modelData.name)
-                                        .arg(text)
-                                    TapHandler {
-                                        onTapped: root.toggleBluetoothDevice(
-                                            bluetoothRow.modelData.address)
+                                Repeater {
+                                    model: root.bluetoothDevices
+                                    delegate: Item {
+                                        id: bluetoothRow
+                                        required property var modelData
+                                        width: bluetoothDeviceList.width
+                                        height: 24
+
+                                        Text {
+                                            objectName: "bluetoothDeviceName"
+                                            anchors.left: parent.left
+                                            anchors.right: bluetoothDeviceAction.left
+                                            anchors.rightMargin: Theme.primitive.spacing.sm
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: bluetoothRow.modelData.name
+                                            color: root.expandedTextPrimary
+                                            font.pixelSize: Theme.primitive.font.sizeSm
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            id: bluetoothDeviceAction
+                                            objectName: "bluetoothDeviceAction"
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            anchors.right: parent.right
+                                            text: bluetoothRow.modelData.connected
+                                                ? qsTr("Connected") : qsTr("Not Connected")
+                                            color: bluetoothRow.modelData.connected
+                                                ? root.expandedAccent : root.expandedTextSecondary
+                                            font.pixelSize: Theme.primitive.font.sizeSm
+                                            Accessible.role: Accessible.Button
+                                            Accessible.name: qsTr("%1, %2")
+                                                .arg(bluetoothRow.modelData.name)
+                                                .arg(text)
+                                            TapHandler {
+                                                onTapped: root.toggleBluetoothDevice(
+                                                    bluetoothRow.modelData.address)
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
-                    TextLink {
-                        objectName: "bluetoothSettingsLink"
-                        text: qsTr("Bluetooth Settings\u2026")
-                        accessibleName: qsTr("Open Bluetooth Settings")
-                        onActivated: root.bluetoothSettingsRequested()
+                    Row {
+                        spacing: Theme.primitive.spacing.md
+
+                        TextLink {
+                            objectName: "bluetoothDisclosure"
+                            visible: root.bluetoothVisible
+                            text: root.bluetoothExpanded ? qsTr("Hide Devices")
+                                                         : qsTr("Show Devices")
+                            accessibleName: root.bluetoothExpanded
+                                ? qsTr("Hide Bluetooth devices")
+                                : qsTr("Show Bluetooth devices")
+                            onActivated: root.toggleBluetoothExpanded()
+                        }
+
+                        TextLink {
+                            objectName: "bluetoothSettingsLink"
+                            text: qsTr("Bluetooth Settings\u2026")
+                            accessibleName: qsTr("Open Bluetooth Settings")
+                            onActivated: root.bluetoothSettingsRequested()
+                        }
                     }
                 }
             }
 
             // ── Storage (T-15.2b) ────────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: storageTile
                 objectName: "storageTile"
                 width: parent.width
@@ -1038,7 +1374,7 @@ Item {
                 implicitHeight: storageColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Storage")
 
@@ -1069,7 +1405,7 @@ Item {
                             Text {
                                 objectName: "storageTitle"
                                 text: qsTr("Storage")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1078,7 +1414,7 @@ Item {
                                 objectName: "storageSubtitle"
                                 width: parent.width
                                 text: root.storageLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1108,7 +1444,7 @@ Item {
                                     anchors.rightMargin: Theme.primitive.spacing.sm
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: storageRow.modelData.name
-                                    color: Theme.color.textPrimary
+                                    color: root.moduleTextPrimary
                                     font.pixelSize: Theme.primitive.font.sizeSm
                                     elide: Text.ElideRight
                                 }
@@ -1121,7 +1457,7 @@ Item {
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: qsTr("Eject")
-                                    color: Theme.color.accent
+                                    color: root.moduleAccent
                                     font.pixelSize: Theme.primitive.font.sizeSm
                                     Accessible.role: Accessible.Button
                                     Accessible.name: qsTr("Eject %1")
@@ -1142,7 +1478,7 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: storageRow.modelData.mounted
                                         ? qsTr("Unmount") : qsTr("Mount")
-                                    color: Theme.color.accent
+                                    color: root.moduleAccent
                                     font.pixelSize: Theme.primitive.font.sizeSm
                                     Accessible.role: Accessible.Button
                                     Accessible.name: qsTr("%1 %2")
@@ -1166,14 +1502,14 @@ Item {
             }
 
             // ── Focus / Do Not Disturb ───────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: focusTile
                 objectName: "focusTile"
                 width: parent.width
                 implicitHeight: focusColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Focus")
 
@@ -1205,7 +1541,7 @@ Item {
                             Text {
                                 objectName: "focusTitle"
                                 text: qsTr("Focus")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1214,7 +1550,7 @@ Item {
                                 objectName: "focusSubtitle"
                                 width: parent.width
                                 text: root.focusSubtitle
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1239,14 +1575,14 @@ Item {
             }
 
             // ── Sound ────────────────────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: volumeTile
                 objectName: "volumeTile"
                 width: parent.width
                 implicitHeight: volumeColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 opacity: root.audioAvailable ? 1.0 : 0.5
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Sound")
@@ -1278,7 +1614,7 @@ Item {
 
                             Text {
                                 text: qsTr("Sound")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1290,7 +1626,7 @@ Item {
                                     ? qsTr("Muted")
                                     : (root.audioOutputName.length > 0
                                        ? root.audioOutputName : qsTr("Output"))
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1300,7 +1636,7 @@ Item {
                             id: percent
                             objectName: "volumePercent"
                             text: qsTr("%1%").arg(Math.round(root.volume * 100))
-                            color: Theme.color.textSecondary
+                            color: root.moduleTextSecondary
                             font.pixelSize: Theme.primitive.font.sizeSm
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -1340,14 +1676,14 @@ Item {
             }
 
             // ── Display / brightness ─────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: brightnessTile
                 objectName: "brightnessTile"
                 width: parent.width
                 implicitHeight: brightnessColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Display")
 
@@ -1374,7 +1710,7 @@ Item {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: qsTr("Display")
-                            color: Theme.color.textPrimary
+                            color: root.moduleTextPrimary
                             font.pixelSize: Theme.controls.button.fontSize
                             font.weight: Theme.primitive.font.weightMedium
                         }
@@ -1394,14 +1730,14 @@ Item {
             }
 
             // ── Dark Mode ────────────────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: darkTile
                 objectName: "darkTile"
                 width: parent.width
                 implicitHeight: darkColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Dark Mode")
 
@@ -1433,7 +1769,7 @@ Item {
                             Text {
                                 objectName: "darkTitle"
                                 text: qsTr("Dark Mode")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1442,7 +1778,7 @@ Item {
                                 objectName: "darkSubtitle"
                                 width: parent.width
                                 text: root.dark ? qsTr("On") : qsTr("Off")
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1467,7 +1803,7 @@ Item {
             }
 
             // ── Keyboard (T-15.4b) ──────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: keyboardTile
                 objectName: "keyboardTile"
                 width: parent.width
@@ -1475,7 +1811,7 @@ Item {
                 implicitHeight: keyboardColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Keyboard")
 
@@ -1506,7 +1842,7 @@ Item {
                             Text {
                                 objectName: "keyboardTitle"
                                 text: qsTr("Keyboard")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1515,7 +1851,7 @@ Item {
                                 objectName: "keyboardSubtitle"
                                 width: parent.width
                                 text: root.inputLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1532,7 +1868,7 @@ Item {
             }
 
             // ── Mission Control (T-15.5b) ───────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: missionControlTile
                 objectName: "missionControlTile"
                 width: parent.width
@@ -1540,7 +1876,7 @@ Item {
                 implicitHeight: missionControlColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Mission Control")
 
@@ -1571,7 +1907,7 @@ Item {
                             Text {
                                 objectName: "missionControlTitle"
                                 text: qsTr("Mission Control")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1580,7 +1916,7 @@ Item {
                                 objectName: "missionControlSubtitle"
                                 width: parent.width
                                 text: root.missionControlLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1597,7 +1933,7 @@ Item {
             }
 
             // ── Battery (T-15.6b) ───────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: batteryTile
                 objectName: "batteryTile"
                 width: parent.width
@@ -1605,7 +1941,7 @@ Item {
                 implicitHeight: batteryColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Battery")
 
@@ -1636,7 +1972,7 @@ Item {
                             Text {
                                 objectName: "batteryTitle"
                                 text: qsTr("Battery")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1645,7 +1981,7 @@ Item {
                                 objectName: "batterySubtitle"
                                 width: parent.width
                                 text: root.batteryLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1662,7 +1998,7 @@ Item {
             }
 
             // ── Lock Screen (T-15.8b) ───────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: lockScreenTile
                 objectName: "lockScreenTile"
                 width: parent.width
@@ -1670,7 +2006,7 @@ Item {
                 implicitHeight: lockScreenColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Lock Screen")
 
@@ -1702,7 +2038,7 @@ Item {
                             Text {
                                 objectName: "lockScreenTitle"
                                 text: qsTr("Lock Screen")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1711,7 +2047,7 @@ Item {
                                 objectName: "lockScreenSubtitle"
                                 width: parent.width
                                 text: root.lockScreenLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1728,7 +2064,7 @@ Item {
             }
 
             // ── Menu Bar (T-15.9b) ──────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: menuBarTile
                 objectName: "menuBarTile"
                 width: parent.width
@@ -1736,7 +2072,7 @@ Item {
                 implicitHeight: menuBarColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Menu Bar")
 
@@ -1768,7 +2104,7 @@ Item {
                             Text {
                                 objectName: "menuBarTitle"
                                 text: qsTr("Menu Bar")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1777,7 +2113,7 @@ Item {
                                 objectName: "menuBarSubtitle"
                                 width: parent.width
                                 text: root.menuBarLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1794,7 +2130,7 @@ Item {
             }
 
             // ── Software Update (T-15.10b) ───────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: updatesTile
                 objectName: "updatesTile"
                 width: parent.width
@@ -1802,7 +2138,7 @@ Item {
                 implicitHeight: updatesColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Software Update")
 
@@ -1834,7 +2170,7 @@ Item {
                             Text {
                                 objectName: "updatesTitle"
                                 text: qsTr("Software Update")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1843,7 +2179,7 @@ Item {
                                 objectName: "updatesSubtitle"
                                 width: parent.width
                                 text: root.updatesLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1874,7 +2210,7 @@ Item {
             }
 
             // ── Users and Groups (T-15.11b) ──────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: usersTile
                 objectName: "usersTile"
                 width: parent.width
@@ -1882,7 +2218,7 @@ Item {
                 implicitHeight: usersColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Users")
 
@@ -1913,7 +2249,7 @@ Item {
                             Text {
                                 objectName: "usersTitle"
                                 text: qsTr("Users")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1922,7 +2258,7 @@ Item {
                                 objectName: "usersSubtitle"
                                 width: parent.width
                                 text: root.accountsLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -1939,7 +2275,7 @@ Item {
             }
 
             // ── Printers and Scanners (T-15.12b) ─────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: printersTile
                 objectName: "printersTile"
                 width: parent.width
@@ -1947,7 +2283,7 @@ Item {
                 implicitHeight: printersColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Printers")
 
@@ -1980,7 +2316,7 @@ Item {
                             Text {
                                 objectName: "printersTitle"
                                 text: qsTr("Printers")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -1989,7 +2325,7 @@ Item {
                                 objectName: "printersSubtitle"
                                 width: parent.width
                                 text: root.printersLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -2006,7 +2342,7 @@ Item {
             }
 
             // ── Privacy and Security (T-15.13b) ──────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: privacyTile
                 objectName: "privacyTile"
                 width: parent.width
@@ -2014,7 +2350,7 @@ Item {
                 implicitHeight: privacyColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Privacy")
 
@@ -2047,7 +2383,7 @@ Item {
                             Text {
                                 objectName: "privacyTitle"
                                 text: qsTr("Privacy")
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
                             }
@@ -2056,7 +2392,7 @@ Item {
                                 objectName: "privacySubtitle"
                                 width: parent.width
                                 text: root.privacyLabel
-                                color: Theme.color.textSecondary
+                                color: root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                             }
@@ -2076,7 +2412,7 @@ Item {
             // A compact read-only summary: the tile is the tappable affordance
             // that opens the Accessibility pane (no separate link line, so the
             // seventeenth tile still fits the fixed surface).
-            Rectangle {
+            ModuleTile {
                 id: accessibilityTile
                 objectName: "accessibilityTile"
                 width: parent.width
@@ -2084,8 +2420,8 @@ Item {
                 implicitHeight: accessibilityColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: accessibilityHover.hovered ? Theme.color.surfaceElevated
-                                                  : Theme.color.surfaceSunken
+                color: accessibilityHover.hovered ? root.moduleHoverFill
+                                                  : root.moduleFill
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTr("Accessibility")
                 Accessible.description: root.accessibilityLabel
@@ -2118,7 +2454,7 @@ Item {
                         id: accessibilityTitle
                         objectName: "accessibilityTitle"
                         text: qsTr("Accessibility")
-                        color: Theme.color.textPrimary
+                        color: root.moduleTextPrimary
                         font.pixelSize: Theme.controls.button.fontSize
                         font.weight: Theme.primitive.font.weightMedium
                         anchors.verticalCenter: parent.verticalCenter
@@ -2129,7 +2465,7 @@ Item {
                         width: Math.max(0, parent.width - 24 - accessibilityTitle.width
                                - 2 * Theme.primitive.spacing.sm)
                         text: root.accessibilityLabel
-                        color: Theme.color.textSecondary
+                        color: root.moduleTextSecondary
                         font.pixelSize: Theme.primitive.font.sizeSm
                         elide: Text.ElideRight
                         horizontalAlignment: Text.AlignRight
@@ -2142,7 +2478,7 @@ Item {
             // A compact read-only summary: the tile is the tappable affordance
             // that opens the Network pane (no separate link line, so the
             // eighteenth tile still fits the fixed surface).
-            Rectangle {
+            ModuleTile {
                 id: vpnTile
                 objectName: "vpnTile"
                 width: parent.width
@@ -2150,8 +2486,8 @@ Item {
                 implicitHeight: vpnColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: vpnHover.hovered ? Theme.color.surfaceElevated
-                                        : Theme.color.surfaceSunken
+                color: vpnHover.hovered ? root.moduleHoverFill
+                                        : root.moduleFill
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTr("VPN")
                 Accessible.description: root.vpnLabel
@@ -2184,7 +2520,7 @@ Item {
                         id: vpnTitle
                         objectName: "vpnTitle"
                         text: qsTr("VPN")
-                        color: Theme.color.textPrimary
+                        color: root.moduleTextPrimary
                         font.pixelSize: Theme.controls.button.fontSize
                         font.weight: Theme.primitive.font.weightMedium
                         anchors.verticalCenter: parent.verticalCenter
@@ -2195,7 +2531,7 @@ Item {
                         width: Math.max(0, parent.width - 24 - vpnTitle.width
                                - 2 * Theme.primitive.spacing.sm)
                         text: root.vpnLabel
-                        color: Theme.color.textSecondary
+                        color: root.moduleTextSecondary
                         font.pixelSize: Theme.primitive.font.sizeSm
                         elide: Text.ElideRight
                         horizontalAlignment: Text.AlignRight
@@ -2205,14 +2541,14 @@ Item {
             }
 
             // ── Clipboard history ────────────────────────────────────────
-            Rectangle {
+            ModuleTile {
                 id: clipboardTile
                 objectName: "clipboardTile"
                 width: parent.width
                 implicitHeight: clipboardColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
-                color: Theme.color.surfaceSunken
+                color: root.moduleFill
                 Accessible.role: Accessible.Grouping
                 Accessible.name: qsTr("Clipboard")
 
@@ -2227,7 +2563,7 @@ Item {
                     Text {
                         objectName: "clipboardTitle"
                         text: qsTr("Clipboard")
-                        color: Theme.color.textPrimary
+                        color: root.moduleTextPrimary
                         font.pixelSize: Theme.controls.button.fontSize
                         font.weight: Theme.primitive.font.weightMedium
                     }
@@ -2237,7 +2573,7 @@ Item {
                         width: parent.width
                         visible: root.clipboardEntries.length === 0
                         text: qsTr("No recent items")
-                        color: Theme.color.textSecondary
+                        color: root.moduleTextSecondary
                         font.pixelSize: Theme.primitive.font.sizeSm
                     }
 
@@ -2250,7 +2586,7 @@ Item {
                             width: parent.width
                             height: 26
                             radius: Theme.primitive.radius.sm
-                            color: rowHover.hovered ? Theme.color.surfaceElevated
+                            color: rowHover.hovered ? root.moduleHoverFill
                                                     : "transparent"
 
                             HoverHandler { id: rowHover }
@@ -2262,7 +2598,7 @@ Item {
                                 anchors.right: pinAction.left
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: clipboardRow.entry.preview
-                                color: Theme.color.textPrimary
+                                color: root.moduleTextPrimary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 elide: Text.ElideRight
                                 Accessible.role: Accessible.Button
@@ -2279,8 +2615,8 @@ Item {
                                 anchors.rightMargin: Theme.primitive.spacing.xs
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: clipboardRow.entry.pinned ? qsTr("Unpin") : qsTr("Pin")
-                                color: clipboardRow.entry.pinned ? Theme.color.accent
-                                                                 : Theme.color.textSecondary
+                                color: clipboardRow.entry.pinned ? root.moduleAccent
+                                                                 : root.moduleTextSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 Accessible.role: Accessible.Button
                                 Accessible.name: clipboardRow.entry.pinned
@@ -2333,6 +2669,16 @@ Item {
         value: root.dark
     }
 
+    // T203: one module capsule surface. The fill is transparent while the
+    // compositor paints the module region; the fallback/solid path paints the
+    // resolved own-layer tint here. The rim is painted once (compositor on the
+    // sampled path, this border on the fallback path).
+    component ModuleTile: Rectangle {
+        color: root.moduleFill
+        border.width: root.moduleBorderWidth
+        border.color: root.moduleBorderColor
+    }
+
     // A trailing text link (the macOS sheet anatomy). Keyboard- and
     // AT-SPI-operable so the whole panel is reachable without a pointer.
     component TextLink: Text {
@@ -2344,7 +2690,7 @@ Item {
         Accessible.name: accessibleName
         Accessible.focusable: true
         Accessible.onPressAction: activated()
-        color: linkHover.hovered ? Theme.color.accentHover : Theme.color.accent
+        color: linkHover.hovered ? root.moduleAccentHover : root.moduleAccent
         font.pixelSize: Theme.primitive.font.sizeSm
 
         HoverHandler { id: linkHover }
@@ -2379,13 +2725,13 @@ Item {
         width: tileSize
         height: tileSize
         radius: tileSize / 2
-        color: active ? Theme.color.accentMuted : Theme.color.controlFill
+        color: active ? root.moduleAccentMuted : root.moduleControlFill
 
         Icon {
             anchors.centerIn: parent
             name: parent.name
             size: parent.iconSize
-            color: parent.active ? Theme.color.accent : Theme.color.textSecondary
+            color: parent.active ? root.moduleAccent : root.moduleTextSecondary
         }
     }
 }

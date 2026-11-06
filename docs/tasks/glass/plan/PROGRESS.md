@@ -12,6 +12,7 @@
 - **T200 — Menu-bar no-blur veil**: **Measured Light depth LUT.** `design-system/tokens/tokens.json` now stores; **Pure veil model.** New `compositor/src/window/menubar_veil.rs` owns
 - **T201 — Menu-bar visibility settings**: **`menu.showBackground` is one switch for both rails.** The QML fill and the; **`menu.autoHide` is compositor-owned per output.** Additive
 - **T202 — menu-family glass**: **Three presets, one mapping.** `menuAttached` (menu-bar dropdown),; **Attached geometry.** `component.contextMenu.attachedRadius = 12.5` and
+- **T203 — Control Center panel, module and expanded-list materials**: `design-system/tokens/tokens.json` Control Center presets now carry the; `controlCenterOuter`: Light 0.265/0.373, Dark 0.489/0.677, blur 8,
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -24,6 +25,7 @@
 - [T200](progress/T200.md) — **Measured Light depth LUT.** `design-system/tokens/tokens.json` now stores
 - [T201](progress/T201.md) — **`menu.showBackground` is one switch for both rails.** The QML fill and the
 - [T202](progress/T202.md) — **Three presets, one mapping.** `menuAttached` (menu-bar dropdown),
+- [T203](progress/T203.md) — `design-system/tokens/tokens.json` Control Center presets now carry the
 <!-- symphony:digest:end -->
 
 Implementation notes go in `progress/TNN.md`. Record the actual test commands, evidence paths, measured deltas, and any open rows with their rerun steps.
