@@ -98,6 +98,15 @@ public:
     // height and exclusive zone. The compositor answers with `configure`.
     bool createMenuBarSurface(int height, int exclusiveZone);
 
+    // Declare the menu bar's material panel before its next content commit
+    // (T200). `height` is the visual veil extent (the surface itself may only
+    // commit the bar strip); `cornerRadius` preserves the legacy chrome shape
+    // when the replacement veil is not active. `active=false` commits an
+    // explicit empty panel set so a hidden/fallback bar contributes no
+    // sampled or feather material.
+    void setMenuBarFrameGeometry(bool active, int width, int height,
+                                 int cornerRadius);
+
     // Create the dropdown `overlay` layer surface (T-09). It starts unmapped;
     // `setPopupGeometry` + `commitPopupImage` place and reveal it, `hidePopup`
     // unmaps it. Unlike the bar it reserves no zone and never takes keyboard.
@@ -893,6 +902,8 @@ private:
                   const QSize &logicalSize = QSize(),
                   const QRect &sourceRect = QRect());
     bool applyDockSurfaceGeometry(wl_surface *surface);
+    // Commit pending menu-bar material metadata on a damage-free frame.
+    bool applyMenuBarSurfaceGeometry(wl_surface *surface);
     ShellSurfaceBuffer *surfaceBuffer(wl_surface *surface);
     bool ensureShmSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
                        const QSize &size);
@@ -1150,6 +1161,19 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     df_toplevel_manager *m_manager = nullptr;
     wl_surface *m_surface = nullptr;
     df_layer_surface *m_layer = nullptr;
+    // The menu-bar material panel last committed (T200). Kept so a settled
+    // frame does not resend identical region metadata.
+    bool m_menuBarPanelActive = false;
+    // Whether any panel request (region or explicit empty set) has been
+    // committed for this surface. The first inactive frame must clear the
+    // derived default panel, not just a previously active veil.
+    bool m_menuBarPanelInitialized = false;
+    // A region request is pending and must be committed even when the
+    // menubar pixels did not change (showBackground/material toggles).
+    bool m_menuBarPanelDirty = false;
+    int m_menuBarPanelWidth = 0;
+    int m_menuBarPanelHeight = 0;
+    int m_menuBarPanelRadius = 0;
     wl_surface *m_popupSurface = nullptr;
     df_layer_surface *m_popupLayer = nullptr;
     wl_surface *m_dockSurface = nullptr;

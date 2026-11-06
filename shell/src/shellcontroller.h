@@ -1163,6 +1163,11 @@ private:
     int m_width = 0;
     int m_height = 0;
     int m_barHeight = 28;
+    // T200: the menu-bar surface is configured to the veil's visual extent so
+    // the compositor can draw below the reserved strip. The shell still
+    // commits only the bar strip; the extra area is visual-only.
+    int m_menuBarVeilExtent = 95;
+    int m_menuBarSurfaceHeight = 28;
     // T-21.1b: the chrome scene's physical scale. Seeded from the compositor's
     // output scale, then kept live by wp_fractional_scale.preferred_scale.
     qreal m_chromeScale = 1.0;

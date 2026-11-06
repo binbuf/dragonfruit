@@ -357,6 +357,10 @@ pub struct BlurPanel {
     pub spec: BlurSpec,
     /// The Tahoe liquid-glass parameters for this panel (T-20.2).
     pub glass: GlassSpec,
+    /// The menu-bar no-blur veil parameters (T200), when this region resolved
+    /// to `NoBlurVeil`. The sharp path draws the depth LUT over the live
+    /// scene instead of a filtered glass compose.
+    pub veil: Option<crate::window::menubar_veil::VeilSpec>,
     /// Filtered (Kawase) or sharp (direct scene sample, veil-only).
     pub filter: RegionFilter,
     /// Paint inputs; changes here repaint but reuse the filtered texture.
@@ -470,6 +474,9 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 RenderMode::NoBlurVeil => RegionFilter::Sharp,
                 RenderMode::SampledGlass => RegionFilter::Filtered,
             };
+            // A no-blur veil carries its depth LUT; every other preset has no
+            // veil and keeps the glass/sharp compose.
+            let veil = crate::window::menubar_veil::VeilSpec::for_resolved(&resolved);
             let dock_fit = preset == Preset::Dock && resolved.look == Rollout::Replacement;
             let base_spec = if dock_fit {
                 BlurSpec::for_dock(
@@ -487,7 +494,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             if filter == RegionFilter::Filtered && !material.blur_active {
                 continue;
             }
-            let glass = if dock_fit {
+            let mut glass = if dock_fit {
                 let optics = match scheme {
                     crate::window::ColorScheme::Light => DockOptics::light(),
                     crate::window::ColorScheme::Dark => DockOptics::dark(),
@@ -514,6 +521,20 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                     .glass(role.glass_spec(scheme))
                     .unwrap_or_else(|| role.glass_spec(scheme))
             };
+            if let Some(veil) = veil {
+                // If the veil program is unavailable, the flat-band glass
+                // compose is the safe scheme-appropriate plate. Keep the
+                // colour and a representative strip alpha; no rim/lens.
+                glass.flat_band = true;
+                glass.flat_alpha = veil.alpha_at(veil.strip * 0.5);
+                glass.tint = veil.color[0];
+                glass.tint_color = veil.color;
+                glass.refraction = 0.0;
+                glass.specular = 0.0;
+                glass.specular_width = 0.0;
+                glass.rim_peak = 0.0;
+                glass.corner_peak = 0.0;
+            }
             let corners = region.corners.unwrap_or_else(|| {
                 CornerRadii::uniform(spec.corner_radius.round().max(0.0) as i32)
             });
@@ -534,6 +555,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 overscan: region.overscan,
                 spec,
                 glass,
+                veil,
                 filter,
                 paint: RegionPaint {
                     scheme,

@@ -2161,9 +2161,7 @@ fn multi_region_metadata_is_commit_latched_bounded_and_legacy_compatible() {
     surface.commit();
     queue.roundtrip(&mut state).unwrap();
     let report = input.query("query scale");
-    assert!(report.contains(
-        "scale region control-center panel preset=- logical=5,6,70,80"
-    ));
+    assert!(report.contains("scale region control-center panel preset=- logical=5,6,70,80"));
     proc.shutdown();
 }
 
@@ -2171,6 +2169,78 @@ fn compositor_max_regions() -> usize {
     // Mirrors `compositor::shell::layer::MAX_PANEL_REGIONS`; the conformance
     // crate is a separate binary and does not link the compositor library.
     8
+}
+
+/// T200: the menu bar's layer surface is 95 pt tall for the veil, but the
+/// exclusive zone stays the 28 pt strip and the visual region never leaks
+/// across the owning output. The panel is commit-latched and an explicit empty
+/// set removes it.
+#[test]
+fn menu_bar_veil_extent_is_visual_only_and_commit_latched() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(runtime_dir).join(format!("df-veil-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-menubar-veil",
+        &["1f".repeat(32)],
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (_core, _shell, bar, bar_layer) =
+        open_trusted_bar(&conn, &mut queue, &mut state, &proc.read_token(), 95, 28);
+
+    // The derived panel is the 28 pt reserved strip, not the 95 pt surface.
+    let report = input.query("query scale");
+    assert!(
+        report.contains("scale chrome menubar logical=0,0,1280,28 "),
+        "the derived panel must be the reserved strip: {report}"
+    );
+
+    // The veil region is commit-latched and declares the full visual extent.
+    bar_layer.set_panel_region(
+        "veil".to_string(),
+        "menuBarVeil".to_string(),
+        0,
+        0,
+        1280,
+        95,
+        0,
+        0,
+        0,
+        0,
+        0,
+    );
+    queue.roundtrip(&mut state).unwrap();
+    let pending = input.query("query scale");
+    assert!(
+        !pending.contains("scale region menubar veil"),
+        "region metadata must be commit-latched: {pending}"
+    );
+    bar.commit();
+    queue.roundtrip(&mut state).unwrap();
+    let report = input.query("query scale");
+    assert!(
+        report.contains(
+            "scale region menubar veil preset=menuBarVeil logical=0,0,1280,95 \
+             physical=0,0,1280,95 corners=0,0,0,0 overscan=0"
+        ),
+        "committed veil region missing: {report}"
+    );
+    assert!(
+        report.contains("scale chrome menubar logical=0,0,1280,95 "),
+        "the veil must extend the material panel below the strip: {report}"
+    );
+    // An explicit empty set removes the veil (fallback/hidden bar).
+    bar_layer.clear_panel_regions();
+    bar.commit();
+    queue.roundtrip(&mut state).unwrap();
+    let report = input.query("query scale");
+    assert!(!report.contains("scale region menubar"));
+    assert!(
+        report.contains("scale chrome menubar logical=0,0,0,0 "),
+        "cleared veil must leave no panel: {report}"
+    );
+    proc.shutdown();
 }
 
 #[test]

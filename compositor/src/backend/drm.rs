@@ -410,6 +410,9 @@ struct DeviceData {
 struct MaterialPrograms {
     blur: Option<GlesTexProgram>,
     glass: Option<GlesTexProgram>,
+    /// The menu-bar no-blur veil program (T200); a refusal keeps the
+    /// flat-band glass fallback.
+    veil: Option<GlesTexProgram>,
 }
 
 /// Everything the DRM backend owns; lives in a shared slot that the
@@ -1610,7 +1613,16 @@ fn render_surface(
             } else {
                 None
             };
-            MaterialPrograms { blur, glass }
+            // T200: the veil is a small sharp-sample shader; compile it even
+            // when the liquid-glass program is disabled, because the menu bar
+            // must not expose an unfiltered scene.
+            let veil = gles
+                .compile_custom_texture_shader(
+                    crate::window::VEIL_SHADER,
+                    &crate::window::veil_uniform_names(),
+                )
+                .ok();
+            MaterialPrograms { blur, glass, veil }
         });
         // Pass one: the live scene (window menu, windows/titlebars/shadows,
         // desktop, wallpaper) into the reusable region-sized texture. The
@@ -1682,6 +1694,9 @@ fn render_surface(
             ));
             let id = slot.id().clone();
             if panel.filter == RegionFilter::Sharp {
+                // T200: the sharp veil samples the live scene texture directly,
+                // so its element commit follows real scene damage.
+                slot.note_sharp_scene_commit(surface.material.scene.commit());
                 let commit = slot.commit();
                 let element = BackdropBlurElement::new(
                     scene_texture.clone(),
@@ -1694,6 +1709,19 @@ fn render_surface(
                 .with_commit(commit)
                 .with_texture_region(region.rect)
                 .with_corners(panel.corners);
+                // T200: the veil's depth-LUT shader; a refused program keeps
+                // the flat-band glass plate rather than the raw scene.
+                let element = if let Some(veil) = panel.veil {
+                    match programs.veil.as_ref() {
+                        Some(program) => element.with_veil(veil, program.clone()),
+                        None => match programs.glass.as_ref() {
+                            Some(glass) => element.with_glass(panel.glass, glass.clone()),
+                            None => element,
+                        },
+                    }
+                } else {
+                    element
+                };
                 custom_elements.push(DrmOutputElements::Blur(element));
                 sharp_drawn += 1;
                 continue;

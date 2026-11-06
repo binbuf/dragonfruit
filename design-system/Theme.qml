@@ -197,16 +197,30 @@ QtObject {
                 readonly property string role: "chrome"
                 readonly property string render: "veil"
                 readonly property string slider: "none"
+                readonly property int stripHeight: 39
+                readonly property int extent: 95
                 readonly property var light: QtObject {
                     readonly property string confidence: "measured"
                     readonly property string provenance: "REFERENCE.md menu-bar veil: alpha 0.451 at y=5pt, then 0.439/0.408/0.357/0.243/0.059/0.008 to y=90pt; white background shows no visible veil; the veil is not a blur"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.451
-                        readonly property real neutralTint: 0.0
+                        readonly property real neutralTint: 1.0
                         readonly property real perceptualWeight: 0.0
                         readonly property real perceptualAlpha: 0.451
-                        readonly property real perceptualTint: 0.0
+                        readonly property real perceptualTint: 1.0
+                    }
+                    readonly property var veil: QtObject {
+                        readonly property real probe: 8.0
+                        readonly property real readability: 0.35
+                        readonly property real alpha5: 0.45098037
+                        readonly property real alpha15: 0.43921566
+                        readonly property real alpha25: 0.40784317
+                        readonly property real alpha35: 0.35686272
+                        readonly property real alpha50: 0.24313729
+                        readonly property real alpha75: 0.05882353
+                        readonly property real alpha90: 0.00784314
+                        readonly property real alpha95: 0.0
                     }
                     readonly property real blur: 0.0
                     readonly property real edge: 0.0
@@ -215,7 +229,7 @@ QtObject {
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "baseline"
-                    readonly property string provenance: "No standalone dark veil was measured; named Dragonfruit baseline 0.48 neutral alpha"
+                    readonly property string provenance: "No standalone dark veil was measured; named Dragonfruit baseline: the measured light depth profile scaled to a 0.48 peak over black, with a 0.20 post-veil readability ceiling"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.48
@@ -223,6 +237,18 @@ QtObject {
                         readonly property real perceptualWeight: 0.0
                         readonly property real perceptualAlpha: 0.48
                         readonly property real perceptualTint: 0.0
+                    }
+                    readonly property var veil: QtObject {
+                        readonly property real probe: 8.0
+                        readonly property real readability: 0.2
+                        readonly property real alpha5: 0.48
+                        readonly property real alpha15: 0.4674
+                        readonly property real alpha25: 0.434
+                        readonly property real alpha35: 0.3798
+                        readonly property real alpha50: 0.2588
+                        readonly property real alpha75: 0.0626
+                        readonly property real alpha90: 0.00835
+                        readonly property real alpha95: 0.0
                     }
                     readonly property real blur: 0.0
                     readonly property real edge: 0.0
