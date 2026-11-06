@@ -18,6 +18,11 @@ Item {
     // entry instead of freezing at the hover origin.
     property bool open: false
     property Item anchorItem: null
+    // Optional geometry override for an owner whose label is anchored to a
+    // stable surface edge rather than the anchor's own box (the Dock anchors
+    // vertically to the plate while following the magnified tile's x/width).
+    // `{ x, y, w, h }`; when null the anchorItem's geometry is used.
+    property var anchorRect: null
     property string text: ""
     // Where the capsule sits relative to the anchor: "above" | "below" |
     // "left" | "right". A bottom Dock uses "above"; a left/right Dock uses the
@@ -70,10 +75,14 @@ Item {
 // and the gallery's demo anchor do). Reading the geometry directly — instead
 // of mapping through a function — is what makes the capsule follow a magnified
 // entry: `mapToItem` alone does not track the anchor's live geometry.
-    readonly property real anchorX: anchorItem ? anchorItem.x : 0
-    readonly property real anchorY: anchorItem ? anchorItem.y : 0
-    readonly property real anchorWidth: anchorItem ? anchorItem.width : 0
-    readonly property real anchorHeight: anchorItem ? anchorItem.height : 0
+    readonly property real anchorX:
+        anchorRect !== null ? anchorRect.x : (anchorItem ? anchorItem.x : 0)
+    readonly property real anchorY:
+        anchorRect !== null ? anchorRect.y : (anchorItem ? anchorItem.y : 0)
+    readonly property real anchorWidth:
+        anchorRect !== null ? anchorRect.w : (anchorItem ? anchorItem.width : 0)
+    readonly property real anchorHeight:
+        anchorRect !== null ? anchorRect.h : (anchorItem ? anchorItem.height : 0)
 
     readonly property real preferredX:
         placement === "left" ? anchorX - width - offset - tailGap

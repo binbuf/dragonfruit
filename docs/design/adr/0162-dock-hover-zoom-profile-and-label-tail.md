@@ -3,8 +3,9 @@
 ## Status
 
 accepted — amended by [0186](0186-dock-reference-retune-profile-fit-and-states.md)
-(the profile is now slot-pitch normalized and edge-fitted; the fixed bar,
-continuous warp, and label-tail decisions here still stand)
+and [0218](0218-dock-motion-raised-cosine-and-tooltip.md) (the profile is now
+the absolute-point raised cosine; the Dock no longer uses the label tail. The
+fixed bar and continuous warp decisions here still stand)
 
 ## Context
 

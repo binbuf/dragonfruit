@@ -433,38 +433,153 @@ Item {
             verify(layout[0].iconSize < layout[1].iconSize);
         }
 
-        // The reference zoom profile (docs/dock.md §5): distance is measured
-        // in *resting slot pitches*, with knots 1.00 / 0.90 / 0.45 / 0.00 at
-        // 0/1/2/3 pitches. This pins the profile shape, not a peak value (the
-        // peak is the user-tuned `magnification`).
-        function test_magnification_profile_matches_the_reference_bubble() {
+        // T199: the controlled reference profile is a raised cosine over
+        // absolute logical distance, S(d) = 1 + (peak - 1) * 0.5 * (1 +
+        // cos(pi * d / R)), with R = 125.1 pt. This pins the spatial curve
+        // independently of the live icon size.
+        function test_magnification_profile_is_a_bounded_raised_cosine() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160, magnification: 1.0,
-                entries: [ app("a", "A", true), app("b", "B", true),
-                           app("c", "C", true), app("d", "D", true),
-                           app("e", "E", true), app("f", "F", true) ]
+                entries: [ app("a", "A", true) ]
             });
-            dock.pointerAlong = dock._baseline.centers[2];
+            fuzzyCompare(dock.magnifyInfluence, 125.1, 0.001);
+            fuzzyCompare(dock.magnifyWeightAt(0), 1.0, 1e-9);
+            fuzzyCompare(dock.magnifyWeightAt(dock.magnifyInfluence / 2),
+                         0.5, 1e-9);
+            fuzzyCompare(dock.magnifyWeightAt(dock.magnifyInfluence), 0.0, 1e-9);
+            compare(dock.magnifyWeightAt(dock.magnifyInfluence + 40), 0);
+            // Monotone, bounded, and zero beyond the influence radius.
+            var previous = 1.0;
+            for (var i = 0; i <= 100; ++i) {
+                var w = dock.magnifyWeightAt(dock.magnifyInfluence * i / 100);
+                verify(w >= -1e-9 && w <= 1 + 1e-9);
+                verify(w <= previous + 1e-9, "the profile must not rise");
+                previous = w;
+            }
+            // The measured diagnostic samples are 64 capture px (32 pt) apart
+            // at 2x; their scale ratios sit on this curve within 3 %.
+            var reference = [ 1.906, 1.531 ]; // 32 pt, 64 pt
+            var distances = [ 32, 64 ];
+            for (var s = 0; s < distances.length; ++s) {
+                var scale = 1 + (dock.magnifyPeakMax - 1)
+                              * dock.magnifyWeightAt(distances[s]);
+                verify(Math.abs(scale - reference[s]) / reference[s] < 0.03,
+                       "reference sample " + distances[s] + " pt: " + scale
+                       + " vs " + reference[s]);
+            }
+            // The peak is flat at the pointer, so a tiny move does not change
+            // the anchored tile's size.
+            dock.pointerAlong = dock._baseline.centers[0];
             waitForRendering(stage);
             waitForMagnify();
-            var layout = dock.layout;
-            var peak = layout[2].iconSize - dock.iconSize;
-            verify(peak > 0, "the anchored tile reaches the peak");
-            var one = ((layout[1].iconSize - dock.iconSize)
-                       + (layout[3].iconSize - dock.iconSize)) / (2 * peak);
-            var two = ((layout[0].iconSize - dock.iconSize)
-                       + (layout[4].iconSize - dock.iconSize)) / (2 * peak);
-            var three = (layout[5].iconSize - dock.iconSize) / peak;
-            verify(one > 0.88 && one < 0.92, "one pitch keeps ~90 % of the peak: " + one);
-            verify(two > 0.43 && two < 0.47, "two pitches keep ~45 % of the peak: " + two);
-            verify(three < 0.001, "three pitches are back at rest: " + three);
-            // The peak itself is flat at the pointer (the cubic's endpoint
-            // slope is zero), so a tiny pointer move does not change the
-            // anchored tile's size.
-            var peakBefore = dock.layout[2].iconSize;
+            var peakBefore = dock.layout[0].iconSize;
             dock.pointerAlong += 2;
             wait(Theme.motion.dockMagnifyTrack.duration + 40);
-            fuzzyCompare(dock.layout[2].iconSize, peakBefore, 0.25);
+            fuzzyCompare(dock.layout[0].iconSize, peakBefore, 0.25);
+        }
+
+        // The two controlled calibration fixtures: the default 0.5 setting
+        // peaks at 1.217x and the diagnostic 1.0 setting at 2.047x. A live
+        // magnification change follows the same smooth, monotone mapping.
+        function test_magnification_peak_matches_default_and_diagnostic_fixtures() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200, magnification: 0.5,
+                entries: [ app("a", "A", true) ]
+            });
+            compare(dock.iconSize, Theme.controls.dock.iconSize);
+            fuzzyCompare(dock.magnifyPeakFactor, 1.217, 1e-9);
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            waitForMagnify();
+            fuzzyCompare(dock.layout[0].iconSize,
+                         dock.iconSize * 1.217, 0.01);
+
+            dock.magnification = 1.0;
+            fuzzyCompare(dock.magnifyPeakFactor, 2.047, 1e-9);
+            waitForMagnify();
+            fuzzyCompare(dock.layout[0].iconSize,
+                         dock.iconSize * 2.047, 0.01);
+
+            var previous = 1.0;
+            for (var i = 0; i <= 100; ++i) {
+                dock.magnification = i / 100;
+                verify(dock.magnifyPeakFactor >= previous - 1e-9,
+                       "the peak mapping must be monotone");
+                previous = dock.magnifyPeakFactor;
+            }
+            dock.magnification = 0.0;
+            fuzzyCompare(dock.magnifyPeakFactor, 1.0, 1e-9);
+        }
+
+        // The influence radius is bounded in points, so a tile whose resting
+        // centre is at or beyond R is exactly at rest for every icon size.
+        function test_tiles_beyond_the_influence_radius_stay_at_rest() {
+            var sizes = [ Theme.controls.dock.iconSizeMin,
+                          Theme.controls.dock.iconSize,
+                          Theme.controls.dock.iconSizeMax ];
+            for (var s = 0; s < sizes.length; ++s) {
+                // Park the real pointer below the Dock so a hover event cannot
+                // overwrite the synthetic pointer before the layout settles.
+                mouseMove(stage, 640, stage.height - 1);
+                waitForRendering(stage);
+                var dock = make(dockComponent, {
+                    width: 1600, height: 200, iconSize: sizes[s],
+                    magnification: 1.0,
+                    entries: [ app("a", "A", true), app("b", "B", true),
+                               app("c", "C", true), app("d", "D", true),
+                               app("e", "E", true), app("f", "F", true),
+                               app("g", "G", true) ]
+                });
+                dock.pointerAlong = dock._baseline.centers[3];
+                waitForRendering(stage);
+                waitForMagnify();
+                var far = Math.abs(dock._baseline.centers[0]
+                                   - dock._baseline.centers[3]);
+                if (far >= dock.magnifyInfluence)
+                    fuzzyCompare(dock.layout[0].iconSize, dock.iconSize, 0.001);
+                for (var i = 0; i < dock.layout.length; ++i) {
+                    if (dock.items[i].kind === "divider")
+                        continue;
+                    verify(isFinite(dock.layout[i].iconSize));
+                    verify(dock.layout[i].iconSize >= dock.iconSize - 0.001);
+                }
+            }
+        }
+
+        // Live `dock.size`, `dock.magnification` and `dock.position` changes
+        // must keep the geometry finite and bounded at every supported range.
+        function test_live_dock_settings_stay_bounded_across_the_ranges() {
+            var sizes = [ Theme.controls.dock.iconSizeMin, 40,
+                          Theme.controls.dock.iconSize, 56,
+                          Theme.controls.dock.iconSizeMax ];
+            var magnitudes = [ 0, 0.25, 0.5, 0.75, 1.0 ];
+            var positions = [ "bottom", "left", "right" ];
+            for (var p = 0; p < positions.length; ++p) {
+                var dock = make(dockComponent, {
+                    width: positions[p] === "bottom" ? 1280 : 220,
+                    height: positions[p] === "bottom" ? 220 : 900,
+                    position: positions[p], magnification: 0.5,
+                    entries: [ app("a", "A", true), app("b", "B", true),
+                               app("c", "C", true), app("d", "D", true) ]
+                });
+                dock.pointerAlong = dock._baseline.centers[1];
+                for (var s = 0; s < sizes.length; ++s) {
+                    dock.iconSize = sizes[s];
+                    for (var m = 0; m < magnitudes.length; ++m) {
+                        dock.magnification = magnitudes[m];
+                        var r = dock.plateRect;
+                        verify(isFinite(r.x) && isFinite(r.y)
+                               && isFinite(r.w) && isFinite(r.h));
+                        verify(r.w >= 0 && r.h >= 0);
+                        for (var i = 0; i < dock.layout.length; ++i) {
+                            verify(isFinite(dock.layout[i].x)
+                                   && isFinite(dock.layout[i].y)
+                                   && isFinite(dock.layout[i].w)
+                                   && isFinite(dock.layout[i].h));
+                        }
+                    }
+                }
+            }
         }
 
         // docs/dock.md §5: at the screen edge the zoomed row must be bounded
@@ -588,6 +703,75 @@ Item {
                     continue;
                 fuzzyCompare(dock.layout[i].iconSize, dock.iconSize, 0.001);
             }
+        }
+
+        // T199: the controlled enter/exit envelope is the measured 135 ms
+        // smoothstep g(u) = 3u^2 - 2u^3. A cubic Bezier with control points
+        // (1/3, 0) and (2/3, 1) has exactly that timing function.
+        function test_magnify_envelope_is_the_measured_smoothstep() {
+            compare(Theme.motion.dockHover.fullDuration, 135);
+            compare(Theme.motion.dockHover.duration, 135);
+            fuzzyCompare(Theme.motion.dockHover.curve[0], 1 / 3, 1e-6);
+            fuzzyCompare(Theme.motion.dockHover.curve[1], 0, 1e-9);
+            fuzzyCompare(Theme.motion.dockHover.curve[2], 2 / 3, 1e-6);
+            fuzzyCompare(Theme.motion.dockHover.curve[3], 1, 1e-9);
+
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[1];
+            // Halfway through the smoothstep is 0.5 (allow a frame of slack).
+            wait(67);
+            verify(dock.magnifyEngagement > 0.25 && dock.magnifyEngagement < 0.75,
+                   "enter ramp is not the 135 ms smoothstep: "
+                   + dock.magnifyEngagement);
+            waitForMagnify();
+            fuzzyCompare(dock.magnifyEngagement, 1, 0.001);
+
+            dock.pointerAlong = -1;
+            wait(67);
+            verify(dock.magnifyEngagement > 0.25 && dock.magnifyEngagement < 0.75,
+                   "exit ramp is not the 135 ms smoothstep: "
+                   + dock.magnifyEngagement);
+            waitForMagnify();
+            fuzzyCompare(dock.magnifyEngagement, 0, 0.001);
+        }
+
+        // A quick reversal retargets from the current visual state instead of
+        // snapping to the new endpoint or restarting from zero.
+        function test_magnify_reversal_retargets_from_the_current_state() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[1];
+            wait(70);
+            var entering = dock.magnifyEngagement;
+            verify(entering > 0.2 && entering < 0.8, "enter was mid-flight: " + entering);
+            dock.pointerAlong = -1;
+            waitForRendering(stage);
+            var reversing = dock.magnifyEngagement;
+            verify(reversing > 0.1 && reversing <= entering + 0.05,
+                   "the exit must continue from the current value, not snap: "
+                   + reversing + " vs " + entering);
+            wait(70);
+            verify(dock.magnifyEngagement < reversing,
+                   "the reversal must keep shrinking");
+            var leaving = dock.magnifyEngagement;
+            dock.pointerAlong = dock._baseline.centers[2];
+            waitForRendering(stage);
+            var reentering = dock.magnifyEngagement;
+            verify(reentering >= leaving - 0.05,
+                   "re-entry must grow from the current value, not zero");
+            waitForMagnify();
+            fuzzyCompare(dock.magnifyEngagement, 1, 0.001);
         }
 
         function test_anchor_stays_under_pointer() {
@@ -2464,7 +2648,9 @@ Item {
             waitForRendering(stage);
             var baseY = dock.layout[0].y;
             verify(bouncedY < baseY);
-            verify(Math.abs((baseY - bouncedY) - dock.barThickness / 4) < 0.5);
+            // T199: the measured reference launch lift is 15 pt, independent
+            // of the live icon size.
+            fuzzyCompare(baseY - bouncedY, Theme.controls.dock.launchLift, 0.5);
         }
 
         function test_attention_bounce_is_taller_than_launch() {
@@ -6445,7 +6631,7 @@ Item {
 
         function test_tooltip_follows_the_magnified_entry_and_stays_open() {
             var dock = make(dockComponent, {
-                width: 1280, height: 160, magnification: 1.0,
+                width: 1280, height: 160, magnification: 0.5,
                 entries: [ app("a", "Safari", true), app("b", "Music", true) ]
             });
             var entry = dock.itemAt(0);
@@ -6453,13 +6639,166 @@ Item {
             tryCompare(dock, "tooltipOpen", true);
             dock.pointerAlong = dock._baseline.centers[0];
             tryCompare(dock, "magnifying", true);
-            wait(250);
+            waitForMagnify();
             compare(dock.tooltipOpen, true,
                     "a label stays up while magnification runs");
             var tooltip = findChild(dock, "dockTooltip");
             verify(entry.iconSize > dock.iconSize, "the hovered entry grew");
+            // The label follows the tile horizontally but stays 8 pt above the
+            // stable plate edge, per the controlled reference.
+            fuzzyCompare(tooltip.x + tooltip.width / 2,
+                         entry.x + entry.width / 2, 0.501);
+            fuzzyCompare(tooltip.y + tooltip.height,
+                         dock.plateRect.y - Theme.controls.tooltip.offset, 0.501);
             verify(tooltip.y + tooltip.height <= entry.y + 0.5,
-                   "the label stays anchored above the magnified entry");
+                   "the default peak still leaves the label above the artwork");
+        }
+
+        // The controlled reference capsule: 33 pt tall, pill radius, 8 pt
+        // above the plate, no pointer tail, and a width that follows the label.
+        function test_tooltip_uses_the_controlled_reference_shape() {
+            compare(Theme.controls.tooltip.dwell, 1400);
+            compare(Theme.controls.tooltip.offset, 8);
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            tryCompare(dock, "tooltipOpen", true);
+            var tooltip = findChild(dock, "dockTooltip");
+            verify(tooltip.height >= 31 && tooltip.height <= 35,
+                   "capsule height is the measured 33 pt: " + tooltip.height);
+            fuzzyCompare(tooltip.capsuleRadius, tooltip.height / 2, 0.001);
+            compare(tooltip.tailVisible, false, "the reference capsule has no tail");
+            var tail = findChild(tooltip, "tooltipTail");
+            verify(tail === null || !tail.visible, "no tail is drawn");
+            fuzzyCompare(tooltip.y + tooltip.height,
+                         dock.plateRect.y - Theme.controls.tooltip.offset, 0.501);
+            tryCompare(tooltip, "visible", true);
+            var rect = dock.tooltipRect;
+            fuzzyCompare(rect.y, tooltip.y, 0.501);
+            fuzzyCompare(rect.h, tooltip.height, 0.501);
+
+            // Width remains label-driven rather than a fixed reference width.
+            var wide = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("b", "A much longer application name", true) ]
+            });
+            wide.entryHoverBegan(wide.entries[0], wide.itemAt(0));
+            wide.showTooltip();
+            waitForRendering(stage);
+            var wideTooltip = findChild(wide, "dockTooltip");
+            verify(wideTooltip.width > tooltip.width + 20,
+                   "the capsule width follows the label");
+        }
+
+        // A vertical Dock places the label beside the entry (interior side),
+        // vertically centred on it, while a bottom Dock anchors to the plate.
+        function test_tooltip_vertical_placement_follows_the_entry() {
+            var dock = make(dockComponent, {
+                width: 240, height: 800, position: "left",
+                entries: [ app("a", "Safari", true), app("b", "Music", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            dock.showTooltip();
+            waitForRendering(stage);
+            var tooltip = findChild(dock, "dockTooltip");
+            tryCompare(tooltip, "visible", true);
+            verify(tooltip.x >= entry.x + entry.width
+                   + Theme.controls.tooltip.offset - 0.5,
+                   "the vertical label sits on the interior side");
+            fuzzyCompare(tooltip.y + tooltip.height / 2,
+                         entry.y + entry.height / 2, 1.0);
+        }
+
+        // The dwell is the controlled 1.4 s, not the old 250 ms shortcut.
+        function test_tooltip_waits_the_measured_dwell() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
+            wait(500);
+            compare(dock.tooltipOpen, false,
+                    "the label must not appear before the 1.4 s dwell");
+            tryCompare(dock, "tooltipOpen", true);
+        }
+
+        // A projection that moves a different tile under the pointer must not
+        // fire the old tile's label, whether the dwell is pending or open.
+        function test_tooltip_does_not_fire_on_a_stale_tile_identity() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true), app("b", "Music", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            dock.smoothPointerAlong = dock.pointerAlong;
+            dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
+            compare(dock.tooltipOpen, false);
+            // Reorder while the dwell is pending: Music is now under the
+            // pointer, so Safari's pending label is stale.
+            dock.entries = [ app("b", "Music", true), app("a", "Safari", true) ];
+            waitForRendering(stage);
+            wait(dock.tooltipDwell + 100);
+            compare(dock.tooltipOpen, false,
+                    "the pending label must not fire for the old identity");
+
+            // Open a label, then move a different tile under the pointer.
+            dock.pointerAlong = dock._baseline.centers[0];
+            dock.smoothPointerAlong = dock.pointerAlong;
+            dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
+            dock.showTooltip();
+            compare(dock.tooltipOpen, true);
+            dock.entries = [ app("a", "Safari", true), app("b", "Music", true) ];
+            waitForRendering(stage);
+            tryCompare(dock, "tooltipOpen", false);
+            verify(dock.tooltipAnchor === null || dock.tooltipEntry === null
+                   || dock.tooltipEntry.id === "b",
+                   "the stale label releases its old identity");
+        }
+
+        // Keyboard navigation and drag/reorder own the stage: a hover must not
+        // pop a label over either, and the ownership is restored when they end.
+        function test_tooltip_is_suppressed_by_keyboard_and_drag() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true), app("b", "Music", true) ]
+            });
+            dock.beginKeyboardNavigation();
+            dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
+            wait(200);
+            compare(dock.tooltipOpen, false, "keyboard focus suppresses the label");
+            dock.endKeyboardNavigation();
+
+            dock.dragging = true;
+            dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
+            wait(200);
+            compare(dock.tooltipOpen, false, "a drag suppresses the label");
+            dock.dragging = false;
+        }
+
+        function test_click_while_magnifying_hides_the_label() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 0.5,
+                entries: [ app("a", "Safari", true), app("b", "Music", true) ]
+            });
+            var entry = dock.itemAt(0);
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            dock.pointerAlong = dock._baseline.centers[0];
+            dock.smoothPointerAlong = dock.pointerAlong;
+            dock.entryHoverBegan(dock.entries[0], entry);
+            dock.showTooltip();
+            tryCompare(dock, "magnifying", true);
+            compare(dock.tooltipOpen, true);
+            dock.handleEntryTap(dock.entries[0]);
+            compare(dock.tooltipOpen, false);
+            // The tap must still activate the entry (launch ownership stays).
+            compare(activatedSpy.count, 1);
         }
 
         function test_tooltip_clamps_at_the_dock_end() {
@@ -6489,11 +6828,9 @@ Item {
             verify(dock.popoverRect.h > 0);
         }
 
-        // The hover label points at its icon with a token tail (T-14.7aa):
-        // the capsule clears the anchor by the tail plus the offset, the tail
-        // is aimed at the anchor centre, and the committed overlay rect covers
-        // the tail so the shell's copy never clips it.
-        function test_tooltip_tail_points_at_the_anchor_and_rides_the_rect() {
+        // The committed overlay rect covers exactly the capsule (no tail), so
+        // the shell's copy never clips the reference shape.
+        function test_tooltip_rect_covers_the_capsule() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
                 entries: [ app("a", "Safari", true), app("b", "Music", true) ]
@@ -6502,24 +6839,12 @@ Item {
             dock.entryHoverBegan(dock.entries[0], entry);
             tryCompare(dock, "tooltipOpen", true);
             var tooltip = findChild(dock, "dockTooltip");
-            compare(tooltip.tailVisible, true, "the Dock label carries the tail");
             tryCompare(tooltip, "visible", true);
-            var tail = findChild(tooltip, "tooltipTail");
-            verify(tail !== null && tail.visible, "the tail is drawn");
-            fuzzyCompare(tail.width, Theme.controls.tooltip.tailWidth, 0.001);
-            fuzzyCompare(tail.height, Theme.controls.tooltip.tailHeight, 0.001);
-            // Above placement: the capsule bottom sits `offset + tailHeight`
-            // above the entry, so the tip lands `offset` away from it.
-            fuzzyCompare(tooltip.y + tooltip.height + Theme.controls.tooltip.tailHeight,
-                         entry.y - Theme.controls.tooltip.offset, 0.501);
-            // The tail is aimed at the anchor centre.
-            fuzzyCompare(tooltip.x + tail.x + tail.width / 2,
-                         entry.x + entry.width / 2, 0.501);
-            // The committed overlay rect covers the capsule plus the tail.
             var rect = dock.tooltipRect;
             fuzzyCompare(rect.y, tooltip.y, 0.501);
-            fuzzyCompare(rect.h,
-                         tooltip.height + Theme.controls.tooltip.tailHeight, 0.501);
+            fuzzyCompare(rect.h, tooltip.height, 0.501);
+            fuzzyCompare(rect.x, tooltip.x, 0.501);
+            fuzzyCompare(rect.w, tooltip.width, 0.501);
         }
 
         // A projection rebuild destroys the delegate the label is anchored to.

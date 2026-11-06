@@ -29,14 +29,17 @@ import time
 from PIL import Image, ImageDraw
 
 NESTED_W, NESTED_H = 1920, 1200
-WALL = (33, 13, 41)
-WALL_TOL = 3
-WALL_ROW_MIN = 200
+# The virtual host's desktop is pure black; the nested window (including its
+# titlebar) is the one large non-black rectangle. Do not key on the wallpaper
+# colour: the shipped default is a photograph, and the host may supply its own.
+BLACK_SUM = 12
+DETECT_ROW_MIN = 200
 
 DOCK_Y = 1155
 DOCK_LEFT_X = 785
 DOCK_RIGHT_X = 1135
-DOCK_BAND = (560, 1000, 1360, 1200)  # x, y, x2, y2
+DOCK_BAND_X = (560, 1360)  # x, x2 relative to the nested content
+DOCK_BAND_H = 120          # bottom-relative crop height (Dock + a little air)
 FRAMES = 6
 
 
@@ -59,6 +62,11 @@ class Synthetic:
     def send(self, command):
         self.sock.sendto(command.encode(), self.path)
 
+    def query(self, command):
+        self.send(command)
+        data, _ = self.sock.recvfrom(65536)
+        return data.decode()
+
     def motion(self, x, y):
         self.send(f"motion-abs {x / NESTED_W} {y / NESTED_H}")
 
@@ -68,19 +76,18 @@ def detect_rect(path):
     px = im.load()
     w, h = im.size
 
-    def matches(c):
-        return all(abs(c[i] - WALL[i]) <= WALL_TOL for i in range(3))
-
     rows = []
-    for y in range(0, h):
-        xs = [x for x in range(0, w, 4) if matches(px[x, y])]
-        if len(xs) >= WALL_ROW_MIN:
+    for y in range(0, h, 2):
+        xs = [x for x in range(0, w, 4) if sum(px[x, y]) > BLACK_SUM]
+        if len(xs) >= DETECT_ROW_MIN:
             rows.append((y, xs[0], xs[-1]))
     if not rows:
-        raise RuntimeError("nested window not found (no wallpaper pixels)")
+        raise RuntimeError("nested window not found (no non-black pixels)")
     top = rows[0][0]
+    bottom = rows[-1][0]
     left = min(row[1] for row in rows)
-    return (left, top, NESTED_W, NESTED_H)
+    right = max(row[2] for row in rows)
+    return (left, top, right - left, bottom - top)
 
 
 def full_shot(dest):
@@ -94,10 +101,17 @@ def full_shot(dest):
 
 
 def crop_band(full_path, rect, dest):
-    rx, ry, _rw, _rh = rect
+    rx, _ry, rw, rh = rect
     im = Image.open(full_path).convert("RGB")
-    x0, y0, x1, y1 = DOCK_BAND
-    crop = im.crop((rx + x0, ry + y0, rx + x1, ry + y1))
+    x0, x1 = DOCK_BAND_X
+    # Crop from the nested window's bottom edge, not its top: the host may
+    # decorate the nested window, and the Dock is anchored to the content
+    # bottom in every case.
+    x0 = max(0, min(rw, x0))
+    x1 = max(0, min(rw, x1))
+    y1 = rh
+    y0 = max(0, rh - DOCK_BAND_H)
+    crop = im.crop((rx + x0, _ry + y0, rx + x1, _ry + y1))
     crop.save(dest)
     return crop
 
@@ -108,6 +122,19 @@ def capture(args):
     os.makedirs(scratch, exist_ok=True)
     synth.send(f"set color-scheme {args.scheme}")
     time.sleep(0.5)
+
+    # The loop demo opens Settings (and the X11 probe) over the Dock. Close
+    # every client window so the sweep crops the live Dock and its wallpaper,
+    # not an app pane behind the glass.
+    try:
+        report = synth.query("query decorations")
+        for line in report.splitlines():
+            fields = line.split()
+            if len(fields) >= 2 and fields[0] == "decoration":
+                synth.send(f"close {fields[1]}")
+        time.sleep(0.8)
+    except (TimeoutError, socket.timeout):
+        log("no decoration reply; sweeping with the demo windows present")
 
     init = full_shot(os.path.join(scratch, "init.png"))
     rect = detect_rect(init)

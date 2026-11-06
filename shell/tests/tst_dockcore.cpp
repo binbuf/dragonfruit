@@ -495,6 +495,29 @@ private slots:
         QCOMPARE(dockIconSize(2.0, 32, 64), 64);
     }
 
+    void dockConfigClampsLiveRangesAndPlacement()
+    {
+        QVariantMap values;
+        values.insert(QStringLiteral("dock.size"), -0.4);
+        values.insert(QStringLiteral("dock.magnification"), 1.8);
+        values.insert(QStringLiteral("dock.position"), QStringLiteral("diagonal"));
+        DockConfig config = dockConfigFromValues(values);
+        QCOMPARE(config.size, 0.0);
+        QCOMPARE(config.magnification, 1.0);
+        QCOMPARE(config.position, QStringLiteral("bottom"));
+
+        values.insert(QStringLiteral("dock.size"), 1.4);
+        values.insert(QStringLiteral("dock.magnification"), -2.0);
+        values.insert(QStringLiteral("dock.position"), QStringLiteral("right"));
+        config = dockConfigFromValues(values);
+        QCOMPARE(config.size, 1.0);
+        QCOMPARE(config.magnification, 0.0);
+        QCOMPARE(config.position, QStringLiteral("right"));
+
+        values.insert(QStringLiteral("dock.position"), QStringLiteral("left"));
+        QCOMPARE(dockConfigFromValues(values).position, QStringLiteral("left"));
+    }
+
     void settingsChangeReLaysOutTheDock()
     {
         // The headless half of the T-08.2a acceptance: a `dock.size` change

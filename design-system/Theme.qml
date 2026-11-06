@@ -898,11 +898,10 @@ QtObject {
             readonly property int radius: 27
             readonly property int indicatorSize: 4
             readonly property int indicatorGap: 8
-            readonly property real magnifyPeak: 1.25
-            readonly property real magnifyPeakMax: 1.5
-            readonly property real magnifyFalloff: 3.0
-            readonly property real magnifyWeightNear: 0.9
-            readonly property real magnifyWeightMiddle: 0.45
+            readonly property real magnifyPeak: 1.217
+            readonly property real magnifyPeakMax: 2.047
+            readonly property real magnifyInfluence: 125.1
+            readonly property int launchLift: 15
             readonly property int labelSize: 12
             readonly property int trashSize: 44
             readonly property int edgeMargin: 8
@@ -1096,11 +1095,11 @@ QtObject {
             readonly property int shadowBlur: 40
         }
         readonly property var tooltip: QtObject {
-            readonly property int dwell: 250
+            readonly property int dwell: 1400
             readonly property int offset: 8
             readonly property int radius: 999
             readonly property int paddingH: 12
-            readonly property int paddingV: 4
+            readonly property int paddingV: 8
             readonly property int maxWidth: 260
             readonly property int fontSize: 13
             readonly property int tailWidth: 16
@@ -1247,9 +1246,9 @@ QtObject {
             readonly property var curve: [0.22, 1.0, 0.36, 1.0, 1.0, 1.0]
         }
         readonly property QtObject dockHover: QtObject {
-            readonly property int fullDuration: 160
-            readonly property int duration: tokens.reducedMotion ? 0 : 160
-            readonly property var curve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0]
+            readonly property int fullDuration: 135
+            readonly property int duration: tokens.reducedMotion ? 0 : 135
+            readonly property var curve: [0.3333333333333333, 0.0, 0.6666666666666666, 1.0, 1.0, 1.0]
         }
         readonly property QtObject dockMagnifyTrack: QtObject {
             readonly property int fullDuration: 100
@@ -1270,6 +1269,11 @@ QtObject {
             readonly property int fullDuration: 100
             readonly property int duration: tokens.reducedMotion ? 0 : 100
             readonly property var curve: [0.4, 0.0, 1.0, 1.0, 1.0, 1.0]
+        }
+        readonly property QtObject windowGenie: QtObject {
+            readonly property int fullDuration: 450
+            readonly property int duration: tokens.reducedMotion ? 0 : 450
+            readonly property var curve: [0.3333333333333333, 0.0, 0.6666666666666666, 1.0, 1.0, 1.0]
         }
         readonly property QtObject missionControl: QtObject {
             readonly property int fullDuration: 280

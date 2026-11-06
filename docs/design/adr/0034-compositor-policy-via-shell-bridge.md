@@ -56,8 +56,10 @@ typed and additive-only within a release).
   v5 requests and reads the synthetic `query policy` instrument; the shell's
   pure mapping is covered by `tst_compositorpolicy`.
 - `dock.minimizedAnimation=genie` is accepted and currently renders as
-  `scale` (the genie warp is a material-pass follow-up); `none` collapses the
-  minimize/restore tween exactly like reduced motion.
+  `scale` (the genie warp is a material-pass follow-up); since T199 it uses the
+  measured 450 ms minimize/restore envelope, while `scale` keeps the existing
+  open/close pacing. `none` collapses the minimize/restore tween exactly like
+  reduced motion.
 - `appearance.transparency` and both accessibility overrides are one snapshot
   in v9. The compositor clamps a malformed slider, ignores an unknown scheme,
   and advances its material revision only on a real change, so a repeated
