@@ -38,6 +38,90 @@ pub enum RoundedCorners {
     Bottom,
 }
 
+/// Per-corner radii for a material region (T197).
+///
+/// A menu attached to the menu bar keeps square top corners while its bottom
+/// corners follow the popup radius; a detached card rounds all four. The
+/// renderer clips with these radii, so the shape comes from the region
+/// metadata rather than a single "all corners" literal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CornerRadii {
+    pub top_left: i32,
+    pub top_right: i32,
+    pub bottom_right: i32,
+    pub bottom_left: i32,
+}
+
+impl CornerRadii {
+    /// All four corners at the same radius.
+    pub const fn uniform(radius: i32) -> Self {
+        Self {
+            top_left: radius,
+            top_right: radius,
+            bottom_right: radius,
+            bottom_left: radius,
+        }
+    }
+
+    /// The radii for a [`CornerMask`]'s radius/mask pair.
+    pub const fn from_mask(radius: i32, corners: RoundedCorners) -> Self {
+        match corners {
+            RoundedCorners::All => Self::uniform(radius),
+            RoundedCorners::Top => Self {
+                top_left: radius,
+                top_right: radius,
+                bottom_right: 0,
+                bottom_left: 0,
+            },
+            RoundedCorners::Bottom => Self {
+                top_left: 0,
+                top_right: 0,
+                bottom_right: radius,
+                bottom_left: radius,
+            },
+        }
+    }
+
+    /// Clamp every radius to `max` and to non-negative values.
+    pub fn clamped(self, max: i32) -> Self {
+        let max = max.max(0);
+        Self {
+            top_left: self.top_left.clamp(0, max),
+            top_right: self.top_right.clamp(0, max),
+            bottom_right: self.bottom_right.clamp(0, max),
+            bottom_left: self.bottom_left.clamp(0, max),
+        }
+    }
+
+    /// The largest radius; used where a single radius is still required
+    /// (the liquid-glass shader's SDF, the fallback feather).
+    pub const fn max(self) -> i32 {
+        let top = if self.top_left > self.top_right {
+            self.top_left
+        } else {
+            self.top_right
+        };
+        let bottom = if self.bottom_right > self.bottom_left {
+            self.bottom_right
+        } else {
+            self.bottom_left
+        };
+        if top > bottom {
+            top
+        } else {
+            bottom
+        }
+    }
+
+    /// Whether every corner is square.
+    pub const fn is_square(self) -> bool {
+        self.top_left == 0
+            && self.top_right == 0
+            && self.bottom_right == 0
+            && self.bottom_left == 0
+    }
+}
+
 /// A reusable token-derived corner mask: a radius plus the corners it rounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CornerMask {
@@ -92,33 +176,56 @@ pub fn rounded_rect_spans(
     radius: i32,
     corners: RoundedCorners,
 ) -> Vec<Rectangle<i32, Logical>> {
+    rounded_rect_spans_with_radii(rect, CornerRadii::from_mask(radius, corners))
+}
+
+/// Decompose a rounded rectangle with independent per-corner radii into
+/// non-overlapping horizontal spans (T197).
+///
+/// The row bands are as tall as the largest radius on each edge. A corner with
+/// radius zero contributes no inset on its side, so an attached menu (square
+/// top, rounded bottom) is a full-width strip at the top and a rounded card at
+/// the bottom. Every radius is clamped to half the shorter side; the result
+/// still covers exactly the same rectangle without gaps or overlap.
+pub fn rounded_rect_spans_with_radii(
+    rect: Rectangle<i32, Logical>,
+    radii: CornerRadii,
+) -> Vec<Rectangle<i32, Logical>> {
     let w = rect.size.w;
     let h = rect.size.h;
     if w <= 0 || h <= 0 {
         return Vec::new();
     }
     let max_radius = w.min(h).max(0) / 2;
-    let radius = radius.clamp(0, max_radius);
-    if radius == 0 {
+    let radii = radii.clamped(max_radius);
+    if radii.is_square() {
         return vec![rect];
     }
 
-    let top = matches!(corners, RoundedCorners::All | RoundedCorners::Top);
-    let bottom = matches!(corners, RoundedCorners::All | RoundedCorners::Bottom);
-    let mut spans = Vec::with_capacity((2 * radius + 1) as usize);
+    let top_band = radii.top_left.max(radii.top_right);
+    let bottom_band = radii.bottom_left.max(radii.bottom_right);
+    let mut spans = Vec::with_capacity((top_band + bottom_band + 1).max(1) as usize);
 
     // Top corner band: row 0 is the top edge (widest inset), the row adjacent
-    // to the central band is nearly full width.
-    if top {
-        for index in 0..radius {
-            let inset = corner_inset(radius, index);
-            spans.push(span(rect, rect.loc.y + index, inset));
-        }
+    // to the central band is nearly full width. Each side follows its own
+    // radius; a square corner never insets.
+    for index in 0..top_band {
+        let left = if index < radii.top_left {
+            corner_inset(radii.top_left, index)
+        } else {
+            0
+        };
+        let right = if index < radii.top_right {
+            corner_inset(radii.top_right, index)
+        } else {
+            0
+        };
+        spans.push(span(rect, rect.loc.y + index, left, right));
     }
 
-    // Central band: full width, from below the top radius to above the bottom.
-    let central_start = rect.loc.y + if top { radius } else { 0 };
-    let central_end = rect.loc.y + h - if bottom { radius } else { 0 };
+    // Central band: full width, from below the top band to above the bottom.
+    let central_start = rect.loc.y + top_band;
+    let central_end = rect.loc.y + h - bottom_band;
     if central_end > central_start {
         spans.push(Rectangle::new(
             (rect.loc.x, central_start).into(),
@@ -128,24 +235,36 @@ pub fn rounded_rect_spans(
 
     // Bottom corner band: mirror of the top, with the widest inset on the
     // bottom edge.
-    if bottom {
-        for index in 0..radius {
-            let inset = corner_inset(radius, radius - 1 - index);
-            let y = rect.loc.y + h - radius + index;
-            spans.push(span(rect, y, inset));
-        }
+    for index in 0..bottom_band {
+        let row = bottom_band - 1 - index;
+        let left = if row < radii.bottom_left {
+            corner_inset(radii.bottom_left, row)
+        } else {
+            0
+        };
+        let right = if row < radii.bottom_right {
+            corner_inset(radii.bottom_right, row)
+        } else {
+            0
+        };
+        let y = rect.loc.y + h - bottom_band + index;
+        spans.push(span(rect, y, left, right));
     }
 
     spans
 }
 
-/// One horizontal span of `rect` at row `y`, inset by `inset` on both sides.
-fn span(rect: Rectangle<i32, Logical>, y: i32, inset: i32) -> Rectangle<i32, Logical> {
-    let inset = inset.clamp(0, rect.size.w / 2);
-    Rectangle::new(
-        (rect.loc.x + inset, y).into(),
-        ((rect.size.w - 2 * inset).max(1), 1).into(),
-    )
+/// One horizontal span of `rect` at row `y`, inset independently on each side.
+fn span(
+    rect: Rectangle<i32, Logical>,
+    y: i32,
+    left: i32,
+    right: i32,
+) -> Rectangle<i32, Logical> {
+    let left = left.clamp(0, rect.size.w / 2);
+    let right = right.clamp(0, rect.size.w / 2);
+    let width = (rect.size.w - left - right).max(1);
+    Rectangle::new((rect.loc.x + left, y).into(), (width, 1).into())
 }
 
 /// How far a corner row is inset from the edge, for a circle of `radius`.
@@ -344,5 +463,68 @@ mod tests {
     fn a_degenerate_rect_produces_no_spans() {
         assert!(rounded_rect_spans(rect(0, 0, 0, 10), 4, RoundedCorners::All).is_empty());
         assert!(rounded_rect_spans(rect(0, 0, 10, 0), 4, RoundedCorners::All).is_empty());
+    }
+
+    #[test]
+    fn per_corner_radii_keep_attached_corners_square() {
+        // A menu attached to the menu bar: square top, rounded bottom.
+        let attached = rect(10, 20, 200, 80);
+        let spans = rounded_rect_spans_with_radii(attached, CornerRadii {
+            top_left: 0,
+            top_right: 0,
+            bottom_right: 12,
+            bottom_left: 12,
+        });
+        assert_eq!(spans.first().unwrap().loc.y, attached.loc.y);
+        assert_eq!(
+            spans.first().unwrap().size.w,
+            attached.size.w,
+            "the top edge stays square"
+        );
+        let bottom = spans.last().unwrap();
+        assert_eq!(bottom.loc.y, attached.loc.y + attached.size.h - 1);
+        assert!(bottom.size.w < attached.size.w, "the bottom edge rounds");
+        assert!(area(&spans) < i64::from(attached.size.w) * i64::from(attached.size.h));
+
+        // Detached card: all four corners round, and each corner follows its
+        // own radius. The left top corner is visibly narrower than the right
+        // one on the first row.
+        let detached = rect(10, 20, 200, 80);
+        let spans = rounded_rect_spans_with_radii(detached, CornerRadii {
+            top_left: 20,
+            top_right: 4,
+            bottom_right: 4,
+            bottom_left: 20,
+        });
+        let top = spans.first().unwrap();
+        assert!(top.loc.x > detached.loc.x, "left top corner is rounded");
+        assert!(
+            top.loc.x + top.size.w < detached.loc.x + detached.size.w,
+            "right top corner is rounded"
+        );
+        assert!(top.size.w < detached.size.w);
+        for span in &spans {
+            assert!(detached.contains_rect(*span));
+        }
+    }
+
+    #[test]
+    fn uniform_per_corner_radii_match_the_shared_mask() {
+        let r = rect(3, 7, 201, 83);
+        for radius in [0, 1, 4, 12, 40, 999] {
+            assert_eq!(
+                rounded_rect_spans_with_radii(r, CornerRadii::uniform(radius)),
+                rounded_rect_spans(r, radius, RoundedCorners::All),
+                "radius {radius}"
+            );
+        }
+        let mask = CornerMask::titlebar();
+        assert_eq!(
+            rounded_rect_spans_with_radii(
+                r,
+                CornerRadii::from_mask(mask.radius, mask.corners)
+            ),
+            rounded_rect_spans(r, mask.radius, mask.corners)
+        );
     }
 }

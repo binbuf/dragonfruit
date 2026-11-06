@@ -38,7 +38,7 @@ use smithay::utils::{Logical, Rectangle, Scale, Size};
 
 use crate::design_tokens::{component, primitive, semantic};
 use crate::window::blur::{tone_to_rgb, BlurSpec, GlassSpec};
-use crate::window::corner::{rounded_rect_spans, RoundedCorners};
+use crate::window::corner::{rounded_rect_spans_with_radii, CornerRadii};
 use crate::window::decoration::{color_from_rgba, ColorScheme};
 use crate::window::pass::FramePass;
 
@@ -519,11 +519,31 @@ pub fn backdrop_elements(
     spec: BackdropSpec,
     scale: Scale<f64>,
 ) -> Vec<SolidColorRenderElement> {
+    backdrop_elements_with_corners(rect, spec, CornerRadii::uniform(spec.radius.round() as i32), scale)
+}
+
+/// Convert the backdrop layers into solid render elements with independent
+/// per-corner radii (T197). Used by the feather fallback for an attached menu
+/// (square top, rounded bottom) or a detached card.
+pub fn backdrop_elements_with_corners(
+    rect: Rectangle<i32, Logical>,
+    spec: BackdropSpec,
+    corners: CornerRadii,
+    scale: Scale<f64>,
+) -> Vec<SolidColorRenderElement> {
     const BACKDROP_SALT: u64 = 0x6261_636b_6472_6f70; // "backdrop"
     let mut elements = Vec::new();
     for (index, layer) in backdrop_layers(rect, spec).into_iter().enumerate() {
-        let radius = layer.radius.round() as i32;
-        for span in rounded_rect_spans(layer.rect, radius, RoundedCorners::All) {
+        // Each feather layer is inset by the same amount as its uniform
+        // radius shrank; apply that inset to every corner independently.
+        let inset = (spec.radius - layer.radius).round().max(0.0) as i32;
+        let radii = CornerRadii {
+            top_left: (corners.top_left - inset).max(0),
+            top_right: (corners.top_right - inset).max(0),
+            bottom_right: (corners.bottom_right - inset).max(0),
+            bottom_left: (corners.bottom_left - inset).max(0),
+        };
+        for span in rounded_rect_spans_with_radii(layer.rect, radii) {
             let physical = span.to_physical_precise_round(scale);
             elements.push(SolidColorRenderElement::new(
                 crate::window::stable_solid_id(BACKDROP_SALT ^ index as u64, physical, layer.color),

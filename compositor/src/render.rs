@@ -30,11 +30,13 @@ use smithay::wayland::compositor::{with_states, SurfaceAttributes};
 use smithay::wayland::fractional_scale::with_fractional_scale;
 use wayland_server::Resource;
 
+use crate::material_preset::{Preset, RenderMode};
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
 use crate::window::{
-    backdrop_elements, is_backdrop_panel, shadow_elements, BlurSpec, MaterialRole, PanelKey,
-    SceneTransform, ShadowLevel, ShadowSpec, WindowState,
+    backdrop_elements_with_corners, is_backdrop_panel, shadow_elements, BlurSpec, CornerRadii,
+    DegradeTier, GlassSpec, MaterialRole, PanelKey, RegionFilter, SceneTransform, ShadowLevel,
+    ShadowSpec, WindowState,
 };
 
 // The two kinds of wallpaper element a backend can composite (T-05.4): a
@@ -244,7 +246,6 @@ pub fn chrome_backdrop_render_elements(
         .visible_chrome_surfaces(output.name().as_str(), output_geometry)
         .into_iter()
         .filter(|chrome| chrome.layer >= 2)
-        .filter(|chrome| is_backdrop_panel(chrome.panel, output_size))
         .filter(|chrome| {
             with_renderer_surface_state(&chrome.surface, |surface| surface.buffer().is_some())
                 .unwrap_or(false)
@@ -256,7 +257,7 @@ pub fn chrome_backdrop_render_elements(
     // The live scheme (T-04.4b) selects the per-scheme material tokens; the
     // pass renders in whatever light/dark the session currently is.
     let scheme = state.color_scheme;
-    // Resolve the token material per surface through that role's **effective**
+    // Resolve the token material per region through that role's **effective**
     // state (T-21.2c): persistent chrome keeps the Reduced floor while the
     // sampled path is available, transient overlays may reach Minimal, and a
     // role whose sampled pass is absent takes its milky fallback (no feather
@@ -265,26 +266,37 @@ pub fn chrome_backdrop_render_elements(
     // feather geometry.
     let visible: Vec<_> = surfaces
         .iter()
-        .filter_map(|chrome| {
+        .flat_map(|chrome| {
             let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
             let material = state.effective_material_for_role(role);
-            if !material.blur_active {
-                return None;
-            }
-            material
-                .tier
-                .backdrop(role.spec_for(scheme, &chrome.namespace))
-                .map(|spec| (chrome, spec))
+            let spec = if material.blur_active {
+                material
+                    .tier
+                    .backdrop(role.spec_for(scheme, &chrome.namespace))
+            } else {
+                None
+            };
+            chrome
+                .regions
+                .iter()
+                .filter(|region| is_backdrop_panel(region.rect, output_size))
+                .filter_map(move |region| {
+                    let spec = spec?;
+                    let corners = region.corners.unwrap_or_else(|| {
+                        CornerRadii::uniform(spec.radius.round().max(0.0) as i32)
+                    });
+                    Some((region.rect, spec, corners))
+                })
         })
         .collect();
     if visible.is_empty() {
         return Vec::new();
     }
-    // The chrome band: the union of the panels that actually draw, in
+    // The chrome band: the union of the regions that actually draw, in
     // output-local logical coordinates. This is the damage the pass owns.
     let region = visible
         .iter()
-        .map(|(chrome, _)| chrome.panel)
+        .map(|(rect, _, _)| *rect)
         .reduce(|a, b| a.merge(b))
         .unwrap_or_default();
     if state
@@ -297,24 +309,102 @@ pub fn chrome_backdrop_render_elements(
     let mut elements = Vec::new();
     // Backdrops follow the same front-to-back rule as the chrome surfaces:
     // the topmost overlay's panel tint is drawn before lower chrome's.
-    for (chrome, spec) in visible.iter().rev() {
-        elements.extend(backdrop_elements(chrome.panel, *spec, scale));
+    for (rect, spec, corners) in visible.iter().rev() {
+        elements.extend(backdrop_elements_with_corners(
+            *rect, *spec, *corners, scale,
+        ));
     }
     elements
 }
 
-/// One chrome panel that should receive the GPU-sampled backdrop blur
-/// (T-20.1): the visible panel rect and its token-resolved blur.
+/// The paint inputs that can change without changing the sampled backdrop
+/// pixels (T197).
+///
+/// A tint/alpha/scheme/tier change repaints the region's element but may reuse
+/// its cached Kawase texture: the texture holds the filtered scene, while the
+/// paint is applied at compose time. Geometry, radius, filter mode, and the
+/// padded source damage belong to the blur key instead.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RegionPaint {
+    pub scheme: crate::window::ColorScheme,
+    pub preset: Preset,
+    pub tier: DegradeTier,
+    pub mode: RenderMode,
+    pub alpha: f32,
+    pub tint: f32,
+    pub edge: f32,
+    pub edge_width: f32,
+    pub foreground: f32,
+    /// The compositor material-policy revision (T196), for trace/tests.
+    pub revision: u64,
+}
+
+/// One chrome material region that should receive the GPU-sampled backdrop
+/// (T-20.1/T197): the visible region rect, its per-corner shape, its
+/// token-resolved blur, and the paint inputs.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BlurPanel {
-    /// Stable identity of the chrome surface this panel belongs to (T-21.3).
-    /// The panel rect may move (Dock magnification) without changing the
-    /// panel's render-element identity.
+    /// Stable identity of this region (surface + region key, T-21.3/T197).
+    /// The rect may move (Dock magnification) without changing the region's
+    /// render-element identity.
     pub key: PanelKey,
+    /// Visual bounds, output-local logical.
     pub panel: Rectangle<i32, Logical>,
+    /// Per-corner clipping radii; attached corners stay square.
+    pub corners: CornerRadii,
+    /// Extra rim/shadow/veil reach beyond `panel` (T197).
+    pub overscan: i32,
     pub spec: BlurSpec,
     /// The Tahoe liquid-glass parameters for this panel (T-20.2).
-    pub glass: crate::window::GlassSpec,
+    pub glass: GlassSpec,
+    /// Filtered (Kawase) or sharp (direct scene sample, veil-only).
+    pub filter: RegionFilter,
+    /// Paint inputs; changes here repaint but reuse the filtered texture.
+    pub paint: RegionPaint,
+}
+
+impl BlurPanel {
+    /// The scene reach this region needs beyond its visual bounds, in logical
+    /// pixels (T197).
+    ///
+    /// The filtered path needs the larger of the Kawase footprint, the token
+    /// blur radius, and the refraction/lens kernel. The sharp/veil path only
+    /// needs its declared overscan (plus one pixel for the sample edge). The
+    /// region is clamped to the output by [`crate::window::MaterialRegion`].
+    pub fn sample_padding_px(&self) -> i32 {
+        let kernel = if self.filter.schedules_blur() {
+            self.spec
+                .padding_px()
+                .max(self.glass.sample_padding_px())
+        } else {
+            1
+        };
+        kernel.max(0).saturating_add(self.overscan.max(0))
+    }
+}
+
+/// The optical preset for a chrome namespace when a region does not declare
+/// one explicitly (T197).
+///
+/// The namespace vocabulary is the shell's existing one; a known surface gets
+/// its measured family, while an unknown persistent surface falls back to the
+/// window-chrome preset and an unknown overlay to a detached menu. The preset
+/// is still resolved through the live T195/T196 policy, so a legacy rollout
+/// keeps the existing role optics.
+pub fn default_preset(namespace: &str, layer: u32) -> Preset {
+    match namespace {
+        "dock" => Preset::Dock,
+        "menubar" => Preset::MenuBarVeil,
+        "menubar-popup" => Preset::MenuAttached,
+        "dock-popup" => Preset::MenuDetached,
+        "control-center" => Preset::ControlCenterOuter,
+        "notification" => Preset::NotificationBanner,
+        "notification-center" => Preset::NotificationStack,
+        "osd" => Preset::Tooltip,
+        "apps-drawer" => Preset::WindowChrome,
+        _ if layer >= 3 => Preset::MenuDetached,
+        _ => Preset::WindowChrome,
+    }
 }
 
 /// Resolve the GPU backdrop blur panels for `output` and apply the material
@@ -332,8 +422,11 @@ pub struct BlurPanel {
 pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel> {
     // The software/headless path (T-20.4) has no GPU scene texture, so the
     // sampled-material pass never runs there: the caller falls back to the
-    // deterministic feather render elements, with no readback.
-    if !state.material_path.gpu_blur() {
+    // deterministic feather render elements, with no readback. A backend that
+    // did not establish the sampled scene path (multi-GPU/rotated DRM, or a
+    // failed material frame) keeps the same fallback even for a veil: the
+    // sharp path still needs the compositor's scene texture (T197).
+    if !state.material_path.gpu_blur() || !state.material_blur_supported {
         return Vec::new();
     }
     let Some(output_geometry) = state.space.output_geometry(output) else {
@@ -344,7 +437,6 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
         .visible_chrome_surfaces(output.name().as_str(), output_geometry)
         .into_iter()
         .filter(|chrome| chrome.layer >= 2)
-        .filter(|chrome| is_backdrop_panel(chrome.panel, output_size))
         .filter(|chrome| {
             with_renderer_surface_state(&chrome.surface, |surface| surface.buffer().is_some())
                 .unwrap_or(false)
@@ -354,30 +446,79 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
         return Vec::new();
     }
     let scheme = state.color_scheme;
-    let mut panels: Vec<BlurPanel> = surfaces
-        .iter()
-        .filter_map(|chrome| {
-            let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
-            let material = state.effective_material_for_role(role);
-            if !material.blur_active {
-                return None;
+    let mut panels: Vec<BlurPanel> = Vec::new();
+    for chrome in &surfaces {
+        if chrome.regions.is_empty() {
+            continue;
+        }
+        let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
+        let material = state.effective_material_for_role(role);
+        let surface_id = chrome.surface.id().protocol_id();
+        for region in &chrome.regions {
+            // A full-output region is a scene-wide overlay, not a material
+            // panel; the per-region check also lets a full-output surface
+            // declare a bounded set of detached cards (T197).
+            if !is_backdrop_panel(region.rect, output_size) {
+                continue;
             }
-            let spec = material
+            let preset = region
+                .preset
+                .unwrap_or_else(|| default_preset(&chrome.namespace, chrome.layer));
+            let resolved = state.resolve_glass_preset(preset);
+            let filter = match resolved.render_mode {
+                RenderMode::Solid | RenderMode::SoftwareFallback => continue,
+                RenderMode::NoBlurVeil => RegionFilter::Sharp,
+                RenderMode::SampledGlass => RegionFilter::Filtered,
+            };
+            let base_spec = role.blur_spec_for(scheme, &chrome.namespace);
+            let spec = match material.tier.blur(base_spec) {
+                Some(spec) if filter == RegionFilter::Filtered => spec,
+                _ if filter == RegionFilter::Sharp => base_spec,
+                _ => continue,
+            };
+            if filter == RegionFilter::Filtered && !material.blur_active {
+                continue;
+            }
+            let glass = material
                 .tier
-                .blur(role.blur_spec_for(scheme, &chrome.namespace))?;
-            let glass = material.tier.glass(role.glass_spec(scheme))?;
-            Some(BlurPanel {
-                key: PanelKey::new(
-                    &chrome.namespace,
-                    chrome.layer,
-                    chrome.surface.id().protocol_id(),
-                ),
-                panel: chrome.panel,
+                .glass(role.glass_spec(scheme))
+                .unwrap_or_else(|| role.glass_spec(scheme));
+            let corners = region.corners.unwrap_or_else(|| {
+                CornerRadii::uniform(spec.corner_radius.round().max(0.0) as i32)
+            });
+            let mut spec = spec;
+            // The liquid-glass shader still carries one SDF radius; clipping
+            // uses the full per-corner set. The maximum keeps the rim inside
+            // every rounded corner.
+            spec.corner_radius = corners.max() as f32;
+            let key = if region.key == "panel" && region.corners.is_none() {
+                PanelKey::new(&chrome.namespace, chrome.layer, surface_id)
+            } else {
+                PanelKey::for_region(&chrome.namespace, chrome.layer, surface_id, &region.key)
+            };
+            panels.push(BlurPanel {
+                key,
+                panel: region.rect,
+                corners,
+                overscan: region.overscan,
                 spec,
                 glass,
-            })
-        })
-        .collect();
+                filter,
+                paint: RegionPaint {
+                    scheme,
+                    preset,
+                    tier: material.tier,
+                    mode: resolved.render_mode,
+                    alpha: resolved.alpha,
+                    tint: resolved.tint,
+                    edge: resolved.edge,
+                    edge_width: resolved.edge_width,
+                    foreground: resolved.foreground,
+                    revision: state.material_revision,
+                },
+            });
+        }
+    }
     if panels.is_empty() {
         return Vec::new();
     }
@@ -398,15 +539,22 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
         return Vec::new();
     }
     // T-20.4 instrumentation: the pass actually ran, so record the output-frame
-    // and the panel count / largest downsample the trace reports.
-    let downsample_max = panels
+    // and the filtered panel count / largest downsample the trace reports. A
+    // veil-only frame (sharp regions, no blur chain) does not advance the blur
+    // pass counter (T197).
+    let filtered = panels
         .iter()
-        .map(|panel| panel.spec.downsample())
-        .max()
-        .unwrap_or(0);
-    state
-        .stats
-        .record_blur_pass(downsample_max, panels.len() as u64);
+        .filter(|panel| panel.filter.schedules_blur())
+        .count() as u64;
+    if filtered > 0 {
+        let downsample_max = panels
+            .iter()
+            .filter(|panel| panel.filter.schedules_blur())
+            .map(|panel| panel.spec.downsample())
+            .max()
+            .unwrap_or(0);
+        state.stats.record_blur_pass(downsample_max, filtered);
+    }
     panels
 }
 

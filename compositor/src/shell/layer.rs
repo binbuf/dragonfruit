@@ -11,7 +11,109 @@
 
 use smithay::utils::{Logical, Point, Rectangle};
 
-use crate::window::ReservedZones;
+use crate::material_preset::Preset;
+use crate::window::{CornerRadii, ReservedZones};
+
+/// Upper bound on the independently keyed material regions one chrome surface
+/// may declare (T197). A menu, a Control Center plate, and a notification
+/// stack need a handful; the bound keeps the per-frame region list, damage
+/// union, and panel-slot table small even for a hostile trusted client.
+pub const MAX_PANEL_REGIONS: usize = 8;
+
+/// Maximum length of a region key (T197).
+pub const MAX_PANEL_REGION_KEY: usize = 64;
+
+/// Maximum rim/shadow/veil overscan beyond a region's visual bounds, in
+/// logical pixels (T197).
+pub const MAX_PANEL_REGION_OVERSCAN: i32 = 512;
+
+/// Maximum per-corner radius accepted from a trusted client (T197). The
+/// renderer clamps further to half the region's shorter side.
+pub const MAX_PANEL_REGION_RADIUS: i32 = 4096;
+
+/// One independently keyed material region declared by a chrome surface
+/// (T197).
+///
+/// `rect` is the **visual** bounds in surface-local logical coordinates. It is
+/// independent of the surface's input region and reserved zone: an attached
+/// menu can extend its material above the input hit box, and a veil can reach
+/// past the reserved strip without changing either. `overscan` is extra
+/// rim/shadow/veil reach beyond the visual bounds. `corners` carries
+/// per-corner radii so an attached menu keeps square top corners.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PanelRegion {
+    /// Stable identity within this surface, e.g. `attached`, `card-1`.
+    pub key: String,
+    /// The optical preset declared for this region, or `None` to derive it
+    /// from the surface namespace/role.
+    pub preset: Option<Preset>,
+    /// Visual bounds, surface-local logical.
+    pub rect: Rectangle<i32, Logical>,
+    /// Per-corner clipping radii in logical pixels.
+    pub corners: CornerRadii,
+    /// Extra visual reach for rim, shadow, or veil beyond `rect`.
+    pub overscan: i32,
+}
+
+impl PanelRegion {
+    /// Whether this region has a visible area.
+    pub fn is_visible(&self) -> bool {
+        self.rect.size.w > 0 && self.rect.size.h > 0
+    }
+}
+
+/// Validate and build one region from protocol metadata (T197).
+///
+/// Invalid keys, unknown presets, and empty keys are rejected (the request is
+/// ignored, the previous committed regions stay intact). Geometry and radii are
+/// clamped exactly like `set_panel_rect`: negative extents cannot panic the
+/// geometry type.
+#[allow(clippy::too_many_arguments)] // mirrors the 11 protocol arguments
+pub fn panel_region(
+    key: &str,
+    preset: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    top_left: i32,
+    top_right: i32,
+    bottom_right: i32,
+    bottom_left: i32,
+    overscan: i32,
+) -> Option<PanelRegion> {
+    if !valid_region_key(key) {
+        return None;
+    }
+    let preset = if preset.is_empty() {
+        None
+    } else {
+        Some(Preset::from_name(preset)?)
+    };
+    let clamp_radius = |radius: i32| radius.clamp(0, MAX_PANEL_REGION_RADIUS);
+    Some(PanelRegion {
+        key: key.to_owned(),
+        preset,
+        rect: panel_rect(x, y, width, height),
+        corners: CornerRadii {
+            top_left: clamp_radius(top_left),
+            top_right: clamp_radius(top_right),
+            bottom_right: clamp_radius(bottom_right),
+            bottom_left: clamp_radius(bottom_left),
+        },
+        overscan: overscan.clamp(0, MAX_PANEL_REGION_OVERSCAN),
+    })
+}
+
+/// A region key is a short ASCII token: letters, digits, `.`, `_`, and `-`.
+/// The stable identity must survive logging and a hash without escaping.
+pub fn valid_region_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= MAX_PANEL_REGION_KEY
+        && key.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')
+        })
+}
 
 /// Anchor bit for the top edge.
 pub const ANCHOR_TOP: u32 = 1;
@@ -161,6 +263,12 @@ pub struct LayerSurfaceState {
     /// coordinates (T-14.7b). `None` means the compositor derives the panel
     /// from the input region and reserved strip (the menu bar, popovers).
     pub panel_rect: Option<Rectangle<i32, Logical>>,
+    /// Independently keyed material regions declared via
+    /// `df_layer_surface.set_panel_region` (T197), in surface-local logical
+    /// coordinates. `None` means no multi-region metadata was committed (use
+    /// [`Self::panel_rect`] or the derived panel). `Some(empty)` is an
+    /// explicit empty panel set: the surface draws no material.
+    pub panel_regions: Option<Vec<PanelRegion>>,
 }
 
 impl Default for LayerSurfaceState {
@@ -177,6 +285,7 @@ impl Default for LayerSurfaceState {
             namespace: String::new(),
             configured: None,
             panel_rect: None,
+            panel_regions: None,
         }
     }
 }
@@ -702,6 +811,48 @@ mod tests {
         let zones = aggregate_reserved([&top, &dock].into_iter(), ReservedZones::default());
         assert_eq!(zones.top, 0);
         assert_eq!(zones.bottom, 80);
+    }
+
+    #[test]
+    fn panel_region_metadata_is_validated_and_bounded() {
+        // Attached menu: square top, rounded bottom, a known preset.
+        let attached = panel_region(
+            "attached", "menuAttached", 10, 20, 240, 300, 0, 0, 12, 12, 20,
+        )
+        .expect("valid attached region");
+        assert_eq!(attached.preset, Some(Preset::MenuAttached));
+        assert_eq!(attached.rect.size, (240, 300).into());
+        assert_eq!(attached.corners.top_left, 0);
+        assert_eq!(attached.corners.bottom_left, 12);
+        assert_eq!(attached.overscan, 20);
+        assert!(attached.is_visible());
+
+        // Empty preset means derive from the namespace/role.
+        assert_eq!(
+            panel_region("card", "", 0, 0, 10, 10, 4, 4, 4, 4, 0)
+                .unwrap()
+                .preset,
+            None
+        );
+
+        // Unknown presets and malformed keys are rejected, not defaulted.
+        assert!(panel_region("card", "not-a-preset", 0, 0, 10, 10, 4, 4, 4, 4, 0).is_none());
+        assert!(panel_region("", "", 0, 0, 10, 10, 4, 4, 4, 4, 0).is_none());
+        assert!(panel_region("bad key", "", 0, 0, 10, 10, 4, 4, 4, 4, 0).is_none());
+        assert!(panel_region(&"x".repeat(MAX_PANEL_REGION_KEY + 1), "", 0, 0, 10, 10, 4, 4, 4, 4, 0)
+            .is_none());
+
+        // Negative extents clamp; radii and overscan are bounded.
+        let clamped = panel_region("clamped", "", 1, 2, -8, -9, -4, 99_999, -1, 7, 99_999)
+            .expect("valid clamped region");
+        assert_eq!(clamped.rect.size, (0, 0).into());
+        assert_eq!(clamped.corners.top_left, 0);
+        assert_eq!(clamped.corners.top_right, MAX_PANEL_REGION_RADIUS);
+        assert_eq!(clamped.corners.bottom_right, 0);
+        assert_eq!(clamped.corners.bottom_left, 7);
+        assert_eq!(clamped.overscan, MAX_PANEL_REGION_OVERSCAN);
+        assert!(!clamped.is_visible());
+        assert_eq!(MAX_PANEL_REGIONS, 8);
     }
 
     #[test]
