@@ -1997,6 +1997,183 @@ fn dock_overlay_can_commit_a_tooltip_without_a_backdrop() {
 }
 
 #[test]
+fn multi_region_metadata_is_commit_latched_bounded_and_legacy_compatible() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(runtime_dir).join(format!("df-regions-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-panel-regions",
+        &["1f".repeat(32)],
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (_core, shell, _bar, _bar_layer) =
+        open_trusted_bar(&conn, &mut queue, &mut state, &proc.read_token(), 28, 28);
+    let qh = queue.handle();
+    let surface = state.compositor.as_ref().unwrap().create_surface(&qh, ());
+    let overlay = shell.get_layer_surface(
+        &surface,
+        None,
+        df_shell::Layer::Overlay,
+        "control-center".to_string(),
+        &qh,
+        (),
+    );
+    overlay.set_anchor(1 | 4);
+    overlay.set_size(300, 400);
+    overlay.set_exclusive_zone(-1);
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+
+    // A region request is pending until the content commit; the committed
+    // surface keeps its derived panel in the meantime.
+    overlay.set_panel_region(
+        "attached".to_string(),
+        "menuAttached".to_string(),
+        10,
+        5,
+        160,
+        20,
+        0,
+        0,
+        12,
+        12,
+        24,
+    );
+    queue.roundtrip(&mut state).unwrap();
+    let pending = input.query("query scale");
+    assert!(
+        !pending.contains("scale region control-center attached"),
+        "region metadata must be commit-latched: {pending}"
+    );
+
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+    let report = input.query("query scale");
+    assert!(
+        report.contains(
+            "scale region control-center attached preset=menuAttached \
+             logical=10,5,160,20 physical=10,5,160,20 corners=0,0,12,12 overscan=24"
+        ),
+        "committed attached region missing: {report}"
+    );
+    assert!(report.contains("scale chrome control-center logical=10,5,160,20 "));
+
+    // A second independently keyed region joins the same overlay.
+    overlay.set_panel_region(
+        "card".to_string(),
+        "menuDetached".to_string(),
+        10,
+        40,
+        160,
+        100,
+        12,
+        12,
+        12,
+        12,
+        0,
+    );
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+    let report = input.query("query scale");
+    assert!(report.contains("scale region control-center attached preset=menuAttached"));
+    assert!(report.contains("scale region control-center card preset=menuDetached"));
+    assert!(
+        report.contains("scale chrome control-center logical=10,5,160,135 "),
+        "the legacy panel is the union of the regions: {report}"
+    );
+
+    // Unknown presets and malformed keys are rejected without disturbing the
+    // committed list.
+    overlay.set_panel_region(
+        "bad".to_string(),
+        "not-a-preset".to_string(),
+        0,
+        0,
+        10,
+        10,
+        0,
+        0,
+        0,
+        0,
+        0,
+    );
+    overlay.set_panel_region(
+        "bad key".to_string(),
+        String::new(),
+        0,
+        0,
+        10,
+        10,
+        0,
+        0,
+        0,
+        0,
+        0,
+    );
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+    let report = input.query("query scale");
+    assert!(report.contains("scale region control-center attached"));
+    assert!(report.contains("scale region control-center card"));
+    assert!(!report.contains("scale region control-center bad"));
+
+    // The region count is bounded; a hostile trusted client cannot grow the
+    // per-frame list beyond the documented bound.
+    overlay.clear_panel_regions();
+    for index in 0..(compositor_max_regions() + 3) {
+        overlay.set_panel_region(
+            format!("r{index}"),
+            String::new(),
+            0,
+            0,
+            10,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+    }
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+    let report = input.query("query scale");
+    let count = report
+        .lines()
+        .filter(|line| line.starts_with("scale region control-center r"))
+        .count();
+    assert_eq!(count, compositor_max_regions(), "{report}");
+
+    // Empty-panel semantics: clear commits an explicitly empty set, not a
+    // fallback to the previous regions.
+    overlay.clear_panel_regions();
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+    let report = input.query("query scale");
+    assert!(!report.contains("scale region control-center"));
+    assert!(report.contains("scale chrome control-center logical=0,0,0,0 "));
+
+    // Legacy single-rect clients remain compatible: the same surface can go
+    // back to `set_panel_rect` and gets the one `panel` region.
+    overlay.set_panel_rect(5, 6, 70, 80);
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+    let report = input.query("query scale");
+    assert!(report.contains(
+        "scale region control-center panel preset=- logical=5,6,70,80"
+    ));
+    proc.shutdown();
+}
+
+fn compositor_max_regions() -> usize {
+    // Mirrors `compositor::shell::layer::MAX_PANEL_REGIONS`; the conformance
+    // crate is a separate binary and does not link the compositor library.
+    8
+}
+
+#[test]
 fn vertical_dock_reserves_the_left_and_right_zones() {
     let token = "1b".repeat(32);
     let proc = CompositorProcess::start("dragonfruit-conformance-dock-vertical", &[token]);

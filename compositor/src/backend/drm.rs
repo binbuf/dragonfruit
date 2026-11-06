@@ -76,8 +76,8 @@ use crate::gpu_timer::{GpuPass, GpuTimer, GpuTimerTarget};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
     full_output_material_forced, BackdropBlurElement, BlurMissCounts, BlurMissReason,
-    MaterialRegion, PanelKey, PanelTextureSlots, SceneTextureCache, SceneTextureElement,
-    TextureRenderer,
+    MaterialRegion, PanelKey, PanelPaintKey, PanelTextureSlots, RegionFilter, SceneTextureCache,
+    SceneTextureElement, TextureRenderer,
 };
 use crate::{input, render, LOCKSTEP_VERSION};
 
@@ -1663,6 +1663,7 @@ fn render_surface(
         // shape the live scene elements are the output base; only the
         // full-output diagnostic shape composites the scene texture below it.
         let mut blur_drawn = 0u64;
+        let mut sharp_drawn = 0u64;
         let mut downsample_max = 0u32;
         let mut blur_allocations = 0u64;
         let mut blur_skips = 0u64;
@@ -1673,14 +1674,40 @@ fn render_surface(
                 continue;
             };
             let slot = surface.material.panels.slot(&panel.key);
+            slot.note_paint(PanelPaintKey::new(
+                panel.paint,
+                panel.corners,
+                surface.material.scene.generation(),
+            ));
+            let id = slot.id().clone();
+            if panel.filter == RegionFilter::Sharp {
+                let commit = slot.commit();
+                let element = BackdropBlurElement::new(
+                    scene_texture.clone(),
+                    panel.panel,
+                    scene_texture.size(),
+                    panel.corners.max(),
+                    scale,
+                )
+                .with_id(id)
+                .with_commit(commit)
+                .with_texture_region(region.rect)
+                .with_corners(panel.corners);
+                custom_elements.push(DrmOutputElements::Blur(element));
+                sharp_drawn += 1;
+                continue;
+            }
             let blur_key = slot.blur_key_for_scene(
                 &surface.material.scene,
                 scene_src,
-                panel.spec,
+                crate::window::RegionSample {
+                    spec: panel.spec,
+                    padding: panel.sample_padding_px(),
+                    filter: panel.filter,
+                },
                 output_size,
                 scale,
             );
-            let id = slot.id().clone();
             let texture = if slot.blur_cache_hit(&blur_key) {
                 blur_skips += 1;
                 match slot.last_texture().cloned() {
@@ -1730,12 +1757,13 @@ fn render_surface(
                 texture,
                 panel.panel,
                 texture_size,
-                panel.spec.corner_radius.round().max(0.0) as i32,
+                panel.corners.max(),
                 scale,
             )
             .with_id(id)
             .with_commit(commit)
-            .with_texture_panel(texture_panel);
+            .with_texture_panel(texture_panel)
+            .with_corners(panel.corners);
             let element = match programs.glass.as_ref() {
                 Some(program) => element.with_glass(panel.glass, program.clone()),
                 None => element,
@@ -1756,6 +1784,8 @@ fn render_surface(
         state.stats.record_blur_misses(blur_misses);
         if blur_drawn > 0 {
             state.stats.record_blur_draw(downsample_max, blur_drawn);
+        }
+        if blur_drawn + sharp_drawn > 0 {
             state
                 .stats
                 .record_material_frame(surface.output.name().as_str());

@@ -19,7 +19,7 @@
 -->
 <protocol name="dragonfruit_shell">
 
-  <interface name="df_shell" version="2">
+  <interface name="df_shell" version="3">
     <description summary="chrome-surface factory for trusted session clients">
       Creates `df_layer_surface`s. Binding this global requires a successful
       `df_core.authenticate` (T-07 trust model).
@@ -59,7 +59,7 @@
     </enum>
   </interface>
 
-  <interface name="df_layer_surface" version="2">
+  <interface name="df_layer_surface" version="3">
     <description summary="an anchored, layered chrome surface">
       Requests may be sent before the first commit; the compositor sends a
       `configure` with the resolved size and serial, which the client must
@@ -135,6 +135,51 @@
     </request>
 
     <request name="destroy" type="destructor"/>
+
+    <request name="set_panel_region" since="3">
+      <description summary="declare one independently keyed material region">
+        Adds or replaces one material region on this chrome surface, in
+        surface-local logical coordinates. A surface may declare a bounded
+        set of regions (currently eight) so one overlay can compose several
+        detached cards, or a menu with square attached top corners and rounded
+        bottom corners, without changing its input region or reserved zone.
+
+        `key` is a short stable token unique within the surface. `preset` is
+        an optional known glass preset name; empty derives the preset from the
+        surface namespace/role. `overscan` is extra visual reach for rim,
+        shadow or veil beyond the visual rect. The four radii clip the region's
+        corners independently.
+
+        Region requests are commit-latched with the pixels they describe. The
+        first request after a commit starts from the committed list, so a
+        single region can be added or replaced without resending its siblings;
+        `clear_panel_regions` starts an explicitly empty list. Invalid keys,
+        unknown presets, or a region beyond the bound are ignored, leaving the
+        committed list intact. A client that only sends `set_panel_rect` keeps
+        the legacy single-rect behavior.
+      </description>
+      <arg name="key" type="string"/>
+      <arg name="preset" type="string"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="top_left" type="int"/>
+      <arg name="top_right" type="int"/>
+      <arg name="bottom_right" type="int"/>
+      <arg name="bottom_left" type="int"/>
+      <arg name="overscan" type="int"/>
+    </request>
+
+    <request name="clear_panel_regions" since="3">
+      <description summary="commit an empty material region set">
+        Replaces the committed region list with an empty list on the next
+        `wl_surface.commit`. The surface keeps its input region and reserved
+        zone; it simply draws no compositor material. Sending region requests
+        after this call before the commit rebuilds a non-empty list.
+      </description>
+    </request>
+
 
     <event name="configure">
       <arg name="serial" type="uint"/>

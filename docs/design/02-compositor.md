@@ -622,6 +622,21 @@ region bounding box ∩ the reserved strip, so the menu bar and popovers are
 unchanged. See
 [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md).
 
+T197 adds the additive v3 **multi-region** metadata
+([ADR 0216](adr/0216-material-regions-and-composition.md)).
+`df_layer_surface.set_panel_region` declares one independently keyed visual
+region with an optional known T195 preset, per-corner radii, and bounded
+overscan; `clear_panel_regions` commits an empty set. Requests are latched with
+the next `wl_surface.commit`, clipped to the surface and owning output, and
+bounded to eight regions. The input region and reserved zone stay independent,
+and a legacy `set_panel_rect` client keeps one `panel` region. Each region
+resolves its preset through the live T195/T196 policy and keeps a stable
+`PanelKey` (surface + region key). A filtered region runs Kawase; a veil
+preset resolves to the sharp path, which samples the compositor's region scene
+texture with no blur allocation. `PanelBlurKey` includes the region's full
+sample footprint (blur/lens kernel plus overscan), while `PanelPaintKey` makes
+tint/scheme/tier changes repaint without rebuilding the cached texture.
+
 `BackdropPass` gates the pass: the backend opens a rendered frame once
 (`DfState::begin_render_frame`) and each output applies the backdrop at most
 once. A repeated `(frame, output)` request is counted as `skipped` and draws

@@ -1860,6 +1860,34 @@ fn scale_report(state: &DfState) -> String {
                 phys.size.w,
                 phys.size.h,
             ));
+            // T197: every independently keyed material region after placement
+            // and output clipping. A legacy single-rect surface contributes
+            // one `panel` region, so the report stays backward compatible.
+            for region in &chrome.regions {
+                let phys: Rectangle<i32, Physical> =
+                    region.rect.to_physical_precise_round(scale);
+                let corners = region.corners.unwrap_or_default();
+                out.push_str(&format!(
+                    "scale region {} {} preset={} logical={},{},{},{} physical={},{},{},{} \
+                     corners={},{},{},{} overscan={}\n",
+                    chrome.namespace,
+                    region.key,
+                    region.preset.map(|preset| preset.name()).unwrap_or("-"),
+                    region.rect.loc.x,
+                    region.rect.loc.y,
+                    region.rect.size.w,
+                    region.rect.size.h,
+                    phys.loc.x,
+                    phys.loc.y,
+                    phys.size.w,
+                    phys.size.h,
+                    corners.top_left,
+                    corners.top_right,
+                    corners.bottom_right,
+                    corners.bottom_left,
+                    region.overscan,
+                ));
+            }
         }
     }
     out.push_str("end\n");

@@ -83,19 +83,23 @@ pub(crate) fn stable_solid_id(salt: u64, rect: Rectangle<i32, Physical>, color: 
 
 #[allow(unused_imports)]
 pub use backdrop::{
-    backdrop_bounds, backdrop_elements, backdrop_layers, explicit_panel_bounds, is_backdrop_panel,
-    panel_bounds, BackdropLayer, BackdropPass, BackdropSpec, MaterialRole,
+    backdrop_bounds, backdrop_elements, backdrop_elements_with_corners, backdrop_layers,
+    explicit_panel_bounds, is_backdrop_panel, panel_bounds, BackdropLayer, BackdropPass,
+    BackdropSpec, MaterialRole,
 };
 #[allow(unused_imports)]
 pub use blur::{
     blur_uniform_names, glass_uniform_names, tone_to_rgb, BackdropBlurElement, BlurSpec, GlassSpec,
-    SceneTextureElement, TextureRenderer, BLUR_RADIUS_UNIFORM, BLUR_SHADER, BLUR_TEXEL_UNIFORM,
-    GLASS_RADIUS_UNIFORM, GLASS_SHADER, GLASS_SIZE_UNIFORM, LENS_BAND_FACTOR, LENS_FALLOFF_UNIFORM,
-    REFRACTION_UNIFORM, SPECULAR_UNIFORM, SPECULAR_WIDTH_UNIFORM, TINT_ADAPT_SCALE,
-    TINT_AMOUNT_UNIFORM, TINT_COLOR_UNIFORM, TINT_SCALE_UNIFORM,
+    RegionFilter, SceneTextureElement, TextureRenderer, BLUR_RADIUS_UNIFORM, BLUR_SHADER,
+    BLUR_TEXEL_UNIFORM, GLASS_RADIUS_UNIFORM, GLASS_SHADER, GLASS_SIZE_UNIFORM, LENS_BAND_FACTOR,
+    LENS_FALLOFF_UNIFORM, REFRACTION_UNIFORM, SPECULAR_UNIFORM, SPECULAR_WIDTH_UNIFORM,
+    TINT_ADAPT_SCALE, TINT_AMOUNT_UNIFORM, TINT_COLOR_UNIFORM, TINT_SCALE_UNIFORM,
 };
 #[allow(unused_imports)]
-pub use corner::{corner_squares, rounded_rect_spans, CornerMask, RoundedCorners};
+pub use corner::{
+    corner_squares, rounded_rect_spans, rounded_rect_spans_with_radii, CornerMask, CornerRadii,
+    RoundedCorners,
+};
 pub use decoration::{
     fullscreen_reveal_rect, ColorScheme, DoubleClickTracker, TitlebarDoubleClick, TitlebarElement,
     TrafficLightKind, WindowInsets,
@@ -107,7 +111,8 @@ pub use degrade::{
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 pub use material_cache::PanelKey;
 pub(crate) use material_cache::{
-    BlurMissCounts, BlurMissReason, PanelTextureSlots, SceneTextureCache, SceneTextureKey,
+    BlurMissCounts, BlurMissReason, PanelPaintKey, PanelTextureSlots, RegionSample,
+    SceneTextureCache, SceneTextureKey,
 };
 #[allow(unused_imports)]
 pub use material_region::{full_output_material_forced, MaterialRegion, ENV_MATERIAL_FULL_OUTPUT};

@@ -50,13 +50,17 @@ pub fn direct_scanout_candidate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::window::blur::{BlurSpec, GlassSpec};
-    use crate::window::PanelKey;
+    use crate::material_preset::{Preset, RenderMode};
+    use crate::render::RegionPaint;
+    use crate::window::blur::{BlurSpec, GlassSpec, RegionFilter};
+    use crate::window::{ColorScheme, CornerRadii, DegradeTier, PanelKey};
 
     fn panel(rect: (i32, i32, i32, i32)) -> BlurPanel {
         BlurPanel {
             key: PanelKey::new("test", 2, 0),
             panel: Rectangle::new((rect.0, rect.1).into(), (rect.2, rect.3).into()),
+            corners: CornerRadii::uniform(10),
+            overscan: 0,
             spec: BlurSpec::new(12.0, 10.0),
             glass: GlassSpec {
                 refraction: 0.0,
@@ -64,6 +68,19 @@ mod tests {
                 specular_width: 0.0,
                 tint: 0.0,
                 tint_color: [0.0; 3],
+            },
+            filter: RegionFilter::Filtered,
+            paint: RegionPaint {
+                scheme: ColorScheme::Light,
+                preset: Preset::MenuDetached,
+                tier: DegradeTier::Full,
+                mode: RenderMode::SampledGlass,
+                alpha: 0.5,
+                tint: 0.9,
+                edge: 0.0,
+                edge_width: 0.0,
+                foreground: 0.0,
+                revision: 0,
             },
         }
     }

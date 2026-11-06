@@ -37,7 +37,8 @@ use crate::gpu_timer::{GpuPass, GpuTimer};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
     full_output_material_forced, BlurMissCounts, BlurMissReason, MaterialRegion, PanelKey,
-    PanelTextureSlots, SceneTextureCache, SceneTextureKey, TextureRenderer,
+    PanelPaintKey, PanelTextureSlots, RegionFilter, SceneTextureCache, SceneTextureKey,
+    TextureRenderer,
 };
 use crate::{render, LOCKSTEP_VERSION};
 
@@ -556,14 +557,20 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 // The blur elements exist and are in the draw list; this is
                 // the counter to trust over `blur_passes` (which only says the
                 // panels resolved).
-                let downsample_max = blur_panels
+                let filtered: Vec<_> = blur_panels
                     .iter()
-                    .map(|panel| panel.spec.downsample())
-                    .max()
-                    .unwrap_or(0);
-                state
-                    .stats
-                    .record_blur_draw(downsample_max, blur_panels.len() as u64);
+                    .filter(|panel| panel.filter.schedules_blur())
+                    .collect();
+                if !filtered.is_empty() {
+                    let downsample_max = filtered
+                        .iter()
+                        .map(|panel| panel.spec.downsample())
+                        .max()
+                        .unwrap_or(0);
+                    state
+                        .stats
+                        .record_blur_draw(downsample_max, filtered.len() as u64);
+                }
                 state.stats.record_material_frame(output.name().as_str());
                 if full_output {
                     // Diagnostic/rollback shape: the full-output scene texture
@@ -896,14 +903,45 @@ fn build_blur_elements(
             continue;
         };
         let slot = targets.panels.slot(&panel.key);
+        // Paint-only changes (scheme/tint/tier/radius/output generation) reuse
+        // the filtered texture but must damage the element so the new paint is
+        // composited (T197).
+        slot.note_paint(PanelPaintKey::new(
+            panel.paint,
+            panel.corners,
+            scene.cache.generation(),
+        ));
+        let id = slot.id().clone();
+        if panel.filter == RegionFilter::Sharp {
+            // Veil/sharp path: sample the compositor's scene texture directly.
+            // No Kawase allocation and no blur pass is scheduled; the element
+            // covers the whole padded region and clips to the region corners.
+            let commit = slot.commit();
+            let element = crate::window::BackdropBlurElement::new(
+                scene.texture.clone(),
+                panel.panel,
+                scene.texture.size(),
+                panel.corners.max(),
+                scale,
+            )
+            .with_id(id)
+            .with_commit(commit)
+            .with_texture_region(scene.region.rect)
+            .with_corners(panel.corners);
+            elements.push(NestedOutputElements::Blur(element));
+            continue;
+        }
         let blur_key = slot.blur_key_for_scene(
             scene.cache,
             scene_src,
-            panel.spec,
+            crate::window::RegionSample {
+                spec: panel.spec,
+                padding: panel.sample_padding_px(),
+                filter: panel.filter,
+            },
             programs.chain_size,
             scale,
         );
-        let id = slot.id().clone();
         let texture = if slot.blur_cache_hit(&blur_key) {
             skips += 1;
             slot.last_texture()
@@ -940,12 +978,13 @@ fn build_blur_elements(
             texture,
             panel.panel,
             texture_size,
-            panel.spec.corner_radius.round().max(0.0) as i32,
+            panel.corners.max(),
             scale,
         )
         .with_id(id)
         .with_commit(commit)
-        .with_texture_panel(texture_panel);
+        .with_texture_panel(texture_panel)
+        .with_corners(panel.corners);
         // Add the liquid-glass compose only when the driver compiled it; a
         // refused shader leaves the plain blurred backdrop (T-20.2).
         let element = match programs.glass {
