@@ -171,6 +171,16 @@ The top menu bar hosts, from left to right:
 - The Control Center entry point
 - A Mission Control button/gesture target
 
+`menu.autoHide` is applied per output by the compositor (T201). `never` keeps
+the bar over the desktop and fullscreen; `always` starts concealed and reveals
+from the top edge or Control-F2; `full-screen` is normal on the desktop and
+reveals on demand over fullscreen. A revealed bar stays available while a
+menu is open or the bar holds keyboard focus, then conceals again and releases
+its reservation, input strip, and veil. `menu.showBackground` still owns both
+the foreground fill and the compositor veil; with it off the items remain
+interactive but no material panel is committed. See
+[ADR 0220](adr/0220-menu-bar-auto-hide-visibility.md).
+
 The system menu and application menu are **shell-owned chrome**, not part of
 the application's exported model: an app that exports nothing still gets a
 complete menu bar, and an app that exports menus gets them *after* the fixed

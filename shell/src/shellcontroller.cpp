@@ -5364,6 +5364,10 @@ void ShellController::applyMenuBarPolicy()
         m_item->setProperty("showSeconds", showSeconds);
         m_item->setProperty("showBackground", showBackground);
         m_item->setProperty("autoHideMode", autoHide);
+        // T201: the compositor owns the per-output reveal. Forward the policy
+        // through the same Settings refresh path as the rest of the pane.
+        if (m_protocol)
+            m_protocol->setMenuBarAutoHide(autoHide);
         render();
         fprintf(stderr,
                 "dragonfruit-shell: menu bar policy applied "

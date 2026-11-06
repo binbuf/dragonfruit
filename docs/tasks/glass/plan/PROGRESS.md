@@ -10,6 +10,7 @@
 - **T198 — Dock optics fit and capture**: Dock preset tokens (`design-system/tokens/tokens.json`, both schemes):; `compositor/src/window/dock_optics.rs`:
 - **T199 — Dock magnification, envelope, and tooltip**: **Spatial raised cosine.** `shell/dock/Dock.qml` now evaluates; **Peak anchors.** `component.dock.magnifyPeak = 1.217` (default
 - **T200 — Menu-bar no-blur veil**: **Measured Light depth LUT.** `design-system/tokens/tokens.json` now stores; **Pure veil model.** New `compositor/src/window/menubar_veil.rs` owns
+- **T201 — Menu-bar visibility settings**: **`menu.showBackground` is one switch for both rails.** The QML fill and the; **`menu.autoHide` is compositor-owned per output.** Additive
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -20,6 +21,7 @@
 - [T198](progress/T198.md) — Dock preset tokens (`design-system/tokens/tokens.json`, both schemes):
 - [T199](progress/T199.md) — **Spatial raised cosine.** `shell/dock/Dock.qml` now evaluates
 - [T200](progress/T200.md) — **Measured Light depth LUT.** `design-system/tokens/tokens.json` now stores
+- [T201](progress/T201.md) — **`menu.showBackground` is one switch for both rails.** The QML fill and the
 <!-- symphony:digest:end -->
 
 Implementation notes go in `progress/TNN.md`. Record the actual test commands, evidence paths, measured deltas, and any open rows with their rerun steps.

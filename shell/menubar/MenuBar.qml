@@ -59,6 +59,23 @@ Rectangle {
     // T-15.9b: `menu.showBackground`. When off the bar keeps its items and its
     // reserved zone but draws no chrome material, so the desktop shows through.
     property bool showBackground: true
+    // T201: `menu.autoHide`. The compositor owns the actual per-output reveal;
+    // this property is the bar's copy of the policy so the scene and its tests
+    // share the same semantics. `visibleIn()` is the pure rule.
+    property string autoHideMode: "full-screen"
+    // Test/introspection helpers for the policy rule.
+    readonly property bool autoHideAlways: autoHideMode === "always"
+    readonly property bool autoHideInFullscreen: autoHideMode === "full-screen"
+
+    // Whether the bar is visible for one output. `revealed` is the compositor's
+    // transient reveal and `active` is an open menu or menu-bar focus.
+    function visibleIn(fullscreen, revealed, active) {
+        if (autoHideMode === "never")
+            return true;
+        if (autoHideMode === "always")
+            return revealed || active;
+        return !fullscreen || revealed || active;
+    }
     // Effective chrome material from the compositor (P1). When the sampled
     // backdrop pass is not actually running (the current DRM rail, headless,
     // or a blur-off tier), the bar uses the near-opaque milky fallback rather

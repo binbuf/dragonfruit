@@ -345,6 +345,9 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
         // Linux (the Fn layer is a hardware key); Super+Option+D matches the
         // macOS auto-hide toggle.
         Shortcut::new(control, keysyms::KEY_F3, InputAction::FocusDock),
+        // T201: Control-F2 is the macOS menu-bar focus chord. It reveals a
+        // concealed bar and hands it the keyboard; Escape returns focus.
+        Shortcut::new(control, keysyms::KEY_F2, InputAction::FocusMenuBar),
         Shortcut::new(
             command.union(RoleMods::OPTION),
             keysyms::KEY_D,
@@ -508,6 +511,11 @@ mod tests {
         assert_eq!(
             engine.resolve(&mods(false, false, true, false), keysyms::KEY_F3),
             Some(ShortcutOutcome::System(InputAction::FocusDock))
+        );
+        // T201: Control-F2 reveals and focuses the menu bar.
+        assert_eq!(
+            engine.resolve(&mods(false, false, true, false), keysyms::KEY_F2),
+            Some(ShortcutOutcome::System(InputAction::FocusMenuBar))
         );
     }
 
