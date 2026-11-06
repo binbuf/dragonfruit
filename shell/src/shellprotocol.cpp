@@ -297,6 +297,45 @@ bool ShellProtocol::createMenuBarSurface(int height, int exclusiveZone)
     return true;
 }
 
+void ShellProtocol::setMenuBarFrameGeometry(bool active, int width, int height,
+                                             int cornerRadius)
+{
+    if (!m_layer)
+        return;
+    if (!active) {
+        // An explicit empty set is the contract for "no material": it cannot
+        // fall back to a stale panel or the derived reserved strip (T197).
+        // Send it on the first inactive frame too, so a bar that starts
+        // hidden/fallback never exposes the compositor's derived panel.
+        if (!m_menuBarPanelInitialized || m_menuBarPanelActive) {
+            df_layer_surface_clear_panel_regions(m_layer);
+            m_menuBarPanelInitialized = true;
+            m_menuBarPanelDirty = true;
+            m_menuBarPanelActive = false;
+            m_menuBarPanelWidth = 0;
+            m_menuBarPanelHeight = 0;
+            m_menuBarPanelRadius = 0;
+        }
+        return;
+    }
+    const int panelWidth = qMax(1, width);
+    const int panelHeight = qMax(1, height);
+    const int radius = qMax(0, cornerRadius);
+    if (m_menuBarPanelActive && panelWidth == m_menuBarPanelWidth
+            && panelHeight == m_menuBarPanelHeight
+            && radius == m_menuBarPanelRadius)
+        return;
+    df_layer_surface_set_panel_region(m_layer, "veil", "menuBarVeil", 0, 0,
+                                      panelWidth, panelHeight, radius, radius,
+                                      radius, radius, 0);
+    m_menuBarPanelInitialized = true;
+    m_menuBarPanelDirty = true;
+    m_menuBarPanelActive = true;
+    m_menuBarPanelWidth = panelWidth;
+    m_menuBarPanelHeight = panelHeight;
+    m_menuBarPanelRadius = radius;
+}
+
 bool ShellProtocol::createPopupSurface()
 {
     if (m_popupSurface || m_popupLayer)
@@ -1632,6 +1671,8 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     applyDockSurfaceGeometry(surface);
     wl_surface_commit(surface);
     wl_display_flush(m_display);
+    if (surface == m_surface)
+        m_menuBarPanelDirty = false;
     buffer->lastImage = QImage();
     buffer->lastSourceRect = QRect();
     slot.busy = true;
@@ -1863,6 +1904,14 @@ void ShellProtocol::applyDmabufScale(wl_surface *surface, const QSize &logicalSi
 void ShellProtocol::setDockFrameGeometry(const QRect &panel, const QList<QRect> &inputRects)
 {
     m_nextDockGeometry = DockFrameGeometry{panel, inputRects};
+}
+
+bool ShellProtocol::applyMenuBarSurfaceGeometry(wl_surface *surface)
+{
+    if (surface != m_surface || !m_menuBarPanelDirty)
+        return false;
+    m_menuBarPanelDirty = false;
+    return true;
 }
 
 bool ShellProtocol::applyDockSurfaceGeometry(wl_surface *surface)
@@ -2321,7 +2370,8 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     if (damage.isEmpty() && !buffer->lastImage.isNull()) {
         // Reuse the attached buffer. Input or plate geometry can change even
         // when the pixels match, so commit that state on its own.
-        if (applyDockSurfaceGeometry(surface)) {
+        if (applyDockSurfaceGeometry(surface)
+                || applyMenuBarSurfaceGeometry(surface)) {
             wl_surface_commit(surface);
             wl_display_flush(m_display);
         }
@@ -2379,6 +2429,8 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     applyDockSurfaceGeometry(surface);
     wl_surface_commit(surface);
     wl_display_flush(m_display);
+    if (surface == m_surface)
+        m_menuBarPanelDirty = false;
     buffer->lastImage = frame;
     buffer->lastSourceRect = source;
     if (statsEnabled) {

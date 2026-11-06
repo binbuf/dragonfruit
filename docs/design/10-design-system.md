@@ -238,6 +238,15 @@ explicit optics and one of four rendering modes:
 | `solid` | An intentional solid surface, or a safe opaque plate for an unsupported sampled path. |
 | `software-fallback` | The software/headless path has no readback; the opaque plate is the contract. |
 
+The menu-bar `no-blur-veil` preset (T200, ADR 0219) is a depth LUT over the
+sharp live scene, not a blur. Light is a white lift measured at 0.451 at 5 pt
+and zero by 95 pt; Dark is the documented black baseline with the same depth
+shape. A bounded local luminance probe may raise the LUT alpha inside the
+39 pt reference strip for foreground readability, but the displayed backdrop
+is always the sharp centre sample. The QML surface paints no fill on the
+replacement rail; the compositor veil sits below the foreground and popups.
+When the veil cannot run, QML keeps the scheme-appropriate milky fallback.
+
 Resolution precedence is: Reduce Transparency (opaque scheme plate, sampling
 and lensing off, slider ignored) → rollout look (`legacy` or `replacement`) →
 the light `menuAttached` slider → Increase Contrast edge/foreground boost →

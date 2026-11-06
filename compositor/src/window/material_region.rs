@@ -257,6 +257,7 @@ mod tests {
                 tint_color: [0.0; 3],
                 ..GlassSpec::default()
             },
+            veil: None,
             filter: RegionFilter::Filtered,
             paint: paint(),
         }

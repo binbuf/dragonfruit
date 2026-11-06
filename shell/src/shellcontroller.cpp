@@ -619,6 +619,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     }
     m_item->setParentItem(m_window->contentItem());
     m_item->setProperty("showDate", true);
+    // T200: the QML token owns the veil extent; the layer surface is sized to
+    // it while the exclusive zone stays the bar strip. The surface itself
+    // still commits only the strip, so the area below it is visual-only.
+    m_menuBarVeilExtent = qMax(m_barHeight,
+        qRound(m_item->property("veilExtent").toReal()));
+    m_menuBarSurfaceHeight = m_menuBarVeilExtent;
+    m_item->setProperty("reduceTransparency", m_compositorPolicy.reduceTransparency);
+    m_item->setProperty("increaseContrast", m_compositorPolicy.increaseContrast);
     // T-21.2c: one role-keyed application policy for the persistent chrome.
     // The Dock and menu bar read the same decision; QML never re-derives it.
     const AppliedMaterial menuMaterial =
@@ -1548,7 +1556,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onLockAuthSucceeded);
     connect(m_lockAuth, &LockAuthenticator::failed, this, &ShellController::onLockAuthFailed);
 
-    if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
+    // T200: the surface is tall enough for the compositor veil (95 pt) while
+    // the exclusive zone remains the 28 pt bar strip. The shell commits only
+    // the strip buffer, so the extra area is visual-only and cannot take
+    // input or change the usable area.
+    if (!m_protocol->createMenuBarSurface(m_menuBarSurfaceHeight, barHeight))
         return false;
     // The dropdown rides a separate `overlay` chrome surface so transient
     // menus composite above fullscreen windows while the bar keeps its own
@@ -2461,9 +2473,10 @@ void ShellController::onConfigured(int width, int height, quint32)
 {
     // The compositor sends a pre-layout configure at the full output size
     // before applying the layer surface's anchor/size; skip it. The bar
-    // surface is always exactly one bar tall (the dropdown is a separate
-    // `overlay` surface).
-    if (height != m_barHeight) {
+    // surface is the veil extent tall (T200); the QML item and the committed
+    // buffer remain the bar strip, and the dropdown is a separate `overlay`
+    // surface.
+    if (height != m_menuBarSurfaceHeight) {
         fprintf(stderr, "dragonfruit-shell: ignoring pre-layout configure %dx%d\n", width,
                 height);
         return;
@@ -5289,6 +5302,18 @@ void ShellController::applyCompositorPolicy()
     m_protocol->setInputPolicy(policy.repeatDelayMs, policy.repeatRateHz,
                                policy.gesturesEnabled, policy.gestureSpaceSwitch,
                                policy.gestureMissionControl);
+    // T200: the veil's accessibility variants are decided in the same policy
+    // snapshot. Push them to QML so Reduce Transparency draws the opaque
+    // scheme plate instead of leaving the compositor's skipped veil bare.
+    if (m_item) {
+        const bool changed =
+            m_item->property("reduceTransparency").toBool() != policy.reduceTransparency
+            || m_item->property("increaseContrast").toBool() != policy.increaseContrast;
+        m_item->setProperty("reduceTransparency", policy.reduceTransparency);
+        m_item->setProperty("increaseContrast", policy.increaseContrast);
+        if (changed && m_protocol)
+            render();
+    }
     fprintf(stderr,
             "dragonfruit-shell: compositor motion/input policy applied "
             "(scheme=%s reducedMotion=%d transparency=%.4f reduceTransparency=%d "
@@ -8125,10 +8150,25 @@ void ShellController::render()
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
     const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;
-    const int windowHeight =
-        popupShown ? qMax(m_barHeight, m_popupY + m_popupHeight) : m_barHeight;
+    // T200: the scene is tall enough for the veil (and any dropdown), but the
+    // menubar surface still commits only the bar strip. The compositor draws
+    // the veil from its own material region below the strip.
+    const int windowHeight = popupShown
+        ? qMax(m_menuBarSurfaceHeight, m_popupY + m_popupHeight)
+        : m_menuBarSurfaceHeight;
     prepareChromeScene(m_window, m_item, QSize(m_width, m_barHeight),
                        QSize(m_width, windowHeight), m_chromeScale);
+    // Declare the material panel with this frame's content commit. The QML
+    // resolution decides whether this is the 95 pt veil, the legacy 28 pt
+    // sampled panel, or an explicit empty set for the fallback.
+    const bool panelActive =
+        m_item->property("compositorPanelActive").toBool();
+    const int panelHeight = qMax(
+        m_barHeight, m_item->property("compositorPanelHeight").toInt());
+    const int panelRadius =
+        m_item->property("compositorPanelRadius").toInt();
+    m_protocol->setMenuBarFrameGeometry(panelActive, m_width, panelHeight,
+                                        panelRadius);
     const QRect barRect(0, 0, m_width, m_barHeight);
     const QRect barSource = chromeBufferRect(barRect);
     QList<ChromeSceneTarget> targets;

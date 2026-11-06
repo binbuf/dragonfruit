@@ -289,6 +289,93 @@ Item {
             Theme.dark = false;
         }
 
+        // -- T200: the compositor no-blur veil -------------------------------
+
+        function test_replacement_veil_moves_the_wash_to_the_compositor() {
+            // In the replacement rail the QML surface paints no fill: the
+            // compositor's sharp veil is the only backdrop. The shell still
+            // declares the full 95 pt visual extent, while the reference strip
+            // and Dragonfruit's layout height stay separate.
+            Glass.rollout = "replacement";
+            Theme.dark = false;
+            var bar = make(menuBarComponent, {
+                width: 600,
+                materialBlurActive: true
+            });
+            compare(bar.veilResolution.renderMode, "no-blur-veil");
+            compare(bar.veilActive, true);
+            compare(bar.color.a, 0, "the QML wash must be gone");
+            compare(bar.compositorPanelActive, true);
+            compare(bar.compositorPanelHeight, 95);
+            compare(bar.compositorPanelRadius, 0);
+            compare(bar.veilExtent, 95);
+            compare(bar.referenceStripHeight, 39);
+            fuzzyCompare(bar.veilResolution.tint, 1.0, 0.001,
+                         "the Light veil is a white lift");
+
+            // Dark uses the documented black wash, still with no QML fill.
+            Theme.dark = true;
+            bar.materialBlurActive = true;
+            compare(bar.veilActive, true);
+            compare(bar.color.a, 0);
+            fuzzyCompare(bar.veilResolution.tint, 0.0, 0.001,
+                         "the Dark veil is a black wash");
+            bar.destroy();
+            Glass.rollout = "legacy";
+            Theme.dark = false;
+        }
+
+        function test_veil_fallback_and_accessibility_stay_scheme_appropriate() {
+            Glass.rollout = "replacement";
+            // No sampled scene texture: the compositor cannot draw the veil,
+            // so QML keeps the milky plate and declares no material panel.
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                var bar = make(menuBarComponent, {
+                    width: 600,
+                    materialBlurActive: false
+                });
+                compare(bar.veilActive, false);
+                compare(bar.compositorPanelActive, false);
+                verify(bar.color.a >= 0.8, "the fallback must read as a plate");
+                fuzzyCompare(bar.color.r, Theme.color.chromeFallbackFill.r, 0.001);
+                fuzzyCompare(bar.color.g, Theme.color.chromeFallbackFill.g, 0.001);
+                fuzzyCompare(bar.color.b, Theme.color.chromeFallbackFill.b, 0.001);
+                bar.destroy();
+            }
+
+            // Reduce Transparency is the explicit opaque scheme plate, not a
+            // sampled strip. The compositor resolves the veil to solid and the
+            // shell commits an empty panel set.
+            Theme.dark = false;
+            var reduced = make(menuBarComponent, {
+                width: 600,
+                materialBlurActive: true,
+                reduceTransparency: true
+            });
+            compare(reduced.veilResolution.renderMode, "solid");
+            compare(reduced.veilActive, false);
+            compare(reduced.compositorPanelActive, false);
+            verify(reduced.color.a >= 0.8);
+            reduced.destroy();
+
+            // The legacy rail keeps the old sampled QML fill and the 28 pt
+            // panel; it must not silently switch to the veil extent.
+            Glass.rollout = "legacy";
+            var legacy = make(menuBarComponent, {
+                width: 600,
+                materialBlurActive: true
+            });
+            compare(legacy.veilResolution.renderMode, "sampled-glass");
+            compare(legacy.veilActive, false);
+            compare(legacy.compositorPanelActive, true);
+            compare(legacy.compositorPanelHeight, Theme.controls.menuBar.height);
+            compare(legacy.compositorPanelRadius, Theme.controls.menuBar.radius);
+            fuzzyCompare(legacy.color.a, Theme.material.chromeOpacity, 0.001);
+            legacy.destroy();
+            Theme.dark = false;
+        }
+
         function compareColor(actual, expected, label) {
             fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
             fuzzyCompare(actual.g, expected.g, 0.001, label + " green");

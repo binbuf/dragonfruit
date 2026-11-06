@@ -309,6 +309,7 @@ QtObject {
             }
         }
 
+        var veil = (entry && entry.veil !== undefined) ? entry.veil : null;
         return {
             preset: presetName,
             scheme: scheme,
@@ -328,6 +329,11 @@ QtObject {
             sliderApplied: sliderApplied,
             confidence: confidence,
             fallbackReason: fallbackReason,
+            // T200: the depth LUT and extent travel with the resolved preset
+            // so the shell and fixtures never re-derive them.
+            veil: veil,
+            stripHeight: preset.stripHeight !== undefined ? preset.stripHeight : 0,
+            extent: preset.extent !== undefined ? preset.extent : 0,
             reduceMotion: options.reduceMotion !== undefined
                 ? !!options.reduceMotion : glass.reduceMotion
         };

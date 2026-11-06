@@ -117,6 +117,11 @@ set. Both are commit-latched with the buffer they describe.
   to the sharp path, which samples the compositor's region scene texture with
   no blur allocation. Neither path exposes the texture to QML or reads it back
   to the CPU.
+- T200 uses the same mechanism for the menu-bar veil: the shell configures the
+  layer surface to the 95 pt visual extent but keeps its exclusive zone and
+  committed input strip at the 28 pt bar, then declares a `veil` region with
+  the full extent. The lower 67 pt is visual-only. Clearing the region (hidden
+  bar, Reduce Transparency, or no sampled scene texture) leaves no material.
 
 Layers match `wlr-layer-shell`'s ordering: `background`, `bottom`, `top`,
 `overlay`. The menu bar and Dock are `top`; menus and the OSD are `overlay`.
