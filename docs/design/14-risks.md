@@ -42,6 +42,7 @@ units.
 | **Persistent-chrome quality floor** — Dock/menu bar can reach `Minimal` | The most visible surfaces can lose the material under load | P2 policy + cheaper 4K blur |
 | **Packaging/hardware rail** — packages are placeholders; driver matrix/perf OPEN | No installable, verifiable product without them | Hardware rail + real packaging work |
 | **Shell accessibility/IME** — chrome not on AT-SPI; no shipped input-method process | Screen-reader and CJK users cannot rely on the desktop even though apps are accessible | P2: bridge shell chrome, integrate an existing IME |
+| **Total-experience scope** — Settings rows without owners, incomplete menu-bar extras, Dock behaviour/motion gaps, Overview paging, app-switcher modes, Search/Stage/tiling/Preview design-only, HUDs/sound/cursor partial, cross-distro adapters/packaging incomplete | A desktop can render beautifully and still feel unfinished because the click tree, labels, states, or settings are wrong | Track 22 (T209–T262): capture the reference, map every Settings row, complete the surfaces, validate on Fedora/Ubuntu/Debian/Arch |
 
 The documentation risk is now managed by the rule in
 [STATUS.md](STATUS.md): a topic doc describes the target, STATUS records the
@@ -74,6 +75,12 @@ them from the outset:
 2. **Global menu wherever the application exports one** — we never remove an
    application's internal menu merely because global menu mode is on (see
    [06-global-menu.md](06-global-menu.md)).
+3. **AirDrop/Continuity/Handoff and Apple account services are omitted** —
+   there is no permissively licensed drop-in with the same UX, and iCloud,
+   Siri, Apple Intelligence, Screen Time, Wallet, Game Center, Find My, and App
+   Store are not Linux services. Optional LocalSend/KDE Connect integration
+   can be evaluated separately (see
+   [interface-naming-and-licensing.md](interface-naming-and-licensing.md)).
 
 ## No live compositor handoff
 

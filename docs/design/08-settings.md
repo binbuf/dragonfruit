@@ -49,6 +49,14 @@ Three provider kinds meet inside `settingsd`:
 
 ## Settings panes
 
+> **v0.2.0 note.** The authoritative row-level owner map is
+> [settings-business-logic-map.md](settings-business-logic-map.md). It extends
+> this pane list with every macOS pane/sub-pane, the disposition
+> (ship/adapt/delegate/omit), the proposed key/API, and the absence path. The
+> executable work is T222–T229 in
+> [v0.2.0/ROADMAP.md](../v0.2.0/ROADMAP.md). This document remains the
+> architecture overview.
+
 The pane list mirrors the macOS information architecture (see
 `../reference/System_Preferences.md`), with each pane's routing made
 explicit — no pane is "a wrapper around a GNOME dialog":

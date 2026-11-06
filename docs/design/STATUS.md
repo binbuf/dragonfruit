@@ -49,6 +49,16 @@ below. The important architectural conclusion is separate from documentation:
 > frame callbacks. That is the gap most likely to make a technically strong
 > desktop feel second-rate on real hardware.
 
+The **v0.2.0 total-experience track** adds the other half of that judgement:
+the Dock click tree, menu bar and extras, Overview/workspaces, app switcher,
+Search, Applications drawer, System Settings, animations, HUDs, and the
+cross-distro ownership of every setting. The target is
+[22-total-experience.md](22-total-experience.md); the row map is
+[settings-business-logic-map.md](settings-business-logic-map.md); the task
+sequence is [v0.2.0/ROADMAP.md](../v0.2.0/ROADMAP.md). A desktop that renders
+beautifully but has a dead Dock click, a label-less menu, or a fake Settings
+toggle is not a premium experience.
+
 ## 2. Status legend
 
 | State | Meaning |
@@ -89,6 +99,7 @@ report already uses that distinction; this file applies it consistently.
 | T-19 Desktop affordances | Implemented | Tabler line + Phosphor fill icon split, Settings category tiles, menu-bar/Dock/app icons, Applications drawer, desktop items | desktop process is not provisioned by the systemd session (G-09) |
 | T-20 Tahoe liquid-glass material | **Partial** | scene texture, Kawase blur, glass shader, all chrome roles, DRM sampled path, effective material event, software fallback, tolerance captures, native DP-1 diagnostics and visual sweep (T191a/T191b) | multi-GPU/rotation, quality floor, cursor/overlay-plane evidence, refresh scheduling (G-08, G-12, G-02) |
 | T-21 Presentation foundation (v0.1.1) | **Proposed** | task set T183–T193: shell transport/HiDPI, per-output refresh scheduling, material cost/floor, native evidence | all rows; see [tasks/0.1.1](../tasks/0.1.1/README.md) |
+| T-22 Total desktop experience (v0.2.0) | **Proposed** | task set T209–T262: Settings map, menu bar/extras, Dock, Overview/workspaces, switcher, Search, drawer, desktop, dialogs, motion/HUDs, cross-distro | all rows; see [tasks/0.2.0](../tasks/0.2.0/README.md) |
 
 ## 4. System status by area
 
@@ -146,7 +157,8 @@ Severity is about **product/architecture risk**, not implementation effort.
 | G-17 | Spotlight/search, GOA, printer breadth, NVIDIA-specific validation, HDR, and live PipeWire screencast remain explicit backlog. | T-17 post-gate backlog, `docs/design/07-system-integration.md` | Keep them named; do not let them creep into unrelated units. |
 | G-18 | Documentation drift: stale DRM/feather claims, desktop icons "later", Files "cxx-qt"/GVfs/thumbnails/file-opening claims, Control Center five-tile status, Displays VRR/color claims, duplicate ADR 0123, broken links. | this audit | Fixed in the same change as this file; see §7. |
 | G-19 | **Shell chrome is not exported to AT-SPI.** The offscreen QPA has no accessibility backend, so the menu bar, Dock, Control Center, OSD, and overlays keep per-component `Accessible.*` semantics but do not appear on the accessibility bus. | ADR 0154, `shell/src/main.cpp` | Accepted boundary for now, but a screen-reader user cannot inspect the chrome. Revisit when the shell transport is reworked (a Wayland/AT-SPI bridge may fall out of that change). |
-| G-20 | **No shipped input-method/IME process.** The compositor advertises `text-input`/input-method protocols, but no first-party IME UI or integration ships; CJK/complex-input users depend on a host IME. | `compositor/src/state.rs` protocol registration; no IME service | Decide whether to integrate an existing IME (ibus/fcitx) or ship a minimal candidate window; do not advertise IME support as complete until one is present. |
+| G-20 | **No shipped input-method/IME process.** The compositor advertises `text-input`/input-method protocols, but no first-party IME UI or integration ships; CJK/complex-input users depend on a host IME. | `compositor/src/state.rs` protocol registration; no IME service | Decide whether to integrate an existing IME (ibus/fcitx5) or ship a minimal candidate window; do not advertise IME support as complete until one is present. |
+| G-21 | **The total desktop experience is not yet specified as one contract.** Settings rows are not all mapped to an owner, menu-bar extras are incomplete, Dock behaviour/motion has named gaps, Overview/workspaces paging and neighbour reveal are deferred, the app switcher is app-mode-focused, Search/Stage/tiling/Preview are design-only, HUDs/sound/cursor are partial, and cross-distro adapters/packaging are not complete. | This audit; T-22 inventory; [22-total-experience.md](22-total-experience.md); [settings-business-logic-map.md](settings-business-logic-map.md); [distro-compatibility.md](distro-compatibility.md) | Execute T209–T262 in order. Every Settings row gets an owner/absence path; every surface gets a capture and a keyboard/AT-SPI/reduced-motion path; every distro gets a build/install/smoke row. Do not add new Settings rows or surface chrome outside the map without a scope update. |
 
 ## 6. Decisions made in code, now recorded
 
@@ -320,6 +332,13 @@ are now cut from it.
 3. **P0-C Native verification.** Trusted capture/readback for DRM; commit
    native stills for Dock/menu bar/window at 1x/1.5x/2x, Full/Reduced. No
    nested screenshot may be labeled native proof.
+4. **P0-D Total experience (v0.2.0).** Execute T209–T262: capture the reference,
+   map every Settings row to an owner, then complete the menu bar/extras, Dock,
+   Overview/workspaces, switcher, Search, drawer, motion/HUDs, and cross-distro
+   integration. This is the product-closure track; it does not replace the
+   presentation foundation above. Executable sequence:
+   [v0.2.0/ROADMAP.md](../v0.2.0/ROADMAP.md) · task files:
+   [tasks/0.2.0/](../tasks/0.2.0/README.md).
 
 ### P1 — close the visible dead ends
 
