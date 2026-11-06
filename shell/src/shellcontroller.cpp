@@ -6161,6 +6161,7 @@ void ShellController::onDockPointerMoved(qreal x, qreal y)
 {
     if (!m_dockWindow)
         return;
+    m_dockPointerPosition = QPointF(x, y);
     // The compositor delivers Dock-surface coordinates in scene space; the
     // scene is offset inside the offscreen window when a popover needs
     // headroom (above a bottom Dock) or a side gutter (beside a vertical
@@ -6173,6 +6174,7 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
 {
     if (!m_dockWindow)
         return;
+    m_dockPointerPosition = QPointF(x, y);
     Qt::MouseButton qtButton = Qt::NoButton;
     if (button == 0x110)
         qtButton = Qt::LeftButton;
@@ -6189,6 +6191,7 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
 
 void ShellController::onDockPointerLeft()
 {
+    m_dockPointerPosition.reset();
     if (!m_dockWindow)
         return;
     sendChromePointer(m_dockWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
@@ -7822,17 +7825,25 @@ void ShellController::renderDock()
     // The Dock popover (context menu / window chooser) in Dock-scene
     // coordinates; empty when nothing is open. `popoverRect` keys on the
     // popover's `open || visible` so the open/close fade is still captured.
-    const QVariantMap popover = m_dockItem->property("popoverRect").toMap();
-    const int px = qFloor(popover.value(QStringLiteral("x")).toReal());
-    const int py = qFloor(popover.value(QStringLiteral("y")).toReal());
-    const int pw = qCeil(popover.value(QStringLiteral("w")).toReal());
-    const int ph = qCeil(popover.value(QStringLiteral("h")).toReal());
-    const bool hasPopover = pw > 0 && ph > 0;
+    const auto dockRectProperty = [this](const char *name) {
+        const QVariantMap rect = m_dockItem->property(name).toMap();
+        return QRect(qFloor(rect.value(QStringLiteral("x")).toReal()),
+                     qFloor(rect.value(QStringLiteral("y")).toReal()),
+                     qCeil(rect.value(QStringLiteral("w")).toReal()),
+                     qCeil(rect.value(QStringLiteral("h")).toReal()));
+    };
+    const QRect popover = dockRectProperty("popoverRect");
+    const int px = popover.x();
+    const int py = popover.y();
+    const int pw = popover.width();
+    const int ph = popover.height();
+    const bool hasPopover = !popover.isEmpty();
 
     // Use a strip for ordinary Dock frames. Give the shared scene its full
     // popover budget for the lifetime of an overlay, including its fade out.
     const int headroom = hasPopover ? kDockPopoverHeadroom : 0;
     const int leftGutter = hasPopover ? kDockPopoverGutter : 0;
+    const bool originChanged = leftGutter != m_dockItemOffsetX || headroom != m_dockItemOffsetY;
     m_dockItemOffsetX = leftGutter;
     m_dockItemOffsetY = headroom;
     const int windowWidth = m_dockWidth + 2 * leftGutter;
@@ -7850,6 +7861,15 @@ void ShellController::renderDock()
                                                    m_chromeScale);
     m_dockItem->setX(itemOrigin.x());
     m_dockItem->setY(itemOrigin.y());
+    // Qt remembers the last injected pointer in window coordinates. When
+    // the overlay changes the scene origin, rebase that position before
+    // Qt reevaluates hover during polish. Otherwise opening a label makes
+    // the pointer appear to leave its tile and closes the label again.
+    if (originChanged && m_dockPointerPosition && m_dockButtons == Qt::NoButton) {
+        const QPointF pointer = *m_dockPointerPosition + QPointF(leftGutter, headroom);
+        sendChromePointer(m_dockWindow, QEvent::MouseMove, pointer,
+                          Qt::NoButton, Qt::NoButton);
+    }
 
     // The input region is the visible bar plus the currently magnified or
     // bouncing icon rectangles; the transparent magnified band and the hidden
@@ -7868,12 +7888,7 @@ void ShellController::renderDock()
     // magnified row (T-14.7b). The Dock reports `panelRect`, the integer edge
     // it draws, so the declared panel and the QML fill are the same rounded
     // rect (T-14.7z). Submit the input and blur geometry with this frame.
-    const QVariantMap plate = m_dockItem->property("panelRect").toMap();
-    const QRect panel(qFloor(plate.value(QStringLiteral("x")).toReal()),
-                      qFloor(plate.value(QStringLiteral("y")).toReal()),
-                      qCeil(plate.value(QStringLiteral("w")).toReal()),
-                      qCeil(plate.value(QStringLiteral("h")).toReal()));
-    m_protocol->setDockFrameGeometry(panel, inputRects);
+    m_protocol->setDockFrameGeometry(dockRectProperty("panelRect"), inputRects);
     const QRect dockRect(leftGutter, headroom, m_dockWidth, m_dockHeight);
     const QRect dockSource = chromeBufferRect(dockRect);
     QList<ChromeSceneTarget> targets;
@@ -7910,7 +7925,12 @@ void ShellController::renderDock()
             left = px;
             break;
         }
-        m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph);
+        // The overlay buffer can contain a tooltip as well as a menu. Only
+        // the menu's bounds get a material panel. The tooltip paints its own
+        // capsule and tail and would expose glass in its transparent pixels.
+        const QRect card = dockRectProperty("activePopoverRect").intersected(popover);
+        const QRect backdrop = card.isEmpty() ? QRect() : card.translated(-popover.topLeft());
+        m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph, backdrop);
         const QRect popupRect(leftGutter + px, headroom + py, pw, ph);
         const QRect popupSource = chromeBufferRect(popupRect);
         targets.append({QStringLiteral("dock-popup"), QSize(pw, ph), popupSource,

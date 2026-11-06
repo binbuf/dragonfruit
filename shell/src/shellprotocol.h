@@ -142,8 +142,10 @@ public:
     // the popup's anchored edges and size `(width, height)`. The shell
     // computes the margins from the popover's Dock-scene rectangle and the
     // Dock's position (T-10 section 5). The compositor answers with a fresh
-    // `dockPopupConfigured`.
-    bool setDockPopupGeometry(int top, int right, int bottom, int left, int width, int height);
+    // `dockPopupConfigured`. The surface-local panel is applied with the
+    // popup's next frame. An empty panel leaves a tooltip without a backdrop.
+    bool setDockPopupGeometry(int top, int right, int bottom, int left, int width, int height,
+                              const QRect &panel);
 
     // Attach `image` to the Dock popup surface and commit.
     bool commitDockPopupImage(const QImage &image, const QSize &logicalSize = QSize(),
@@ -882,7 +884,7 @@ private:
     bool commitTo(wl_surface *surface, const QImage &image,
                   const QSize &logicalSize = QSize(),
                   const QRect &sourceRect = QRect());
-    bool applyDockFrameGeometry();
+    bool applyDockSurfaceGeometry(wl_surface *surface);
     ShellSurfaceBuffer *surfaceBuffer(wl_surface *surface);
     bool ensureShmSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
                        const QSize &size);
@@ -1155,6 +1157,8 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     wl_surface *m_dockPopupSurface = nullptr;
     df_layer_surface *m_dockPopupLayer = nullptr;
     bool m_dockPopupMapped = false;
+    std::optional<QRect> m_nextDockPopupPanel;
+    std::optional<QRect> m_committedDockPopupPanel;
     // Window-space origin of the popup surface, used to translate pointer
     // coordinates delivered relative to the popup into window coordinates.
     int m_popupX = 0;

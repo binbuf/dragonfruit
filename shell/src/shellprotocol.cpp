@@ -1622,8 +1622,7 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     requestFrameInternal(surface, buffer);
     wl_surface_attach(surface, slot.buffer, 0, 0);
     wl_surface_damage_buffer(surface, 0, 0, frame.size.width(), frame.size.height());
-    if (surface == m_dockSurface)
-        applyDockFrameGeometry();
+    applyDockSurfaceGeometry(surface);
     wl_surface_commit(surface);
     wl_display_flush(m_display);
     buffer->lastImage = QImage();
@@ -1859,9 +1858,17 @@ void ShellProtocol::setDockFrameGeometry(const QRect &panel, const QList<QRect> 
     m_nextDockGeometry = DockFrameGeometry{panel, inputRects};
 }
 
-bool ShellProtocol::applyDockFrameGeometry()
+bool ShellProtocol::applyDockSurfaceGeometry(wl_surface *surface)
 {
-    if (!m_nextDockGeometry)
+    if (surface == m_dockPopupSurface && m_nextDockPopupPanel
+        && m_nextDockPopupPanel != m_committedDockPopupPanel) {
+        const QRect &panel = *m_nextDockPopupPanel;
+        df_layer_surface_set_panel_rect(m_dockPopupLayer, panel.x(), panel.y(),
+                                       panel.width(), panel.height());
+        m_committedDockPopupPanel = panel;
+        return true;
+    }
+    if (surface != m_dockSurface || !m_nextDockGeometry)
         return false;
     const DockFrameGeometry &next = *m_nextDockGeometry;
     const bool inputChanged = !m_committedDockGeometry
@@ -1917,10 +1924,11 @@ bool ShellProtocol::createDockPopupSurface(DockPosition position)
 }
 
 bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int left, int width,
-                                         int height)
+                                         int height, const QRect &panel)
 {
     if (!m_dockPopupLayer || !m_dockPopupSurface)
         return false;
+    m_nextDockPopupPanel = panel;
     // set_margin(top, right, bottom, left)
     df_layer_surface_set_margin(m_dockPopupLayer, top, right, bottom, left);
     df_layer_surface_set_size(m_dockPopupLayer, width, height);
@@ -2306,7 +2314,7 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     if (damage.isEmpty() && !buffer->lastImage.isNull()) {
         // Reuse the attached buffer. Input or plate geometry can change even
         // when the pixels match, so commit that state on its own.
-        if (surface == m_dockSurface && applyDockFrameGeometry()) {
+        if (applyDockSurfaceGeometry(surface)) {
             wl_surface_commit(surface);
             wl_display_flush(m_display);
         }
@@ -2361,8 +2369,7 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     wl_surface_attach(surface, resource.buffer, 0, 0);
     wl_surface_damage_buffer(surface, damage.x(), damage.y(),
                              damage.width(), damage.height());
-    if (surface == m_dockSurface)
-        applyDockFrameGeometry();
+    applyDockSurfaceGeometry(surface);
     wl_surface_commit(surface);
     wl_display_flush(m_display);
     buffer->lastImage = frame;
@@ -2939,6 +2946,8 @@ void ShellProtocol::teardown()
     m_dockPopupLayer = nullptr;
     m_dockPopupSurface = nullptr;
     m_dockPopupMapped = false;
+    m_nextDockPopupPanel.reset();
+    m_committedDockPopupPanel.reset();
     m_overviewLayer = nullptr;
     m_overviewSurface = nullptr;
     m_overviewMapped = false;

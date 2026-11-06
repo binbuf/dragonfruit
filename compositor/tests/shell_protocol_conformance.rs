@@ -1947,6 +1947,56 @@ fn dock_surface_reserves_the_bottom_zone_and_coexists_with_the_bar() {
 }
 
 #[test]
+fn dock_overlay_can_commit_a_tooltip_without_a_backdrop() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(runtime_dir).join(format!("df-dock-tip-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-dock-tooltip",
+        &["1e".repeat(32)],
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (_core, shell, _bar, _bar_layer) =
+        open_trusted_bar(&conn, &mut queue, &mut state, &proc.read_token(), 28, 28);
+    let qh = queue.handle();
+    let surface = state.compositor.as_ref().unwrap().create_surface(&qh, ());
+    let popup = shell.get_layer_surface(
+        &surface,
+        None,
+        df_shell::Layer::Overlay,
+        "dock-popup".to_string(),
+        &qh,
+        (),
+    );
+    popup.set_anchor(1 | 4);
+    popup.set_size(180, 30);
+    popup.set_exclusive_zone(-1);
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+    let inferred = "scale chrome dock-popup logical=0,0,180,30 ";
+    assert!(input.query("query scale").contains(inferred));
+
+    popup.set_panel_rect(0, 0, 0, 0);
+    queue.roundtrip(&mut state).unwrap();
+    assert!(input.query("query scale").contains(inferred));
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+    assert!(input
+        .query("query scale")
+        .contains("scale chrome dock-popup logical=0,0,0,0 "));
+
+    popup.set_panel_rect(10, 5, 160, 20);
+    surface.commit();
+    queue.roundtrip(&mut state).unwrap();
+    assert!(input
+        .query("query scale")
+        .contains("scale chrome dock-popup logical=10,5,160,20 "));
+    proc.shutdown();
+}
+
+#[test]
 fn vertical_dock_reserves_the_left_and_right_zones() {
     let token = "1b".repeat(32);
     let proc = CompositorProcess::start("dragonfruit-conformance-dock-vertical", &[token]);

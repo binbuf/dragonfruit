@@ -449,7 +449,7 @@ pub fn is_backdrop_panel(
     geometry: Rectangle<i32, Logical>,
     output_size: Size<i32, Logical>,
 ) -> bool {
-    geometry.size != output_size
+    !geometry.is_empty() && geometry.size != output_size
 }
 
 /// Resolve the rect a chrome surface actually paints — the panel the backdrop
@@ -960,6 +960,7 @@ mod tests {
         // A full-output overlay (Mission Control, Desktop Reveal) is a
         // scene-wide surface that draws its own scrim, never frosted whole.
         assert!(!is_backdrop_panel(rect(0, 0, 1920, 1200), output));
+        assert!(!is_backdrop_panel(rect(0, 0, 0, 0), output));
     }
 
     #[test]
