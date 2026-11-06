@@ -1,0 +1,88 @@
+{
+  "colour_regions": [
+    {
+      "name": "interior",
+      "rect": [
+        28,
+        24,
+        132,
+        92
+      ]
+    },
+    {
+      "name": "rim",
+      "rect": [
+        20,
+        16,
+        140,
+        23
+      ]
+    },
+    {
+      "name": "shadow",
+      "rect": [
+        18,
+        102,
+        142,
+        114
+      ]
+    }
+  ],
+  "geometry": {
+    "background": "#18181c",
+    "rect": [
+      0,
+      0,
+      160,
+      120
+    ],
+    "tolerance": 0.05
+  },
+  "mtf": {
+    "axis": "x",
+    "periods_px": [
+      16,
+      32
+    ],
+    "rect": [
+      28,
+      24,
+      132,
+      92
+    ]
+  },
+  "name": "checker",
+  "regions": {
+    "geometry": [
+      0,
+      0,
+      160,
+      120
+    ],
+    "interior": [
+      28,
+      24,
+      132,
+      92
+    ],
+    "rim": [
+      20,
+      16,
+      140,
+      23
+    ],
+    "shadow": [
+      18,
+      102,
+      142,
+      114
+    ]
+  },
+  "registration_region": [
+    20,
+    16,
+    140,
+    100
+  ],
+  "scale": 1
+}

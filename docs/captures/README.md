@@ -1370,6 +1370,44 @@ overview surface); the benchmark excludes the overview surface from the GPU
 rail so the rest of the set completes, and the crash is a filed T193 follow-up.
 The report and raw logs are nested reference evidence, not native proof.
 
+T-19.4's evidence pin and baseline are three small, repeatable pieces:
+
+- `docs/captures/glass-reference-manifest.json` records the exact reference
+  revision, source PNGs, layout/AX dumps, JSON sections, analysis scripts,
+  crop rectangles, ICC assumptions and SHA-256 hashes. The full reference
+  checkout is optional: `make glass-reference-verify` reads
+  `DRAGONFRUIT_REFERENCE_ROOT` (or `--reference-root`) and fails clearly on a
+  missing root, revision mismatch or changed source/crop/script hash;
+  `make glass-reference-manifest` regenerates the manifest when the pinned
+  checkout changes. `python3 scripts/t194-reference-manifest.py
+  --check-manifest` is the no-checkout structural check.
+- `tests/glass/` holds the deterministic neutral, checker, line-grid and
+  saturated fixtures, their case masks, derived `targets.json` and
+  `provenance.json`. `make glass-selftest` regenerates the fixtures in a
+  temporary directory and proves that the comparator detects intentional
+  colour, crop/geometry, MTF, motion, registration and timing regressions. The
+  comparison CLI is `python3 scripts/t194-glass-compare.py
+  {compare|motion|timing}`; it converts embedded ICC profiles to sRGB,
+  registers within a bounded shift before scoring, and reports per-metric
+  masks plus zero/missing coverage explicitly. `make gates` runs the
+  self-test.
+- `make glass-baseline-capture` records the starting appearance and timing.
+  On a host with a working screenshot/nested-window path it reuses
+  `scripts/capture-t20-chrome-material.sh`; otherwise it writes
+  `t194-glass-baseline.open.txt` with the exact probe command and reason and
+  still writes `t194-glass-baseline.json`/`.md` from the committed v0.1.1
+  `t20-chrome-*` stills and the T-21 benchmark counters. The twelve crops
+  cover Dock, bar, attached menu, detached menu, Control Center and banner in
+  light/dark; `t194-glass-baseline-{stationary,moving}.png` and the native
+  `t21-native-{dark,light}-live-under-dock-2x` copies record the stationary
+  backdrop and the separate moving test panel. `t194-glass-baseline.json`
+  carries backend, scale, refresh, scheme, material tier/path, transport,
+  per-surface hashes and the stationary idle / moving Dock-sweep frame,
+  region, allocation and transport counters;
+  `make glass-baseline-check` verifies the crop hashes. The unmapped
+  Notification Center and the missing transparency/reduce-transparency/
+  increase-contrast settings are recorded as gaps, not passes.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

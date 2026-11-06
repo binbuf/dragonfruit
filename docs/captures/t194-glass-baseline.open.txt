@@ -1,0 +1,18 @@
+T194 glass baseline — live host capture
+timestamp: 2026-11-05T22:43:59-08:00
+verdict: OPEN
+reason: spectacle could not capture the host session (probe exited non-zero or wrote no PNG); the nested compositor did not create its Wayland socket within 10 s (the host did not map the nested window)
+command: make glass-baseline-capture
+probe:
+  XDG_RUNTIME_DIR=/run/user/1000
+  WAYLAND_DISPLAY=dragonfruit-wayland
+  spectacle=/usr/bin/spectacle
+  nested_socket=dragonfruit-t194-baseline
+  spectacle_probe_log=docs/captures/t194-glass-baseline-spectacle-probe.log
+  nested_probe_log=docs/captures/t194-glass-baseline-nested-probe.log
+rerun: WAYLAND_DISPLAY=<host-socket> make glass-baseline-capture
+
+The committed v0.1.1 t20-chrome-* stills, the T-21 benchmark
+counters, and the native live-content moving-panel stills are still
+recorded in docs/captures/t194-glass-baseline.{json,md}.
+A fresh live host recapture remains OPEN.

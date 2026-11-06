@@ -1,0 +1,997 @@
+{
+  "backdrops": [
+    {
+      "artifact": "docs/captures/t194-glass-baseline-stationary.png",
+      "id": "stationary",
+      "note": "settled Dock/desktop, no pointer motion",
+      "sha256": "bae6c95660d60a67cd680b521ae764b5fd5b8ba3f489ea34b746ff92e197b325",
+      "source_artifact": "docs/captures/t21-stable-dock-1x.png",
+      "source_sha256": "bae6c95660d60a67cd680b521ae764b5fd5b8ba3f489ea34b746ff92e197b325",
+      "status": "present"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-moving.png",
+      "id": "moving",
+      "note": "nested Dock sweep with the pointer moving",
+      "sha256": "ed005428ffa4a5c27a2c9ddc77a1a0e1c3253637358d6497fe065dcf14fb3e34",
+      "source_artifact": "docs/captures/t21-region-motion-1x.png",
+      "source_sha256": "ed005428ffa4a5c27a2c9ddc77a1a0e1c3253637358d6497fe065dcf14fb3e34",
+      "status": "present"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-moving_window_dark.png",
+      "id": "moving_window_dark",
+      "note": "native live-content check: an override-redirect test panel moved behind the Dock (dark)",
+      "sha256": "0b0ff9580c12c9f026e6f22d65d2c83fa2293c3dc4bc4df3abc0d7a15e3e31da",
+      "source_artifact": "docs/captures/t21-native-dark-live-under-dock-2x.png",
+      "source_sha256": "0b0ff9580c12c9f026e6f22d65d2c83fa2293c3dc4bc4df3abc0d7a15e3e31da",
+      "status": "present"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-moving_window_light.png",
+      "id": "moving_window_light",
+      "note": "native live-content check: an override-redirect test panel moved behind the Dock (light)",
+      "sha256": "cafbaff5efdf2397b15d913882ad1ae444a5494282768f01d2a4f4875ae081a6",
+      "source_artifact": "docs/captures/t21-native-light-live-under-dock-2x.png",
+      "source_sha256": "cafbaff5efdf2397b15d913882ad1ae444a5494282768f01d2a4f4875ae081a6",
+      "status": "present"
+    }
+  ],
+  "capture_environment": {
+    "backend": "nested",
+    "material_path": "gpu",
+    "material_tier": "full",
+    "note": "the nested refresh override is policy evidence; it is not a physical panel rate",
+    "output": "NESTED-1 1920x1200",
+    "refresh_hz": 144.0,
+    "refresh_source": "override",
+    "scale": 1,
+    "scheme": "dark",
+    "source_benchmark": "docs/captures/t21-presentation-bench.md",
+    "source_capture": "v0.1.1 committed t20-chrome-* stills",
+    "transport_path": "render-control+dmabuf"
+  },
+  "command": "python3 scripts/t194-baseline.py --write",
+  "commands": {
+    "baseline": "make glass-baseline-capture",
+    "compare": "python3 scripts/t194-glass-compare.py compare --reference REF --candidate CAND --case CASE.json",
+    "reference_verify": "make glass-reference-verify",
+    "selftest": "make glass-selftest",
+    "timing": "python3 scripts/t194-glass-compare.py timing --reference docs/captures/t194-glass-baseline.json --candidate CAND.json"
+  },
+  "counters": {
+    "moving": {
+      "compositor": {
+        "animation stats": {
+          "animations_completed": "0",
+          "animations_started": "0",
+          "frames_stepped": "0",
+          "interval_us": "6944",
+          "reduced_motion": "false"
+        },
+        "chrome stats": {
+          "chrome_dmabuf_imports": "1383",
+          "chrome_frame_callbacks": "1090",
+          "chrome_shm_bytes": "0",
+          "chrome_shm_imports": "0"
+        },
+        "degrade stats": {
+          "budget_source": "refresh",
+          "budget_us": "6944",
+          "down_window_us": "200000",
+          "downgrades": "1",
+          "forced": "1",
+          "latched": "0",
+          "over_budget": "17",
+          "samples": "1342",
+          "tier": "full",
+          "tiers": "full:1329,reduced:13,minimal:0",
+          "up_window_us": "3000000",
+          "upgrades": "0"
+        },
+        "frame request": {
+          "animation": "0",
+          "due": "1",
+          "idle": "0",
+          "in_flight": "0",
+          "last_interval_us": "15572",
+          "last_presented_us": "840870822",
+          "next_deadline_us": "840877767",
+          "output": "NESTED-1",
+          "period_us": "6944",
+          "presentations": "1342",
+          "refresh_hz": "144.000",
+          "urgent": "0",
+          "vrr": "unsupported",
+          "vrr_interval_us": "-1",
+          "vrr_max_us": "-1",
+          "vrr_min_us": "-1"
+        },
+        "frame scheduler stats": {
+          "animation": "0",
+          "in_flight": "0",
+          "outputs": "1",
+          "timer_armed": "0",
+          "urgent": "0"
+        },
+        "frame timing": {
+          "avg_us": "8023",
+          "max_interval_ms": "61209",
+          "max_us": "4006554",
+          "p50_us": "4480",
+          "p95_us": "8355",
+          "p99_us": "9691",
+          "samples": "1342",
+          "samples_total": "1342",
+          "window_max_us": "4006554"
+        },
+        "gesture budget": {
+          "budget_us": "16000",
+          "dropped": "0",
+          "frames": "0",
+          "held": "0",
+          "max_frame_us": "0",
+          "max_interval_ms": "0",
+          "over_budget": "0",
+          "tracing": "0"
+        },
+        "gpu stats": {
+          "available": "1",
+          "blur_max_us": "805",
+          "blur_p50_us": "210",
+          "blur_p95_us": "294",
+          "blur_p99_us": "388",
+          "blur_samples": "3608",
+          "blur_total": "3608",
+          "composite_max_us": "2908",
+          "composite_p50_us": "224",
+          "composite_p95_us": "1305",
+          "composite_p99_us": "1456",
+          "composite_samples": "1341",
+          "composite_total": "1341",
+          "enabled": "1",
+          "gpu_time": "available",
+          "reason": "none",
+          "scene_max_us": "1108",
+          "scene_p50_us": "0",
+          "scene_p95_us": "0",
+          "scene_p99_us": "0",
+          "scene_samples": "1338",
+          "scene_total": "1338"
+        },
+        "latency stats": {
+          "dropped": "0",
+          "last_us": "3714",
+          "max_us": "9409",
+          "samples": "200",
+          "within_one_frame_60hz": "true"
+        },
+        "material stats": {
+          "backdrop_passes": "1338",
+          "backdrop_skipped": "0",
+          "blur_downsample_max": "16",
+          "blur_draws": "1338",
+          "blur_panels": "3608",
+          "blur_passes": "1338",
+          "material_allocations": "38",
+          "material_panel_allocations": "36",
+          "material_region": "1920x1200",
+          "material_region_px": "2304000",
+          "material_scene_allocations": "2",
+          "path": "gpu"
+        },
+        "output material stats": {
+          "direct_scanout_candidates": "0",
+          "direct_scanouts": "0",
+          "material_allocations": "38",
+          "material_frames": "1338",
+          "material_region": "1920x1200",
+          "material_region_px": "2304000",
+          "output": "NESTED-1"
+        },
+        "refresh stats": {
+          "deadline_us": "6944",
+          "interval_us": "6944",
+          "outputs": "1",
+          "override": "1",
+          "refresh_hz": "144.000",
+          "source": "override"
+        },
+        "render stats": {
+          "animation_frames_stepped": "0",
+          "client_wakeups": "0",
+          "direct_scanouts": "0",
+          "frames_rendered": "1342",
+          "frames_skipped_no_damage": "0",
+          "latency_dropped": "0",
+          "latency_samples": "200",
+          "latency_us_last": "3714",
+          "latency_us_max": "9409",
+          "scene_transform_skipped": "0",
+          "scene_transforms": "0"
+        },
+        "scanout stats": {
+          "considered": "1342",
+          "direct_scanout_candidates": "0",
+          "direct_scanouts": "0",
+          "frames_rendered": "1342",
+          "frames_skipped_no_damage": "0",
+          "material_frames": "1338"
+        },
+        "scheme stats": {
+          "scheme": "dark"
+        },
+        "xwayland stats": {
+          "display": ":1",
+          "running": "true",
+          "starts": "1"
+        }
+      },
+      "delta_from_previous": {
+        "chrome_dmabuf_imports": 1363,
+        "chrome_frame_callbacks": 1078,
+        "chrome_shm_bytes": 0,
+        "chrome_shm_imports": 0,
+        "client_wakeups": 0,
+        "commit_us_p95": 100,
+        "copy_bytes": 0,
+        "damage_pixels": 201345330,
+        "deadline_us": 0,
+        "direct_scanouts": 0,
+        "dmabuf_bytes": 6210918400,
+        "dmabuf_commits": 1363,
+        "frame_callback_us_p95": 10606,
+        "frames_rendered": 1320,
+        "frames_skipped_no_damage": 0,
+        "interval_us": 0,
+        "material_allocations": 28,
+        "material_frames": 1320,
+        "material_panel_allocations": 28,
+        "material_region_px": 0,
+        "material_scene_allocations": 0,
+        "refresh_hz": 0.0,
+        "shm_allocs": 0,
+        "shm_bytes": 0,
+        "tier_forced": 0
+      },
+      "derived": {
+        "chrome_dmabuf_imports": 1383,
+        "chrome_frame_callbacks": 1090,
+        "chrome_shm_bytes": 0,
+        "chrome_shm_imports": 0,
+        "client_wakeups": 0,
+        "commit_us_p95": 148,
+        "copy_bytes": 0,
+        "damage_pixels": 203537970,
+        "deadline_us": 6944,
+        "direct_scanouts": 0,
+        "dmabuf_bytes": 6241269760,
+        "dmabuf_commits": 1383,
+        "frame_callback_us_p95": 14788,
+        "frames_rendered": 1342,
+        "frames_skipped_no_damage": 0,
+        "interval_us": 6944,
+        "material_allocations": 38,
+        "material_frames": 1338,
+        "material_panel_allocations": 36,
+        "material_path": "gpu",
+        "material_region": "1920x1200",
+        "material_region_px": 2304000,
+        "material_scene_allocations": 2,
+        "refresh_hz": 144.0,
+        "refresh_source": "override",
+        "shm_allocs": 0,
+        "shm_bytes": 0,
+        "tier": "full",
+        "tier_forced": 1,
+        "transport_gpu": "dmabuf",
+        "transport_path": "render-control+dmabuf",
+        "transport_reason": "ring-exhausted"
+      },
+      "previous_snapshot": "SIGUSR1-3",
+      "scenario": "Dock sweep (10 s of synthetic pointer motion)",
+      "shell": {
+        "chrome stats": {
+          "commit_us_max": "12020",
+          "commit_us_p50": "85",
+          "commit_us_p95": "148",
+          "commit_us_p99": "189",
+          "commit_us_samples": "1363",
+          "commits": "1383",
+          "copies": "0",
+          "copy_bytes": "0",
+          "damage_pixels": "203537970",
+          "dmabuf_allocs": "9",
+          "dmabuf_buffers": "9",
+          "dmabuf_bytes": "6241269760",
+          "dmabuf_commits": "1383",
+          "dmabuf_deferred": "0",
+          "dmabuf_fallbacks": "11",
+          "dmabuf_reuses": "1374",
+          "dmabuf_sync": "gl-fence",
+          "dmabuf_sync_timeouts": "0",
+          "dmabuf_sync_waits": "851",
+          "fallback_renders": "0",
+          "frame_callback_us_max": "20852",
+          "frame_callback_us_p50": "8789",
+          "frame_callback_us_p95": "14788",
+          "frame_callback_us_p99": "16819",
+          "frame_callback_us_samples": "1078",
+          "frame_callbacks": "1090",
+          "gpu": "dmabuf",
+          "gpu_reason": "ring-exhausted",
+          "grab_renders": "0",
+          "path": "render-control+dmabuf",
+          "scene_frames": "851",
+          "shm_allocs": "0",
+          "shm_bytes": "0",
+          "skipped_commits": "0"
+        },
+        "chrome surface": {
+          "buffer_scale": "1",
+          "buffer_size": "1920x28",
+          "commit_us_max": "0",
+          "commit_us_p50": "0",
+          "commit_us_p95": "0",
+          "commit_us_p99": "0",
+          "commit_us_samples": "0",
+          "commits": "14",
+          "copies": "0",
+          "copy_bytes": "0",
+          "damage_pixels": "752640",
+          "dmabuf_allocs": "3",
+          "dmabuf_buffers": "3",
+          "dmabuf_bytes": "3010560",
+          "dmabuf_commits": "14",
+          "dmabuf_deferred": "0",
+          "dmabuf_fallbacks": "7",
+          "dmabuf_reuses": "11",
+          "fallback": "0",
+          "frame_callback_us_max": "0",
+          "frame_callback_us_p50": "0",
+          "frame_callback_us_p95": "0",
+          "frame_callback_us_p99": "0",
+          "frame_callback_us_samples": "0",
+          "gpu_reason": "none",
+          "logical_size": "1920x28",
+          "path": "dmabuf",
+          "renders": "21",
+          "scale": "1",
+          "shm_allocs": "0",
+          "shm_bytes": "0",
+          "skipped": "0",
+          "surface": "menubar",
+          "viewport": "1"
+        }
+      },
+      "snapshot": "SIGUSR1-4",
+      "source": {
+        "compositor_log": "docs/captures/t21-presentation-bench-raw/main-144-full/compositor.txt",
+        "shell_log": "docs/captures/t21-presentation-bench-raw/main-144-full/shell.txt"
+      }
+    },
+    "stationary": {
+      "compositor": {
+        "animation stats": {
+          "animations_completed": "0",
+          "animations_started": "0",
+          "frames_stepped": "0",
+          "interval_us": "6944",
+          "reduced_motion": "false"
+        },
+        "chrome stats": {
+          "chrome_dmabuf_imports": "20",
+          "chrome_frame_callbacks": "12",
+          "chrome_shm_bytes": "0",
+          "chrome_shm_imports": "0"
+        },
+        "degrade stats": {
+          "budget_source": "refresh",
+          "budget_us": "6944",
+          "down_window_us": "200000",
+          "downgrades": "1",
+          "forced": "1",
+          "latched": "0",
+          "over_budget": "17",
+          "samples": "22",
+          "tier": "full",
+          "tiers": "full:9,reduced:13,minimal:0",
+          "up_window_us": "3000000",
+          "upgrades": "0"
+        },
+        "frame request": {
+          "animation": "0",
+          "due": "1",
+          "idle": "0",
+          "in_flight": "0",
+          "last_interval_us": "7556",
+          "last_presented_us": "792689117",
+          "next_deadline_us": "792696061",
+          "output": "NESTED-1",
+          "period_us": "6944",
+          "presentations": "22",
+          "refresh_hz": "144.000",
+          "urgent": "0",
+          "vrr": "unsupported",
+          "vrr_interval_us": "-1",
+          "vrr_max_us": "-1",
+          "vrr_min_us": "-1"
+        },
+        "frame scheduler stats": {
+          "animation": "0",
+          "in_flight": "0",
+          "outputs": "1",
+          "timer_armed": "0",
+          "urgent": "0"
+        },
+        "frame timing": {
+          "avg_us": "187879",
+          "max_interval_ms": "61209",
+          "max_us": "4006554",
+          "p50_us": "4396",
+          "p95_us": "10649",
+          "p99_us": "28015",
+          "samples": "22",
+          "samples_total": "22",
+          "window_max_us": "4006554"
+        },
+        "gesture budget": {
+          "budget_us": "16000",
+          "dropped": "0",
+          "frames": "0",
+          "held": "0",
+          "max_frame_us": "0",
+          "max_interval_ms": "0",
+          "over_budget": "0",
+          "tracing": "0"
+        },
+        "gpu stats": {
+          "available": "1",
+          "blur_max_us": "446",
+          "blur_p50_us": "151",
+          "blur_p95_us": "311",
+          "blur_p99_us": "443",
+          "blur_samples": "34",
+          "blur_total": "34",
+          "composite_max_us": "2908",
+          "composite_p50_us": "318",
+          "composite_p95_us": "1452",
+          "composite_p99_us": "1452",
+          "composite_samples": "21",
+          "composite_total": "21",
+          "enabled": "1",
+          "gpu_time": "available",
+          "reason": "none",
+          "scene_max_us": "1108",
+          "scene_p50_us": "0",
+          "scene_p95_us": "56",
+          "scene_p99_us": "56",
+          "scene_samples": "18",
+          "scene_total": "18"
+        },
+        "latency stats": {
+          "dropped": "0",
+          "last_us": "0",
+          "max_us": "0",
+          "samples": "0",
+          "within_one_frame_60hz": "false"
+        },
+        "material stats": {
+          "backdrop_passes": "18",
+          "backdrop_skipped": "0",
+          "blur_downsample_max": "16",
+          "blur_draws": "18",
+          "blur_panels": "34",
+          "blur_passes": "18",
+          "material_allocations": "10",
+          "material_panel_allocations": "8",
+          "material_region": "1920x1200",
+          "material_region_px": "2304000",
+          "material_scene_allocations": "2",
+          "path": "gpu"
+        },
+        "output material stats": {
+          "direct_scanout_candidates": "0",
+          "direct_scanouts": "0",
+          "material_allocations": "10",
+          "material_frames": "18",
+          "material_region": "1920x1200",
+          "material_region_px": "2304000",
+          "output": "NESTED-1"
+        },
+        "refresh stats": {
+          "deadline_us": "6944",
+          "interval_us": "6944",
+          "outputs": "1",
+          "override": "1",
+          "refresh_hz": "144.000",
+          "source": "override"
+        },
+        "render stats": {
+          "animation_frames_stepped": "0",
+          "client_wakeups": "0",
+          "direct_scanouts": "0",
+          "frames_rendered": "22",
+          "frames_skipped_no_damage": "0",
+          "latency_dropped": "0",
+          "latency_samples": "0",
+          "latency_us_last": "0",
+          "latency_us_max": "0",
+          "scene_transform_skipped": "0",
+          "scene_transforms": "0"
+        },
+        "scanout stats": {
+          "considered": "22",
+          "direct_scanout_candidates": "0",
+          "direct_scanouts": "0",
+          "frames_rendered": "22",
+          "frames_skipped_no_damage": "0",
+          "material_frames": "18"
+        },
+        "scheme stats": {
+          "scheme": "dark"
+        },
+        "xwayland stats": {
+          "display": ":1",
+          "running": "true",
+          "starts": "1"
+        }
+      },
+      "delta_from_previous": {
+        "chrome_dmabuf_imports": 2,
+        "chrome_frame_callbacks": 1,
+        "chrome_shm_bytes": 0,
+        "chrome_shm_imports": 0,
+        "client_wakeups": 0,
+        "commit_us_p95": 48,
+        "copy_bytes": 0,
+        "damage_pixels": 107520,
+        "deadline_us": 0,
+        "direct_scanouts": 0,
+        "dmabuf_bytes": 430080,
+        "dmabuf_commits": 2,
+        "frame_callback_us_p95": 4182,
+        "frames_rendered": 2,
+        "frames_skipped_no_damage": 0,
+        "interval_us": 0,
+        "material_allocations": 0,
+        "material_frames": 2,
+        "material_panel_allocations": 0,
+        "material_region_px": 0,
+        "material_scene_allocations": 0,
+        "refresh_hz": 0.0,
+        "shm_allocs": 0,
+        "shm_bytes": 0,
+        "tier_forced": 0
+      },
+      "derived": {
+        "chrome_dmabuf_imports": 20,
+        "chrome_frame_callbacks": 12,
+        "chrome_shm_bytes": 0,
+        "chrome_shm_imports": 0,
+        "client_wakeups": 0,
+        "commit_us_p95": 48,
+        "copy_bytes": 0,
+        "damage_pixels": 2192640,
+        "deadline_us": 6944,
+        "direct_scanouts": 0,
+        "dmabuf_bytes": 30351360,
+        "dmabuf_commits": 20,
+        "frame_callback_us_p95": 4182,
+        "frames_rendered": 22,
+        "frames_skipped_no_damage": 0,
+        "interval_us": 6944,
+        "material_allocations": 10,
+        "material_frames": 18,
+        "material_panel_allocations": 8,
+        "material_path": "gpu",
+        "material_region": "1920x1200",
+        "material_region_px": 2304000,
+        "material_scene_allocations": 2,
+        "refresh_hz": 144.0,
+        "refresh_source": "override",
+        "shm_allocs": 0,
+        "shm_bytes": 0,
+        "tier": "full",
+        "tier_forced": 1,
+        "transport_gpu": "dmabuf",
+        "transport_path": "render-control+dmabuf",
+        "transport_reason": "ring-exhausted"
+      },
+      "previous_snapshot": "SIGUSR1-2",
+      "scenario": "idle (60 s, no pointer motion)",
+      "shell": {
+        "chrome stats": {
+          "commit_us_max": "57",
+          "commit_us_p50": "48",
+          "commit_us_p95": "48",
+          "commit_us_p99": "48",
+          "commit_us_samples": "2",
+          "commits": "20",
+          "copies": "0",
+          "copy_bytes": "0",
+          "damage_pixels": "2192640",
+          "dmabuf_allocs": "6",
+          "dmabuf_buffers": "6",
+          "dmabuf_bytes": "30351360",
+          "dmabuf_commits": "20",
+          "dmabuf_deferred": "0",
+          "dmabuf_fallbacks": "7",
+          "dmabuf_reuses": "14",
+          "dmabuf_sync": "gl-fence",
+          "dmabuf_sync_timeouts": "0",
+          "dmabuf_sync_waits": "20",
+          "fallback_renders": "0",
+          "frame_callback_us_max": "4182",
+          "frame_callback_us_p50": "4182",
+          "frame_callback_us_p95": "4182",
+          "frame_callback_us_p99": "4182",
+          "frame_callback_us_samples": "1",
+          "frame_callbacks": "12",
+          "gpu": "dmabuf",
+          "gpu_reason": "ring-exhausted",
+          "grab_renders": "0",
+          "path": "render-control+dmabuf",
+          "scene_frames": "20",
+          "shm_allocs": "0",
+          "shm_bytes": "0",
+          "skipped_commits": "0"
+        },
+        "chrome surface": {
+          "buffer_scale": "1",
+          "buffer_size": "1920x28",
+          "commit_us_max": "57",
+          "commit_us_p50": "48",
+          "commit_us_p95": "48",
+          "commit_us_p99": "48",
+          "commit_us_samples": "2",
+          "commits": "14",
+          "copies": "0",
+          "copy_bytes": "0",
+          "damage_pixels": "752640",
+          "dmabuf_allocs": "3",
+          "dmabuf_buffers": "3",
+          "dmabuf_bytes": "3010560",
+          "dmabuf_commits": "14",
+          "dmabuf_deferred": "0",
+          "dmabuf_fallbacks": "7",
+          "dmabuf_reuses": "11",
+          "fallback": "0",
+          "frame_callback_us_max": "4182",
+          "frame_callback_us_p50": "4182",
+          "frame_callback_us_p95": "4182",
+          "frame_callback_us_p99": "4182",
+          "frame_callback_us_samples": "1",
+          "gpu_reason": "none",
+          "logical_size": "1920x28",
+          "path": "dmabuf",
+          "renders": "21",
+          "scale": "1",
+          "shm_allocs": "0",
+          "shm_bytes": "0",
+          "skipped": "0",
+          "surface": "menubar",
+          "viewport": "1"
+        }
+      },
+      "snapshot": "SIGUSR1-3",
+      "source": {
+        "compositor_log": "docs/captures/t21-presentation-bench-raw/main-144-full/compositor.txt",
+        "shell_log": "docs/captures/t21-presentation-bench-raw/main-144-full/shell.txt"
+      }
+    }
+  },
+  "gaps": [
+    {
+      "evidence": "docs/tasks/glass/plan/REFERENCE.md",
+      "id": "notification_center_unmapped",
+      "owner": "T204",
+      "reason": "no Notification Center shell surface is mapped; history and the compositor input action exist, but the reference stack/lower-panel fits are evidence only",
+      "status": "unmapped"
+    },
+    {
+      "evidence": "services/settingsd/src/schema.rs",
+      "id": "settings_appearance_transparency",
+      "owner": "T196",
+      "reason": "appearance.transparency is absent from the settingsd schema",
+      "status": "missing"
+    },
+    {
+      "evidence": "services/settingsd/src/schema.rs",
+      "id": "settings_reduce_transparency",
+      "owner": "T196",
+      "reason": "accessibility.reduceTransparency is absent from the settingsd schema",
+      "status": "missing"
+    },
+    {
+      "evidence": "services/settingsd/src/schema.rs",
+      "id": "settings_increase_contrast",
+      "owner": "T196",
+      "reason": "accessibility.increaseContrast is absent from the settingsd schema",
+      "status": "missing"
+    },
+    {
+      "evidence": "docs/tasks/glass/plan/REFERENCE.md",
+      "id": "dark_banner_lower_panel",
+      "owner": "T205",
+      "reason": "dark banner and dark Notification Center lower panel are uncovered as independent reference fits",
+      "status": "missing"
+    },
+    {
+      "evidence": "docs/captures/t194-glass-baseline.open.txt",
+      "id": "live_host_recapture",
+      "owner": "T194/T207",
+      "reason": "spectacle could not capture the host session (probe exited non-zero or wrote no PNG); the nested compositor did not create its Wayland socket within 10 s (the host did not map the nested window)",
+      "status": "open"
+    }
+  ],
+  "generated_at": "2026-11-06T06:44:00.305271+00:00",
+  "generated_by": "scripts/t194-baseline.py",
+  "host": {
+    "current_desktop": "dragonfruit",
+    "distro": "Fedora Linux 44 (KDE Plasma Desktop Edition)",
+    "drm_nodes": [
+      "by-path",
+      "card1",
+      "renderD128"
+    ],
+    "gpu": "\tKernel driver in use: pcieport\n\tKernel driver in use: pcieport\n\tKernel driver in use: pcieport\n\tKernel driver in use: pcieport\n\tKernel driver in use: piix4_smbus\n\tKernel driver in use: k10temp\n\tKernel driver in use: r8169\n\tKernel driver in use: iwlwifi\n\tKernel driver in use: nvme\n04:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Lucienne [1002:164c] (rev c1)\n\tKernel driver in use: amdgpu\n\tKernel driver in use: snd_hda_intel\n\tKernel driver in use: ccp\n\tKernel driver in use: xhci_hcd\n\tKernel driver in use: xhci_hcd\n\tKernel driver in use: snd_rn_pci_acp3x\n\tKernel driver in use: snd_hda_intel",
+    "host": "Linux 7.2.13-200.fc44.x86_64 x86_64",
+    "session_type": "wayland",
+    "wayland_display": "dragonfruit-wayland"
+  },
+  "open_capture": {
+    "artifact": "docs/captures/t194-glass-baseline.open.txt",
+    "command": "make glass-baseline-capture",
+    "reason": "spectacle could not capture the host session (probe exited non-zero or wrote no PNG); the nested compositor did not create its Wayland socket within 10 s (the host did not map the nested window)",
+    "rerun": "WAYLAND_DISPLAY=<host-socket> make glass-baseline-capture",
+    "verdict": "OPEN"
+  },
+  "reference_manifest": {
+    "path": "docs/captures/glass-reference-manifest.json",
+    "sha256": "06e38ff705d4c75f63d8295636b3b3fcb8e893155dde83d1f46ba5b86c93547a"
+  },
+  "schema": 1,
+  "surfaces": [
+    {
+      "artifact": "docs/captures/t194-glass-baseline-dock-light.png",
+      "crop_rect_px": [
+        560,
+        1000,
+        1360,
+        1200
+      ],
+      "kind": "surface",
+      "label": "Dock plate and bar background",
+      "scheme": "light",
+      "sha256": "825e9ca5deb7961526bb898baa31cec4352d482d456fb3fbae009ab682ae77bf",
+      "size_px": [
+        800,
+        200
+      ],
+      "source_artifact": "docs/captures/t20-chrome-dock-light.png",
+      "source_sha256": "52607e3ef1e3920a97f1e585e985aae510c11c1e166f13cdc0a4de7aab04bf1a",
+      "surface": "dock"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-dock-dark.png",
+      "crop_rect_px": [
+        560,
+        1000,
+        1360,
+        1200
+      ],
+      "kind": "surface",
+      "label": "Dock plate and bar background",
+      "scheme": "dark",
+      "sha256": "d24832a20f15785c260c8c87b2349e653c2af85d630ccb6a80f328b756a32fcb",
+      "size_px": [
+        800,
+        200
+      ],
+      "source_artifact": "docs/captures/t20-chrome-dock-dark.png",
+      "source_sha256": "9b5f96e661039a1a1c4dc99180da7cf527bf5c8cbee61a2912a3752c76f7e707",
+      "surface": "dock"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-bar-light.png",
+      "crop_rect_px": [
+        0,
+        0,
+        1920,
+        44
+      ],
+      "kind": "surface",
+      "label": "menu bar",
+      "scheme": "light",
+      "sha256": "78705858e39051302ba4c4b4042c04be192383da87fb8e82d72a4becbaecb39e",
+      "size_px": [
+        1920,
+        44
+      ],
+      "source_artifact": "docs/captures/t20-chrome-dock-light.png",
+      "source_sha256": "52607e3ef1e3920a97f1e585e985aae510c11c1e166f13cdc0a4de7aab04bf1a",
+      "surface": "bar"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-bar-dark.png",
+      "crop_rect_px": [
+        0,
+        0,
+        1920,
+        44
+      ],
+      "kind": "surface",
+      "label": "menu bar",
+      "scheme": "dark",
+      "sha256": "d866ee9dd95446880754a16642b291ae35b5628ca3df6daa32521c66b1cd2ce5",
+      "size_px": [
+        1920,
+        44
+      ],
+      "source_artifact": "docs/captures/t20-chrome-dock-dark.png",
+      "source_sha256": "9b5f96e661039a1a1c4dc99180da7cf527bf5c8cbee61a2912a3752c76f7e707",
+      "surface": "bar"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-menu_attached-light.png",
+      "crop_rect_px": [
+        0,
+        0,
+        845,
+        696
+      ],
+      "kind": "attached",
+      "label": "attached menu-bar dropdown",
+      "scheme": "light",
+      "sha256": "66396cceda937b6c50d1dda9f782d86700db82c0d5ea6b7a28776a374c15a3f4",
+      "size_px": [
+        845,
+        696
+      ],
+      "source_artifact": "docs/captures/t20-chrome-menubar-light.png",
+      "source_sha256": "5afa37fcfc5780a208769b79ea7121ea9c863000deb660449d92866d199ea886",
+      "surface": "menu_attached"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-menu_attached-dark.png",
+      "crop_rect_px": [
+        0,
+        0,
+        845,
+        696
+      ],
+      "kind": "attached",
+      "label": "attached menu-bar dropdown",
+      "scheme": "dark",
+      "sha256": "87f3857c87375a7b545191c1a36a88f83c673b3931ca4e96250163c93fee2a79",
+      "size_px": [
+        845,
+        696
+      ],
+      "source_artifact": "docs/captures/t20-chrome-menubar-dark.png",
+      "source_sha256": "3614fba16116b92c087db4d806f1250a4ad514e99b3a15adff562ff8df1aa3e1",
+      "surface": "menu_attached"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-menu_detached-light.png",
+      "crop_rect_px": [
+        384,
+        504,
+        1536,
+        1200
+      ],
+      "kind": "detached",
+      "label": "detached Dock context menu",
+      "scheme": "light",
+      "sha256": "b31029f4d0aa924cba84116f4b5223bc6ab5045345409e2dadbb7443e82a8889",
+      "size_px": [
+        1152,
+        696
+      ],
+      "source_artifact": "docs/captures/t20-chrome-contextmenu-light.png",
+      "source_sha256": "eb83e033177cda0ff1100712eb05bcd40bd085a83768bd3c384bfb70e878eaf4",
+      "surface": "menu_detached"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-menu_detached-dark.png",
+      "crop_rect_px": [
+        384,
+        504,
+        1536,
+        1200
+      ],
+      "kind": "detached",
+      "label": "detached Dock context menu",
+      "scheme": "dark",
+      "sha256": "3ee5b377e6a4d4efbc82d7e8af15a297ce6d756c1ccf0fd7c5a5c8afa793948e",
+      "size_px": [
+        1152,
+        696
+      ],
+      "source_artifact": "docs/captures/t20-chrome-contextmenu-dark.png",
+      "source_sha256": "c8acd8495dda91c609a0c4b11dcf465a83c9c47d72964982cac9419c948c6c4d",
+      "surface": "menu_detached"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-control_center-light.png",
+      "crop_rect_px": [
+        1114,
+        0,
+        1920,
+        1152
+      ],
+      "kind": "surface",
+      "label": "Control Center panel",
+      "scheme": "light",
+      "sha256": "736538659834309697c1784b89bebce44eec1809bf4c54776ab7e2870439e5fa",
+      "size_px": [
+        806,
+        1152
+      ],
+      "source_artifact": "docs/captures/t20-chrome-controlcenter-light.png",
+      "source_sha256": "d59e1ca79ae6059c3cf1efb57d243125b63f557da20f8148845b003363687144",
+      "surface": "control_center"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-control_center-dark.png",
+      "crop_rect_px": [
+        1114,
+        0,
+        1920,
+        1152
+      ],
+      "kind": "surface",
+      "label": "Control Center panel",
+      "scheme": "dark",
+      "sha256": "e3df2b3ad8456334e07cb8e123014b000be3fd75105d9a4522200c09e98039c3",
+      "size_px": [
+        806,
+        1152
+      ],
+      "source_artifact": "docs/captures/t20-chrome-controlcenter-dark.png",
+      "source_sha256": "e01902343f1722511d4f6d460e68adc8f3b164e38bbb027f6a2fce35030ed1f7",
+      "surface": "control_center"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-banner-light.png",
+      "crop_rect_px": [
+        1114,
+        0,
+        1920,
+        288
+      ],
+      "kind": "surface",
+      "label": "notification banner",
+      "scheme": "light",
+      "sha256": "d236cc546810aa9e96322b57dd91793500dbfd7b2c26abc88d3ea994fde3184e",
+      "size_px": [
+        806,
+        288
+      ],
+      "source_artifact": "docs/captures/t20-chrome-notification-light.png",
+      "source_sha256": "34e3993cb78e8805bc35cb829ba6ebbcc9197c2f460476634fa3d918fe5f9f9c",
+      "surface": "banner"
+    },
+    {
+      "artifact": "docs/captures/t194-glass-baseline-banner-dark.png",
+      "crop_rect_px": [
+        1114,
+        0,
+        1920,
+        288
+      ],
+      "kind": "surface",
+      "label": "notification banner",
+      "scheme": "dark",
+      "sha256": "90e6cc18e7aacd00dd2b448dbc492c3529f8bfea0ba7fa6b66dd3d2bc55d5bc4",
+      "size_px": [
+        806,
+        288
+      ],
+      "source_artifact": "docs/captures/t20-chrome-notification-dark.png",
+      "source_sha256": "d8ceeb060c7a1b2685854f3835fd0f643e9964ea3115a9c974c700c47b9a0de5",
+      "surface": "banner"
+    }
+  ]
+}
