@@ -17,13 +17,22 @@ _Maintained from the working tree; reconciled by hand on 2026-11-03. The design 
 - `docs/design/11-session-and-dev-workflow.md` — Session Management and Development Workflow
 - `docs/design/12-packaging.md` — Packaging and Distribution
 - `docs/design/14-risks.md` — Risks, Hard Limits, and Constraints
+- `docs/design/22-total-experience.md` — Total desktop experience
+- `docs/design/settings-business-logic-map.md` — Settings → business logic map
+- `docs/design/distro-compatibility.md` — Cross-distribution compatibility
+- `docs/design/interface-naming-and-licensing.md` — Naming, assets, and third-party licensing
+- `docs/design/motion-and-feedback.md` — Motion, HUDs, sound, cursor
+- `docs/design/evidence-and-acceptance.md` — Evidence and acceptance
 - `docs/design/README.md` — Design
 - `docs/design/STATUS.md` — Design ↔ code status and gap register
 - `docs/design/advisor-briefing.md` — Dragonfruit — advisor briefing
 - `docs/design/architecture-audit-native-rendering.md` — Architecture audit — native DRM presentation, material, and shell transport
 
 ## Task sets
+- `docs/tasks/README.md` — index of the task sets and the rules for choosing one
 - `docs/tasks/0.1.1/README.md` — v0.1.1 presentation-foundation tasks (T183–T193)
+- `docs/tasks/glass/README.md` — liquid-glass tasks (T194–T208)
+- `docs/tasks/0.2.0/README.md` — v0.2.0 total-experience tasks (T209–T262)
 
 ## Tracks
 - `docs/design/tracks/01-loop-v0-window-controls.md` — T-01 — Loop v0: Window Controls and the First End-to-End Demo
@@ -47,6 +56,7 @@ _Maintained from the working tree; reconciled by hand on 2026-11-03. The design 
 - `docs/design/tracks/19-desktop-affordances.md` — T-19 — Desktop affordances: icon system, Apps drawer, desktop items
 - `docs/design/tracks/20-tahoe-liquid-glass.md` — Track 20 — Tahoe liquid-glass material (GPU backdrop pass)
 - `docs/design/tracks/21-presentation-foundation.md` — Track 21 — Presentation foundation (v0.1.1: shell transport, HiDPI, refresh scheduling, native evidence)
+- `docs/design/tracks/22-total-experience-parity.md` — Track 22 — Total desktop experience parity (v0.2.0)
 
 ## Proposals
 - `docs/design/proposals/native-drm-dock-glass.md` — Proposal — Native DRM Dock material: why it does not read as the premium macOS Dock

@@ -1,8 +1,8 @@
 # Design Overview
 
-Dragonfruit is a macOS-like desktop environment for Linux, targeting Fedora 44
-as the reference platform, with Debian/Ubuntu portability designed in from the
-start.
+Dragonfruit is a macOS-like desktop environment for Linux. Fedora 44 is the
+reference platform; Ubuntu, Debian, and Arch are first-class targets. The
+cross-distro contract is in [distro-compatibility.md](distro-compatibility.md).
 
 It is a **desktop environment** — a compositor, a shell, services, and
 first-party applications cooperating as separate processes — not a window
@@ -27,8 +27,15 @@ organized by topic:
 | [10-design-system.md](10-design-system.md) | The Qt Quick design system and first-party component library |
 | [11-session-and-dev-workflow.md](11-session-and-dev-workflow.md) | Session model, nested development, and the testing ladder |
 | [12-packaging.md](12-packaging.md) | Fedora packaging, COPR, Spins, and portability |
+| [22-total-experience.md](22-total-experience.md) | **The whole-desktop target**: shell surfaces, behaviour, motion, HUDs, Settings, ownership |
+| [settings-business-logic-map.md](settings-business-logic-map.md) | Every Settings pane/row mapped to its owner and absence path |
+| [distro-compatibility.md](distro-compatibility.md) | Fedora/Ubuntu/Debian/Arch host-service and packaging contract |
+| [interface-naming-and-licensing.md](interface-naming-and-licensing.md) | Generic names, original assets, third-party substitutions |
+| [motion-and-feedback.md](motion-and-feedback.md) | Motion language, HUDs, sound, cursor |
+| [evidence-and-acceptance.md](evidence-and-acceptance.md) | Capture, measurement, and acceptance process |
 | [STATUS.md](STATUS.md) | **What is implemented, partial, or design-only**, plus the gap register and recommended next sequence |
 | [ROADMAP.md](../ROADMAP.md) | Task sequence, definitions of done, and the hardware rail |
+| [v0.2.0 roadmap](../v0.2.0/ROADMAP.md) | The total-experience task set |
 | [14-risks.md](14-risks.md) | Technical risks, hard limits, and IP constraints |
 
 ## Product thesis
@@ -37,17 +44,29 @@ organized by topic:
 bitmap output.**
 
 We own everything that makes the desktop feel like *our* product — the
-compositor, workspaces, Mission Control, Dock, menu bar, Control Center,
-window decoration policy, Settings, and Files — while reusing the mature Linux
-subsystems that have nothing to do with that differentiation (networking,
-Bluetooth, audio, power, storage, graphics drivers, portals).
+compositor, workspaces, Overview/Mission Control, Dock, menu bar, Quick
+Settings, window decoration policy, Settings, and Files — while reusing the
+mature Linux subsystems that have nothing to do with that differentiation
+(networking, Bluetooth, audio, power, storage, graphics drivers, portals).
+
+The v0.2.0 target is the **total desktop experience**, not a material alone:
+every always-visible shell surface, navigation/window-management mode,
+Search/launching path, Settings pane, animation, HUD, and transient feedback.
+The target and ownership model are in
+[22-total-experience.md](22-total-experience.md); the Settings row map is in
+[settings-business-logic-map.md](settings-business-logic-map.md).
 
 Concretely, the goals are:
 
 - macOS-like workflow and spatial organization
 - macOS-like Dock behavior and window lifecycle semantics
-- macOS-like Mission Control and Spaces interaction
+- macOS-like Overview/Mission Control and workspace interaction
+- macOS-like app switcher, Search, Applications drawer, and Quick Settings
 - macOS-like global-menu *concept* and Settings information architecture
+- Measured motion, HUDs, sound, cursor, and focus/accessibility language
+- Every Settings row mapped to a real owner, with an absence path
+- Cross-distro compatibility (Fedora, Ubuntu, Debian, Arch) through host
+  services and adapters
 - Left-side three-button window controls wherever technically compatible
 
 ## Accepted compromises
@@ -62,6 +81,13 @@ these limits from the outset:
 2. **Global menu wherever the application exports one** — applications that do
    not export a menu model keep their in-app menus (see
    [06-global-menu.md](06-global-menu.md)).
+3. **AirDrop/Continuity/Handoff are omitted by default** — there is no
+   permissively licensed drop-in with the same UX. Optional LocalSend/KDE
+   Connect integration can be evaluated separately; it is not a core promise.
+4. **Apple account services are omitted** — iCloud, Siri, Apple Intelligence,
+   Screen Time, Wallet, Game Center, Find My, and App Store are not Linux
+   services. Their settings rows are removed or replaced by a distro/package
+   equivalent.
 
 Everything else on the feature list — Dock behavior, Control Center, Spaces,
 Mission Control, Settings, Files, animation language, gestures, and overall
@@ -73,6 +99,10 @@ Boundaries declared up front, so scope debates later have an answer:
 
 - **Not a GNOME theme or extension.** The experience requires owning the
   compositor and shell; theming someone else's desktop cannot deliver it.
+- **Not a distribution.** Dragonfruit is a desktop environment installed on
+  Fedora, Ubuntu, Debian, Arch, and compatible derivatives. It does not fork
+  the kernel, init, package manager, network stack, audio stack, or graphics
+  drivers.
 - **Not a replacement for Linux plumbing.** Networking, Bluetooth, audio,
   power, storage, graphics, and sandbox integration stay with NetworkManager,
   BlueZ, PipeWire, UPower, UDisks, DRM/KMS, and xdg-desktop-portal (see

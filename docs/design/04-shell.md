@@ -33,6 +33,12 @@ Dock, Control Center quick-settings sheets, Spotlight, About This System):
 [macos-ui-inventory.md](../reference/macos-ui-inventory.md) — distilled from
 local-only macOS screenshots that never ship.
 
+> **v0.2.0 total-experience target.** The whole-shell behaviour, state, motion,
+> and ownership contract is [22-total-experience.md](22-total-experience.md);
+> the executable work is T230–T248 in
+> [v0.2.0/ROADMAP.md](../v0.2.0/ROADMAP.md). This document remains the
+> component-level design; the new document adds the completeness bar.
+
 **Known presentation limits (2026-11).** The shell forces
 `QT_QPA_PLATFORM=offscreen` and owns the chrome transport itself. Since
 T-21.1c every chrome surface renders through one `ChromeFrameProducer`

@@ -6,6 +6,11 @@ Spaces and Mission Control are the strongest reasons we own the compositor.
 Because the compositor owns the scene graph, these features operate on the
 real, live window surfaces rather than screenshots or scrapes.
 
+> **v0.2.0 note.** The total-experience target is
+> [22-total-experience.md](22-total-experience.md); the workspace/overview
+> completion work is T240 in [v0.2.0/ROADMAP.md](../v0.2.0/ROADMAP.md). The
+> paging/neighbour-reveal deferrals in this document remain until T240.
+
 ## Spaces
 
 Workspace organization is an **internal compositor primitive**:

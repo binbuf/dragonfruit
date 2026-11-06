@@ -6,7 +6,7 @@ which is archived in [legacy/](tasks/legacy/) with a status table and a mapping 
 [../design/](design/) remain the source of truth for *what* to build; this
 index is the source of truth for *the order and the definition of done*.
 
-## Current status (2026-11-03)
+## Current status (2026-11-06)
 
 The T-01…T-20 track sequence is complete at the **agent-verified** level. The
 generated pipeline block at the bottom of this file tracks one-session task
@@ -16,8 +16,11 @@ status, including partials and design-only claims, is
 
 ```text
 Tracks T-01…T-20      agent-done (T-10, T-12, T-14, T-16, T-17, T-20 partial)
-Track 21 (v0.1.1)     proposed: shell transport/HiDPI, refresh scheduling,
+Track 21 (v0.1.1)     in progress: shell transport/HiDPI, refresh scheduling,
                       material cost/floor, native evidence (T183–T193)
+Track 22 (v0.2.0)     proposed: total desktop experience — Settings map,
+                      menu bar/extras, Dock, Overview/workspaces, switcher,
+                      Search, drawer, motion/HUDs, cross-distro (T209–T262)
 Hardware rail         OPEN: T159–T161, T163–T168 (DRM, input, driver matrix,
                       packaging, packaged perf, DRM full loop, baseline perf)
 Human sign-off        OPEN: T-17 unfamiliar-user verdict, track-boundary reviews
@@ -115,6 +118,7 @@ every task un-completable.
 | [T-19](design/tracks/19-desktop-affordances.md) | Desktop affordances — icon system, Apps drawer, desktop items | 6 | Tabler line + Phosphor fill icon language, the Applications overlay, desktop files with mouse multi-select |
 | [T-20](design/tracks/20-tahoe-liquid-glass.md) | Tahoe liquid-glass material | 4 | sampled backdrop blur, glass rim/tint, all chrome roles, DRM two-pass on the supported boundary |
 | [T-21](design/tracks/21-presentation-foundation.md) | Presentation foundation (v0.1.1) | 11 | shell transport/HiDPI, per-output refresh scheduling, material cost/floor, native evidence |
+| [T-22](design/tracks/22-total-experience-parity.md) | Total desktop experience parity (v0.2.0) | 57 | complete Settings map, menu bar/extras, Dock, Overview, switcher, Search, drawer, desktop, dialogs, motion/HUDs, cross-distro |
 
 ### Track completion at a glance
 
@@ -145,6 +149,7 @@ evidence is in [`design/STATUS.md`](design/STATUS.md).
 | T-19 desktop affordances | done | — | batched | desktop session token (G-09) |
 | T-20 liquid glass | partial | **OPEN** | batched | native acceptance/multi-GPU/floor (G-03/G-08/G-12) |
 | T-21 presentation foundation | proposed | **OPEN** | batched | transport/HiDPI, refresh scheduling, material floor, native evidence |
+| T-22 total experience | proposed | — | batched | all T209–T262 |
 
 ## Work units (strict order)
 
@@ -569,6 +574,32 @@ just the forward group with
 - [ ] T192 — T-21.4b Presentation benchmark and soak → [tasks/0.1.1/192-t-21.4b-presentation-benchmark-and-soak.md](tasks/0.1.1/192-t-21.4b-presentation-benchmark-and-soak.md)
 - [ ] T193 — T-21.5 Regression matrix and v0.1.1 close-out → [tasks/0.1.1/193-t-21.5-regression-matrix-and-closeout.md](tasks/0.1.1/193-t-21.5-regression-matrix-and-closeout.md)
 
+## Release v0.2.0 — T-22 Total desktop experience
+
+> **New release track.** The material and presentation path are no longer the
+> only gap. A desktop is judged by the whole experience: the Dock click tree,
+> menu bar and extras, Overview/workspaces, app switcher, Search, Applications
+> drawer, System Settings, animations, HUDs, and the Linux ownership of every
+> setting. This track closes those visible dead ends before adding breadth.
+> Design: [22-total-experience.md](design/22-total-experience.md) ·
+> [Track 22](design/tracks/22-total-experience-parity.md) ·
+> [settings map](design/settings-business-logic-map.md) ·
+> [distro contract](design/distro-compatibility.md).
+> Task files live in [tasks/0.2.0/](tasks/0.2.0/README.md); the executable
+> roadmap is [v0.2.0/ROADMAP.md](v0.2.0/ROADMAP.md).
+> **Harness task set:** run with `./.symphony/symphony run --set 0.2.0`.
+
+- [ ] T209–T219 — Evidence: inventory, capture harness, Settings/menu/Dock/Overview/switcher/Search/animations, motion database, schema
+- [ ] T220–T221 — Naming/licensing and cross-distro contract
+- [ ] T222–T229a — Settings map, IA/search, live/auth/absence, pane groups
+- [ ] T230–T235 — Menu bar, extras, visibility, notifications, Quick Settings
+- [ ] T236–T239 — Dock behavior, motion, visual/state, drag/keyboard/a11y
+- [ ] T240–T245b — Overview/workspaces, switcher, Stage/tiling, lifecycle, Preview, login/lock, system dialogs, desktop items
+- [ ] T246–T248 — Search service/UI and Applications drawer
+- [ ] T249–T253 — HUDs, sound, cursor, accessibility, IME
+- [ ] T254–T259 — App discovery, startup, users/auth, updates, defaults/portals, distro matrix
+- [ ] T260–T262 — Acceptance harness, performance, close-out
+
 ## Delivery order (unchanged in intent)
 
 1. **Make the loop real** — T-01, T-02.
@@ -585,6 +616,10 @@ just the forward group with
    the lazily fetched Featured pictures), immediately after the Dock addendum.
 8. **Broaden the desktop** — T-15 … T-16.
 9. **Gate the premium experience** — T-17.
+10. **Complete the total experience** — T-22 (v0.2.0): Settings map, menu
+    bar/extras, Dock, Overview/workspaces, switcher, Search, drawer, motion/
+    HUDs, cross-distro. The material/presentation work (T-20/T-21) remains the
+    foundation; T-22 does not replace it.
 
 ## Why this order
 
@@ -679,6 +714,12 @@ top post-gate engineering work (G-01/G-02).
 Named so they cannot silently creep into the slices. The feature-level status
 and evidence are in [`design/STATUS.md`](design/STATUS.md); this is the
 ordering view.
+
+**Track 22 (v0.2.0) is now the executable home for the total-experience items
+below** — Settings breadth, menu bar/extras, Dock behavior, Overview,
+switcher, Search, drawer, motion/HUDs, accessibility/IME, and cross-distro
+integration. The backlog entries remain as the rationale; the task sequence is
+in [v0.2.0/ROADMAP.md](v0.2.0/ROADMAP.md).
 
 ### Presentation (P0 — next)
 
