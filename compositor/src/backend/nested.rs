@@ -37,8 +37,8 @@ use crate::backend::{add_output, add_seat_capabilities};
 use crate::gpu_timer::{GpuPass, GpuTimer};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
-    full_output_material_forced, MaterialRegion, PanelBlurKey, PanelKey, PanelTextureSlots,
-    SceneTextureCache, SceneTextureKey, TextureRenderer,
+    full_output_material_forced, BlurMissCounts, BlurMissReason, MaterialRegion, PanelBlurKey,
+    PanelKey, PanelTextureSlots, SceneTextureCache, SceneTextureKey, TextureRenderer,
 };
 use crate::{render, LOCKSTEP_VERSION};
 
@@ -530,7 +530,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 ));
                 let scene_generation = data.material_textures.scene.generation();
                 let scene_commit = data.material_textures.scene.commit();
-                let (blur_elements, blur_allocations, blur_skips) = build_blur_elements(
+                let blur = build_blur_elements(
                     renderer,
                     BlurPrograms {
                         blur: data.blur_program.as_ref(),
@@ -552,10 +552,11 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 )?;
                 state.stats.record_material_panel_allocations_for(
                     output.name().as_str(),
-                    blur_allocations,
+                    blur.allocations,
                 );
-                state.stats.record_blur_skips(blur_skips);
-                custom_elements.extend(blur_elements);
+                state.stats.record_blur_skips(blur.skips);
+                state.stats.record_blur_misses(blur.misses);
+                custom_elements.extend(blur.elements);
                 // The blur elements exist and are in the draw list; this is
                 // the counter to trust over `blur_passes` (which only says the
                 // panels resolved).
@@ -865,6 +866,14 @@ struct BlurScene<'a> {
     region: MaterialRegion,
 }
 
+/// The draw elements and counters produced by one blur build.
+struct BlurBuild {
+    elements: Vec<NestedOutputElements<GlowRenderer>>,
+    allocations: u64,
+    skips: u64,
+    misses: BlurMissCounts,
+}
+
 /// Build the per-panel blurred backdrop elements from the scene texture
 /// (T-20.1/T-21.3). Each panel's region is downsampled through
 /// `spec.iterations` Kawase passes — the custom [`crate::window::BLUR_SHADER`]
@@ -880,10 +889,11 @@ fn build_blur_elements(
     scene: BlurScene<'_>,
     scale: smithay::utils::Scale<f64>,
     targets: BlurTargets<'_>,
-) -> Result<(Vec<NestedOutputElements<GlowRenderer>>, u64, u64), String> {
+) -> Result<BlurBuild, String> {
     let mut elements = Vec::new();
     let mut allocations = 0u64;
     let mut skips = 0u64;
+    let mut misses = BlurMissCounts::default();
     let keys: Vec<PanelKey> = panels.iter().map(|panel| panel.key).collect();
     for panel in panels {
         let Some((texture_panel, scene_src)) = scene.region.panel_source(panel.panel, scale) else {
@@ -905,6 +915,11 @@ fn build_blur_elements(
                 .cloned()
                 .ok_or_else(|| "blur cache hit without a texture".to_owned())?
         } else {
+            let reason = slot
+                .blur_key()
+                .and_then(|previous| blur_key.miss_reason(previous))
+                .unwrap_or(BlurMissReason::First);
+            misses.record(reason);
             // Clear the key before touching the chain: a failed render must
             // not let the next frame reuse a partially written texture.
             slot.invalidate_blur_cache();
@@ -947,7 +962,12 @@ fn build_blur_elements(
     // Release the slots of panels that disappeared this frame. A panel that
     // merely moved or changed stacking order keeps its key, id, and textures.
     targets.cache.trim_panels(&keys);
-    Ok((elements, allocations, skips))
+    Ok(BlurBuild {
+        elements,
+        allocations,
+        skips,
+        misses,
+    })
 }
 
 /// Downsample `scene_src` of `scene` through a small Kawase chain, returning
