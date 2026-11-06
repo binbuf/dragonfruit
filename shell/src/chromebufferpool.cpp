@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "chromebufferpool.h"
 
+#include <utility>
+
 ChromeBufferPool::ChromeBufferPool(int capacity)
     : m_capacity(qMax(1, capacity))
 {
@@ -30,25 +32,29 @@ int ChromeBufferPool::findFreeCurrent() const
 
 int ChromeBufferPool::allocateSlot()
 {
+    const Slot fresh{true, true, m_generation, QRect(QPoint(), m_size)};
     for (int i = 0; i < m_slots.size(); ++i) {
         if (!m_slots.at(i).used) {
-            Slot &slot = m_slots[i];
-            slot.used = true;
-            slot.busy = true;
-            slot.generation = m_generation;
+            m_slots[i] = fresh;
             ++m_allocations;
             return i;
         }
     }
     if (m_slots.size() >= m_capacity)
         return -1;
-    Slot slot;
-    slot.used = true;
-    slot.busy = true;
-    slot.generation = m_generation;
-    m_slots.append(slot);
+    m_slots.append(fresh);
     ++m_allocations;
     return m_slots.size() - 1;
+}
+
+QRect ChromeBufferPool::damageForCommit(int slot, const QRect &damage)
+{
+    Q_ASSERT(isBusy(slot) && !isRetired(slot));
+    for (Slot &entry : m_slots) {
+        if (entry.used && entry.generation == m_generation)
+            entry.pendingDamage |= damage;
+    }
+    return std::exchange(m_slots[slot].pendingDamage, QRect());
 }
 
 int ChromeBufferPool::acquire()

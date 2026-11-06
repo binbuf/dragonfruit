@@ -77,6 +77,7 @@ public:
     // The output scale announced by `df_output.scale`. It seeds the initial
     // chrome render before the first `wp_fractional_scale` event arrives.
     qreal outputScale() const { return m_outputScale; }
+    uint32_t outputRefreshMilliHz() const;
     // Ask the compositor for one `wl_surface.frame` callback on `surface`.
     // The callback is requested before the commit that should be paced and is
     // answered after that commit presents. A second request while one is
@@ -85,7 +86,7 @@ public:
     // True while `surface` (the stable `chrome stats` label) has an unanswered
     // frame callback. The controller uses this to decide whether a scene
     // change can render immediately (idle) or must wait for presentation.
-    bool hasPendingFrame(const QString &surface) const;
+    bool hasPendingFrame(const QString &surface, qint64 minAgeMs = 0) const;
     // Drop a pending frame callback (surface hidden or torn down).
     void cancelPendingFrame(const QString &surface);
     // The first output's logical geometry (`df_output.geometry`); empty until
@@ -731,6 +732,7 @@ signals:
     void commitDeferred(const QString &surface);
     // The compositor announced a new output scale (`df_output.scale`).
     void outputScaleChanged(qreal scale);
+    void outputRefreshChanged();
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // A matched application accelerator for the focused app (T-14.2b): the
@@ -1358,6 +1360,7 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // The name and last mode size of each announced output, so the ScreenCast
     // picker can label monitors (T-13.4a).
     struct OutputInfo {
+        uint32_t refreshMilliHz = 60'000;
         QString name;
         // Last mode size (physical pixels) for the ScreenCast labels.
         int width = 0;

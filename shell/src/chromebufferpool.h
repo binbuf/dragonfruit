@@ -8,6 +8,7 @@
 // without a compositor.
 #pragma once
 
+#include <QRect>
 #include <QSize>
 #include <QVector>
 #include <QtGlobal>
@@ -27,6 +28,10 @@ public:
     // busy or retired; the caller must wait for a release. A new slot is
     // allocated only while the pool is below `capacity`.
     int acquire();
+
+    // Record damage from the new frame and return the area that must be
+    // copied to the acquired slot, including damage it missed while busy.
+    QRect damageForCommit(int slot, const QRect &damage);
 
     // Release a busy slot. Returns true when it was busy.
     bool release(int slot);
@@ -60,6 +65,7 @@ private:
         bool used = false;
         bool busy = false;
         int generation = -1;
+        QRect pendingDamage;
     };
 
     int allocateSlot();

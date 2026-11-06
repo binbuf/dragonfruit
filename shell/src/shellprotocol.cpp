@@ -60,7 +60,6 @@ struct ShellShmSlot {
     void *data = nullptr;
     int fd = -1;
     size_t bytes = 0;
-    int generation = -1;
 };
 
 struct ShellDmabufSlot {
@@ -2336,15 +2335,17 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     }
     ShellShmSlot &resource = buffer->slotResources[slot];
 
-    // Exactly one full-surface CPU copy into the pooled buffer. The damage
-    // region tells the compositor which part it must sample; unchanged pixels
-    // still travel in the buffer so a different pool slot is always complete.
-    for (int y = 0; y < height; ++y) {
+    // Refresh the selected slot with all changes since it last held a frame.
+    // Wayland damage still describes the difference from the last commit.
+    const QRect copyRect = buffer->pool.damageForCommit(slot, damage);
+    const size_t copyOffset = static_cast<size_t>(copyRect.x()) * 4;
+    const size_t copyStride = static_cast<size_t>(copyRect.width()) * 4;
+    for (int y = copyRect.top(); y <= copyRect.bottom(); ++y) {
         const uchar *sourceLine = frame.constScanLine(source.y() + y)
-            + static_cast<qsizetype>(source.x()) * 4;
+            + static_cast<qsizetype>(source.x()) * 4 + copyOffset;
         std::memcpy(static_cast<uchar *>(resource.data)
-                        + static_cast<size_t>(y) * stride,
-                    sourceLine, stride);
+                        + static_cast<size_t>(y) * stride + copyOffset,
+                    sourceLine, copyStride);
     }
 
     // Buffer scale / viewport must be set before the attach+commit that makes
@@ -2375,7 +2376,7 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
         ChromeStats::instance().recordCommit(label, logical, QSize(width, height),
                                              geometry.bufferScale, geometry.scale,
                                              geometry.useViewport, commitUs,
-                                             static_cast<qint64>(bytes),
+                                             qint64(copyStride) * copyRect.height(),
                                              qint64(damage.width()) * damage.height());
     }
     return true;
@@ -2449,7 +2450,6 @@ bool ShellProtocol::ensureShmSlot(wl_surface *surface, ShellSurfaceBuffer *buffe
     resource.data = data;
     resource.fd = -1;
     resource.bytes = bytes;
-    resource.generation = 0;
     buffer->slotResources.insert(slot, resource);
     m_bufferOwners.insert(wlBuffer, qMakePair(surface, slot));
     ChromeStats::instance().recordShmAlloc(surfaceLabel(surface),
@@ -2519,12 +2519,13 @@ void ShellProtocol::requestFrame(wl_surface *surface)
     requestFrameInternal(surface, surfaceBuffer(surface));
 }
 
-bool ShellProtocol::hasPendingFrame(const QString &surface) const
+bool ShellProtocol::hasPendingFrame(const QString &surface, qint64 minAgeMs) const
 {
     if (surface.isEmpty())
         return false;
     for (auto it = m_surfaceBuffers.constBegin(); it != m_surfaceBuffers.constEnd(); ++it) {
-        if (it.value()->frameCallback && surfaceLabel(it.key()) == surface)
+        if (it.value()->frameCallback && surfaceLabel(it.key()) == surface
+            && (minAgeMs == 0 || it.value()->frameRequested.hasExpired(minAgeMs)))
             return true;
     }
     return false;
@@ -2578,15 +2579,22 @@ QRect ShellProtocol::changedPixelRect(const QImage &previous, const QRect &previ
             + static_cast<qsizetype>(currentRect.x()) * 4;
         if (std::memcmp(a, b, static_cast<size_t>(rowBytes)) == 0)
             continue;
-        int first = 0;
-        while (first < size.width()
-               && std::memcmp(a + first * 4, b + first * 4, 4) == 0)
-            ++first;
-        int last = size.width() - 1;
-        while (last >= first && std::memcmp(a + last * 4, b + last * 4, 4) == 0)
-            --last;
-        minX = qMin(minX, first);
-        maxX = qMax(maxX, last);
+        // Once some rows changed, only look for differences that would
+        // extend the horizontal damage bounds.
+        if (std::memcmp(a, b, static_cast<size_t>(minX) * 4) != 0) {
+            int first = 0;
+            while (std::memcmp(a + first * 4, b + first * 4, 4) == 0)
+                ++first;
+            minX = first;
+        }
+        const int endOfDamage = (maxX + 1) * 4;
+        if (std::memcmp(a + endOfDamage, b + endOfDamage,
+                        static_cast<size_t>(rowBytes - endOfDamage)) != 0) {
+            int last = size.width() - 1;
+            while (std::memcmp(a + last * 4, b + last * 4, 4) == 0)
+                --last;
+            maxX = last;
+        }
         minY = qMin(minY, y);
         maxY = qMax(maxY, y);
     }
@@ -4644,7 +4652,7 @@ void ShellProtocol::onOutputGeometry(void *data, df_output *output, int32_t x, i
     info.geometryHeight = static_cast<int>(height);
 }
 void ShellProtocol::onOutputMode(void *data, df_output *output, uint32_t, uint32_t width,
-                                 uint32_t height, uint32_t)
+                                 uint32_t height, uint32_t refresh)
 {
     // The last mode announced is the output's current size for the ScreenCast
     // picker (T-13.4a).
@@ -4652,6 +4660,21 @@ void ShellProtocol::onOutputMode(void *data, df_output *output, uint32_t, uint32
     OutputInfo &info = self->m_outputInfo[output];
     info.width = static_cast<int>(width);
     info.height = static_cast<int>(height);
+    const uint32_t previous = info.refreshMilliHz;
+    info.refreshMilliHz = refresh == 0 ? 60'000 : refresh;
+    if (!self->m_outputs.isEmpty() && output == self->m_outputs.first()
+        && previous != info.refreshMilliHz)
+        emit self->outputRefreshChanged();
+}
+
+uint32_t ShellProtocol::outputRefreshMilliHz() const
+{
+    if (!m_outputs.isEmpty()) {
+        auto info = m_outputInfo.constFind(m_outputs.first());
+        if (info != m_outputInfo.cend())
+            return info->refreshMilliHz;
+    }
+    return 60'000;
 }
 void ShellProtocol::onOutputScale(void *data, df_output *output, wl_fixed_t scale)
 {
@@ -4736,8 +4759,11 @@ void ShellProtocol::onOutputDone(void *, df_output *) {}
 void ShellProtocol::onOutputRemoved(void *data, df_output *output)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    const uint32_t previous = self->outputRefreshMilliHz();
     self->m_outputs.removeAll(output);
     self->m_outputInfo.remove(output);
+    if (previous != self->outputRefreshMilliHz())
+        emit self->outputRefreshChanged();
 }
 void ShellProtocol::onWorkspaceName(void *data, df_workspace *workspace, const char *name)
 {
