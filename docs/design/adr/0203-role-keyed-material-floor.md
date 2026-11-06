@@ -2,7 +2,10 @@
 
 ## Status
 
-accepted
+accepted; persistent-floor selection amended by
+[ADR 0211](0211-persistent-chrome-stability-and-blur-cache.md). Persistent
+chrome still never selects below `Reduced`, but a global `Minimal` selection
+now keeps `blur_active=1` instead of emitting `floor-missed`.
 
 ## Context
 

@@ -117,8 +117,10 @@ through.
 
 The effective material is delivered per role over the additive
 `df_output.material_role_state` event (v4, T-21.2c): `role` 0=chrome,
-1=dock, 2=popup, 3=drawer; `fallback` 4 (`floor-missed`) means even `Reduced`
-missed the deadline and the persistent surface must use its milky complement.
+1=dock, 2=popup, 3=drawer. A persistent role at a global `Minimal` selection
+now stays `tier=reduced` with `blur_active=1` and `fallback=0`; `fallback` 4
+(`floor-missed`) remains in the wire contract for an older compositor or an
+explicit future failure path, but a tier selection no longer emits it.
 `ShellProtocol` stores the role table and emits `materialRoleStateChanged`.
 `ShellController` owns one `MaterialPolicy` (`shell/src/materialpolicy.h`);
 the menu bar applies the `Chrome` role, the Dock the `Dock` role, and the whole
@@ -132,10 +134,12 @@ token-driven milky complement (`blurActive=false`); a persistent role that
 reports `Minimal` with no fallback is guarded to the explicit `floor-missed`
 state (ADR [0204](adr/0204-shell-role-material-application-policy.md)). The
 shell has no hysteresis of its own: it applies each change-only role event.
-T189d's load sequence (Full → Reduced → floor-missed → Reduced → Full) drives
-one already-created Dock and menu-bar scene through the same policy object
-(`tst_dock`, `tst_menubar`, `tst_materialpolicy`) to prove the applied
-properties follow every compositor decision without a rebuild.
+T189d's load sequence (Full → Reduced → floor-missed → Reduced → Full) still
+drives one already-created Dock and menu-bar scene through the same policy
+object (`tst_dock`, `tst_menubar`, `tst_materialpolicy`) to prove the applied
+properties follow every compositor decision without a rebuild. With the T-21.5
+compositor, a global `Minimal` selection keeps the persistent role at
+`Reduced/blur`; the floor-missed leg remains the legacy/fallback coverage.
 
 The QML side has one visual complement, `design-system/Material.qml`:
 `popupFill()`/`drawerFill()` return the sampled-glass scrim when

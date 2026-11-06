@@ -320,6 +320,11 @@ pub struct RenderStats {
     /// the compositor (P2). Unlike `blur_passes`, which counts panel
     /// resolution, this is recorded only after the draw list exists.
     pub blur_draws: u64,
+    /// Panel blur chains reused from the cache because the scene, panel
+    /// source, spec, chain size, and scale were unchanged (T-21.5). A Dock
+    /// sweep over an unchanged scene should advance this without advancing
+    /// `blur_passes`/`blur_draws`.
+    pub blur_skips: u64,
     /// The largest linear downsample factor any panel's Kawase chain used
     /// (T-20.4): `2^iterations`, so the trace records how aggressive the blur
     /// actually was.
@@ -496,6 +501,13 @@ impl RenderStats {
         self.blur_draws += 1;
         self.blur_downsample_max = self.blur_downsample_max.max(downsample_max);
         debug_assert!(panels > 0);
+    }
+
+    /// Record panel blur chains that were reused without re-running Kawase
+    /// (T-21.5). This is the steady-state Dock-sweep win: the chrome surface
+    /// changes, but the sampled scene behind it does not.
+    pub fn record_blur_skips(&mut self, skips: u64) {
+        self.blur_skips = self.blur_skips.saturating_add(skips);
     }
 
     /// Record scene/blur texture allocations (T-21.3). A steady-state frame
@@ -3661,7 +3673,7 @@ impl DfState {
         println!(
             "dragonfruit-compositor: material stats ({label}): \
              backdrop_passes={} backdrop_skipped={} path={} blur_passes={} \
-             blur_panels={} blur_draws={} blur_downsample_max={} \
+             blur_panels={} blur_draws={} blur_skips={} blur_downsample_max={} \
              material_allocations={} material_scene_allocations={} \
              material_panel_allocations={} material_region_px={} material_region={}x{}",
             self.material_pass.applications(),
@@ -3670,6 +3682,7 @@ impl DfState {
             self.stats.blur_passes,
             self.stats.blur_panels,
             self.stats.blur_draws,
+            self.stats.blur_skips,
             self.stats.blur_downsample_max,
             self.stats.material_allocations,
             self.stats.material_scene_allocations,
@@ -5650,9 +5663,11 @@ mod tests {
         let mut stats = RenderStats::new();
         stats.record_blur_pass(8, 2);
         stats.record_blur_draw(8, 2);
+        stats.record_blur_skips(2);
         assert_eq!(stats.blur_passes, 1);
         assert_eq!(stats.blur_panels, 2);
         assert_eq!(stats.blur_draws, 1);
+        assert_eq!(stats.blur_skips, 2);
         assert_eq!(stats.blur_downsample_max, 8);
     }
 

@@ -2,7 +2,11 @@
 
 ## Status
 
-accepted
+accepted; the persistent-floor input changed in
+[ADR 0211](0211-persistent-chrome-stability-and-blur-cache.md). The shell still
+maps every explicit fallback reason to the milky complement; the new
+compositor no longer emits `floor-missed` for a tier selection, so normal
+`Minimal` load keeps the Dock/menu bar on `Reduced/blur`.
 
 ## Context
 

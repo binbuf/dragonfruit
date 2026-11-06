@@ -24,6 +24,7 @@ use smithay::backend::renderer::element::utils::{
 };
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexProgram, GlesTexture};
 use smithay::backend::renderer::glow::GlowRenderer;
+use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::{ImportAll, ImportDma, ImportMem, ImportMemWl, Renderer, Texture};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::output::{Mode, PhysicalProperties, Subpixel};
@@ -36,8 +37,8 @@ use crate::backend::{add_output, add_seat_capabilities};
 use crate::gpu_timer::{GpuPass, GpuTimer};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
-    full_output_material_forced, MaterialRegion, PanelKey, PanelTextureSlots, SceneTextureCache,
-    SceneTextureKey, TextureRenderer,
+    full_output_material_forced, MaterialRegion, PanelBlurKey, PanelKey, PanelTextureSlots,
+    SceneTextureCache, SceneTextureKey, TextureRenderer,
 };
 use crate::{render, LOCKSTEP_VERSION};
 
@@ -527,7 +528,9 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 custom_elements.extend(crate::render::chrome_render_elements(
                     renderer, state, &output, scale,
                 ));
-                let (blur_elements, blur_allocations) = build_blur_elements(
+                let scene_generation = data.material_textures.scene.generation();
+                let scene_commit = data.material_textures.scene.commit();
+                let (blur_elements, blur_allocations, blur_skips) = build_blur_elements(
                     renderer,
                     BlurPrograms {
                         blur: data.blur_program.as_ref(),
@@ -535,8 +538,12 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                         chain_size,
                     },
                     &blur_panels,
-                    &scene_texture,
-                    region,
+                    BlurScene {
+                        texture: &scene_texture,
+                        generation: scene_generation,
+                        commit: scene_commit,
+                        region,
+                    },
                     scale,
                     BlurTargets {
                         cache: &mut data.material_textures,
@@ -547,6 +554,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     output.name().as_str(),
                     blur_allocations,
                 );
+                state.stats.record_blur_skips(blur_skips);
                 custom_elements.extend(blur_elements);
                 // The blur elements exist and are in the draw list; this is
                 // the counter to trust over `blur_passes` (which only says the
@@ -849,6 +857,14 @@ struct BlurTargets<'a> {
     timer: &'a mut GpuTimer,
 }
 
+/// The scene texture and identity one blur build samples.
+struct BlurScene<'a> {
+    texture: &'a GlesTexture,
+    generation: u64,
+    commit: CommitCounter,
+    region: MaterialRegion,
+}
+
 /// Build the per-panel blurred backdrop elements from the scene texture
 /// (T-20.1/T-21.3). Each panel's region is downsampled through
 /// `spec.iterations` Kawase passes — the custom [`crate::window::BLUR_SHADER`]
@@ -861,33 +877,54 @@ fn build_blur_elements(
     renderer: &mut GlowRenderer,
     programs: BlurPrograms<'_>,
     panels: &[crate::render::BlurPanel],
-    scene: &GlesTexture,
-    region: MaterialRegion,
+    scene: BlurScene<'_>,
     scale: smithay::utils::Scale<f64>,
     targets: BlurTargets<'_>,
-) -> Result<(Vec<NestedOutputElements<GlowRenderer>>, u64), String> {
+) -> Result<(Vec<NestedOutputElements<GlowRenderer>>, u64, u64), String> {
     let mut elements = Vec::new();
     let mut allocations = 0u64;
+    let mut skips = 0u64;
     let keys: Vec<PanelKey> = panels.iter().map(|panel| panel.key).collect();
     for panel in panels {
-        let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale) else {
+        let Some((texture_panel, scene_src)) = scene.region.panel_source(panel.panel, scale) else {
             continue;
         };
-        let slot = targets.cache.panels.slot(&panel.key);
-        targets.timer.begin(renderer, GpuPass::Blur);
-        let texture_result = blur_panel_texture(
-            renderer,
-            programs.blur,
-            scene,
+        let blur_key = PanelBlurKey::new(
+            scene.generation,
+            scene.commit,
             scene_src,
-            &panel.spec,
+            panel.spec,
             programs.chain_size,
-            slot.textures_mut(),
+            scale,
         );
-        targets.timer.end(renderer);
-        let (texture, panel_allocations) = texture_result?;
+        let slot = targets.cache.panels.slot(&panel.key);
         let id = slot.id().clone();
-        allocations += panel_allocations;
+        let texture = if slot.blur_cache_hit(&blur_key) {
+            skips += 1;
+            slot.last_texture()
+                .cloned()
+                .ok_or_else(|| "blur cache hit without a texture".to_owned())?
+        } else {
+            // Clear the key before touching the chain: a failed render must
+            // not let the next frame reuse a partially written texture.
+            slot.invalidate_blur_cache();
+            targets.timer.begin(renderer, GpuPass::Blur);
+            let texture_result = blur_panel_texture(
+                renderer,
+                programs.blur,
+                scene.texture,
+                scene_src,
+                &panel.spec,
+                programs.chain_size,
+                slot.textures_mut(),
+            );
+            targets.timer.end(renderer);
+            let (texture, panel_allocations) = texture_result?;
+            allocations += panel_allocations;
+            slot.set_blur_key(blur_key);
+            texture
+        };
+        let commit = slot.commit();
         let texture_size = texture.size();
         let element = crate::window::BackdropBlurElement::new(
             texture,
@@ -897,6 +934,7 @@ fn build_blur_elements(
             scale,
         )
         .with_id(id)
+        .with_commit(commit)
         .with_texture_panel(texture_panel);
         // Add the liquid-glass compose only when the driver compiled it; a
         // refused shader leaves the plain blurred backdrop (T-20.2).
@@ -909,7 +947,7 @@ fn build_blur_elements(
     // Release the slots of panels that disappeared this frame. A panel that
     // merely moved or changed stacking order keeps its key, id, and textures.
     targets.cache.trim_panels(&keys);
-    Ok((elements, allocations))
+    Ok((elements, allocations, skips))
 }
 
 /// Downsample `scene_src` of `scene` through a small Kawase chain, returning
