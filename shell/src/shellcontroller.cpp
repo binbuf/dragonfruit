@@ -5281,14 +5281,22 @@ void ShellController::applyCompositorPolicy()
     m_protocol->setReducedMotion(policy.reducedMotion);
     m_protocol->setMotionPolicy(policy.colorScheme, policy.titlebarDoubleClick,
                                 policy.minimizedAnimation);
+    // T196: the glass preferences travel in one snapshot alongside the
+    // resolved scheme; the v5 motion request above stays for older
+    // compositors.
+    m_protocol->setAppearancePolicy(policy.colorScheme, policy.transparency,
+                                    policy.reduceTransparency, policy.increaseContrast);
     m_protocol->setInputPolicy(policy.repeatDelayMs, policy.repeatRateHz,
                                policy.gesturesEnabled, policy.gestureSpaceSwitch,
                                policy.gestureMissionControl);
     fprintf(stderr,
             "dragonfruit-shell: compositor motion/input policy applied "
-            "(scheme=%s reducedMotion=%d repeat=%d/%d gestures=%d)\n",
+            "(scheme=%s reducedMotion=%d transparency=%.4f reduceTransparency=%d "
+            "increaseContrast=%d repeat=%d/%d gestures=%d)\n",
             qPrintable(policy.colorScheme), policy.reducedMotion ? 1 : 0,
-            policy.repeatDelayMs, policy.repeatRateHz, policy.gesturesEnabled ? 1 : 0);
+            policy.transparency, policy.reduceTransparency ? 1 : 0,
+            policy.increaseContrast ? 1 : 0, policy.repeatDelayMs, policy.repeatRateHz,
+            policy.gesturesEnabled ? 1 : 0);
 }
 
 void ShellController::applyMenuBarPolicy()

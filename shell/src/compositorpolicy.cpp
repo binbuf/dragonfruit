@@ -1,12 +1,27 @@
 // SPDX-License-Identifier: MIT
 #include "compositorpolicy.h"
 
+#include <cmath>
+
 namespace {
+
+constexpr double kDefaultTransparency = 0.5255;
 
 QVariant readValue(const QVariantMap &values, const QString &key, const QVariant &fallback)
 {
     const QVariant value = values.value(key);
     return value.isValid() ? value : fallback;
+}
+
+// A malformed or out-of-range slider is a safe local material, not a reason to
+// forward a poisoned value: fall back to the measured schema midpoint.
+double sanitizeTransparency(const QVariant &value)
+{
+    bool ok = false;
+    const double number = value.toDouble(&ok);
+    if (!ok || !std::isfinite(number))
+        return kDefaultTransparency;
+    return qBound(0.0, number, 1.0);
 }
 
 } // namespace
@@ -31,6 +46,17 @@ CompositorPolicy compositorPolicyFromValues(const QVariantMap &values, bool host
                                       QStringLiteral("auto"))
                                .toString();
     policy.colorScheme = resolveCompositorColorScheme(scheme, hostDark);
+    policy.transparency = sanitizeTransparency(
+        readValue(values, QStringLiteral("appearance.transparency"),
+                  policy.transparency));
+    policy.reduceTransparency =
+        readValue(values, QStringLiteral("accessibility.reduceTransparency"),
+                  policy.reduceTransparency)
+            .toBool();
+    policy.increaseContrast =
+        readValue(values, QStringLiteral("accessibility.increaseContrast"),
+                  policy.increaseContrast)
+            .toBool();
     policy.titlebarDoubleClick =
         readValue(values, QStringLiteral("dock.titlebarDoubleClick"),
                   policy.titlebarDoubleClick)

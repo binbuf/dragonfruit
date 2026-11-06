@@ -425,6 +425,17 @@ QString SettingsBridge::startPane() const
     return qEnvironmentVariable("DF_SETTINGS_START_PANE");
 }
 
+QString SettingsBridge::glassRollout() const
+{
+    // The same selection rule as `shell/src/shellcontroller.cpp` and
+    // `material_preset::Rollout::from_env`: anything other than an explicit
+    // `replacement` is the T208-safe legacy look.
+    const QString requested =
+        qEnvironmentVariable("DRAGONFRUIT_GLASS_ROLLOUT").trimmed().toLower();
+    return requested == QLatin1String("replacement")
+        ? QStringLiteral("replacement") : QStringLiteral("legacy");
+}
+
 bool SettingsBridge::trace() const
 {
     return qEnvironmentVariableIsSet("DF_SETTINGS_TRACE");

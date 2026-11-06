@@ -4,6 +4,8 @@
 // Wayland, or QML.
 #include <QtTest>
 
+#include <limits>
+
 #include "compositorpolicy.h"
 
 class TestCompositorPolicy : public QObject
@@ -16,6 +18,7 @@ private slots:
     void autoFollowsTheHost();
     void explicitSchemeIgnoresTheHost();
     void unknownSchemeFollowsTheHost();
+    void transparencyIsBoundedAndSafe();
     void liveFlipChangesThePolicy();
 };
 
@@ -24,6 +27,9 @@ void TestCompositorPolicy::defaultsMatchTheSchema()
     const CompositorPolicy policy = compositorPolicyFromValues({}, /*hostDark=*/false);
     QCOMPARE(policy.reducedMotion, false);
     QCOMPARE(policy.colorScheme, QStringLiteral("light"));
+    QCOMPARE(policy.transparency, 0.5255);
+    QCOMPARE(policy.reduceTransparency, false);
+    QCOMPARE(policy.increaseContrast, false);
     QCOMPARE(policy.titlebarDoubleClick, QStringLiteral("zoom"));
     QCOMPARE(policy.minimizedAnimation, QStringLiteral("scale"));
     QCOMPARE(policy.repeatDelayMs, 200);
@@ -37,6 +43,9 @@ void TestCompositorPolicy::everyKeyMapsThrough()
 {
     QVariantMap values;
     values.insert(QStringLiteral("appearance.colorScheme"), QStringLiteral("dark"));
+    values.insert(QStringLiteral("appearance.transparency"), 0.8);
+    values.insert(QStringLiteral("accessibility.reduceTransparency"), true);
+    values.insert(QStringLiteral("accessibility.increaseContrast"), true);
     values.insert(QStringLiteral("accessibility.reduceMotion"), true);
     values.insert(QStringLiteral("dock.titlebarDoubleClick"), QStringLiteral("minimize"));
     values.insert(QStringLiteral("dock.minimizedAnimation"), QStringLiteral("none"));
@@ -49,6 +58,9 @@ void TestCompositorPolicy::everyKeyMapsThrough()
     const CompositorPolicy policy = compositorPolicyFromValues(values, /*hostDark=*/false);
     QCOMPARE(policy.reducedMotion, true);
     QCOMPARE(policy.colorScheme, QStringLiteral("dark"));
+    QCOMPARE(policy.transparency, 0.8);
+    QCOMPARE(policy.reduceTransparency, true);
+    QCOMPARE(policy.increaseContrast, true);
     QCOMPARE(policy.titlebarDoubleClick, QStringLiteral("minimize"));
     QCOMPARE(policy.minimizedAnimation, QStringLiteral("none"));
     QCOMPARE(policy.repeatDelayMs, 350);
@@ -79,6 +91,22 @@ void TestCompositorPolicy::unknownSchemeFollowsTheHost()
     QCOMPARE(resolveCompositorColorScheme(QStringLiteral("sepia"), true),
              QStringLiteral("dark"));
     QCOMPARE(resolveCompositorColorScheme(QString(), false), QStringLiteral("light"));
+}
+
+void TestCompositorPolicy::transparencyIsBoundedAndSafe()
+{
+    QVariantMap values;
+    values.insert(QStringLiteral("appearance.transparency"), -0.5);
+    QCOMPARE(compositorPolicyFromValues(values, false).transparency, 0.0);
+    values.insert(QStringLiteral("appearance.transparency"), 1.5);
+    QCOMPARE(compositorPolicyFromValues(values, false).transparency, 1.0);
+    // A malformed/NaN value is the safe local material, never a forwarded
+    // poison.
+    values.insert(QStringLiteral("appearance.transparency"), QStringLiteral("clear"));
+    QCOMPARE(compositorPolicyFromValues(values, false).transparency, 0.5255);
+    values.insert(QStringLiteral("appearance.transparency"),
+                  std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(compositorPolicyFromValues(values, false).transparency, 0.5255);
 }
 
 void TestCompositorPolicy::liveFlipChangesThePolicy()

@@ -490,6 +490,14 @@ public:
     void setMotionPolicy(const QString &colorScheme, const QString &titlebarDoubleClick,
                          const QString &minimizedAnimation);
 
+    // Mirror the settingsd appearance/glass preferences into the compositor
+    // (T196, `df_toplevel_manager.set_appearance_policy`, additive in v9):
+    // `colorScheme` is already resolved, `transparency` is the 0..1 attached
+    // menu slider, and the two accessibility overrides are independent of the
+    // rollout. One request carries the coherent snapshot.
+    void setAppearancePolicy(const QString &colorScheme, double transparency,
+                             bool reduceTransparency, bool increaseContrast);
+
     // Mirror the settingsd input policy into the compositor (T-08.2c,
     // `df_toplevel_manager.set_input_policy`, additive in v5): keyboard repeat
     // plus the gesture family switches.

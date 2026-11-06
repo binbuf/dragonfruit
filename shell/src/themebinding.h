@@ -9,7 +9,10 @@
 //
 //   appearance.colorScheme     "light" | "dark" | "auto"  -> Theme.dark
 //   appearance.accent          "#rrggbb" | ""             -> Theme.accentOverride
+//   appearance.transparency    double 0..1                -> Glass.slider
 //   accessibility.reduceMotion boolean                    -> Theme.reducedMotion
+//   accessibility.reduceTransparency boolean              -> Glass.reduceTransparency
+//   accessibility.increaseContrast   boolean              -> Glass.increaseContrast
 //
 // It reacts to `SettingsClient::changed` and `refreshed` only (no timer, no
 // second bus connection). "auto" follows the host's `QStyleHints` color scheme
@@ -52,4 +55,7 @@ private:
     SettingsClient *m_settings = nullptr;
     QQmlEngine *m_engine = nullptr;
     QPointer<QObject> m_theme;
+    // The design-system Glass resolver singleton (T195), kept in step with the
+    // same settings client so shell QML consumers see the live preferences.
+    QPointer<QObject> m_glass;
 };

@@ -52,14 +52,15 @@ const INTERFACE_VERSION: u32 = 1;
 /// version, so the factory bumps in tandem with its child interface.
 const SHELL_INTERFACE_VERSION: u32 = 2;
 
-/// `df_toplevel_manager` is version 7 since `set_app_accelerators` was added
-/// (T-14.2b); `capture_screenshot` and the `screenshot_saved`/
-/// `screenshot_failed` events were the v6 additions (T-13.3b),
-/// `set_motion_policy`/`set_input_policy` were the v5 additions (T-08.2c),
-/// `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3 (T-11), and
-/// `release_keyboard_focus` v2 (T-10). The other interfaces stay at
-/// [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 7;
+/// `df_toplevel_manager` is version 9 since `set_appearance_policy` was added
+/// (T196); `activation_result` was the v8 addition (T-14.7g),
+/// `set_app_accelerators` v7 (T-14.2b), `capture_screenshot` and the
+/// `screenshot_saved`/`screenshot_failed` events were the v6 additions
+/// (T-13.3b), `set_motion_policy`/`set_input_policy` were the v5 additions
+/// (T-08.2c), `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3
+/// (T-11), and `release_keyboard_focus` v2 (T-10). The other interfaces stay
+/// at [`INTERFACE_VERSION`].
+const MANAGER_INTERFACE_VERSION: u32 = 9;
 
 /// `df_output` is version 4 since the role-keyed `material_role_state` event
 /// was added (T-21.2c); v3 added the global effective `material_state` event
@@ -2047,6 +2048,23 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     color_scheme.as_deref(),
                     titlebar_double_click.as_deref(),
                     minimized_animation.as_deref(),
+                );
+            }
+            df_toplevel_manager::Request::SetAppearancePolicy {
+                color_scheme,
+                transparency_millionths,
+                reduce_transparency,
+                increase_contrast,
+            } => {
+                // T196: the resolved scheme plus the glass/accessibility
+                // preferences in one coherent snapshot. Millionths keep the
+                // schema's 0.5255 default exact on the integer wire.
+                let transparency = (transparency_millionths.min(1_000_000) as f32) / 1_000_000.0;
+                state.set_appearance_policy(
+                    color_scheme.as_deref(),
+                    transparency,
+                    reduce_transparency != 0,
+                    increase_contrast != 0,
                 );
             }
             df_toplevel_manager::Request::SetInputPolicy {
