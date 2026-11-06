@@ -25,6 +25,12 @@ from the shell.
   additive v5 `set_motion_policy` (resolved color scheme, titlebar
   double-click, minimized animation) and `set_input_policy` (repeat delay/rate
   and the gesture family switches). `set_reduced_motion` (v3) stays.
+- **The glass preferences use one v9 snapshot (T196).** The additive
+  `set_appearance_policy` carries the resolved scheme, the
+  `appearance.transparency` slider, and the `accessibility.reduceTransparency`
+  / `increaseContrast` overrides in one request. Applying the whole snapshot
+  atomically avoids a frame where the scheme and overrides disagree. Older
+  compositors ignore it and keep the v5 path.
 - **The shell is the sole forwarder.** `ShellController::applyCompositorPolicy`
   re-reads the same `SettingsClient` the Dock and Theme use (no watcher, no
   timer, no new bus connection), maps it through the pure
@@ -52,9 +58,14 @@ typed and additive-only within a release).
 - `dock.minimizedAnimation=genie` is accepted and currently renders as
   `scale` (the genie warp is a material-pass follow-up); `none` collapses the
   minimize/restore tween exactly like reduced motion.
+- `appearance.transparency` and both accessibility overrides are one snapshot
+  in v9. The compositor clamps a malformed slider, ignores an unknown scheme,
+  and advances its material revision only on a real change, so a repeated
+  snapshot does not invalidate paint. The overrides apply in the legacy and
+  replacement looks; Reduce Transparency wins over the slider.
 - `workspaces.count` is **not** in this bridge: it is a workspace-model key,
   not motion/input, and still needs an owner in a later task. The gesture
   `spaceSwitch`/`missionControl` switches are gated in the recognizer.
-- Any future compositor-consumed settings key must extend the v5 request (or
-  append a new `since` request) and the `compositorpolicy` mapper, never add a
-  second source.
+- Any future compositor-consumed settings key must extend an existing request
+  (or append a new `since` request) and the `compositorpolicy` mapper, never
+  add a second source.

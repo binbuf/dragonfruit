@@ -2702,6 +2702,25 @@ void ShellProtocol::setMotionPolicy(const QString &colorScheme,
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setAppearancePolicy(const QString &colorScheme, double transparency,
+                                        bool reduceTransparency, bool increaseContrast)
+{
+    // T196: the resolved scheme and the glass/accessibility preferences in one
+    // coherent snapshot. Additive in v9; older compositors ignore it and keep
+    // the v5 motion policy.
+    if (m_manager && m_managerVersion >= 9) {
+        const QByteArray scheme = colorScheme.toUtf8();
+        const double bounded = qBound(0.0, transparency, 1.0);
+        const uint32_t millionths =
+            static_cast<uint32_t>(qRound(bounded * 1000000.0));
+        df_toplevel_manager_set_appearance_policy(
+            m_manager, scheme.constData(), millionths,
+            reduceTransparency ? 1u : 0u, increaseContrast ? 1u : 0u);
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 void ShellProtocol::setInputPolicy(int repeatDelayMs, int repeatRateHz, bool gesturesEnabled,
                                    bool gestureSpaceSwitch, bool gestureMissionControl)
 {

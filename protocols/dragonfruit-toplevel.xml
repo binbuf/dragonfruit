@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="8">
+  <interface name="df_toplevel_manager" version="9">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -316,6 +316,31 @@
       <arg name="app_id" type="string"/>
       <arg name="found" type="uint" summary="1 when a window was activated"/>
     </event>
+
+    <!-- T196: the effective scheme and glass preferences in one coherent
+         snapshot. Appended after the v8 messages so the scanner's `since`
+         stays non-decreasing and every pre-existing message keeps its opcode
+         (append-only). Additive in v9. The accessibility overrides apply in
+         both rollout looks. -->
+    <request name="set_appearance_policy" since="9">
+      <description summary="set the effective scheme and glass preferences">
+        The shell mirrors the settingsd appearance/accessibility keys here:
+        `color_scheme` is the resolved `light`/`dark` spelling (the shell
+        resolves `auto` against the host), `transparency_millionths` is the
+        0..1 attached-menu slider encoded as millionths (the schema's 0.5255
+        default is 525500), and the two overrides are
+        `accessibility.reduceTransparency` /
+        `accessibility.increaseContrast`. The compositor
+        applies the whole snapshot atomically and repaints the material scene
+        only when it changes. Unknown schemes leave the current scheme
+        untouched; an out-of-range slider is clamped. The overrides are
+        independent of the internal glass rollout switch.
+      </description>
+      <arg name="color_scheme" type="string" allow-null="true"/>
+      <arg name="transparency_millionths" type="uint" summary="0..1000000; 0.5255 = 525500"/>
+      <arg name="reduce_transparency" type="uint"/>
+      <arg name="increase_contrast" type="uint"/>
+    </request>
 
     <enum name="hot_corner">
       <entry name="top_left" value="0"/>

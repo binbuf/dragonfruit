@@ -640,6 +640,30 @@ pub struct PendingCapture {
     pub path: PathBuf,
 }
 
+/// The glass/accessibility preferences carried by the trusted shell bridge
+/// (T196). The resolved scheme stays in [`DfState::color_scheme`]; this is the
+/// slider plus the two overrides. The defaults mirror the settings schema so a
+/// compositor with no shell still renders a safe local material.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AppearancePolicy {
+    /// `appearance.transparency`, 0 (opaque) to 1 (clearer).
+    pub transparency: f32,
+    /// `accessibility.reduceTransparency`: opaque plate, no sampling.
+    pub reduce_transparency: bool,
+    /// `accessibility.increaseContrast`: edge/foreground boost.
+    pub increase_contrast: bool,
+}
+
+impl Default for AppearancePolicy {
+    fn default() -> Self {
+        Self {
+            transparency: crate::material_preset::DEFAULT_TRANSPARENCY,
+            reduce_transparency: false,
+            increase_contrast: false,
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub struct DfState {
     pub running: bool,
@@ -895,6 +919,15 @@ pub struct DfState {
     /// with (T-04.4b). Defaults to dark; the settings owner (T-08) sets it
     /// through [`Self::set_color_scheme`].
     pub color_scheme: ColorScheme,
+    /// The slider and accessibility overrides forwarded by the shell (T196).
+    pub appearance: AppearancePolicy,
+    /// The internal glass rollout switch (T195/T208), read once at startup so
+    /// a live policy update cannot silently change the look.
+    pub glass_rollout: crate::material_preset::Rollout,
+    /// Advances only when the effective material policy really changes. The
+    /// headless `query policy` report exposes it so a no-op snapshot can be
+    /// proven not to invalidate the paint state (T196).
+    pub material_revision: u64,
 
     /// The compositor-owned screen magnifier (T-16.6b): zoom, the scene point
     /// kept at the output centre, and the follow mode. It transforms the whole
@@ -1069,6 +1102,9 @@ impl DfState {
             material_blur_supported: false,
             gesture_trace: GestureBudgetTrace::new(),
             color_scheme: ColorScheme::default(),
+            appearance: AppearancePolicy::default(),
+            glass_rollout: crate::material_preset::Rollout::from_env(),
+            material_revision: 0,
             magnifier: Magnifier::new(),
             stats: RenderStats::new(),
         }
@@ -4256,8 +4292,87 @@ impl DfState {
     pub fn set_color_scheme(&mut self, scheme: ColorScheme) {
         if self.color_scheme != scheme {
             self.color_scheme = scheme;
+            self.material_revision = self.material_revision.wrapping_add(1);
             self.needs_redraw = true;
         }
+    }
+
+    /// Apply the T196 appearance snapshot forwarded by the shell over
+    /// `df_toplevel_manager.set_appearance_policy`. The whole snapshot is
+    /// validated before anything is applied: an unknown scheme leaves the
+    /// current scheme untouched, a non-finite slider falls back to the
+    /// measured midpoint, and an out-of-range slider is clamped. The
+    /// accessibility overrides are independent of the glass rollout.
+    pub fn set_appearance_policy(
+        &mut self,
+        color_scheme: Option<&str>,
+        transparency: f32,
+        reduce_transparency: bool,
+        increase_contrast: bool,
+    ) {
+        let next = AppearancePolicy {
+            transparency: if transparency.is_finite() {
+                transparency.clamp(0.0, 1.0)
+            } else {
+                crate::material_preset::DEFAULT_TRANSPARENCY
+            },
+            reduce_transparency,
+            increase_contrast,
+        };
+        let mut changed = false;
+        if self.appearance != next {
+            self.appearance = next;
+            changed = true;
+        }
+        if let Some(scheme) = color_scheme.and_then(ColorScheme::parse) {
+            if self.color_scheme != scheme {
+                self.color_scheme = scheme;
+                changed = true;
+            }
+        }
+        if changed {
+            self.material_revision = self.material_revision.wrapping_add(1);
+            // One repaint of the material scene; never a work-area reconfigure
+            // and never a persistent frame cadence.
+            self.needs_redraw = true;
+        }
+    }
+
+    /// Resolve one generated glass preset from the live material policy. The
+    /// compositor and the shell use the same resolver vocabulary; this is the
+    /// snapshot the headless `query material` report exposes.
+    pub fn resolve_glass_preset(
+        &self,
+        preset: crate::material_preset::Preset,
+    ) -> crate::material_preset::ResolvedPreset {
+        use crate::material_preset::{Accessibility, Backend, ResolveInput, Scheme, Tier};
+        let scheme = match self.color_scheme {
+            ColorScheme::Light => Scheme::Light,
+            ColorScheme::Dark => Scheme::Dark,
+        };
+        let backend = match (self.material_path, self.material_blur_supported) {
+            (MaterialPath::Software, _) => Backend::Software,
+            (MaterialPath::Gpu, false) => Backend::GpuNoSampledBlur,
+            (MaterialPath::Gpu, true) => Backend::GpuSampled,
+        };
+        let tier = match self.degrade.tier() {
+            DegradeTier::Full => Tier::Full,
+            DegradeTier::Reduced => Tier::Reduced,
+            DegradeTier::Minimal => Tier::Minimal,
+        };
+        crate::material_preset::resolve(ResolveInput {
+            preset,
+            scheme,
+            slider: self.appearance.transparency,
+            accessibility: Accessibility {
+                reduce_transparency: self.appearance.reduce_transparency,
+                increase_contrast: self.appearance.increase_contrast,
+            },
+            backend,
+            tier,
+            rollout: self.glass_rollout,
+            reduce_motion: self.animation_clock.reduced_motion(),
+        })
     }
 
     /// The live minimize/restore animation policy (T-08.2c).

@@ -48,17 +48,41 @@ Item {
         root.ready && root.view.screenReaderLabel !== undefined
             ? String(root.view.screenReaderLabel) : qsTr("Off")
 
-    // The one durable preference (settingsd), applied live by the shell.
+    // The durable preferences (settingsd), applied live by the shell. The two
+    // glass overrides are independent of the appearance rollout: they take
+    // effect in both the legacy and replacement looks.
     readonly property bool reduceMotion:
         Settings.values["accessibility.reduceMotion"] === true
+    readonly property bool reduceTransparency:
+        Settings.values["accessibility.reduceTransparency"] === true
+    readonly property bool increaseContrast:
+        Settings.values["accessibility.increaseContrast"] === true
+
+    // The same effective resolver the shell/menus use, so the preview proves
+    // the override combination rather than a second local formula.
+    readonly property var previewResolved: Glass.resolve("menuAttached", {
+        scheme: Glass.scheme,
+        rollout: Glass.rollout,
+        slider: Glass.slider,
+        reduceTransparency: root.reduceTransparency,
+        increaseContrast: root.increaseContrast,
+        tier: Glass.tier,
+        software: Glass.software,
+        sampledBlur: Glass.sampledBlur
+    })
 
     // Test surface (used by tst_settings_accessibility.qml).
     property alias statusGroup: statusGroup
     property alias motionGroup: motionGroup
+    property alias contrastGroup: contrastGroup
+    property alias previewGroup: previewGroup
+    property alias previewPlate: previewPlate
     property alias absenceNote: absenceNote
     property alias bridgeRow: bridgeRow
     property alias screenReaderRow: screenReaderRow
     property alias reduceMotionToggle: reduceMotionToggle
+    property alias reduceTransparencyToggle: reduceTransparencyToggle
+    property alias increaseContrastToggle: increaseContrastToggle
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -132,6 +156,88 @@ Item {
             }
         }
 
+        // ── Glass accessibility overrides ─────────────────────────────────
+        SettingsGroup {
+            id: contrastGroup
+            width: parent.width
+            title: qsTr("Display")
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Reduce Transparency")
+                description: qsTr("Replace glass on the Dock, menus, panels, and "
+                                  + "window chrome with an opaque plate. Overrides "
+                                  + "the Appearance transparency slider and works "
+                                  + "with the appearance rollout off.")
+                controlData: Toggle {
+                    id: reduceTransparencyToggle
+                    objectName: "accessibilityReduceTransparencyToggle"
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("accessibility.reduceTransparency", checked)
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Increase Contrast")
+                description: qsTr("Strengthen glass edges and foreground contrast. "
+                                  + "Applies with Reduce Transparency as well.")
+                showSeparator: false
+                controlData: Toggle {
+                    id: increaseContrastToggle
+                    objectName: "accessibilityIncreaseContrastToggle"
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("accessibility.increaseContrast", checked)
+                }
+            }
+        }
+
+        // The same resolver the shell/menus consume; the mode/alpha readout
+        // makes the combined override visible immediately.
+        SettingsGroup {
+            id: previewGroup
+            width: parent.width
+            title: qsTr("Preview")
+
+            Item {
+                width: parent.width
+                height: 96
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.controls.settingsGroup.radius
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: "#2f6fde" }
+                        GradientStop { position: 1.0; color: "#e8b34a" }
+                    }
+                }
+
+                Rectangle {
+                    id: previewPlate
+                    anchors.fill: parent
+                    radius: Theme.controls.settingsGroup.radius
+                    color: Qt.rgba(root.previewResolved.tint,
+                                   root.previewResolved.tint,
+                                   root.previewResolved.tint,
+                                   root.previewResolved.alpha)
+                    border.width: Math.max(Theme.controls.window.borderWidth,
+                                           Math.round(root.previewResolved.edgeWidth))
+                    border.color: Qt.rgba(1, 1, 1, root.previewResolved.edge)
+                    antialiasing: true
+
+                    Text {
+                        objectName: "accessibilityPreviewMode"
+                        anchors.centerIn: parent
+                        text: root.previewResolved.renderMode
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                    }
+                }
+            }
+        }
+
         // ── The durable motion preference ─────────────────────────────────
         SettingsGroup {
             id: motionGroup
@@ -154,10 +260,20 @@ Item {
         }
     }
 
-    // Keep the toggle in step with external changes.
+    // Keep the toggles in step with external changes.
     Binding {
         target: reduceMotionToggle
         property: "checked"
         value: root.reduceMotion
+    }
+    Binding {
+        target: reduceTransparencyToggle
+        property: "checked"
+        value: root.reduceTransparency
+    }
+    Binding {
+        target: increaseContrastToggle
+        property: "checked"
+        value: root.increaseContrast
     }
 }

@@ -335,6 +335,81 @@ fn invalid_writes_are_typed_errors_and_leave_the_store_unchanged() {
 }
 
 #[test]
+fn the_glass_keys_round_trip_and_reject_invalid_writes_over_the_bus() {
+    let bus = PrivateBus::start();
+    let service = serve(&bus);
+    let client = bus.connect();
+
+    // The default is the measured midpoint; both overrides are off.
+    assert_eq!(
+        get(&client, "appearance.transparency").unwrap(),
+        Value::Number(0.5255)
+    );
+    assert_eq!(
+        get(&client, "accessibility.reduceTransparency").unwrap(),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        get(&client, "accessibility.increaseContrast").unwrap(),
+        Value::Bool(false)
+    );
+
+    // A valid write is reflected by the owner.
+    set(&client, "appearance.transparency", &Value::Number(0.8)).expect("transparency accepts 0.8");
+    assert_eq!(
+        get(&client, "appearance.transparency").unwrap(),
+        Value::Number(0.8)
+    );
+    set(
+        &client,
+        "accessibility.reduceTransparency",
+        &Value::Bool(true),
+    )
+    .expect("reduceTransparency accepts true");
+    set(
+        &client,
+        "accessibility.increaseContrast",
+        &Value::Bool(true),
+    )
+    .expect("increaseContrast accepts true");
+    assert_eq!(
+        get(&client, "accessibility.reduceTransparency").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        get(&client, "accessibility.increaseContrast").unwrap(),
+        Value::Bool(true)
+    );
+
+    // Out-of-range and wrong-type writes are typed errors and leave the value
+    // untouched.
+    let range = set(&client, "appearance.transparency", &Value::Number(1.5));
+    assert_eq!(
+        error_name(&range.unwrap_err()).as_deref(),
+        Some("org.dragonfruit.Settings1.Error.OutOfRange")
+    );
+    assert_eq!(
+        get(&client, "appearance.transparency").unwrap(),
+        Value::Number(0.8)
+    );
+    let mismatch = set(
+        &client,
+        "accessibility.increaseContrast",
+        &Value::Text("yes".into()),
+    );
+    assert_eq!(
+        error_name(&mismatch.unwrap_err()).as_deref(),
+        Some("org.dragonfruit.Settings1.Error.TypeMismatch")
+    );
+    assert_eq!(
+        get(&client, "accessibility.increaseContrast").unwrap(),
+        Value::Bool(true)
+    );
+
+    drop(service);
+}
+
+#[test]
 fn a_set_over_the_bus_is_persisted_and_reloaded_by_a_restart() {
     let scratch = Scratch::new();
     let path = scratch.file();

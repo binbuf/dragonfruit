@@ -39,6 +39,66 @@ Item {
 
     property string customAccentText: root.currentAccent
 
+    // T196: the attached-menu transparency preference. It is a bounded double
+    // (schema default 0.5255) and only the light attached-menu preset follows
+    // it; the other glass roles keep their named calibration. `preview*` is
+    // the same resolver input the rendered menus use, updated immediately
+    // while a drag is in flight.
+    readonly property real transparency: {
+        var value = Number(Settings.values["appearance.transparency"]);
+        return isFinite(value) ? Math.max(0, Math.min(1, value))
+                               : Theme.glass.slider.defaultPosition;
+    }
+    readonly property bool reduceTransparency:
+        Settings.values["accessibility.reduceTransparency"] === true
+    readonly property bool increaseContrast:
+        Settings.values["accessibility.increaseContrast"] === true
+    property real previewTransparency: root.transparency
+    // Tests/captures can preview the replacement look without changing the
+    // process-wide rollout; the desktop still follows `Glass.rollout`.
+    property string previewRollout: Glass.rollout
+    property real pendingTransparency: root.transparency
+    property bool transparencyWritePending: false
+
+    // One resolver, shared with the shell and the rendered menus (T195).
+    readonly property var previewResolved: Glass.resolve("menuAttached", {
+        scheme: Glass.scheme,
+        rollout: root.previewRollout,
+        slider: root.previewTransparency,
+        reduceTransparency: root.reduceTransparency,
+        increaseContrast: root.increaseContrast,
+        tier: Glass.tier,
+        software: Glass.software,
+        sampledBlur: Glass.sampledBlur
+    })
+    readonly property string previewMode: root.previewResolved.renderMode
+    readonly property string previewPercent:
+        Math.round(root.previewTransparency * 100) + "%"
+
+    // Coalesce live drag writes: the knob and preview move on every `moved`,
+    // the settings owner sees at most one write per timer window, and
+    // `committed` always flushes the final value.
+    function queueTransparency(value) {
+        var next = Math.round(Math.max(0, Math.min(1, value)) * 10000) / 10000;
+        root.previewTransparency = next;
+        root.pendingTransparency = next;
+        root.transparencyWritePending = true;
+        transparencyWriteTimer.restart();
+    }
+
+    function flushTransparency() {
+        if (!root.transparencyWritePending)
+            return;
+        transparencyWriteTimer.stop();
+        root.transparencyWritePending = false;
+        Settings.set("appearance.transparency", root.pendingTransparency);
+    }
+
+    onTransparencyChanged: {
+        if (!root.transparencyWritePending)
+            root.previewTransparency = root.transparency;
+    }
+
     // Test surface (used by tst_settings_appearance.qml).
     property alias schemeControl: schemeControl
     property alias schemeRow: schemeRow
@@ -46,6 +106,11 @@ Item {
     property alias accentRow: accentRow
     property alias accentPopup: accentPopup
     property alias accentInput: accentInput
+    property alias transparencySlider: transparencySlider
+    property alias transparencyRow: transparencyRow
+    property alias transparencyGroup: transparencyGroup
+    property alias previewPlate: previewPlate
+    property alias previewGroup: previewGroup
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -123,10 +188,111 @@ Item {
             }
         }
 
+        // T196: the one appearance preference that drives the glass optical
+        // preset. The row names every surface it does (and does not) affect so
+        // the slider is not mistaken for a global window-opacity control.
+        SettingsGroup {
+            id: transparencyGroup
+            width: parent.width
+            title: qsTr("Transparency")
+
+            SettingsRow {
+                id: transparencyRow
+                width: parent.width
+                label: qsTr("Attached-menu transparency")
+                description: qsTr("Light attached menus only; higher values are clearer. "
+                                  + "The Dock, menu bar, windows, and panels keep their own "
+                                  + "materials. Reduce Transparency overrides this slider.")
+                showSeparator: false
+
+                controlData: Slider {
+                    id: transparencySlider
+                    width: 220
+                    from: 0.0
+                    to: 1.0
+                    minLabel: qsTr("Opaque")
+                    maxLabel: qsTr("Clear")
+                    accessibleName: qsTr("Attached-menu transparency")
+                    onMoved: (value) => root.queueTransparency(value)
+                    onCommitted: (value) => {
+                        root.pendingTransparency =
+                            Math.round(Math.max(0, Math.min(1, value)) * 10000) / 10000;
+                        root.transparencyWritePending = true;
+                        root.flushTransparency();
+                    }
+                }
+            }
+        }
+
+        // The same effective resolver the rendered menus consume. The
+        // immediate value/mode readout gives feedback even while the rollout
+        // still selects the legacy look.
+        SettingsGroup {
+            id: previewGroup
+            width: parent.width
+            title: qsTr("Preview")
+
+            Item {
+                width: parent.width
+                height: 118
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.controls.settingsGroup.radius
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: "#2f6fde" }
+                        GradientStop { position: 0.5; color: "#d65a8a" }
+                        GradientStop { position: 1.0; color: "#e8b34a" }
+                    }
+                }
+
+                Rectangle {
+                    id: previewPlate
+                    anchors.fill: parent
+                    radius: Theme.controls.settingsGroup.radius
+                    color: Qt.rgba(root.previewResolved.tint,
+                                   root.previewResolved.tint,
+                                   root.previewResolved.tint,
+                                   root.previewResolved.alpha)
+                    border.width: Math.max(Theme.controls.window.borderWidth,
+                                           Math.round(root.previewResolved.edgeWidth))
+                    border.color: Qt.rgba(1, 1, 1, root.previewResolved.edge)
+                    antialiasing: true
+
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.primitive.spacing.md
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.primitive.spacing.xxs
+
+                        Text {
+                            text: qsTr("Attached menu")
+                            color: Theme.color.textPrimary
+                            font.pixelSize: Theme.controls.button.fontSize
+                            font.weight: Theme.primitive.font.weightMedium
+                        }
+                        Text {
+                            objectName: "appearancePreviewMode"
+                            text: root.previewMode + " · " + root.previewPercent
+                            color: Theme.color.textSecondary
+                            font.pixelSize: Theme.primitive.font.sizeSm
+                        }
+                    }
+                }
+            }
+        }
+
         Item {
             width: parent.width
             height: 0
         }
+    }
+
+    Timer {
+        id: transparencyWriteTimer
+        interval: 60
+        repeat: false
+        onTriggered: root.flushTransparency()
     }
 
     // Two-way binding for the scheme selector: the control writes on activation,
@@ -136,6 +302,15 @@ Item {
         target: schemeControl
         property: "currentIndex"
         value: root.schemeIndex()
+    }
+
+    // External settingsd changes converge into the knob, but an in-flight drag
+    // (or a coalesced write) owns the value until it flushes.
+    Binding {
+        target: transparencySlider
+        property: "value"
+        value: root.transparency
+        when: !transparencySlider.dragging && !root.transparencyWritePending
     }
 
     // A hex-entry color picker: our own, so it consumes the design-system

@@ -568,6 +568,60 @@ mod tests {
     }
 
     #[test]
+    fn a_revision_seventeen_file_gains_the_glass_keys_without_losing_values() {
+        let scratch = Scratch::new("migrate-17");
+        let path = scratch.file();
+        // A file written before T196 added the glass preference and its two
+        // accessibility overrides. The old values must survive and the new
+        // keys must take their schema defaults.
+        write_raw(
+            &path,
+            "{\n  \"schema\": 17,\n  \"keys\": {\n    \"appearance.colorScheme\": \"dark\",\n    \"appearance.accent\": \"#4a7dff\",\n    \"accessibility.reduceMotion\": true\n  }\n}\n",
+        );
+
+        let loaded = load(&path).unwrap();
+        assert!(loaded.found);
+        assert_eq!(loaded.schema, 17);
+        assert!(loaded.migrated, "a revision-17 file is migrated");
+        assert_eq!(
+            loaded.settings.get("appearance.colorScheme").unwrap(),
+            &Value::Text("dark".into())
+        );
+        assert_eq!(
+            loaded.settings.get("appearance.accent").unwrap(),
+            &Value::Text("#4a7dff".into())
+        );
+        assert_eq!(
+            loaded.settings.get("accessibility.reduceMotion").unwrap(),
+            &Value::Bool(true)
+        );
+        assert_eq!(
+            loaded.settings.get("appearance.transparency").unwrap(),
+            &Value::Number(0.5255)
+        );
+        assert_eq!(
+            loaded
+                .settings
+                .get("accessibility.reduceTransparency")
+                .unwrap(),
+            &Value::Bool(false)
+        );
+        assert_eq!(
+            loaded
+                .settings
+                .get("accessibility.increaseContrast")
+                .unwrap(),
+            &Value::Bool(false)
+        );
+
+        loaded.persistence.save(&loaded.settings).unwrap();
+        let again = load(&path).unwrap();
+        assert!(!again.migrated);
+        assert_eq!(again.schema, SCHEMA_VERSION);
+        assert_eq!(again.settings, loaded.settings);
+    }
+
+    #[test]
     fn unknown_root_and_key_entries_survive_a_settingsd_write() {
         let scratch = Scratch::new("unknown");
         let path = scratch.file();

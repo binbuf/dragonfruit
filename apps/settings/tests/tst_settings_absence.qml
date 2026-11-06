@@ -150,6 +150,15 @@ Item {
             compare(Theme.dark, true);
             pane.schemeControl.activateIndex(0); // light
             compare(Settings.values["appearance.colorScheme"], "light");
+
+            // T196: the glass slider stays live on the schema defaults and
+            // its preview uses the same resolver with no daemon.
+            pane.transparencySlider.setValue(0.8);
+            pane.transparencySlider.commit();
+            fuzzyCompare(Settings.values["appearance.transparency"], 0.8, 0.0001);
+            compare(pane.previewResolved.sliderApplied,
+                    pane.previewRollout === "replacement"
+                        && Settings.values["appearance.colorScheme"] === "light");
         }
 
         function test_wallpaper_pane_disables_only_the_absent_portal_row() {
@@ -623,10 +632,16 @@ Item {
                     "the absence note explains the missing accessibility service");
             verify(pane.absenceNote.text.length > 0);
             compare(pane.statusGroup.visible, false);
-            // The durable preference is a settingsd key: it stays live.
+            // The durable preferences are settingsd keys: they stay live.
             compare(pane.motionGroup.visible, true);
+            compare(pane.contrastGroup.visible, true);
             pane.reduceMotionToggle.toggle();
             compare(Settings.values["accessibility.reduceMotion"], true);
+            pane.reduceTransparencyToggle.toggle();
+            pane.increaseContrastToggle.toggle();
+            compare(Settings.values["accessibility.reduceTransparency"], true);
+            compare(Settings.values["accessibility.increaseContrast"], true);
+            compare(pane.previewResolved.renderMode, "solid");
 
             // A refresh is a safe no-op with no host.
             Settings.refreshAccessibility();

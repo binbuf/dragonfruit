@@ -59,8 +59,8 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Bluetooth | BlueZ |
 | Battery | UPower + power-profiles-daemon where present |
 | General | `settingsd` + distro provider (about, updates, defaults) |
-| Appearance | `settingsd` (design-system themes, dark/light, accent) |
-| Accessibility | live AT-SPI read + `settingsd` (`accessibility.reduceMotion`) ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md)) |
+| Appearance | `settingsd` (design-system themes, dark/light, accent, attached-menu transparency) |
+| Accessibility | live AT-SPI read + `settingsd` (`accessibility.reduceMotion`, `reduceTransparency`, `increaseContrast`) ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0215](adr/0215-glass-live-settings-and-appearance-policy.md)) |
 | Desktop & Dock | `settingsd` → shell + compositor |
 | Displays | Compositor output API — **shipped:** scale and rotation; **design-only:** mode enumeration, brightness (Control Center owns the current slider), color management/HDR, night light, VRR ([STATUS.md](STATUS.md) G-13) |
 | Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures |
@@ -234,7 +234,7 @@ Two absence families appear, and a pane can mix them:
 | Users & Groups | accountsservice/distro (bridge host) | note; read-only tile | **hides** |
 | Printers & Scanners | CUPS/SANE (bridge host) | note; no add/queue write | **hides** |
 | Privacy & Security | portal `PermissionStore` (bridge host) | note; no permission write | **hides** |
-| Accessibility | AT-SPI (bridge host) + settingsd | status note; `accessibility.reduceMotion` stays live | **hides** |
+| Accessibility | AT-SPI (bridge host) + settingsd | status note; `accessibility.reduceMotion`/`reduceTransparency`/`increaseContrast` stay live | **hides** |
 
 The headless half is the CI gate:
 

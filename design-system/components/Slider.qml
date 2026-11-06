@@ -35,6 +35,9 @@ Item {
     readonly property real fraction: root.range > 0
         ? Math.max(0, Math.min(1, (root.value - root.from) / root.range))
         : 0
+    // True while a pointer drag owns the knob. Owners that coalesce writes can
+    // avoid echoing an intermediate value back into the knob mid-gesture.
+    readonly property bool dragging: drag.active
     readonly property bool hasCaptions: root.minLabel.length > 0
         || root.midLabel.length > 0 || root.maxLabel.length > 0
 

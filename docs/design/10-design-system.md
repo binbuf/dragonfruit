@@ -253,6 +253,21 @@ It defaults to `legacy` until T208; the shell controller applies it to the
 nested and native fixtures select either look reproducibly. An unset or unknown
 value keeps the existing appearance.
 
+The durable inputs are settingsd keys (T196): `appearance.transparency`
+(double, default 0.5255, clearer toward 1) drives the light attached-menu
+slider, `accessibility.reduceTransparency` forces the opaque scheme plate and
+disables sampling, and `accessibility.increaseContrast` boosts the edge and
+foreground after the fill decision. The shell's `ThemeBinding` writes the same
+values into the `Glass` singleton; the Settings app mirrors them for its pane
+previews. The Appearance and Accessibility panes call the same
+`Glass.resolve` function as the rendered surfaces, so the preview cannot drift
+into a second slider curve. The compositor receives one coherent v9
+`set_appearance_policy` snapshot (resolved scheme, slider, both overrides) and
+repaints only when the snapshot really changes. The two accessibility
+overrides are independent of the rollout switch and of each other; Reduce
+Transparency wins over the slider, and Increase Contrast still applies on the
+resulting opaque plate. Reduce Motion remains a separate motion-only key.
+
 ## Typography and the system font
 
 The desktop's type is **Inter** (SIL OFL 1.1, `assets/fonts/Inter/`), declared as

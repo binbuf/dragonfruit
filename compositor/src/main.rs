@@ -22,6 +22,7 @@ mod input;
 mod instrument;
 mod lock;
 mod magnifier;
+mod material_preset;
 mod overview;
 mod render;
 mod session;

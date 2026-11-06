@@ -362,6 +362,10 @@ impl Tier {
     }
 }
 
+/// The measured midpoint of the attached-menu slider. T196's settings schema
+/// uses the same value as `appearance.transparency`'s default.
+pub const DEFAULT_TRANSPARENCY: f32 = glass::slider::DEFAULT_POSITION;
+
 /// The two accessibility overrides that participate in material resolution.
 /// Reduce Motion is intentionally absent: it is orthogonal to optics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

@@ -16,6 +16,12 @@ struct CompositorPolicy {
     // The *resolved* spelling ("light" | "dark"): the compositor has no host
     // style hints, so `auto` is resolved in the shell.
     QString colorScheme = QStringLiteral("dark");
+    // T196: the attached-menu slider (0..1, measured midpoint 0.5255) and the
+    // two accessibility overrides. They travel together with the resolved
+    // scheme in the v9 `set_appearance_policy` snapshot.
+    double transparency = 0.5255;
+    bool reduceTransparency = false;
+    bool increaseContrast = false;
     QString titlebarDoubleClick = QStringLiteral("zoom");
     QString minimizedAnimation = QStringLiteral("scale");
     int repeatDelayMs = 200;

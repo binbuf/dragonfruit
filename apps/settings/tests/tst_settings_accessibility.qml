@@ -27,6 +27,9 @@ Item {
         function init() {
             Settings.resetAccessibilityFixture();
             Settings.set("accessibility.reduceMotion", false);
+            Settings.set("accessibility.reduceTransparency", false);
+            Settings.set("accessibility.increaseContrast", false);
+            Glass.rollout = "legacy";
         }
 
         function make() {
@@ -90,8 +93,79 @@ Item {
             var pane = paneOf(shell);
             compare(pane.statusGroup.visible, true);
             compare(pane.motionGroup.visible, true);
+            compare(pane.contrastGroup.visible, true);
             // The absence note is for the host-absent case (tst_settings_absence).
             compare(pane.absenceNote.visible, false);
+        }
+
+        function test_reduce_transparency_round_trips_and_applies_live() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.reduceTransparency, false);
+            compare(pane.reduceTransparencyToggle.checked, false);
+
+            pane.reduceTransparencyToggle.toggle();
+            compare(Settings.values["accessibility.reduceTransparency"], true);
+            compare(pane.reduceTransparency, true);
+            compare(Glass.reduceTransparency, true);
+            // The override wins in the legacy look too, independent of the
+            // appearance rollout.
+            compare(Glass.rollout, "legacy");
+            compare(pane.previewResolved.renderMode, "solid");
+            compare(pane.previewResolved.sliderApplied, false);
+        }
+
+        function test_increase_contrast_round_trips_and_combines_with_reduce_transparency() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var plainEdge = pane.previewResolved.edge;
+
+            pane.reduceTransparencyToggle.toggle();
+            pane.increaseContrastToggle.toggle();
+            compare(Settings.values["accessibility.reduceTransparency"], true);
+            compare(Settings.values["accessibility.increaseContrast"], true);
+            compare(Glass.increaseContrast, true);
+
+            var combined = pane.previewResolved;
+            compare(combined.renderMode, "solid");
+            verify(combined.edge > plainEdge,
+                   "Increase Contrast must strengthen the opaque plate edge");
+            compare(combined.sliderApplied, false);
+        }
+
+        function test_the_overrides_follow_external_changes() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.set("accessibility.reduceTransparency", true);
+            Settings.set("accessibility.increaseContrast", true);
+            tryVerify(function() {
+                return pane.reduceTransparencyToggle.checked
+                        && pane.increaseContrastToggle.checked;
+            });
+            compare(Glass.reduceTransparency, true);
+            compare(Glass.increaseContrast, true);
+        }
+
+        function test_the_overrides_are_keyboard_operable() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.reduceTransparencyToggle.forceActiveFocus();
+            keyClick(Qt.Key_Space);
+            compare(Settings.values["accessibility.reduceTransparency"], true);
+
+            pane.increaseContrastToggle.forceActiveFocus();
+            keyClick(Qt.Key_Space);
+            compare(Settings.values["accessibility.increaseContrast"], true);
+        }
+
+        function test_reduce_motion_stays_independent_of_the_glass_overrides() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.reduceMotionToggle.toggle();
+            compare(Settings.values["accessibility.reduceMotion"], true);
+            compare(Settings.values["accessibility.reduceTransparency"], false);
+            compare(Settings.values["accessibility.increaseContrast"], false);
+            compare(Theme.reducedMotion, true);
         }
     }
 }

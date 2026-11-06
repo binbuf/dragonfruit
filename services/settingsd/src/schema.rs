@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 17;
+pub const SCHEMA_VERSION: u32 = 18;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -478,6 +478,19 @@ pub const KEYS: &[KeySpec] = &[
         since: 1,
         summary: "Accent color override ('#rrggbb'); empty uses the token default.",
     },
+    KeySpec {
+        key: "appearance.transparency",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Number,
+        default: KeyDefault::Number(0.5255),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(1.0),
+        owner: "apps/settings",
+        consumer: "shell/design-system Glass, compositor/material",
+        since: 18,
+        summary: "Attached-menu glass transparency, 0 (opaque) to 1 (clearer); the measured midpoint is 0.5255.",
+    },
     // ── Wallpaper ───────────────────────────────────────────────────────
     KeySpec {
         key: "wallpaper.source",
@@ -636,6 +649,32 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/design-system Theme, compositor/window motion",
         since: 1,
         summary: "Global animation policy: collapse motion to instant transitions.",
+    },
+    KeySpec {
+        key: "accessibility.reduceTransparency",
+        group: KeyGroup::Animation,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system Glass, compositor/material",
+        since: 18,
+        summary: "Replace sampled glass with a scheme-appropriate opaque plate; wins over the transparency slider.",
+    },
+    KeySpec {
+        key: "accessibility.increaseContrast",
+        group: KeyGroup::Animation,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system Glass, compositor/material",
+        since: 18,
+        summary: "Strengthen glass edges and foreground contrast, including when Reduce Transparency is active.",
     },
     // ── Input ───────────────────────────────────────────────────────────
     KeySpec {
@@ -1957,6 +1996,39 @@ mod tests {
     }
 
     /// The Printers & Scanners key (T-15.12b): the one durable presentation
+    /// The glass preference and its two accessibility overrides are additive
+    /// in revision 18 (T196). The slider is a bounded double with the measured
+    /// midpoint as its default; both overrides are off by default and apply
+    /// independently of the appearance rollout.
+    #[test]
+    fn the_glass_keys_are_declared_in_revision_eighteen() {
+        let transparency = spec("appearance.transparency").expect("transparency is declared");
+        assert_eq!(transparency.group, KeyGroup::Appearance);
+        assert_eq!(transparency.kind, KeyType::Number);
+        assert_eq!(transparency.default, KeyDefault::Number(0.5255));
+        assert_eq!(transparency.min, Some(0.0));
+        assert_eq!(transparency.max, Some(1.0));
+        assert_eq!(transparency.since, 18);
+        assert!(transparency.validate(&Value::Number(0.0)).is_ok());
+        assert!(transparency.validate(&Value::Number(0.5255)).is_ok());
+        assert!(transparency.validate(&Value::Number(1.0)).is_ok());
+        assert!(transparency.validate(&Value::Number(1.01)).is_err());
+        assert!(transparency.validate(&Value::Number(-0.01)).is_err());
+
+        for key in [
+            "accessibility.reduceTransparency",
+            "accessibility.increaseContrast",
+        ] {
+            let override_spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(override_spec.group, KeyGroup::Animation, "{key}");
+            assert_eq!(override_spec.kind, KeyType::Bool, "{key}");
+            assert_eq!(override_spec.default, KeyDefault::Bool(false), "{key}");
+            assert_eq!(override_spec.since, 18, "{key}");
+            assert!(override_spec.validate(&Value::Bool(true)).is_ok(), "{key}");
+            assert!(override_spec.validate(&Value::Bool(false)).is_ok(), "{key}");
+        }
+    }
+
     /// preference the pane owns (CUPS and SANE own their own state), additive
     /// in revision 17 (ADR 0141).
     #[test]

@@ -51,10 +51,13 @@ bool ThemeBinding::hostDark()
 
 void ThemeBinding::onSettingsChanged(const QString &key, const QVariant &)
 {
-    // Only the theme keys matter here; the Dock handles the rest.
+    // Only the theme/glass keys matter here; the Dock handles the rest.
     if (key == QLatin1String("appearance.colorScheme")
         || key == QLatin1String("appearance.accent")
-        || key == QLatin1String("accessibility.reduceMotion")) {
+        || key == QLatin1String("appearance.transparency")
+        || key == QLatin1String("accessibility.reduceMotion")
+        || key == QLatin1String("accessibility.reduceTransparency")
+        || key == QLatin1String("accessibility.increaseContrast")) {
         apply();
     }
 }
@@ -81,4 +84,25 @@ void ThemeBinding::apply()
         m_theme->setProperty("reducedMotion", reduced);
     if (m_theme->property("accentOverride").toString() != accent)
         m_theme->setProperty("accentOverride", accent);
+
+    // T196: the optical preferences are one resolver input, not a second
+    // slider curve. The Glass singleton is optional in a QML-less test engine.
+    if (!m_glass)
+        m_glass = m_engine->singletonInstance<QObject *>(QStringLiteral("Dragonfruit"),
+                                                         QStringLiteral("Glass"));
+    if (!m_glass)
+        return;
+    const double transparency =
+        m_settings->real(QStringLiteral("appearance.transparency"), 0.5255);
+    const double bounded = transparency >= 0.0 && transparency <= 1.0 ? transparency : 0.5255;
+    const bool reduceTransparency =
+        m_settings->boolean(QStringLiteral("accessibility.reduceTransparency"), false);
+    const bool increaseContrast =
+        m_settings->boolean(QStringLiteral("accessibility.increaseContrast"), false);
+    if (m_glass->property("slider").toDouble() != bounded)
+        m_glass->setProperty("slider", bounded);
+    if (m_glass->property("reduceTransparency").toBool() != reduceTransparency)
+        m_glass->setProperty("reduceTransparency", reduceTransparency);
+    if (m_glass->property("increaseContrast").toBool() != increaseContrast)
+        m_glass->setProperty("increaseContrast", increaseContrast);
 }
