@@ -318,6 +318,7 @@ private slots:
     void onDockPinnedOrderChanged(const QVariant &desktopIds);
     void onDockPopoverChanged();
     void onDockRevealStateChanged();
+    void scheduleDockRender();
     void onDockKeyboardFocused(bool focused);
     void onDockKeyboardFocusReleaseRequested();
     // External drag-and-drop onto the Dock (T-10 section 12).
@@ -657,8 +658,6 @@ private:
     // A duplicate app-alias drop (T-14.7f): pulse the already-pinned entry so
     // the no-op is visible instead of silent.
     void flashDuplicatePin(const QString &desktopId);
-    // Coalesce a Dock render onto the next event-loop turn.
-    void scheduleDockRender();
     // Launch Files at `argument` through the Files `.desktop` (T-10.6c). The
     // argument is the `trash://` URI for the Trash click, an absolute path for
     // Show in Files / a Downloads row, or a `file://` URI. Files resolves a
@@ -1146,7 +1145,6 @@ private:
     int m_dockHeight = 0;
     int m_dockThickness = 0;
     ShellProtocol::DockPosition m_dockPosition = ShellProtocol::DockPosition::Bottom;
-    bool m_dockRenderPending = false;
     Qt::MouseButtons m_dockButtons = Qt::NoButton;
     // The Dock popover (context menu / window chooser) in Dock-scene
     // coordinates, plus the offset the scene is placed at inside the offscreen
@@ -1159,11 +1157,6 @@ private:
     int m_dockPopoverWidth = 0;
     int m_dockPopoverHeight = 0;
     bool m_dockPopoverMapped = false;
-    // The last integer plate panel committed to the compositor (T-14.7z).
-    // `setDockPanelRect` is called only when this changes, so the declared
-    // backdrop cannot ping-pong by a pixel during a smooth plate animation.
-    QRect m_dockPanelRect;
-    bool m_dockPanelRectValid = false;
     // Scene-graph frame gates (FR-14): the Dock and menu-bar windows commit
     // from `afterRendering`, and the gate suppresses the re-entrant frame the
     // `grabWindow()` readback itself produces.

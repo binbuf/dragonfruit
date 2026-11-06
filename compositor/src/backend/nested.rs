@@ -24,7 +24,6 @@ use smithay::backend::renderer::element::utils::{
 };
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexProgram, GlesTexture};
 use smithay::backend::renderer::glow::GlowRenderer;
-use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::{ImportAll, ImportDma, ImportMem, ImportMemWl, Renderer, Texture};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::output::{Mode, PhysicalProperties, Subpixel};
@@ -37,8 +36,8 @@ use crate::backend::{add_output, add_seat_capabilities};
 use crate::gpu_timer::{GpuPass, GpuTimer};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
-    full_output_material_forced, BlurMissCounts, BlurMissReason, MaterialRegion, PanelBlurKey,
-    PanelKey, PanelTextureSlots, SceneTextureCache, SceneTextureKey, TextureRenderer,
+    full_output_material_forced, BlurMissCounts, BlurMissReason, MaterialRegion, PanelKey,
+    PanelTextureSlots, SceneTextureCache, SceneTextureKey, TextureRenderer,
 };
 use crate::{render, LOCKSTEP_VERSION};
 
@@ -528,8 +527,6 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 custom_elements.extend(crate::render::chrome_render_elements(
                     renderer, state, &output, scale,
                 ));
-                let scene_generation = data.material_textures.scene.generation();
-                let scene_commit = data.material_textures.scene.commit();
                 let blur = build_blur_elements(
                     renderer,
                     BlurPrograms {
@@ -540,13 +537,12 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     &blur_panels,
                     BlurScene {
                         texture: &scene_texture,
-                        generation: scene_generation,
-                        commit: scene_commit,
+                        cache: &data.material_textures.scene,
                         region,
                     },
                     scale,
                     BlurTargets {
-                        cache: &mut data.material_textures,
+                        panels: &mut data.material_textures.panels,
                         timer: &mut data.gpu_timer,
                     },
                 )?;
@@ -811,9 +807,10 @@ where
     // report, and an unchanged scene renders nothing at all. Age 1 keeps
     // Smithay from re-damaging the whole output on every call while still
     // retaining the last element states.
-    if !cache.tracker_matches(key) {
+    if !cache.tracker_matches(key, region.physical.loc) {
         cache.set_tracker(
             key,
+            region.physical.loc,
             OutputDamageTracker::new(tracker_size, scale, Transform::Normal),
         );
     }
@@ -825,7 +822,7 @@ where
         .iter()
         .map(|element| RelocateRenderElement::from_element(element, offset, Relocate::Relative))
         .collect();
-    let changed = {
+    let damage = {
         let tracker = cache
             .tracker_mut()
             .ok_or_else(|| "scene damage tracker missing".to_owned())?;
@@ -835,9 +832,9 @@ where
         let result = tracker
             .render_output(renderer, &mut target, 1, &relocated, clear)
             .map_err(|err| format!("scene render failed: {err:?}"))?;
-        result.damage.is_some()
+        result.damage.cloned()
     };
-    cache.note_scene_change(changed);
+    cache.note_scene_damage(damage);
     Ok(texture)
 }
 
@@ -854,15 +851,14 @@ struct BlurPrograms<'a> {
 /// The caches and timers the blur build owns. Bundled so the function keeps a
 /// readable argument list.
 struct BlurTargets<'a> {
-    cache: &'a mut MaterialTextureCache,
+    panels: &'a mut PanelTextureSlots<GlesTexture>,
     timer: &'a mut GpuTimer,
 }
 
 /// The scene texture and identity one blur build samples.
 struct BlurScene<'a> {
     texture: &'a GlesTexture,
-    generation: u64,
-    commit: CommitCounter,
+    cache: &'a SceneTextureCache<GlesTexture>,
     region: MaterialRegion,
 }
 
@@ -899,15 +895,14 @@ fn build_blur_elements(
         let Some((texture_panel, scene_src)) = scene.region.panel_source(panel.panel, scale) else {
             continue;
         };
-        let blur_key = PanelBlurKey::new(
-            scene.generation,
-            scene.commit,
+        let slot = targets.panels.slot(&panel.key);
+        let blur_key = slot.blur_key_for_scene(
+            scene.cache,
             scene_src,
             panel.spec,
             programs.chain_size,
             scale,
         );
-        let slot = targets.cache.panels.slot(&panel.key);
         let id = slot.id().clone();
         let texture = if slot.blur_cache_hit(&blur_key) {
             skips += 1;
@@ -961,7 +956,7 @@ fn build_blur_elements(
     }
     // Release the slots of panels that disappeared this frame. A panel that
     // merely moved or changed stacking order keeps its key, id, and textures.
-    targets.cache.trim_panels(&keys);
+    targets.panels.trim_to(&keys);
     Ok(BlurBuild {
         elements,
         allocations,

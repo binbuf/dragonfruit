@@ -509,9 +509,7 @@ impl BackdropBlurElement {
         self
     }
 
-    /// Set the element commit. Panels keep the default; the full-output scene
-    /// base uses the scene cache's commit, which advances only when the
-    /// offscreen scene changed (T-21.3).
+    /// Set the element commit from its panel or scene texture cache.
     pub fn with_commit(mut self, commit: CommitCounter) -> Self {
         self.commit = commit;
         self
@@ -574,7 +572,7 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
         &self,
         frame: &mut <R as RendererSuper>::Frame<'_, '_>,
         _src: Rectangle<f64, Buffer>,
-        _dst: Rectangle<i32, Physical>,
+        panel_physical: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), R::Error> {
@@ -584,7 +582,6 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
         // the material region, so the span is intersected with that part.
         // The glass uniforms are per-panel, not per-span, so build them once.
         let program = self.glass.as_ref().map(|(_, program)| program);
-        let panel_physical = self.panel.to_physical_precise_round(self.scale);
         let uniforms = self
             .glass
             .as_ref()
@@ -596,7 +593,7 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
             else {
                 continue;
             };
-            let dst = visible.to_physical_precise_round(self.scale);
+            let dst = physical_span(visible, self.panel, panel_physical);
             // Smithay hands the element damage in the element's local
             // coordinates, but `render_texture_from_to` expects it local to
             // `dst`. A rounded panel is a stack of spans whose origins differ
@@ -620,6 +617,23 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
         }
         Ok(())
     }
+}
+
+/// Round shared span edges to the same physical pixel at fractional scale.
+/// Rounding each span's origin and height independently can leave a row of
+/// raw background between adjacent spans.
+fn physical_span(
+    span: Rectangle<i32, Logical>,
+    panel: Rectangle<i32, Logical>,
+    dst: Rectangle<i32, Physical>,
+) -> Rectangle<i32, Physical> {
+    let scale = Scale::from((
+        f64::from(dst.size.w) / f64::from(panel.size.w),
+        f64::from(dst.size.h) / f64::from(panel.size.h),
+    ));
+    let start = (span.loc - panel.loc).to_physical_precise_round(scale);
+    let end = (span.loc + span.size.to_point() - panel.loc).to_physical_precise_round(scale);
+    Rectangle::new(dst.loc + start, (end - start).to_size())
 }
 
 /// Translate element-local damage into one rounded span's local coordinates.
@@ -954,6 +968,26 @@ mod tests {
         // A span entirely outside the rendered part draws nothing.
         let outside = Rectangle::new(Point::from((800, 20)), Size::from((50, 40)));
         assert_eq!(map_span_to_texture(outside, clipped_panel, texture), None);
+    }
+
+    #[test]
+    fn rounded_spans_share_pixel_edges_at_fractional_scale() {
+        let panel = Rectangle::new((101, 201).into(), (201, 81).into());
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+            let dst = panel.to_physical_precise_round(Scale::from(scale));
+            let mut next_y = dst.loc.y;
+            for span in crate::window::corner::rounded_rect_spans(
+                panel,
+                14,
+                crate::window::corner::RoundedCorners::All,
+            ) {
+                let physical = physical_span(span, panel, dst);
+                assert_eq!(physical.loc.y, next_y, "scale {scale}");
+                assert!(physical.size.h > 0);
+                next_y += physical.size.h;
+            }
+            assert_eq!(next_y, dst.loc.y + dst.size.h);
+        }
     }
 
     #[test]

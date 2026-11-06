@@ -30,6 +30,7 @@ Item {
     property string iconPath: ""
     property bool trashFull: false
     property real size: Theme.controls.dock.iconSize
+    property real rasterSize: size
 
     implicitWidth: size
     implicitHeight: size
@@ -170,8 +171,12 @@ Item {
         visible: root.maskedArtwork
         x: root.iconInset
         y: root.iconInset
-        width: root.tileW
-        height: root.tileH
+        // Rasterize the mask at a stable size and scale the finished texture
+        // as the tile zooms. Resizing a Canvas repaints and uploads the icon.
+        width: Math.max(1, root.rasterSize * (1 - 2 * Theme.controls.dock.icon.inset))
+        height: width
+        scale: root.tileW / width
+        transformOrigin: Item.TopLeft
         renderStrategy: Canvas.Immediate
         onWidthChanged: requestPaint()
         onHeightChanged: requestPaint()
@@ -189,7 +194,7 @@ Item {
             // The tile squircle: a rounded rect traced at the token radius.
             var w = width;
             var h = height;
-            var r = Math.min(root.tileRadius, Math.min(w, h) / 2);
+            var r = Math.min(w * Theme.controls.dock.icon.radiusRatio, w / 2);
             ctx.beginPath();
             ctx.moveTo(r, 0);
             ctx.lineTo(w - r, 0);
