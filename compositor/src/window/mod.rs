@@ -106,7 +106,9 @@ pub use degrade::{
 };
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 pub use material_cache::PanelKey;
-pub(crate) use material_cache::{PanelTextureSlots, SceneTextureCache, SceneTextureKey};
+pub(crate) use material_cache::{
+    PanelBlurKey, PanelTextureSlots, SceneTextureCache, SceneTextureKey,
+};
 #[allow(unused_imports)]
 pub use material_region::{full_output_material_forced, MaterialRegion, ENV_MATERIAL_FULL_OUTPUT};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};

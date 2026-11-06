@@ -42,7 +42,7 @@ use smithay::backend::renderer::gles::{
 };
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
 use smithay::backend::renderer::multigpu::{GpuManager, MultiRenderer};
-use smithay::backend::renderer::utils::with_renderer_surface_state;
+use smithay::backend::renderer::utils::{with_renderer_surface_state, CommitCounter};
 use smithay::backend::renderer::{
     ImportAll, ImportDma, ImportDmaWl, ImportMem, ImportMemWl, RendererSuper, Texture,
 };
@@ -75,8 +75,8 @@ use crate::backend::add_seat_capabilities;
 use crate::gpu_timer::{GpuPass, GpuTimer, GpuTimerTarget};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
-    full_output_material_forced, BackdropBlurElement, MaterialRegion, PanelKey, PanelTextureSlots,
-    SceneTextureCache, SceneTextureElement, TextureRenderer,
+    full_output_material_forced, BackdropBlurElement, MaterialRegion, PanelBlurKey, PanelKey,
+    PanelTextureSlots, SceneTextureCache, SceneTextureElement, TextureRenderer,
 };
 use crate::{input, render, LOCKSTEP_VERSION};
 
@@ -1664,34 +1664,63 @@ fn render_surface(
         let mut blur_drawn = 0u64;
         let mut downsample_max = 0u32;
         let mut blur_allocations = 0u64;
+        let mut blur_skips = 0u64;
+        let scene_generation = surface.material.scene.generation();
+        let scene_commit: CommitCounter = surface.material.scene.commit();
         let panel_keys: Vec<PanelKey> = blur_panels.iter().map(|panel| panel.key).collect();
         for panel in &blur_panels {
             let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale) else {
                 continue;
             };
-            let slot = surface.material.panels.slot(&panel.key);
-            surface.gpu_timer.begin(&mut renderer, GpuPass::Blur);
-            let blur_result = crate::backend::nested::blur_panel_texture(
-                &mut renderer,
-                programs.blur.as_ref(),
-                &scene_texture,
+            let blur_key = PanelBlurKey::new(
+                scene_generation,
+                scene_commit,
                 scene_src,
-                &panel.spec,
+                panel.spec,
                 output_size,
-                slot.textures_mut(),
+                scale,
             );
-            surface.gpu_timer.end(&mut renderer);
-            let (texture, allocations) = match blur_result {
-                Ok(texture) => texture,
-                Err(err) => {
-                    eprintln!("dragonfruit-compositor: DRM blur pass failed: {err}");
-                    state.material_blur_supported = false;
-                    reschedule_probe(state, node, crtc, refresh);
-                    return;
+            let slot = surface.material.panels.slot(&panel.key);
+            let id = slot.id().clone();
+            let texture = if slot.blur_cache_hit(&blur_key) {
+                blur_skips += 1;
+                match slot.last_texture().cloned() {
+                    Some(texture) => texture,
+                    None => {
+                        eprintln!("dragonfruit-compositor: DRM blur cache hit without a texture");
+                        state.material_blur_supported = false;
+                        reschedule_probe(state, node, crtc, refresh);
+                        return;
+                    }
+                }
+            } else {
+                slot.invalidate_blur_cache();
+                surface.gpu_timer.begin(&mut renderer, GpuPass::Blur);
+                let blur_result = crate::backend::nested::blur_panel_texture(
+                    &mut renderer,
+                    programs.blur.as_ref(),
+                    &scene_texture,
+                    scene_src,
+                    &panel.spec,
+                    output_size,
+                    slot.textures_mut(),
+                );
+                surface.gpu_timer.end(&mut renderer);
+                match blur_result {
+                    Ok((texture, allocations)) => {
+                        blur_allocations += allocations;
+                        slot.set_blur_key(blur_key);
+                        texture
+                    }
+                    Err(err) => {
+                        eprintln!("dragonfruit-compositor: DRM blur pass failed: {err}");
+                        state.material_blur_supported = false;
+                        reschedule_probe(state, node, crtc, refresh);
+                        return;
+                    }
                 }
             };
-            let id = slot.id().clone();
-            blur_allocations += allocations;
+            let commit = slot.commit();
             let texture_size = texture.size();
             let element = BackdropBlurElement::new(
                 texture,
@@ -1701,6 +1730,7 @@ fn render_surface(
                 scale,
             )
             .with_id(id)
+            .with_commit(commit)
             .with_texture_panel(texture_panel);
             let element = match programs.glass.as_ref() {
                 Some(program) => element.with_glass(panel.glass, program.clone()),
@@ -1718,6 +1748,7 @@ fn render_surface(
             surface.output.name().as_str(),
             blur_allocations,
         );
+        state.stats.record_blur_skips(blur_skips);
         if blur_drawn > 0 {
             state.stats.record_blur_draw(downsample_max, blur_drawn);
             state

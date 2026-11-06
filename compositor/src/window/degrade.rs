@@ -48,10 +48,6 @@ const UPGRADE_WINDOW: Duration = Duration::from_secs(3);
 /// "Clearly under" is this fraction of the budget: recovery needs real
 /// headroom, so a tier does not oscillate around the threshold.
 const RECOVERY_RATIO: f64 = 0.75;
-/// A downgrade this soon after an upgrade is a flap, not a new steady state.
-/// The boundary is latched so a steady pointer sweep cannot keep climbing
-/// back into the tier that just missed the deadline (T-21.2c).
-const PROBATION_WINDOW: Duration = Duration::from_secs(10);
 /// While a boundary is latched, recovery across it needs this much headroom
 /// (a genuine idle/lighter load, not the 0.75 recovery band).
 const LATCHED_RECOVERY_RATIO: f64 = 0.4;
@@ -225,11 +221,12 @@ impl EffectiveMaterial {
     /// Resolve the effective material for one [`MaterialRole`] (T-21.2c).
     ///
     /// * Persistent chrome (`Chrome`/`Dock`) never selects below `Reduced`
-    ///   while the sampled path is available. If the controller selected
-    ///   `Minimal`, even `Reduced` missed the deadline: keep the `Reduced`
-    ///   floor tier, turn the sampled pass off, and report
-    ///   [`MaterialFallback::FloorMissed`] so the shell draws the deliberate
-    ///   milky plate instead of a flat translucent slab.
+    ///   and, on the sampled path, never turns the sampled pass off because
+    ///   the global controller visited `Minimal`. The Dock and menu bar stay
+    ///   glass at `Reduced` instead of swapping to the milky fallback under a
+    ///   transient load; that swap was the visible native flicker (T-21.5).
+    ///   The milky fallback is reserved for a genuinely absent/failed sampled
+    ///   pass (`NoSampledBlur`), not for a tier selection.
     /// * Transient roles (`Popup`/`Drawer`) follow the ladder to `Minimal`.
     /// * The software/headless path always resolves to `Minimal` with the
     ///   [`MaterialFallback::Software`] reason for every role: there is no
@@ -251,20 +248,18 @@ impl EffectiveMaterial {
         }
 
         if role.is_persistent() {
-            let floor_missed = selected == DegradeTier::Minimal;
-            let tier = if floor_missed {
+            // Persistent chrome has a hard perceptual floor: it never drops
+            // below Reduced, and it keeps the sampled pass on whenever the
+            // backend supports it. A global Minimal selection may still be
+            // reported by `degrade stats`, but it no longer changes the Dock
+            // or menu-bar material identity.
+            let tier = if selected == DegradeTier::Minimal {
                 DegradeTier::Reduced
             } else {
                 selected
             };
-            let blur_active = blur_supported && tier.blur_enabled() && !floor_missed;
-            let fallback = if floor_missed {
-                if blur_supported {
-                    MaterialFallback::FloorMissed
-                } else {
-                    MaterialFallback::NoSampledBlur
-                }
-            } else if !blur_supported && tier.blur_enabled() {
+            let blur_active = blur_supported && tier.blur_enabled();
+            let fallback = if !blur_supported && tier.blur_enabled() {
                 MaterialFallback::NoSampledBlur
             } else {
                 MaterialFallback::None
@@ -464,18 +459,30 @@ pub struct DegradeController {
     /// holds at 60 Hz and does not speed up at 120/144 Hz.
     over_budget_time: Duration,
     under_budget_time: Duration,
-    /// Time since the last upgrade, and the boundary it crossed. A downgrade
-    /// within [`PROBATION_WINDOW`] means that boundary is unstable.
-    since_upgrade: Duration,
-    upgraded_boundary: Option<usize>,
+    /// Time since the last downgrade. The predictive upgrade gate uses the
+    /// same wall-clock streak as the latch so a failed tier is not immediately
+    /// re-entered just because the lower tier is cheap.
+    since_downgrade: Duration,
     /// The higher-tier index of a boundary that flapped. Recovery across it
     /// requires the stricter latched gate until a successful upgrade.
     latched_boundary: Option<usize>,
+    /// The last observed EMA while actually rendering at each tier. A tier
+    /// that recently missed the deadline is not promoted back into while the
+    /// current tier is already consuming meaningful budget.
+    tier_ema_us: [Option<f64>; 3],
     over_budget_frames: u64,
     downgrades: u64,
     upgrades: u64,
     tier_frames: [u64; 3],
 }
+
+/// A target tier whose last measured EMA is above this multiple of the budget
+/// is treated as a known-risky promotion while the current tier is already
+/// using more than [`CURRENT_COMFORT_RATIO`] of the budget.
+const TARGET_EMA_RISK_RATIO: f64 = 1.05;
+/// The current tier must be below this fraction of the budget before a
+/// known-risky target is allowed back without waiting for the latch gate.
+const CURRENT_COMFORT_RATIO: f64 = 0.5;
 
 impl Default for DegradeController {
     fn default() -> Self {
@@ -515,9 +522,9 @@ impl DegradeController {
             samples: 0,
             over_budget_time: Duration::ZERO,
             under_budget_time: Duration::ZERO,
-            since_upgrade: Duration::ZERO,
-            upgraded_boundary: None,
+            since_downgrade: Duration::ZERO,
             latched_boundary: None,
+            tier_ema_us: [None; 3],
             over_budget_frames: 0,
             downgrades: 0,
             upgrades: 0,
@@ -595,11 +602,17 @@ impl DegradeController {
             self.ema_us * (1.0 - EMA_ALPHA) + us * EMA_ALPHA
         };
         self.samples += 1;
-        self.tier_frames[self.tier.index()] += 1;
+        let current_tier = self.tier.index();
+        self.tier_frames[current_tier] += 1;
+        // Keep a per-tier cost estimate. It is only a promotion guard: a
+        // target tier that recently missed the deadline is not re-entered
+        // while the current tier is already using meaningful budget.
+        let tier_ema = self.tier_ema_us[current_tier].unwrap_or(us);
+        self.tier_ema_us[current_tier] = Some(tier_ema * (1.0 - EMA_ALPHA) + us * EMA_ALPHA);
         if self.forced.is_some() {
             return;
         }
-        self.since_upgrade = self.since_upgrade.saturating_add(duration);
+        self.since_downgrade = self.since_downgrade.saturating_add(duration);
 
         let budget = f64::from(self.budget_us);
         let (recovery_ratio, upgrade_window) = self.recovery_gate();
@@ -622,6 +635,16 @@ impl DegradeController {
                 self.note_downgrade(from);
             }
         } else if self.tier.index() > 0 && self.under_budget_time >= upgrade_window {
+            let target = self.tier.index() - 1;
+            let target_risky =
+                self.tier_ema_us[target].is_some_and(|cost| cost > budget * TARGET_EMA_RISK_RATIO);
+            let current_comfortable = self.ema_us < budget * CURRENT_COMFORT_RATIO;
+            if target_risky && !current_comfortable {
+                // Keep accumulating the under-budget streak; the gate opens
+                // as soon as the current tier has real headroom (or the load
+                // changes enough to update the target estimate).
+                return;
+            }
             let from = self.tier;
             self.reset_streaks();
             self.step(-1);
@@ -696,15 +719,17 @@ impl DegradeController {
         }
     }
 
-    /// Record a real step down. A downgrade shortly after an upgrade across
-    /// the same boundary is a flap: latch that boundary.
+    /// Record a real step down.
+    ///
+    /// Every downgrade latches the boundary, not only a downgrade that follows
+    /// a recent upgrade. A tier that just missed the deadline is presumed
+    /// unstable until the session proves sustained headroom below the stricter
+    /// latch threshold. This is the second half of the native Dock fix: the
+    /// previous probation-only latch still allowed the first Full -> Reduced
+    /// -> Full cycle and a Reduced <-> Minimal cycle.
     fn note_downgrade(&mut self, from: DegradeTier) {
-        let boundary = from.index();
-        if self.upgraded_boundary == Some(boundary) && self.since_upgrade <= PROBATION_WINDOW {
-            self.latched_boundary = Some(boundary);
-        }
-        self.upgraded_boundary = None;
-        self.since_upgrade = Duration::ZERO;
+        self.latched_boundary = Some(from.index());
+        self.since_downgrade = Duration::ZERO;
     }
 
     /// Record a real step up. A successful recovery across a latched
@@ -715,8 +740,7 @@ impl DegradeController {
         if self.latched_boundary == Some(boundary) {
             self.latched_boundary = None;
         }
-        self.upgraded_boundary = Some(boundary);
-        self.since_upgrade = Duration::ZERO;
+        self.since_downgrade = Duration::ZERO;
     }
 
     fn reset_streaks(&mut self) {
@@ -726,9 +750,9 @@ impl DegradeController {
 
     fn reset_selection_memory(&mut self) {
         self.reset_streaks();
-        self.since_upgrade = Duration::ZERO;
-        self.upgraded_boundary = None;
+        self.since_downgrade = Duration::ZERO;
         self.latched_boundary = None;
+        self.tier_ema_us = [None; 3];
     }
 
     /// Move `steps` positions along the ladder (positive = toward degraded),
@@ -843,7 +867,7 @@ mod tests {
     }
 
     #[test]
-    fn persistent_roles_hold_the_reduced_floor_on_the_sampled_path() {
+    fn persistent_roles_hold_the_reduced_floor_with_blur_on() {
         // Full/Reduced pass through unchanged for both persistent roles.
         for role in [MaterialRole::Chrome, MaterialRole::Dock] {
             for tier in [DegradeTier::Full, DegradeTier::Reduced] {
@@ -855,20 +879,20 @@ mod tests {
                 assert_eq!(material.fallback, MaterialFallback::None);
             }
 
-            // The controller selected Minimal because even Reduced missed the
-            // deadline. Persistent chrome keeps the Reduced tier and reports
-            // the explicit milky-fallback reason instead of dropping to a flat
-            // translucent Minimal slab.
-            let floor_missed = EffectiveMaterial::resolve_for_role(
+            // A global Minimal selection keeps persistent chrome at the
+            // Reduced floor with the sampled pass still on. It must not swap
+            // the Dock/menu bar to the milky fallback while the user is
+            // interacting; the cost problem belongs to the region/blur path.
+            let floored = EffectiveMaterial::resolve_for_role(
                 role,
                 MaterialPath::Gpu,
                 true,
                 DegradeTier::Minimal,
             );
-            assert_eq!(floor_missed.role, role);
-            assert_eq!(floor_missed.tier, DegradeTier::Reduced);
-            assert!(!floor_missed.blur_active);
-            assert_eq!(floor_missed.fallback, MaterialFallback::FloorMissed);
+            assert_eq!(floored.role, role);
+            assert_eq!(floored.tier, DegradeTier::Reduced);
+            assert!(floored.blur_active);
+            assert_eq!(floored.fallback, MaterialFallback::None);
         }
     }
 
@@ -1041,13 +1065,15 @@ mod tests {
 
     #[test]
     fn the_hysteresis_windows_are_refresh_aware_at_60_120_and_144_hz() {
-        // The reference is 12 over-budget frames and 180 clearly-under-budget
-        // frames at 60 Hz: 200 ms down and 3 s up. A faster panel must take
-        // the same wall-clock time, not 2.4x fewer milliseconds.
-        for (hz, period_us, over_us, under_us) in [
-            (60u32, 16_666u64, 20_000u64, 8_000u64),
-            (120, 8_333, 10_000, 4_000),
-            (144, 6_944, 8_333, 3_472),
+        // The reference is 12 over-budget frames at 60 Hz: 200 ms down. A
+        // faster panel must take the same wall-clock time, not 2.4x fewer
+        // milliseconds. A real downgrade latches the boundary, so recovery
+        // uses the stricter 10 s latch window; the normal 3 s window is
+        // covered by the forced/released controller below.
+        for (hz, period_us, over_us, latched_under_us) in [
+            (60u32, 16_666u64, 20_000u64, 5_000u64),
+            (120, 8_333, 10_000, 2_500),
+            (144, 6_944, 8_333, 2_000),
         ] {
             let mut controller = DegradeController::with_budget_us(period_us as u32);
 
@@ -1070,30 +1096,61 @@ mod tests {
                 "{hz} Hz downgraded after {downgrade_at:?}, not ~200 ms"
             );
 
-            // Recover after ~3 s of clearly-under-budget frames.
+            // Every downgrade latches the boundary. Recovery needs the
+            // stricter under-0.4x-budget headroom for ~10 s, not the normal
+            // 3 s window.
             let mut upgrade_at = Duration::ZERO;
             let mut upgrade_frames = 0u32;
             elapsed = Duration::ZERO;
             while controller.tier() == DegradeTier::Reduced {
-                controller.observe(Duration::from_micros(under_us));
-                elapsed = elapsed.saturating_add(Duration::from_micros(under_us));
+                controller.observe(Duration::from_micros(latched_under_us));
+                elapsed = elapsed.saturating_add(Duration::from_micros(latched_under_us));
                 upgrade_frames += 1;
                 if controller.tier() == DegradeTier::Full {
                     upgrade_at = elapsed;
                 }
-                assert!(elapsed < Duration::from_secs(5), "{hz} Hz never recovered");
+                assert!(
+                    elapsed < Duration::from_secs(12),
+                    "{hz} Hz never recovered across the latched boundary"
+                );
             }
             assert!(
-                upgrade_at >= Duration::from_millis(2_950)
-                    && upgrade_at <= Duration::from_millis(3_150),
-                "{hz} Hz recovered after {upgrade_at:?}, not ~3 s"
+                upgrade_at >= Duration::from_millis(9_950)
+                    && upgrade_at <= Duration::from_millis(10_150),
+                "{hz} Hz recovered after {upgrade_at:?}, not ~10 s"
             );
             println!(
                 "degrade-trace: rate_hz={hz} period_us={period_us} \
                  downgrade_frames={downgrade_frames} downgrade_ms={:.3} \
-                 upgrade_frames={upgrade_frames} upgrade_ms={:.3}",
+                 upgrade_frames={upgrade_frames} latched_upgrade_ms={:.3}",
                 downgrade_at.as_secs_f64() * 1_000.0,
                 upgrade_at.as_secs_f64() * 1_000.0,
+            );
+        }
+
+        // Without a latch (a forced/released tier), the normal 3 s recovery
+        // window still applies at 60/120/144 Hz.
+        for (hz, period_us, under_us) in [
+            (60u32, 16_666u64, 8_000u64),
+            (120, 8_333, 4_000),
+            (144, 6_944, 3_472),
+        ] {
+            let mut controller = DegradeController::with_budget_us(period_us as u32);
+            controller.force(DegradeTier::Reduced);
+            controller.release();
+            let mut elapsed = Duration::ZERO;
+            while controller.tier() == DegradeTier::Reduced {
+                controller.observe(Duration::from_micros(under_us));
+                elapsed = elapsed.saturating_add(Duration::from_micros(under_us));
+                assert!(elapsed < Duration::from_secs(5), "{hz} Hz never recovered");
+            }
+            assert!(
+                elapsed >= Duration::from_millis(2_950) && elapsed <= Duration::from_millis(3_150),
+                "{hz} Hz normal recovery took {elapsed:?}, not ~3 s"
+            );
+            println!(
+                "degrade-trace: normal_recovery_hz={hz} recovery_ms={:.3}",
+                elapsed.as_secs_f64() * 1_000.0,
             );
         }
     }
@@ -1123,8 +1180,9 @@ mod tests {
                 elapsed = elapsed.saturating_add(Duration::from_micros(frame_us));
             }
 
-            // One initial downgrade, one probationary recovery, then the
-            // latch holds Reduced for the rest of the sweep.
+            // One initial downgrade, then the always-on latch holds Reduced
+            // for the rest of the sweep. There is no probationary climb back
+            // into the tier that just missed the deadline.
             assert_eq!(
                 controller.tier(),
                 DegradeTier::Reduced,
@@ -1132,13 +1190,13 @@ mod tests {
             );
             assert_eq!(
                 controller.downgrades(),
-                2,
+                1,
                 "{hz} Hz downgrades must stay bounded"
             );
             assert_eq!(
                 controller.upgrades(),
-                1,
-                "{hz} Hz upgrades must stay bounded"
+                0,
+                "{hz} Hz must not climb back into the failing tier"
             );
             assert!(
                 controller.summary().contains("latched=1"),
@@ -1188,14 +1246,15 @@ mod tests {
         frames(&mut controller, 20, 25_000);
         assert_eq!(controller.tier(), DegradeTier::Minimal);
 
-        // Recovery needs the longer under-budget window, and climbs one tier
-        // at a time. The extra frames absorb the EMA's warm-up from the
-        // degraded frame time before the under-budget streak can start.
-        frames(&mut controller, 900, 4_000);
+        // Every downgrade latches its boundary, so recovery needs ~10 s of
+        // genuinely light frames per boundary and climbs one tier at a time.
+        // The first seconds also absorb the EMA warm-up from the degraded
+        // frame time before the under-budget streak can start.
+        frames_for(&mut controller, Duration::from_secs(11), 4_000);
         assert_eq!(controller.tier(), DegradeTier::Reduced);
         assert_eq!(controller.upgrades(), 1);
 
-        frames(&mut controller, 900, 4_000);
+        frames_for(&mut controller, Duration::from_secs(11), 4_000);
         assert_eq!(controller.tier(), DegradeTier::Full);
         assert_eq!(controller.upgrades(), 2);
     }

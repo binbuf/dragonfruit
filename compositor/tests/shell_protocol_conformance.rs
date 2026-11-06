@@ -1461,8 +1461,9 @@ fn material_role_state_is_per_role_floor_aware_and_change_only() {
         );
     }
 
-    // Forced Minimal: persistent chrome holds the Reduced floor and reports
-    // floor-missed; transient overlays may reach Minimal.
+    // Forced Minimal: persistent chrome holds the Reduced floor with the
+    // sampled pass still on; transient overlays may reach Minimal. The Dock
+    // and menu bar never swap to the milky fallback for a tier selection.
     state.output_material_role_states.clear();
     input.send("set degrade-tier minimal");
     wait_for(
@@ -1483,8 +1484,8 @@ fn material_role_state_is_per_role_floor_aware_and_change_only() {
     for role in [0, 1] {
         assert_eq!(
             minimal.get(&role),
-            Some(&(1, 0, 4)),
-            "persistent role {role} must keep the reduced floor with floor-missed"
+            Some(&(1, 1, 0)),
+            "persistent role {role} must keep the reduced floor with blur on"
         );
     }
     for role in [2, 3] {
@@ -1509,7 +1510,18 @@ fn material_role_state_is_per_role_floor_aware_and_change_only() {
         state.output_material_role_states
     );
 
-    // Reduced keeps the sampled pass for every role.
+    // Reduced keeps the sampled pass for every role. Force Full first so the
+    // transition to Reduced changes all four roles (persistent Minimal is
+    // already Reduced/blur and would otherwise emit only the transient pair).
+    input.send("set degrade-tier full");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_material_role_states.len() >= 4,
+    );
+    state.output_material_role_states.clear();
     input.send("set degrade-tier reduced");
     wait_for(
         &conn,
@@ -1692,8 +1704,8 @@ fn material_role_state_follows_a_refresh_aware_load_sequence() {
         );
     }
 
-    // 2. Clearly-under-budget load: Reduced -> Full after ~3 s.
-    let full = run_phase!("recovery", 900, 4_000);
+    // 2. Clearly-under-budget load: Reduced -> Full after the 10 s latch.
+    let full = run_phase!("recovery", 3_000, 4_000);
     for role in 0..4 {
         assert_eq!(
             full.get(&role),
@@ -1737,7 +1749,7 @@ fn material_role_state_follows_a_refresh_aware_load_sequence() {
 
     // 4. Recover again, then immediately push Full over budget: this is the
     // steady-sweep flap the latch exists for.
-    let full = run_phase!("sweep-recover", 900, 4_000);
+    let full = run_phase!("sweep-recover", 3_000, 4_000);
     for role in 0..4 {
         assert_eq!(full.get(&role), Some(&(0, 1, 0)), "role {role}: {full:?}");
     }
@@ -1780,12 +1792,19 @@ fn material_role_state_follows_a_refresh_aware_load_sequence() {
     }
 
     // 7. Forced tiers still pin the effective per-role state and respect the
-    // persistent floor; the shell applies these same values.
-    for (tier, expected) in [
-        ("reduced", [(1u32, 1u32, 0u32); 4]),
-        ("minimal", [(1, 0, 4), (1, 0, 4), (2, 0, 0), (2, 0, 0)]),
-        ("full", [(0, 1, 0); 4]),
+    // persistent floor; the shell applies these same values. Start each row
+    // from a different tier so the target transition changes all four roles.
+    for (start, tier, expected) in [
+        ("full", "reduced", [(1u32, 1u32, 0u32); 4]),
+        ("reduced", "full", [(0, 1, 0); 4]),
+        (
+            "full",
+            "minimal",
+            [(1, 1, 0), (1, 1, 0), (2, 0, 0), (2, 0, 0)],
+        ),
     ] {
+        input.send(&format!("set degrade-tier {start}"));
+        let _ = input.query("query degrade");
         state.output_material_role_states.clear();
         input.send(&format!("set degrade-tier {tier}"));
         wait_for(
