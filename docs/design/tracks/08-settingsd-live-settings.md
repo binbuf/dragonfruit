@@ -296,9 +296,10 @@ authenticates. The compositor is the **only applier**
 file on either side.
 
 `dock.minimizedAnimation=none` collapses the minimize/restore tween to one step
-exactly like reduced motion; `genie` is accepted but currently renders as
-`scale`. `workspaces.count` is not in this bridge — it is a workspace-model
-key, not motion/input, and is a follow-up.
+exactly like reduced motion; `genie` is accepted and currently renders as
+`scale` with the measured 450 ms minimize/restore envelope (T199). The scale
+mode keeps its existing open/close pacing. `workspaces.count` is not in this
+bridge — it is a workspace-model key, not motion/input, and is a follow-up.
 
 **Verification.** `compositor/tests/shell_protocol_conformance.rs::
 motion_and_input_policy_requests_apply_live` drives the v5 requests and reads

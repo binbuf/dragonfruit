@@ -325,13 +325,19 @@ rules:
   short low-pass with **no** overshoot) and recomputes geometry every frame
   from the smoothed position, so it stays progress-based and interruptible.
   `motion.dock-magnify`'s overshoot is reserved for discrete changes (the icon
-  size and the reveal); the hover engage/release amplitude uses the
-  `motion.dock-hover` ease (T-14.7aa), whose gentler ramp keeps the whole-row
-  translation from popping. The
-  plate/margin values it feeds are dock spacing tokens,
-  never literals. See [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md),
-  [ADR 0111](adr/0111-dock-magnification-tracking-stability.md), and
-  [ADR 0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md).
+  size and the reveal); the hover engage/release amplitude uses
+  `motion.dock-hover`, the measured **135 ms smoothstep** (`3u² − 2u³`, encoded
+  as cubic-Bezier control points `(1/3, 0)` and `(2/3, 1)`) so a quick reversal
+  retargets from the visible state. The spatial profile is the controlled
+  raised cosine over resting tile centres with a 125.1 pt influence radius
+  (ADR [0218](adr/0218-dock-motion-raised-cosine-and-tooltip.md)); the
+  plate/margin values it feeds are dock spacing tokens, never literals. The
+  Dock tooltip waits the controlled 1.4 s `component.tooltip.dwell` and is a
+  label-driven pill 8 pt above the plate. See
+  [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md),
+  [ADR 0111](adr/0111-dock-magnification-tracking-stability.md),
+  [ADR 0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md), and
+  [ADR 0186](adr/0186-dock-reference-retune-profile-fit-and-states.md).
 
 ## Quality gates
 

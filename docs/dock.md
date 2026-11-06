@@ -121,6 +121,14 @@ The interior of the reference is strikingly flat and uniform: **avoid loud gradi
 
 ## 5. Hover magnification behavior — the most important part
 
+> **Controlled-reference update (T199).** The later 60 fps/2x campaign fits a
+> raised cosine `S(d) = 1 + A · 0.5 · (1 + cos(π·d/R))` with `R = 125.1 pt` and
+> `A = 1.0676`, a measured 2.047× diagnostic peak (`largesize=128`), a 1.217×
+> default peak (`73/60`), and a 135 ms smoothstep enter/exit. The pitch-knot
+> values below are the earlier screenshot fit; use the raised cosine for
+> calibration. See ADR
+> [0218](design/adr/0218-dock-motion-raised-cosine-and-tooltip.md).
+
 ### Directly observed
 
 - Apps grows from about 78px to about 94–96px.
@@ -190,7 +198,11 @@ In the hover screenshot, a small speech-bubble tooltip reads `Apps`:
 - Dark charcoal text, regular-weight San Francisco-like system sans, approximately **20–22 screenshot px**. Use Qt's closest clean system font; typography should be optically centered.
 - Bubble tip ends about **14px above the Dock panel top**. The title should not cover the magnified artwork.
 - Label width follows text with ~19–24px horizontal internal padding. For longer app labels allow a wider bubble, not fixed 97px.
-- Suggested delay 150–300ms and fade 80–140ms; **timings unobservable in screenshot**. It should follow the currently targeted item without a trail of labels.
+- Suggested delay 150–300ms and fade 80–140ms in the original still; the
+  controlled 60 fps reference measures a **~1.4 s dwell**, which the Dock now
+  uses. The capsule is 33 pt high with a 16.5 pt radius and sits 8 pt above the
+  plate. It should follow the currently targeted item without a trail of
+  labels.
 - Tooltip must render outside the Dock's rounded glass clip. If popup is a separate Wayland surface, keep it reliably stacked, anchored, and closed on exit/click.
 
 ## 9. Qt Quick + Rust + Fedora 44 KDE/Wayland engineering guidance

@@ -433,6 +433,22 @@ Rectangle {
     readonly property string tooltipText:
         tooltipAnchor !== null && tooltipAnchor.tooltipLabel !== undefined
             ? tooltipAnchor.tooltipLabel : ""
+    // The reference label sits 8 pt above the Dock *plate*, not above the
+    // resting icon box: the plate is the stable anchor while the artwork
+    // grows up into the magnify band. Its x/width still follow the magnified
+    // delegate, so the capsule tracks the pointed tile frame by frame.
+    readonly property var tooltipAnchorRect: {
+        if (tooltipAnchor === null)
+            return null;
+        // A bottom Dock's label is plate-anchored so it clears the artwork
+        // growing into the magnify band. A vertical Dock's label sits beside
+        // the entry, so it keeps the delegate's cross-axis centre.
+        if (tooltipPlacement === "above" || tooltipPlacement === "below")
+            return { x: tooltipAnchor.x, y: plateRect.y,
+                     w: tooltipAnchor.width, h: 0 };
+        return { x: tooltipAnchor.x, y: tooltipAnchor.y,
+                 w: tooltipAnchor.width, h: tooltipAnchor.height };
+    }
 
     Timer {
         id: tooltipDwellTimer
@@ -762,11 +778,34 @@ Rectangle {
         chooserHoverEntry = entry;
     }
 
+    // The label may only open for the entry that is actually under the pointer
+    // *now*. A projection rebuild can move a different entry under a
+    // stationary pointer (reorder, pin change, overflow); the dwell must not
+    // then fire the old entry's label. This is checked at fire time as well as
+    // after a rebuild, so a queued timer cannot resurrect a stale identity.
+    function tooltipIdentityValid() {
+        if (!tooltipEntry || tooltipEntry.id === undefined
+                || tooltipEntry.id === null)
+            return false;
+        var idx = indexOfItemId(String(tooltipEntry.id));
+        if (idx < 0 || idx >= items.length)
+            return false;
+        if (tooltipAnchor !== entryRepeater.itemAt(idx))
+            return false;
+        if (pointerAlong >= 0 && anchorIndex >= 0 && anchorIndex !== idx)
+            return false;
+        return true;
+    }
+
     function showTooltip() {
         if (!tooltipAnchor || tooltipText.length === 0 || tooltipOpen)
             return;
         if (dragging || externalDragActive || resizing || popoverOpen)
             return;
+        if (!tooltipIdentityValid()) {
+            hideTooltip();
+            return;
+        }
         tooltipOpen = true;
         popoverChanged();
     }
@@ -878,34 +917,30 @@ Rectangle {
     readonly property real indicatorSpace:
         showIndicators ? Theme.controls.dock.indicatorGap + Theme.controls.dock.indicatorSize : 0
     readonly property real barThickness: iconSize + 2 * padding
-    // `dock.magnification` (0..1, 0 = off) maps onto the peak icon factor;
-    // 0.5 (the default) lands on the `magnifyPeak` token (T-10 section 19).
-    readonly property real magnifyPeakFactor:
-        magnification <= 0 ? 1.0
-        : 1 + magnification * (Theme.controls.dock.magnifyPeakMax - 1)
-    // The reference zoom profile is expressed in resting slot pitches, not
-    // icon widths (docs/dock.md §5): 1.00 at the pointer, 0.90 one slot away,
-    // 0.45 two, and zero by three. `magnifyFalloff` is the zero point in
-    // pitches; the two knots are tokens so the curve stays tunable without
-    // touching QML. A monotone cubic through the knots keeps the peak flat and
-    // the release smooth (no cosine spike, no ringing).
-    readonly property real magnifyFalloff: Theme.controls.dock.magnifyFalloff
-    readonly property real magnifyWeightNear: Theme.controls.dock.magnifyWeightNear
-    readonly property real magnifyWeightMiddle: Theme.controls.dock.magnifyWeightMiddle
+    // `dock.magnification` (0..1, 0 = off) maps onto the peak icon factor.
+    // The controlled reference has two calibration anchors: the default
+    // fixture (0.5) peaks at 1.217x and the diagnostic fixture (1.0) at
+    // 2.047x. A smoothstep segment through (0, 1), (0.5, peak) and
+    // (1, peakMax) keeps the mapping monotone and C1 at both anchors, so a
+    // live magnification change never kinks or overshoots.
+    readonly property real magnifyPeak: Theme.controls.dock.magnifyPeak
+    readonly property real magnifyPeakMax: Theme.controls.dock.magnifyPeakMax
+    readonly property real magnifyPeakFactor: {
+        if (magnification <= 0)
+            return 1.0;
+        var m = Math.min(1.0, magnification);
+        if (m <= 0.5)
+            return 1 + (magnifyPeak - 1) * smoothstep01(m / 0.5);
+        return magnifyPeak
+             + (magnifyPeakMax - magnifyPeak) * smoothstep01((m - 0.5) / 0.5);
+    }
+    // The controlled reference zoom profile is a raised cosine over absolute
+    // logical distance from the pointer (docs/dock.md §5): S(d) = 1 +
+    // (peak - 1) * 0.5 * (1 + cos(pi * d / R)). R is the measured 125.1 pt
+    // influence radius, not a pitch multiplier, so the curve is bounded and
+    // continuous for every live icon size.
+    readonly property real magnifyInfluence: Theme.controls.dock.magnifyInfluence
     readonly property real restingPitch: iconSize + gap
-    // Slopes of the monotone cubic at the two interior knots (Fritsch–Carlson).
-    // Endpoints are flat: the peak has zero slope at the pointer and the curve
-    // reaches zero with zero slope at the falloff, so neither edge kinks.
-    readonly property real magnifySlopeNear: {
-        var d0 = magnifyWeightNear - 1.0;
-        var d1 = magnifyWeightMiddle - magnifyWeightNear;
-        return d0 * d1 <= 0 ? 0 : 2 / (1 / d0 + 1 / d1);
-    }
-    readonly property real magnifySlopeMiddle: {
-        var d1 = magnifyWeightMiddle - magnifyWeightNear;
-        var d2 = -magnifyWeightMiddle;
-        return d1 * d2 <= 0 ? 0 : 2 / (1 / d1 + 1 / d2);
-    }
     // How far a lifted (dragged) entry rises above the bar.
     readonly property real dragLift: 8
     // Transparent room above/beside the plate that magnified artwork grows
@@ -1963,7 +1998,9 @@ Rectangle {
         var id = tooltipEntry && tooltipEntry.id !== undefined
                  && tooltipEntry.id !== null ? tooltipEntry.id : "";
         var idx = id !== "" ? indexOfItemId(id) : -1;
-        if (idx < 0) {
+        // A rebuild that moved a different tile under the pointer must dismiss
+        // the label instead of re-binding it to the old identity's new slot.
+        if (idx < 0 || (anchorIndex >= 0 && idx !== anchorIndex)) {
             hideTooltip();
             tooltipAnchor = null;
             tooltipEntry = null;
@@ -3279,8 +3316,11 @@ Rectangle {
         // bounce is a notification and still plays (T-10 sections 8.1/19).
         if (!animateOpening && !entryAttention(entry))
             return 0;
+        // The reference launch lift is 15 pt (partial 60 fps evidence); the
+        // attention bounce keeps its taller bar-relative amplitude. The
+        // multi-hop shape is the existing adaptation, not a new curve.
         var amplitude = entryAttention(entry) ? barThickness / 2
-                                              : barThickness / 4;
+                                              : Theme.controls.dock.launchLift;
         return amplitude * Math.sin(Math.PI * phase);
     }
 
@@ -3291,36 +3331,25 @@ Rectangle {
     // `layout` calls this every frame; `magnifiedPlateLength` calls it for the
     // candidate pointers whose union sizes the fixed zoomed bar. One source of
     // truth for the magnification geometry.
-    // One cubic Hermite segment (p0 -> p1, slopes m0/m1 at t=0/1).
-    function magnifyHermite(p0, p1, m0, m1, t) {
-        var t2 = t * t;
-        var t3 = t2 * t;
-        return (2 * t3 - 3 * t2 + 1) * p0
-             + (t3 - 2 * t2 + t) * m0
-             + (-2 * t3 + 3 * t2) * p1
-             + (t3 - t2) * m1;
+    // The reference temporal envelope: g(u) = 3u^2 - 2u^3.
+    function smoothstep01(t) {
+        var u = Math.max(0, Math.min(1, t));
+        return u * u * (3 - 2 * u);
     }
 
     // The continuous magnification weight for one entry (docs/dock.md §5).
     // `distance` is the horizontal distance from the pointer to the entry's
-    // *baseline* centre, normalized by the resting slot pitch. A monotone
-    // cubic through (0, 1.00), (1, near), (2, middle), (falloff, 0) keeps the
-    // peak flat and reaches rest without a slope kink. The knots stay at
-    // three pitches even if the falloff token moves.
+    // *baseline* centre in logical points. The raised cosine is flat at the
+    // pointer, falls to zero exactly at the measured influence radius, and
+    // has zero slope at both ends, so neither the peak nor the release kinks.
     function magnifyWeightAt(distance) {
-        var d = Math.abs(distance) / restingPitch;
-        if (magnifyFalloff > 0)
-            d *= 3.0 / magnifyFalloff;
-        if (d >= 3.0)
+        var r = magnifyInfluence;
+        var d = Math.abs(distance);
+        if (r <= 0)
+            return d < 0.0001 ? 1 : 0;
+        if (d >= r)
             return 0;
-        if (d < 1.0)
-            return magnifyHermite(1.0, magnifyWeightNear, 0,
-                                  magnifySlopeNear, d);
-        if (d < 2.0)
-            return magnifyHermite(magnifyWeightNear, magnifyWeightMiddle,
-                                  magnifySlopeNear, magnifySlopeMiddle, d - 1.0);
-        return magnifyHermite(magnifyWeightMiddle, 0, magnifySlopeMiddle, 0,
-                              d - 2.0);
+        return 0.5 * (1 + Math.cos(Math.PI * d / r));
     }
 
     function magnifiedRowAt(along, engaged, peakFactor) {
@@ -4392,11 +4421,11 @@ Rectangle {
         objectName: "dockTooltip"
         open: dock.tooltipOpen
         anchorItem: dock.tooltipAnchor
+        // The controlled reference capsule sits 8 pt above the plate; its
+        // width is still label-driven and it has no pointer tail.
+        anchorRect: dock.tooltipAnchorRect
         text: dock.tooltipText
         placement: dock.tooltipPlacement
-        // The reference hover label points at the icon with a tail; the Dock is
-        // the label's first consumer, so it opts in (T-14.7aa).
-        tailVisible: true
         bounds: dock
         // The fade finished: release the anchor so no stale delegate is held,
         // unless a new entry is already waiting on the dwell timer (otherwise

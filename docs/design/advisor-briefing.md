@@ -390,18 +390,22 @@ Minimized window → optional per-window row on the right
 - Positions: bottom / left / right; auto-hide translates the plate off the
   anchored edge and leaves a thin edge trigger; reduced motion collapses
   durations.
-- Magnification: distance measured from **stable baseline centres**,
-  normalized by resting slot pitch (`iconSize + gap`), monotone cubic through
-  `1.00 / 0.90 / 0.45 / 0.00` at `0 / 1 / 2 / 3` pitches. `magnifyFit`
-  bisects a lower peak when the zoomed union would exceed the output. The
-  row is a continuous warp that keeps the pointer anchored; the plate is
-  centered and only changes at engagement. Discrete motion uses a
-  non-overshooting ease-out; hover engagement uses `motion.dockHover`.
+- Magnification: distance measured from **stable baseline centres** as an
+  absolute-point raised cosine `1 + (peak − 1)·0.5·(1 + cos(π·d/R))` with
+  `R = 125.1 pt`; the default 0.5 setting peaks at 1.217× and the diagnostic
+  1.0 setting at 2.047×. `magnifyFit` bisects a lower peak when the zoomed
+  union would exceed the output. The row is a continuous warp that keeps the
+  pointer anchored; the plate is centered and only changes at engagement.
+  Discrete motion uses a non-overshooting ease-out; hover engagement uses the
+  135 ms smoothstep `motion.dockHover`.
 - Running dots: fixed size, bottom-anchored, full-strength for the app that
   owns the focused window, muted for a merely running app.
+- Tooltip: 1.4 s dwell, label-driven pill ~33 pt high with an 8 pt gap above
+  the plate; a stale projection dismisses it rather than firing an old tile.
 - Tokens (current): `iconSize` 48 (32–64), `padding` 15, `paddingAlong` 16,
   `gap` 14, `radius` 27, `indicatorSize` 4, `indicatorGap` 8,
-  `magnifyPeak` 1.25 / `magnifyPeakMax` 1.5, `magnifyFalloff` 3.0 pitches,
+  `magnifyPeak` 1.217 / `magnifyPeakMax` 2.047 / `magnifyInfluence` 125.1 pt,
+  `launchLift` 15 pt,
   `divider` 1 px / 0.78 height / 0.7 opacity / 22 gap,
   `plate.fillOpacity` 0.42, rim 1 px at 0.7, gloss 6 px at 0.22,
   border 1 px at 0.55, shadow blur 20 at 0.3.

@@ -428,37 +428,44 @@ changes too (the icon-size transition and the drag gap), so nothing in the Dock
 bounces or overshoots by default; the reveal has its own `motion.dockReveal`
 token. The anchored tile is chosen from the **raw** pointer, so the filter can
 never flip it back and forth at a boundary. Reduced motion tracks the pointer
-directly. The profile itself is the measured reference bubble (docs/dock.md
-§5, ADR [0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md) and
-[0186](adr/0186-dock-reference-retune-profile-fit-and-states.md)):
-`component.dock.magnifyFalloff` (3.0) is its zero point in **resting slot
-pitches**, and a monotone cubic through `1.00 / 0.90 / 0.45 / 0.00` at
-`0 / 1 / 2 / 3` pitches keeps the peak flat and the release smooth — one
-neighbour keeps ~90 % of the peak effect, two ~45 %, and three are at rest.
-The peak mapping (`magnifyPeak` 1.25 at the default `scaling`,
-`magnifyPeakMax` 1.5) matches the capture's measured 1.245×. The pointer drives
-the profile's *shape*; `magnifyEngagement` (0..1, eased with
+directly. The profile itself is the controlled reference's **raised cosine**
+(docs/dock.md §5, ADR
+[0218](adr/0218-dock-motion-raised-cosine-and-tooltip.md)):
+`S(d) = 1 + (peak - 1) * 0.5 * (1 + cos(pi * d / R))`, with the absolute
+`component.dock.magnifyInfluence` radius of 125.1 pt measured from the resting
+tile centres. It is exactly zero at `R` and flat at both ends, so it is
+bounded for every live icon size and has no pitch-normalized kink. The two peak
+anchors are the default `magnifyPeak` 1.217× at `dock.magnification` 0.5 and
+the diagnostic `magnifyPeakMax` 2.047× at 1.0; a smoothstep segment through
+`(0, 1)`, `(0.5, 1.217)` and `(1, 2.047)` keeps the live mapping monotone. The
+pointer drives the profile's *shape*; `magnifyEngagement` (0..1, eased with
 `motion.dockHover`) drives its *amplitude*, so entering and leaving the Dock
 grows and shrinks the bubble around a held pointer/anchor instead of snapping
-in and out. Magnified positions are a **continuous warp** of the resting row:
-the row is accumulated from the resting leading edge and then translated so
-the pointer maps to itself through the resting-centre → magnified-centre map,
-so no tile can jump when the anchored tile changes (a discrete anchor pin used
-to translate the row by a whole magnified pitch at every boundary). If the
-swept zoomed union would exceed the output (a full Dock near a screen edge),
-`magnifyFit` lowers the peak uniformly by bisection until it fits, rather than
-clipping the outermost tiles; the fit depends only on resting geometry, icon
-size, and magnification, never on the pointer, so the sweep stays cheap. The
-compositor's frosted backdrop follows the live plate rect that the shell
-declares on each commit, so the material always sits under the artwork. A
-hovered entry reveals its name (and state) in a `Tooltip` capsule above the
-icon (T-14.7i); the label waits `component.tooltip.dwell` (250 ms), follows the
-entry frame by frame, and uses the reference's wider horizontal padding.
-Running dots are fixed-size and stateful: the app that owns the focused window
-keeps the full-strength `dockIndicator` dot, a merely running app gets
-`indicator.inactiveOpacity` (docs/dock.md §6). See
-[ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md),
-[ADR 0111](adr/0111-dock-magnification-tracking-stability.md), and the
+in and out. `motion.dockHover` is the measured **135 ms smoothstep**
+(`3u² − 2u³`, encoded as cubic-Bezier control points `(1/3, 0)` and
+`(2/3, 1)`); the Behavior retargets from the current value, so a quick
+reversal continues from the visible state. Magnified positions are a
+**continuous warp** of the resting row: the row is accumulated from the resting
+leading edge and then translated so the pointer maps to itself through the
+resting-centre → magnified-centre map, so no tile can jump when the anchored
+tile changes (a discrete anchor pin used to translate the row by a whole
+magnified pitch at every boundary). If the swept zoomed union would exceed the
+output (a full Dock near a screen edge), `magnifyFit` lowers the peak uniformly
+by bisection until it fits, rather than clipping the outermost tiles; the fit
+depends only on resting geometry, icon size, and magnification, never on the
+pointer, so the sweep stays cheap. The compositor's frosted backdrop follows
+the live plate rect that the shell declares on each commit, so the material
+always sits under the artwork. A hovered entry reveals its name (and state) in
+a `Tooltip` capsule above the plate (T-14.7i); the label waits the controlled
+`component.tooltip.dwell` (1.4 s), follows the entry horizontally frame by
+frame, sits 8 pt above the plate, and is a label-driven pill without the old
+tail. A projection that moves a different tile under the pointer dismisses the
+stale label instead of firing it. Running dots are fixed-size and stateful:
+the app that owns the focused window keeps the full-strength `dockIndicator`
+dot, a merely running app gets `indicator.inactiveOpacity` (docs/dock.md §6).
+See [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md),
+[ADR 0111](adr/0111-dock-magnification-tracking-stability.md),
+[ADR 0186](adr/0186-dock-reference-retune-profile-fit-and-states.md), and the
 T-14.7a/T-14.7b/T-14.7j units.
 
 **Resting proportions (T-14.7u).** The resting Dock is retuned to the mature
