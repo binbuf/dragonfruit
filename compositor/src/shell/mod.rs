@@ -101,8 +101,8 @@ pub struct ChromeSurface {
     pub geometry: Rectangle<i32, Logical>,
     /// The output-local rect the surface actually paints — the visible chrome
     /// the backdrop material (T-04.2) belongs behind. For the Dock this is the
-    /// bar slab, not the transparent magnification band above it. See
-    /// [`crate::window::panel_bounds`].
+    /// bar slab, not the transparent magnification band above it. An empty
+    /// rect means the surface has no backdrop.
     pub panel: Rectangle<i32, Logical>,
     /// The layer the surface requested (`df_shell.layer`).
     pub layer: u32,
@@ -514,7 +514,9 @@ impl DfState {
                 let panel = entry
                     .state
                     .panel_rect
-                    .and_then(|rect| crate::window::explicit_panel_bounds(geometry, rect))
+                    .map(|rect| {
+                        crate::window::explicit_panel_bounds(geometry, rect).unwrap_or_default()
+                    })
                     .unwrap_or_else(|| {
                         let region =
                             smithay::wayland::compositor::with_states(&entry.surface, |states| {
