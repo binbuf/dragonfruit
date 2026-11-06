@@ -1,0 +1,29 @@
+{
+  "command": "python3 tests/glass/generate_fixtures.py",
+  "display_scale": 1,
+  "fixtures_sha256": {
+    "checker.png": "fc8b622a81211c8ad246da3dd0b2a6f8b04d30cd60c1176b14879bcc15e8d759",
+    "line_grid.png": "ef8b283b5a2de283c73d1a27f245937b845fd5e90662e0c5a839dc54c0326027",
+    "motion_after.png": "ba486b18c22d9f3b551012f627a27ee3423a7d9000de453157b530b902ea65f1",
+    "motion_before.png": "093bf142dcea2c477325ad354283806bcf6fb4ebfd4e130a1ca4f22b0fae3beb",
+    "neutral.png": "70fd9334ea40547aa9bd6fd650e5e950bbdd95e568a5f7e64733e1ff8da6b966",
+    "saturated.png": "2a7eab1adaf60abcee5c1824a7dd4d349e5334d0664f90db4b2106eb3da0db87"
+  },
+  "generated_by": "tests/glass/generate_fixtures.py",
+  "generator_sha256": "cd31675717259156f8b81d9128bd95e79a63fee00314ffd09cacb93fb7fa7e23",
+  "icc": {
+    "assumption": "synthetic fixtures embed an sRGB profile; the comparison converts embedded profiles to sRGB",
+    "embedded": "sRGB"
+  },
+  "schema": 1,
+  "seed": 194,
+  "specs_sha256": {
+    "checker.json": "96bc26ff28c245aeb3bf98a0583c93ddf85e680bcebbd9e83707c2294a6904a6",
+    "line_grid.json": "3d9a6b3e1a69aa6869d2a9dd16b1fb74d36b60a743a55638305edf92c7b3b2ba",
+    "motion.json": "45cacaf7ab5704b4d22a339719bf4de689c33c938e1cb88da10779ca6b62e969",
+    "neutral.json": "3b23497102348f7c5da1c8672a1e41b85f7604dc814f0e8095ad0768f88cf970",
+    "saturated.json": "a1c2ae45d45419ebc90f44983c3ea76b7876e3c208b93c71c656e09570c01a66"
+  },
+  "synthetic": true,
+  "targets_sha256": "f519565d924f2db557dacdeba53f9b30847a868bb6bc5ce8da3fe05616130f8e"
+}

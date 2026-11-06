@@ -1,0 +1,13 @@
+{
+  "background": "#18181c",
+  "min_displacement_px": 20.0,
+  "name": "motion",
+  "region": [
+    0,
+    0,
+    160,
+    120
+  ],
+  "scale": 1,
+  "tolerance": 0.05
+}

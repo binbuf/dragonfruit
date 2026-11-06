@@ -429,6 +429,10 @@ private:
     // reach the compositor even when settingsd is absent.
     void connectWallpaperProvider();
     void applyStatusItems();
+    // Read every live status view from the bridge host in one place. Used by
+    // the initial startup read, the explicit re-read after an action, and a
+    // late host registration (T-07.5a/T-07.5b).
+    void refreshStatusViews();
     // Re-read the live StatusNotifier items from app-index and rebuild the
     // status row (T-14.3). A no-op when the service is absent.
     void refreshTrayItems();
@@ -692,6 +696,20 @@ private:
     // compositor (`df_output.set_scale` / `df_output.set_transform`). Runs on
     // every `changed`/`refreshed` and once after the protocol connects.
     void applyDisplayPolicy();
+    // Startup ordering: wait (bounded) for settingsd's first `GetAll` snapshot
+    // before any chrome scene is created. The shell is the display-policy
+    // forwarder, so the first configure must already use the persisted scale,
+    // not the schema default that the snapshot then replaces.
+    void waitForInitialSettings();
+    // Startup ordering: wait (bounded) until the compositor has applied the
+    // forwarded display scale and announced the new output geometry. Layer
+    // surfaces created before that would configure at the old logical size.
+    void waitForDisplayPolicy();
+    // Startup ordering: hold the first menu-bar commit until the initial
+    // Wi-Fi/volume/battery reads have landed (or a bounded timeout fires), so
+    // the first visible bar is complete instead of a half-populated frame.
+    void noteInitialStatusReply(int bit);
+    void commitInitialChrome();
     // Write one `dock.*` key through the settings client (settingsd is the
     // single owner) and refresh the typed local view.
     void writeDockSetting(const QString &key, const QVariant &value);
@@ -1030,9 +1048,15 @@ private:
     // True once settingsd's first `GetAll` snapshot has been applied (or the
     // daemon is absent). The default-pin seed waits for it so an early
     // app-index resync cannot overwrite a persisted `dock.pinned`; the
-    // wallpaper forwarder also waits so the persisted source is the first one
-    // the compositor decodes instead of flashing the shipped default.
+    // wallpaper/display forwarders also wait so the persisted source/scale is
+    // the first one the compositor applies instead of flashing a default.
     bool m_settingsSnapshotReceived = false;
+    // Startup readiness for the first menu-bar frame: a bitmask of the live
+    // status views still in flight. The first commit is held while any bit is
+    // set, so the bar never appears with an empty status row. The bounded
+    // timer clears the gate if the host never answers.
+    int m_initialStatusPending = 0;
+    QTimer *m_initialStatusTimer = nullptr;
     // The Dock's Trash state, read from files-core's one freedesktop Trash
     // store (T-10.6a). It replaced the interim home-trash watcher, so the shell
     // and Files share a single source of truth.

@@ -216,6 +216,13 @@ bool ShellProtocol::authenticate(const QString &tokenHex)
         return fail(m_error.isEmpty() ? QStringLiteral("launch-token handshake refused")
                                       : m_error);
     bindTrustedGlobals();
+    // Flush the trusted-global binds and receive the manager's initial replay
+    // (outputs/workspaces/focus) now, before the caller creates any chrome
+    // surface. Without this the binds are only flushed by the first layer
+    // roundtrip, so the output scale policy cannot reach the compositor before
+    // that surface is configured.
+    if (wl_display_roundtrip(m_display) < 0)
+        return fail(QStringLiteral("trusted-global replay roundtrip failed"));
     return true;
 }
 

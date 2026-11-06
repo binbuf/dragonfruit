@@ -1,0 +1,216 @@
+{
+  "fixtures": {
+    "checker": {
+      "colour": {
+        "interior": {
+          "coverage": 7072,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        },
+        "rim": {
+          "coverage": 840,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        },
+        "shadow": {
+          "coverage": 1488,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        }
+      },
+      "geometry": {
+        "bbox": [
+          20.0,
+          16.0,
+          141.0,
+          101.0
+        ],
+        "bbox_delta_px": 0.0,
+        "coverage": 19200,
+        "iou": 1.0
+      },
+      "mtf": {
+        "axis": "x",
+        "coverage": 7072,
+        "failures": [],
+        "periods": {
+          "16": {
+            "candidate_amplitude": 4.523267408372281,
+            "period_px": 16.0,
+            "ratio": 1.0,
+            "reference_amplitude": 4.523267408372281
+          },
+          "32": {
+            "candidate_amplitude": 0.028181605900009093,
+            "period_px": 32.0,
+            "ratio": 1.0,
+            "reference_amplitude": 0.028181605900009093
+          }
+        },
+        "status": "pass",
+        "thresholds": {
+          "ratio": 0.85
+        }
+      },
+      "verdict": "pass"
+    },
+    "line_grid": {
+      "colour": {
+        "interior": {
+          "coverage": 7072,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        },
+        "rim": {
+          "coverage": 840,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        },
+        "shadow": {
+          "coverage": 1488,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        }
+      },
+      "geometry": {
+        "bbox": [
+          20.0,
+          16.0,
+          141.0,
+          101.0
+        ],
+        "bbox_delta_px": 0.0,
+        "coverage": 19200,
+        "iou": 1.0
+      },
+      "mtf": {
+        "axis": "x",
+        "coverage": 7072,
+        "failures": [],
+        "periods": {
+          "16": {
+            "candidate_amplitude": 0.11320172538221707,
+            "period_px": 16.0,
+            "ratio": 1.0,
+            "reference_amplitude": 0.11320172538221707
+          },
+          "8": {
+            "candidate_amplitude": 91.45872214049427,
+            "period_px": 8.0,
+            "ratio": 1.0,
+            "reference_amplitude": 91.45872214049427
+          }
+        },
+        "status": "pass",
+        "thresholds": {
+          "ratio": 0.85
+        }
+      },
+      "verdict": "pass"
+    },
+    "neutral": {
+      "colour": {
+        "interior": {
+          "coverage": 7072,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        },
+        "rim": {
+          "coverage": 840,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        },
+        "shadow": {
+          "coverage": 1488,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        }
+      },
+      "geometry": {
+        "bbox": [
+          20.0,
+          16.0,
+          141.0,
+          101.0
+        ],
+        "bbox_delta_px": 0.0,
+        "coverage": 19200,
+        "iou": 1.0
+      },
+      "mtf": {
+        "coverage": 0,
+        "status": "not_requested"
+      },
+      "verdict": "pass"
+    },
+    "saturated": {
+      "colour": {
+        "interior": {
+          "coverage": 7072,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        },
+        "rim": {
+          "coverage": 840,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        },
+        "shadow": {
+          "coverage": 1488,
+          "delta_e76_mean": 0.0,
+          "mean_abs_srgb": 0.0,
+          "p95_abs_srgb": 0.0,
+          "ssim": 1.0
+        }
+      },
+      "geometry": {
+        "bbox": [
+          20.0,
+          16.0,
+          141.0,
+          101.0
+        ],
+        "bbox_delta_px": 0.0,
+        "coverage": 19200,
+        "iou": 1.0
+      },
+      "mtf": {
+        "coverage": 0,
+        "status": "not_requested"
+      },
+      "verdict": "pass"
+    }
+  },
+  "motion": {
+    "direction_error_deg": 0.0,
+    "displacement_ratio": 1.0,
+    "reference_displacement": [
+      32.0,
+      0.0
+    ],
+    "reference_distance": 32.0,
+    "verdict": "pass"
+  }
+}
