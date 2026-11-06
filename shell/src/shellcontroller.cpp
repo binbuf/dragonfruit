@@ -553,6 +553,20 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // assigns them.
     m_themeBinding = new ThemeBinding(m_settingsClient, m_engine, this);
     m_themeBinding->apply();
+    // T195: one internal rollout switch for the end-to-end material
+    // replacement. The default stays `legacy` until T208 flips it; nested and
+    // native fixtures select the replacement reproducibly with
+    // `DRAGONFRUIT_GLASS_ROLLOUT=replacement`. The compositor reads the same
+    // variable through its material-preset resolver.
+    if (QObject *glass = m_engine->singletonInstance<QObject *>(
+                QStringLiteral("Dragonfruit"), QStringLiteral("Glass"))) {
+        const QString requested =
+            qEnvironmentVariable("DRAGONFRUIT_GLASS_ROLLOUT").trimmed().toLower();
+        const QString selected = requested == QLatin1String("replacement")
+            ? QStringLiteral("replacement") : QStringLiteral("legacy");
+        glass->setProperty("rollout", selected);
+        qInfo() << "shell: glass rollout:" << selected;
+    }
     // T-08.2c: forward the initial motion/input policy now that the protocol
     // is authenticated (the compositor is the sole applier).
     applyCompositorPolicy();
