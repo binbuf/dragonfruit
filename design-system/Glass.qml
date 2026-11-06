@@ -158,6 +158,11 @@ QtObject {
                 blur: 0,
                 edge: 0,
                 edgeWidth: 0,
+                edgeTail: 0,
+                sharpFraction: 0,
+                cornerLensPeak: 0,
+                cornerLensDistance: 0,
+                cornerLensTail: 0,
                 foreground: 0,
                 sliderApplied: false,
                 confidence: "baseline",
@@ -175,6 +180,11 @@ QtObject {
         var blur;
         var edge;
         var edgeWidth;
+        var edgeTail = 0;
+        var sharpFraction = 0;
+        var cornerLensPeak = 0;
+        var cornerLensDistance = 0;
+        var cornerLensTail = 0;
         var foreground;
 
         if (requestedRollout === "legacy") {
@@ -196,6 +206,12 @@ QtObject {
             blur = entry.blur;
             edge = entry.edge;
             edgeWidth = entry.edgeWidth;
+            edgeTail = entry.edgeTail !== undefined ? entry.edgeTail : 0;
+            sharpFraction = entry.sharpFraction !== undefined ? entry.sharpFraction : 0;
+            cornerLensPeak = entry.cornerLensPeak !== undefined ? entry.cornerLensPeak : 0;
+            cornerLensDistance = entry.cornerLensDistance !== undefined
+                ? entry.cornerLensDistance : 0;
+            cornerLensTail = entry.cornerLensTail !== undefined ? entry.cornerLensTail : 0;
             foreground = entry.foreground;
             confidence = entry.confidence;
 
@@ -303,6 +319,11 @@ QtObject {
             blur: blur,
             edge: edge,
             edgeWidth: edgeWidth,
+            edgeTail: edgeTail,
+            sharpFraction: sharpFraction,
+            cornerLensPeak: cornerLensPeak,
+            cornerLensDistance: cornerLensDistance,
+            cornerLensTail: cornerLensTail,
             foreground: foreground,
             sliderApplied: sliderApplied,
             confidence: confidence,

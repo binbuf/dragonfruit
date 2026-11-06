@@ -1330,11 +1330,29 @@ Item {
         // -- Glass plate and squircles (T-14.7j) ----------------------------
 
         function test_plate_is_a_layered_glass_not_a_flat_slab() {
-            // The plate is four token layers: a translucent fill, a bright
-            // inner top-edge rim, a hairline border, and a soft shadow. The
-            // old surface was one flat slab (chrome at chromeOpacity).
+            // T198: the sampled path is compositor-painted. The QML plate
+            // layers are hidden there so the compositor's flat band, rim and
+            // corner lens are not duplicated. The unsupported path keeps the
+            // coherent shell-painted plate: a translucent fill, a bright
+            // inner top-edge rim, a hairline border, and a soft shadow.
+            var sampled = make(dockComponent, {
+                width: 400, height: 240,
+                materialBlurActive: true,
+                entries: [ app("a", "A", true) ]
+            });
+            verify(sampled.sampledPlate, "full material is sampled");
+            verify(!findChild(sampled, "dockBar").visible,
+                   "the sampled plate does not repaint its tint");
+            verify(!findChild(sampled, "dockRim").visible,
+                   "the sampled plate does not repaint its rim");
+            verify(!findChild(sampled, "dockPlateShadow").visible,
+                   "the sampled plate does not repaint an outer shadow");
+            verify(!findChild(sampled, "dockBorder").visible);
+            sampled.destroy();
+
             var dock = make(dockComponent, {
                 width: 400, height: 240,
+                materialBlurActive: false,
                 entries: [ app("a", "A", true) ]
             });
             var plate = findChild(dock, "dockPlate");
@@ -1345,10 +1363,11 @@ Item {
             var shadow = findChild(dock, "dockPlateShadow");
             verify(plate !== null && bar !== null && rim !== null);
             verify(stroke !== null && border !== null && shadow !== null);
+            verify(bar.visible && rim.visible && shadow.visible && border.visible);
 
             compare(bar.radius, Theme.controls.dock.radius);
-            compare(bar.color, Theme.color.dockFill);
-            fuzzyCompare(bar.opacity, Theme.controls.dock.plate.fillOpacity, 0.0001);
+            compare(bar.color, Theme.color.dockFallbackFill);
+            fuzzyCompare(bar.opacity, Theme.material.dockFallbackOpacity, 0.0001);
             // The rim is a stroked path along the interior edge, inset by half
             // the stroke so no rim pixel leaves the plate (T-14.7z).
             compare(stroke.strokeColor, Theme.color.dockRim);
@@ -1359,7 +1378,6 @@ Item {
             compare(border.border.width, Theme.controls.dock.plate.borderWidth);
             compare(border.border.color, Theme.color.dockBorder);
             fuzzyCompare(border.opacity, Theme.controls.dock.plate.borderOpacity, 0.0001);
-            verify(shadow.visible);
             compare(shadow.blur, Theme.controls.dock.plate.shadowBlur);
 
             // Pixel: the rim row reads brighter than the plate body just below
@@ -1377,6 +1395,31 @@ Item {
             }
             verify(rimLuma > bodyLuma,
                    "the top rim must be brighter than the body");
+        }
+
+        function test_replacement_plate_uses_the_resolved_fallback_optics() {
+            // T198: when the sampled pass is unavailable, the replacement look
+            // paints the resolved neutral plate (not the legacy white slab),
+            // and Reduce Transparency keeps the same coherent shell plate.
+            var previous = Glass.rollout;
+            Glass.rollout = "replacement";
+            var dock = make(dockComponent, {
+                width: 400, height: 240,
+                materialBlurActive: false,
+                entries: [ app("a", "A", true) ]
+            });
+            var bar = findChild(dock, "dockBar");
+            var resolved = dock.glassOptics;
+            compare(resolved.renderMode, "solid");
+            fuzzyCompare(bar.opacity, resolved.alpha, 0.0001);
+            compare(bar.color, Qt.rgba(resolved.tint, resolved.tint,
+                                       resolved.tint, 1));
+            verify(bar.opacity >= 0.9, "the fallback must read as a material");
+            verify(findChild(dock, "dockRim").visible);
+            verify(findChild(dock, "dockBorder").visible);
+            verify(findChild(dock, "dockPlateShadow").visible);
+            dock.destroy();
+            Glass.rollout = previous;
         }
 
         function test_plate_glass_follows_the_color_scheme() {
@@ -1955,6 +1998,7 @@ Item {
             // straight hairline poked outside and had none on the arc).
             var dock = make(dockComponent, {
                 width: 1280, height: 240, position: "bottom",
+                materialBlurActive: false,
                 entries: [ app("a", "A", true), app("b", "B", true) ]
             });
             waitForRendering(stage);

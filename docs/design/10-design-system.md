@@ -247,6 +247,27 @@ through the measured 0.0 / 0.5255 / 1.0 File anchors; dark and every other
 preset keep a named baseline. The Dock (and other persistent chrome) keeps its
 sampled floor at `Minimal`; transient popups may become solid.
 
+### Dock optics fit (T198)
+
+The Dock preset carries the measured optical fit beyond the flat band:
+`sharpFraction` 0.12, `edgeTail` 6 pt, and the corner lens
+`cornerLensPeak`/`Distance`/`Tail` 9.6/15/50 pt, in both schemes. The
+compositor's `window::dock_optics` model mirrors the renderer: a convex mix of
+the sharp scene (12%) and Kawase levels 1, 2 and 5 (26/40/22%) at 2/4/8/16/32 pt
+checker periods. The 1x capture matches every resolved period within 0.05, the
+rim peak 0.399 vs 0.397, half-amplitude 0.75 pt and tail 5.5 pt. The shader
+applies the measured flat band (alpha 0.253 light / 0.149 dark, neutral tint
+0.604/0.207), the exponential rim and the corner-only lens; Increase Contrast
+raises the resolved rim peak/width after the fit. The QML plate layers are
+hidden on the sampled path, so tint, rim and outer shadow are painted once;
+unsupported paths and Reduce Transparency keep the shell-painted plate.
+
+`make dock-optics-capture` records the 1x light/dark/Reduce
+Transparency/Increase Contrast runs, the 1.5x/2x captures and a Dock sweep with
+the material-cache counters. The 1x reference layout passes; the 1.5x/2x MTF
+rows remain OPEN on the nested scene-texture scale path and are recorded in
+`docs/captures/t198-dock-optics.md` (ADR [0217](adr/0217-dock-optics-fit.md)).
+
 The one internal rollout switch is `DRAGONFRUIT_GLASS_ROLLOUT=legacy|replacement`.
 It defaults to `legacy` until T208; the shell controller applies it to the
 `Glass` singleton and the compositor resolver reads the same variable, so

@@ -19,6 +19,7 @@ pub mod blur;
 pub mod corner;
 pub mod decoration;
 pub mod degrade;
+pub mod dock_optics;
 pub mod events;
 pub mod grab;
 pub mod material_cache;
@@ -33,6 +34,8 @@ pub mod scanout;
 pub mod scene_transform;
 pub mod shadow;
 pub mod state;
+
+pub use dock_optics::DockOptics;
 
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
