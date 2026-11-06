@@ -346,6 +346,14 @@ impl MaterialRole {
             specular_width,
             tint,
             tint_color: tone_to_rgb(color),
+            flat_band: false,
+            flat_alpha: 0.0,
+            rim_peak: 0.0,
+            rim_half_width: 0.0,
+            rim_tail: 0.0,
+            corner_peak: 0.0,
+            corner_distance: 0.0,
+            corner_tail: 0.0,
         }
     }
 }

@@ -2135,8 +2135,9 @@ fn material_report(state: &DfState) -> String {
         let resolved = state.resolve_glass_preset(preset);
         out.push_str(&format!(
             "material preset={} look={} mode={} alpha={:.4} tint={:.4} blur={:.1} \
-             edge={:.3} edge_width={:.2} foreground={:.3} slider_applied={} \
-             fallback={} revision={}\n",
+             edge={:.3} edge_width={:.2} edge_tail={:.1} sharp={:.3} \
+             corner_peak={:.1} corner_distance={:.1} corner_tail={:.1} \
+             foreground={:.3} slider_applied={} fallback={} revision={}\n",
             resolved.preset.name(),
             resolved.look.name(),
             resolved.render_mode.name(),
@@ -2145,6 +2146,11 @@ fn material_report(state: &DfState) -> String {
             resolved.blur,
             resolved.edge,
             resolved.edge_width,
+            resolved.edge_tail,
+            resolved.sharp_fraction,
+            resolved.corner_lens_peak,
+            resolved.corner_lens_distance,
+            resolved.corner_lens_tail,
             resolved.foreground,
             resolved.slider_applied as u32,
             resolved.fallback_reason,

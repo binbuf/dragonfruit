@@ -255,6 +255,7 @@ mod tests {
                 specular_width: 0.0,
                 tint: 0.0,
                 tint_color: [0.0; 3],
+                ..GlassSpec::default()
             },
             filter: RegionFilter::Filtered,
             paint: paint(),

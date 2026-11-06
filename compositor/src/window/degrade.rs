@@ -393,10 +393,7 @@ impl DegradeTier {
         if !self.blur_enabled() {
             return None;
         }
-        Some(BlurSpec::new(
-            spec.radius * self.geometry_scale(),
-            spec.corner_radius * self.geometry_scale(),
-        ))
+        Some(spec.scaled(self.geometry_scale()))
     }
 
     /// The Tahoe liquid-glass pass at this tier (T-20.2), or `None` when blur
@@ -411,6 +408,7 @@ impl DegradeTier {
             DegradeTier::Full => spec,
             DegradeTier::Reduced => GlassSpec {
                 refraction: 0.0,
+                corner_peak: if spec.flat_band { 0.0 } else { spec.corner_peak },
                 ..spec
             },
             // `blur_enabled` is false at `Minimal`, handled above.

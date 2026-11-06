@@ -249,6 +249,16 @@ def validate(data: dict) -> list[str]:
             _number(entry, "edge", scheme_path, errors, low=0.0, high=1.0)
             _number(entry, "edgeWidth", scheme_path, errors, low=0.0, high=8.0)
             _number(entry, "foreground", scheme_path, errors, low=0.0, high=1.0)
+            # T198: the Dock optical fit. The fields are optional for the
+            # other presets (they keep the legacy adaptive tint/rim), but a
+            # Dock entry without them would silently lose the measured
+            # checker/rim/corner calibration.
+            if name == "dock":
+                _number(entry, "edgeTail", scheme_path, errors, low=0.0, high=16.0)
+                _number(entry, "sharpFraction", scheme_path, errors, low=0.0, high=1.0)
+                _number(entry, "cornerLensPeak", scheme_path, errors, low=0.0, high=64.0)
+                _number(entry, "cornerLensDistance", scheme_path, errors, low=0.1, high=64.0)
+                _number(entry, "cornerLensTail", scheme_path, errors, low=1.0, high=128.0)
 
     # The measured File anchors are the light attached-menu calibration. A
     # mismatch here would silently move the slider midpoint off the measured
@@ -365,6 +375,11 @@ def resolve(
             "blur": 0.0,
             "edge": 0.0,
             "edgeWidth": 0.0,
+            "edgeTail": 0.0,
+            "sharpFraction": 0.0,
+            "cornerLensPeak": 0.0,
+            "cornerLensDistance": 0.0,
+            "cornerLensTail": 0.0,
             "foreground": 0.0,
             "sliderApplied": False,
             "confidence": "baseline",
@@ -382,6 +397,11 @@ def resolve(
         edge = 0.0
         edge_width = 0.0
         foreground = 0.0
+        edge_tail = 0.0
+        sharp_fraction = 0.0
+        corner_lens_peak = 0.0
+        corner_lens_distance = 0.0
+        corner_lens_tail = 0.0
         confidence = "baseline"
         fallback_reason = "legacy"
     else:
@@ -395,6 +415,11 @@ def resolve(
         edge = float(entry["edge"])
         edge_width = float(entry["edgeWidth"])
         foreground = float(entry["foreground"])
+        edge_tail = float(entry.get("edgeTail", 0.0))
+        sharp_fraction = float(entry.get("sharpFraction", 0.0))
+        corner_lens_peak = float(entry.get("cornerLensPeak", 0.0))
+        corner_lens_distance = float(entry.get("cornerLensDistance", 0.0))
+        corner_lens_tail = float(entry.get("cornerLensTail", 0.0))
         confidence = entry["confidence"]
         fallback_alpha = _opaque_values(data, scheme)[0]
 
@@ -484,6 +509,11 @@ def resolve(
         "blur": blur,
         "edge": edge,
         "edgeWidth": edge_width,
+        "edgeTail": edge_tail,
+        "sharpFraction": sharp_fraction,
+        "cornerLensPeak": corner_lens_peak,
+        "cornerLensDistance": corner_lens_distance,
+        "cornerLensTail": corner_lens_tail,
         "foreground": foreground,
         "sliderApplied": slider_applied,
         "confidence": confidence,

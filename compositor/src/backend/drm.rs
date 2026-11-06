@@ -108,6 +108,7 @@ impl<'a> crate::window::TextureRenderer for UdevRenderer<'a> {
         damage: &[Rectangle<i32, Physical>],
         program: Option<&GlesTexProgram>,
         uniforms: &[Uniform<'_>],
+        alpha: f32,
     ) -> Result<(), Self::Error> {
         let gles_frame: &mut GlesFrame<'_, '_> = frame.as_mut();
         gles_frame
@@ -118,7 +119,7 @@ impl<'a> crate::window::TextureRenderer for UdevRenderer<'a> {
                 damage,
                 &[],
                 Transform::Normal,
-                1.0,
+                alpha,
                 program,
                 uniforms,
             )
@@ -1732,8 +1733,10 @@ fn render_surface(
                     programs.blur.as_ref(),
                     &scene_texture,
                     scene_src,
+                    texture_panel,
                     &panel.spec,
                     output_size,
+                    scale,
                     slot.textures_mut(),
                 );
                 surface.gpu_timer.end(&mut renderer);

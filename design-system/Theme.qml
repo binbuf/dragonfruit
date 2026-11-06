@@ -164,6 +164,11 @@ QtObject {
                     readonly property real blur: 3.86
                     readonly property real edge: 0.397
                     readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 6.0
+                    readonly property real sharpFraction: 0.12
+                    readonly property real cornerLensPeak: 9.6
+                    readonly property real cornerLensDistance: 15.0
+                    readonly property real cornerLensTail: 50.0
                     readonly property real foreground: 0.0
                 }
                 readonly property var dark: QtObject {
@@ -180,6 +185,11 @@ QtObject {
                     readonly property real blur: 3.86
                     readonly property real edge: 0.397
                     readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 6.0
+                    readonly property real sharpFraction: 0.12
+                    readonly property real cornerLensPeak: 9.6
+                    readonly property real cornerLensDistance: 15.0
+                    readonly property real cornerLensTail: 50.0
                     readonly property real foreground: 0.0
                 }
             }

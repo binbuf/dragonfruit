@@ -56,7 +56,7 @@ endif
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check glass-baseline-capture glass-baseline-check check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -109,6 +109,7 @@ help:
 	@echo "  make glass-reference-manifest — regenerate docs/captures/glass-reference-manifest.json"
 	@echo "  make glass-baseline-capture — T-19.4 live baseline recapture (OPEN without a host)"
 	@echo "  make glass-baseline-check — verify the committed baseline crops and manifest"
+	@echo "  make dock-optics-capture — T198 Dock flat-band/MTF/rim capture at 1x/1.5x/2x"
 	@echo "  make check    — lint + test + teardown soak gate"
 	@echo "  make dev      — dragonfruit dev --nested (daily workflow, thin services)"
 	@echo "  make dev-full — nested session with settingsd/system-status/etc. on a private bus"
@@ -772,6 +773,12 @@ glass-baseline-capture: build
 
 glass-baseline-check:
 	python3 scripts/t194-baseline.py --check
+
+# T198: live Dock optics capture (flat band, checker MTF, rim, corner and
+# cache sweep) at 1x/1.5x/2x. Starts a kwin_wayland virtual host when the
+# current session has no mapped nested window; writes OPEN without either.
+dock-optics-capture: build
+	bash scripts/capture-t198-dock-optics.sh
 
 # T-08 FR-2: Theme.qml and design_tokens.rs must be generated from the one
 # source. Fails if either is stale.

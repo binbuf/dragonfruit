@@ -103,8 +103,31 @@ if [ "$FULL_SESSION" = "1" ] || [ "$SCALE" != "1" ]; then
     # DRAGONFRUIT_NESTED_SCALE back to 1.0.
     SESSION_DIR="$XDG_RUNTIME_DIR/$SOCKET.session"
     mkdir -p "$SESSION_DIR/config/dragonfruit"
-    printf '{"schema":17,"keys":{"display.scale":%s}}\n' "$SCALE" \
-        >"$SESSION_DIR/config/dragonfruit/settings.json"
+    WALLPAPER_SOURCE="${WALLPAPER_SOURCE:-}" \
+    WALLPAPER_FIT="${WALLPAPER_FIT:-fill}" \
+    COLOR_SCHEME="${COLOR_SCHEME:-}" \
+    REDUCE_TRANSPARENCY="${REDUCE_TRANSPARENCY:-0}" \
+    INCREASE_CONTRAST="${INCREASE_CONTRAST:-0}" \
+    python3 - "$SESSION_DIR/config/dragonfruit/settings.json" "$SCALE" <<'PY'
+import json
+import os
+import sys
+
+path, scale = sys.argv[1], float(sys.argv[2])
+keys = {"display.scale": scale}
+source = os.environ.get("WALLPAPER_SOURCE", "")
+if source:
+    keys["wallpaper.source"] = source
+    keys["wallpaper.fit"] = os.environ.get("WALLPAPER_FIT", "fill")
+    keys["wallpaper.showOnAllSpaces"] = True
+scheme = os.environ.get("COLOR_SCHEME", "")
+if scheme in ("light", "dark"):
+    keys["appearance.colorScheme"] = scheme
+keys["accessibility.reduceTransparency"] = os.environ.get("REDUCE_TRANSPARENCY", "0") == "1"
+keys["accessibility.increaseContrast"] = os.environ.get("INCREASE_CONTRAST", "0") == "1"
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump({"schema": 18, "keys": keys}, handle)
+PY
     DEMO_CMD=(make dev-full DEV_FULL_ARGS="--socket-name $SOCKET")
 else
     DEMO_CMD=(make demo DEMO_ARGS="--socket-name $SOCKET --private-bus")
@@ -140,6 +163,42 @@ for _ in $(seq 1 2400); do
     sleep 0.1
 done
 sleep "$SETTLE"
+
+# Optional read-only introspection for capture scorers: `query scale` gives
+# the logical/physical panel rect and `query material` gives the resolved
+# Dock preset. Both go to one file so a capture report can cite the live
+# geometry without guessing it from pixels.
+if [ -n "${QUERY_OUT:-}" ]; then
+    python3 - "$SYNTH" "$QUERY_OUT" <<'PY'
+import os
+import socket
+import sys
+
+synth, out = sys.argv[1], sys.argv[2]
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+client = f"/tmp/opencode/t21-query-{os.getpid()}.sock"
+try:
+    os.unlink(client)
+except FileNotFoundError:
+    pass
+sock.bind(client)
+sock.settimeout(2.0)
+chunks = []
+for command in (b"query scale", b"query material"):
+    sock.sendto(command, synth)
+    while True:
+        try:
+            data, _ = sock.recvfrom(65536)
+        except socket.timeout:
+            break
+        text = data.decode()
+        chunks.append(text)
+        if "end\n" in text:
+            break
+with open(out, "w", encoding="utf-8") as handle:
+    handle.write("".join(chunks))
+PY
+fi
 
 # The window chooser only opens for an app with more than one window. The
 # demo's default apps each have one, so add two X11 windows of the same class
@@ -211,6 +270,13 @@ PY
 # look. Accept either artifact.
 SAVED=""
 for _ in $(seq 1 80); do
+    # The compositor fixture writes `$CAPTURE` directly; the shell's copy into
+    # `DF_SCREENSHOT_DIR` is a second path and can still be zero-length while
+    # the compositor is flushing. Prefer the fixture artifact when it exists.
+    if [ -s "$CAPTURE" ]; then
+        SAVED="$CAPTURE"
+        break
+    fi
     SAVED="$(find "$SHOTS" -maxdepth 1 -name 'Screenshot_*.png' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)"
     [ -n "$SAVED" ] && break
     sleep 0.5

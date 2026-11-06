@@ -418,6 +418,16 @@ pub struct ResolvedPreset {
     pub blur: f32,
     pub edge: f32,
     pub edge_width: f32,
+    /// T198 Dock rim tail in logical points; zero for the other presets.
+    pub edge_tail: f32,
+    /// T198 Dock sharp-scene weight in the filtered composite; zero elsewhere.
+    pub sharp_fraction: f32,
+    /// T198 Dock corner-lens peak displacement in logical points.
+    pub corner_lens_peak: f32,
+    /// T198 Dock corner-lens peak distance from the corner in logical points.
+    pub corner_lens_distance: f32,
+    /// T198 Dock corner-lens decay tail in logical points.
+    pub corner_lens_tail: f32,
     pub foreground: f32,
     pub slider_applied: bool,
     pub confidence: &'static str,
@@ -434,6 +444,11 @@ struct Calibration {
     blur: f32,
     edge: f32,
     edge_width: f32,
+    edge_tail: f32,
+    sharp_fraction: f32,
+    corner_lens_peak: f32,
+    corner_lens_distance: f32,
+    corner_lens_tail: f32,
     foreground: f32,
     confidence: &'static str,
 }
@@ -453,12 +468,17 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
                 blur: p::$preset::$scheme::BLUR,
                 edge: p::$preset::$scheme::EDGE,
                 edge_width: p::$preset::$scheme::EDGE_WIDTH,
+                edge_tail: 0.0,
+                sharp_fraction: 0.0,
+                corner_lens_peak: 0.0,
+                corner_lens_distance: 0.0,
+                corner_lens_tail: 0.0,
                 foreground: p::$preset::$scheme::FOREGROUND,
                 confidence: p::$preset::$scheme::CONFIDENCE,
             }
         };
     }
-    match (preset, scheme) {
+    let mut calibration = match (preset, scheme) {
         (Preset::Dock, Scheme::Light) => cal!(dock, light),
         (Preset::Dock, Scheme::Dark) => cal!(dock, dark),
         (Preset::MenuBarVeil, Scheme::Light) => cal!(menu_bar_veil, light),
@@ -485,7 +505,31 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
         (Preset::NotificationLowerPanel, Scheme::Dark) => cal!(notification_lower_panel, dark),
         (Preset::WindowChrome, Scheme::Light) => cal!(window_chrome, light),
         (Preset::WindowChrome, Scheme::Dark) => cal!(window_chrome, dark),
+    };
+    if preset == Preset::Dock {
+        let (edge_tail, sharp, peak, distance, tail) = match scheme {
+            Scheme::Light => (
+                p::dock::light::EDGE_TAIL,
+                p::dock::light::SHARP_FRACTION,
+                p::dock::light::CORNER_LENS_PEAK,
+                p::dock::light::CORNER_LENS_DISTANCE,
+                p::dock::light::CORNER_LENS_TAIL,
+            ),
+            Scheme::Dark => (
+                p::dock::dark::EDGE_TAIL,
+                p::dock::dark::SHARP_FRACTION,
+                p::dock::dark::CORNER_LENS_PEAK,
+                p::dock::dark::CORNER_LENS_DISTANCE,
+                p::dock::dark::CORNER_LENS_TAIL,
+            ),
+        };
+        calibration.edge_tail = edge_tail;
+        calibration.sharp_fraction = sharp;
+        calibration.corner_lens_peak = peak;
+        calibration.corner_lens_distance = distance;
+        calibration.corner_lens_tail = tail;
     }
+    calibration
 }
 
 /// The existing per-role material pair, used by the legacy rollout look.
@@ -593,6 +637,11 @@ pub fn safe_solid(scheme: Scheme, reason: &'static str) -> ResolvedPreset {
         blur: 0.0,
         edge: 0.0,
         edge_width: 0.0,
+        edge_tail: 0.0,
+        sharp_fraction: 0.0,
+        corner_lens_peak: 0.0,
+        corner_lens_distance: 0.0,
+        corner_lens_tail: 0.0,
         foreground: 0.0,
         slider_applied: false,
         confidence: "baseline",
@@ -623,6 +672,11 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
     let mut blur;
     let mut edge;
     let mut edge_width;
+    let edge_tail;
+    let sharp_fraction;
+    let corner_lens_peak;
+    let corner_lens_distance;
+    let corner_lens_tail;
     let mut foreground;
 
     if rollout == Rollout::Legacy {
@@ -633,6 +687,11 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
         blur = legacy_blur;
         edge = 0.0;
         edge_width = 0.0;
+        edge_tail = 0.0;
+        sharp_fraction = 0.0;
+        corner_lens_peak = 0.0;
+        corner_lens_distance = 0.0;
+        corner_lens_tail = 0.0;
         foreground = 0.0;
         fallback_reason = "legacy";
     } else {
@@ -650,6 +709,11 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
         blur = calibration.blur;
         edge = calibration.edge;
         edge_width = calibration.edge_width;
+        edge_tail = calibration.edge_tail;
+        sharp_fraction = calibration.sharp_fraction;
+        corner_lens_peak = calibration.corner_lens_peak;
+        corner_lens_distance = calibration.corner_lens_distance;
+        corner_lens_tail = calibration.corner_lens_tail;
         foreground = calibration.foreground;
         confidence = calibration.confidence;
 
@@ -756,6 +820,11 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
         blur,
         edge,
         edge_width,
+        edge_tail,
+        sharp_fraction,
+        corner_lens_peak,
+        corner_lens_distance,
+        corner_lens_tail,
         foreground,
         slider_applied,
         confidence,
