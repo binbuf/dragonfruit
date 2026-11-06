@@ -304,6 +304,14 @@ public:
     // with the next buffer commit.
     bool setControlCenterInputRegion(int width, int height);
 
+    // Declare the independently keyed material regions of the open panel
+    // (T203): the outer plate, every visible module capsule, and any expanded
+    // list. Coordinates are surface-local logical; the list is commit-latched
+    // with `commitControlCenterImage`. `clearControlCenterPanelRegions`
+    // removes them when the panel hides.
+    void setControlCenterPanelRegions(const QVariantList &regions);
+    void clearControlCenterPanelRegions();
+
     // Attach `image` to the control-center surface and commit.
     bool commitControlCenterImage(const QImage &image, const QSize &logicalSize = QSize());
 

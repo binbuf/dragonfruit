@@ -159,6 +159,7 @@ gates:
 	$(MAKE) glass-presets-check
 	$(MAKE) menubar-veil-check
 	$(MAKE) menu-families-check
+	$(MAKE) control-center-materials-check
 	$(MAKE) e2e
 	$(MAKE) qml-test
 
@@ -784,6 +785,13 @@ menu-families-check:
 
 menu-families-capture: build
 	bash scripts/capture-t202-menus.sh
+
+# T203: outer plate, module capsules, expanded-list material and region map.
+control-center-materials-check:
+	python3 scripts/t203-control-center.py --check
+
+control-center-materials-capture: build
+	bash scripts/capture-t203-control-center.sh
 
 # T-19.4: optional reference checkout verification. The manifest is committed
 # and the full macOS checkout stays optional; a requested reference run fails

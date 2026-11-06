@@ -512,23 +512,44 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
         (Preset::WindowChrome, Scheme::Light) => cal!(window_chrome, light),
         (Preset::WindowChrome, Scheme::Dark) => cal!(window_chrome, dark),
     };
-    if preset == Preset::Dock {
-        let (edge_tail, sharp, peak, distance, tail) = match scheme {
-            Scheme::Light => (
-                p::dock::light::EDGE_TAIL,
-                p::dock::light::SHARP_FRACTION,
-                p::dock::light::CORNER_LENS_PEAK,
-                p::dock::light::CORNER_LENS_DISTANCE,
-                p::dock::light::CORNER_LENS_TAIL,
-            ),
-            Scheme::Dark => (
-                p::dock::dark::EDGE_TAIL,
-                p::dock::dark::SHARP_FRACTION,
-                p::dock::dark::CORNER_LENS_PEAK,
-                p::dock::dark::CORNER_LENS_DISTANCE,
-                p::dock::dark::CORNER_LENS_TAIL,
-            ),
+    // T203: the flat-band + rim + capsule-end lens fields are carried for the
+    // Dock and the Control Center family. Other presets keep the legacy
+    // adaptive tint/rim (the generated zero defaults).
+    macro_rules! lens {
+        ($preset:ident, $scheme:ident) => {
+            (
+                p::$preset::$scheme::EDGE_TAIL,
+                p::$preset::$scheme::SHARP_FRACTION,
+                p::$preset::$scheme::CORNER_LENS_PEAK,
+                p::$preset::$scheme::CORNER_LENS_DISTANCE,
+                p::$preset::$scheme::CORNER_LENS_TAIL,
+            )
         };
+    }
+    let lens = match (preset, scheme) {
+        (Preset::Dock, Scheme::Light) => Some(lens!(dock, light)),
+        (Preset::Dock, Scheme::Dark) => Some(lens!(dock, dark)),
+        (Preset::ControlCenterOuter, Scheme::Light) => {
+            Some(lens!(control_center_outer, light))
+        }
+        (Preset::ControlCenterOuter, Scheme::Dark) => {
+            Some(lens!(control_center_outer, dark))
+        }
+        (Preset::ControlCenterModule, Scheme::Light) => {
+            Some(lens!(control_center_module, light))
+        }
+        (Preset::ControlCenterModule, Scheme::Dark) => {
+            Some(lens!(control_center_module, dark))
+        }
+        (Preset::ControlCenterExpanded, Scheme::Light) => {
+            Some(lens!(control_center_expanded, light))
+        }
+        (Preset::ControlCenterExpanded, Scheme::Dark) => {
+            Some(lens!(control_center_expanded, dark))
+        }
+        _ => None,
+    };
+    if let Some((edge_tail, sharp, peak, distance, tail)) = lens {
         calibration.edge_tail = edge_tail;
         calibration.sharp_fraction = sharp;
         calibration.corner_lens_peak = peak;
@@ -867,6 +888,40 @@ mod tests {
             rollout: Rollout::Replacement,
             ..ResolveInput::default()
         }
+    }
+
+    #[test]
+    fn control_center_module_carries_the_effective_fit_as_its_final_composite() {
+        let outer = resolve(input(Preset::ControlCenterOuter, Scheme::Light));
+        let module = resolve(input(Preset::ControlCenterModule, Scheme::Light));
+        // The flat-band shader output is opaque, so the module preset is the
+        // final composite in its region; it is not a second layer over the
+        // outer plate.
+        assert!((module.alpha - 0.391).abs() < 1e-6);
+        assert!((module.tint - 0.317).abs() < 1e-6);
+        assert!(module.alpha > outer.alpha);
+        assert!(module.tint < outer.tint);
+        // The outer/module capsule optics are the measured 0.30 rim and
+        // 6 pt / 24 pt corner lens family.
+        for resolved in [outer, module] {
+            assert!((resolved.edge - 0.30).abs() < 1e-6);
+            assert!((resolved.corner_lens_peak - 6.0).abs() < 1e-6);
+            assert!((resolved.corner_lens_distance - 24.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn expanded_dark_list_is_near_background_independent() {
+        let expanded = resolve(input(Preset::ControlCenterExpanded, Scheme::Dark));
+        assert!(expanded.alpha >= 0.94);
+        let outputs = [0.0_f32, 0.502, 1.0].map(|background| {
+            background * (1.0 - expanded.alpha) + expanded.tint * expanded.alpha
+        });
+        let spread = outputs.iter().cloned().fold(f32::MIN, f32::max)
+            - outputs.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(spread < 0.05, "spread {spread}");
+        let mean = outputs.iter().sum::<f32>() / outputs.len() as f32;
+        assert!((mean - 0.13).abs() < 0.02, "mean {mean}");
     }
 
     #[test]

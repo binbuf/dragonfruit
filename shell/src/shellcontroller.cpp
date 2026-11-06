@@ -1188,6 +1188,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     setMaterialProperties(m_controlCenterItem,
                           m_materialPolicy.applied(MaterialPolicy::Popup));
     connect(controlCenterObject, SIGNAL(closed()), this, SLOT(onControlCenterClosed()));
+    // T203: the module/list regions follow the QML layout and scroll state.
+    // Re-render when the binding settles so the compositor never keeps the
+    // pre-layout region list.
+    connect(controlCenterObject, SIGNAL(materialRegionsChanged()), this,
+            SLOT(scheduleControlCenterRender()));
     connect(controlCenterObject, SIGNAL(volumeSetRequested(double)), this,
             SLOT(onVolumeSetRequested(double)));
     connect(controlCenterObject, SIGNAL(muteToggleRequested()), this,
@@ -1678,15 +1683,37 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // synthetic chord. Never set in a normal session.
     if (qEnvironmentVariableIsSet("DF_CONTROL_CENTER_FIXTURE")) {
         const QString fixture = qEnvironmentVariable("DF_CONTROL_CENTER_FIXTURE");
-        auto open = [this]() {
+        auto applyExpansion = [this, fixture]() {
+            if (!m_controlCenterItem)
+                return;
+            // T203 capture seam: `wifi`/`bluetooth` open one expanded list and
+            // `expanded` opens both. The QML owns the visible state; the shell
+            // only seeds it once the panel exists.
+            m_controlCenterItem->setProperty(
+                "wifiExpanded",
+                fixture == QLatin1String("wifi") || fixture == QLatin1String("expanded"));
+            m_controlCenterItem->setProperty(
+                "bluetoothExpanded",
+                fixture == QLatin1String("bluetooth")
+                    || fixture == QLatin1String("expanded"));
+        };
+        auto open = [this, applyExpansion]() {
             if (!m_controlCenterOpen)
                 showControlCenter();
+            applyExpansion();
+            // The QML layout settles on the next event-loop turn; re-render so
+            // the declared material regions include the expanded list.
+            QTimer::singleShot(120, this, [this]() {
+                if (m_controlCenterOpen)
+                    scheduleControlCenterRender();
+            });
         };
         QTimer::singleShot(1500, this, open);
-        // `hold` keeps the panel open while a capture script cycles the forced
-        // material tiers; a focus change may dismiss it between captures.
-        // Never set in a normal session.
-        if (fixture == QLatin1String("hold")) {
+        // `hold` (or `DF_CONTROL_CENTER_HOLD`) keeps the panel open while a
+        // capture script cycles the forced material tiers; a focus change may
+        // dismiss it between captures. Never set in a normal session.
+        if (fixture == QLatin1String("hold")
+                || qEnvironmentVariableIsSet("DF_CONTROL_CENTER_HOLD")) {
             auto *timer = new QTimer(this);
             timer->setInterval(500);
             connect(timer, &QTimer::timeout, this, open);
@@ -2596,6 +2623,7 @@ void ShellController::hideControlCenter()
     m_controlCenterPending = false;
     if (m_protocol) {
         m_protocol->setControlCenterInputRegion(0, 0);
+        m_protocol->clearControlCenterPanelRegions();
         m_protocol->hideControlCenter();
     }
 }
@@ -2663,18 +2691,44 @@ void ShellController::applyControlCenterData()
     // keys and the bar, so it projects the tile's summary locally (T-15.9b).
     const QVariantMap menuBar =
         m_settingsClient ? menuBarView(m_settingsClient->values()) : QVariantMap();
-    m_controlCenterItem->setProperty("wifi", wifi);
-    m_controlCenterItem->setProperty("audio", audio);
-    m_controlCenterItem->setProperty("bluetooth", bluetooth);
-    m_controlCenterItem->setProperty("storage", storage);
-    m_controlCenterItem->setProperty("input", input);
-    m_controlCenterItem->setProperty("battery", battery);
-    m_controlCenterItem->setProperty("updates", updates);
-    m_controlCenterItem->setProperty("accounts", accounts);
-    m_controlCenterItem->setProperty("printers", printers);
-    m_controlCenterItem->setProperty("privacy", privacy);
-    m_controlCenterItem->setProperty("accessibility", accessibility);
-    m_controlCenterItem->setProperty("vpn", vpn);
+    // Capture-only absence seam (T203): a deterministic list of adapter names
+    // whose views are replaced with `unavailable`, so the visual matrix can
+    // capture the absent-adapter state without stopping a real daemon. Never
+    // set in a normal session.
+    const QStringList absentAdapters = qEnvironmentVariable("DF_CONTROL_CENTER_ABSENT")
+        .split(QLatin1Char(','), Qt::SkipEmptyParts);
+    const auto absentView = [&absentAdapters](const QString &kind,
+                                              const QVariantMap &view) {
+        for (const QString &name : absentAdapters) {
+            if (name.trimmed().compare(kind, Qt::CaseInsensitive) == 0) {
+                return QVariantMap{{QStringLiteral("kind"), kind},
+                                   {QStringLiteral("state"),
+                                    QStringLiteral("unavailable")}};
+            }
+        }
+        return view;
+    };
+    m_controlCenterItem->setProperty("wifi", absentView(QStringLiteral("wifi"), wifi));
+    m_controlCenterItem->setProperty("audio", absentView(QStringLiteral("audio"), audio));
+    m_controlCenterItem->setProperty("bluetooth",
+                                     absentView(QStringLiteral("bluetooth"), bluetooth));
+    m_controlCenterItem->setProperty("storage",
+                                     absentView(QStringLiteral("storage"), storage));
+    m_controlCenterItem->setProperty("input", absentView(QStringLiteral("input"), input));
+    m_controlCenterItem->setProperty("battery",
+                                     absentView(QStringLiteral("battery"), battery));
+    m_controlCenterItem->setProperty("updates",
+                                     absentView(QStringLiteral("updates"), updates));
+    m_controlCenterItem->setProperty("accounts",
+                                     absentView(QStringLiteral("accounts"), accounts));
+    m_controlCenterItem->setProperty("printers",
+                                     absentView(QStringLiteral("printers"), printers));
+    m_controlCenterItem->setProperty("privacy",
+                                     absentView(QStringLiteral("privacy"), privacy));
+    m_controlCenterItem->setProperty("accessibility",
+                                     absentView(QStringLiteral("accessibility"),
+                                                accessibility));
+    m_controlCenterItem->setProperty("vpn", absentView(QStringLiteral("vpn"), vpn));
     m_controlCenterItem->setProperty("missionControl", missionControl);
     m_controlCenterItem->setProperty("lockPolicy", lockPolicy);
     m_controlCenterItem->setProperty("menuBar", menuBar);
@@ -3002,6 +3056,14 @@ void ShellController::renderControlCenter()
     prepareChromeScene(m_controlCenterWindow, m_controlCenterItem,
                        QSize(m_controlCenterWidth, m_controlCenterHeight),
                        QSize(m_controlCenterWidth, m_controlCenterHeight), m_chromeScale);
+    // T203: the panel declares its outer plate, module capsules and expanded
+    // lists as independently keyed material regions. Send them after the
+    // layout pass so the rects follow the current scroll/expansion state; the
+    // region list is commit-latched with the image below.
+    if (m_protocol) {
+        m_protocol->setControlCenterPanelRegions(
+            m_controlCenterItem->property("materialRegions").toList());
+    }
     const QSize logical(m_controlCenterWidth, m_controlCenterHeight);
     commitChromeScene(m_controlCenterWindow,
                       {{QStringLiteral("control-center"), logical, QRect(),
