@@ -820,6 +820,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_dockItem, SIGNAL(pinnedOrderChanged(QVariant)), this,
             SLOT(onDockPinnedOrderChanged(QVariant)));
     connect(m_dockItem, SIGNAL(popoverChanged()), this, SLOT(onDockPopoverChanged()));
+    connect(m_dockItem, SIGNAL(inputRectsChanged()), this, SLOT(scheduleDockRender()));
     connect(m_dockItem, SIGNAL(revealStateChanged()), this,
             SLOT(onDockRevealStateChanged()));
     connect(m_dockItem, SIGNAL(keyboardFocusReleaseRequested()), this,
@@ -4966,7 +4967,7 @@ void ShellController::onDockConfigured(int width, int height, quint32)
     // section 5.1 overflow clamp. This never resets the Repeater model unless
     // the hidden set changed (a divider resize reconfigures the surface).
     applyDockOverflowResult(computeDockOverflow(), true);
-    renderDock();
+    scheduleDockRender();
 }
 
 ShellProtocol::DockPosition ShellController::dockPosition() const
@@ -5060,7 +5061,7 @@ void ShellController::applyDockSettings(bool reconfigure)
     if (!m_protocol->configureDockSurface(position, m_dockThickness, exclusive))
         qWarning() << "shell: cannot reconfigure the Dock surface:"
                    << m_protocol->lastError();
-    renderDock();
+    scheduleDockRender();
 }
 
 // T-08.2a: write one Dock key through settingsd (the single owner) and refresh
@@ -5139,7 +5140,7 @@ void ShellController::applyDockSizeOnly()
             : qRound(m_dockItem->property("reservedThickness").toReal());
     if (!m_protocol->configureDockSurface(m_dockPosition, m_dockThickness, exclusive))
         qWarning() << "shell: cannot resize the Dock surface:" << m_protocol->lastError();
-    renderDock();
+    scheduleDockRender();
 }
 
 void ShellController::onSettingsChanged(const QString &key, const QVariant &)
@@ -6152,7 +6153,6 @@ void ShellController::onDockPointerMoved(qreal x, qreal y)
     // Dock).
     const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
     sendChromePointer(m_dockWindow, QEvent::MouseMove, p, Qt::NoButton, m_dockButtons);
-    scheduleDockRender();
 }
 
 void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed)
@@ -6171,7 +6171,6 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
     const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
     sendChromePointer(m_dockWindow, pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
                       p, qtButton, m_dockButtons);
-    scheduleDockRender();
 }
 
 void ShellController::onDockPointerLeft()
@@ -6180,7 +6179,6 @@ void ShellController::onDockPointerLeft()
         return;
     sendChromePointer(m_dockWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                       m_dockButtons);
-    scheduleDockRender();
 }
 
 void ShellController::onDockPopupPointerMoved(qreal x, qreal y)
@@ -7227,13 +7225,7 @@ void ShellController::onDockDownloadsFolderRequested()
 
 void ShellController::scheduleDockRender()
 {
-    if (m_dockRenderPending)
-        return;
-    m_dockRenderPending = true;
-    QTimer::singleShot(0, this, [this]() {
-        m_dockRenderPending = false;
-        renderDock();
-    });
+    markChromeDirty(m_producers.value(m_dockWindow));
 }
 
 void ShellController::prepareChromeScene(QQuickWindow *window, QQuickItem *item,
@@ -7370,7 +7362,7 @@ void ShellController::markChromeDirty(ChromeFrameProducer *producer)
         return;
     if (!m_protocol->hasPendingFrame(pace.primaryLabel))
         scheduleChromeRender(producer);
-    else if (m_chromeFallbackTimer)
+    else if (m_chromeFallbackTimer && !m_chromeFallbackTimer->isActive())
         m_chromeFallbackTimer->start();
 }
 
@@ -7387,6 +7379,11 @@ void ShellController::scheduleChromeRender(ChromeFrameProducer *producer)
         pace.value().scheduled = false;
         if (!pace.value().dirty)
             return;
+        if (m_protocol->hasPendingFrame(pace.value().primaryLabel)) {
+            if (m_chromeFallbackTimer && !m_chromeFallbackTimer->isActive())
+                m_chromeFallbackTimer->start();
+            return;
+        }
         renderChromeProducer(producer, false);
     });
 }
@@ -7409,7 +7406,7 @@ void ShellController::renderChromeProducer(ChromeFrameProducer *producer, bool f
     if (pace.dirty) {
         if (!m_protocol->hasPendingFrame(pace.primaryLabel))
             scheduleChromeRender(producer);
-        else if (m_chromeFallbackTimer)
+        else if (m_chromeFallbackTimer && !m_chromeFallbackTimer->isActive())
             m_chromeFallbackTimer->start();
     }
 }
@@ -7431,7 +7428,8 @@ void ShellController::onChromeBufferReleased(const QString &surface)
 {
     for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
         ChromePace &pace = it.value();
-        if (pace.primaryLabel != surface || !pace.dirty || pace.scheduled)
+        if (pace.primaryLabel != surface || !pace.dirty || pace.scheduled
+            || m_protocol->hasPendingFrame(surface))
             continue;
         scheduleChromeRender(it.key());
     }
@@ -7468,7 +7466,7 @@ void ShellController::onChromeCommitDeferred(const QString &surface)
         pace.dirty = true;
         if (!pace.scheduled && !m_protocol->hasPendingFrame(pace.primaryLabel))
             scheduleChromeRender(it.key());
-        else if (m_chromeFallbackTimer)
+        else if (m_chromeFallbackTimer && !m_chromeFallbackTimer->isActive())
             m_chromeFallbackTimer->start();
     }
 }
@@ -7523,9 +7521,9 @@ void ShellController::deferChromeProducer(ChromeFrameProducer *producer)
     // A transient export failure means the GPU is still finishing the frame.
     // Retry on the bounded safety tick instead of spinning a new render
     // immediately; a wl_buffer release still wakes the producer directly.
-    if (m_chromeFallbackTimer)
+    if (m_chromeFallbackTimer && !m_chromeFallbackTimer->isActive())
         m_chromeFallbackTimer->start();
-    else if (!it.value().scheduled
+    else if (!m_chromeFallbackTimer && !it.value().scheduled
              && !m_protocol->hasPendingFrame(it.value().primaryLabel))
         scheduleChromeRender(producer);
 }
@@ -7751,7 +7749,7 @@ void ShellController::rerenderChrome()
     if (m_item && m_width > 0)
         render();
     if (m_dockItem && m_dockWidth > 0 && m_dockHeight > 0)
-        renderDock();
+        scheduleDockRender();
     if (m_overviewActive)
         renderOverview();
     if (m_switcherActive)
@@ -7835,25 +7833,17 @@ void ShellController::renderDock()
                                 qCeil(rect.value(QStringLiteral("w")).toReal()),
                                 qCeil(rect.value(QStringLiteral("h")).toReal())));
     }
-    m_protocol->setDockInputRegion(inputRects);
     // The live plate the Dock paints, in surface-local coordinates: the
     // compositor's frosted backdrop follows it as the plate grows around the
     // magnified row (T-14.7b). The Dock reports `panelRect`, the integer edge
     // it draws, so the declared panel and the QML fill are the same rounded
-    // rect (T-14.7z). Only a changed integer rect is committed: a smooth
-    // animation that crosses no pixel boundary cannot ping-pong the backdrop.
+    // rect (T-14.7z). Submit the input and blur geometry with this frame.
     const QVariantMap plate = m_dockItem->property("panelRect").toMap();
     const QRect panel(qFloor(plate.value(QStringLiteral("x")).toReal()),
                       qFloor(plate.value(QStringLiteral("y")).toReal()),
                       qCeil(plate.value(QStringLiteral("w")).toReal()),
                       qCeil(plate.value(QStringLiteral("h")).toReal()));
-    if (!m_dockPanelRectValid || panel != m_dockPanelRect) {
-        if (m_protocol->setDockPanelRect(panel.x(), panel.y(),
-                                         panel.width(), panel.height())) {
-            m_dockPanelRect = panel;
-            m_dockPanelRectValid = true;
-        }
-    }
+    m_protocol->setDockFrameGeometry(panel, inputRects);
     const QRect dockRect(leftGutter, headroom, m_dockWidth, m_dockHeight);
     const QRect dockSource = chromeBufferRect(dockRect);
     QList<ChromeSceneTarget> targets;

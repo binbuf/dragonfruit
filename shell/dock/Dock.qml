@@ -165,34 +165,31 @@ Rectangle {
     // pointer is not over the Dock.
     property real pointerAlong: -1
     // The pointer position the magnification geometry actually reads (T-14.7b).
-    // It tracks `pointerAlong` through a short, non-overshooting low-pass
-    // (`motion.dockMagnifyTrack`) so a coarse pointer sampling reads as a
-    // continuous slide. It snaps (tracks raw) when magnification is off, while
-    // entering/leaving the Dock, and under reduced motion. `motion.dockMagnify`
-    // keeps its overshoot only for *discrete* changes (icon size, reveal); a
-    // per-sample overshoot is what rings, so the tracker must not overshoot.
-    property real smoothPointerAlong: pointerAlong
-    // `pointerAlong` sets the target; the tracker approaches it without ever
-    // passing it. The decision is made imperatively from the *previous*
-    // smoothed value, so there is no binding cycle between the flag and the
-    // value it gates.
-    NumberAnimation {
-        id: smoothPointerAnimation
-        target: dock
-        property: "smoothPointerAlong"
-        duration: Theme.motion.dockMagnifyTrack.duration
-        easing.type: Easing.Bezier
-        easing.bezierCurve: Theme.motion.dockMagnifyTrack.curve
+    // Follow the latest sample once per animation tick. Restarting an easing
+    // curve on each pointer event can keep the zoom near its old position
+    // when events arrive faster than the animation ticks.
+    property real smoothPointerAlong: -1
+    readonly property int pointerTrackingDuration: Theme.motion.dockMagnifyTrack.duration
+    onPointerTrackingDurationChanged: {
+        if (pointerTrackingDuration === 0)
+            smoothPointerAlong = pointerAlong;
+    }
+    FrameAnimation {
+        running: dock.magnifying && dock.pointerTrackingDuration > 0
+                 && dock.smoothPointerAlong >= 0
+                 && dock.pointerAlong !== dock.smoothPointerAlong
+        onTriggered: {
+            // Close 99% of the gap over the tracking duration at any refresh rate.
+            var remaining = (dock.pointerAlong - dock.smoothPointerAlong)
+                            * Math.pow(0.01, frameTime * 1000 / dock.pointerTrackingDuration);
+            dock.smoothPointerAlong = Math.abs(remaining) < 0.25
+                                     ? dock.pointerAlong : dock.pointerAlong - remaining;
+        }
     }
     onPointerAlongChanged: {
-        if (dock.magnifying && !Theme.reducedMotion && dock.smoothPointerAlong >= 0) {
-            smoothPointerAnimation.from = dock.smoothPointerAlong;
-            smoothPointerAnimation.to = dock.pointerAlong;
-            smoothPointerAnimation.restart();
-        } else {
-            smoothPointerAnimation.stop();
+        if (!dock.magnifying || dock.pointerTrackingDuration === 0
+                || dock.smoothPointerAlong < 0)
             dock.smoothPointerAlong = dock.pointerAlong;
-        }
     }
 
     // The pointer and anchor the magnified profile is evaluated at (T-14.7aa).
@@ -3838,6 +3835,7 @@ Rectangle {
             bouncePhase: dock.entryPhase(modelData)
             bounceAttention: dock.entryAttention(modelData)
             iconSize: dock.layout.length > index ? dock.layout[index].iconSize : dock.iconSize
+            artworkRasterSize: Math.ceil(dock.iconSize * dock.effectiveMagnifyPeakFactor)
             indicatorEdge: dock.indicatorEdge
             showIndicator: dock.showIndicators
             keyboardFocused: dock.keyboardFocused && modelData.id === dock.focusedItemId

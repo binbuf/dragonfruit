@@ -4818,6 +4818,8 @@ impl CompositorHandler for DfState {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        self.commit_chrome_panel(surface);
+
         // Chrome transport counters (T-21.1a): classify the attached buffer
         // before Smithay consumes the attachment. The shell's current path
         // attaches a fresh wl_shm buffer on every chrome commit; dmabuf is the

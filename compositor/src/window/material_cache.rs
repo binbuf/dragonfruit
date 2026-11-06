@@ -24,7 +24,7 @@ use std::hash::{Hash, Hasher};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::utils::CommitCounter;
-use smithay::utils::{Buffer, Physical, Rectangle, Scale, Size};
+use smithay::utils::{Buffer, Physical, Point, Rectangle, Scale, Size};
 
 use crate::window::blur::BlurSpec;
 
@@ -76,6 +76,7 @@ pub(crate) struct SceneTextureCache<T> {
     allocations: u64,
     id: Id,
     commit: CommitCounter,
+    last_damage: Vec<Rectangle<i32, Physical>>,
     /// Advances when the texture is reallocated or its damage tracker is
     /// reset. Panel blur caches include it so a fresh/blank scene texture
     /// can never inherit a panel's previous blur result.
@@ -84,7 +85,7 @@ pub(crate) struct SceneTextureCache<T> {
     /// the region texture key is unchanged, so an unchanged scene renders
     /// nothing; a reallocation or region-size/scale change resets it and
     /// forces one full region render.
-    tracker: Option<(SceneTextureKey, OutputDamageTracker)>,
+    tracker: Option<(SceneTextureKey, Point<i32, Physical>, OutputDamageTracker)>,
 }
 
 impl<T> Default for SceneTextureCache<T> {
@@ -95,6 +96,7 @@ impl<T> Default for SceneTextureCache<T> {
             allocations: 0,
             id: Id::new(),
             commit: CommitCounter::default(),
+            last_damage: Vec::new(),
             generation: 0,
             tracker: None,
         }
@@ -111,7 +113,7 @@ impl<T> SceneTextureCache<T> {
         self.id.clone()
     }
 
-    /// The scene element's commit, advanced by [`Self::note_scene_change`].
+    /// The scene element's commit, advanced by [`Self::note_scene_damage`].
     pub(crate) fn commit(&self) -> CommitCounter {
         self.commit
     }
@@ -123,13 +125,40 @@ impl<T> SceneTextureCache<T> {
         self.generation
     }
 
-    /// Advance the scene commit when the offscreen scene changed this frame.
-    ///
-    /// A frame that rendered no damage leaves the commit untouched, so a
-    /// stationary scene contributes no output damage.
-    pub(crate) fn note_scene_change(&mut self, changed: bool) {
-        if changed {
+    /// Remember the last changed commit's damage in scene-texture coordinates.
+    pub(crate) fn note_scene_damage(&mut self, damage: Option<Vec<Rectangle<i32, Physical>>>) {
+        if let Some(damage) = damage.filter(|damage| !damage.is_empty()) {
+            self.last_damage = damage;
             self.commit.increment();
+        }
+    }
+
+    fn damaged_source_since(
+        &self,
+        previous: Option<CommitCounter>,
+        source: Rectangle<f64, Buffer>,
+        spec: BlurSpec,
+        scale: Scale<f64>,
+    ) -> bool {
+        match self.commit.distance(previous) {
+            Some(0) => false,
+            Some(1) => {
+                let padding = f64::from(spec.padding_px());
+                // The first blur pass reads adjacent texels with linear
+                // filtering, even at scales where the logical padding is small.
+                let pad_x = (padding * scale.x).ceil().max(2.0);
+                let pad_y = (padding * scale.y).ceil().max(2.0);
+                let sample = Rectangle::<f64, Physical>::new(
+                    (source.loc.x - pad_x, source.loc.y - pad_y).into(),
+                    (source.size.w + 2.0 * pad_x, source.size.h + 2.0 * pad_y).into(),
+                );
+                self.last_damage
+                    .iter()
+                    .any(|damage| sample.overlaps(damage.to_f64()))
+            }
+            // A panel skipped several commits. Only the latest damage is
+            // available, so rebuild conservatively.
+            _ => true,
         }
     }
 
@@ -172,22 +201,33 @@ impl<T> SceneTextureCache<T> {
         self.allocations
     }
 
-    /// Whether the cached tracker was built for `key`.
-    pub(crate) fn tracker_matches(&self, key: SceneTextureKey) -> bool {
+    /// The tracker is tied to the region origin even when the texture can be reused.
+    pub(crate) fn tracker_matches(
+        &self,
+        key: SceneTextureKey,
+        origin: Point<i32, Physical>,
+    ) -> bool {
         self.tracker
             .as_ref()
-            .is_some_and(|(tracker_key, _)| *tracker_key == key)
+            .is_some_and(|(tracker_key, tracker_origin, _)| {
+                *tracker_key == key && *tracker_origin == origin
+            })
     }
 
     /// Install the scene damage tracker for `key`.
-    pub(crate) fn set_tracker(&mut self, key: SceneTextureKey, tracker: OutputDamageTracker) {
-        self.tracker = Some((key, tracker));
+    pub(crate) fn set_tracker(
+        &mut self,
+        key: SceneTextureKey,
+        origin: Point<i32, Physical>,
+        tracker: OutputDamageTracker,
+    ) {
+        self.tracker = Some((key, origin, tracker));
         self.generation = self.generation.wrapping_add(1);
     }
 
     /// The scene damage tracker, if one has been installed.
     pub(crate) fn tracker_mut(&mut self) -> Option<&mut OutputDamageTracker> {
-        self.tracker.as_mut().map(|(_, tracker)| tracker)
+        self.tracker.as_mut().map(|(_, _, tracker)| tracker)
     }
 }
 
@@ -217,12 +257,15 @@ impl PanelKey {
 ///
 /// The Dock's own hover surface is not part of the sampled scene, so a pointer
 /// sweep over the Dock leaves this key unchanged and the cached blur can be
-/// reused. A scene commit, a panel/source move, a blur-spec change, or an
+/// reused. Damage to the sampled scene, a source move, a blur-spec change, or an
 /// output scale/chain change invalidates it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct PanelBlurKey {
     scene_generation: u64,
-    scene_commit: CommitCounter,
+    /// Per-panel scene epoch. It advances only when the scene damage actually
+    /// intersects this panel's blur source (plus padding), so an off-panel
+    /// window repaint does not rebuild the Dock's blur.
+    scene_epoch: u64,
     scene_src: Rectangle<f64, Buffer>,
     spec: BlurSpec,
     chain_size: Size<i32, Physical>,
@@ -230,9 +273,9 @@ pub(crate) struct PanelBlurKey {
 }
 
 impl PanelBlurKey {
-    pub(crate) fn new(
+    fn new(
         scene_generation: u64,
-        scene_commit: CommitCounter,
+        scene_epoch: u64,
         scene_src: Rectangle<f64, Buffer>,
         spec: BlurSpec,
         chain_size: Size<i32, Physical>,
@@ -240,7 +283,7 @@ impl PanelBlurKey {
     ) -> Self {
         Self {
             scene_generation,
-            scene_commit,
+            scene_epoch,
             scene_src,
             spec,
             chain_size,
@@ -251,7 +294,7 @@ impl PanelBlurKey {
     /// Which input invalidated the cached blur relative to `previous`.
     pub(crate) fn miss_reason(&self, previous: &Self) -> Option<BlurMissReason> {
         if self.scene_generation != previous.scene_generation
-            || self.scene_commit != previous.scene_commit
+            || self.scene_epoch != previous.scene_epoch
         {
             Some(BlurMissReason::Scene)
         } else if self.scene_src != previous.scene_src {
@@ -310,6 +353,7 @@ pub(crate) struct PanelTextureSlot<T> {
     commit: CommitCounter,
     textures: Vec<T>,
     blur_key: Option<PanelBlurKey>,
+    last_scene_commit: Option<CommitCounter>,
 }
 
 impl<T> PanelTextureSlot<T> {
@@ -319,6 +363,7 @@ impl<T> PanelTextureSlot<T> {
             commit: CommitCounter::default(),
             textures: Vec::new(),
             blur_key: None,
+            last_scene_commit: None,
         }
     }
 
@@ -345,6 +390,22 @@ impl<T> PanelTextureSlot<T> {
     /// The key of the cached chain, when one is present.
     pub(crate) fn blur_key(&self) -> Option<&PanelBlurKey> {
         self.blur_key.as_ref()
+    }
+
+    pub(crate) fn blur_key_for_scene<S>(
+        &mut self,
+        scene: &SceneTextureCache<S>,
+        source: Rectangle<f64, Buffer>,
+        spec: BlurSpec,
+        chain_size: Size<i32, Physical>,
+        scale: Scale<f64>,
+    ) -> PanelBlurKey {
+        let mut epoch = self.blur_key.map_or(0, |key| key.scene_epoch);
+        if scene.damaged_source_since(self.last_scene_commit, source, spec, scale) {
+            epoch = epoch.wrapping_add(1);
+        }
+        self.last_scene_commit = Some(scene.commit());
+        PanelBlurKey::new(scene.generation(), epoch, source, spec, chain_size, scale)
     }
 
     /// Whether the cached chain can be reused for `key`.
@@ -523,13 +584,13 @@ mod tests {
         assert_eq!(cache.id(), id, "the scene identity survives allocation");
 
         let commit = cache.commit();
-        cache.note_scene_change(false);
+        cache.note_scene_damage(None);
         assert_eq!(
             cache.commit(),
             commit,
             "an unchanged scene must not advance the commit"
         );
-        cache.note_scene_change(true);
+        cache.note_scene_damage(Some(vec![rect(0, 0, 10, 10)]));
         assert_ne!(cache.commit(), commit);
         let changed = cache.commit();
 
@@ -573,36 +634,31 @@ mod tests {
         let src: Rectangle<f64, Buffer> = Rectangle::new((0.0, 0.0).into(), (10.0, 10.0).into());
         let chain = Size::<i32, Physical>::from((1920, 1080));
         let scale = Scale::from(1.5);
-        let base = PanelBlurKey::new(1, CommitCounter::default(), src, spec, chain, scale);
+        let base = PanelBlurKey::new(1, 0, src, spec, chain, scale);
 
-        assert_eq!(
-            base,
-            PanelBlurKey::new(1, CommitCounter::default(), src, spec, chain, scale)
-        );
+        assert_eq!(base, PanelBlurKey::new(1, 0, src, spec, chain, scale));
 
-        let mut commit = CommitCounter::default();
-        commit.increment();
         assert_ne!(
             base,
-            PanelBlurKey::new(1, commit, src, spec, chain, scale),
+            PanelBlurKey::new(1, 1, src, spec, chain, scale),
             "a scene commit must invalidate the cached blur"
         );
         assert_ne!(
             base,
-            PanelBlurKey::new(2, CommitCounter::default(), src, spec, chain, scale),
+            PanelBlurKey::new(2, 0, src, spec, chain, scale),
             "a scene generation change must invalidate the cached blur"
         );
         let moved: Rectangle<f64, Buffer> = Rectangle::new((1.0, 0.0).into(), (10.0, 10.0).into());
         assert_ne!(
             base,
-            PanelBlurKey::new(1, CommitCounter::default(), moved, spec, chain, scale),
+            PanelBlurKey::new(1, 0, moved, spec, chain, scale),
             "a panel source move must invalidate the cached blur"
         );
         assert_ne!(
             base,
             PanelBlurKey::new(
                 1,
-                CommitCounter::default(),
+                0,
                 src,
                 crate::window::blur::BlurSpec::new(12.0, 10.0),
                 chain,
@@ -614,7 +670,7 @@ mod tests {
             base,
             PanelBlurKey::new(
                 1,
-                CommitCounter::default(),
+                0,
                 src,
                 spec,
                 Size::<i32, Physical>::from((1280, 720)),
@@ -624,14 +680,7 @@ mod tests {
         );
         assert_ne!(
             base,
-            PanelBlurKey::new(
-                1,
-                CommitCounter::default(),
-                src,
-                spec,
-                chain,
-                Scale::from(2.0),
-            ),
+            PanelBlurKey::new(1, 0, src, spec, chain, Scale::from(2.0),),
             "a scale change must invalidate the cached blur"
         );
     }
@@ -643,7 +692,7 @@ mod tests {
         let src: Rectangle<f64, Buffer> = Rectangle::new((0.0, 0.0).into(), (10.0, 10.0).into());
         let key = PanelBlurKey::new(
             1,
-            CommitCounter::default(),
+            0,
             src,
             crate::window::blur::BlurSpec::new(24.0, 10.0),
             Size::<i32, Physical>::from((1920, 1080)),
@@ -669,6 +718,38 @@ mod tests {
     }
 
     #[test]
+    fn panel_blur_ignores_unrelated_damage_and_rebuilds_for_padding_damage() {
+        let mut scene = SceneTextureCache::<u32>::default();
+        let mut panel = PanelTextureSlot::new();
+        let src = Rectangle::new((80.0, 100.0).into(), (120.0, 40.0).into());
+        let spec = BlurSpec::new(8.0, 10.0);
+        let chain = output(300, 200);
+        let scale = Scale::from(1.5);
+        let base = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        panel.textures_mut().push(1);
+        panel.set_blur_key(base);
+
+        scene.note_scene_damage(Some(vec![rect(0, 0, 300, 20)]));
+        let unrelated = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        assert!(panel.blur_cache_hit(&unrelated));
+
+        // Only the padding intersects; the top edge of the plate still samples it.
+        scene.note_scene_damage(Some(vec![rect(100, 90, 10, 5)]));
+        let nearby = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        assert_eq!(nearby.miss_reason(&base), Some(BlurMissReason::Scene));
+        panel.set_blur_key(nearby);
+        let settled = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        assert!(panel.blur_cache_hit(&settled));
+
+        // The slot missed two scene commits. The latest damage alone would
+        // miss a change inside the panel from the earlier commit.
+        scene.note_scene_damage(Some(vec![rect(100, 105, 10, 5)]));
+        scene.note_scene_damage(Some(vec![rect(0, 0, 300, 20)]));
+        let skipped = panel.blur_key_for_scene(&scene, src, spec, chain, scale);
+        assert_eq!(skipped.miss_reason(&nearby), Some(BlurMissReason::Scene));
+    }
+
+    #[test]
     fn a_scene_reallocation_or_tracker_reset_advances_generation() {
         let mut cache: SceneTextureCache<u32> = SceneTextureCache::default();
         let key = SceneTextureKey::new(size(400, 80), output(1920, 1200), 1.0.into());
@@ -678,9 +759,13 @@ mod tests {
         assert_eq!(cache.generation(), 1);
         cache.set_tracker(
             key,
+            (0, 0).into(),
             OutputDamageTracker::new((400, 80), Scale::from(1.0), Transform::Normal),
         );
         assert_eq!(cache.generation(), 2);
+        assert!(cache.tracker_matches(key, (0, 0).into()));
+        assert!(!cache.tracker_matches(key, (1, 0).into()));
+        assert!(!cache.needs_alloc(key));
     }
 
     #[test]

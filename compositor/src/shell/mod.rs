@@ -87,6 +87,7 @@ struct LayerEntry {
     resource: df_layer_surface::DfLayerSurface,
     surface: WlSurface,
     state: LayerSurfaceState,
+    pending_panel_rect: Option<Rectangle<i32, Logical>>,
 }
 
 /// A chrome surface ready to composite on one output (T-09).
@@ -447,6 +448,19 @@ impl DfState {
             .layers
             .iter_mut()
             .find(|entry| entry.resource == *resource)
+    }
+
+    pub(crate) fn commit_chrome_panel(&mut self, surface: &WlSurface) {
+        if let Some(entry) = self
+            .shell
+            .layers
+            .iter_mut()
+            .find(|entry| entry.surface == *surface)
+        {
+            if let Some(rect) = entry.pending_panel_rect.take() {
+                entry.state.panel_rect = Some(rect);
+            }
+        }
     }
 
     /// Output geometry for a chrome surface's target output.
@@ -1746,6 +1760,7 @@ impl Dispatch<df_shell::DfShell, ()> for DfState {
                 let entry = LayerEntry {
                     resource: resource.clone(),
                     surface,
+                    pending_panel_rect: None,
                     state: LayerSurfaceState {
                         layer: layer_value,
                         namespace,
@@ -1786,7 +1801,6 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
     ) {
         let mut reconfigure = false;
         let mut reserve_changed = false;
-        let mut panel_changed = false;
         let mut focus_chrome: Option<WlSurface> = None;
         if let Some(entry) = state.layer_entry_mut(resource) {
             match request {
@@ -1835,8 +1849,7 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
                     width,
                     height,
                 } => {
-                    entry.state.panel_rect = Some(layer::panel_rect(x, y, width, height));
-                    panel_changed = true;
+                    entry.pending_panel_rect = Some(layer::panel_rect(x, y, width, height));
                 }
                 df_layer_surface::Request::AckConfigure { .. } => {}
                 df_layer_surface::Request::Destroy => {}
@@ -1850,9 +1863,6 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
         }
         if reconfigure {
             state.configure_layer(resource);
-            state.needs_redraw = true;
-        }
-        if panel_changed {
             state.needs_redraw = true;
         }
     }

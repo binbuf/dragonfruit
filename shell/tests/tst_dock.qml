@@ -827,10 +827,10 @@ Item {
             dock.pointerAlong = dock._baseline.centers[0];
             waitForRendering(stage);
             fuzzyCompare(dock.smoothPointerAlong, dock._baseline.centers[0], 0.001);
-            // A move while magnifying springs toward the new position instead
-            // of jumping to it.
+            // A move while magnifying waits for the animation tick.
             var target = dock._baseline.centers[2];
             dock.pointerAlong = target;
+            fuzzyCompare(dock.smoothPointerAlong, dock._baseline.centers[0], 0.001);
             wait(Math.floor(Theme.motion.dockMagnify.fullDuration / 3));
             verify(dock.smoothPointerAlong > dock._baseline.centers[0]);
             wait(Theme.motion.dockMagnify.fullDuration + 120);
@@ -1625,6 +1625,24 @@ Item {
             verify(nearColor(img, 1, 24, 226, 59, 59, 40),
                    "the artwork reaches the tile left");
             glyph.destroy();
+        }
+
+        function test_zoom_scales_the_mask_without_resizing_its_canvas() {
+            var glyph = make(glyphComponent, {
+                name: "Square", size: 48, rasterSize: 80,
+                iconPath: assetPath("icon-square.svg")
+            });
+            tryCompare(glyph, "maskedArtwork", true);
+            waitForRendering(stage);
+            var artwork = findChild(glyph, "artwork");
+            var canvasWidth = artwork.width;
+            glyph.size = 72;
+            compare(artwork.width, canvasWidth);
+            fuzzyCompare(artwork.width * artwork.scale, glyph.tileW, 0.001);
+            waitForRendering(stage);
+            var img = grabImage(glyph);
+            verify(nearColor(img, 36, 36, 226, 59, 59, 40));
+            verify(!nearColor(img, 1, 1, 226, 59, 59, 40));
         }
 
         // T-14.7w: a round icon (no padding of ours) fills the tile — it is

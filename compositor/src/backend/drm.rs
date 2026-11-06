@@ -42,7 +42,7 @@ use smithay::backend::renderer::gles::{
 };
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
 use smithay::backend::renderer::multigpu::{GpuManager, MultiRenderer};
-use smithay::backend::renderer::utils::{with_renderer_surface_state, CommitCounter};
+use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::backend::renderer::{
     ImportAll, ImportDma, ImportDmaWl, ImportMem, ImportMemWl, RendererSuper, Texture,
 };
@@ -76,8 +76,8 @@ use crate::gpu_timer::{GpuPass, GpuTimer, GpuTimerTarget};
 use crate::session::{run_session, BackendHooks};
 use crate::window::{
     full_output_material_forced, BackdropBlurElement, BlurMissCounts, BlurMissReason,
-    MaterialRegion, PanelBlurKey, PanelKey, PanelTextureSlots, SceneTextureCache,
-    SceneTextureElement, TextureRenderer,
+    MaterialRegion, PanelKey, PanelTextureSlots, SceneTextureCache, SceneTextureElement,
+    TextureRenderer,
 };
 use crate::{input, render, LOCKSTEP_VERSION};
 
@@ -1667,22 +1667,19 @@ fn render_surface(
         let mut blur_allocations = 0u64;
         let mut blur_skips = 0u64;
         let mut blur_misses = BlurMissCounts::default();
-        let scene_generation = surface.material.scene.generation();
-        let scene_commit: CommitCounter = surface.material.scene.commit();
         let panel_keys: Vec<PanelKey> = blur_panels.iter().map(|panel| panel.key).collect();
         for panel in &blur_panels {
             let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale) else {
                 continue;
             };
-            let blur_key = PanelBlurKey::new(
-                scene_generation,
-                scene_commit,
+            let slot = surface.material.panels.slot(&panel.key);
+            let blur_key = slot.blur_key_for_scene(
+                &surface.material.scene,
                 scene_src,
                 panel.spec,
                 output_size,
                 scale,
             );
-            let slot = surface.material.panels.slot(&panel.key);
             let id = slot.id().clone();
             let texture = if slot.blur_cache_hit(&blur_key) {
                 blur_skips += 1;
