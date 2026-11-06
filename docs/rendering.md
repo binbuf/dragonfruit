@@ -238,6 +238,16 @@ per-output `output material stats` line (`material_frames`,
 `material_region_px`); the settled-Dock capture asserts the allocation and
 region counters are flat across two snapshots.
 
+T-21.5 adds the missing **work** cache. `PanelBlurKey` covers the scene
+texture generation/commit, the panel source rectangle, the blur spec, the
+chain size, and the output scale. A Dock hover changes the chrome surface but
+not the sampled scene, so the panel reuses its last Kawase texture and
+`blur_skips` advances without rebuilding the chain. A cache miss clears the
+key before rendering and advances the panel's own `CommitCounter`, so a scene
+change that alters the blurred pixels damages the panel even when its geometry
+did not move. `material stats` reports `blur_skips` alongside
+`blur_passes`/`blur_draws`.
+
 **Acceptance**
 
 - Zero steady-state allocations in a 5-minute Dock animation run.
@@ -570,22 +580,26 @@ latch (T189d).
 - If the GPU cannot meet the deadline even at `Reduced`, use the P1 milky
   fallback rather than a flat translucent plate.
 
-**Status (T-21.2c)**
+**Status (T-21.2c, hardened by T-21.5 / ADR 0211)**
 
 - `MaterialRole::is_persistent()` is the classification. The render path
   resolves each chrome panel through `effective_material_for_role`, so a
   global `Minimal` selection no longer drops the Dock/menu bar to the feather
   stack.
-- A persistent role at a selected `Minimal` reports `tier=reduced`,
-  `blur_active=0`, `fallback=4` (`floor-missed`): the explicit milky fallback,
-  not a flat translucent `Minimal` slab.
+- A persistent role at a selected `Minimal` now stays at `tier=reduced` with
+  `blur_active=1` and `fallback=0`. The sampled pass is never traded for a
+  tier selection; the milky complement is reserved for an actually absent or
+  failed sampled pass (`no-sampled-blur`) or the software path.
 - Transient roles follow the ladder to `Minimal` unchanged; software/headless
   stays `Minimal` with the `software` reason for every role.
+- This removes the native Dock's glass ↔ milky swap under a transient load
+  (see [`proposals/dock-flicker-native-material.md`](proposals/dock-flicker-native-material.md)).
 
 **Acceptance**
 
 - The Dock/menu bar never silently lose their material under load.
-- A forced `Minimal` still reads as a deliberate milky plate.
+- A forced `Minimal` keeps the Dock/menu bar glass at `Reduced`, and a truly
+  absent sampled path still reads as a deliberate milky plate.
 
 ### R4.2 Hysteresis and oscillation
 
@@ -596,18 +610,20 @@ latch (T189d).
 - Prevent Full↔Reduced oscillation during a steady pointer sweep.
 - Ensure expensive glass is disabled or reduced quickly enough under pressure.
 
-**Status (T-21.2c)**
+**Status (T-21.2c, hardened by T-21.5 / ADR 0211)**
 
 - The 12/180 frame counts are now wall-clock windows accumulated from rendered
   frame durations: **200 ms** down and **3 s** up. At 60 Hz that is the same
   12/180 reference; at 120/144 Hz the frame count scales with the refresh
   period instead of shrinking the window.
-- A downgrade within 10 s of an upgrade across the same ladder boundary
-  latches that boundary. Recovery across a latched boundary needs the EMA below
-  **0.4 × budget** for **10 s** (instead of 0.75 × budget for 3 s), so a steady
-  sweep that keeps returning to the expensive tier stays at `Reduced`. A
-  successful upgrade clears the latch; a forced tier resets the selection
-  memory.
+- **Every downgrade latches its boundary.** Recovery across a latched boundary
+  needs the EMA below **0.4 × budget** for **10 s** (instead of 0.75 × budget
+  for 3 s). The normal 3 s window still applies when no boundary is latched
+  (for example after a forced tier is released). A successful upgrade clears
+  the latch; a forced tier resets the selection memory.
+- Each tier keeps a smoothed cost estimate. A target whose last EMA was above
+  `1.05 × budget` is not promoted into while the current tier is already using
+  more than `0.5 × budget`; a genuinely cheap current tier can still recover.
 - `degrade stats` / `query degrade` add `down_window_us=200000`,
   `up_window_us=3000000`, and `latched=0|1`. The synthetic
   `set degrade-frames <count> <microseconds>` hook feeds the real
@@ -615,8 +631,8 @@ latch (T189d).
 - The committed load trace is `docs/captures/t21-degrade-load.txt`
   (`make t21-degrade-load`): a 60 s simulated sweep at 60/120/144 Hz plus the
   headless compositor's per-role load sequence. The pure tests assert the
-  ~200 ms/~3 s windows at all three rates; the 60 s sweep is bounded to
-  `downgrades=2 upgrades=1 latched=1` at every rate.
+  ~200 ms/~3 s normal windows, the 10 s latched window, and a steady sweep
+  bounded to one downgrade and no climb back into the failing tier.
 
 **Acceptance**
 
@@ -827,7 +843,8 @@ missed-deadline counts) are T192c.
 
 ### R8.1 Material stats
 
-- Document `blur_draws` alongside `blur_passes` and `blur_panels`.
+- Document `blur_draws` alongside `blur_passes` and `blur_panels`, and
+  `blur_skips` for panel blur chains reused from the cache.
 - Make clear that `path=gpu` is not proof and `blur_passes` only means the
   panels resolved.
 - Add a draw-success counter if a future backend can skip a built element.

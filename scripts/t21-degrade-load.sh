@@ -83,8 +83,8 @@ require "$SCRATCH/load.trace" 'phase=steady-over .*roles=0:1/1/0,1:1/1/0,2:1/1/0
     'the reduced per-role load state' || verdict=1
 require "$SCRATCH/load.trace" 'phase=sweep-flap .*latched=1' \
     'the flap latch' || verdict=1
-require "$SCRATCH/load.trace" 'phase=forced-minimal .*roles=0:1/0/4,1:1/0/4,2:2/0/0,3:2/0/0' \
-    'the forced Minimal persistent floor' || verdict=1
+require "$SCRATCH/load.trace" 'phase=forced-minimal .*roles=0:1/1/0,1:1/1/0,2:2/0/0,3:2/0/0' \
+    'the forced Minimal persistent floor with blur on' || verdict=1
 
 {
     echo "T-21.2c refresh-aware hysteresis load trace (T189d)"
@@ -96,8 +96,8 @@ require "$SCRATCH/load.trace" 'phase=forced-minimal .*roles=0:1/0/4,1:1/0/4,2:2/
     echo "command: cargo test -p dragonfruit-compositor --test shell_protocol_conformance material_role_state_follows_a_refresh_aware_load_sequence -- --nocapture"
     echo "shell: ctest -R '^(tst_materialpolicy|tst_dock|tst_menubar)$' -> $SHELL_RESULT"
     echo
-    echo "## Pure hysteresis: 12/180 frames at 60 Hz = 200 ms down / 3 s up"
-    echo "The frame counts scale with the refresh period; the wall-clock windows do not."
+    echo "## Pure hysteresis: 200 ms down / 3 s normal up / 10 s latched up"
+    echo "Every downgrade latches its boundary; the frame counts scale with the refresh period."
     cat "$SCRATCH/pure.trace"
     echo
     echo "## Headless compositor: synthetic rendered-frame load sequence"

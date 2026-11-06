@@ -1101,10 +1101,11 @@ overlay-family crops
 Each surface also gets a `t21-material-<surface>-tiers-{light,dark}.png`
 review sheet. `t21-material-tiers.txt` records each forced `query degrade`
 state and the shell's applied per-role `tier/blur/fallback` lines, so the
-milky reason is recorded rather than inferred from pixels. The forced Minimal
-state is the persistent `floor-missed` milky fallback and the transient
-popup/drawer `Minimal` state, never a flat translucent slab; the shell applies
-all four roles through one policy (ADR
+milky reason is recorded rather than inferred from pixels. With the T-21.5
+fix, a forced Minimal keeps persistent Chrome/Dock at `tier=reduced blur=1`
+and only the transient popup/drawer roles reach `Minimal`; the `floor-missed`
+milky leg remains the legacy/fallback coverage. The shell applies all four
+roles through one policy (ADR
 [0204](../design/adr/0204-shell-role-material-application-policy.md)) and the
 popup family shares one QML complement (ADR
 [0205](../design/adr/0205-popup-family-material-fallback.md)).
@@ -1118,12 +1119,21 @@ the real headless compositor's `observe_rendered_frame` path and records
 `query degrade` plus the per-role `material_role_state` events for the
 over-budget, recovery, flap, latched, idle-recovery, and forced Full/Reduced/
 Minimal phases. `t21-degrade-load.txt` is the committed transcript; the pure
-section shows the frame counts scaling (10/20/25 down, 377/752/867 up) while
-the window stays ~200 ms/~3 s, and the 60 s sweep is bounded to
-`downgrades=2 upgrades=1 latched=1` at every rate. The same run checks the
+section shows the frame counts scaling (10/20/25 down) while the downgrade
+window stays ~200 ms; a real downgrade latches the boundary, so recovery uses
+the 10 s/0.4x-budget latch (the normal 3 s window is exercised by a
+forced/released controller). The 60 s sweep is bounded to
+`downgrades=1 upgrades=0 latched=1` at every rate. The same run checks the
 shell's applied properties with `tst_materialpolicy`, `tst_dock`, and
 `tst_menubar`. The policy is
-[ADR 0206](../design/adr/0206-refresh-aware-hysteresis.md).
+[ADR 0206](../design/adr/0206-refresh-aware-hysteresis.md), hardened by
+[ADR 0211](../design/adr/0211-persistent-chrome-stability-and-blur-cache.md).
+
+The T-21.5 native Dock flicker fix is recorded in
+`t21-dock-flicker-fix.txt`. It keeps the before (live native role flapping and
+full-output material region), the nested after reference (`blur_skips`
+advancing while allocations stay flat), the tests, and the native after-run as
+an explicit OPEN step for the next session cycle.
 
 T-21.3's region-sized scene render is captured by
 `scripts/t21-region-render.sh` (`make t21-region-render`). It runs the nested

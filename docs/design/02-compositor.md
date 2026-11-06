@@ -692,12 +692,13 @@ T-02 transitions render correctly at every tier.
 chrome; `{Popup, Drawer}` are transient overlays.
 `EffectiveMaterial::resolve_for_role` maps the selected tier through that
 classification: a persistent role never selects below `Reduced` while the
-sampled path is available, and if the controller selected `Minimal` (even
-`Reduced` missed the
-deadline) it reports `tier=reduced`, `blur_active=0`, and the explicit
-`floor-missed` fallback so the shell draws the milky plate rather than a flat
-translucent slab. Transient roles follow the ladder to `Minimal`. The software/
-headless path remains `Minimal` with the `software` reason for every role. The
+sampled path is available, and a global `Minimal` selection keeps
+`tier=reduced` with `blur_active=1`. The sampled pass is never traded for a
+tier selection; the milky complement is reserved for a genuinely absent or
+failed sampled pass (`no-sampled-blur`) or the software path. This is the
+T-21.5 native flicker fix (ADR [0211](adr/0211-persistent-chrome-stability-and-blur-cache.md)).
+Transient roles follow the ladder to `Minimal`. The software/headless path
+remains `Minimal` with the `software` reason for every role. The
 render path resolves each chrome panel through `effective_material_for_role`,
 so the floor applies to the actual backdrop/blur pass, not just the protocol.
 `df_output` is v4: the additive `material_role_state` event carries
@@ -720,19 +721,23 @@ diagnostic budget and is reported as `budget_source=env|manual`; otherwise the
 source is `refresh`. Selection uses an EMA plus wall-clock hysteresis (T189d):
 **200 ms** of sustained over-budget frames steps down, **3 s** of clearly
 under-budget frames recovers. Those are the original 12/180 frames at 60 Hz;
-at 120/144 Hz the frame count scales so the window does not shrink. A
-downgrade within 10 s of an upgrade across the same boundary latches that
-boundary: recovery then needs the EMA below 0.4 × budget for 10 s, which stops
-a steady pointer sweep from cycling Full↔Reduced. A successful upgrade clears
-the latch. The synthetic `set degrade-frames <count> <microseconds>` hook feeds
-the real rendered-frame path for headless load tests. A tier can be pinned
-(`set degrade-tier` over the synthetic harness, or `set_degrade_tier`) for a
-deterministic test or feature. The selection never forces a redraw, so the
-idle trace stays flat. The state is reported on a `degrade stats` render-stats
-line (including `down_window_us`, `up_window_us`, and `latched`) and by
-`query degrade`. See [ADR 0015](adr/0015-material-degrade-tiers.md),
-[ADR 0199](adr/0199-refresh-clock-wiring.md), and
-[ADR 0206](adr/0206-refresh-aware-hysteresis.md).
+at 120/144 Hz the frame count scales so the window does not shrink. **Every
+downgrade latches its boundary** (T-21.5); recovery then needs the EMA below
+0.4 × budget for 10 s, which stops a steady pointer sweep from cycling
+Full↔Reduced or Reduced↔Minimal. A successful upgrade clears the latch; the
+normal 3 s window still applies when no boundary is latched. Each tier also
+keeps a smoothed cost estimate: a target whose last EMA was above 1.05 ×
+budget is not promoted into while the current tier is already using more than
+0.5 × budget. The synthetic `set degrade-frames <count> <microseconds>` hook
+feeds the real rendered-frame path for headless load tests. A tier can be
+pinned (`set degrade-tier` over the synthetic harness, or `set_degrade_tier`)
+for a deterministic test or feature. The selection never forces a redraw, so
+the idle trace stays flat. The state is reported on a `degrade stats`
+render-stats line (including `down_window_us`, `up_window_us`, and `latched`)
+and by `query degrade`. See [ADR 0015](adr/0015-material-degrade-tiers.md),
+[ADR 0199](adr/0199-refresh-clock-wiring.md),
+[ADR 0206](adr/0206-refresh-aware-hysteresis.md), and
+[ADR 0211](adr/0211-persistent-chrome-stability-and-blur-cache.md).
 
 ### Light/dark and reduced motion (T-04.4b)
 

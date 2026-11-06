@@ -1,0 +1,85 @@
+T-21.5 native Dock flicker fix — evidence boundary
+===================================================
+
+Status: code + tests landed; native after-run OPEN until the next session cycle.
+Date: 2026-11-05
+Host: DP-1 3840x2160 @ 143.999 Hz, scale 1.5 (2560x1440 logical), amdgpu Lucienne
+
+## Before (live native session, old binary)
+
+The live shell log showed the Dock role changing every 1-7 seconds:
+
+  15:02:03  dock tier=1 blur=1 fallback=0   (Reduced, sampled glass)
+  15:02:04  dock tier=1 blur=0 fallback=4   (floor-missed, milky plate)
+  15:02:11  dock tier=1 blur=1 fallback=0
+  15:02:17  dock tier=0 blur=1 fallback=0   (Full)
+
+The compositor's SIGUSR1 snapshot at 15:04:24:
+
+  degrade stats: tier=minimal budget_us=6944 samples=283678
+    over_budget=10499 downgrades=23 upgrades=21
+    tiers=full:69035,reduced:161684,minimal:52959 latched=1
+  material stats: path=gpu blur_passes=232752 blur_panels=465688
+    blur_draws=232752 blur_downsample_max=16 material_allocations=95
+    material_region_px=8294400 material_region=3840x2160
+  frame timing: p50_us=2103 p95_us=6571 p99_us=8535 budget_us=6944
+
+The material region was the full 4K output because the single padded union of
+the menu bar and Dock covers the screen, and every material frame rebuilt both
+panel blur chains even when the scene behind the Dock was unchanged.
+
+## After (nested reference run on the fixed tree)
+
+Command:
+
+  OUT=/tmp/opencode/t21-motion-fix.png \
+  STATS_OUT=/tmp/opencode/t21-motion-stats.txt \
+  DUMP_COMPOSITOR_STATS=1 FORCE_TIER=full SETTLE=1 \
+  bash scripts/t21-live-capture.sh motion
+
+Material snapshot after the Dock sweep:
+
+  material stats: path=gpu blur_passes=1246 blur_panels=2604
+    blur_draws=1246 blur_skips=2464 blur_downsample_max=16
+    material_allocations=54 material_scene_allocations=2
+    material_panel_allocations=52 material_region_px=2304000
+    material_region=1920x1200
+
+The two panels per material frame produced ~2,464 cache hits over 1,246
+material frames, and allocations stayed flat at 54. The Dock sweep no longer
+rebuilt the Kawase chains for an unchanged scene.
+
+## What changed
+
+- Persistent `Chrome`/`Dock` roles stay at `Reduced` with the sampled pass on
+  when the global controller selects `Minimal`; the Dock no longer swaps to
+  the milky floor-missed plate under transient load (ADR 0211).
+- Every downgrade latches its boundary; recovery needs EMA < 0.4 x budget for
+  10 s. A per-tier cost guard prevents promoting back into a tier whose last
+  EMA was above 1.05 x budget while the current tier is above 0.5 x budget.
+- Panel blur chains are cached by scene generation/commit, panel source, blur
+  spec, chain size, and scale. A rebuild advances the panel commit so a
+  changed blur damages the panel even when its geometry did not move.
+- `material stats` adds `blur_skips`.
+
+## Tests
+
+- cargo test -p dragonfruit-compositor (all suites) — PASS
+- cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings — PASS
+- cargo fmt -p dragonfruit-compositor -- --check — PASS
+- make qml-test — 83/83 PASS
+- make e2e — PASS (headless scripted half; clean teardown)
+- make t21-degrade-load — PASS; docs/captures/t21-degrade-load.txt regenerated
+
+## Open
+
+- Native after-run: restart the session with the new release binary
+  (`make native-rebuild` or `make native-reboot`), run a 60 s Dock sweep, and
+  confirm:
+    * no `dock ... blur=0 fallback=4` while the pointer is active;
+    * `degrade stats` shows no new downgrade/upgrade pair during the sweep;
+    * `blur_skips` advances and `blur_passes`/`blur_draws` no longer imply a
+      rebuilt chain on every frame;
+    * `material_allocations` and the region are flat.
+- F4 region tiling (separate top/bottom scene textures) remains the next 4K
+  performance step; F6 VRR isolation remains a rule-out run.

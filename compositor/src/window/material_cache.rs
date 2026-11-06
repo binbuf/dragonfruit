@@ -24,7 +24,9 @@ use std::hash::{Hash, Hasher};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::utils::CommitCounter;
-use smithay::utils::{Buffer, Physical, Scale, Size};
+use smithay::utils::{Buffer, Physical, Rectangle, Scale, Size};
+
+use crate::window::blur::BlurSpec;
 
 /// The allocation identity of a scene texture.
 ///
@@ -74,6 +76,10 @@ pub(crate) struct SceneTextureCache<T> {
     allocations: u64,
     id: Id,
     commit: CommitCounter,
+    /// Advances when the texture is reallocated or its damage tracker is
+    /// reset. Panel blur caches include it so a fresh/blank scene texture
+    /// can never inherit a panel's previous blur result.
+    generation: u64,
     /// The damage tracker for the offscreen scene texture. It is reused while
     /// the region texture key is unchanged, so an unchanged scene renders
     /// nothing; a reallocation or region-size/scale change resets it and
@@ -89,6 +95,7 @@ impl<T> Default for SceneTextureCache<T> {
             allocations: 0,
             id: Id::new(),
             commit: CommitCounter::default(),
+            generation: 0,
             tracker: None,
         }
     }
@@ -107,6 +114,13 @@ impl<T> SceneTextureCache<T> {
     /// The scene element's commit, advanced by [`Self::note_scene_change`].
     pub(crate) fn commit(&self) -> CommitCounter {
         self.commit
+    }
+
+    /// The scene texture's content generation. It changes on reallocation and
+    /// on a damage-tracker reset, so a panel blur cache keyed by it cannot
+    /// reuse pixels from a blank or re-scoped texture.
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// Advance the scene commit when the offscreen scene changed this frame.
@@ -150,6 +164,7 @@ impl<T> SceneTextureCache<T> {
         self.key = Some(key);
         self.tracker = None;
         self.allocations += 1;
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// Lifetime allocation count (test/diagnostic evidence).
@@ -167,6 +182,7 @@ impl<T> SceneTextureCache<T> {
     /// Install the scene damage tracker for `key`.
     pub(crate) fn set_tracker(&mut self, key: SceneTextureKey, tracker: OutputDamageTracker) {
         self.tracker = Some((key, tracker));
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// The scene damage tracker, if one has been installed.
@@ -197,18 +213,61 @@ impl PanelKey {
     }
 }
 
+/// Everything that can change a panel's blurred pixels.
+///
+/// The Dock's own hover surface is not part of the sampled scene, so a pointer
+/// sweep over the Dock leaves this key unchanged and the cached blur can be
+/// reused. A scene commit, a panel/source move, a blur-spec change, or an
+/// output scale/chain change invalidates it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PanelBlurKey {
+    scene_generation: u64,
+    scene_commit: CommitCounter,
+    scene_src: Rectangle<f64, Buffer>,
+    spec: BlurSpec,
+    chain_size: Size<i32, Physical>,
+    scale: (u64, u64),
+}
+
+impl PanelBlurKey {
+    pub(crate) fn new(
+        scene_generation: u64,
+        scene_commit: CommitCounter,
+        scene_src: Rectangle<f64, Buffer>,
+        spec: BlurSpec,
+        chain_size: Size<i32, Physical>,
+        scale: Scale<f64>,
+    ) -> Self {
+        Self {
+            scene_generation,
+            scene_commit,
+            scene_src,
+            spec,
+            chain_size,
+            scale: (scale.x.to_bits(), scale.y.to_bits()),
+        }
+    }
+}
+
 /// One panel's reusable Kawase textures plus its stable render-element id.
 #[derive(Debug)]
 pub(crate) struct PanelTextureSlot<T> {
     id: Id,
+    /// The panel's own commit, advanced only when the cached blur is rebuilt.
+    /// A scene change that alters the blurred pixels therefore damages the
+    /// panel even when its geometry did not move.
+    commit: CommitCounter,
     textures: Vec<T>,
+    blur_key: Option<PanelBlurKey>,
 }
 
 impl<T> PanelTextureSlot<T> {
     fn new() -> Self {
         Self {
             id: Id::new(),
+            commit: CommitCounter::default(),
             textures: Vec::new(),
+            blur_key: None,
         }
     }
 
@@ -217,9 +276,37 @@ impl<T> PanelTextureSlot<T> {
         &self.id
     }
 
+    /// The panel element's commit, advanced whenever its blur is rebuilt.
+    pub(crate) fn commit(&self) -> CommitCounter {
+        self.commit
+    }
+
     /// The Kawase-chain textures for this panel.
     pub(crate) fn textures_mut(&mut self) -> &mut Vec<T> {
         &mut self.textures
+    }
+
+    /// The composed result of the last successful Kawase chain.
+    pub(crate) fn last_texture(&self) -> Option<&T> {
+        self.textures.last()
+    }
+
+    /// Whether the cached chain can be reused for `key`.
+    pub(crate) fn blur_cache_hit(&self, key: &PanelBlurKey) -> bool {
+        self.blur_key.as_ref() == Some(key) && !self.textures.is_empty()
+    }
+
+    /// Invalidate the cached chain before a rebuild. Keeping the old key after
+    /// a failed render would let the next frame sample a partially written
+    /// texture.
+    pub(crate) fn invalidate_blur_cache(&mut self) {
+        self.blur_key = None;
+    }
+
+    /// Record a successful rebuild and advance the panel's damage commit.
+    pub(crate) fn set_blur_key(&mut self, key: PanelBlurKey) {
+        self.blur_key = Some(key);
+        self.commit.increment();
     }
 
     #[cfg(test)]
@@ -425,6 +512,122 @@ mod tests {
     }
 
     #[test]
+    fn a_panel_blur_key_changes_with_scene_source_spec_and_scale() {
+        let spec = crate::window::blur::BlurSpec::new(24.0, 10.0);
+        let src: Rectangle<f64, Buffer> = Rectangle::new((0.0, 0.0).into(), (10.0, 10.0).into());
+        let chain = Size::<i32, Physical>::from((1920, 1080));
+        let scale = Scale::from(1.5);
+        let base = PanelBlurKey::new(1, CommitCounter::default(), src, spec, chain, scale);
+
+        assert_eq!(
+            base,
+            PanelBlurKey::new(1, CommitCounter::default(), src, spec, chain, scale)
+        );
+
+        let mut commit = CommitCounter::default();
+        commit.increment();
+        assert_ne!(
+            base,
+            PanelBlurKey::new(1, commit, src, spec, chain, scale),
+            "a scene commit must invalidate the cached blur"
+        );
+        assert_ne!(
+            base,
+            PanelBlurKey::new(2, CommitCounter::default(), src, spec, chain, scale),
+            "a scene generation change must invalidate the cached blur"
+        );
+        let moved: Rectangle<f64, Buffer> = Rectangle::new((1.0, 0.0).into(), (10.0, 10.0).into());
+        assert_ne!(
+            base,
+            PanelBlurKey::new(1, CommitCounter::default(), moved, spec, chain, scale),
+            "a panel source move must invalidate the cached blur"
+        );
+        assert_ne!(
+            base,
+            PanelBlurKey::new(
+                1,
+                CommitCounter::default(),
+                src,
+                crate::window::blur::BlurSpec::new(12.0, 10.0),
+                chain,
+                scale,
+            ),
+            "a blur-spec change must invalidate the cached blur"
+        );
+        assert_ne!(
+            base,
+            PanelBlurKey::new(
+                1,
+                CommitCounter::default(),
+                src,
+                spec,
+                Size::<i32, Physical>::from((1280, 720)),
+                scale,
+            ),
+            "a chain-size change must invalidate the cached blur"
+        );
+        assert_ne!(
+            base,
+            PanelBlurKey::new(
+                1,
+                CommitCounter::default(),
+                src,
+                spec,
+                chain,
+                Scale::from(2.0),
+            ),
+            "a scale change must invalidate the cached blur"
+        );
+    }
+
+    #[test]
+    fn a_panel_blur_rebuild_advances_its_damage_commit() {
+        let mut slots: PanelTextureSlots<u32> = PanelTextureSlots::default();
+        let dock = PanelKey::new("dock", 2, 7);
+        let src: Rectangle<f64, Buffer> = Rectangle::new((0.0, 0.0).into(), (10.0, 10.0).into());
+        let key = PanelBlurKey::new(
+            1,
+            CommitCounter::default(),
+            src,
+            crate::window::blur::BlurSpec::new(24.0, 10.0),
+            Size::<i32, Physical>::from((1920, 1080)),
+            Scale::from(1.0),
+        );
+        let slot = slots.slot(&dock);
+        assert!(!slot.blur_cache_hit(&key));
+        assert_eq!(slot.commit(), CommitCounter::default());
+
+        slot.textures_mut().push(7);
+        slot.set_blur_key(key);
+        assert!(slot.blur_cache_hit(&key));
+        let first_commit = slot.commit();
+        assert_ne!(first_commit, CommitCounter::default());
+
+        // A cache hit does not advance the commit; a rebuild does.
+        assert!(slot.blur_cache_hit(&key));
+        assert_eq!(slot.commit(), first_commit);
+        let mut changed = key;
+        changed.scene_generation += 1;
+        slot.set_blur_key(changed);
+        assert_ne!(slot.commit(), first_commit);
+    }
+
+    #[test]
+    fn a_scene_reallocation_or_tracker_reset_advances_generation() {
+        let mut cache: SceneTextureCache<u32> = SceneTextureCache::default();
+        let key = SceneTextureKey::new(size(400, 80), output(1920, 1200), 1.0.into());
+        assert_eq!(cache.generation(), 0);
+
+        cache.install(1, key);
+        assert_eq!(cache.generation(), 1);
+        cache.set_tracker(
+            key,
+            OutputDamageTracker::new((400, 80), Scale::from(1.0), Transform::Normal),
+        );
+        assert_eq!(cache.generation(), 2);
+    }
+
+    #[test]
     fn panel_ids_are_stable_per_key_and_independent_of_order() {
         let mut slots: PanelTextureSlots<u32> = PanelTextureSlots::default();
         let dock = PanelKey::new("dock", 2, 7);
@@ -559,6 +762,24 @@ mod tests {
             damage(&mut tracker, &[wallpaper.clone(), dock.clone()]),
             None
         );
+
+        // A rebuilt panel blur advances the panel commit even when its
+        // geometry did not move. That must damage the panel, not the full
+        // output: this is the F5 stale-edge guard.
+        let mut rebuilt = dock.clone();
+        rebuilt.commit.increment();
+        let panel_damage =
+            damage(&mut tracker, &[wallpaper.clone(), rebuilt]).expect("panel rebuild damage");
+        assert!(
+            !panel_damage.contains(&Rectangle::from_size(output)),
+            "a panel rebuild must not damage the full output: {panel_damage:?}"
+        );
+        for rect in &panel_damage {
+            assert!(
+                rect.intersection(dock_rect).is_some(),
+                "panel rebuild damage outside the Dock: {rect:?}"
+            );
+        }
 
         // Moving the Dock damages only the old and new panel rects; the
         // full-output wallpaper element stays untouched.
