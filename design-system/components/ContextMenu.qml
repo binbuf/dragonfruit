@@ -23,6 +23,21 @@ Item {
     property int submenuHighlightedIndex: -1
     property int preferredWidth: Theme.controls.contextMenu.minWidth
     property string accessibleName: ""
+    // T202: the shared detached-menu preset and backdrop ownership. App-owned
+    // menus keep `local` and paint the deterministic opaque plate; the shell
+    // tray menu and the Dock set `trusted` because the compositor owns their
+    // sampled backdrop.
+    property string materialPreset: "menuDetached"
+    property string materialBackdrop: "local"
+    readonly property bool trustedBackdrop: materialBackdrop === "trusted"
+    readonly property real cornerRadius: Material.menuRadius(materialPreset)
+    readonly property color surfaceFill:
+        Material.menuFill(materialPreset, materialBlurActive, materialTier,
+                          materialFallback, trustedBackdrop)
+    readonly property var glassResolution:
+        Material.menuResolution(materialPreset, materialBlurActive, materialTier,
+                                materialFallback, trustedBackdrop)
+    readonly property real closeScale: Material.menuCloseScale(materialPreset)
     // T-21.2c: the shell applies the compositor's Popup role state. The main
     // panel takes the milky plate when the sampled pass is absent; the nested
     // submenu stays opaque (it already is) and only records the same reason.
@@ -100,6 +115,28 @@ Item {
         }
         return out;
     }
+    // T202: independently keyed material regions for the shell/Dock overlay.
+    // Coordinates are root-local; the owner maps them to its surface. The
+    // main panel carries the detached preset and the nested panel is a
+    // separate detached card so its rounded corners are not lost in a union.
+    readonly property var regions: {
+        var radius = root.cornerRadius;
+        var out = [{
+            key: "menu", preset: root.materialPreset,
+            x: 0, y: 0, w: root.width, h: root.height,
+            tl: radius, tr: radius, br: radius, bl: radius, overscan: 20
+        }];
+        if (root.openSubmenuIndex >= 0 && submenuPanel.width > 0) {
+            out.push({
+                key: "submenu", preset: "menuDetached",
+                x: submenuPanel.x, y: submenuPanel.y,
+                w: submenuPanel.width, h: submenuPanel.height,
+                tl: radius, tr: radius, br: radius, bl: radius, overscan: 20
+            });
+        }
+        return out;
+    }
+
     // The bounding box of the menu plus any open submenu, in root
     // coordinates. A caller that commits one popover rectangle uses this so
     // the nested panel is not clipped.
@@ -235,8 +272,8 @@ Item {
     width: Math.max(root.preferredWidth,
                     rowColumn.implicitWidth + 2 * Theme.controls.contextMenu.padding)
     height: rowColumn.implicitHeight + 2 * Theme.controls.contextMenu.padding
-    scale: root.open ? 1.0 : 0.97
-    transformOrigin: Item.Top
+    scale: root.open ? 1.0 : root.closeScale
+    transformOrigin: Item.TopLeft
     opacity: root.open ? 1.0 : 0.0
     z: 2000
     focus: root.open
@@ -298,17 +335,17 @@ Item {
     Shadow {
         width: root.width
         height: root.height
-        radius: Theme.controls.contextMenu.radius
+        radius: root.cornerRadius
         blur: Theme.controls.popup.shadowBlur
     }
 
     Rectangle {
         objectName: "contextMenuSurface"
         anchors.fill: parent
-        radius: Theme.controls.contextMenu.radius
-        // The compositor material's scrim: token alpha in the fill so the
-        // sampled backdrop and liquid-glass pass read through (T-20.3).
-        color: Material.popupFill(root.materialBlurActive)
+        radius: root.cornerRadius
+        // The compositor material's scrim: resolved preset alpha/tint in the
+        // fill so the sampled backdrop and liquid-glass pass read through.
+        color: root.surfaceFill
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true
@@ -441,14 +478,17 @@ Item {
         Shadow {
             width: subPanel.width
             height: subPanel.height
-            radius: Theme.controls.contextMenu.radius
+            radius: root.cornerRadius
             blur: Theme.controls.popup.shadowBlur
         }
 
         Rectangle {
+            objectName: "submenuSurface"
             anchors.fill: parent
-            radius: Theme.controls.contextMenu.radius
-            color: Theme.color.surfaceElevated
+            radius: root.cornerRadius
+            // Submenus are detached cards even when the parent is attached;
+            // they use the same resolved detached fill and rounded corners.
+            color: root.surfaceFill
             border.width: Theme.controls.window.borderWidth
             border.color: Theme.color.border
             antialiasing: true

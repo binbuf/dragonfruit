@@ -165,7 +165,7 @@ FocusScope {
         anchors.fill: parent
         anchors.bottomMargin: root.arrowSize / 2
         radius: root.radius
-        color: Material.popupFill(root.materialBlurActive)
+        color: Material.menuFill("menuDetached", root.materialBlurActive, root.materialTier, root.materialFallback, true)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true
@@ -178,7 +178,7 @@ FocusScope {
         width: root.arrowSize
         height: root.arrowSize
         rotation: 45
-        color: Material.popupFill(root.materialBlurActive)
+        color: Material.menuFill("menuDetached", root.materialBlurActive, root.materialTier, root.materialFallback, true)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         x: {

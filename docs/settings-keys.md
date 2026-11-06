@@ -79,7 +79,7 @@ freezes the v1 key set.
 | `menu.clock.showDate` | b | true | | apps/settings | shell/MenuBar clock | Show the date beside the time in the menu-bar clock (T-15.9b). |
 | `menu.clock.showSeconds` | b | false | | apps/settings | shell/MenuBar clock | Display the menu-bar clock with seconds (T-15.9b). |
 | `menu.control.wifi` | b | true | | apps/settings | shell/MenuBar status row | Show the Wi-Fi control in the menu bar when its adapter is present (T-15.9b). |
-| `menu.control.bluetooth` | b | true | | apps/settings | shell/MenuBar status row | Show the Bluetooth control in the menu bar when its adapter is present (T-15.9b). |
+| `menu.control.bluetooth` | b | true | | apps/settings | shell/MenuBar status row | Show the Bluetooth control and its power/device status menu in the menu bar when its adapter is present (T-15.9b/T202). |
 | `menu.control.battery` | b | true | | apps/settings | shell/MenuBar status row | Show the Battery control in the menu bar when its adapter is present (T-15.9b). |
 | `menu.control.volume` | b | true | | apps/settings | shell/MenuBar status row | Show the Sound control in the menu bar when its adapter is present (T-15.9b). |
 | `menu.control.focus` | b | true | | apps/settings | shell/MenuBar status row | Show the Focus control in the menu bar when its service is present (T-15.9b). |

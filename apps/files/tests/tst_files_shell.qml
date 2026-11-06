@@ -394,6 +394,29 @@ Item {
             shell.contextMenu.hide();
         }
 
+        function test_context_menus_use_the_local_menu_fallback() {
+            var shell = make({});
+            var menu = shell.contextMenu;
+            compare(menu.materialPreset, "menuDetached");
+            compare(menu.materialBackdrop, "local",
+                    "Files has no trusted compositor backdrop");
+            var desktop = makeDesktop();
+            compare(desktop.contextMenu.materialBackdrop, "local");
+            var savedRollout = Glass.rollout;
+            try {
+                Glass.rollout = "replacement";
+                var resolved = Glass.resolve("menuDetached", {
+                    scheme: Theme.dark ? "dark" : "light",
+                    rollout: "replacement", backend: "software", tier: "full"
+                });
+                fuzzyCompare(menu.surfaceFill.a, resolved.alpha, 1e-4);
+                verify(menu.surfaceFill.a >= 0.9,
+                       "an app-owned menu paints the opaque local plate");
+            } finally {
+                Glass.rollout = savedRollout;
+            }
+        }
+
         function test_right_click_opens_the_item_menu() {
             var shell = make();
             shell.browser.navigate(Files.viewFixtureUri);

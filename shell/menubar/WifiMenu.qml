@@ -21,6 +21,8 @@ Item {
     property bool materialBlurActive: true
     property int materialTier: 0
     property int materialFallback: 0
+    property string materialPreset: "statusMenu"
+    property string materialBackdrop: "trusted"
     readonly property string materialFallbackReason:
         Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
@@ -125,6 +127,9 @@ Item {
         accessibleRole: Accessible.PopupMenu
         accessibleName: qsTr("Wi-Fi")
         escapeCloses: true
+        motionPreset: "menu"
+        materialPreset: root.materialPreset
+        materialBackdrop: root.materialBackdrop
         materialBlurActive: root.materialBlurActive
         materialTier: root.materialTier
         materialFallback: root.materialFallback

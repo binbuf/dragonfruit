@@ -25,6 +25,7 @@ Item {
         Component { id: wifiMenuComponent; WifiMenu { } }
         Component { id: volumeMenuComponent; VolumeMenu { } }
         Component { id: batteryMenuComponent; BatteryMenu { } }
+        Component { id: bluetoothMenuComponent; BluetoothMenu { } }
 
         SignalSpy { id: wifiJoinSpy; signalName: "joinRequested" }
         SignalSpy { id: wifiRefreshSpy; signalName: "refreshRequested" }
@@ -38,6 +39,9 @@ Item {
         SignalSpy { id: closedSpy; signalName: "appMenuClosed" }
         SignalSpy { id: triggeredSpy; signalName: "appMenuTriggered" }
         SignalSpy { id: traySpy; signalName: "trayMenuTriggered" }
+        SignalSpy { id: bluetoothPowerSpy; signalName: "bluetoothPowerToggleRequested" }
+        SignalSpy { id: bluetoothDeviceSpy; signalName: "bluetoothDeviceToggled" }
+        SignalSpy { id: bluetoothSettingsSpy; signalName: "bluetoothSettingsRequested" }
 
         function make(component, props) {
             var obj = createTemporaryObject(component, stage, props || {});
@@ -482,6 +486,210 @@ Item {
             fuzzyCompare(actual.g, expected.g, 0.001, label + " green");
             fuzzyCompare(actual.b, expected.b, 0.001, label + " blue");
             fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
+        }
+
+        // -- T202: menu families ------------------------------------------
+        function bluetoothModel(overrides) {
+            var model = {
+                state: "available", present: true, powered: true,
+                discovering: false, readOnly: false,
+                label: "Bluetooth on",
+                knownDevices: [
+                    { address: "AA:BB:CC:DD:EE:FF", name: "Headset",
+                      connected: true },
+                    { address: "11:22:33:44:55:66", name: "Speaker",
+                      connected: false }
+                ]
+            };
+            for (var key in (overrides || {}))
+                model[key] = overrides[key];
+            return model;
+        }
+
+        function test_menu_family_presets_and_regions() {
+            var savedRollout = Glass.rollout;
+            try {
+            Glass.rollout = "replacement";
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 800,
+                appName: "Test",
+                appMenuModel: [ { title: "File", items: [
+                    { label: "Open With", type: "submenu",
+                      submenu: [ { label: "Text" }, { label: "Image" } ] }
+                ] } ],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                statusItems: defaultStatus(),
+                wifiMenu: { state: "available", label: "Wi-Fi", networks: [] },
+                trayMenu: [ { id: 1, type: "item", label: "Show", enabled: true } ]
+            });
+            bar.openMenu(2);
+            waitForRendering(stage);
+            compare(bar.dropdownPreset, "menuAttached");
+            verify(bar.dropdownRegions.length >= 1);
+            compare(bar.dropdownRegions[0].preset, "menuAttached");
+            compare(bar.dropdownRegions[0].tl, 0);
+            compare(bar.dropdownRegions[0].tr, 0);
+            fuzzyCompare(bar.dropdownRegions[0].br,
+                         Theme.controls.contextMenu.attachedRadius, 0.001);
+            var popup = bar.appMenuAt(2).popup;
+            compare(popup.materialPreset, "menuAttached");
+            compare(popup.materialBackdrop, "trusted");
+            compare(popup.motionPreset, "menu");
+            verify(Math.abs(popup.surfaceFill.a
+                            - Glass.resolve("menuAttached", {
+                                  scheme: Theme.dark ? "dark" : "light",
+                                  rollout: "replacement",
+                                  slider: Glass.slider,
+                                  backend: "gpu-sampled", tier: "full"
+                              }).alpha) < 1e-4);
+
+            bar.appMenuAt(2).openSubmenu(0);
+            waitForRendering(stage);
+            verify(bar.dropdownRegions.length >= 2);
+            compare(bar.dropdownRegions[1].preset, "menuDetached");
+
+            bar.closeMenus();
+            bar.openStatusMenu("wifi");
+            waitForRendering(stage);
+            compare(bar.dropdownPreset, "statusMenu");
+            compare(bar.dropdownRegions[0].preset, "statusMenu");
+            compare(findChild(bar, "wifiMenu").popup.materialPreset,
+                    "statusMenu");
+            bar.closeStatusMenu();
+
+            bar.openTrayMenu("app");
+            waitForRendering(stage);
+            compare(bar.dropdownPreset, "menuDetached");
+            compare(bar.dropdownRegions[0].preset, "menuDetached");
+            bar.closeTrayMenu();
+            } finally {
+                Glass.rollout = savedRollout;
+            }
+        }
+
+        function test_menu_close_motion_and_reduce_motion() {
+            var savedReduced = Theme.reducedMotion;
+            Theme.reducedMotion = false;
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 800,
+                appName: "Test",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            bar.openMenu(2);
+            waitForRendering(stage);
+            var popup = bar.appMenuAt(2).popup;
+            compare(Theme.motion.menuClose.fullDuration, 183);
+            fuzzyCompare(popup.closeScale, 0.95, 0.001);
+            compare(popup.motionPreset, "menu");
+            bar.closeMenus();
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, -1, "logical close is immediate");
+            compare(popup.open, false, "interaction closes before the visual exit");
+            // Reopen before the exit timer: the new menu is the live one.
+            bar.openMenu(3);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, 3);
+            compare(bar.appMenuAt(3).popup.open, true);
+            bar.closeMenus();
+
+            Theme.reducedMotion = true;
+            var reduced = make(menuBarComponent, {
+                width: 800,
+                appName: "Test",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            reduced.openMenu(2);
+            waitForRendering(stage);
+            fuzzyCompare(reduced.appMenuAt(2).popup.closeScale, 1.0, 0.001);
+            compare(Theme.motion.menuClose.duration, 0);
+            reduced.closeMenus();
+            Theme.reducedMotion = savedReduced;
+        }
+
+        function test_bluetooth_status_menu_routes_the_action_policy() {
+            bluetoothPowerSpy.clear();
+            bluetoothDeviceSpy.clear();
+            bluetoothSettingsSpy.clear();
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 900,
+                appName: "Test",
+                appMenuModel: [],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                statusItems: [
+                    { id: "bluetooth", icon: "bluetooth",
+                      accessibleName: "Bluetooth", available: true,
+                      enabled: true }
+                ],
+                bluetoothMenu: bluetoothModel({})
+            });
+            bluetoothPowerSpy.target = bar;
+            bluetoothDeviceSpy.target = bar;
+            bluetoothSettingsSpy.target = bar;
+            bar.openStatusMenu("bluetooth");
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "bluetooth");
+            var menu = findChild(bar, "bluetoothMenu");
+            verify(menu !== null);
+            compare(menu.popup.open, true);
+            compare(menu.popup.materialPreset, "statusMenu");
+            compare(menu.materialBackdrop, "trusted");
+            menu.togglePower();
+            compare(bluetoothPowerSpy.count, 1);
+            compare(bluetoothPowerSpy.signalArguments[0][0], false);
+            menu.toggleDevice("11:22:33:44:55:66");
+            compare(bluetoothDeviceSpy.count, 1);
+            compare(bluetoothDeviceSpy.signalArguments[0][0],
+                    "11:22:33:44:55:66");
+            compare(bluetoothDeviceSpy.signalArguments[0][1], true);
+            menu.settingsRequested();
+            compare(bluetoothSettingsSpy.count, 1);
+            bar.closeStatusMenu();
+        }
+
+        function test_bluetooth_absent_read_only_and_menu_bar_gate() {
+            var absent = make(bluetoothMenuComponent, {
+                model: bluetoothModel({ state: "unavailable" })
+            });
+            compare(absent.available, false);
+            compare(absent.writable, false);
+            compare(absent.togglePower(), undefined);
+            var readOnly = make(bluetoothMenuComponent, {
+                model: bluetoothModel({ readOnly: true })
+            });
+            compare(readOnly.available, true);
+            compare(readOnly.writable, false);
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 900,
+                appName: "Test",
+                appMenuModel: [],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                statusItems: [
+                    { id: "bluetooth", icon: "bluetooth",
+                      accessibleName: "Bluetooth", available: true }
+                ],
+                bluetoothMenu: bluetoothModel({ state: "unavailable" })
+            });
+            bar.openStatusMenu("bluetooth");
+            compare(bar.openStatusItem, "", "absent adapter has no menu");
+            var hidden = make(menuBarComponent, {
+                width: 900,
+                statusItems: [
+                    { id: "bluetooth", icon: "bluetooth",
+                      accessibleName: "Bluetooth", available: false }
+                ]
+            });
+            compare(hidden.statusItemAt(0).visible, false);
         }
 
         function test_popup_role_material_covers_every_menu_popover() {

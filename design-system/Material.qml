@@ -39,6 +39,55 @@ QtObject {
                       Theme.color.chromeFallbackFill.b, Theme.material.popupFallbackOpacity);
     }
 
+
+    // T202: the menu family uses the shared optical presets. `preset` is one
+    // of `menuAttached`, `menuDetached` or `statusMenu`; `trusted` says the
+    // surface has the compositor's sampled backdrop behind it. App-owned
+    // surfaces (Files, the desktop, Select) pass false and get the
+    // deterministic opaque plate, never a translucent slab over unfrosted
+    // content. The legacy rollout keeps the existing `popupFill` values.
+    function _menuTierName(tier) {
+        return tier >= 2 ? "minimal" : (tier === 1 ? "reduced" : "full");
+    }
+
+    function _menuBackend(blurActive, fallback, trusted) {
+        if (!trusted || fallback === 2)
+            return "software";
+        return blurActive ? "gpu-sampled" : "gpu-no-sampled-blur";
+    }
+
+    function menuResolution(preset, blurActive, tier, fallback, trusted) {
+        if (Glass.rollout !== "replacement")
+            return null;
+        return Glass.resolve(preset, {
+            scheme: Theme.dark ? "dark" : "light",
+            rollout: "replacement",
+            slider: Glass.slider,
+            reduceTransparency: Glass.reduceTransparency,
+            increaseContrast: Glass.increaseContrast,
+            backend: _menuBackend(blurActive, fallback, trusted),
+            tier: _menuTierName(tier)
+        });
+    }
+
+    function menuFill(preset, blurActive, tier, fallback, trusted) {
+        var resolved = menuResolution(preset, blurActive, tier, fallback, trusted);
+        if (resolved === null)
+            return popupFill(blurActive);
+        return Qt.rgba(resolved.tint, resolved.tint, resolved.tint,
+                       resolved.alpha);
+    }
+
+    function menuRadius(preset) {
+        if (Glass.rollout === "replacement" && preset === "menuAttached")
+            return Theme.controls.contextMenu.attachedRadius;
+        return Theme.controls.contextMenu.radius;
+    }
+
+    function menuCloseScale(preset) {
+        return Theme.reducedMotion ? 1.0 : Theme.controls.contextMenu.closeScale;
+    }
+
     // The Applications drawer's card keeps its own translucent surface tone on
     // the sampled path; without the pass it takes the same milky plate as the
     // popup family.

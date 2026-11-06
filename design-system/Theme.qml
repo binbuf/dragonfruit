@@ -278,14 +278,14 @@ QtObject {
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "adapted"
-                    readonly property string provenance: "The published dark File fit is contaminated by a light crop (REFERENCE.md); named attached-menu baseline 0.62/0.30 pending a controlled recapture. Perceptual mapping is mixed at 0.35, not overlaid at full strength"
+                    readonly property string provenance: "The published dark File fit is contaminated by a light crop (REFERENCE.md); the attached-menu baseline is anchored to the valid dark mid/black context/status family (alpha 0.66 / tint 0.26), mixed 25% toward a deeper adapted baseline. The white row stays open for a controlled recapture."
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
-                        readonly property real neutralAlpha: 0.62
-                        readonly property real neutralTint: 0.3
-                        readonly property real perceptualWeight: 0.35
-                        readonly property real perceptualAlpha: 0.58
-                        readonly property real perceptualTint: 0.34
+                        readonly property real neutralAlpha: 0.65
+                        readonly property real neutralTint: 0.27
+                        readonly property real perceptualWeight: 0.25
+                        readonly property real perceptualAlpha: 0.62
+                        readonly property real perceptualTint: 0.3
                     }
                     readonly property real blur: 10.0
                     readonly property real edge: 0.0
@@ -296,7 +296,7 @@ QtObject {
             readonly property var menuDetached: QtObject {
                 readonly property string role: "popup"
                 readonly property string render: "sampled"
-                readonly property string slider: "none"
+                readonly property string slider: "lightRelative"
                 readonly property var light: QtObject {
                     readonly property string confidence: "measured"
                     readonly property string provenance: "REFERENCE.md common light status/context menus cluster near alpha 0.55 and near-white tint; detached menus are rounded cards"
@@ -333,7 +333,7 @@ QtObject {
             readonly property var statusMenu: QtObject {
                 readonly property string role: "popup"
                 readonly property string render: "sampled"
-                readonly property string slider: "none"
+                readonly property string slider: "lightRelative"
                 readonly property var light: QtObject {
                     readonly property string confidence: "measured"
                     readonly property string provenance: "REFERENCE.md light status menus join the common context-menu cluster; 8pt blur is a local adaptation"
@@ -1020,6 +1020,8 @@ QtObject {
             readonly property int minWidth: 180
             readonly property int shortcutGap: 24
             readonly property int submenuDelay: 150
+            readonly property real attachedRadius: 12.5
+            readonly property real closeScale: 0.95
         }
         readonly property var shortcutHint: QtObject {
             readonly property int gap: 2
@@ -1232,8 +1234,8 @@ QtObject {
             readonly property var curve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0]
         }
         readonly property QtObject menuClose: QtObject {
-            readonly property int fullDuration: 100
-            readonly property int duration: tokens.reducedMotion ? 0 : 100
+            readonly property int fullDuration: 183
+            readonly property int duration: tokens.reducedMotion ? 0 : 183
             readonly property var curve: [0.4, 0.0, 1.0, 1.0, 1.0, 1.0]
         }
         readonly property QtObject popupOpen: QtObject {

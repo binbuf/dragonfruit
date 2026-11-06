@@ -171,6 +171,19 @@ The top menu bar hosts, from left to right:
 - The Control Center entry point
 - A Mission Control button/gesture target
 
+The menu family uses the shared glass presets (T202): the menu-bar dropdown is
+`menuAttached`, the tray context menu and Dock context menu are
+`menuDetached`, and the Wi-Fi/Bluetooth/volume/battery popovers are
+`statusMenu`; submenus are detached cards. The shell declares each open panel
+as a material region on the `menubar-popup`/`dock-popup` overlay with the
+attached square-top/rounded-bottom or detached all-rounded corners. The
+overlay accepts pointer input only while the menu is logically open; the
+183 ms, 0.95-scale exit tail is visual only and can be retargeted by a reopen.
+App-owned Files/desktop context menus paint the opaque local fallback because
+they have no trusted compositor backdrop. The Bluetooth slot now reads the
+existing bridge-host adapter and Menu Bar visibility key; it raises the same
+power/device/settings actions as the Control Center tile and hides on absence.
+
 `menu.autoHide` is applied per output by the compositor (T201). `never` keeps
 the bar over the desktop and fullscreen; `always` starts concealed and reveals
 from the top edge or Control-F2; `full-screen` is normal on the desktop and

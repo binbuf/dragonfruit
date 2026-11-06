@@ -387,6 +387,13 @@ rules: `bluetoothd` gone or no controller hides the tile and disables the pane's
 controls with a one-line note; a `BluetoothOutcome::Denied` write is surfaced
 per action without degrading the read state.
 
+The menu-bar Bluetooth status slot (T202) reads the same bridge-host view and
+honours the `menu.control.bluetooth` key. It raises the tile's power and
+known-device connect actions plus the Settings entry point through the existing
+shell slots; it never talks to BlueZ directly. An absent daemon hides the slot,
+an error view keeps it visible but inert, and a `readOnly` view disables every
+write while leaving the live state readable.
+
 ## The storage path (T-15.2a)
 
 The storage adapter, `dragonfruit-storage` (`services/storage`), gives a pane

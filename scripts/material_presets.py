@@ -56,7 +56,7 @@ PRESET_NAMES = (
 SCHEMES = ("light", "dark")
 ROLES = ("chrome", "dock", "popup", "drawer")
 RENDER_MODES = ("sampled", "veil", "solid")
-SLIDER_MODES = ("none", "lightAttached")
+SLIDER_MODES = ("none", "lightAttached", "lightRelative")
 CONFIDENCES = ("measured", "measured-effective", "observed-luma", "adapted", "baseline")
 ROLLOUTS = ("legacy", "replacement")
 BACKENDS = ("gpu-sampled", "gpu-no-sampled-blur", "software")
@@ -77,9 +77,11 @@ LEGACY_ROLE_TOKENS = {
 # Roles that keep the persistent material floor (ADR 0203/0211).
 PERSISTENT_ROLES = ("chrome", "dock")
 
-# The only preset whose optical response follows the measured light File
-# slider anchors. Dark and every other preset keep their named baseline.
+# The preset whose optical response follows the measured light File slider
+# anchors directly. The detached/status menu presets follow the same measured
+# curve as a relative adjustment (their default fits are preserved).
 SLIDER_PRESET = "menuAttached"
+RELATIVE_SLIDER_PRESETS = ("menuDetached", "statusMenu")
 
 
 class PresetError(ValueError):
@@ -222,8 +224,12 @@ def validate(data: dict) -> list[str]:
         _string(preset, "role", path, errors, allowed=ROLES)
         _string(preset, "render", path, errors, allowed=RENDER_MODES)
         slider_mode = _string(preset, "slider", path, errors, allowed=SLIDER_MODES)
-        if slider_mode not in (None, "none") and name != SLIDER_PRESET:
-            errors.append(f"{path}.slider: only {SLIDER_PRESET} follows the slider")
+        if slider_mode not in (None, "none") and name != SLIDER_PRESET \
+                and name not in RELATIVE_SLIDER_PRESETS:
+            errors.append(
+                f"{path}.slider: only {SLIDER_PRESET} and "
+                f"{', '.join(RELATIVE_SLIDER_PRESETS)} follow the slider"
+            )
         if name == "menuBarVeil":
             strip = _number(preset, "stripHeight", path, errors, low=1.0, high=128.0)
             extent = _number(preset, "extent", path, errors, low=1.0, high=512.0)
@@ -465,6 +471,20 @@ def resolve(
             position = _clamp01(slider, float(glass["slider"]["defaultPosition"]))
             alpha, tint = _interpolate(glass["slider"]["lightAnchors"], position)
             slider_applied = True
+        elif preset.get("slider") == "lightRelative" and scheme == "light":
+            # The measured curve is the attached File response. Other light
+            # menu presets keep their own default fit and move relative to it:
+            # alpha scales by the attached alpha ratio, tint takes the attached
+            # tint delta. At the default position the preset is unchanged.
+            anchors = glass["slider"]["lightAnchors"]
+            default_position = float(glass["slider"]["defaultPosition"])
+            position = _clamp01(slider, default_position)
+            base_alpha, base_tint = _interpolate(anchors, default_position)
+            current_alpha, current_tint = _interpolate(anchors, position)
+            if base_alpha > 0.0:
+                alpha = _clamp01(alpha * current_alpha / base_alpha, alpha)
+            tint = _clamp01(tint + (current_tint - base_tint), tint)
+            slider_applied = True
 
     # Reduce Transparency is the explicit override: it wins over the slider and
     # any sampled path, in both rollout looks, and uses the scheme's opaque
@@ -609,9 +629,11 @@ def self_test() -> list[str]:
                       rollout="replacement")
     check(0.552 < quarter["alpha"] < 0.732, "light slider interpolates below the midpoint")
 
-    # Unmeasured slider roles are unchanged by the slider.
+    # Unmeasured slider roles are unchanged by the slider. The detached and
+    # status menus follow the measured curve by the documented relative
+    # adjustment and preserve their default fits at the default position.
     for name in PRESET_NAMES:
-        if name == SLIDER_PRESET:
+        if name == SLIDER_PRESET or name in RELATIVE_SLIDER_PRESETS:
             continue
         low = resolve(data, name, scheme="light", slider=0.0, rollout="replacement")
         high = resolve(data, name, scheme="light", slider=1.0, rollout="replacement")
@@ -619,6 +641,29 @@ def self_test() -> list[str]:
               f"{name}: slider must not apply")
         near(low["alpha"], high["alpha"], f"{name}: slider changed alpha")
         near(low["tint"], high["tint"], f"{name}: slider changed tint")
+
+    for name in RELATIVE_SLIDER_PRESETS:
+        default = resolve(data, name, scheme="light", rollout="replacement")
+        default_position = float(data["glass"]["slider"]["defaultPosition"])
+        explicit = resolve(data, name, scheme="light", slider=default_position,
+                           rollout="replacement")
+        near(default["alpha"], explicit["alpha"],
+             f"{name}: relative default alpha must be unchanged")
+        near(default["tint"], explicit["tint"],
+             f"{name}: relative default tint must be unchanged")
+        low = resolve(data, name, scheme="light", slider=0.0, rollout="replacement")
+        high = resolve(data, name, scheme="light", slider=1.0, rollout="replacement")
+        check(low["sliderApplied"] and high["sliderApplied"],
+              f"{name}: relative slider must be recorded")
+        check(low["alpha"] > default["alpha"] > high["alpha"],
+              f"{name}: relative alpha must follow the attached curve")
+        check(low["tint"] < default["tint"] < high["tint"],
+              f"{name}: relative tint must follow the attached curve")
+        dark = resolve(data, name, scheme="dark", slider=0.0, rollout="replacement")
+        dark_high = resolve(data, name, scheme="dark", slider=1.0, rollout="replacement")
+        check(not dark["sliderApplied"] and not dark_high["sliderApplied"],
+              f"{name}: dark must not follow the light slider")
+        near(dark["alpha"], dark_high["alpha"], f"{name}: dark slider alpha")
 
     # Dark is a baseline, not a light-slider response.
     dark_low = resolve(data, "menuAttached", scheme="dark", slider=0.0, rollout="replacement")

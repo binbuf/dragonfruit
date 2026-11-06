@@ -436,6 +436,8 @@ pub mod component {
         pub const MIN_WIDTH: f32 = 180.0_f32;
         pub const SHORTCUT_GAP: f32 = 24.0_f32;
         pub const SUBMENU_DELAY: f32 = 150.0_f32;
+        pub const ATTACHED_RADIUS: f32 = 12.5_f32;
+        pub const CLOSE_SCALE: f32 = 0.95_f32;
     }
     pub mod shortcut_hint {
         pub const GAP: f32 = 2.0_f32;
@@ -821,14 +823,14 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "adapted";
-                pub const PROVENANCE: &str = "The published dark File fit is contaminated by a light crop (REFERENCE.md); named attached-menu baseline 0.62/0.30 pending a controlled recapture. Perceptual mapping is mixed at 0.35, not overlaid at full strength";
+                pub const PROVENANCE: &str = "The published dark File fit is contaminated by a light crop (REFERENCE.md); the attached-menu baseline is anchored to the valid dark mid/black context/status family (alpha 0.66 / tint 0.26), mixed 25% toward a deeper adapted baseline. The white row stays open for a controlled recapture.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.62_f32;
-                    pub const NEUTRAL_TINT: f32 = 0.3_f32;
-                    pub const PERCEPTUAL_WEIGHT: f32 = 0.35_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.58_f32;
-                    pub const PERCEPTUAL_TINT: f32 = 0.34_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.65_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.27_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.25_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.62_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.3_f32;
                 }
                 pub const BLUR: f32 = 10.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
@@ -839,7 +841,7 @@ pub mod glass {
         pub mod menu_detached {
             pub const ROLE: &str = "popup";
             pub const RENDER: &str = "sampled";
-            pub const SLIDER: &str = "none";
+            pub const SLIDER: &str = "lightRelative";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
                 pub const PROVENANCE: &str = "REFERENCE.md common light status/context menus cluster near alpha 0.55 and near-white tint; detached menus are rounded cards";
@@ -876,7 +878,7 @@ pub mod glass {
         pub mod status_menu {
             pub const ROLE: &str = "popup";
             pub const RENDER: &str = "sampled";
-            pub const SLIDER: &str = "none";
+            pub const SLIDER: &str = "lightRelative";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
                 pub const PROVENANCE: &str = "REFERENCE.md light status menus join the common context-menu cluster; 8pt blur is a local adaptation";
@@ -1226,7 +1228,7 @@ pub mod motion {
         reduced_duration_ms: 0_u32,
     };
     pub const MENU_CLOSE: Motion = Motion {
-        duration_ms: 100_u32,
+        duration_ms: 183_u32,
         curve: [0.4_f32, 0.0_f32, 1.0_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };
