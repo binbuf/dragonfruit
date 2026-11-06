@@ -175,6 +175,19 @@ pub fn surface_under(
     if state.overview_input_owner() == InputOwner::Overview {
         return None;
     }
+    // A titlebar is compositor chrome drawn as part of its window's scene.
+    // When it is the topmost thing under the pointer, a lower window's client
+    // surface must not receive the pointer/touch: the titlebar handlers own
+    // that point instead. `window_hit_at` walks the same stacking order the
+    // scene renders, so a titlebar covered by a higher window is not treated
+    // as exposed here either.
+    let hit = Point::from((point.x.floor() as i32, point.y.floor() as i32));
+    if state
+        .window_hit_at(hit, false)
+        .is_some_and(|(_, titlebar)| titlebar)
+    {
+        return None;
+    }
     if let Some((window, window_loc)) = state.space.element_under(point) {
         if let Some((surface, location)) =
             window.surface_under(point - window_loc.to_f64(), WindowSurfaceType::ALL)
@@ -550,10 +563,10 @@ where
                         }
                     }
                     // Right-click or Control-click on the titlebar opens the
-                    // window menu (T-01.4). Like the left press, a
-                    // floating/zoomed titlebar is consulted only when no
-                    // client surface is under the point; a revealed
-                    // fullscreen titlebar wins even when one is.
+                    // window menu (T-01.4). `titlebar_window_at` already
+                    // resolves the window stack, so a titlebar covered by a
+                    // higher window is not opened and one drawn above a lower
+                    // window still is.
                     let is_right = button_event.button == 0x111; /* BTN_RIGHT */
                     let ctrl = state
                         .seat
@@ -562,35 +575,21 @@ where
                         .unwrap_or(false);
                     if is_right || (is_left && ctrl) {
                         if let Some(window) = state.titlebar_window_at(location) {
-                            let client_surface = surface_under(state, location);
-                            let titlebar_wins = client_surface.is_none()
-                                || state.windows.state(&window) == Some(WindowState::Fullscreen);
-                            if titlebar_wins {
-                                state.activate_window(&window, serial);
-                                state.open_window_menu(&window, location);
-                                state.needs_redraw = true;
-                                state.notify_activity();
-                                return;
-                            }
+                            state.activate_window(&window, serial);
+                            state.open_window_menu(&window, location);
+                            state.needs_redraw = true;
+                            state.notify_activity();
+                            return;
                         }
                     }
                     if is_left {
-                        let client_surface = surface_under(state, location);
                         // The SSD titlebar/controls are compositor chrome.
-                        // A floating/zoomed titlebar sits above the client
-                        // area, so it is consulted only when no client
-                        // surface (toplevel, popup, or input region) is under
-                        // the point — popups and client input keep priority.
-                        // A revealed fullscreen titlebar overlays the client,
-                        // so it wins even when a client surface is under
-                        // (T-01.3).
-                        let titlebar_window = state.titlebar_window_at(location);
-                        let titlebar_wins = titlebar_window.as_ref().is_some_and(|window| {
-                            client_surface.is_none()
-                                || state.windows.state(window) == Some(WindowState::Fullscreen)
-                        });
-                        if titlebar_wins {
-                            let window = titlebar_window.expect("titlebar window checked above");
+                        // `titlebar_window_at` walks the same stacking order
+                        // the scene renders: a titlebar above a lower window
+                        // wins, while a titlebar under a higher window (or
+                        // under its own popup) does not. A revealed fullscreen
+                        // titlebar overlays the client (T-01.3).
+                        if let Some(window) = state.titlebar_window_at(location) {
                             state.activate_window(&window, serial);
                             if let Some((light, kind)) = state.titlebar_button_at(location) {
                                 state.traffic_light_action(&light, kind);
@@ -603,7 +602,7 @@ where
                             state.notify_activity();
                             return;
                         }
-                        if let Some((surface, _)) = client_surface {
+                        if let Some((surface, _)) = surface_under(state, location) {
                             let window = state
                                 .space
                                 .element_under(location)
