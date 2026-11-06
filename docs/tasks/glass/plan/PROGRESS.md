@@ -7,6 +7,7 @@
 - **T195 — role presets and material resolution**: `design-system/tokens/tokens.json` gained the top-level `glass` group:; 13 optical presets: `dock`, `menuBarVeil`, `menuAttached`,
 - **T196 — live Appearance/Accessibility settings and the compositor bridge**: **settingsd schema revision 18** (`services/settingsd/src/schema.rs`):; `appearance.transparency` — double, 0.0–1.0, default `0.5255`,
 - **T197 — compositor material geometry and composition**: Protocol v3 additive `df_layer_surface` requests:; `set_panel_region(key, preset, x, y, w, h, tl, tr, br, bl, overscan)`.
+- **T198 — Dock optics fit and capture**: Dock preset tokens (`design-system/tokens/tokens.json`, both schemes):; `compositor/src/window/dock_optics.rs`:
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -14,6 +15,7 @@
 - [T195](progress/T195.md) — `design-system/tokens/tokens.json` gained the top-level `glass` group:
 - [T196](progress/T196.md) — **settingsd schema revision 18** (`services/settingsd/src/schema.rs`):
 - [T197](progress/T197.md) — Protocol v3 additive `df_layer_surface` requests:
+- [T198](progress/T198.md) — Dock preset tokens (`design-system/tokens/tokens.json`, both schemes):
 <!-- symphony:digest:end -->
 
 Implementation notes go in `progress/TNN.md`. Record the actual test commands, evidence paths, measured deltas, and any open rows with their rerun steps.

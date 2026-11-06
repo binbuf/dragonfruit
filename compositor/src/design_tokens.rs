@@ -708,6 +708,11 @@ pub mod glass {
                 pub const BLUR: f32 = 3.86_f32;
                 pub const EDGE: f32 = 0.397_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.12_f32;
+                pub const CORNER_LENS_PEAK: f32 = 9.6_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
@@ -724,6 +729,11 @@ pub mod glass {
                 pub const BLUR: f32 = 3.86_f32;
                 pub const EDGE: f32 = 0.397_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.12_f32;
+                pub const CORNER_LENS_PEAK: f32 = 9.6_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }

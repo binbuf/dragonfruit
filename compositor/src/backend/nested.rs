@@ -106,6 +106,26 @@ fn magnify_elements(
     }
 }
 
+/// The nested window attributes. The default matches Smithay's 1280x800;
+/// `DRAGONFRUIT_NESTED_SIZE=WxH` is capture-only plumbing so the 1x/1.5x/2x
+/// fixtures can request the physical output their scale maps to.
+fn nested_window_attributes() -> smithay::reexports::winit::window::WindowAttributes {
+    use smithay::reexports::winit::dpi::LogicalSize;
+    use smithay::reexports::winit::window::Window as WinitWindow;
+    let (width, height) = std::env::var("DRAGONFRUIT_NESTED_SIZE")
+        .ok()
+        .and_then(|value| {
+            let (w, h) = value.split_once('x')?;
+            Some((w.trim().parse::<f64>().ok()?, h.trim().parse::<f64>().ok()?))
+        })
+        .filter(|(w, h)| *w > 0.0 && *h > 0.0)
+        .unwrap_or((1280.0, 800.0));
+    WinitWindow::default_attributes()
+        .with_inner_size(LogicalSize::new(width, height))
+        .with_title("Dragonfruit")
+        .with_visible(true)
+}
+
 pub fn run(socket_name: &str) -> Result<(), String> {
     println!("dragonfruit-compositor: starting (backend=nested, lockstep-ipc=v{LOCKSTEP_VERSION})");
 
@@ -118,7 +138,10 @@ pub fn run(socket_name: &str) -> Result<(), String> {
         .map(std::path::PathBuf::from);
     let install_path = synthetic_path.clone();
 
-    let (mut backend, winit_loop) = winit::init::<GlowRenderer>().map_err(|e| {
+    let (mut backend, winit_loop) = winit::init_from_attributes::<GlowRenderer>(
+        nested_window_attributes(),
+    )
+    .map_err(|e| {
         format!("failed to open a nested window (is there a Wayland session?): {e}")
     })?;
     backend.window().set_title("Dragonfruit");
@@ -962,8 +985,10 @@ fn build_blur_elements(
                 programs.blur,
                 scene.texture,
                 scene_src,
+                texture_panel,
                 &panel.spec,
                 programs.chain_size,
+                scale,
                 slot.textures_mut(),
             );
             targets.timer.end(renderer);
@@ -1017,8 +1042,10 @@ pub(crate) fn blur_panel_texture<R>(
     program: Option<&GlesTexProgram>,
     scene: &GlesTexture,
     scene_src: Rectangle<f64, BufferCoord>,
+    texture_panel: Rectangle<i32, smithay::utils::Logical>,
     spec: &crate::window::BlurSpec,
     chain_size: Size<i32, Physical>,
+    scale: smithay::utils::Scale<f64>,
     slot: &mut Vec<GlesTexture>,
 ) -> Result<(GlesTexture, u64), String>
 where
@@ -1035,7 +1062,16 @@ where
     // The region of `current` the next pass samples. The first pass samples
     // the panel's slice of the scene; later passes sample the whole texture.
     let mut current_src = scene_src;
-    let mut chain = chain_size;
+    // The shared path keeps the chain base at the full output size (its
+    // historical pixel-equivalence contract). The T198 Dock composite needs
+    // the chain in panel space: a panel-sized source stretched to the output
+    // base would make the blur radius effectively `panel/output` too small and
+    // misalign every level with the sharp scene.
+    let mut chain = if spec.sharp_weights.is_some() {
+        texture_panel.to_physical_precise_round(scale).size
+    } else {
+        chain_size
+    };
     for pass in 0..spec.iterations as usize {
         let src_size = current.size();
         // The chain base is the output size, not the scene texture size: a
@@ -1085,6 +1121,7 @@ where
                 &[dst_phys],
                 program,
                 &uniforms,
+                1.0,
             )
             .map_err(|err| format!("blur draw failed: {err:?}"))?;
         }
@@ -1092,7 +1129,86 @@ where
         current_src = Rectangle::from_size(current.size().to_f64());
         chain = Size::<i32, Physical>::from((dst_w, dst_h));
     }
-    Ok((current, allocations))
+
+    let Some(weights) = spec.sharp_weights else {
+        return Ok((current, allocations));
+    };
+
+    // T198: compose the sharp scene and the selected Kawase levels into one
+    // texture at the panel's visible physical size. Each draw is a normal
+    // source-over pass with an alpha chosen so the running sum reaches the
+    // convex target weight; the result is exactly `sum(weight_i * level_i)`.
+    let composite_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((
+        (texture_panel.size.w.max(1) as f64 * scale.x).round().max(1.0) as i32,
+        (texture_panel.size.h.max(1) as f64 * scale.y).round().max(1.0) as i32,
+    ));
+    let composite_index = spec.iterations as usize;
+    while slot.len() <= composite_index {
+        slot.push(
+            renderer
+                .create_buffer(Fourcc::Abgr8888, composite_size)
+                .map_err(|err| format!("blur composite buffer failed: {err}"))?,
+        );
+        allocations += 1;
+    }
+    if slot[composite_index].size() != composite_size {
+        slot[composite_index] = renderer
+            .create_buffer(Fourcc::Abgr8888, composite_size)
+            .map_err(|err| format!("blur composite buffer failed: {err}"))?;
+        allocations += 1;
+    }
+    let mut composite = slot[composite_index].clone();
+    let dst = Rectangle::from_size(Size::<i32, Physical>::from((
+        composite_size.w,
+        composite_size.h,
+    )));
+    // Level 0: the sharp scene slice, opaque.
+    {
+        let mut target = renderer
+            .bind(&mut composite)
+            .map_err(|err| format!("blur composite bind failed: {err}"))?;
+        let mut frame = renderer
+            .render(&mut target, dst.size, Transform::Normal)
+            .map_err(|err| format!("blur composite render failed: {err}"))?;
+        R::draw_texture_from_to(
+            &mut frame,
+            scene,
+            scene_src,
+            dst,
+            &[dst],
+            None,
+            &[],
+            1.0,
+        )
+        .map_err(|err| format!("blur composite sharp draw failed: {err:?}"))?;
+    }
+    // Levels 1..=5, in order. The alpha is the level weight over the weight
+    // already painted; this makes the final pixel the weighted sum without
+    // needing a multi-sampler shader.
+    let mut painted = weights[0].max(0.0);
+    for (level, weight) in weights.iter().enumerate().skip(1) {
+        let weight = weight.max(0.0);
+        if weight == 0.0 {
+            continue;
+        }
+        let level_index = level.saturating_sub(1);
+        let Some(texture) = slot.get(level_index).cloned() else {
+            continue;
+        };
+        let total = painted + weight;
+        let alpha = if total > 1e-6 { weight / total } else { 0.0 };
+        let src = Rectangle::from_size(texture.size().to_f64());
+        let mut target = renderer
+            .bind(&mut composite)
+            .map_err(|err| format!("blur composite bind failed: {err}"))?;
+        let mut frame = renderer
+            .render(&mut target, dst.size, Transform::Normal)
+            .map_err(|err| format!("blur composite render failed: {err}"))?;
+        R::draw_texture_from_to(&mut frame, &texture, src, dst, &[dst], None, &[], alpha)
+            .map_err(|err| format!("blur composite level draw failed: {err:?}"))?;
+        painted = total;
+    }
+    Ok((composite, allocations))
 }
 
 /// Render `elements` (the same list the live frame drew) into an offscreen

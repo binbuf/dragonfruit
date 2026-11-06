@@ -40,6 +40,26 @@ Rectangle {
     property bool materialBlurActive: true
     property int materialTier: 0
     property int materialFallback: 0
+    // T198: one resolved Dock optical preset from the same policy the
+    // compositor consumes. On the sampled path the compositor paints the flat
+    // band, rim and corner lens, so the QML layers below are hidden to avoid a
+    // second tint/rim/shadow. Unsupported paths and Reduce Transparency keep
+    // the coherent shell-painted plate.
+    readonly property var glassOptics: Glass.resolve("dock", {
+        scheme: Theme.dark ? "dark" : "light",
+        rollout: Glass.rollout,
+        slider: Glass.slider,
+        reduceTransparency: Glass.reduceTransparency,
+        increaseContrast: Glass.increaseContrast,
+        backend: materialFallback === 2 ? "software"
+               : materialBlurActive ? "gpu-sampled" : "gpu-no-sampled-blur",
+        tier: materialTier === 2 ? "minimal" : materialTier === 1 ? "reduced" : "full"
+    })
+    readonly property bool sampledPlate:
+        materialBlurActive && glassOptics.renderMode === "sampled-glass"
+    readonly property bool replacementPlate: Glass.rollout === "replacement"
+    readonly property real contrastEdgeBoost: Glass.increaseContrast
+        ? Theme.glass.accessibility.increaseContrast.edgeBoost : 0
     // T-21.2c: the transient Popup role state for every Dock popover. The
     // shell applies it through the same MaterialPolicy as the Dock role above;
     // the popovers bind to these, so QML never re-derives the tier.
@@ -3692,6 +3712,7 @@ Rectangle {
 
         Shadow {
             objectName: "dockPlateShadow"
+            visible: !dock.sampledPlate
             x: dockPlate.plateX
             y: dockPlate.plateY
             width: dockPlate.plateW
@@ -3704,21 +3725,27 @@ Rectangle {
 
         Rectangle {
             objectName: "dockBar"
+            visible: !dock.sampledPlate
             x: dockPlate.plateX
             y: dockPlate.plateY
             width: dockPlate.plateW
             height: dockPlate.plateH
             radius: dockPlate.plateRadius
-            // With the sampled pass active, the fill is the translucent
-            // complement that lets the compositor's frost/refraction through.
-            // Without it (DRM today, software/headless, or a tier that turned
-            // blur off), the plate becomes a near-opaque milky surface with
-            // the same rim, gloss, border, and shadow geometry.
-            color: dock.materialBlurActive ? Theme.color.dockFill
-                                           : Theme.color.dockFallbackFill
-            opacity: dock.materialBlurActive
-                     ? Theme.controls.dock.plate.fillOpacity
-                     : Theme.material.dockFallbackOpacity
+            // With the sampled pass active the compositor paints the flat
+            // band/rim, so this layer is hidden. Unsupported paths and the
+            // accessibility override keep one coherent shell-painted plate:
+            // the replacement look uses the resolved neutral alpha/tint, the
+            // legacy look keeps its milky fallback.
+            color: dock.replacementPlate
+                   ? Qt.rgba(dock.glassOptics.tint, dock.glassOptics.tint,
+                             dock.glassOptics.tint, 1)
+                   : (dock.materialBlurActive && !Glass.reduceTransparency
+                      ? Theme.color.dockFill : Theme.color.dockFallbackFill)
+            opacity: dock.replacementPlate
+                     ? dock.glassOptics.alpha
+                     : (dock.materialBlurActive && !Glass.reduceTransparency
+                        ? Theme.controls.dock.plate.fillOpacity
+                        : Theme.material.dockFallbackOpacity)
         }
 
         // The interior-edge gloss: a soft band just inside the rim that fades
@@ -3729,6 +3756,7 @@ Rectangle {
         Shape {
             id: dockGloss
             objectName: "dockGloss"
+            visible: !dock.sampledPlate
             readonly property real inset: Theme.controls.dock.plate.glossHeight / 2
             x: dockPlate.plateX + inset
             y: dockPlate.plateY + inset
@@ -3759,6 +3787,7 @@ Rectangle {
         Shape {
             id: dockRim
             objectName: "dockRim"
+            visible: !dock.sampledPlate
             readonly property real inset: Theme.controls.dock.plate.rimHeight / 2
             x: dockPlate.plateX + inset
             y: dockPlate.plateY + inset
@@ -3766,7 +3795,8 @@ Rectangle {
             height: Math.max(0, dockPlate.plateH - 2 * inset)
             preferredRendererType: Shape.GeometryRenderer
             antialiasing: true
-            opacity: Theme.controls.dock.plate.rimOpacity
+            opacity: Math.min(1, Theme.controls.dock.plate.rimOpacity
+                                 + dock.contrastEdgeBoost)
             ShapePath {
                 objectName: "dockRimStroke"
                 strokeColor: Theme.color.dockRim
@@ -3787,8 +3817,9 @@ Rectangle {
             readonly property real corner: Theme.controls.dock.radius
             readonly property bool horizontal: dock.position === "bottom"
             color: Theme.color.dockRim
-            opacity: Theme.controls.dock.plate.edgeOpacity
-            visible: width > 0 && height > 0
+            opacity: Math.min(1, Theme.controls.dock.plate.edgeOpacity
+                                 + dock.contrastEdgeBoost)
+            visible: !dock.sampledPlate && width > 0 && height > 0
             x: dock.position === "left" ? dockPlate.plateX
                : dock.position === "right" ? dockPlate.plateX + dockPlate.plateW - width
                : dockPlate.plateX + corner
@@ -3805,6 +3836,7 @@ Rectangle {
         // The hairline border around the whole plate.
         Rectangle {
             objectName: "dockBorder"
+            visible: !dock.sampledPlate
             x: dockPlate.plateX
             y: dockPlate.plateY
             width: dockPlate.plateW
@@ -3813,7 +3845,8 @@ Rectangle {
             color: "transparent"
             border.width: Theme.controls.dock.plate.borderWidth
             border.color: Theme.color.dockBorder
-            opacity: Theme.controls.dock.plate.borderOpacity
+            opacity: Math.min(1, Theme.controls.dock.plate.borderOpacity
+                                 + dock.contrastEdgeBoost)
         }
     }
 

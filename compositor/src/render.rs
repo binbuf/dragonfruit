@@ -30,13 +30,13 @@ use smithay::wayland::compositor::{with_states, SurfaceAttributes};
 use smithay::wayland::fractional_scale::with_fractional_scale;
 use wayland_server::Resource;
 
-use crate::material_preset::{Preset, RenderMode};
+use crate::material_preset::{Preset, RenderMode, Rollout};
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
 use crate::window::{
     backdrop_elements_with_corners, is_backdrop_panel, shadow_elements, BlurSpec, CornerRadii,
-    DegradeTier, GlassSpec, MaterialRole, PanelKey, RegionFilter, SceneTransform, ShadowLevel,
-    ShadowSpec, WindowState,
+    DegradeTier, DockOptics, GlassSpec, MaterialRole, PanelKey, RegionFilter, SceneTransform,
+    ShadowLevel, ShadowSpec, WindowState,
 };
 
 // The two kinds of wallpaper element a backend can composite (T-05.4): a
@@ -470,7 +470,15 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 RenderMode::NoBlurVeil => RegionFilter::Sharp,
                 RenderMode::SampledGlass => RegionFilter::Filtered,
             };
-            let base_spec = role.blur_spec_for(scheme, &chrome.namespace);
+            let dock_fit = preset == Preset::Dock && resolved.look == Rollout::Replacement;
+            let base_spec = if dock_fit {
+                BlurSpec::for_dock(
+                    resolved.blur,
+                    role.corner_radius(&chrome.namespace),
+                )
+            } else {
+                role.blur_spec_for(scheme, &chrome.namespace)
+            };
             let spec = match material.tier.blur(base_spec) {
                 Some(spec) if filter == RegionFilter::Filtered => spec,
                 _ if filter == RegionFilter::Sharp => base_spec,
@@ -479,10 +487,33 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             if filter == RegionFilter::Filtered && !material.blur_active {
                 continue;
             }
-            let glass = material
-                .tier
-                .glass(role.glass_spec(scheme))
-                .unwrap_or_else(|| role.glass_spec(scheme));
+            let glass = if dock_fit {
+                let optics = match scheme {
+                    crate::window::ColorScheme::Light => DockOptics::light(),
+                    crate::window::ColorScheme::Dark => DockOptics::dark(),
+                };
+                let mut glass = GlassSpec::for_dock(optics);
+                // The resolver applies the accessibility overrides after the
+                // measured preset; carry the resolved flat band, rim peak and
+                // width through so Increase Contrast actually raises the
+                // compositor-painted edge too.
+                glass.flat_alpha = resolved.alpha;
+                glass.tint = resolved.tint;
+                glass.tint_color = [resolved.tint, resolved.tint, resolved.tint];
+                glass.rim_peak = resolved.edge;
+                glass.rim_half_width = resolved.edge_width;
+                glass.specular = resolved.edge;
+                glass.specular_width = resolved.edge_width;
+                material
+                    .tier
+                    .glass(glass)
+                    .unwrap_or(glass)
+            } else {
+                material
+                    .tier
+                    .glass(role.glass_spec(scheme))
+                    .unwrap_or_else(|| role.glass_spec(scheme))
+            };
             let corners = region.corners.unwrap_or_else(|| {
                 CornerRadii::uniform(spec.corner_radius.round().max(0.0) as i32)
             });

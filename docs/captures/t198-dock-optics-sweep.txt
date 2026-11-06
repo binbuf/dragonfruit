@@ -1,0 +1,63 @@
+T198 Dock optics — cache behaviour during a Dock sweep
+timestamp: 2026-11-06T04:10:03-08:00
+backend: nested (kwin_wayland --virtual)
+scale: 1  material: full  rollout: replacement
+
+== live query ==
+scale output NESTED-1 physical=1920x1200 logical=1920x1200 scale=1.000
+scale chrome desktop logical=0,0,1920,1200 physical=0,0,1920,1200
+scale region desktop panel preset=- logical=0,0,1920,1200 physical=0,0,1920,1200 corners=0,0,0,0 overscan=0
+scale chrome menubar logical=0,0,1920,28 physical=0,0,1920,28
+scale region menubar panel preset=- logical=0,0,1920,28 physical=0,0,1920,28 corners=0,0,0,0 overscan=0
+scale chrome dock logical=719,1114,483,78 physical=719,1114,483,78
+scale region dock panel preset=- logical=719,1114,483,78 physical=719,1114,483,78 corners=0,0,0,0 overscan=0
+scale chrome menubar-popup logical=0,0,1920,1200 physical=0,0,1920,1200
+scale region menubar-popup panel preset=- logical=0,0,1920,1200 physical=0,0,1920,1200 corners=0,0,0,0 overscan=0
+scale chrome dock-popup logical=0,0,1920,1200 physical=0,0,1920,1200
+scale region dock-popup panel preset=- logical=0,0,1920,1200 physical=0,0,1920,1200 corners=0,0,0,0 overscan=0
+scale chrome overview logical=0,0,1920,1200 physical=0,0,1920,1200
+scale region overview panel preset=- logical=0,0,1920,1200 physical=0,0,1920,1200 corners=0,0,0,0 overscan=0
+scale chrome app-switcher logical=0,0,1920,1200 physical=0,0,1920,1200
+scale region app-switcher panel preset=- logical=0,0,1920,1200 physical=0,0,1920,1200 corners=0,0,0,0 overscan=0
+scale chrome notification logical=1532,36,380,132 physical=1532,36,380,132
+scale region notification panel preset=- logical=1532,36,380,132 physical=1532,36,380,132 corners=0,0,0,0 overscan=0
+scale chrome control-center logical=1552,36,360,1164 physical=1552,36,360,1164
+scale region control-center panel preset=- logical=1552,36,360,1164 physical=1552,36,360,1164 corners=0,0,0,0 overscan=0
+scale chrome osd logical=850,490,220,220 physical=850,490,220,220
+scale region osd panel preset=- logical=850,490,220,220 physical=850,490,220,220 corners=0,0,0,0 overscan=0
+scale chrome file-chooser logical=640,380,640,440 physical=640,380,640,440
+scale region file-chooser panel preset=- logical=640,380,640,440 physical=640,380,640,440 corners=0,0,0,0 overscan=0
+scale chrome screenshot logical=0,0,1920,1200 physical=0,0,1920,1200
+scale region screenshot panel preset=- logical=0,0,1920,1200 physical=0,0,1920,1200 corners=0,0,0,0 overscan=0
+scale chrome screencast logical=680,370,560,460 physical=680,370,560,460
+scale region screencast panel preset=- logical=680,370,560,460 physical=680,370,560,460 corners=0,0,0,0 overscan=0
+scale chrome polkit logical=720,390,480,420 physical=720,390,480,420
+scale region polkit panel preset=- logical=720,390,480,420 physical=720,390,480,420 corners=0,0,0,0 overscan=0
+scale chrome apps-drawer logical=0,0,1920,1200 physical=0,0,1920,1200
+scale region apps-drawer panel preset=- logical=0,0,1920,1200 physical=0,0,1920,1200 corners=0,0,0,0 overscan=0
+end
+material scheme=light tier=full path=gpu chrome=ffffffff elevated=ffffffff border=ded6e5ff accent=b32a66ff
+material glass role=chrome blur=24.0 refraction=6.0 specular=0.45 specular_width=2.0 tint=0.16
+material glass role=dock blur=30.0 refraction=8.0 specular=0.50 specular_width=2.5 tint=0.22
+material glass role=popup blur=30.0 refraction=8.0 specular=0.50 specular_width=2.5 tint=0.20
+material glass role=drawer blur=30.0 refraction=8.0 specular=0.50 specular_width=2.5 tint=0.20
+material preset=menuAttached look=replacement mode=sampled-glass alpha=0.5520 tint=0.9930 blur=10.0 edge=0.000 edge_width=0.00 edge_tail=0.0 sharp=0.000 corner_peak=0.0 corner_distance=0.0 corner_tail=0.0 foreground=0.000 slider_applied=1 fallback=none revision=1
+material preset=dock look=replacement mode=sampled-glass alpha=0.2530 tint=0.6040 blur=3.9 edge=0.397 edge_width=1.00 edge_tail=6.0 sharp=0.120 corner_peak=9.6 corner_distance=15.0 corner_tail=50.0 foreground=0.000 slider_applied=0 fallback=none revision=1
+end
+
+== material snapshots (warm-up + sweep) ==
+snapshot
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=1783 direct_scanout_candidates=0 frames_rendered=1795 frames_skipped_no_damage=2 considered=1797
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=1783 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=41 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=1783 backdrop_skipped=0 path=gpu blur_passes=1782 blur_panels=1782 blur_draws=1782 blur_skips=1772 blur_miss_first=1 blur_miss_scene=0 blur_miss_source=8 blur_miss_spec=1 blur_miss_chain=0 blur_downsample_max=32 material_allocations=41 material_scene_allocations=2 material_panel_allocations=39 material_region_px=2304000 material_region=1920x1200
+snapshot
+dragonfruit-compositor: scanout stats (SIGUSR1-1): direct_scanouts=0 material_frames=1783 direct_scanout_candidates=0 frames_rendered=1795 frames_skipped_no_damage=2 considered=1797
+dragonfruit-compositor: output material stats (SIGUSR1-1): output=NESTED-1 material_frames=1783 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=41 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-1): backdrop_passes=1783 backdrop_skipped=0 path=gpu blur_passes=1782 blur_panels=1782 blur_draws=1782 blur_skips=1772 blur_miss_first=1 blur_miss_scene=0 blur_miss_source=8 blur_miss_spec=1 blur_miss_chain=0 blur_downsample_max=32 material_allocations=41 material_scene_allocations=2 material_panel_allocations=39 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: scanout stats (SIGUSR1-2): direct_scanouts=0 material_frames=1795 direct_scanout_candidates=0 frames_rendered=1807 frames_skipped_no_damage=2 considered=1809
+dragonfruit-compositor: output material stats (SIGUSR1-2): output=NESTED-1 material_frames=1795 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=41 material_region_px=2304000 material_region=1920x1200
+dragonfruit-compositor: material stats (SIGUSR1-2): backdrop_passes=1795 backdrop_skipped=0 path=gpu blur_passes=1794 blur_panels=1794 blur_draws=1794 blur_skips=1784 blur_miss_first=1 blur_miss_scene=0 blur_miss_source=8 blur_miss_spec=1 blur_miss_chain=0 blur_downsample_max=32 material_allocations=41 material_scene_allocations=2 material_panel_allocations=39 material_region_px=2304000 material_region=1920x1200
+
+Expected: scene/panel allocations and region pixels are flat after
+warm-up; blur_skips rises as the pointer sweeps while the cached
+Dock texture is reused. A change in blur_miss_* names the invalidator.

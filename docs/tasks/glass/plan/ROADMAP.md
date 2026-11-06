@@ -13,7 +13,7 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 
 ## Phase 2 — Dock and menu surfaces
 
-- [ ] T198 — Calibrate Dock optics → [198-glass-dock-optics.md](../198-glass-dock-optics.md)
+- [x] T198 — Calibrate Dock optics → [198-glass-dock-optics.md](../198-glass-dock-optics.md)
 - [ ] T199 — Match Dock magnification and tooltip behavior → [199-glass-dock-motion.md](../199-glass-dock-motion.md)
 - [ ] T200 — Render the no-blur menu-bar veil → [200-glass-menubar-veil.md](../200-glass-menubar-veil.md)
 - [ ] T201 — Connect menu-bar visibility settings → [201-glass-menubar-visibility.md](../201-glass-menubar-visibility.md)
@@ -32,11 +32,11 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-06T09:55:48Z · 4/15 done
+**Pipeline status** — updated 2026-11-06T12:55:17Z · 5/15 done
 
-- Completed: T194, T195, T196, T197
+- Completed: T194, T195, T196, T197, T198
 - Blocked: none
 - Failed: none
-- Remaining: T198, T199, T200, T201, T202, T203, T204, T205, T206, T207, T208
-- Last finished: T197 — done · Landed multi-region material geometry/composition, per-corner clipping, sharp/veil and filtered GPU paths, stable per-region caches, protocol v3 conformance coverage, docs, and a passing `make gates`.
+- Remaining: T199, T200, T201, T202, T203, T204, T205, T206, T207, T208
+- Last finished: T198 — done · Landed the measured Dock flat-band/sharp-plus-multi-scale optics, rim and corner lens, single-owner sampled-path paint, 1x/1.5x/2x capture evidence and a passing make gates; 1.5x/2x MTF remains recorded OPEN as a scale-path follow-up.
 <!-- /symphony:status -->

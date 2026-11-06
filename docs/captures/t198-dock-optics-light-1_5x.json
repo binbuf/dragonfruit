@@ -1,0 +1,114 @@
+{
+  "capture": "docs/captures/t198-dock-optics-light-1_5x.png",
+  "query": "/tmp/opencode/t198-final/light-1_5x-query.txt",
+  "output": [
+    2880,
+    1800
+  ],
+  "scale": 1.5,
+  "panel_logical": [
+    719,
+    1114,
+    483,
+    78
+  ],
+  "panel_physical": "1079,1671,725,117",
+  "corners": "0,0,0,0",
+  "scheme": "replacement",
+  "render_mode": "sampled-glass",
+  "flat_band": {
+    "background_srgb": 127.60410094637224,
+    "interior_srgb": 138.86511805754708,
+    "expected_srgb": 134.28732340694006,
+    "delta_srgb": 4.577794650607018,
+    "alpha": 0.253,
+    "tint": 0.604
+  },
+  "mtf": {
+    "2": {
+      "period_pt": 2.0,
+      "status": "unresolved"
+    },
+    "4": {
+      "period_pt": 4.0,
+      "period_px": 6.0,
+      "input_amplitude": 18.461715983623606,
+      "output_amplitude": 1.7449592834630434,
+      "raw_ratio": 0.09451771899269293,
+      "mtf": 0.12652974430079375,
+      "target": 0.15,
+      "delta": -0.023470255699206244,
+      "status": "pass"
+    },
+    "8": {
+      "period_pt": 8.0,
+      "period_px": 12.0,
+      "input_amplitude": 20.06734514256761,
+      "output_amplitude": 5.997205997151735,
+      "raw_ratio": 0.2988539816575056,
+      "mtf": 0.4000722646017478,
+      "target": 0.325,
+      "delta": 0.07507226460174776,
+      "status": "fail"
+    },
+    "16": {
+      "period_pt": 16.0,
+      "period_px": 24.0,
+      "input_amplitude": 21.49920386190673,
+      "output_amplitude": 9.892962862982522,
+      "raw_ratio": 0.46015484696674397,
+      "mtf": 0.6160038112004604,
+      "target": 0.67,
+      "delta": -0.0539961887995396,
+      "status": "fail"
+    },
+    "32": {
+      "period_pt": 32.0,
+      "period_px": 48.0,
+      "input_amplitude": 18.189263104661887,
+      "output_amplitude": 7.713519588743069,
+      "raw_ratio": 0.42406993314457603,
+      "mtf": 0.5676973669940777,
+      "target": 0.701,
+      "delta": -0.13330263300592227,
+      "status": "fail"
+    }
+  },
+  "rim": {
+    "peak_srgb": 108.91666666666666,
+    "peak_normalized": 0.42712418300653593,
+    "target_peak": 0.397,
+    "peak_delta": 0.03012418300653591,
+    "half_amplitude_pt": 1.75,
+    "target_half_pt": 1.0,
+    "tail_pt": null,
+    "target_tail_pt": 6.0,
+    "baseline_srgb": 138.08333333333334,
+    "status": "fail"
+  },
+  "corner": {
+    "declared_radius_pt": 27.0,
+    "flat_edge_delta_pt": 0.0,
+    "flat_edge_target_pt": 1.0,
+    "corner_lens_model_pt": 9.6,
+    "corner_lens_peak_distance_pt": 15.0,
+    "corner_lens_tail_pt": 50.0,
+    "status": "pass"
+  },
+  "model": {
+    "mtf": {
+      "2": 0.12,
+      "4": 0.17268701549401566,
+      "8": 0.36907115473010255,
+      "16": 0.6237221061188771,
+      "32": 0.7360984134568391
+    },
+    "max_target_error": 0.04627789388112291,
+    "rim_peak": 0.397,
+    "rim_half_pt": 1.0,
+    "rim_tail_pt": 6.643856189774725,
+    "corner_peak": 9.6,
+    "corner_tail_pt": 50.0
+  },
+  "verdict": "fail"
+}

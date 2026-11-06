@@ -1,0 +1,86 @@
+{
+  "capture": "docs/captures/t198-dock-optics-reduce-transparency-1x.png",
+  "query": "/tmp/opencode/t198-final/reduce-transparency-1x-query.txt",
+  "output": [
+    1920,
+    1200
+  ],
+  "scale": 1.0,
+  "panel_logical": [
+    719,
+    1114,
+    483,
+    78
+  ],
+  "panel_physical": "719,1114,483,78",
+  "corners": "0,0,0,0",
+  "scheme": "replacement",
+  "render_mode": "solid",
+  "flat_band": {
+    "background_srgb": 127.64539007092199,
+    "interior_srgb": 244.94112349431498,
+    "expected_srgb": 244.95590780141845,
+    "delta_srgb": -0.014784307103468564,
+    "alpha": 0.98,
+    "tint": 0.97
+  },
+  "mtf": {
+    "2": {
+      "period_pt": 2.0,
+      "status": "unresolved"
+    },
+    "4": {
+      "period_pt": 4.0,
+      "status": "unresolved"
+    },
+    "8": {
+      "period_pt": 8.0,
+      "status": "unresolved"
+    },
+    "16": {
+      "period_pt": 16.0,
+      "status": "unresolved"
+    },
+    "32": {
+      "period_pt": 32.0,
+      "status": "unresolved"
+    }
+  },
+  "rim": {
+    "peak_srgb": 3.97083333333336,
+    "peak_normalized": 0.015571895424836705,
+    "target_peak": 0.397,
+    "peak_delta": -0.3814281045751633,
+    "half_amplitude_pt": 0.0,
+    "target_half_pt": 1.0,
+    "tail_pt": 0.0,
+    "target_tail_pt": 6.0,
+    "baseline_srgb": 243.65416666666664,
+    "status": "not-applicable"
+  },
+  "corner": {
+    "declared_radius_pt": 27.0,
+    "flat_edge_delta_pt": 0.0,
+    "flat_edge_target_pt": 1.0,
+    "corner_lens_model_pt": 9.6,
+    "corner_lens_peak_distance_pt": 15.0,
+    "corner_lens_tail_pt": 50.0,
+    "status": "pass"
+  },
+  "model": {
+    "mtf": {
+      "2": 0.12,
+      "4": 0.17268701549401566,
+      "8": 0.36907115473010255,
+      "16": 0.6237221061188771,
+      "32": 0.7360984134568391
+    },
+    "max_target_error": 0.04627789388112291,
+    "rim_peak": 0.397,
+    "rim_half_pt": 1.0,
+    "rim_tail_pt": 6.643856189774725,
+    "corner_peak": 9.6,
+    "corner_tail_pt": 50.0
+  },
+  "verdict": "pass"
+}
