@@ -1,0 +1,675 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+"""The glass material-preset vocabulary and its resolution policy (T195).
+
+``design-system/tokens/tokens.json`` carries the data; this module is the
+single reference implementation used by the token gate and the preset
+self-test. The QML (`design-system/Glass.qml`) and Rust
+(`compositor/src/material_preset.rs`) resolvers implement the same policy for
+their runtimes; ``tests/glass/test_material_presets.py`` and the two runtime
+test suites pin the shared outcomes.
+
+The policy deliberately keeps three things apart:
+
+* **Optical presets** (this module) are per-surface calibration data. They are
+  not the existing ``MaterialRole`` wire values or the ``DegradeTier`` ladder.
+* **Neutral and perceptual fits** are separate calibration records. Resolution
+  mixes them by ``perceptualWeight`` instead of painting both at full strength.
+* **Rendering mode** is explicit: ``sampled-glass``, ``no-blur-veil``,
+  ``solid`` or ``software-fallback``. A veil is an intentional no-blur surface,
+  never the result of a missing sampled path.
+
+Usage::
+
+    python3 scripts/material_presets.py --check
+    python3 scripts/material_presets.py resolve --preset dock --scheme light \
+        --rollout replacement --backend gpu-sampled
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+REPO = Path(__file__).resolve().parent.parent
+SOURCE = REPO / "design-system" / "tokens" / "tokens.json"
+
+PRESET_NAMES = (
+    "dock",
+    "menuBarVeil",
+    "menuAttached",
+    "menuDetached",
+    "statusMenu",
+    "tooltip",
+    "controlCenterOuter",
+    "controlCenterModule",
+    "controlCenterExpanded",
+    "notificationBanner",
+    "notificationStack",
+    "notificationLowerPanel",
+    "windowChrome",
+)
+SCHEMES = ("light", "dark")
+ROLES = ("chrome", "dock", "popup", "drawer")
+RENDER_MODES = ("sampled", "veil", "solid")
+SLIDER_MODES = ("none", "lightAttached")
+CONFIDENCES = ("measured", "measured-effective", "observed-luma", "adapted", "baseline")
+ROLLOUTS = ("legacy", "replacement")
+BACKENDS = ("gpu-sampled", "gpu-no-sampled-blur", "software")
+TIERS = ("full", "reduced", "minimal")
+RENDER_MODE_NAMES = ("sampled-glass", "no-blur-veil", "solid", "software-fallback")
+SLIDER_ANCHOR_POSITIONS = (0.0, 0.5255, 1.0)
+
+# The legacy appearance is the existing per-role material token pair. Keeping
+# the mapping here means the replacement look can be resolved next to the old
+# one without teaching QML/Rust a second role vocabulary.
+LEGACY_ROLE_TOKENS = {
+    "chrome": ("chromeOpacity", "chromeBlur", "chromeFallbackOpacity"),
+    "dock": ("dockOpacity", "dockBlur", "dockFallbackOpacity"),
+    "popup": ("popupOpacity", "popupBlur", "popupFallbackOpacity"),
+    "drawer": ("popupOpacity", "popupBlur", "popupFallbackOpacity"),
+}
+
+# Roles that keep the persistent material floor (ADR 0203/0211).
+PERSISTENT_ROLES = ("chrome", "dock")
+
+# The only preset whose optical response follows the measured light File
+# slider anchors. Dark and every other preset keep their named baseline.
+SLIDER_PRESET = "menuAttached"
+
+
+class PresetError(ValueError):
+    """A schema or resolution input error with a path-like message."""
+
+
+def _finite(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _number(node: dict, key: str, path: str, errors: list[str],
+            *, low: float | None = None, high: float | None = None) -> float | None:
+    value = node.get(key)
+    if not _finite(value):
+        errors.append(f"{path}.{key}: expected a finite number, got {value!r}")
+        return None
+    if low is not None and value < low:
+        errors.append(f"{path}.{key}: {value} is below {low}")
+    if high is not None and value > high:
+        errors.append(f"{path}.{key}: {value} is above {high}")
+    return float(value)
+
+
+def _string(node: dict, key: str, path: str, errors: list[str], *,
+            allowed: tuple[str, ...] | None = None) -> str | None:
+    value = node.get(key)
+    if not isinstance(value, str) or not value.strip():
+        errors.append(f"{path}.{key}: expected a non-empty string, got {value!r}")
+        return None
+    if allowed is not None and value not in allowed:
+        errors.append(f"{path}.{key}: {value!r} is not one of {allowed}")
+    return value
+
+
+def _expect_object(node: Any, path: str, errors: list[str]) -> dict | None:
+    if not isinstance(node, dict):
+        errors.append(f"{path}: expected an object, got {type(node).__name__}")
+        return None
+    return node
+
+
+def _clamp01(value: Any, fallback: float) -> float:
+    """Clamp a runtime input; non-finite/absent values take the named fallback."""
+    if not _finite(value):
+        return fallback
+    return max(0.0, min(1.0, float(value)))
+
+
+def _mix(neutral: float, perceptual: float, weight: float) -> float:
+    return neutral * (1.0 - weight) + perceptual * weight
+
+
+def _interpolate(anchors: dict, position: float) -> tuple[float, float]:
+    """Piecewise-linear interpolation through the three measured anchors."""
+    points = [anchors[name] for name in ("low", "mid", "high")]
+    position = _clamp01(position, points[1]["position"])
+    for left, right in zip(points, points[1:]):
+        if position <= right["position"]:
+            span = right["position"] - left["position"]
+            ratio = 0.0 if span <= 0.0 else (position - left["position"]) / span
+            alpha = left["alpha"] + (right["alpha"] - left["alpha"]) * ratio
+            tint = left["tint"] + (right["tint"] - left["tint"]) * ratio
+            return alpha, tint
+    last = points[-1]
+    return last["alpha"], last["tint"]
+
+
+def validate(data: dict) -> list[str]:
+    """Return every schema/range/finite-value error in the ``glass`` group."""
+    errors: list[str] = []
+    glass = _expect_object(data.get("glass"), "glass", errors)
+    if glass is None:
+        return errors
+
+    _string(glass, "version", "glass", errors)
+    rollout = _expect_object(glass.get("rollout"), "glass.rollout", errors)
+    if rollout is not None:
+        _string(rollout, "defaultMode", "glass.rollout", errors, allowed=ROLLOUTS)
+        _string(rollout, "legacyMode", "glass.rollout", errors, allowed=ROLLOUTS)
+        _string(rollout, "replacementMode", "glass.rollout", errors, allowed=ROLLOUTS)
+        _string(rollout, "envVar", "glass.rollout", errors)
+        if rollout.get("defaultMode") != "legacy":
+            errors.append("glass.rollout.defaultMode: must stay 'legacy' until T208")
+
+    slider = _expect_object(glass.get("slider"), "glass.slider", errors)
+    if slider is not None:
+        _number(slider, "defaultPosition", "glass.slider", errors, low=0.0, high=1.0)
+        anchors = _expect_object(slider.get("lightAnchors"), "glass.slider.lightAnchors", errors)
+        if anchors is not None:
+            names = ("low", "mid", "high")
+            for name, expected_position in zip(names, SLIDER_ANCHOR_POSITIONS):
+                path = f"glass.slider.lightAnchors.{name}"
+                anchor = _expect_object(anchors.get(name), path, errors)
+                if anchor is None:
+                    continue
+                _number(anchor, "position", path, errors, low=0.0, high=1.0)
+                _number(anchor, "alpha", path, errors, low=0.0, high=1.0)
+                _number(anchor, "tint", path, errors, low=0.0, high=1.0)
+                if _finite(anchor.get("position")) and abs(anchor["position"] - expected_position) > 1e-9:
+                    errors.append(
+                        f"{path}.position: {anchor['position']} is not the measured "
+                        f"anchor {expected_position}"
+                    )
+
+    accessibility = _expect_object(glass.get("accessibility"), "glass.accessibility", errors)
+    if accessibility is not None:
+        opaque = _expect_object(accessibility.get("reduceTransparency"),
+                                "glass.accessibility.reduceTransparency", errors)
+        if opaque is not None:
+            for scheme in SCHEMES:
+                path = f"glass.accessibility.reduceTransparency.{scheme}"
+                entry = _expect_object(opaque.get(scheme), path, errors)
+                if entry is None:
+                    continue
+                _number(entry, "alpha", path, errors, low=0.9, high=1.0)
+                _number(entry, "tint", path, errors, low=0.0, high=1.0)
+                _string(entry, "colourSpace", path, errors, allowed=("srgb",))
+        contrast = _expect_object(accessibility.get("increaseContrast"),
+                                  "glass.accessibility.increaseContrast", errors)
+        if contrast is not None:
+            _number(contrast, "edgeBoost", "glass.accessibility.increaseContrast",
+                    errors, low=0.0, high=1.0)
+            _number(contrast, "foregroundBoost", "glass.accessibility.increaseContrast",
+                    errors, low=0.0, high=1.0)
+            _number(contrast, "edgeWidthBoost", "glass.accessibility.increaseContrast",
+                    errors, low=0.0, high=8.0)
+
+    presets = _expect_object(glass.get("presets"), "glass.presets", errors)
+    if presets is None:
+        return errors
+    missing = [name for name in PRESET_NAMES if name not in presets]
+    for name in missing:
+        errors.append(f"glass.presets.{name}: missing required preset")
+
+    for name, preset in presets.items():
+        path = f"glass.presets.{name}"
+        preset = _expect_object(preset, path, errors)
+        if preset is None:
+            continue
+        _string(preset, "role", path, errors, allowed=ROLES)
+        _string(preset, "render", path, errors, allowed=RENDER_MODES)
+        slider_mode = _string(preset, "slider", path, errors, allowed=SLIDER_MODES)
+        if slider_mode not in (None, "none") and name != SLIDER_PRESET:
+            errors.append(f"{path}.slider: only {SLIDER_PRESET} follows the slider")
+        for scheme in SCHEMES:
+            scheme_path = f"{path}.{scheme}"
+            entry = _expect_object(preset.get(scheme), scheme_path, errors)
+            if entry is None:
+                continue
+            _string(entry, "confidence", scheme_path, errors, allowed=CONFIDENCES)
+            _string(entry, "provenance", scheme_path, errors)
+            _string(entry, "colourSpace", scheme_path, errors, allowed=("srgb",))
+            calibration = _expect_object(entry.get("calibration"),
+                                         f"{scheme_path}.calibration", errors)
+            if calibration is not None:
+                _number(calibration, "neutralAlpha", f"{scheme_path}.calibration",
+                        errors, low=0.0, high=1.0)
+                _number(calibration, "neutralTint", f"{scheme_path}.calibration",
+                        errors, low=0.0, high=1.0)
+                _number(calibration, "perceptualWeight", f"{scheme_path}.calibration",
+                        errors, low=0.0, high=1.0)
+                _number(calibration, "perceptualAlpha", f"{scheme_path}.calibration",
+                        errors, low=0.0, high=1.0)
+                _number(calibration, "perceptualTint", f"{scheme_path}.calibration",
+                        errors, low=0.0, high=1.0)
+            _number(entry, "blur", scheme_path, errors, low=0.0, high=64.0)
+            _number(entry, "edge", scheme_path, errors, low=0.0, high=1.0)
+            _number(entry, "edgeWidth", scheme_path, errors, low=0.0, high=8.0)
+            _number(entry, "foreground", scheme_path, errors, low=0.0, high=1.0)
+
+    # The measured File anchors are the light attached-menu calibration. A
+    # mismatch here would silently move the slider midpoint off the measured
+    # 0.552/0.993 sample.
+    if slider is not None and "menuAttached" in presets:
+        anchors = slider.get("lightAnchors") or {}
+        mid = anchors.get("mid") or {}
+        entry = (presets.get("menuAttached") or {}).get("light") or {}
+        calibration = entry.get("calibration") or {}
+        for anchor_key, calibration_key in (("alpha", "neutralAlpha"), ("tint", "neutralTint")):
+            if _finite(mid.get(anchor_key)) and _finite(calibration.get(calibration_key)):
+                if abs(mid[anchor_key] - calibration[calibration_key]) > 1e-9:
+                    errors.append(
+                        f"glass.presets.menuAttached.light.calibration.{calibration_key}: "
+                        f"{calibration[calibration_key]} does not match the measured "
+                        f"slider midpoint {mid[anchor_key]}"
+                    )
+
+    # Distinct dark attached/detached baselines are a required product
+    # decision, not an accident of two equal numbers.
+    attached = (presets.get("menuAttached") or {}).get("dark") or {}
+    detached = (presets.get("menuDetached") or {}).get("dark") or {}
+    a_cal = attached.get("calibration") or {}
+    d_cal = detached.get("calibration") or {}
+    if all(_finite(value) for value in (
+        a_cal.get("neutralAlpha"), a_cal.get("neutralTint"),
+        d_cal.get("neutralAlpha"), d_cal.get("neutralTint"),
+    )):
+        if (abs(a_cal["neutralAlpha"] - d_cal["neutralAlpha"]) < 1e-6
+                and abs(a_cal["neutralTint"] - d_cal["neutralTint"]) < 1e-6):
+            errors.append(
+                "glass.presets: dark menuAttached and menuDetached must have "
+                "distinct presets"
+            )
+
+    return errors
+
+
+def load(path: Path = SOURCE) -> dict:
+    with path.open() as handle:
+        return json.load(handle)
+
+
+def _legacy_values(data: dict, role: str, scheme: str) -> tuple[float, float, float, float]:
+    material = data["semantic"][scheme]["material"]
+    opacity_key, blur_key, fallback_key = LEGACY_ROLE_TOKENS[role]
+    return (
+        float(material[opacity_key]),
+        float(material[blur_key]),
+        1.0,  # the legacy plate is a neutral surface tone, not a fitted tint
+        float(material[fallback_key]),
+    )
+
+
+def _opaque_values(data: dict, scheme: str) -> tuple[float, float]:
+    entry = data["glass"]["accessibility"]["reduceTransparency"][scheme]
+    return float(entry["alpha"]), float(entry["tint"])
+
+
+def resolve(
+    data: dict,
+    preset_name: str,
+    *,
+    scheme: str = "light",
+    slider: Any = None,
+    reduce_transparency: bool = False,
+    increase_contrast: bool = False,
+    backend: str = "gpu-sampled",
+    tier: str = "full",
+    rollout: str | None = None,
+    reduce_motion: bool = False,
+) -> dict:
+    """Resolve one preset to explicit optics and a rendering mode.
+
+    Precedence, highest first:
+
+    1. Reduce Transparency: opaque scheme plate, sampling/lensing off, and the
+       slider is not consulted.
+    2. Rollout: ``legacy`` keeps the existing per-role material; ``replacement``
+       uses the optical preset.
+    3. The supported light slider anchors (``menuAttached`` only); every other
+       preset is unchanged by the slider.
+    4. Increase Contrast: adds edge/foreground contrast after the fill decision,
+       so it still applies with Reduce Transparency.
+    5. Backend/tier: selects ``sampled-glass``, ``no-blur-veil``, ``solid`` or
+       ``software-fallback``. A persistent role keeps its sampled floor while
+       the GPU path exists.
+    """
+    if scheme not in SCHEMES:
+        raise PresetError(f"unknown scheme {scheme!r}")
+    if backend not in BACKENDS:
+        backend = "software"
+    if tier not in TIERS:
+        tier = "minimal"
+    if rollout is None:
+        rollout = data.get("glass", {}).get("rollout", {}).get("defaultMode", "legacy")
+    if rollout not in ROLLOUTS:
+        rollout = "legacy"
+
+    glass = data.get("glass", {})
+    presets = glass.get("presets", {})
+    preset = presets.get(preset_name)
+    reduce_motion = bool(reduce_motion)  # deliberately no effect on optics
+
+    if preset is None:
+        alpha, tint = _opaque_values(data, scheme)
+        return {
+            "preset": preset_name,
+            "scheme": scheme,
+            "look": "replacement",
+            "renderMode": "solid",
+            "alpha": alpha,
+            "tint": tint,
+            "blur": 0.0,
+            "edge": 0.0,
+            "edgeWidth": 0.0,
+            "foreground": 0.0,
+            "sliderApplied": False,
+            "confidence": "baseline",
+            "fallbackReason": "unknown-preset",
+        }
+
+    role = preset.get("role", "popup")
+    persistent = role in PERSISTENT_ROLES
+    confidence = "baseline"
+    fallback_reason = "none"
+    slider_applied = False
+
+    if rollout == "legacy":
+        alpha, blur, tint, fallback_alpha = _legacy_values(data, role, scheme)
+        edge = 0.0
+        edge_width = 0.0
+        foreground = 0.0
+        confidence = "baseline"
+        fallback_reason = "legacy"
+    else:
+        entry = preset[scheme]
+        calibration = entry["calibration"]
+        alpha = _mix(calibration["neutralAlpha"], calibration["perceptualAlpha"],
+                     calibration["perceptualWeight"])
+        tint = _mix(calibration["neutralTint"], calibration["perceptualTint"],
+                    calibration["perceptualWeight"])
+        blur = float(entry["blur"])
+        edge = float(entry["edge"])
+        edge_width = float(entry["edgeWidth"])
+        foreground = float(entry["foreground"])
+        confidence = entry["confidence"]
+        fallback_alpha = _opaque_values(data, scheme)[0]
+
+        if preset.get("slider") == "lightAttached" and scheme == "light":
+            position = _clamp01(slider, float(glass["slider"]["defaultPosition"]))
+            alpha, tint = _interpolate(glass["slider"]["lightAnchors"], position)
+            slider_applied = True
+
+    # Reduce Transparency is the explicit override: it wins over the slider and
+    # any sampled path, in both rollout looks, and uses the scheme's opaque
+    # plate rather than a translucent preset alpha.
+    if reduce_transparency:
+        alpha, tint = _opaque_values(data, scheme)
+        blur = 0.0
+        slider_applied = False
+        fallback_reason = "reduce-transparency"
+
+    # Increase Contrast is applied after the fill decision so it strengthens
+    # the edge/foreground even when the plate is already opaque.
+    if increase_contrast:
+        contrast = glass["accessibility"]["increaseContrast"]
+        edge = _clamp01(edge + float(contrast["edgeBoost"]), edge)
+        foreground = _clamp01(foreground + float(contrast["foregroundBoost"]), foreground)
+        edge_width = max(0.0, edge_width + float(contrast["edgeWidthBoost"]))
+
+    render_mode = "sampled-glass"
+    if reduce_transparency:
+        render_mode = "solid"
+    elif rollout == "legacy":
+        if backend == "software":
+            render_mode = "software-fallback"
+            alpha = fallback_alpha
+            blur = 0.0
+            fallback_reason = "software"
+        elif backend == "gpu-no-sampled-blur":
+            render_mode = "solid"
+            alpha = fallback_alpha
+            blur = 0.0
+            fallback_reason = "no-sampled-blur"
+        elif tier == "minimal" and not persistent:
+            render_mode = "solid"
+            alpha = fallback_alpha
+            blur = 0.0
+            fallback_reason = "minimal"
+        else:
+            # The persistent floor keeps Chrome/Dock sampled even when the
+            # controller visited Minimal (ADR 0203/0211).
+            fallback_reason = "none"
+    else:
+        intended = preset.get("render", "sampled")
+        if intended == "veil":
+            # A veil is an intentional no-blur surface. It must never be
+            # reported as a missing sampled pass.
+            render_mode = "no-blur-veil"
+            blur = 0.0
+            fallback_reason = "none"
+        elif intended == "solid":
+            render_mode = "solid"
+            blur = 0.0
+            fallback_reason = "none"
+        elif backend == "software":
+            render_mode = "software-fallback"
+            alpha, tint = _opaque_values(data, scheme)
+            blur = 0.0
+            fallback_reason = "software"
+        elif backend == "gpu-no-sampled-blur":
+            render_mode = "solid"
+            alpha, tint = _opaque_values(data, scheme)
+            blur = 0.0
+            fallback_reason = "no-sampled-blur"
+        elif tier == "minimal" and not persistent:
+            render_mode = "solid"
+            alpha, tint = _opaque_values(data, scheme)
+            blur = 0.0
+            fallback_reason = "minimal"
+        else:
+            render_mode = "sampled-glass"
+            fallback_reason = "none"
+
+    return {
+        "preset": preset_name,
+        "scheme": scheme,
+        "look": "legacy" if rollout == "legacy" else "replacement",
+        "renderMode": render_mode,
+        "alpha": alpha,
+        "tint": tint,
+        "blur": blur,
+        "edge": edge,
+        "edgeWidth": edge_width,
+        "foreground": foreground,
+        "sliderApplied": slider_applied,
+        "confidence": confidence,
+        "fallbackReason": fallback_reason,
+        # Orthogonal by construction: accepted so a caller cannot accidentally
+        # fold motion policy into the optical resolution.
+        "reduceMotion": bool(reduce_motion),
+    }
+
+
+def rollout_from_env(env: dict[str, str] | None = None) -> str:
+    """The one internal rollout switch, shared by nested and native fixtures."""
+    values = os.environ if env is None else env
+    requested = str(values.get("DRAGONFRUIT_GLASS_ROLLOUT", "legacy")).strip().lower()
+    return requested if requested in ROLLOUTS else "legacy"
+
+
+def self_test() -> list[str]:
+    """Behavioural checks over the checked-in token data."""
+    failures: list[str] = []
+    data = load()
+    errors = validate(data)
+    failures.extend(errors)
+
+    def check(condition: bool, message: str) -> None:
+        if not condition:
+            failures.append(message)
+
+    def near(actual: float, expected: float, message: str, tolerance: float = 1e-9) -> None:
+        check(abs(actual - expected) <= tolerance, f"{message}: {actual!r} != {expected!r}")
+
+    if errors:
+        return failures
+
+    # Light slider anchors: exact endpoints and the measured midpoint.
+    for position, expected_alpha, expected_tint in (
+        (0.0, 0.732, 0.953),
+        (0.5255, 0.552, 0.993),
+        (1.0, 0.415, 0.997),
+    ):
+        result = resolve(data, "menuAttached", scheme="light", slider=position,
+                         rollout="replacement")
+        near(result["alpha"], expected_alpha, f"light slider alpha at {position}")
+        near(result["tint"], expected_tint, f"light slider tint at {position}")
+        check(result["sliderApplied"], f"slider applied at {position}")
+
+    # Piecewise interpolation is monotone through the midpoint.
+    quarter = resolve(data, "menuAttached", scheme="light", slider=0.25,
+                      rollout="replacement")
+    check(0.552 < quarter["alpha"] < 0.732, "light slider interpolates below the midpoint")
+
+    # Unmeasured slider roles are unchanged by the slider.
+    for name in PRESET_NAMES:
+        if name == SLIDER_PRESET:
+            continue
+        low = resolve(data, name, scheme="light", slider=0.0, rollout="replacement")
+        high = resolve(data, name, scheme="light", slider=1.0, rollout="replacement")
+        check(not low["sliderApplied"] and not high["sliderApplied"],
+              f"{name}: slider must not apply")
+        near(low["alpha"], high["alpha"], f"{name}: slider changed alpha")
+        near(low["tint"], high["tint"], f"{name}: slider changed tint")
+
+    # Dark is a baseline, not a light-slider response.
+    dark_low = resolve(data, "menuAttached", scheme="dark", slider=0.0, rollout="replacement")
+    dark_high = resolve(data, "menuAttached", scheme="dark", slider=1.0, rollout="replacement")
+    check(not dark_low["sliderApplied"] and not dark_high["sliderApplied"],
+          "dark menuAttached must not follow the light slider")
+    near(dark_low["alpha"], dark_high["alpha"], "dark menuAttached slider alpha")
+
+    # Dark attached and detached are distinct presets.
+    attached = resolve(data, "menuAttached", scheme="dark", rollout="replacement")
+    detached = resolve(data, "menuDetached", scheme="dark", rollout="replacement")
+    check((attached["alpha"], attached["tint"]) != (detached["alpha"], detached["tint"]),
+          "dark attached and detached presets must be distinct")
+
+    # Reduce Transparency wins over the slider and disables sampling/lensing.
+    reduced = resolve(data, "menuAttached", scheme="light", slider=0.0,
+                      reduce_transparency=True, rollout="replacement")
+    check(reduced["renderMode"] == "solid", "Reduce Transparency must be solid")
+    check(not reduced["sliderApplied"], "Reduce Transparency must skip the slider")
+    check(reduced["alpha"] >= 0.9, "Reduce Transparency must be opaque")
+    check(reduced["blur"] == 0.0, "Reduce Transparency must disable sampling")
+
+    # Increase Contrast still applies with Reduce Transparency.
+    contrasted = resolve(data, "menuAttached", scheme="light", slider=0.0,
+                         reduce_transparency=True, increase_contrast=True,
+                         rollout="replacement")
+    check(contrasted["edge"] > reduced["edge"],
+          "Increase Contrast must strengthen the edge with Reduce Transparency")
+    check(contrasted["foreground"] > reduced["foreground"],
+          "Increase Contrast must strengthen the foreground with Reduce Transparency")
+
+    # The veil is intentional no-blur, not an unsupported sampled path.
+    veil = resolve(data, "menuBarVeil", scheme="light", rollout="replacement",
+                   backend="gpu-sampled")
+    check(veil["renderMode"] == "no-blur-veil", "the menu-bar veil must be no-blur-veil")
+    check(veil["fallbackReason"] == "none", "the veil must not report a fallback")
+    check(veil["blur"] == 0.0, "the veil must not request sampling")
+    unsupported = resolve(data, "menuBarVeil", scheme="light", rollout="replacement",
+                          backend="gpu-no-sampled-blur")
+    check(unsupported["renderMode"] == "no-blur-veil",
+          "an unsupported backend must not turn the veil into a sampled fallback")
+
+    # Unsupported sampled paths are safe and explicit.
+    for backend, expected in (("gpu-no-sampled-blur", "solid"),
+                              ("software", "software-fallback")):
+        result = resolve(data, "menuDetached", scheme="dark", rollout="replacement",
+                         backend=backend)
+        check(result["renderMode"] == expected,
+              f"{backend} must resolve to {expected}")
+        check(result["alpha"] >= 0.9, f"{backend} must use an opaque plate")
+        check(result["blur"] == 0.0, f"{backend} must not request sampling")
+
+    # Unknown presets take the safe solid path rather than raising.
+    unknown = resolve(data, "not-a-preset", scheme="light", rollout="replacement")
+    check(unknown["renderMode"] == "solid", "unknown preset must be solid")
+    check(unknown["fallbackReason"] == "unknown-preset",
+          "unknown preset must name its reason")
+
+    # The persistent Dock floor keeps sampling when the controller visits
+    # Minimal; transient popups may become solid.
+    dock = resolve(data, "dock", scheme="light", rollout="replacement", tier="minimal")
+    check(dock["renderMode"] == "sampled-glass", "the Dock must keep its sampled floor")
+    popup = resolve(data, "menuDetached", scheme="light", rollout="replacement",
+                    tier="minimal")
+    check(popup["renderMode"] == "solid", "a transient popup may reach solid")
+
+    # Reduce Motion is orthogonal to optics.
+    moving = resolve(data, "dock", scheme="light", rollout="replacement",
+                     reduce_motion=False)
+    still = resolve(data, "dock", scheme="light", rollout="replacement",
+                    reduce_motion=True)
+    check((moving["alpha"], moving["renderMode"]) == (still["alpha"], still["renderMode"]),
+          "Reduce Motion must not change the optics")
+
+    # The rollout switch defaults to the existing appearance and is stable.
+    legacy = resolve(data, "dock", scheme="light")
+    check(legacy["look"] == "legacy", "the default rollout must stay legacy")
+    check(legacy["renderMode"] == "sampled-glass", "legacy sampled appearance")
+    check(rollout_from_env({}) == "legacy", "unset rollout defaults to legacy")
+    check(rollout_from_env({"DRAGONFRUIT_GLASS_ROLLOUT": "replacement"}) == "replacement",
+          "replacement rollout is selectable")
+    check(rollout_from_env({"DRAGONFRUIT_GLASS_ROLLOUT": "bogus"}) == "legacy",
+          "unknown rollout is safe")
+
+    return failures
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true",
+                        help="validate the token schema and run the preset policy checks")
+    sub = parser.add_subparsers(dest="command")
+    resolve_parser = sub.add_parser("resolve", help="print one resolved preset")
+    resolve_parser.add_argument("--preset", required=True, choices=PRESET_NAMES)
+    resolve_parser.add_argument("--scheme", default="light", choices=SCHEMES)
+    resolve_parser.add_argument("--slider", type=float)
+    resolve_parser.add_argument("--reduce-transparency", action="store_true")
+    resolve_parser.add_argument("--increase-contrast", action="store_true")
+    resolve_parser.add_argument("--backend", default="gpu-sampled", choices=BACKENDS)
+    resolve_parser.add_argument("--tier", default="full", choices=TIERS)
+    resolve_parser.add_argument("--rollout", choices=ROLLOUTS)
+    args = parser.parse_args(argv)
+
+    data = load()
+    if args.check:
+        failures = self_test()
+        if failures:
+            for failure in failures:
+                print(f"FAIL  {failure}", file=sys.stderr)
+            print(f"{len(failures)} material-preset checks failed", file=sys.stderr)
+            return 1
+        print("material presets: schema and resolution checks pass")
+        return 0
+    if args.command == "resolve":
+        result = resolve(
+            data, args.preset, scheme=args.scheme, slider=args.slider,
+            reduce_transparency=args.reduce_transparency,
+            increase_contrast=args.increase_contrast,
+            backend=args.backend, tier=args.tier, rollout=args.rollout,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    parser.print_help()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -98,6 +98,538 @@ QtObject {
         }
     }
 
+    readonly property var glass: QtObject {
+        readonly property string version: "1"
+        readonly property var rollout: QtObject {
+            readonly property string defaultMode: "legacy"
+            readonly property string legacyMode: "legacy"
+            readonly property string replacementMode: "replacement"
+            readonly property string envVar: "DRAGONFRUIT_GLASS_ROLLOUT"
+        }
+        readonly property var slider: QtObject {
+            readonly property real defaultPosition: 0.5255
+            readonly property var lightAnchors: QtObject {
+                readonly property var low: QtObject {
+                    readonly property real position: 0.0
+                    readonly property real alpha: 0.732
+                    readonly property real tint: 0.953
+                }
+                readonly property var mid: QtObject {
+                    readonly property real position: 0.5255
+                    readonly property real alpha: 0.552
+                    readonly property real tint: 0.993
+                }
+                readonly property var high: QtObject {
+                    readonly property real position: 1.0
+                    readonly property real alpha: 0.415
+                    readonly property real tint: 0.997
+                }
+            }
+        }
+        readonly property var accessibility: QtObject {
+            readonly property var reduceTransparency: QtObject {
+                readonly property var light: QtObject {
+                    readonly property real alpha: 0.98
+                    readonly property real tint: 0.97
+                    readonly property string colourSpace: "srgb"
+                }
+                readonly property var dark: QtObject {
+                    readonly property real alpha: 0.96
+                    readonly property real tint: 0.1
+                    readonly property string colourSpace: "srgb"
+                }
+            }
+            readonly property var increaseContrast: QtObject {
+                readonly property real edgeBoost: 0.35
+                readonly property real foregroundBoost: 0.2
+                readonly property real edgeWidthBoost: 0.5
+            }
+        }
+        readonly property var presets: QtObject {
+            readonly property var dock: QtObject {
+                readonly property string role: "dock"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; rim peak 0.397 on mid-grey; blur sigma 3.86pt first fit"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.253
+                        readonly property real neutralTint: 0.604
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.253
+                        readonly property real perceptualTint: 0.604
+                    }
+                    readonly property real blur: 3.86
+                    readonly property real edge: 0.397
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; blur and rim reuse the light fit because the dark rim was not separately fitted"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.149
+                        readonly property real neutralTint: 0.207
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.149
+                        readonly property real perceptualTint: 0.207
+                    }
+                    readonly property real blur: 3.86
+                    readonly property real edge: 0.397
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var menuBarVeil: QtObject {
+                readonly property string role: "chrome"
+                readonly property string render: "veil"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md menu-bar veil: alpha 0.451 at y=5pt, then 0.439/0.408/0.357/0.243/0.059/0.008 to y=90pt; white background shows no visible veil; the veil is not a blur"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.451
+                        readonly property real neutralTint: 0.0
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.451
+                        readonly property real perceptualTint: 0.0
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "baseline"
+                    readonly property string provenance: "No standalone dark veil was measured; named Dragonfruit baseline 0.48 neutral alpha"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.48
+                        readonly property real neutralTint: 0.0
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.48
+                        readonly property real perceptualTint: 0.0
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var menuAttached: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "lightAttached"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md System Settings light File anchors at 0/0.5255/1 -> alpha 0.732/0.552/0.415, tint 0.953/0.993/0.997; File blur sigma ~10pt"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.552
+                        readonly property real neutralTint: 0.993
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.552
+                        readonly property real perceptualTint: 0.993
+                    }
+                    readonly property real blur: 10.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "The published dark File fit is contaminated by a light crop (REFERENCE.md); named attached-menu baseline 0.62/0.30 pending a controlled recapture. Perceptual mapping is mixed at 0.35, not overlaid at full strength"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.62
+                        readonly property real neutralTint: 0.3
+                        readonly property real perceptualWeight: 0.35
+                        readonly property real perceptualAlpha: 0.58
+                        readonly property real perceptualTint: 0.34
+                    }
+                    readonly property real blur: 10.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var menuDetached: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md common light status/context menus cluster near alpha 0.55 and near-white tint; detached menus are rounded cards"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.55
+                        readonly property real neutralTint: 0.96
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.55
+                        readonly property real perceptualTint: 0.96
+                    }
+                    readonly property real blur: 10.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md dark Desktop/Wi-Fi/Bluetooth/Battery fits near alpha 0.66 / tint 0.26 with substantial residuals; this is the detached-menu baseline"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.66
+                        readonly property real neutralTint: 0.26
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.66
+                        readonly property real perceptualTint: 0.26
+                    }
+                    readonly property real blur: 10.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var statusMenu: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md light status menus join the common context-menu cluster; 8pt blur is a local adaptation"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.55
+                        readonly property real neutralTint: 0.96
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.55
+                        readonly property real perceptualTint: 0.96
+                    }
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md dark Wi-Fi/Bluetooth/Battery status fits near alpha 0.66 / tint 0.26; 8pt blur is a local adaptation"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.66
+                        readonly property real neutralTint: 0.26
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.66
+                        readonly property real perceptualTint: 0.26
+                    }
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var tooltip: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "No direct tooltip optical fit; the reference tooltip is 33pt high and 8pt above the Dock plate. Named popup baseline 0.72/0.92"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.72
+                        readonly property real neutralTint: 0.92
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.72
+                        readonly property real perceptualTint: 0.92
+                    }
+                    readonly property real blur: 6.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "No dark tooltip fit; named popup baseline 0.76/0.24"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.76
+                        readonly property real neutralTint: 0.24
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.76
+                        readonly property real perceptualTint: 0.24
+                    }
+                    readonly property real blur: 6.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var controlCenterOuter: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md later controlled Control Center light outer fit alpha 0.265 / tint 0.373"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.265
+                        readonly property real neutralTint: 0.373
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.265
+                        readonly property real perceptualTint: 0.373
+                    }
+                    readonly property real blur: 20.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md later controlled Control Center dark outer fit alpha 0.489 / tint 0.677"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.489
+                        readonly property real neutralTint: 0.677
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.489
+                        readonly property real perceptualTint: 0.677
+                    }
+                    readonly property real blur: 20.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var controlCenterModule: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured-effective"
+                    readonly property string provenance: "REFERENCE.md Wi-Fi module light fit 0.391/0.317 is an observed effective stacked response, not an independent layer"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.391
+                        readonly property real neutralTint: 0.317
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.391
+                        readonly property real perceptualTint: 0.317
+                    }
+                    readonly property real blur: 12.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "baseline"
+                    readonly property string provenance: "No reliable dark module decomposition; named baseline 0.52/0.55"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.52
+                        readonly property real neutralTint: 0.55
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.52
+                        readonly property real perceptualTint: 0.55
+                    }
+                    readonly property real blur: 12.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var controlCenterExpanded: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "baseline"
+                    readonly property string provenance: "The expanded list is unmeasured in light; named baseline 0.86/0.20"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.86
+                        readonly property real neutralTint: 0.2
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.86
+                        readonly property real perceptualTint: 0.2
+                    }
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "observed-luma"
+                    readonly property string provenance: "REFERENCE.md Bluetooth expanded list is dark (~0.13 luma) with no reliable alpha decomposition; named 0.86/0.13 baseline"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.86
+                        readonly property real neutralTint: 0.13
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.86
+                        readonly property real perceptualTint: 0.13
+                    }
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var notificationBanner: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md light notification banner 0.549/0.976"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.549
+                        readonly property real neutralTint: 0.976
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.549
+                        readonly property real perceptualTint: 0.976
+                    }
+                    readonly property real blur: 14.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "baseline"
+                    readonly property string provenance: "The dark banner is uncovered as an independent fit; named baseline 0.56/0.30"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.56
+                        readonly property real neutralTint: 0.3
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.56
+                        readonly property real perceptualTint: 0.3
+                    }
+                    readonly property real blur: 14.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var notificationStack: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md light notification stack 0.551/0.706; the stack residual is materially larger than the banner's"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.551
+                        readonly property real neutralTint: 0.706
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.551
+                        readonly property real perceptualTint: 0.706
+                    }
+                    readonly property real blur: 14.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md dark notification stack 0.507/0.550"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.507
+                        readonly property real neutralTint: 0.55
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.507
+                        readonly property real perceptualTint: 0.55
+                    }
+                    readonly property real blur: 14.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var notificationLowerPanel: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md light notification lower panel 0.407/0.852; the residual is materially larger than the banner's"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.407
+                        readonly property real neutralTint: 0.852
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.407
+                        readonly property real perceptualTint: 0.852
+                    }
+                    readonly property real blur: 18.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "baseline"
+                    readonly property string provenance: "The dark lower panel is uncovered; named baseline 0.48/0.28"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.48
+                        readonly property real neutralTint: 0.28
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.48
+                        readonly property real perceptualTint: 0.28
+                    }
+                    readonly property real blur: 18.0
+                    readonly property real edge: 0.0
+                    readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var windowChrome: QtObject {
+                readonly property string role: "chrome"
+                readonly property string render: "solid"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md light System Settings sidebar/toolbar 0.986/0.857 and 0.961/0.965; Finder 0.985/0.858 and 0.994/0.922. Named near-opaque 0.975/0.91"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.975
+                        readonly property real neutralTint: 0.91
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.975
+                        readonly property real perceptualTint: 0.91
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md dark Finder sidebar/toolbar 0.935/0.218 and 0.900/0.247. Named near-opaque 0.918/0.233"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.918
+                        readonly property real neutralTint: 0.233
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.918
+                        readonly property real perceptualTint: 0.233
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+            }
+        }
+    }
+
     readonly property var lightScheme: QtObject {
         readonly property var color: QtObject {
             readonly property color surface: "#ffffff"

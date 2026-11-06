@@ -56,7 +56,7 @@ endif
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-baseline-capture glass-baseline-check check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check glass-baseline-capture glass-baseline-check check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -151,6 +151,7 @@ test: cargo-test qml-test visual-test
 # docs-only edits.
 gates:
 	$(MAKE) glass-selftest
+	$(MAKE) glass-presets-check
 	$(MAKE) e2e
 	$(MAKE) qml-test
 
@@ -186,7 +187,8 @@ e2e: build
 	    --test suspend_resume_conformance \
 	    --test drm_bringup \
 	    --test input_validation \
-	    --test multi_gpu
+	    --test multi_gpu \
+	    --test material_presets
 	$(CARGO) test -p dragonfruit-system-adapters
 	$(CARGO) test -p dragonfruit-networkmanager
 	$(CARGO) test -p dragonfruit-audio
@@ -744,6 +746,14 @@ gallery-snapshot: cmake-build
 # reference checkout is required.
 glass-selftest:
 	python3 tests/glass/run_selftest.py
+
+# T195: the material-preset schema and resolution policy. This is the
+# hardware-independent check for variant precedence, range/finite validation,
+# the measured light slider anchors, unchanged unmeasured roles, distinct dark
+# attached/detached presets, the explicit veil mode, and safe unsupported paths.
+glass-presets-check:
+	python3 scripts/material_presets.py --check
+	python3 tests/glass/test_material_presets.py
 
 # T-19.4: optional reference checkout verification. The manifest is committed
 # and the full macOS checkout stays optional; a requested reference run fails

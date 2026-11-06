@@ -143,6 +143,181 @@ TestCase {
         Theme.reducedMotion = saved;
     }
 
+    // -- T195: glass material presets and resolution -------------------------
+
+    function init() {
+        Glass.rollout = Theme.glass.rollout.defaultMode;
+        Glass.scheme = Theme.dark ? "dark" : "light";
+        Glass.slider = Theme.glass.slider.defaultPosition;
+        Glass.reduceTransparency = false;
+        Glass.increaseContrast = false;
+        Glass.sampledBlur = true;
+        Glass.software = false;
+        Glass.tier = "full";
+    }
+
+    function test_glass_presets_cover_the_required_surfaces() {
+        compare(Glass.presetNames.length, 13);
+        for (var i = 0; i < Glass.presetNames.length; ++i) {
+            var name = Glass.presetNames[i];
+            verify(Theme.glass.presets[name] !== undefined, name + " preset exists");
+            var resolved = Glass.resolve(name, { rollout: "replacement" });
+            verify(resolved.renderMode !== undefined, name + " resolves");
+            compare(resolved.preset, name);
+        }
+    }
+
+    function test_glass_light_slider_anchors() {
+        var anchors = Theme.glass.slider.lightAnchors;
+        var expected = [
+            [0.0, anchors.low.alpha, anchors.low.tint],
+            [anchors.mid.position, anchors.mid.alpha, anchors.mid.tint],
+            [1.0, anchors.high.alpha, anchors.high.tint]
+        ];
+        for (var i = 0; i < expected.length; ++i) {
+            var resolved = Glass.resolve("menuAttached", {
+                scheme: "light", rollout: "replacement", slider: expected[i][0]
+            });
+            verify(Math.abs(resolved.alpha - expected[i][1]) < 1e-6,
+                   "light slider alpha at " + expected[i][0]);
+            verify(Math.abs(resolved.tint - expected[i][2]) < 1e-6,
+                   "light slider tint at " + expected[i][0]);
+            compare(resolved.sliderApplied, true);
+        }
+        // The measured midpoint must stay exactly the 0.552/0.993 sample.
+        var mid = Glass.resolve("menuAttached", {
+            scheme: "light", rollout: "replacement", slider: 0.5255
+        });
+        verify(Math.abs(mid.alpha - 0.552) < 1e-6);
+        verify(Math.abs(mid.tint - 0.993) < 1e-6);
+    }
+
+    function test_glass_slider_only_moves_the_light_attached_menu() {
+        for (var i = 0; i < Glass.presetNames.length; ++i) {
+            var name = Glass.presetNames[i];
+            var low = Glass.resolve(name, { scheme: "light", rollout: "replacement", slider: 0 });
+            var high = Glass.resolve(name, { scheme: "light", rollout: "replacement", slider: 1 });
+            var expected = name === "menuAttached";
+            compare(low.sliderApplied, expected, name + " slider support");
+            if (!expected) {
+                verify(Math.abs(low.alpha - high.alpha) < 1e-6,
+                       name + " slider must not change alpha");
+                verify(Math.abs(low.tint - high.tint) < 1e-6,
+                       name + " slider must not change tint");
+            }
+        }
+        var darkLow = Glass.resolve("menuAttached", {
+            scheme: "dark", rollout: "replacement", slider: 0
+        });
+        var darkHigh = Glass.resolve("menuAttached", {
+            scheme: "dark", rollout: "replacement", slider: 1
+        });
+        compare(darkLow.sliderApplied, false);
+        verify(Math.abs(darkLow.alpha - darkHigh.alpha) < 1e-6);
+    }
+
+    function test_glass_dark_attached_and_detached_are_distinct() {
+        var attached = Glass.resolve("menuAttached", {
+            scheme: "dark", rollout: "replacement"
+        });
+        var detached = Glass.resolve("menuDetached", {
+            scheme: "dark", rollout: "replacement"
+        });
+        verify(Math.abs(attached.alpha - detached.alpha) > 1e-6
+               || Math.abs(attached.tint - detached.tint) > 1e-6,
+               "dark attached/detached presets must differ");
+    }
+
+    function test_glass_reduce_transparency_precedence() {
+        var reduced = Glass.resolve("menuAttached", {
+            scheme: "light", rollout: "replacement", slider: 0,
+            reduceTransparency: true
+        });
+        compare(reduced.renderMode, "solid");
+        compare(reduced.sliderApplied, false);
+        verify(reduced.alpha >= 0.9, "Reduce Transparency uses an opaque plate");
+        compare(reduced.blur, 0);
+
+        var contrasted = Glass.resolve("menuAttached", {
+            scheme: "light", rollout: "replacement", slider: 0,
+            reduceTransparency: true, increaseContrast: true
+        });
+        verify(contrasted.edge > reduced.edge, "Increase Contrast strengthens the edge");
+        verify(contrasted.foreground > reduced.foreground,
+               "Increase Contrast strengthens the foreground");
+    }
+
+    function test_glass_veil_is_explicit_not_a_fallback() {
+        var veil = Glass.resolve("menuBarVeil", {
+            scheme: "light", rollout: "replacement", backend: "gpu-sampled"
+        });
+        compare(veil.renderMode, "no-blur-veil");
+        compare(veil.fallbackReason, "none");
+        compare(veil.blur, 0);
+        var unsupported = Glass.resolve("menuBarVeil", {
+            scheme: "light", rollout: "replacement", backend: "gpu-no-sampled-blur"
+        });
+        compare(unsupported.renderMode, "no-blur-veil");
+        compare(unsupported.fallbackReason, "none");
+    }
+
+    function test_glass_unsupported_paths_are_safe() {
+        var software = Glass.resolve("menuDetached", {
+            scheme: "dark", rollout: "replacement", backend: "software"
+        });
+        compare(software.renderMode, "software-fallback");
+        verify(software.alpha >= 0.9);
+        compare(software.blur, 0);
+
+        var unsupported = Glass.resolve("menuDetached", {
+            scheme: "dark", rollout: "replacement", backend: "gpu-no-sampled-blur"
+        });
+        compare(unsupported.renderMode, "solid");
+        verify(unsupported.alpha >= 0.9);
+        compare(unsupported.blur, 0);
+
+        var unknown = Glass.resolve("not-a-preset", {
+            scheme: "light", rollout: "replacement"
+        });
+        compare(unknown.renderMode, "solid");
+        compare(unknown.fallbackReason, "unknown-preset");
+    }
+
+    function test_glass_rollout_defaults_to_the_existing_appearance() {
+        compare(Theme.glass.rollout.defaultMode, "legacy");
+        Glass.rollout = "legacy";
+        var legacy = Glass.resolve("dock", { scheme: "light" });
+        compare(legacy.look, "legacy");
+        verify(Math.abs(legacy.alpha - Theme.material.dockOpacity) < 1e-6);
+        Glass.rollout = "replacement";
+        var replacement = Glass.resolve("dock", { scheme: "light" });
+        compare(replacement.look, "replacement");
+        verify(Math.abs(replacement.alpha
+                       - Theme.glass.presets.dock.light.calibration.neutralAlpha) < 1e-6);
+    }
+
+    function test_glass_reduce_motion_is_orthogonal() {
+        var moving = Glass.resolve("dock", {
+            scheme: "light", rollout: "replacement", reduceMotion: false
+        });
+        var still = Glass.resolve("dock", {
+            scheme: "light", rollout: "replacement", reduceMotion: true
+        });
+        verify(Math.abs(moving.alpha - still.alpha) < 1e-6);
+        compare(moving.renderMode, still.renderMode);
+    }
+
+    function test_glass_persistent_floor_and_transient_fallback() {
+        var dock = Glass.resolve("dock", {
+            scheme: "light", rollout: "replacement", tier: "minimal"
+        });
+        compare(dock.renderMode, "sampled-glass");
+        var popup = Glass.resolve("menuDetached", {
+            scheme: "light", rollout: "replacement", tier: "minimal"
+        });
+        compare(popup.renderMode, "solid");
+    }
+
     // -- Toggle (FR-1) ------------------------------------------------------
 
     function test_toggle_keyboard_and_accessible_role() {

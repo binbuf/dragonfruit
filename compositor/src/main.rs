@@ -116,6 +116,12 @@ fn main() -> ExitCode {
     df_ipc::assert_lockstep_compatible(LOCKSTEP_VERSION)
         .expect("the built-in lockstep version must be compatible with itself");
 
+    // T195: the one internal glass rollout switch. T197+ consumes the
+    // resolver; logging the selected look here makes a nested/native fixture
+    // run reproducible from its own log even before the first surface migrates.
+    let rollout = dragonfruit_compositor::material_preset::Rollout::from_env();
+    eprintln!("dragonfruit-compositor: glass rollout={}", rollout.name());
+
     let socket_name = args
         .socket_name
         .unwrap_or_else(|| format!("dragonfruit-{}", std::process::id()));
