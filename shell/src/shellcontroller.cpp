@@ -3,6 +3,7 @@
 
 #include <QChronoTimer>
 #include <QDebug>
+#include <QEventLoop>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
@@ -68,6 +69,19 @@ namespace {
 // How long a launch may take to map its first window before the Dock treats
 // it as failed (T-10 section 8.5). Interim until app-index owns activation.
 constexpr qint64 kLaunchTimeoutMs = 8000;
+
+// Startup readiness (first chrome paint). settingsd is a session dependency
+// and answers `GetAll` on the session bus in well under a millisecond; the
+// timeout is a failure bound for a wedged daemon, not a normal delay. The
+// status host is optional, so its initial reads get a shorter bound and a
+// late registration still fills the bar in afterwards.
+constexpr int kInitialSettingsWaitMs = 1500;
+constexpr int kInitialDisplayWaitMs = 1500;
+constexpr int kInitialStatusWaitMs = 750;
+// The three first-party status views that own a visible menu-bar slot.
+constexpr int kInitialStatusWifi = 1 << 0;
+constexpr int kInitialStatusAudio = 1 << 1;
+constexpr int kInitialStatusBattery = 1 << 2;
 
 // The wallpaper content provider (T-18.1b): the session-bus surface the shell
 // reads the shipped and fetched defaults from, so the out-of-box background
@@ -502,9 +516,24 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     if (!m_protocol->authenticate(tokenHex))
         return false;
-    // Seed the physical scale before the first scene is created. The live
-    // per-surface preferred scale corrects this as soon as the compositor
-    // presents the first frame.
+    // Dispatch compositor events from the main loop. Created before the
+    // startup readiness waits so they can observe the compositor's replies
+    // (output replay/scale) instead of waiting for a notifier that is only
+    // installed at the end of start().
+    const int fd = m_protocol->displayFd();
+    m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+    connect(m_notifier, &QSocketNotifier::activated, this, [this]() { m_protocol->dispatch(); });
+    // The first paint must already use the persisted display scale and the
+    // persisted Dock/menu policy. The client's GetAll is asynchronous, so wait
+    // for its snapshot here, after the compositor connection exists but before
+    // any QML scene or chrome surface, instead of applying schema defaults and
+    // replacing them a frame later. The notifier is installed first so the
+    // policies the snapshot triggers can reach the compositor and its replies
+    // are processed by this wait.
+    waitForInitialSettings();
+    // Seed the physical scale before the first scene is created. The persisted
+    // display policy (below) is authoritative once settingsd has answered; the
+    // live per-surface preferred scale still corrects any later change.
     m_chromeScale = m_protocol->outputScale();
     // T-21.2c: the role table may already be populated (initial output
     // events dispatch during authentication). Seed the policy before the
@@ -531,8 +560,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // once the manager has announced its Spaces.
     applyWallpaperPolicy();
     // T-09.5: forward the persisted display selection. The protocol retries
-    // once the manager has announced its outputs.
+    // once the manager has announced its outputs. When the snapshot was read,
+    // seed the scale from it too so the very first configure is already at the
+    // persisted scale even if the compositor's scale event is still in flight.
     applyDisplayPolicy();
+    if (m_settingsSnapshotReceived && m_settingsClient
+        && m_settingsClient->isAvailable()) {
+        m_chromeScale = ChromeScale::sanitize(m_displaySettings.scale);
+    }
+    waitForDisplayPolicy();
     m_window = createChromeProducer()->window();
     m_window->setColor(Qt::transparent);
     ChromeFrameProducer *menuProducer = m_producers.value(m_window);
@@ -703,6 +739,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onStatusReport);
     connect(m_statusClient, &SystemStatusClient::writeReport, this,
             &ShellController::onStatusReport);
+    // A bridge host that starts after the shell (the session target starts
+    // services in parallel) must fill the bar without waiting for the user to
+    // open a menu or restart the shell.
+    connect(m_statusClient, &SystemStatusClient::availableChanged, this,
+            [this](bool available) {
+                if (available)
+                    refreshStatusViews();
+            });
     connect(m_item, SIGNAL(wifiJoinRequested(QString,QString)), this,
             SLOT(onWifiJoinRequested(QString,QString)));
     connect(m_item, SIGNAL(volumeSetRequested(double)), this,
@@ -713,20 +757,26 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_item, SIGNAL(statusMenuOpened()), this, SLOT(onStatusMenuOpened()));
     connect(m_item, SIGNAL(statusMenuClosed()), this, SLOT(onStatusMenuClosed()));
     applyStatusMenuData();
-    // Seed all three views once; the mock answers synchronously, the host is
-    // asked asynchronously and answers with its signal.
-    m_statusClient->refreshWifi();
-    m_statusClient->refreshAudio();
-    m_statusClient->refreshBattery();
-    m_statusClient->refreshBluetooth();
-    m_statusClient->refreshStorage();
-    m_statusClient->refreshInput();
-    m_statusClient->refreshUpdates();
-    m_statusClient->refreshAccounts();
-    m_statusClient->refreshPrinters();
-    m_statusClient->refreshPrivacy();
-    m_statusClient->refreshAccessibility();
-    m_statusClient->refreshVpn();
+    // Hold the first menu-bar commit until the three visible first-party
+    // status reads have landed. The host answers asynchronously; without this
+    // gate the first committed frame has an empty Wi-Fi/volume/battery row.
+    // The timer is the failure bound for a host that never answers; a late
+    // registration still fills the row through `availableChanged`.
+    if (m_statusClient->isAvailable()) {
+        m_initialStatusPending =
+            kInitialStatusWifi | kInitialStatusAudio | kInitialStatusBattery;
+        m_initialStatusTimer = new QTimer(this);
+        m_initialStatusTimer->setSingleShot(true);
+        m_initialStatusTimer->setInterval(kInitialStatusWaitMs);
+        connect(m_initialStatusTimer, &QTimer::timeout, this, [this]() {
+            m_initialStatusPending = 0;
+            commitInitialChrome();
+        });
+        m_initialStatusTimer->start();
+    }
+    // Seed every view once; the mock answers synchronously, the host is asked
+    // asynchronously and answers with its signal.
+    refreshStatusViews();
 
     // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
     // reads its live item view and re-reads on a short timer (a tray app can
@@ -1982,10 +2032,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_dockAnimTimer->setInterval(16);
     connect(m_dockAnimTimer, &QTimer::timeout, this, &ShellController::onDockAnimationTick);
 
-    const int fd = m_protocol->displayFd();
-    m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
-    connect(m_notifier, &QSocketNotifier::activated, this, [this]() { m_protocol->dispatch(); });
-
     // The offscreen window hands active focus to the first focusable menu
     // title when it is shown, which draws that title's FocusRing as if the
     // bar were keyboard-focused. Put focus on the bar root instead so the
@@ -2102,6 +2148,24 @@ void ShellController::applyStatusItems()
     }
 
     m_item->setProperty("statusItems", items);
+}
+
+void ShellController::refreshStatusViews()
+{
+    if (!m_statusClient)
+        return;
+    m_statusClient->refreshWifi();
+    m_statusClient->refreshAudio();
+    m_statusClient->refreshBattery();
+    m_statusClient->refreshBluetooth();
+    m_statusClient->refreshStorage();
+    m_statusClient->refreshInput();
+    m_statusClient->refreshUpdates();
+    m_statusClient->refreshAccounts();
+    m_statusClient->refreshPrinters();
+    m_statusClient->refreshPrivacy();
+    m_statusClient->refreshAccessibility();
+    m_statusClient->refreshVpn();
 }
 
 void ShellController::applyStatusMenuData()
@@ -2245,18 +2309,21 @@ void ShellController::onWifiState(const QByteArray &json)
 {
     if (m_statusModel)
         m_statusModel->applyWifiJson(json);
+    noteInitialStatusReply(kInitialStatusWifi);
 }
 
 void ShellController::onAudioState(const QByteArray &json)
 {
     if (m_statusModel)
         m_statusModel->applyAudioJson(json);
+    noteInitialStatusReply(kInitialStatusAudio);
 }
 
 void ShellController::onBatteryState(const QByteArray &json)
 {
     if (m_statusModel)
         m_statusModel->applyBatteryJson(json);
+    noteInitialStatusReply(kInitialStatusBattery);
 }
 
 void ShellController::onBluetoothState(const QByteArray &json)
@@ -2318,20 +2385,7 @@ void ShellController::onStatusReport(const QByteArray &json)
     qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
     // The action reply is not the new state: re-read the host, whose adapter
     // state is the single source of truth.
-    if (m_statusClient) {
-        m_statusClient->refreshWifi();
-        m_statusClient->refreshAudio();
-        m_statusClient->refreshBattery();
-        m_statusClient->refreshBluetooth();
-        m_statusClient->refreshStorage();
-        m_statusClient->refreshInput();
-        m_statusClient->refreshUpdates();
-        m_statusClient->refreshAccounts();
-        m_statusClient->refreshPrinters();
-m_statusClient->refreshPrivacy();
-        m_statusClient->refreshAccessibility();
-        m_statusClient->refreshVpn();
-    }
+    refreshStatusViews();
 }
 
 void ShellController::applyFocusedApp()
@@ -4336,6 +4390,30 @@ void ShellController::onAppAccelerator(const QString &appId, const QString &acti
     scheduleRender();
 }
 
+void ShellController::noteInitialStatusReply(int bit)
+{
+    if (m_initialStatusPending == 0 || (m_initialStatusPending & bit) == 0)
+        return;
+    m_initialStatusPending &= ~bit;
+    if (m_initialStatusPending == 0)
+        commitInitialChrome();
+}
+
+void ShellController::commitInitialChrome()
+{
+    if (m_initialStatusPending != 0)
+        return;
+    if (m_initialStatusTimer) {
+        m_initialStatusTimer->stop();
+        m_initialStatusTimer->deleteLater();
+        m_initialStatusTimer = nullptr;
+    }
+    render();
+    // Match `onConfigured`'s post-first-frame pass: any scene-graph-only
+    // content paints on the next event-loop turn, not in the first grab.
+    QTimer::singleShot(200, this, &ShellController::render);
+}
+
 void ShellController::scheduleRender()
 {
     if (m_renderPending)
@@ -5425,6 +5503,68 @@ void ShellController::onWallpaperProviderPropertiesChanged(const QString &interf
         applyWallpaperPolicy();
 }
 
+void ShellController::waitForInitialSettings()
+{
+    // The shell's first chrome configure is also the compositor's first
+    // display-scale use. settingsd is a session dependency (Type=dbus), but its
+    // `GetAll` reply is asynchronous; without this wait the shell forwards the
+    // schema default (1.0), renders at that scale, and only then receives the
+    // persisted value and reconfigures. Waiting here, before the QML engine and
+    // surfaces exist, makes the first configure use the persisted scale.
+    if (!m_settingsClient || !m_settingsClient->isAvailable()
+        || m_settingsSnapshotReceived) {
+        return;
+    }
+
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    const QMetaObject::Connection refreshed = connect(
+        m_settingsClient, &SettingsClient::refreshed, &loop, &QEventLoop::quit);
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timeout.start(kInitialSettingsWaitMs);
+    loop.exec();
+    disconnect(refreshed);
+
+    if (!m_settingsSnapshotReceived) {
+        qWarning() << "shell: settingsd did not answer the initial GetAll;"
+                   << "starting on schema defaults";
+    }
+}
+
+void ShellController::waitForDisplayPolicy()
+{
+    if (!m_protocol || !m_displaySent || !m_settingsSnapshotReceived)
+        return;
+    const qreal desired = ChromeScale::sanitize(m_displaySettings.scale);
+    const auto applied = [this, desired]() {
+        return qFuzzyCompare(m_protocol->outputScale(), desired);
+    };
+    if (applied())
+        return;
+
+    // The compositor answers `df_output.set_scale` with the new output
+    // geometry followed by `df_output.scale`; when the scale event arrives the
+    // logical geometry is already current. Creating a layer before it would
+    // configure against the old size (the oversized first menu-bar frame).
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    const QMetaObject::Connection scaleChanged = connect(
+        m_protocol, &ShellProtocol::outputScaleChanged, &loop, [&]() {
+            if (applied())
+                loop.quit();
+        });
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timeout.start(kInitialDisplayWaitMs);
+    loop.exec();
+    disconnect(scaleChanged);
+    if (!applied()) {
+        qWarning() << "shell: compositor did not apply display scale" << desired
+                   << "before the first chrome configure; continuing";
+    }
+}
+
 void ShellController::applyDisplayPolicy()
 {
     // T-09.5: one view of the settingsd display keys, forwarded to the
@@ -5432,6 +5572,11 @@ void ShellController::applyDisplayPolicy()
     // compositor is the sole applier; the shell keeps no second settings
     // source. The protocol retries once the manager has announced its outputs.
     if (!m_settingsClient || !m_protocol)
+        return;
+    // Never publish the schema default scale while the daemon's first snapshot
+    // is still in flight; the refreshed signal re-runs this with the persisted
+    // value (the same rule the wallpaper forwarder follows).
+    if (m_settingsClient->isAvailable() && !m_settingsSnapshotReceived)
         return;
     const DisplaySettings settings = displaySettingsFromValues(m_settingsClient->values());
     if (m_displaySent && settings == m_displaySettings)
@@ -7949,6 +8094,11 @@ void ShellController::renderDock()
 void ShellController::render()
 {
     if (!m_item || m_width <= 0 || m_barHeight <= 0)
+        return;
+    // Startup readiness: do not map the bar until the initial status reads
+    // have landed (or their bounded timeout fired). Committing an empty row
+    // first is exactly the half-populated launch frame this gate prevents.
+    if (m_initialStatusPending != 0)
         return;
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
