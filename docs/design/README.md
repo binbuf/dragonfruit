@@ -23,13 +23,21 @@ numbered records.
 | [10-design-system.md](10-design-system.md) | Components, tokens, typography, motion, quality gates |
 | [11-session-and-dev-workflow.md](11-session-and-dev-workflow.md) | Session model, nested/native workflows, testing ladder |
 | [12-packaging.md](12-packaging.md) | Fedora/Debian packaging and distribution |
+| [22-total-experience.md](22-total-experience.md) | The whole-desktop target: shell, navigation, Settings, motion, HUDs, ownership |
+| [settings-business-logic-map.md](settings-business-logic-map.md) | Every Settings pane/row to its owner and absence path |
+| [distro-compatibility.md](distro-compatibility.md) | Fedora/Ubuntu/Debian/Arch host-service and packaging contract |
+| [interface-naming-and-licensing.md](interface-naming-and-licensing.md) | Generic names, original assets, third-party substitutions |
+| [motion-and-feedback.md](motion-and-feedback.md) | Motion language, HUDs, sound, cursor |
+| [evidence-and-acceptance.md](evidence-and-acceptance.md) | Capture, measurement, and acceptance process |
 | [14-risks.md](14-risks.md) | Risks, hard limits, IP constraints |
 | [architecture-audit-native-rendering.md](architecture-audit-native-rendering.md) | The native DRM/material/shell-transport audit and its implementation record |
 | [advisor-briefing.md](advisor-briefing.md) | Historical context pack; superseded where it conflicts with STATUS/audit |
 
 The track documents in [tracks/](tracks/) are the design references for the
-T-01…T-21 slices. They describe the target at the time the track was cut; use
-`STATUS.md` for the current state.
+T-01…T-22 slices. They describe the target at the time the track was cut; use
+`STATUS.md` for the current state. Track 22 (v0.2.0) is the total-experience
+track: [tracks/22-total-experience-parity.md](tracks/22-total-experience-parity.md);
+its executable task set is [tasks/0.2.0/](../tasks/0.2.0/README.md).
 
 ## Reading rules
 

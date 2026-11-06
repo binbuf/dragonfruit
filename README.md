@@ -1,14 +1,18 @@
 # Dragonfruit
 
-A modern Linux desktop environment inpired by macOS, built with Rust and Qt Quick
+A modern Linux desktop environment inspired by the total macOS experience, built with Rust and Qt Quick.
 
 ## Why Dragonfruit?
 
-Dragonfruit brings the elegance, meticulous aeshetics, and intuitive workflow of macOS to Linux.
+Dragonfruit brings the elegance, meticulous aesthetics, and intuitive workflow of macOS to Linux — not just its glass, but the whole desktop: the Dock, menu bar, Overview, app switcher, Search, Applications drawer, System Settings, animations, HUDs, and the small behaviours that make them feel like one system.
 
 **Beautiful by design.** A fluid Dock, elegant animations, beautiful materials, intuitive workspaces, and a carefully coordinated visual language.
 
-**Linux first.** Dragonfruit integrates with your existing distro. We are a semi opinionated, meaning we trade off some of the macOS inspired vertical integration for customizability that Linux users typically prefer. Our goal is for you to keep the applications, tools, and distro you trust.
+**Total experience, not a theme.** The target is behavioural and perceptual parity: the same mental model, information architecture, motion language, and quality bar — reproduced with original names and assets. See [`docs/design/22-total-experience.md`](docs/design/22-total-experience.md).
+
+**Linux first.** Dragonfruit integrates with your existing distro. We are semi-opinionated, meaning we trade off some of the macOS-inspired vertical integration for customizability that Linux users typically prefer. Our goal is for you to keep the applications, tools, and distro you trust. Fedora, Ubuntu, Debian, and Arch are first-class targets; the contract is in [`docs/design/distro-compatibility.md`](docs/design/distro-compatibility.md).
+
+**Every setting has an owner.** System Settings is not a gallery of toggles. Every row maps to our compositor, shell, `settingsd`, a host daemon, a distro adapter, a portal, or an explicitly chosen third-party component. The map is [`docs/design/settings-business-logic-map.md`](docs/design/settings-business-logic-map.md).
 
 **Built for performance.** A Rust/Smithay Wayland compositor, GPU accelerated shell, and a design focused on responsive rendering, efficient resource usage, and smooth animation.
 
@@ -16,7 +20,7 @@ Dragonfruit brings the elegance, meticulous aeshetics, and intuitive workflow of
 
 ### Built on open source
 
-Every component in the DE is a build vs buy argument. We try to "buy" (in this acquire for free) when there's a high quality open source project with permissisble licensing. We tend to build when we can't find something that fits well into the project's goals. 
+Every component in the DE is a build vs buy argument. We try to "buy" (in this acquire for free) when there's a high quality open source project with permissive licensing. We tend to build when we can't find something that fits well into the project's goals.
 
 | Project | How Dragonfruit uses it |
 |---|---|
@@ -37,6 +41,41 @@ Every component in the DE is a build vs buy argument. We try to "buy" (in this a
 | **Wikimedia Commons** (asset-specific licenses) | Optional online wallpaper discovery |
 
 Dragonfruit's original compositor, shell, services, protocols, and design-system code are intended to use the MIT license. Third-party components and assets retain their respective licenses.
+
+## Total experience (v0.2.0)
+
+The v0.2.0 track completes the core desktop experience:
+
+- **System Settings, in detail** — every pane, row, state, search result, and
+  admin prompt mapped to a real owner.
+- **Dock, in full** — every click path, launch/quit, bounce, minimize/genie,
+  magnification, auto-hide, stacks, Trash, badges, chooser, drag/drop,
+  keyboard, and multi-display behaviour.
+- **Menu bar, in full** — global menu, system menu, status items, menu-bar
+  extras, clock/date, Quick Settings, overflow/notch, auto-hide.
+- **Overview and workspaces** — live grid, spaces strip, drag between
+  workspaces, gestures, hot corners, Desktop Reveal.
+- **App switcher, Search, Applications drawer, Stage, tiling, Preview,
+  login/lock/first-run.**
+- **Animations and HUDs** — window lifecycle, menus, Mission Control,
+  app switcher, volume/brightness/backlight/charging, notifications.
+- **Cross-distro integration** — app discovery, startup apps, users/groups,
+  updates, default apps, and admin auth on Fedora, Ubuntu, Debian, and Arch.
+
+Start with:
+
+- [`docs/design/22-total-experience.md`](docs/design/22-total-experience.md) — the target
+- [`docs/design/settings-business-logic-map.md`](docs/design/settings-business-logic-map.md) — every Settings row to its owner
+- [`docs/design/distro-compatibility.md`](docs/design/distro-compatibility.md) — the cross-distro contract
+- [`docs/design/interface-naming-and-licensing.md`](docs/design/interface-naming-and-licensing.md) — generic names and third-party policy
+- [`docs/design/motion-and-feedback.md`](docs/design/motion-and-feedback.md) — motion, HUDs, sound, cursor
+- [`docs/design/evidence-and-acceptance.md`](docs/design/evidence-and-acceptance.md) — capture/measurement/acceptance
+- [`docs/v0.2.0/ROADMAP.md`](docs/v0.2.0/ROADMAP.md) — the executable task sequence
+- [`docs/tasks/0.2.0/`](docs/tasks/0.2.0/README.md) — one-session tasks T209–T262
+
+Reference capture evidence and the expanded campaign plan live in the sibling
+`macos-liquid-glass-review` repository (`docs/GOAL.md`,
+`docs/CAPTURE-PLAN.md`, `docs/SURFACE-INVENTORY.md`).
 
 ## Repository layout
 
@@ -201,6 +240,13 @@ attribution, and [docs/licensing.md](docs/licensing.md) for the policy.
 
 - [Design docs](docs/design/00-overview.md) — architecture, roadmap
   inputs, risks
+- [Total experience target](docs/design/22-total-experience.md) — the whole-desktop goal
+- [Settings business-logic map](docs/design/settings-business-logic-map.md) — every row to its owner
+- [Cross-distro contract](docs/design/distro-compatibility.md) — Fedora/Ubuntu/Debian/Arch
+- [Naming and licensing](docs/design/interface-naming-and-licensing.md) — generic names, assets, third-party policy
+- [Motion and feedback](docs/design/motion-and-feedback.md) — animations, HUDs, sound, cursor
+- [Evidence and acceptance](docs/design/evidence-and-acceptance.md) — capture, measurement, gates
 - [Roadmap](docs/ROADMAP.md) — the strict work-unit sequence
+- [v0.2.0 roadmap](docs/v0.2.0/ROADMAP.md) — total-experience task set
 - [IPC versioning policy](docs/ipc-versioning.md)
 - [Testing ladder](docs/testing-ladder.md)
