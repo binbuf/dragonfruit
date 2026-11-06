@@ -740,16 +740,30 @@ pub mod glass {
             pub const ROLE: &str = "chrome";
             pub const RENDER: &str = "veil";
             pub const SLIDER: &str = "none";
+            pub const STRIP_HEIGHT: f32 = 39.0_f32;
+            pub const EXTENT: f32 = 95.0_f32;
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
                 pub const PROVENANCE: &str = "REFERENCE.md menu-bar veil: alpha 0.451 at y=5pt, then 0.439/0.408/0.357/0.243/0.059/0.008 to y=90pt; white background shows no visible veil; the veil is not a blur";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.451_f32;
-                    pub const NEUTRAL_TINT: f32 = 0.0_f32;
+                    pub const NEUTRAL_TINT: f32 = 1.0_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
                     pub const PERCEPTUAL_ALPHA: f32 = 0.451_f32;
-                    pub const PERCEPTUAL_TINT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 1.0_f32;
+                }
+                pub mod veil {
+                    pub const PROBE: f32 = 8.0_f32;
+                    pub const READABILITY: f32 = 0.35_f32;
+                    pub const ALPHA_5: f32 = 0.45098037_f32;
+                    pub const ALPHA_15: f32 = 0.43921566_f32;
+                    pub const ALPHA_25: f32 = 0.40784317_f32;
+                    pub const ALPHA_35: f32 = 0.35686272_f32;
+                    pub const ALPHA_50: f32 = 0.24313729_f32;
+                    pub const ALPHA_75: f32 = 0.05882353_f32;
+                    pub const ALPHA_90: f32 = 0.00784314_f32;
+                    pub const ALPHA_95: f32 = 0.0_f32;
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
@@ -758,7 +772,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "No standalone dark veil was measured; named Dragonfruit baseline 0.48 neutral alpha";
+                pub const PROVENANCE: &str = "No standalone dark veil was measured; named Dragonfruit baseline: the measured light depth profile scaled to a 0.48 peak over black, with a 0.20 post-veil readability ceiling";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.48_f32;
@@ -766,6 +780,18 @@ pub mod glass {
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
                     pub const PERCEPTUAL_ALPHA: f32 = 0.48_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.0_f32;
+                }
+                pub mod veil {
+                    pub const PROBE: f32 = 8.0_f32;
+                    pub const READABILITY: f32 = 0.2_f32;
+                    pub const ALPHA_5: f32 = 0.48_f32;
+                    pub const ALPHA_15: f32 = 0.4674_f32;
+                    pub const ALPHA_25: f32 = 0.434_f32;
+                    pub const ALPHA_35: f32 = 0.3798_f32;
+                    pub const ALPHA_50: f32 = 0.2588_f32;
+                    pub const ALPHA_75: f32 = 0.0626_f32;
+                    pub const ALPHA_90: f32 = 0.00835_f32;
+                    pub const ALPHA_95: f32 = 0.0_f32;
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;

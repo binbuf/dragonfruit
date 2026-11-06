@@ -25,6 +25,7 @@ pub mod grab;
 pub mod material_cache;
 pub mod material_region;
 pub mod menu;
+pub mod menubar_veil;
 pub mod motion;
 pub mod pass;
 pub mod placement;
@@ -96,7 +97,7 @@ pub use blur::{
     RegionFilter, SceneTextureElement, TextureRenderer, BLUR_RADIUS_UNIFORM, BLUR_SHADER,
     BLUR_TEXEL_UNIFORM, GLASS_RADIUS_UNIFORM, GLASS_SHADER, GLASS_SIZE_UNIFORM, LENS_BAND_FACTOR,
     LENS_FALLOFF_UNIFORM, REFRACTION_UNIFORM, SPECULAR_UNIFORM, SPECULAR_WIDTH_UNIFORM,
-    TINT_ADAPT_SCALE, TINT_AMOUNT_UNIFORM, TINT_COLOR_UNIFORM, TINT_SCALE_UNIFORM,
+    TINT_ADAPT_SCALE, TINT_AMOUNT_UNIFORM, TINT_COLOR_UNIFORM, TINT_SCALE_UNIFORM, VEIL_SHADER,
 };
 #[allow(unused_imports)]
 pub use corner::{
@@ -120,6 +121,11 @@ pub(crate) use material_cache::{
 #[allow(unused_imports)]
 pub use material_region::{full_output_material_forced, MaterialRegion, ENV_MATERIAL_FULL_OUTPUT};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
+#[allow(unused_imports)]
+pub use menubar_veil::{
+    veil_uniform_names, VeilSpec, VEIL_EXTENT, VEIL_FILTER, VEIL_LUT_DEPTHS, VEIL_READABILITY_FADE,
+    VEIL_STRIP_HEIGHT,
+};
 pub use motion::{MinimizedAnimation, MotionFrame, WindowMotion, WindowMotionKind};
 #[allow(unused_imports)]
 pub use pass::FramePass;

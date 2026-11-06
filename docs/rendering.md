@@ -179,6 +179,20 @@ and no `blur_draws`/`blur_passes` increment. `PanelBlurKey` includes the padded
 footprint and filter, while `PanelPaintKey` advances the element commit for
 tint/scheme/tier-only changes so the cached texture is reused.
 
+T200 gives the menu bar its own no-blur veil (ADR 0219). The preset resolves to
+the sharp path and the `VEIL_SHADER` samples the live scene at the current
+pixel; there is no Kawase allocation and no blur counter. A measured depth LUT
+is a white lift in Light (0.451 at 5 pt, fading to zero by 95 pt) and a black
+wash in Dark (the same shape at a 0.48 peak). A bounded 5-tap luminance probe
+inside the 39 pt reference strip can only raise the LUT alpha for readability;
+it never filters the displayed backdrop. The layer surface is 95 pt tall so the
+compositor can draw below the bar, while the exclusive zone, input buffer and
+committed strip stay at Dragonfruit's 28 pt bar. The shell declares the `veil`
+panel region with the full visual extent and clears it for the fallback,
+Reduce Transparency or a hidden bar. The veil element's commit follows the
+scene cache's real-damage commit, so a moving window under the bar repaints the
+veil while a settled scene stays damage-free.
+
 **Acceptance**
 
 - Steady-state Dock magnification does not allocate a new texture per frame.

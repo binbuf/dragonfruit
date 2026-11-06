@@ -639,6 +639,21 @@ texture with no blur allocation. `PanelBlurKey` includes the region's full
 sample footprint (blur/lens kernel plus overscan), while `PanelPaintKey` makes
 tint/scheme/tier changes repaint without rebuilding the cached texture.
 
+T200 turns the menu bar into the explicit no-blur veil
+([ADR 0219](adr/0219-menubar-no-blur-veil.md)). The veil preset takes the sharp
+path and `VEIL_SHADER` samples the live scene directly; the measured Light
+depth LUT (0.451 at 5 pt, zero by 95 pt) is a white lift, and Dark uses the
+documented black baseline with the same depth shape. A bounded local luminance
+probe may only raise the LUT alpha inside the 39 pt reference strip for
+foreground readability; the displayed scene is never spatially filtered. The
+menu-bar layer surface is configured to the 95 pt visual extent while its
+exclusive zone and committed input strip remain the 28 pt bar, so the lower
+veil is visual-only. The shell commits a `veil` panel region with the full
+extent and clears it for the fallback, Reduce Transparency or a hidden bar.
+The sharp element's commit follows the scene cache's real-damage commit, so a
+moving window under the bar repaints the veil and a settled scene does not.
+`query material` prints the veil mode, extent, strip and LUT samples.
+
 `BackdropPass` gates the pass: the backend opens a rendered frame once
 (`DfState::begin_render_frame`) and each output applies the backdrop at most
 once. A repeated `(frame, output)` request is counted as `skipped` and draws

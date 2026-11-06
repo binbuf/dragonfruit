@@ -2130,6 +2130,7 @@ fn material_report(state: &DfState) -> String {
     // change updates these values and the `material_revision`.
     for preset in [
         crate::material_preset::Preset::MenuAttached,
+        crate::material_preset::Preset::MenuBarVeil,
         crate::material_preset::Preset::Dock,
     ] {
         let resolved = state.resolve_glass_preset(preset);
@@ -2156,6 +2157,20 @@ fn material_report(state: &DfState) -> String {
             resolved.fallback_reason,
             state.material_revision,
         ));
+    }
+    // T200: the veil diagnostic is deliberately explicit about the depth LUT
+    // and the no-blur mode, so a capture log can prove the strip did not take
+    // the sampled path.
+    let veil = state.resolve_glass_preset(crate::material_preset::Preset::MenuBarVeil);
+    match crate::window::menubar_veil::VeilSpec::for_resolved(&veil) {
+        Some(spec) => out.push_str(&format!("{}\n", spec.diagnostic(veil.render_mode))),
+        None => out.push_str(&format!(
+            "material veil mode={} fallback={} extent={:.1} strip={:.1}\n",
+            veil.render_mode.name(),
+            veil.fallback_reason,
+            crate::window::menubar_veil::VEIL_EXTENT,
+            crate::window::menubar_veil::VEIL_STRIP_HEIGHT,
+        )),
     }
     out.push_str("end\n");
     out

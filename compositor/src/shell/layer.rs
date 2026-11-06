@@ -570,6 +570,42 @@ mod tests {
     }
 
     #[test]
+    fn menu_bar_veil_extent_is_visual_only_beyond_the_reserved_strip() {
+        // T200: the layer surface is tall enough for the 95 pt veil, but the
+        // exclusive zone stays the 28 pt bar strip. The visual region extends
+        // past the strip without changing input or reservation.
+        let bar = LayerSurfaceState {
+            height: 95,
+            exclusive_zone: 28,
+            ..anchored_top_bar()
+        };
+        let geometry = bar.geometry(output());
+        assert_eq!(geometry.size, (1920, 95).into());
+        assert_eq!(
+            bar.reserved_rect(geometry),
+            Some(Rectangle::new(Point::from((0, 0)), (1920, 28).into())),
+            "the veil's lower 67 pt must not reserve usable area"
+        );
+        let veil = panel_region("veil", "menuBarVeil", 0, 0, 1920, 95, 0, 0, 0, 0, 0)
+            .expect("valid veil region");
+        assert_eq!(veil.rect.size, (1920, 95).into());
+        assert!(veil.is_visible());
+        // Output isolation: the same surface-local region is clipped to the
+        // owning output, never drawn across a second display.
+        let surface = Rectangle::new(Point::from((0, 0)), (1920, 95).into());
+        let other_output = Rectangle::new(Point::from((1280, 0)), (960, 540).into());
+        let bounds = crate::window::explicit_panel_bounds(surface, veil.rect)
+            .expect("region intersects its surface")
+            .intersection(other_output)
+            .expect("the visible slice on the second output");
+        assert_eq!(bounds.size, (640, 95).into());
+        assert_eq!(bounds.loc, Point::from((1280, 0)));
+        // The top layer is hidden for a fullscreen client; the veil region
+        // therefore contributes no material on that output.
+        assert!(!visible_in_fullscreen(LAYER_TOP));
+    }
+
+    #[test]
     fn reserved_rect_is_the_visible_bar_not_the_whole_surface() {
         // A bottom Dock surface is taller than its bar: the transparent
         // magnification band sits above the reserved bar.

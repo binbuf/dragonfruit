@@ -144,6 +144,30 @@ def main() -> int:
                      f"veil has no fallback reason on {backend}")
         checks.check(veil["blur"] == 0.0, f"veil requests no blur on {backend}")
 
+    # T200: the measured Light depth LUT is exact at the reference samples and
+    # ends by 95 pt; the veil colour is the scheme's lift/wash, not the legacy
+    # neutral plate.
+    light_veil = presets.resolve(data, "menuBarVeil", scheme="light",
+                                 rollout="replacement")
+    checks.near(light_veil["tint"], 1.0, "Light veil is a white lift")
+    checks.near(light_veil["stripHeight"], 39, "reference strip is 39 pt")
+    checks.near(light_veil["extent"], 95, "veil extent is 95 pt")
+    measured = {
+        5: 0.45098037, 15: 0.43921566, 25: 0.40784317, 35: 0.35686272,
+        50: 0.24313729, 75: 0.05882353, 90: 0.00784314, 95: 0.0,
+    }
+    for depth, expected in measured.items():
+        actual = light_veil["veil"][f"alpha{depth}"]
+        checks.check(abs(actual - expected) <= 0.03,
+                     f"Light LUT alpha at {depth} pt is within 0.03")
+    checks.check(light_veil["veil"]["alpha95"] == 0.0,
+                 "Light LUT ends at zero by 95 pt")
+    dark_veil = presets.resolve(data, "menuBarVeil", scheme="dark",
+                                rollout="replacement")
+    checks.near(dark_veil["tint"], 0.0, "Dark veil is a black wash")
+    checks.check(dark_veil["veil"]["alpha95"] == 0.0,
+                 "Dark LUT ends at zero by 95 pt")
+
     # Unsupported sampled paths are safe and explicit.
     for backend, mode in (("gpu-no-sampled-blur", "solid"),
                           ("software", "software-fallback")):

@@ -224,6 +224,11 @@ def validate(data: dict) -> list[str]:
         slider_mode = _string(preset, "slider", path, errors, allowed=SLIDER_MODES)
         if slider_mode not in (None, "none") and name != SLIDER_PRESET:
             errors.append(f"{path}.slider: only {SLIDER_PRESET} follows the slider")
+        if name == "menuBarVeil":
+            strip = _number(preset, "stripHeight", path, errors, low=1.0, high=128.0)
+            extent = _number(preset, "extent", path, errors, low=1.0, high=512.0)
+            if strip is not None and extent is not None and extent <= strip:
+                errors.append(f"{path}.extent: must extend past the {strip} pt strip")
         for scheme in SCHEMES:
             scheme_path = f"{path}.{scheme}"
             entry = _expect_object(preset.get(scheme), scheme_path, errors)
@@ -249,6 +254,39 @@ def validate(data: dict) -> list[str]:
             _number(entry, "edge", scheme_path, errors, low=0.0, high=1.0)
             _number(entry, "edgeWidth", scheme_path, errors, low=0.0, high=8.0)
             _number(entry, "foreground", scheme_path, errors, low=0.0, high=1.0)
+            # T200: the menu-bar veil is a depth LUT, not a flat alpha. The
+            # samples must stay ordered, end at zero, and keep the scheme's
+            # veil colour (white in Light, black in Dark).
+            if name == "menuBarVeil":
+                veil = _expect_object(entry.get("veil"), f"{scheme_path}.veil", errors)
+                if veil is not None:
+                    _number(veil, "probe", f"{scheme_path}.veil", errors, low=0.0, high=64.0)
+                    _number(veil, "readability", f"{scheme_path}.veil", errors,
+                            low=0.0, high=1.0)
+                    previous = 1.0
+                    for depth in (5, 15, 25, 35, 50, 75, 90, 95):
+                        key = f"alpha{depth}"
+                        alpha = _number(veil, key, f"{scheme_path}.veil", errors,
+                                        low=0.0, high=1.0)
+                        if alpha is None:
+                            continue
+                        if alpha > previous + 1e-9:
+                            errors.append(
+                                f"{scheme_path}.veil.{key}: {alpha} rises above the "
+                                f"previous sample {previous}"
+                            )
+                        previous = alpha
+                    if _finite(veil.get("alpha95")) and veil["alpha95"] > 1e-6:
+                        errors.append(f"{scheme_path}.veil.alpha95: must end at zero")
+                calibration = entry.get("calibration") or {}
+                tint = calibration.get("neutralTint")
+                if _finite(tint):
+                    if scheme == "light" and tint < 0.9:
+                        errors.append(f"{scheme_path}.calibration.neutralTint: "
+                                      "the Light veil must be a white lift")
+                    if scheme == "dark" and tint > 0.1:
+                        errors.append(f"{scheme_path}.calibration.neutralTint: "
+                                      "the Dark veil must be a black wash")
             # T198: the Dock optical fit. The fields are optional for the
             # other presets (they keep the legacy adaptive tint/rim), but a
             # Dock entry without them would silently lose the measured
@@ -518,6 +556,12 @@ def resolve(
         "sliderApplied": slider_applied,
         "confidence": confidence,
         "fallbackReason": fallback_reason,
+        # T200: the veil depth LUT travels with the resolution so the shell,
+        # compositor diagnostic and fixtures read the same samples.
+        "veil": (preset.get(scheme, {}).get("veil")
+                 if isinstance(preset, dict) else None),
+        "stripHeight": preset.get("stripHeight") if isinstance(preset, dict) else None,
+        "extent": preset.get("extent") if isinstance(preset, dict) else None,
         # Orthogonal by construction: accepted so a caller cannot accidentally
         # fold motion policy into the optical resolution.
         "reduceMotion": bool(reduce_motion),

@@ -66,6 +66,11 @@ Rectangle {
     property bool materialBlurActive: true
     property int materialTier: 0
     property int materialFallback: 0
+    // T200: the accessibility overrides the compositor applies to the veil.
+    // They are pushed by the shell alongside the role material state so QML
+    // can choose the scheme-appropriate opaque fallback when the veil is off.
+    property bool reduceTransparency: false
+    property bool increaseContrast: false
     // T-21.2c: the transient Popup role state for every dropdown/popover in
     // the bar scene. The shell applies it through the same MaterialPolicy as
     // the persistent Chrome role above; QML never re-derives the tier.
@@ -176,12 +181,53 @@ Rectangle {
     // the milky fallback keeps the same chrome geometry and text contrast.
     readonly property color chromeFill: Theme.color.chrome
     readonly property color chromeFallbackFill: Theme.color.chromeFallbackFill
-    color: !menuBar.showBackground ? "transparent"
-        : menuBar.materialBlurActive
-          ? Qt.rgba(menuBar.chromeFill.r, menuBar.chromeFill.g,
-                    menuBar.chromeFill.b, Theme.material.chromeOpacity)
-          : Qt.rgba(menuBar.chromeFallbackFill.r, menuBar.chromeFallbackFill.g,
-                    menuBar.chromeFallbackFill.b, Theme.material.chromeFallbackOpacity)
+    // T200: the replacement rail moves the menu-bar backdrop into the
+    // compositor. In that mode the QML surface paints no fill at all; the
+    // compositor's sharp veil sits below the foreground and the popups. When
+    // the veil cannot run (legacy rollout, Reduce Transparency, or no sampled
+    // scene texture) QML keeps the scheme-appropriate plate, so the bar never
+    // shows an unfiltered wallpaper strip.
+    readonly property int veilExtent: Theme.glass.presets.menuBarVeil.extent
+    readonly property int referenceStripHeight:
+        Theme.glass.presets.menuBarVeil.stripHeight
+    readonly property string materialBackend:
+        menuBar.materialBlurActive ? "gpu-sampled"
+        : (menuBar.materialFallback === 2 ? "software" : "gpu-no-sampled-blur")
+    readonly property string materialTierName:
+        menuBar.materialTier <= 0 ? "full"
+        : (menuBar.materialTier === 1 ? "reduced" : "minimal")
+    readonly property var veilResolution:
+        Glass.resolve("menuBarVeil", {
+            backend: menuBar.materialBackend,
+            tier: menuBar.materialTierName,
+            reduceTransparency: menuBar.reduceTransparency,
+            increaseContrast: menuBar.increaseContrast
+        })
+    readonly property bool veilActive:
+        menuBar.showBackground && menuBar.materialBlurActive
+        && menuBar.veilResolution.renderMode === "no-blur-veil"
+    // The region the shell commits to the compositor. The legacy sampled rail
+    // keeps the 28 pt bar panel; the veil declares its full 95 pt visual
+    // extent while the input region and reservation stay the strip.
+    readonly property bool compositorPanelActive:
+        menuBar.showBackground && menuBar.materialBlurActive
+        && (menuBar.veilResolution.renderMode === "no-blur-veil"
+            || menuBar.veilResolution.renderMode === "sampled-glass")
+    readonly property int compositorPanelHeight:
+        menuBar.veilActive ? menuBar.veilExtent : Theme.controls.menuBar.height
+    readonly property int compositorPanelRadius:
+        menuBar.veilActive ? 0 : Theme.controls.menuBar.radius
+    readonly property color glassFill: Qt.rgba(
+        menuBar.chromeFill.r, menuBar.chromeFill.g, menuBar.chromeFill.b,
+        Theme.material.chromeOpacity)
+    readonly property color fallbackFill: Qt.rgba(
+        menuBar.chromeFallbackFill.r, menuBar.chromeFallbackFill.g,
+        menuBar.chromeFallbackFill.b, Theme.material.chromeFallbackOpacity)
+    color: !menuBar.showBackground || menuBar.veilActive ? "transparent"
+        : (menuBar.materialBlurActive
+           && menuBar.veilResolution.renderMode === "sampled-glass")
+          ? menuBar.glassFill
+          : menuBar.fallbackFill
 
     function openMenu(index) {
         if (index < 0 || index >= menuRepeater.count || index === openMenuIndex)
