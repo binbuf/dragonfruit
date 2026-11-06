@@ -837,6 +837,29 @@ Item {
             fuzzyCompare(dock.smoothPointerAlong, target, 0.5);
         }
 
+        function test_shell_tracking_samples_elapsed_time() {
+            mouseMove(stage, 640, stage.height - 1);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                pointerTrackingFromShell: true,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            var from = dock._baseline.centers[0];
+            var to = dock._baseline.centers[2];
+            dock.pointerAlong = from;
+            dock.pointerAlong = to;
+            verify(dock.pointerTrackingActive);
+            wait(30);
+            compare(dock.smoothPointerAlong, from);
+
+            var frameMs = 1000 / 144;
+            dock.advancePointerTracking(frameMs);
+            verify(dock.smoothPointerAlong > from && dock.smoothPointerAlong < to);
+            dock.advancePointerTracking(dock.pointerTrackingDuration * 2);
+            compare(dock.smoothPointerAlong, to);
+            compare(dock.pointerTrackingActive, false);
+        }
+
         function test_magnification_pointer_snaps_under_reduced_motion() {
             // Park the pointer clear of the Dock so a leftover hover
             // position from an earlier case cannot seed `pointerAlong`.

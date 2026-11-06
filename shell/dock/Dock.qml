@@ -138,10 +138,8 @@ Rectangle {
     property bool trashEmptyOpen: false
     property Item trashEmptyAnchor: null
 
-    // The fixed popover buffer budget (T-14.7c). The shell pre-sizes the
-    // offscreen render target to this and the Dock clamps every popover into
-    // it, so opening a menu/chooser/stack never resizes the window (and thus
-    // never reallocates the render target on the open frame).
+    // The Dock clamps overlays into a fixed budget so moving or fading one
+    // does not resize its render target on every frame.
     property real popoverHeadroom: 0
     property real popoverGutter: 0
 
@@ -165,26 +163,30 @@ Rectangle {
     // pointer is not over the Dock.
     property real pointerAlong: -1
     // The pointer position the magnification geometry actually reads (T-14.7b).
-    // Follow the latest sample once per animation tick. Restarting an easing
-    // curve on each pointer event can keep the zoom near its old position
-    // when events arrive faster than the animation ticks.
+    // Follow the latest sample once per frame. The shell samples on its
+    // output-paced render path; standalone QML uses Qt's animation clock.
     property real smoothPointerAlong: -1
+    property bool pointerTrackingFromShell: false
     readonly property int pointerTrackingDuration: Theme.motion.dockMagnifyTrack.duration
+    readonly property bool pointerTrackingActive:
+        magnifying && pointerTrackingDuration > 0 && smoothPointerAlong >= 0
+        && pointerAlong !== smoothPointerAlong
     onPointerTrackingDurationChanged: {
         if (pointerTrackingDuration === 0)
             smoothPointerAlong = pointerAlong;
     }
     FrameAnimation {
-        running: dock.magnifying && dock.pointerTrackingDuration > 0
-                 && dock.smoothPointerAlong >= 0
-                 && dock.pointerAlong !== dock.smoothPointerAlong
-        onTriggered: {
-            // Close 99% of the gap over the tracking duration at any refresh rate.
-            var remaining = (dock.pointerAlong - dock.smoothPointerAlong)
-                            * Math.pow(0.01, frameTime * 1000 / dock.pointerTrackingDuration);
-            dock.smoothPointerAlong = Math.abs(remaining) < 0.25
-                                     ? dock.pointerAlong : dock.pointerAlong - remaining;
-        }
+        running: !dock.pointerTrackingFromShell && dock.pointerTrackingActive
+        onTriggered: dock.advancePointerTracking(frameTime * 1000)
+    }
+    function advancePointerTracking(elapsedMs: real) {
+        if (!pointerTrackingActive)
+            return;
+        // Close 99% of the gap over the tracking duration at any refresh rate.
+        var remaining = (pointerAlong - smoothPointerAlong)
+                        * Math.pow(0.01, elapsedMs / pointerTrackingDuration);
+        smoothPointerAlong = Math.abs(remaining) < 0.25
+                             ? pointerAlong : pointerAlong - remaining;
     }
     onPointerAlongChanged: {
         if (!dock.magnifying || dock.pointerTrackingDuration === 0

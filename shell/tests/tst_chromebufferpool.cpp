@@ -14,6 +14,7 @@ private slots:
     void neverReusesBusySlot();
     void boundedByCapacity();
     void resizeRetiresBuffersUntilReleased();
+    void accumulatesDamageForEachSlot();
     void resetClearsEverything();
 };
 
@@ -106,6 +107,31 @@ void TestChromeBufferPool::resetClearsEverything()
     QCOMPARE(pool.allocations(), quint64(0));
     QVERIFY(pool.size().isEmpty());
     QCOMPARE(pool.acquire(), -1);
+}
+
+void TestChromeBufferPool::accumulatesDamageForEachSlot()
+{
+    ChromeBufferPool pool(2);
+    QVERIFY(pool.setSize(QSize(100, 50)));
+    const QRect firstChange(5, 6, 2, 3);
+    const QRect secondChange(8, 9, 4, 5);
+    const QRect thirdChange(60, 20, 5, 6);
+    const int first = pool.acquire();
+    QCOMPARE(pool.damageForCommit(first, firstChange), QRect(0, 0, 100, 50));
+    const int second = pool.acquire();
+    QCOMPARE(pool.damageForCommit(second, secondChange), QRect(0, 0, 100, 50));
+
+    QVERIFY(pool.release(first));
+    QCOMPARE(pool.acquire(), first);
+    QCOMPARE(pool.damageForCommit(first, thirdChange), secondChange.united(thirdChange));
+    QVERIFY(pool.release(first));
+    QCOMPARE(pool.acquire(), first);
+    QCOMPARE(pool.damageForCommit(first, firstChange), firstChange);
+
+    QVERIFY(pool.release(second));
+    QCOMPARE(pool.acquire(), second);
+    QCOMPARE(pool.damageForCommit(second, secondChange),
+             firstChange.united(secondChange).united(thirdChange));
 }
 
 QTEST_APPLESS_MAIN(TestChromeBufferPool)

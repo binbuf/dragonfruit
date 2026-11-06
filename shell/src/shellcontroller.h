@@ -6,6 +6,7 @@
 #pragma once
 
 #include <QObject>
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QHash>
 #include <QImage>
@@ -52,6 +53,7 @@ class QQuickWindow;
 class QQuickItem;
 class QSocketNotifier;
 class QTimer;
+class QChronoTimer;
 class ChromeFrameProducer;
 class GpuChromeFrameProducer;
 
@@ -319,6 +321,7 @@ private slots:
     void onDockPopoverChanged();
     void onDockRevealStateChanged();
     void scheduleDockRender();
+    void onDockPointerTrackingChanged();
     void onDockKeyboardFocused(bool focused);
     void onDockKeyboardFocusReleaseRequested();
     // External drag-and-drop onto the Dock (T-10 section 12).
@@ -977,6 +980,8 @@ private:
     QTimer *m_chromeFallbackTimer = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;
+    QChronoTimer *m_dockTrackingTimer = nullptr;
+    QElapsedTimer m_dockTrackingTime;
     // The T-08 settings daemon client: the Dock's only settings source
     // (`org.dragonfruit.Settings1`), replacing the interim file owner/watcher.
     SettingsClient *m_settingsClient = nullptr;
@@ -1154,9 +1159,6 @@ private:
     int m_dockItemOffsetY = 0;
     int m_dockPopoverX = 0;
     int m_dockPopoverY = 0;
-    int m_dockPopoverWidth = 0;
-    int m_dockPopoverHeight = 0;
-    bool m_dockPopoverMapped = false;
     // Scene-graph frame gates (FR-14): the Dock and menu-bar windows commit
     // from `afterRendering`, and the gate suppresses the re-entrant frame the
     // `grabWindow()` readback itself produces.

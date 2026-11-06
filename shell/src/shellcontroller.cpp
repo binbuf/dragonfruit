@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "shellcontroller.h"
 
+#include <QChronoTimer>
 #include <QDebug>
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -791,8 +792,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // the first commit (T-21.2c).
     setMaterialProperties(m_dockItem, m_materialPolicy.applied(MaterialPolicy::Popup),
                           "popupMaterial");
-    // The popover budget the Dock clamps into (T-14.7c); fixed for the
-    // session so the offscreen window never grows on a popover open.
+    // Share the overlay budget with QML so placement fits the expanded target.
     m_dockItem->setProperty("popoverHeadroom", kDockPopoverHeadroom);
     m_dockItem->setProperty("popoverGutter", kDockPopoverGutter);
     connect(m_dockItem, SIGNAL(entryActivated(QVariant)), this,
@@ -847,6 +847,18 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // compositor's wl_surface.frame callback paces the next one.
     bindChromePacing(m_producers.value(m_dockWindow), QStringLiteral("dock"),
                      [this]() { renderDock(); });
+    m_dockTrackingTimer = new QChronoTimer(this);
+    m_dockTrackingTimer->setTimerType(Qt::PreciseTimer);
+    auto setDockTrackingInterval = [this]() {
+        const auto refresh = m_protocol->outputRefreshMilliHz();
+        m_dockTrackingTimer->setInterval(std::chrono::nanoseconds(1'000'000'000'000LL / refresh));
+    };
+    setDockTrackingInterval();
+    connect(m_protocol, &ShellProtocol::outputRefreshChanged, this, setDockTrackingInterval);
+    connect(m_dockTrackingTimer, &QChronoTimer::timeout, this, &ShellController::scheduleDockRender);
+    connect(m_dockItem, SIGNAL(pointerTrackingActiveChanged()),
+            this, SLOT(onDockPointerTrackingChanged()));
+    m_dockItem->setProperty("pointerTrackingFromShell", true);
     // The Trash entry's state comes from files-core/GVfs (section 16); a
     // deletion by any application updates the full/count state, and the shell
     // and Files share the one Trash store (T-10.6a).
@@ -4960,6 +4972,8 @@ void ShellController::onDockConfigured(int width, int height, quint32)
                 height);
         return;
     }
+    if (width == m_dockWidth && height == m_dockHeight)
+        return;
     m_dockWidth = width;
     m_dockHeight = height;
     fprintf(stderr, "dragonfruit-shell: Dock configured %dx%d\n", width, height);
@@ -7228,6 +7242,18 @@ void ShellController::scheduleDockRender()
     markChromeDirty(m_producers.value(m_dockWindow));
 }
 
+void ShellController::onDockPointerTrackingChanged()
+{
+    if (!m_dockItem->property("pointerTrackingActive").toBool()) {
+        m_dockTrackingTimer->stop();
+        m_dockTrackingTime.invalidate();
+    } else if (!m_dockTrackingTimer->isActive()) {
+        m_dockTrackingTime.start();
+        m_dockTrackingTimer->start();
+        scheduleDockRender();
+    }
+}
+
 void ShellController::prepareChromeScene(QQuickWindow *window, QQuickItem *item,
                                          const QSize &itemLogical,
                                          const QSize &windowLogical, qreal scale)
@@ -7480,7 +7506,8 @@ void ShellController::onChromeFallbackTick()
             continue;
         if (!m_protocol->hasPendingFrame(it.value().primaryLabel))
             scheduleChromeRender(producer);
-        else
+        else if (m_protocol->hasPendingFrame(it.value().primaryLabel,
+                                            m_chromeFallbackTimer->interval()))
             renderChromeProducer(producer, true);
     }
     bool waiting = false;
@@ -7778,6 +7805,11 @@ void ShellController::renderDock()
 {
     if (!m_dockItem || !m_dockWindow || m_dockWidth <= 0 || m_dockHeight <= 0)
         return;
+    if (m_dockTrackingTime.isValid()) {
+        const qreal elapsedMs = m_dockTrackingTime.nsecsElapsed() / 1'000'000.0;
+        m_dockTrackingTime.start();
+        QMetaObject::invokeMethod(m_dockItem, "advancePointerTracking", Q_ARG(qreal, elapsedMs));
+    }
     // Tell the Dock where its surface-local (0, 0) sits in the compositor's
     // output coordinates, so the tile rect it reports for the launch-origin
     // hand-off is already in that space (T-14.7l).
@@ -7797,12 +7829,10 @@ void ShellController::renderDock()
     const int ph = qCeil(popover.value(QStringLiteral("h")).toReal());
     const bool hasPopover = pw > 0 && ph > 0;
 
-    // A popover above a bottom bar needs headroom; beside a vertical bar it
-    // needs a left or right gutter. The buffer is pre-sized to a fixed budget
-    // at configure time (T-14.7c) and the Dock QML clamps the popover into it,
-    // so opening a menu/chooser/stack never resizes the render target.
-    const int headroom = kDockPopoverHeadroom;
-    const int leftGutter = kDockPopoverGutter;
+    // Use a strip for ordinary Dock frames. Give the shared scene its full
+    // popover budget for the lifetime of an overlay, including its fade out.
+    const int headroom = hasPopover ? kDockPopoverHeadroom : 0;
+    const int leftGutter = hasPopover ? kDockPopoverGutter : 0;
     m_dockItemOffsetX = leftGutter;
     m_dockItemOffsetY = headroom;
     const int windowWidth = m_dockWidth + 2 * leftGutter;
@@ -7860,8 +7890,6 @@ void ShellController::renderDock()
     // the bar (left/right margin) at the entry's scene y (T-10 section 5).
     m_dockPopoverX = px;
     m_dockPopoverY = py;
-    m_dockPopoverWidth = pw;
-    m_dockPopoverHeight = ph;
     if (hasPopover) {
         int top = 0;
         int right = 0;
@@ -7890,15 +7918,11 @@ void ShellController::renderDock()
                             return m_protocol->commitDockPopupImage(
                                 image, QSize(pw, ph), popupSource);
                         }});
-    } else if (m_dockPopoverMapped) {
+    } else {
         m_protocol->hideDockPopup();
-        m_dockPopoverMapped = false;
     }
 
-    const bool committed = commitChromeScene(m_dockWindow, targets);
-    if (hasPopover)
-        m_dockPopoverMapped = committed;
-    if (!committed)
+    if (!commitChromeScene(m_dockWindow, targets))
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 }
 
