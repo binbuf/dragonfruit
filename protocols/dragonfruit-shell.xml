@@ -120,9 +120,9 @@
         icons — sends its live rect here so the compositor's frosted backdrop
         follows it exactly. This state takes effect on the next wl_surface
         commit, together with the pixels it describes. The compositor
-        intersects the rect with the surface geometry. When unset, the
-        compositor keeps deriving the panel from the input region and the
-        reserved strip.
+        intersects the rect with the surface geometry. An empty rectangle
+        disables the backdrop. When unset, the compositor derives the panel
+        from the input region and the reserved strip.
       </description>
       <arg name="x" type="int"/>
       <arg name="y" type="int"/>

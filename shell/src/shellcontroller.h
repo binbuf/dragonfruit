@@ -19,6 +19,7 @@
 #include <QVariantList>
 
 #include <functional>
+#include <optional>
 
 #include "compositorpolicy.h"
 #include "chooserbridge.h"
@@ -1151,6 +1152,8 @@ private:
     int m_dockThickness = 0;
     ShellProtocol::DockPosition m_dockPosition = ShellProtocol::DockPosition::Bottom;
     Qt::MouseButtons m_dockButtons = Qt::NoButton;
+    // Last pointer location in Dock coordinates, independent of render padding.
+    std::optional<QPointF> m_dockPointerPosition;
     // The Dock popover (context menu / window chooser) in Dock-scene
     // coordinates, plus the offset the scene is placed at inside the offscreen
     // window so a popover can render above (bottom Dock) or beside (vertical
