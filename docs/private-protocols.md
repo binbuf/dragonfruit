@@ -109,6 +109,18 @@ set. Both are commit-latched with the buffer they describe.
 - A legacy client that only sends `set_panel_rect` keeps one `panel` region
   and its existing optics. A surface with no region metadata keeps the derived
   panel (input-region bounds ∩ reserved strip).
+
+### Menu-bar auto-hide (v4, T201)
+
+`df_layer_surface.set_auto_hide(mode)` applies to the `menubar` namespace and
+mirrors `menu.autoHide`: `never` (visible on the desktop and over fullscreen),
+`always` (concealed until the top edge or Control-F2 reveals it), and
+`full_screen` (normal on the desktop, reveal-on-demand over fullscreen). The
+compositor owns the per-output revealed state. A concealed bar is removed from
+the visible-chrome list, so it contributes no reserved zone, input hit area, or
+material panel; a revealed bar keeps its normal reservation and input strip,
+and an open menu or menu-bar focus keeps it revealed. Other namespaces ignore
+the request (the Dock has its own auto-hide).
 - Region identity is `(namespace, layer, surface object, region key)`, so a
   stable key keeps its element id and cached filtered texture across unrelated
   scene damage and tint-only changes. Removed regions and surfaces drop their

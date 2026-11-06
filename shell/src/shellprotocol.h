@@ -107,6 +107,12 @@ public:
     void setMenuBarFrameGeometry(bool active, int width, int height,
                                  int cornerRadius);
 
+    // T201: forward the `menu.autoHide` policy. The compositor owns the
+    // per-output reveal; `mode` is `never`, `always`, or `full-screen`.
+    // Safe before the layer surface exists: the latest mode is sent when the
+    // surface is created.
+    void setMenuBarAutoHide(const QString &mode);
+
     // Create the dropdown `overlay` layer surface (T-09). It starts unmapped;
     // `setPopupGeometry` + `commitPopupImage` place and reveal it, `hidePopup`
     // unmaps it. Unlike the bar it reserves no zone and never takes keyboard.
@@ -1174,6 +1180,9 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     int m_menuBarPanelWidth = 0;
     int m_menuBarPanelHeight = 0;
     int m_menuBarPanelRadius = 0;
+    // T201: the menu-bar auto-hide wire value. Kept so the request can be
+    // sent once the layer surface exists.
+    uint32_t m_menuBarAutoHide = 2; // full-screen; see df_layer_surface.auto_hide_mode
     wl_surface *m_popupSurface = nullptr;
     df_layer_surface *m_popupLayer = nullptr;
     wl_surface *m_dockSurface = nullptr;

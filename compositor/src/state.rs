@@ -880,6 +880,13 @@ pub struct DfState {
     /// Handshake/trust, chrome surfaces, and the window/workspace/output
     /// manager. The shell is a pure consumer of the event streams above.
     pub shell: ShellProtocolState,
+    /// T201: whether the menu-bar surface currently holds keyboard focus.
+    /// Cached in `focus_changed` because `menu_bar_active_on` runs inside that
+    /// callback, where the keyboard handle's mutex is already held.
+    pub menu_bar_keyboard_focused: bool,
+    /// T201: whether a real pointer motion has arrived. The initial seat
+    /// position is (0,0), which must not count as a top-edge reveal.
+    pub menu_bar_pointer_seen: bool,
 
     /// Backdrop blur pass bookkeeping (T-04.2): opened once per rendered frame
     /// by [`Self::begin_render_frame`], then applied once per output, so the
@@ -1055,6 +1062,8 @@ impl DfState {
             xwayland_shell_state,
             seat_state,
             seat,
+            menu_bar_keyboard_focused: false,
+            menu_bar_pointer_seen: false,
             space: Space::default(),
             popups: PopupManager::default(),
             pending_windows: Vec::new(),
@@ -1489,6 +1498,8 @@ impl DfState {
                 if let Some(keyboard) = self.seat.get_keyboard() {
                     keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
                 }
+                self.menu_bar_keyboard_focused = false;
+                self.sync_menu_bar_reveal();
             }
         }
         self.apply_workspace_layout();
@@ -2531,6 +2542,8 @@ impl DfState {
             if let Some(keyboard) = self.seat.get_keyboard() {
                 keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
             }
+            self.menu_bar_keyboard_focused = false;
+            self.sync_menu_bar_reveal();
             if let Some(old) = self.active_window.take() {
                 self.dismiss_popups_for(&old);
                 self.broadcast_window(&old, WindowEventKind::Unfocused);
@@ -2762,6 +2775,10 @@ impl DfState {
             // Space's windows on the owner output too.
             self.apply_workspace_layout();
         }
+        // T201: entering fullscreen changes the menu-bar visibility policy on
+        // that output, so its reservation and material eligibility change.
+        self.sync_menu_bar_reveal();
+        self.refresh_reserved_zones();
         if transition.changed {
             if let Some(from) = from {
                 self.begin_window_motion_from(window, WindowMotionKind::Fullscreen, from, target);
@@ -2791,6 +2808,10 @@ impl DfState {
         }
         self.apply_window_transition(window, transition);
         self.apply_workspace_layout();
+        // T201: leaving fullscreen restores the desktop menu-bar rule on that
+        // output.
+        self.sync_menu_bar_reveal();
+        self.refresh_reserved_zones();
         if transition.changed {
             let target = self.windows.geometry(window);
             if let (Some(from), Some(target)) = (from, target) {
@@ -3932,6 +3953,11 @@ impl DfState {
         // setting); the action event above is the whole compositor side.
         if matches!(action, InputAction::FocusDock) {
             self.focus_dock();
+        }
+        // T201: the menu-bar focus chord reveals a concealed bar on the
+        // focused output and hands it the keyboard.
+        if matches!(action, InputAction::FocusMenuBar) {
+            self.focus_menu_bar();
         }
         self.needs_redraw = true;
     }
@@ -5432,6 +5458,11 @@ impl SeatHandler for DfState {
         // active window so clicking empty desktop deactivates the front window.
         let chrome_focus =
             focused.is_some_and(|surface| self.is_above_window_chrome_surface(surface));
+        // T201: cache whether the menu bar owns the keyboard. The reveal rule
+        // runs from this callback, where re-locking the keyboard handle would
+        // deadlock.
+        self.menu_bar_keyboard_focused =
+            focused == self.chrome_surface_by_namespace("menubar").as_ref();
         // Capture (or clear) the per-output popover target: an overlay popover
         // follows the output the interaction happened on, not the pointer
         // (T-10 section 18).
@@ -5473,6 +5504,11 @@ impl SeatHandler for DfState {
             // A following magnifier pans to the newly focused window (T-16.6b).
             self.refresh_magnifier_follow();
         }
+        // T201: a focus change can end an active menu interaction, so the
+        // menu bar re-applies the pointer/focus reveal rule. With the pointer
+        // outside the top band this conceals a bar that no longer has an
+        // active menu or focus holding it up.
+        self.sync_menu_bar_reveal();
     }
 
     fn cursor_image(
@@ -5715,7 +5751,12 @@ impl SessionLockHandler for DfState {
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
         }
+        self.menu_bar_keyboard_focused = false;
         self.hovered_titlebar = None;
+        // T201: a lock ends every transient menu-bar reveal. Only the lock
+        // surface is composed while locked; unlock starts from the policy's
+        // resting state rather than restoring a stale revealed bar.
+        self.clear_menu_bar_reveal();
         self.needs_redraw = true;
         println!("dragonfruit-compositor: session locked (fail-secure)");
         // The lock client is now free to map its lock surfaces. Smithay keeps
@@ -5769,6 +5810,11 @@ impl SessionLockHandler for DfState {
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
         }
+        // T201: restore the menu-bar resting state on unlock. A concealed
+        // auto-hide bar stays concealed until the pointer reaches the top
+        // edge or the focus chord reveals it.
+        self.sync_menu_bar_reveal();
+        self.refresh_reserved_zones();
         self.needs_redraw = true;
     }
 }

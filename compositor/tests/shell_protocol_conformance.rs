@@ -2243,6 +2243,244 @@ fn menu_bar_veil_extent_is_visual_only_and_commit_latched() {
     proc.shutdown();
 }
 
+/// T201: the menu bar's auto-hide policy is applied on the owning output.
+/// `always` starts concealed with no reservation, the top edge reveals it, a
+/// live toggle applies immediately, active focus keeps it up, and `never`
+/// stays visible over a fullscreen client. A concealed bar leaves no panel or
+/// reservation for the output.
+#[test]
+fn menu_bar_auto_hide_reveals_on_the_top_edge_and_reserves_nothing_while_concealed() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(runtime_dir).join(format!("df-menubar-vis-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-menubar-visibility",
+        &["2a".repeat(32)],
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (_core, _shell, bar, bar_layer) =
+        open_trusted_bar(&conn, &mut queue, &mut state, &proc.read_token(), 28, 28);
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            !state.outputs.is_empty()
+                && state.done_count > 0
+                && state.pointer.is_some()
+                && state.keyboard.is_some()
+        },
+    );
+    // Give the bar a buffer so the pointer can enter it (hit-testing uses the
+    // mapped surface, not just the layer metadata).
+    let qh = queue.handle();
+    let (bar_buffer, _bar_file) = shm_buffer(&state, &qh, OUTPUT_W, 28);
+    bar.attach(Some(&bar_buffer), 0, 0);
+    bar.commit();
+    let _ = queue.roundtrip(&mut state);
+    // Park the pointer away from the top edge so a policy change starts from
+    // the resting state rather than the pointer's initial (0,0) position.
+    input.send("motion-abs 0.5 0.5");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| input.query("query menubar").contains("revealed=0"),
+    );
+
+    // Default `full-screen` policy: normal on the desktop.
+    let report = input.query("query menubar");
+    assert!(report.contains("menubar mode=full-screen"), "{report}");
+    assert!(
+        report.contains("visible=1 reserved-top=28"),
+        "the default bar reserves its desktop strip: {report}"
+    );
+
+    // `always` starts concealed and releases the reservation.
+    bar_layer.set_auto_hide(df_layer_surface::AutoHideMode::Always);
+    bar.commit();
+    let _ = queue.roundtrip(&mut state);
+    let report = input.query("query menubar");
+    assert!(report.contains("menubar mode=always"), "{report}");
+    assert!(
+        report.contains("revealed=0 active=0 visible=0 reserved-top=0"),
+        "a concealed bar must reserve nothing: {report}"
+    );
+
+    // The top edge reveals it on the output under the pointer.
+    input.send("motion-abs 0.5 0.005");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| {
+            input
+                .query("query menubar")
+                .contains("revealed=1 active=0 visible=1")
+        },
+    );
+    let report = input.query("query menubar");
+    assert!(
+        report.contains("visible=1 reserved-top=28"),
+        "a revealed bar restores its strip: {report}"
+    );
+
+    // Leaving the top band conceals it again.
+    input.send("motion-abs 0.5 0.5");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| {
+            input
+                .query("query menubar")
+                .contains("revealed=0 active=0 visible=0")
+        },
+    );
+
+    // A live policy toggle applies immediately: `never` is always visible.
+    bar_layer.set_auto_hide(df_layer_surface::AutoHideMode::Never);
+    bar.commit();
+    let _ = queue.roundtrip(&mut state);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| input.query("query menubar").contains("mode=never"),
+    );
+    let report = input.query("query menubar");
+    assert!(
+        report.contains("visible=1 reserved-top=28"),
+        "`never` keeps the bar and its reservation: {report}"
+    );
+
+    // Active focus keeps a revealed `always` bar up after the pointer leaves.
+    bar_layer.set_auto_hide(df_layer_surface::AutoHideMode::Always);
+    bar.commit();
+    let _ = queue.roundtrip(&mut state);
+    input.send("motion-abs 0.5 0.005");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| input.query("query menubar").contains("revealed=1"),
+    );
+    state.keyboard_enters = 0;
+    input.send("button 272 down\nbutton 272 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keyboard_enters > 0,
+    );
+    input.send("motion-abs 0.5 0.5");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| input.query("query menubar").contains("active=1 visible=1"),
+    );
+    // Releasing the chrome focus ends the interaction; the bar conceals.
+    manager.release_keyboard_focus();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| input.query("query menubar").contains("active=0 visible=0"),
+    );
+
+    // Fullscreen: `full-screen` conceals, reveals on demand, and `never`
+    // remains a real composition requirement (visible + reserved).
+    let (_window_surface, _xdg_surface, window, _file) = map_toplevel(
+        &mut state,
+        &mut queue,
+        "Fullscreen",
+        "org.dragonfruit.Fullscreen",
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    window.set_fullscreen(None);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| input.query("query menubar").contains("fullscreen=1"),
+    );
+    bar_layer.set_auto_hide(df_layer_surface::AutoHideMode::FullScreen);
+    bar.commit();
+    let _ = queue.roundtrip(&mut state);
+    input.send("motion-abs 0.5 0.5");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| {
+            input.query("query menubar").contains("fullscreen=1")
+                && input
+                    .query("query menubar")
+                    .contains("visible=0 reserved-top=0")
+        },
+    );
+    input.send("motion-abs 0.5 0.005");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| {
+            let report = input.query("query menubar");
+            report.contains("fullscreen=1")
+                && report.contains("revealed=1")
+                && report.contains("visible=1")
+        },
+    );
+    bar_layer.set_auto_hide(df_layer_surface::AutoHideMode::Never);
+    bar.commit();
+    let _ = queue.roundtrip(&mut state);
+    input.send("motion-abs 0.5 0.5");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| {
+            input.query("query menubar").contains("fullscreen=1")
+                && input
+                    .query("query menubar")
+                    .contains("visible=1 reserved-top=28")
+        },
+    );
+
+    window.unset_fullscreen();
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 #[test]
 fn vertical_dock_reserves_the_left_and_right_zones() {
     let token = "1b".repeat(32);

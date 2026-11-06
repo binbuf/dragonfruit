@@ -290,6 +290,9 @@ bool ShellProtocol::createMenuBarSurface(int height, int exclusiveZone)
     df_layer_surface_set_exclusive_zone(m_layer, exclusiveZone);
     df_layer_surface_set_keyboard_interaction(
         m_layer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    // T201: the policy may have been applied from settings before the surface
+    // existed; send the latest value with the first commit.
+    df_layer_surface_set_auto_hide(m_layer, m_menuBarAutoHide);
     wl_surface_commit(m_surface);
 
     if (wl_display_roundtrip(m_display) < 0)
@@ -334,6 +337,23 @@ void ShellProtocol::setMenuBarFrameGeometry(bool active, int width, int height,
     m_menuBarPanelWidth = panelWidth;
     m_menuBarPanelHeight = panelHeight;
     m_menuBarPanelRadius = radius;
+}
+
+void ShellProtocol::setMenuBarAutoHide(const QString &mode)
+{
+    uint32_t wire = DF_LAYER_SURFACE_AUTO_HIDE_MODE_FULL_SCREEN;
+    if (mode == QLatin1String("never"))
+        wire = DF_LAYER_SURFACE_AUTO_HIDE_MODE_NEVER;
+    else if (mode == QLatin1String("always"))
+        wire = DF_LAYER_SURFACE_AUTO_HIDE_MODE_ALWAYS;
+    if (wire == m_menuBarAutoHide)
+        return;
+    m_menuBarAutoHide = wire;
+    if (!m_layer)
+        return;
+    df_layer_surface_set_auto_hide(m_layer, wire);
+    if (m_display)
+        wl_display_flush(m_display);
 }
 
 bool ShellProtocol::createPopupSurface()
