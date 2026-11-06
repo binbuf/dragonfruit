@@ -2191,6 +2191,168 @@ fn titlebar_drag_and_double_click_move_and_zoom() {
     );
 }
 
+/// Regression: a decorated window's titlebar is drawn as part of that window's
+/// scene, above every lower window. Hit-testing must follow the same stacking
+/// order. The cascaded second window's titlebar overlaps the first window's
+/// client area; dragging it used to be swallowed by the lower window's surface
+/// (the `Space` hit-test only knows client areas, not the strip above them).
+#[test]
+fn stacked_ssd_titlebar_drags_above_lower_window_content() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-stacked-drag-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-stacked-drag",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface_a, xdg_a, toplevel_a, file_a) = map_toplevel(&mut state, &mut queue);
+    let (surface_b, xdg_b, toplevel_b, file_b) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports.len() >= 2 && reports.iter().all(|report| report.server_side)
+    });
+    assert_eq!(reports.len(), 2, "two decorated windows: {reports:?}");
+
+    // The second window is raised and cascaded down/right, so its titlebar
+    // overlaps the first window's content.
+    let top = *reports
+        .iter()
+        .max_by_key(|report| (report.content.0, report.content.1))
+        .expect("a top window");
+    let lower = *reports
+        .iter()
+        .min_by_key(|report| (report.content.0, report.content.1))
+        .expect("a lower window");
+    assert_ne!(top.window, lower.window);
+    let (cx, cy) = titlebar_center(&top);
+    let (lx, ly, lw, lh) = lower.content;
+    assert!(
+        cx >= lx && cx < lx + lw && cy >= ly && cy < ly + lh,
+        "the drag point {cx},{cy} must overlap the lower window's content {lx},{ly},{lw},{lh}"
+    );
+
+    motion_to(&input, cx, cy);
+    input.send("button 272 down");
+    input.send("motion 60 40");
+    input.send("button 272 up");
+    let after = wait_for_window(&mut state, &mut queue, &input, top.window, |report| {
+        report.content.0 - top.content.0 == 60 && report.content.1 - top.content.1 == 40
+    });
+    assert_eq!(
+        (
+            after.content.0 - top.content.0,
+            after.content.1 - top.content.1
+        ),
+        (60, 40),
+        "the top titlebar must drag even when it overlaps the lower window: {after:?}"
+    );
+
+    // The lower window must not have moved or been dragged instead.
+    let lower_after = wait_for_window(&mut state, &mut queue, &input, lower.window, |_| true);
+    assert_eq!(
+        lower_after.content, lower.content,
+        "the lower window must stay put: {lower_after:?}"
+    );
+
+    surface_b.destroy();
+    toplevel_b.destroy();
+    xdg_b.destroy();
+    surface_a.destroy();
+    toplevel_a.destroy();
+    xdg_a.destroy();
+    drop(file_b);
+    drop(file_a);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// Regression at the decoration-tier boundary: the decorated window on top
+/// must drag over a lower client-side-decorated window's content. Before the
+/// stack-aware hit-test the lower CSD surface swallowed the press, which read
+/// as "only some apps can be moved when they overlap".
+#[test]
+fn stacked_ssd_titlebar_drags_above_lower_csd_window_content() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-stacked-csd-drag-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-stacked-csd-drag",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // A GTK-style CSD window underneath, then a decorated SSD window on top.
+    let (surface_a, xdg_a, toplevel_a, file_a) = map_toplevel_unnegotiated(&mut state, &mut queue);
+    let (surface_b, xdg_b, toplevel_b, file_b) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports.len() >= 2
+            && reports.iter().any(|report| report.server_side)
+            && reports.iter().any(|report| !report.server_side)
+    });
+    let top = *reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("the top SSD window");
+    let lower = *reports
+        .iter()
+        .find(|report| !report.server_side)
+        .expect("the lower CSD window");
+    let (cx, cy) = titlebar_center(&top);
+    let (lx, ly, lw, lh) = lower.content;
+    assert!(
+        cx >= lx && cx < lx + lw && cy >= ly && cy < ly + lh,
+        "the drag point {cx},{cy} must overlap the lower CSD content {lx},{ly},{lw},{lh}"
+    );
+
+    motion_to(&input, cx, cy);
+    input.send("button 272 down");
+    input.send("motion 60 40");
+    input.send("button 272 up");
+    let after = wait_for_window(&mut state, &mut queue, &input, top.window, |report| {
+        report.content.0 - top.content.0 == 60 && report.content.1 - top.content.1 == 40
+    });
+    assert_eq!(
+        (
+            after.content.0 - top.content.0,
+            after.content.1 - top.content.1
+        ),
+        (60, 40),
+        "the SSD titlebar must drag above the lower CSD window: {after:?}"
+    );
+
+    let lower_after = wait_for_window(&mut state, &mut queue, &input, lower.window, |_| true);
+    assert_eq!(
+        lower_after.content, lower.content,
+        "the lower CSD window must stay put: {lower_after:?}"
+    );
+
+    surface_b.destroy();
+    toplevel_b.destroy();
+    xdg_b.destroy();
+    surface_a.destroy();
+    toplevel_a.destroy();
+    xdg_a.destroy();
+    drop(file_b);
+    drop(file_a);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
 /// T-01.3 acceptance: a fullscreen window hides its titlebar until the
 /// pointer hovers its top reveal strip, then the titlebar overlays the top of
 /// the content and reserves no inset.

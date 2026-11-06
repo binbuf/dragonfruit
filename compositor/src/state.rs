@@ -28,7 +28,7 @@ use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::renderer::Color32F;
 use smithay::desktop::{
     find_popup_root_surface, PopupKeyboardGrab, PopupKind, PopupManager,
-    PopupPointerGrab, Space, Window,
+    PopupPointerGrab, Space, Window, WindowSurfaceType,
 };
 use smithay::reexports::calloop::{LoopHandle, LoopSignal, RegistrationToken};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
@@ -2097,37 +2097,110 @@ impl DfState {
         }
     }
 
-    /// The window whose traffic-light cluster contains a global-space point
-    /// (T-01.2), topmost first. A fullscreen window has no persistent
-    /// titlebar; its whole top reveal strip counts as the hover target
-    /// (T-01.3).
-    pub fn titlebar_hover_at(&self, location: Point<f64, Logical>) -> Option<WindowId> {
-        let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
-        let windows: Vec<Window> = self.space.elements().cloned().collect();
-        for window in windows.into_iter().rev() {
-            let Some(id) = self.windows.id(&window) else {
-                continue;
-            };
-            match self.windows.state(&window) {
+    /// Whether `window`'s client content (its toplevel, popups, or the input
+    /// region of either) covers `point` in global space.
+    fn window_client_under(&self, window: &Window, point: Point<i32, Logical>) -> bool {
+        let Some(location) = self.space.element_location(window) else {
+            return false;
+        };
+        // `Space` hit-tests the render location (map location minus the
+        // surface's own geometry origin), so do the same here.
+        let render_location = location - window.geometry().loc;
+        window
+            .surface_under(
+                point.to_f64() - render_location.to_f64(),
+                WindowSurfaceType::ALL,
+            )
+            .is_some()
+    }
+
+    /// The topmost piece of the window stack under `point`, in the same
+    /// stacking order the scene renders, and whether that piece is an SSD
+    /// titlebar.
+    ///
+    /// `Space` alone cannot answer this: it hit-tests client surfaces, and an
+    /// SSD titlebar lives in the strip *above* its window's client area. A
+    /// titlebar therefore looked unoccluded even when a lower window's content
+    /// was under it — and, worse, a titlebar above a lower window was treated
+    /// as occluded by that lower window's surface, so it could not be dragged.
+    /// Walking the stack top-down here keeps each window's titlebar attached to
+    /// its own z-order:
+    ///
+    /// * a higher window's content (including popups) still covers a lower
+    ///   titlebar;
+    /// * a window's own popup keeps priority over its floating titlebar, while
+    ///   a revealed fullscreen titlebar overlays its own content;
+    /// * the first hit wins, so `None` means the point is not over any window.
+    ///
+    /// `fullscreen_reveal` lets hover probing treat the fullscreen top strip as
+    /// a titlebar before it is revealed; click routing passes `false`, so an
+    /// unrevealed fullscreen strip still belongs to the client.
+    pub(crate) fn window_hit_at(
+        &self,
+        point: Point<i32, Logical>,
+        fullscreen_reveal: bool,
+    ) -> Option<(Window, bool)> {
+        for window in self.space.elements().rev() {
+            match self.windows.state(window) {
                 Some(WindowState::Fullscreen) => {
-                    let Some(content) = self.windows.geometry(&window) else {
-                        continue;
-                    };
-                    if fullscreen_reveal_rect(content).contains(point) {
-                        return Some(id);
+                    if fullscreen_reveal {
+                        if let Some(content) = self.windows.geometry(window) {
+                            if fullscreen_reveal_rect(content).contains(point) {
+                                return Some((window.clone(), true));
+                            }
+                        }
+                    }
+                    if self
+                        .titlebar_element(window)
+                        .is_some_and(|element| element.hit(point))
+                    {
+                        return Some((window.clone(), true));
+                    }
+                    if self.window_client_under(window, point) {
+                        return Some((window.clone(), false));
                     }
                 }
                 Some(WindowState::Floating | WindowState::Zoomed) => {
-                    if let Some(element) = self.titlebar_element(&window) {
-                        if element.cluster_rect().contains(point) {
-                            return Some(id);
+                    // A popup may extend over the titlebar strip; it keeps the
+                    // priority it has always had.
+                    if self.window_client_under(window, point) {
+                        return Some((window.clone(), false));
+                    }
+                    if let Some(element) = self.titlebar_element(window) {
+                        if element.hit(point) {
+                            return Some((window.clone(), true));
                         }
                     }
                 }
-                _ => {}
+                _ => {
+                    if self.window_client_under(window, point) {
+                        return Some((window.clone(), false));
+                    }
+                }
             }
         }
         None
+    }
+
+    /// The window whose traffic-light cluster contains a global-space point
+    /// (T-01.2), topmost first. A fullscreen window has no persistent
+    /// titlebar; its whole top reveal strip counts as the hover target
+    /// (T-01.3). Hidden titlebars under a higher window are not hovered.
+    pub fn titlebar_hover_at(&self, location: Point<f64, Logical>) -> Option<WindowId> {
+        let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
+        let (window, titlebar) = self.window_hit_at(point, true)?;
+        if !titlebar {
+            return None;
+        }
+        let id = self.windows.id(&window)?;
+        match self.windows.state(&window) {
+            Some(WindowState::Fullscreen) => Some(id),
+            Some(WindowState::Floating | WindowState::Zoomed) => self
+                .titlebar_element(&window)
+                .filter(|element| element.cluster_rect().contains(point))
+                .map(|_| id),
+            _ => None,
+        }
     }
 
     /// The topmost window and traffic-light button under a global-space
@@ -2140,31 +2213,21 @@ impl DfState {
         location: Point<f64, Logical>,
     ) -> Option<(Window, TrafficLightKind)> {
         let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
-        let windows: Vec<Window> = self.space.elements().cloned().collect();
-        for window in windows.into_iter().rev() {
-            let Some(element) = self.titlebar_element(&window) else {
-                continue;
-            };
-            if let Some(kind) = element.button_at(point) {
-                return Some((window, kind));
-            }
+        let (window, titlebar) = self.window_hit_at(point, false)?;
+        if !titlebar {
+            return None;
         }
-        None
+        let element = self.titlebar_element(&window)?;
+        element.button_at(point).map(|kind| (window, kind))
     }
 
     /// The topmost window whose titlebar (or, when revealed, fullscreen top
     /// strip) contains a global-space point (T-01.3). Drives titlebar drag.
+    /// A titlebar covered by a higher window is not returned.
     pub fn titlebar_window_at(&self, location: Point<f64, Logical>) -> Option<Window> {
         let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
-        let windows: Vec<Window> = self.space.elements().cloned().collect();
-        for window in windows.into_iter().rev() {
-            if let Some(element) = self.titlebar_element(&window) {
-                if element.hit(point) {
-                    return Some(window);
-                }
-            }
-        }
-        None
+        let (window, titlebar) = self.window_hit_at(point, false)?;
+        titlebar.then_some(window)
     }
 
     /// Perform a traffic-light action (T-01.2). These are the same
