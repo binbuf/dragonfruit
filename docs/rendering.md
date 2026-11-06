@@ -200,6 +200,15 @@ whole region. The full-output diagnostic scene base uses that id/commit; the
 default region shape keeps drawing the live scene elements, whose own stable
 ids carry scene damage.
 
+T-21.5 also fixes the rounded-span damage contract. The blur panel is drawn as
+a stack of spans; Smithay passes element-local damage, while
+`render_texture_from_to` expects it local to the span. The central span starts
+one corner-radius below the panel origin, so forwarding panel-local damage
+unchanged shifted the scissor and left the real hovered/cursor strip
+unfrosted, revealing the raw scene through the translucent Dock. `damage_in_span`
+now translates and clips damage per span (ADR
+[0212](design/adr/0212-rounded-span-damage-translation.md)).
+
 **Acceptance**
 
 - A stationary Dock with an unchanged wallpaper does not damage the full
@@ -207,6 +216,8 @@ ids carry scene damage.
   `OutputDamageTracker` with the panel cache's id: the settled frame returns
   no damage, a wallpaper commit damages the full output, and a Dock move
   damages only the old/new panel rects.
+- A small Dock surface damage repaints the blur under the same pixels; the
+  rounded-span translation test covers the central-span offset and clipping.
 - No stale pixels at panel edges after a damage-only update.
 
 ### R1.3 Allocation and synchronization audit
@@ -246,7 +257,9 @@ not the sampled scene, so the panel reuses its last Kawase texture and
 key before rendering and advances the panel's own `CommitCounter`, so a scene
 change that alters the blurred pixels damages the panel even when its geometry
 did not move. `material stats` reports `blur_skips` alongside
-`blur_passes`/`blur_draws`.
+`blur_passes`/`blur_draws`, plus the `blur_miss_first/scene/source/spec/chain`
+breakdown so a native trace can distinguish a moving plate from a changing
+scene.
 
 **Acceptance**
 

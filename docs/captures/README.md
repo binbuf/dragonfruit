@@ -1131,9 +1131,11 @@ shell's applied properties with `tst_materialpolicy`, `tst_dock`, and
 
 The T-21.5 native Dock flicker fix is recorded in
 `t21-dock-flicker-fix.txt`. It keeps the before (live native role flapping and
-full-output material region), the nested after reference (`blur_skips`
-advancing while allocations stay flat), the tests, and the native after-run as
-an explicit OPEN step for the next session cycle.
+full-output material region), the isolation tests that ruled out magnification
+and the hover wash, the rounded-span damage-coordinate root cause, the nested
+after reference (`blur_skips` advancing while allocations stay flat), the
+tests, and the native after-run as an explicit OPEN step for the next session
+cycle.
 
 T-21.3's region-sized scene render is captured by
 `scripts/t21-region-render.sh` (`make t21-region-render`). It runs the nested

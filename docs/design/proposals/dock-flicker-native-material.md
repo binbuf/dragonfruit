@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | implemented in part (2026-11-05): F1/F2/F3/F5 landed; F4 region tiling and F6 VRR isolation remain follow-ups. See [ADR 0211](../adr/0211-persistent-chrome-stability-and-blur-cache.md). |
+| **Status** | implemented in part (2026-11-05): F1/F2/F3/F5 landed; the remaining hard-edged raw-background patches were a rounded-span damage-coordinate bug fixed by [ADR 0212](../adr/0212-rounded-span-damage-translation.md). F4 region tiling and F6 VRR isolation remain follow-ups. |
 | **Date** | 2026-11-05 |
 | **Area** | `compositor/src/window/{material_region,blur,degrade,material_cache}.rs`, `compositor/src/render.rs`, `compositor/src/backend/{drm,nested}.rs`, `shell/src/shellcontroller.cpp`, `shell/dock/Dock.qml` |
 | **Related** | T-21.3 (T190a–d), T-21.4b (T192a–d), T193a, ADR 0203–0210, `docs/rendering.md` R1/R4 |
@@ -221,10 +221,13 @@ being fixed.
 ## 5. Recommended fixes
 
 > **Implementation status (2026-11-05).** F1, F2, F3, and F5 are implemented
-> and covered by unit/conformance tests. F4 (region tiling) and F6 (VRR
-> isolation) remain follow-ups; the blur cache removes the repeated hover
-> work, so F4 is now a scene-change/multi-panel performance task rather than
-> the flicker blocker.
+> and covered by unit/conformance tests. A native follow-up after reboot showed
+> the remaining hard-edged raw-background patches were not a material-tier
+> swap: they were the rounded-span damage-coordinate bug fixed by
+> [ADR 0212](../adr/0212-rounded-span-damage-translation.md). F4 (region
+> tiling) and F6 (VRR isolation) remain follow-ups; the blur cache removes the
+> repeated hover work, so F4 is now a scene-change/multi-panel performance task
+> rather than the flicker blocker.
 
 ### F1 — Stabilize persistent chrome across tier changes (P0)
 
