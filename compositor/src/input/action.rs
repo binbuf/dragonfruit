@@ -44,6 +44,10 @@ pub enum InputAction {
     /// focuses the `dock` chrome surface; the shell then owns in-Dock
     /// navigation.
     FocusDock,
+    /// Reveal and focus the menu bar (T201). The compositor owns the reveal
+    /// and focus transfer; the shell then owns in-bar navigation. This is the
+    /// keyboard half of the auto-hide reveal contract.
+    FocusMenuBar,
     /// Toggle the Dock's auto-hide (T-10 section 15). The shell owns the
     /// setting; the compositor only routes the action.
     ToggleDock,
@@ -83,6 +87,7 @@ impl InputAction {
             InputAction::DesktopReveal => "desktop-reveal",
             InputAction::LockScreen => "lock-screen",
             InputAction::FocusDock => "focus-dock",
+            InputAction::FocusMenuBar => "focus-menu-bar",
             InputAction::ToggleDock => "toggle-dock",
             InputAction::ControlCenter => "control-center",
             InputAction::ShowApps => "show-apps",

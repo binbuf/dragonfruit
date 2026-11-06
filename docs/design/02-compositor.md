@@ -157,6 +157,14 @@ ladder.
   skips the sampled material pass when no visible panel intersects the
   client, and only the DRM primary-plane result advances the real
   `direct_scanouts` counter (T-21.3, [ADR 0210](adr/0210-fullscreen-chrome-suppression-and-scanout-counters.md)).
+  The menu bar is the one policy exception: its `menu.autoHide` mode decides
+  whether it hides over fullscreen (`full-screen`), stays (`never`), or
+  reveals on demand (`always`/`full-screen`). A concealed bar is removed from
+  the visible-chrome list per output, so it contributes no reserved zone,
+  input hit area, or material panel and the output remains scanout-eligible.
+  A revealed or explicitly kept bar is a real composition requirement and
+  keeps the material pass. See
+  [ADR 0220](adr/0220-menu-bar-auto-hide-visibility.md).
   The `tearing-control` protocol is **not implemented yet**; the design target
   is to honor it for fullscreen games (see [14-risks.md](14-risks.md) and
   [STATUS.md](STATUS.md) G-13).
@@ -653,6 +661,16 @@ extent and clears it for the fallback, Reduce Transparency or a hidden bar.
 The sharp element's commit follows the scene cache's real-damage commit, so a
 moving window under the bar repaints the veil and a settled scene does not.
 `query material` prints the veil mode, extent, strip and LUT samples.
+
+T201 makes the veil follow `menu.autoHide` on each output. The compositor owns
+the conceal/reveal state (`compositor/src/shell/menubar.rs`): `never` keeps the
+bar and veil over fullscreen, `always` starts concealed and reveals from the
+top edge or Control-F2, and `full-screen` is normal on the desktop and reveals
+on demand over fullscreen. A concealed bar is filtered out before
+`chrome_blur_panels`, so its veil region cannot leave a sampled strip behind;
+`menu.showBackground=false` clears the panel region on every rail. `query
+menubar` prints the mode and each output's fullscreen/revealed/active/visible
+state plus the reserved top strip.
 
 `BackdropPass` gates the pass: the backend opens a rendered frame once
 (`DfState::begin_render_frame`) and each output applies the backdrop at most

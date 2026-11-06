@@ -425,6 +425,11 @@ where
             // and clicks hit nothing, which looks like a vanished pointer and a
             // frozen desktop. Confine every relative move to the output layout.
             let location = confine_to_outputs(state, pointer.current_location() + delta);
+            // T201: apply the menu-bar auto-hide edge rule before hit-testing,
+            // so the same motion that reaches the top edge is routed to the
+            // now-revealed bar instead of the window underneath it.
+            state.menu_bar_pointer_seen = true;
+            state.update_menu_bar_reveal(location);
             pointer.motion(
                 state,
                 surface_under(state, location).map(|(surface, loc)| (surface, loc.to_f64())),
@@ -477,6 +482,9 @@ where
             // scene point it is over (T-16.6b). Absolute input can report the
             // exclusive right/bottom edge, so confine it like relative motion.
             let location = confine_to_outputs(state, magnified_location(state, location));
+            // T201: reveal/conceal the menu bar before this motion is routed.
+            state.menu_bar_pointer_seen = true;
+            state.update_menu_bar_reveal(location);
             let pointer = state.seat.get_pointer().unwrap();
             pointer.motion(
                 state,
@@ -622,6 +630,11 @@ where
                         if let Some(keyboard) = state.seat.get_keyboard() {
                             keyboard.set_focus(state, None, serial);
                         }
+                        // `set_focus(None)` does not call `focus_changed`, so
+                        // clear the cached menu-bar focus and re-apply the
+                        // auto-hide resting rule (T201).
+                        state.menu_bar_keyboard_focused = false;
+                        state.sync_menu_bar_reveal();
                     }
                 }
             }

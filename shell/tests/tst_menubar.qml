@@ -376,6 +376,107 @@ Item {
             Theme.dark = false;
         }
 
+        // -- T201: menu-bar visibility settings ------------------------------
+
+        function test_show_background_off_keeps_items_but_drops_fill_and_panel() {
+            // The old rail's background toggle must clear both the QML fill and
+            // the compositor's material panel; only the items remain.
+            Glass.rollout = "replacement";
+            Theme.dark = false;
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 600,
+                showBackground: false,
+                materialBlurActive: true,
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                statusItems: defaultStatus()
+            });
+            compare(bar.color.a, 0, "no QML fill with the background off");
+            compare(bar.veilActive, false);
+            compare(bar.compositorPanelActive, false);
+            verify(bar.appMenuAt(0) !== null, "the system menu stays");
+            verify(bar.appMenuAt(1) !== null, "the application menu stays");
+            verify(bar.appMenuAt(2) !== null, "the app's exported menu stays");
+            verify(bar.statusItemAt(0) !== null, "the status row stays");
+
+            // Turning it back on restores the same live scene's veil.
+            bar.showBackground = true;
+            waitForRendering(stage);
+            compare(bar.veilActive, true);
+            compare(bar.compositorPanelActive, true);
+
+            // The legacy rail must also clear its sampled strip, not leave a
+            // stale 28 pt panel behind.
+            Glass.rollout = "legacy";
+            var legacy = make(menuBarComponent, {
+                width: 600,
+                showBackground: false,
+                materialBlurActive: true
+            });
+            compare(legacy.color.a, 0);
+            compare(legacy.compositorPanelActive, false);
+            legacy.showBackground = true;
+            waitForRendering(stage);
+            compare(legacy.compositorPanelActive, true);
+            fuzzyCompare(legacy.color.a, Theme.material.chromeOpacity, 0.001);
+            legacy.destroy();
+            bar.destroy();
+            Glass.rollout = "replacement";
+            Theme.dark = false;
+        }
+
+        function test_auto_hide_modes_apply_the_visibility_rule() {
+            // The compositor owns the actual per-output reveal; this is the
+            // same pure rule the bar exposes for its scene/tests.
+            var never = make(menuBarComponent, { autoHideMode: "never" });
+            compare(never.visibleIn(false, false, false), true);
+            compare(never.visibleIn(true, false, false), true);
+            compare(never.visibleIn(true, false, true), true);
+
+            var always = make(menuBarComponent, { autoHideMode: "always" });
+            compare(always.visibleIn(false, false, false), false,
+                    "always starts hidden on the desktop");
+            compare(always.visibleIn(true, false, false), false,
+                    "always starts hidden in fullscreen");
+            compare(always.visibleIn(false, true, false), true,
+                    "the edge reveal shows it");
+            compare(always.visibleIn(false, false, true), true,
+                    "an active menu/focus keeps it available");
+            compare(always.visibleIn(true, true, false), true);
+
+            var full = make(menuBarComponent, { autoHideMode: "full-screen" });
+            compare(full.visibleIn(false, false, false), true,
+                    "full-screen mode is normal on the desktop");
+            compare(full.visibleIn(true, false, false), false,
+                    "full-screen mode hides over fullscreen");
+            compare(full.visibleIn(true, true, false), true,
+                    "the fullscreen edge reveal shows it");
+            compare(full.visibleIn(true, false, true), true,
+                    "an active fullscreen menu keeps it available");
+
+            // Live toggles re-evaluate the same rule.
+            full.autoHideMode = "always";
+            compare(full.autoHideAlways, true);
+            compare(full.visibleIn(false, false, false), false);
+            full.autoHideMode = "never";
+            compare(full.visibleIn(true, false, false), true);
+            compare(full.autoHideInFullscreen, false);
+
+            // The schema default is full-screen.
+            var defaultBar = make(menuBarComponent, {});
+            compare(defaultBar.autoHideMode, "full-screen");
+            compare(defaultBar.visibleIn(false, false, false), true);
+            compare(defaultBar.visibleIn(true, false, false), false);
+
+            defaultBar.destroy();
+            full.destroy();
+            always.destroy();
+            never.destroy();
+        }
+
         function compareColor(actual, expected, label) {
             fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
             fuzzyCompare(actual.g, expected.g, 0.001, label + " green");

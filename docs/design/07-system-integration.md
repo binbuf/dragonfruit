@@ -843,9 +843,11 @@ like Mission Control (T-15.5b) and the Lock Screen (T-15.8b; ADR
   applies live and persists; there is no Apply button.
 - **The shell applies what has a runtime.** `applyMenuBarPolicy` sets the
   clock options and the background material on `shell/menubar/MenuBar.qml`
-  live; `applyStatusItems` gates each status item on its `menu.control.<id>`
-  key, additive with the adapter's own availability, so a control shows only
-  when its daemon is present *and* the user wants it.
+  live and forwards `menu.autoHide` to the compositor as
+  `df_layer_surface.set_auto_hide`; the compositor owns the per-output reveal
+  (T201). `applyStatusItems` gates each status item on its
+  `menu.control.<id>` key, additive with the adapter's own availability, so a
+  control shows only when its daemon is present *and* the user wants it.
 - **The Control Center tile is projected by the shell.** No services-layer
   host is added. The pure `menuBarView(values)` in
   `shell/src/controlcenterpolicy.cpp` turns `menu.autoHide` into the tile
@@ -855,12 +857,12 @@ like Mission Control (T-15.5b) and the Lock Screen (T-15.8b; ADR
 - **Absence is a missing settings daemon.** With no daemon the pane's rows stay
   live on the schema defaults and it shows a one-line note; the tile is always
   present while the shell runs.
-- The `menu.autoHide` and `menu.recentItems` keys are **stored policy**:
-  settingsd holds them live and the pane reflects them, but the shell does not
-  yet apply auto-hide to the pinned chrome surface and no recent-items consumer
-  exists. Wiring that is a follow-up
-  (see [adr/0135](adr/0135-menu-bar-pane-and-tile.md)); the rows are the
-  capture's controls and are not dead.
+- `menu.autoHide` is **applied live** since T201: the shell forwards it and
+  the compositor reveals/conceals the bar per output, with `never`,
+  `always`, and `full-screen` semantics documented in
+  [adr/0220](adr/0220-menu-bar-auto-hide-visibility.md). Only
+  `menu.recentItems` remains stored policy with no consumer yet; the rows are
+  the capture's controls and are not dead.
 
 ## The General, About, and Updates path (T-15.10a)
 
