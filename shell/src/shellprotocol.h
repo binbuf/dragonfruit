@@ -21,6 +21,7 @@
 #include <QVariantList>
 
 #include <cstdint>
+#include <optional>
 
 #include "chromebufferpool.h"
 #include "chromedmabuf.h"
@@ -195,18 +196,9 @@ public:
                                         const QSize &logicalSize,
                                         QString *reason = nullptr);
 
-    // Set the Dock surface's input region to the union of `rects` in
-    // surface-local coordinates. An empty list makes the whole surface pass
-    // input through (the hidden Dock, the transparent magnified band). Each
-    // frame the shell sends the visible bar plus the currently magnified or
-    // bouncing icon rectangles (T-10 FR-13).
-    bool setDockInputRegion(const QList<QRect> &rects);
-
-    // Declare the live panel rect the Dock actually paints, in surface-local
-    // logical coordinates (T-14.7b). The compositor's frosted backdrop follows
-    // it exactly; the Dock sends its live plate rect every commit so the
-    // material stays under the magnified artwork.
-    bool setDockPanelRect(int x, int y, int width, int height);
+    // Stage the Dock's surface-local plate and input region for its next
+    // commit. The empty input region passes clicks through.
+    void setDockFrameGeometry(const QRect &panel, const QList<QRect> &inputRects);
 
     // Attach `image` to the menu-bar surface and commit. The image must be
     // ARGB32(_Premultiplied). `sourceRect` selects the physical sub-rect to
@@ -294,7 +286,7 @@ public:
     // Declare the live rect the OSD's card actually paints, in surface-local
     // logical pixels (T-20.3). The surface is larger than the card (room for
     // its shadow), so without this the compositor would frost the whole
-    // surface instead of the visible card. Mirrors `setDockPanelRect`.
+    // surface instead of the visible card.
     bool setOsdPanelRect(int x, int y, int width, int height);
 
     // Attach `image` to the OSD surface and commit.
@@ -397,7 +389,7 @@ public:
     // surface-local logical pixels (T-20.1). The compositor's GPU backdrop
     // blur follows the card exactly; without it the full-output overlay
     // declares no sub-output panel and would not be frosted. Mirrors
-    // `setDockPanelRect`.
+    // the Dock's plate declaration.
     bool setAppsDrawerPanelRect(int x, int y, int width, int height);
 
     // Attach `image` to the apps-drawer surface and commit.
@@ -888,6 +880,7 @@ private:
     bool commitTo(wl_surface *surface, const QImage &image,
                   const QSize &logicalSize = QSize(),
                   const QRect &sourceRect = QRect());
+    bool applyDockFrameGeometry();
     ShellSurfaceBuffer *surfaceBuffer(wl_surface *surface);
     bool ensureShmSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
                        const QSize &size);
@@ -1150,6 +1143,12 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     wl_surface *m_dockSurface = nullptr;
     df_layer_surface *m_dockLayer = nullptr;
     bool m_dockMapped = false;
+    struct DockFrameGeometry {
+        QRect panel;
+        QList<QRect> inputRects;
+    };
+    std::optional<DockFrameGeometry> m_nextDockGeometry;
+    std::optional<DockFrameGeometry> m_committedDockGeometry;
     // The Dock's transient popover surface (context menus, window chooser).
     wl_surface *m_dockPopupSurface = nullptr;
     df_layer_surface *m_dockPopupLayer = nullptr;

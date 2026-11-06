@@ -1623,8 +1623,12 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     requestFrameInternal(surface, buffer);
     wl_surface_attach(surface, slot.buffer, 0, 0);
     wl_surface_damage_buffer(surface, 0, 0, frame.size.width(), frame.size.height());
+    if (surface == m_dockSurface)
+        applyDockFrameGeometry();
     wl_surface_commit(surface);
     wl_display_flush(m_display);
+    buffer->lastImage = QImage();
+    buffer->lastSourceRect = QRect();
     slot.busy = true;
     slot.serial = frame.serial;
     m_dmabufOwners.insert(slot.buffer, DmabufBufferOwner{surface, frame.slot,
@@ -1851,32 +1855,36 @@ void ShellProtocol::applyDmabufScale(wl_surface *surface, const QSize &logicalSi
     }
 }
 
-bool ShellProtocol::setDockInputRegion(const QList<QRect> &rects)
+void ShellProtocol::setDockFrameGeometry(const QRect &panel, const QList<QRect> &inputRects)
 {
-    if (!m_dockSurface || !m_compositor)
-        return false;
-    wl_region *region = wl_compositor_create_region(m_compositor);
-    if (!region)
-        return false;
-    for (const QRect &rect : rects) {
-        if (rect.width() > 0 && rect.height() > 0)
-            wl_region_add(region, rect.x(), rect.y(), rect.width(), rect.height());
-    }
-    // An empty region passes every click through (the hidden Dock and the
-    // transparent magnified band; T-10 FR-13).
-    wl_surface_set_input_region(m_dockSurface, region);
-    wl_region_destroy(region);
-    return true;
+    m_nextDockGeometry = DockFrameGeometry{panel, inputRects};
 }
 
-bool ShellProtocol::setDockPanelRect(int x, int y, int width, int height)
+bool ShellProtocol::applyDockFrameGeometry()
 {
-    if (!m_dockLayer)
+    if (!m_nextDockGeometry)
         return false;
-    df_layer_surface_set_panel_rect(m_dockLayer, x, y, width, height);
-    if (m_display)
-        wl_display_flush(m_display);
-    return true;
+    const DockFrameGeometry &next = *m_nextDockGeometry;
+    const bool inputChanged = !m_committedDockGeometry
+        || next.inputRects != m_committedDockGeometry->inputRects;
+    const bool panelChanged = !m_committedDockGeometry
+        || next.panel != m_committedDockGeometry->panel;
+    if (inputChanged) {
+        wl_region *region = wl_compositor_create_region(m_compositor);
+        if (!region)
+            return false;
+        for (const QRect &rect : next.inputRects) {
+            if (!rect.isEmpty())
+                wl_region_add(region, rect.x(), rect.y(), rect.width(), rect.height());
+        }
+        wl_surface_set_input_region(m_dockSurface, region);
+        wl_region_destroy(region);
+    }
+    if (panelChanged)
+        df_layer_surface_set_panel_rect(m_dockLayer, next.panel.x(), next.panel.y(),
+                                         next.panel.width(), next.panel.height());
+    m_committedDockGeometry = next;
+    return inputChanged || panelChanged;
 }
 
 bool ShellProtocol::createDockPopupSurface(DockPosition position)
@@ -2297,8 +2305,13 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     QRect damage = changedPixelRect(buffer->lastImage, buffer->lastSourceRect,
                                     frame, source);
     if (damage.isEmpty() && !buffer->lastImage.isNull()) {
-        // Nothing visible changed: no buffer, no copy, no commit. Remember the
-        // new frame so the next producer target is not kept alive by us.
+        // Reuse the attached buffer. Input or plate geometry can change even
+        // when the pixels match, so commit that state on its own.
+        if (surface == m_dockSurface && applyDockFrameGeometry()) {
+            wl_surface_commit(surface);
+            wl_display_flush(m_display);
+        }
+        // Release the old producer target for reuse.
         buffer->lastImage = frame;
         buffer->lastSourceRect = source;
         ChromeStats::instance().recordSkippedCommit(label, logical, QSize(width, height),
@@ -2347,6 +2360,8 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     wl_surface_attach(surface, resource.buffer, 0, 0);
     wl_surface_damage_buffer(surface, damage.x(), damage.y(),
                              damage.width(), damage.height());
+    if (surface == m_dockSurface)
+        applyDockFrameGeometry();
     wl_surface_commit(surface);
     wl_display_flush(m_display);
     buffer->lastImage = frame;
@@ -2911,6 +2926,8 @@ void ShellProtocol::teardown()
     m_dockLayer = nullptr;
     m_dockSurface = nullptr;
     m_dockMapped = false;
+    m_nextDockGeometry.reset();
+    m_committedDockGeometry.reset();
     m_dockPopupLayer = nullptr;
     m_dockPopupSurface = nullptr;
     m_dockPopupMapped = false;

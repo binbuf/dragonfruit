@@ -307,9 +307,10 @@ bool GpuChromeFrameProducer::renderToFramebuffer(int slot)
         m_window->update();
     m_renderControl->polishItems();
     m_renderControl->beginFrame();
-    const bool synced = m_renderControl->sync();
-    if (synced || !resources.rendered)
-        m_renderControl->render();
+    m_renderControl->sync();
+    // The ring can hand back a slot containing an older frame even when the
+    // scene graph has no changes since its last sync.
+    m_renderControl->render();
     m_renderControl->endFrame();
 
     if (!syncGpuWork()) {

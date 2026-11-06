@@ -14,6 +14,7 @@ Item {
     // --- Injected data --------------------------------------------------
     property var entry: ({})
     property real iconSize: Theme.controls.dock.iconSize
+    property real artworkRasterSize: iconSize
     // Which edge the running indicator sits on: "bottom" | "left" | "right".
     property string indicatorEdge: "bottom"
     property bool showIndicator: true
@@ -453,6 +454,7 @@ Item {
         iconPath: root.iconPath
         trashFull: root.trashFull
         size: root.iconSize
+        rasterSize: root.artworkRasterSize
         x: root.artworkX
         y: root.artworkY
         scale: root.pressedScale * root.pulseScale * root.liftScale
