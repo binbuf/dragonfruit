@@ -17,7 +17,7 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [x] T199 — Match Dock magnification and tooltip behavior → [199-glass-dock-motion.md](../199-glass-dock-motion.md)
 - [x] T200 — Render the no-blur menu-bar veil → [200-glass-menubar-veil.md](../200-glass-menubar-veil.md)
 - [x] T201 — Connect menu-bar visibility settings → [201-glass-menubar-visibility.md](../201-glass-menubar-visibility.md)
-- [ ] T202 — Apply glass to dropdowns, context menus, and status menus → [202-glass-menu-families.md](../202-glass-menu-families.md)
+- [x] T202 — Apply glass to dropdowns, context menus, and status menus → [202-glass-menu-families.md](../202-glass-menu-families.md)
 
 ## Phase 3 — System panels and first-party windows
 
@@ -32,11 +32,11 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-06T19:08:32Z · 8/15 done
+**Pipeline status** — updated 2026-11-06T21:15:25Z · 9/15 done
 
-- Completed: T194, T195, T196, T197, T198, T199, T200, T201
+- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202
 - Blocked: none
 - Failed: none
-- Remaining: T202, T203, T204, T205, T206, T207, T208
-- Last finished: T201 — done · Landed menu-bar background and per-output auto-hide visibility, reservation/scanout filtering, reveal controls, diagnostics, docs/ADR 0220, and visibility tests; tst_menubar, tst_settings_menu_bar, and make gates pass.
+- Remaining: T203, T204, T205, T206, T207, T208
+- Last finished: T202 — done · Landed attached/detached/status menu presets, shell region/input metadata, 183 ms 0.95-scale exit with reopen/retarget handling, relative light slider response, calibrated dark attached baseline, Bluetooth status menu, local Files/desktop fallback, nine live captures, ADR 0221 and tests; make gates passes.
 <!-- /symphony:status -->

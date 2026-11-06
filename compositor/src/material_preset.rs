@@ -170,9 +170,15 @@ impl Preset {
         }
     }
 
-    /// Only the light attached-menu preset follows the measured File slider.
+    /// The light attached-menu preset follows the measured File slider.
     pub fn follows_slider(self) -> bool {
         token_slider(self) == "lightAttached"
+    }
+
+    /// The detached/status menus follow the same measured curve as a
+    /// relative adjustment that preserves their own default fit.
+    pub fn follows_slider_relative(self) -> bool {
+        token_slider(self) == "lightRelative"
     }
 }
 
@@ -721,6 +727,19 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
             let position = sanitize01(slider, glass::slider::DEFAULT_POSITION);
             (alpha, tint) = interpolate(position);
             slider_applied = true;
+        } else if preset.follows_slider_relative() && scheme == Scheme::Light {
+            // The measured curve is the attached File response. Detached and
+            // status menus keep their own default fit and move relative to it:
+            // alpha scales by the attached ratio and tint takes the attached
+            // delta. At the default position the preset is unchanged.
+            let position = sanitize01(slider, glass::slider::DEFAULT_POSITION);
+            let (base_alpha, base_tint) = interpolate(glass::slider::DEFAULT_POSITION);
+            let (current_alpha, current_tint) = interpolate(position);
+            if base_alpha > 0.0 {
+                alpha = sanitize01(alpha * current_alpha / base_alpha, alpha);
+            }
+            tint = sanitize01(tint + (current_tint - base_tint), tint);
+            slider_applied = true;
         }
     }
 
@@ -865,6 +884,10 @@ mod tests {
         for preset in Preset::ALL {
             assert_eq!(preset.role().name(), token_role(preset));
             assert_eq!(preset.follows_slider(), token_slider(preset) == "lightAttached");
+            assert_eq!(
+                preset.follows_slider_relative(),
+                token_slider(preset) == "lightRelative"
+            );
             let expected_render = match token_render(preset) {
                 "veil" => IntendedRender::Veil,
                 "solid" => IntendedRender::Solid,
@@ -892,7 +915,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_light_attached_menu_follows_the_slider() {
+    fn only_the_light_menu_presets_follow_the_slider() {
         for preset in Preset::ALL {
             for scheme in [Scheme::Light, Scheme::Dark] {
                 let low = resolve(ResolveInput {
@@ -903,13 +926,54 @@ mod tests {
                     slider: 1.0,
                     ..input(preset, scheme)
                 });
-                let expected = preset == Preset::MenuAttached && scheme == Scheme::Light;
-                assert_eq!(low.slider_applied, expected, "{} {scheme:?}", preset.name());
-                if !expected {
+                let direct = preset == Preset::MenuAttached && scheme == Scheme::Light;
+                let relative = matches!(preset, Preset::MenuDetached | Preset::StatusMenu)
+                    && scheme == Scheme::Light;
+                assert_eq!(
+                    low.slider_applied,
+                    direct || relative,
+                    "{} {scheme:?}",
+                    preset.name()
+                );
+                if !direct && !relative {
                     assert_eq!(low.alpha, high.alpha, "{} {scheme:?}", preset.name());
                     assert_eq!(low.tint, high.tint, "{} {scheme:?}", preset.name());
                 }
             }
+        }
+    }
+
+    #[test]
+    fn light_detached_and_status_follow_the_attached_curve_relatively() {
+        for preset in [Preset::MenuDetached, Preset::StatusMenu] {
+            let default = resolve(input(preset, Scheme::Light));
+            let explicit = resolve(ResolveInput {
+                slider: glass::slider::DEFAULT_POSITION,
+                ..input(preset, Scheme::Light)
+            });
+            assert!((default.alpha - explicit.alpha).abs() < 1e-6);
+            assert!((default.tint - explicit.tint).abs() < 1e-6);
+            let low = resolve(ResolveInput {
+                slider: 0.0,
+                ..input(preset, Scheme::Light)
+            });
+            let high = resolve(ResolveInput {
+                slider: 1.0,
+                ..input(preset, Scheme::Light)
+            });
+            assert!(low.slider_applied && high.slider_applied);
+            assert!(low.alpha > default.alpha && default.alpha > high.alpha);
+            assert!(low.tint < default.tint && default.tint < high.tint);
+            let dark_low = resolve(ResolveInput {
+                slider: 0.0,
+                ..input(preset, Scheme::Dark)
+            });
+            let dark_high = resolve(ResolveInput {
+                slider: 1.0,
+                ..input(preset, Scheme::Dark)
+            });
+            assert!(!dark_low.slider_applied && !dark_high.slider_applied);
+            assert_eq!((dark_low.alpha, dark_low.tint), (dark_high.alpha, dark_high.tint));
         }
     }
 

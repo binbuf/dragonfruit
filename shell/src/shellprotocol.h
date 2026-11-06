@@ -122,6 +122,16 @@ public:
     // `(width, height)`. The compositor answers with a fresh `configure`.
     bool setPopupGeometry(int x, int y, int width, int height);
 
+    // T202: declare the popup's independently keyed material regions with the
+    // pixels they describe. `regions` maps key/preset/x/y/w/h/tl/tr/br/bl/
+    // overscan; an empty list clears the material. The region requests are
+    // commit-latched by the compositor.
+    void setPopupPanelRegions(const QVariantList &regions);
+    void clearPopupPanelRegions();
+    // The popup surface accepts pointer input only while a menu is logically
+    // open; the closing animation must not intercept clicks.
+    void setPopupInputActive(bool active);
+
     // Attach `image` to the popup surface and commit. The image must be
     // ARGB32(_Premultiplied). `logicalSize` is the surface contract; the image
     // may be a physical-size buffer mapped by buffer scale/viewport (T-21.1b).
@@ -161,6 +171,11 @@ public:
     // popup's next frame. An empty panel leaves a tooltip without a backdrop.
     bool setDockPopupGeometry(int top, int right, int bottom, int left, int width, int height,
                               const QRect &panel);
+    // T202: one detached-menu material region for the active Dock popover,
+    // plus the same open-only input contract as the menu-bar popup.
+    void setDockPopupPanelRegion(const QString &preset, const QRect &rect, int radius);
+    void clearDockPopupPanelRegions();
+    void setDockPopupInputActive(bool active);
 
     // Attach `image` to the Dock popup surface and commit.
     bool commitDockPopupImage(const QImage &image, const QSize &logicalSize = QSize(),

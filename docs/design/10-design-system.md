@@ -256,6 +256,35 @@ through the measured 0.0 / 0.5255 / 1.0 File anchors; dark and every other
 preset keep a named baseline. The Dock (and other persistent chrome) keeps its
 sampled floor at `Minimal`; transient popups may become solid.
 
+### Menu families (T202)
+
+The menu family uses three of the shared presets: `menuAttached` for the
+menu-bar dropdown, `menuDetached` for the tray, Dock and app-owned context
+menus, and `statusMenu` for the Wi-Fi/Bluetooth/volume/battery popovers.
+Submenus are detached cards even when their parent is attached. The attached
+surface has square top corners and the measured ~12.5 pt bottom pair; detached
+and status cards are all-rounded. The menu shadow uses the 20 pt elevation
+token and the close motion is the measured 183 ms with a 0.95 terminal scale
+toward the anchor. The logical close and input release are immediate; a
+reopen/retarget before the exit timer cancels the pending unmap. Reduce Motion
+collapses the duration and terminal scale.
+
+`Material.menuFill()`/`menuResolution()` are the QML complement. Trusted shell
+surfaces (`MenuBarMenu`, the tray context menu, Dock popovers and the status
+menus) resolve the sampled preset; app-owned surfaces (`ContextMenu` in Files,
+the desktop and Select) pass `materialBackdrop: "local"` and resolve the opaque
+scheme plate, never a translucent slab over unfrosted content. The shell
+declares each open panel as an independently keyed material region on the
+`menubar-popup`/`dock-popup` overlay, with the attached per-corner geometry and
+the detached/status all-rounded geometry. Light `menuDetached`/`statusMenu`
+preserve their own default fits and follow the measured attached File curve by
+a documented relative adjustment (alpha ratio, tint delta); dark presets do
+not follow the light slider. The dark attached baseline is calibrated against
+the valid dark mid/black context/status samples; its white row remains open
+for a controlled recapture. ADR
+[0221](adr/0221-menu-family-presets-and-exit.md) records the mapping and the
+fallback boundary.
+
 ### Dock optics fit (T198)
 
 The Dock preset carries the measured optical fit beyond the flat band:

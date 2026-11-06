@@ -197,9 +197,19 @@ TestCase {
             var name = Glass.presetNames[i];
             var low = Glass.resolve(name, { scheme: "light", rollout: "replacement", slider: 0 });
             var high = Glass.resolve(name, { scheme: "light", rollout: "replacement", slider: 1 });
-            var expected = name === "menuAttached";
+            var relative = name === "menuDetached" || name === "statusMenu";
+            var expected = name === "menuAttached" || relative;
             compare(low.sliderApplied, expected, name + " slider support");
-            if (!expected) {
+            if (relative) {
+                var defaultFit = Glass.resolve(name, {
+                    scheme: "light", rollout: "replacement",
+                    slider: Theme.glass.slider.defaultPosition
+                });
+                verify(low.alpha > defaultFit.alpha && defaultFit.alpha > high.alpha,
+                       name + " relative alpha follows the attached curve");
+                verify(low.tint < defaultFit.tint && defaultFit.tint < high.tint,
+                       name + " relative tint follows the attached curve");
+            } else if (!expected) {
                 verify(Math.abs(low.alpha - high.alpha) < 1e-6,
                        name + " slider must not change alpha");
                 verify(Math.abs(low.tint - high.tint) < 1e-6,
@@ -368,6 +378,85 @@ TestCase {
     }
 
     // -- Popup (FR-1, FR-5) -------------------------------------------------
+
+    // -- T202: menu family presets, geometry and motion ---------------------
+
+    function test_menu_family_uses_attached_detached_and_status_presets() {
+        var savedRollout = Glass.rollout;
+        try {
+        Glass.rollout = "replacement";
+        var attached = make(popupComponent, {
+            open: true, materialPreset: "menuAttached",
+            materialBackdrop: "trusted", motionPreset: "menu"
+        });
+        compare(attached.materialPreset, "menuAttached");
+        compare(attached.cornerTopRadius, 0);
+        fuzzyCompare(attached.cornerRadius,
+                     Theme.controls.contextMenu.attachedRadius, 0.001);
+        var resolved = Glass.resolve("menuAttached", {
+            scheme: Theme.dark ? "dark" : "light", rollout: "replacement",
+            slider: Glass.slider, backend: "gpu-sampled", tier: "full"
+        });
+        fuzzyCompare(attached.surfaceFill.a, resolved.alpha, 1e-4);
+        fuzzyCompare(attached.surfaceFill.r, resolved.tint, 1e-4);
+
+        var detached = make(popupComponent, {
+            open: true, materialPreset: "menuDetached",
+            materialBackdrop: "local", motionPreset: "menu"
+        });
+        fuzzyCompare(detached.cornerTopRadius, detached.cornerRadius, 1e-6);
+        var local = Glass.resolve("menuDetached", {
+            scheme: Theme.dark ? "dark" : "light", rollout: "replacement",
+            backend: "software", tier: "full"
+        });
+        fuzzyCompare(detached.surfaceFill.a, local.alpha, 1e-4);
+        verify(detached.surfaceFill.a >= 0.9,
+               "an app-owned menu must paint the opaque local fallback");
+
+        var status = make(popupComponent, {
+            open: true, materialPreset: "statusMenu",
+            materialBackdrop: "trusted", motionPreset: "menu"
+        });
+        compare(status.materialPreset, "statusMenu");
+        compare(status.cornerTopRadius, status.cornerRadius);
+        } finally {
+            Glass.rollout = savedRollout;
+        }
+    }
+
+    function test_menu_close_motion_is_measured_and_reduced() {
+        var savedReduced = Theme.reducedMotion;
+        Theme.reducedMotion = false;
+        compare(Theme.motion.menuClose.fullDuration, 183);
+        var popup = make(popupComponent, {
+            open: true, materialPreset: "menuAttached",
+            materialBackdrop: "trusted", motionPreset: "menu"
+        });
+        fuzzyCompare(popup.closeScale, 0.95, 1e-6);
+        compare(popup.motionPreset, "menu");
+        popup.open = false;
+        waitForRendering(stage);
+        compare(popup.open, false, "logical close is immediate");
+        Theme.reducedMotion = true;
+        fuzzyCompare(popup.closeScale, 1.0, 1e-6);
+        compare(Theme.motion.menuClose.duration, 0);
+        Theme.reducedMotion = savedReduced;
+    }
+
+    function test_context_menu_regions_keep_the_submenu_detached() {
+        var cm = make(contextMenuComponent, {
+            model: [ { label: "Options", type: "submenu",
+                       submenu: [ { label: "A" }, { label: "B" } ] } ]
+        });
+        cm.open = true;
+        cm.openSubmenu(0);
+        waitForRendering(stage);
+        verify(cm.regions.length >= 2, "submenu region must be declared");
+        compare(cm.regions[0].preset, "menuDetached");
+        compare(cm.regions[1].preset, "menuDetached");
+        fuzzyCompare(cm.regions[0].br, cm.cornerRadius, 1e-6);
+        fuzzyCompare(cm.regions[1].br, cm.cornerRadius, 1e-6);
+    }
 
     function test_popup_escape_closes() {
         var p = make(popupComponent, { open: true });

@@ -1824,6 +1824,33 @@ Item {
             Theme.dark = false;
         }
 
+        function test_dock_menu_family_uses_the_detached_preset() {
+            var savedRollout = Glass.rollout;
+            try {
+            Glass.rollout = "replacement";
+            var dock = make(dockComponent, {
+                width: 1280, height: 240,
+                popupMaterialBlurActive: true,
+                entries: [ app("a", "A", true) ]
+            });
+            var menu = findChild(dock, "entryMenu");
+            verify(menu !== null);
+            compare(menu.materialPreset, "menuDetached");
+            compare(menu.materialBackdrop, "trusted");
+            compare(dock.activePopoverPreset, "menuDetached");
+            compare(dock.popoverInputActive, false,
+                    "a closed Dock popover must not intercept clicks");
+            var resolved = Glass.resolve("menuDetached", {
+                scheme: Theme.dark ? "dark" : "light", rollout: "replacement",
+                slider: Glass.slider, backend: "gpu-sampled", tier: "full"
+            });
+            fuzzyCompare(menu.surfaceFill.a, resolved.alpha, 1e-4);
+            fuzzyCompare(menu.closeScale, 0.95, 1e-6);
+            } finally {
+                Glass.rollout = savedRollout;
+            }
+        }
+
         function test_glyph_tile_is_a_token_squircle_with_inset() {
             // The placeholder tile draws at the icon radius ratio and spans the
             // icon box less the token inset; the themed artwork is masked into

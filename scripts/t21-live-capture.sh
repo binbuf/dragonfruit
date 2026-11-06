@@ -21,8 +21,8 @@ cd "$(dirname "$0")/.."
 
 STATE="${1:-motion}"
 case "$STATE" in
-    motion|settled|menu|popover|lock|fullscreen) ;;
-    *) echo "usage: $0 motion|settled|menu|popover|lock|fullscreen" >&2; exit 2 ;;
+    motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context) ;;
+    *) echo "usage: $0 motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context" >&2; exit 2 ;;
 esac
 
 SETTLE="${SETTLE:-2}"
@@ -34,6 +34,9 @@ SCRATCH="${SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/dragonfruit-t21-live.XXXXXX")}"
 # compositor's scale; FULL_SESSION=1 also uses it for the 1x capture.
 SCALE="${SCALE:-1}"
 FULL_SESSION="${FULL_SESSION:-0}"
+TRANSPARENCY="${TRANSPARENCY:-}"
+MENU_INDEX="${MENU_INDEX:-0}"
+STATUS_MENU="${STATUS_MENU:-wifi}"
 OUT="${OUT:-docs/captures/t21-chrome-$STATE.png}"
 FORCE_TIER="${FORCE_TIER:-}"
 SYNTH="${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must be set}/$SOCKET.synth"
@@ -70,7 +73,23 @@ case "$STATE" in
         ;;
     menu)
         DELAY=8000
-        EXTRA_ENV=(DF_MENUBAR_MENU_FIXTURE=0)
+        EXTRA_ENV=(DF_MENUBAR_MENU_FIXTURE="$MENU_INDEX")
+        ;;
+    status)
+        DELAY=8000
+        EXTRA_ENV=(DF_STATUS_FIXTURE=1 DF_STATUS_MENU_FIXTURE="$STATUS_MENU")
+        ;;
+    dock-context)
+        DELAY=8000
+        EXTRA_ENV=(DF_STATUS_FIXTURE=1 DF_DOCK_MENU_FIXTURE=1)
+        ;;
+    desktop-context)
+        DELAY=8000
+        EXTRA_ENV=(DF_STATUS_FIXTURE=1 DF_DESKTOP_CONTEXT_FIXTURE=1)
+        ;;
+    files-context)
+        DELAY=8000
+        EXTRA_ENV=(DF_STATUS_FIXTURE=1 DF_DEMO_QT_APP=build/apps/files/dragonfruit-files DF_FILES_START_MENU=background)
         ;;
     popover)
         DELAY=16000
@@ -96,7 +115,11 @@ if [ "$SCALE" != "1" ]; then
 fi
 
 echo "t21-live: $STATE capture on $SOCKET (scale $SCALE)"
-if [ "$FULL_SESSION" = "1" ] || [ "$SCALE" != "1" ]; then
+if [ "$STATE" = "files-context" ]; then
+    # The Files-window context needs the demo's Qt client; `dev-full --shell`
+    # launches only chrome/services. Keep the demo app path and private bus.
+    DEMO_CMD=(make demo DEMO_ARGS="--socket-name $SOCKET --private-bus")
+elif [ "$FULL_SESSION" = "1" ] || [ "$SCALE" != "1" ]; then
     # `make dev-full` owns settingsd on a private bus. Seed the display scale
     # before the shell starts: the shell forwards settingsd's display.scale as
     # `df_output.set_scale`, which would otherwise reset the compositor's
@@ -106,6 +129,7 @@ if [ "$FULL_SESSION" = "1" ] || [ "$SCALE" != "1" ]; then
     WALLPAPER_SOURCE="${WALLPAPER_SOURCE:-}" \
     WALLPAPER_FIT="${WALLPAPER_FIT:-fill}" \
     COLOR_SCHEME="${COLOR_SCHEME:-}" \
+    TRANSPARENCY="$TRANSPARENCY" \
     REDUCE_TRANSPARENCY="${REDUCE_TRANSPARENCY:-0}" \
     INCREASE_CONTRAST="${INCREASE_CONTRAST:-0}" \
     python3 - "$SESSION_DIR/config/dragonfruit/settings.json" "$SCALE" <<'PY'
@@ -125,6 +149,9 @@ if scheme in ("light", "dark"):
     keys["appearance.colorScheme"] = scheme
 keys["accessibility.reduceTransparency"] = os.environ.get("REDUCE_TRANSPARENCY", "0") == "1"
 keys["accessibility.increaseContrast"] = os.environ.get("INCREASE_CONTRAST", "0") == "1"
+transparency = os.environ.get("TRANSPARENCY", "")
+if transparency:
+    keys["appearance.transparency"] = float(transparency)
 with open(path, "w", encoding="utf-8") as handle:
     json.dump({"schema": 18, "keys": keys}, handle)
 PY
@@ -251,6 +278,12 @@ if state == "fullscreen":
         raise SystemExit("t21-live: no window to fullscreen")
     send(f"fullscreen {windows[0][0]}")
     time.sleep(3.0)
+elif state == "desktop-context":
+    # Empty desktop, clear of the demo windows and the Dock.
+    motion(180, 900)
+    send("button 0x111 down")
+    send("button 0x111 up")
+    time.sleep(1.0)
 elif state == "motion":
     # Keep the Dock spring moving across the capture instant.
     for index in range(600):

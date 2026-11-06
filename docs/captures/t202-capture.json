@@ -1,0 +1,88 @@
+{
+  "backend": "nested",
+  "rollout": "replacement",
+  "cases": [
+    {
+      "label": "attached-light",
+      "state": "menu",
+      "scheme": "light",
+      "transparency": 0.5255,
+      "preset": "menuAttached",
+      "artifact": "docs/captures/t202-attached-light.png",
+      "present": true
+    },
+    {
+      "label": "attached-dark",
+      "state": "menu",
+      "scheme": "dark",
+      "transparency": 0.5255,
+      "preset": "menuAttached",
+      "artifact": "docs/captures/t202-attached-dark.png",
+      "present": true
+    },
+    {
+      "label": "attached-light-low",
+      "state": "menu",
+      "scheme": "light",
+      "transparency": 0.0,
+      "preset": "menuAttached",
+      "artifact": "docs/captures/t202-attached-light-low.png",
+      "present": true
+    },
+    {
+      "label": "attached-light-high",
+      "state": "menu",
+      "scheme": "light",
+      "transparency": 1.0,
+      "preset": "menuAttached",
+      "artifact": "docs/captures/t202-attached-light-high.png",
+      "present": true
+    },
+    {
+      "label": "status-wifi",
+      "state": "status",
+      "scheme": "light",
+      "transparency": 0.5255,
+      "preset": "statusMenu",
+      "artifact": "docs/captures/t202-status-wifi.png",
+      "present": true
+    },
+    {
+      "label": "status-bluetooth",
+      "state": "status",
+      "scheme": "light",
+      "transparency": 0.5255,
+      "preset": "statusMenu",
+      "artifact": "docs/captures/t202-status-bluetooth.png",
+      "present": true
+    },
+    {
+      "label": "context-dock",
+      "state": "dock-context",
+      "scheme": "light",
+      "transparency": 0.5255,
+      "preset": "menuDetached",
+      "artifact": "docs/captures/t202-context-dock.png",
+      "present": true
+    },
+    {
+      "label": "context-desktop",
+      "state": "desktop-context",
+      "scheme": "light",
+      "transparency": 0.5255,
+      "preset": "menuDetached",
+      "artifact": "docs/captures/t202-context-desktop.png",
+      "present": true
+    },
+    {
+      "label": "context-files",
+      "state": "files-context",
+      "scheme": "light",
+      "transparency": 0.5255,
+      "preset": "menuDetached",
+      "artifact": "docs/captures/t202-context-files.png",
+      "present": true
+    }
+  ],
+  "note": "Compositor-own render through the screenshot fixture; the optical fit is checked by scripts/t202-menu-families.py because the nested desktop has no controlled backdrop."
+}

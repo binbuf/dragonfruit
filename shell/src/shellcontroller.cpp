@@ -778,6 +778,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onStatusMenuRefreshRequested(QString)));
     connect(m_item, SIGNAL(statusMenuOpened()), this, SLOT(onStatusMenuOpened()));
     connect(m_item, SIGNAL(statusMenuClosed()), this, SLOT(onStatusMenuClosed()));
+    // T202: the Bluetooth status menu shares the Control Center tile's one
+    // action policy and bridge-host slots.
+    connect(m_item, SIGNAL(bluetoothPowerToggleRequested(bool)), this,
+            SLOT(onBluetoothToggleRequested(bool)));
+    connect(m_item, SIGNAL(bluetoothDeviceToggled(QString,bool)), this,
+            SLOT(onBluetoothDeviceToggled(QString,bool)));
+    connect(m_item, SIGNAL(bluetoothSettingsRequested()), this,
+            SLOT(onBluetoothSettingsRequested()));
     applyStatusMenuData();
     // Hold the first menu-bar commit until the three visible first-party
     // status reads have landed. The host answers asynchronously; without this
@@ -1645,6 +1653,17 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         });
     }
 
+    // Capture/demo seam (T202): open one status menu by id so the menu-family
+    // capture does not depend on the right-anchored row's pixel positions.
+    if (qEnvironmentVariableIsSet("DF_STATUS_MENU_FIXTURE")) {
+        const QString id = qEnvironmentVariable("DF_STATUS_MENU_FIXTURE");
+        QTimer::singleShot(1500, this, [this, id]() {
+            if (m_item)
+                QMetaObject::invokeMethod(m_item, "openStatusMenu",
+                                          Q_ARG(QVariant, id));
+        });
+    }
+
     // Capture/demo seam (T-21.4a): enter Mission Control once the chrome is up
     // so the native visual sweep can capture the live-surface grid without a
     // synthetic keyboard gesture. The compositor owns the overview; this only
@@ -1904,6 +1923,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         });
     }
 
+    // Capture/demo seam (T202): open the first Dock entry's context menu.
+    if (qEnvironmentVariableIsSet("DF_DOCK_MENU_FIXTURE")) {
+        QTimer::singleShot(1500, this, [this]() {
+            if (m_dockItem)
+                QMetaObject::invokeMethod(m_dockItem, "openEntryMenuFixture");
+        });
+    }
+
     // Capture/demo seam (T-14.7m): open the window chooser for the first
     // multi-window app once it has mapped, with the first row's per-window
     // actions revealed, so the live visual check captures them without a
@@ -2090,6 +2117,8 @@ void ShellController::applyStatusItems()
     const QVariantMap wifi = m_statusModel ? m_statusModel->wifi() : QVariantMap();
     const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
     const QVariantMap battery = m_statusModel ? m_statusModel->battery() : QVariantMap();
+    const QVariantMap bluetooth =
+        m_statusModel ? m_statusModel->bluetooth() : QVariantMap();
 
     // T-15.9b: the Menu Bar pane's per-control visibility keys gate the status
     // row. The key is additive with the live adapter availability: a control
@@ -2113,11 +2142,18 @@ void ShellController::applyStatusItems()
                             && controlEnabled("wifi"),
                         0.8, wifi.value(QStringLiteral("enabled")).toBool());
 
-    // Bluetooth and Accessibility are later tasks (T-15/T-11); they stay
-    // hidden until their adapters land. The Menu Bar keys are still honored so
-    // the gate is in place when they become live.
-    items << statusItem(QStringLiteral("bluetooth"), QStringLiteral("bluetooth"), QString(),
-                        tr("Bluetooth"), false && controlEnabled("bluetooth"));
+    // T202: Bluetooth is live through the same bridge host the Control Center
+    // tile uses. An absent daemon hides the slot; an error stays visible but
+    // inert; the Menu Bar pane's `menu.control.bluetooth` key remains additive.
+    QString bluetoothGlyph = bluetooth.value(QStringLiteral("glyph")).toString();
+    if (bluetoothGlyph.isEmpty())
+        bluetoothGlyph = bluetooth.value(QStringLiteral("powered")).toBool()
+            ? QStringLiteral("bluetooth") : QStringLiteral("bluetooth-disabled");
+    items << statusItem(QStringLiteral("bluetooth"), bluetoothGlyph, QString(),
+                        tr("Bluetooth"),
+                        bluetooth.value(QStringLiteral("visible")).toBool()
+                            && controlEnabled("bluetooth"),
+                        0.8, bluetooth.value(QStringLiteral("enabled")).toBool());
 
     QString audioGlyph = audio.value(QStringLiteral("glyph")).toString();
     if (audioGlyph.isEmpty())
@@ -2201,6 +2237,7 @@ void ShellController::applyStatusMenuData()
     m_item->setProperty("wifiMenu", m_statusModel->wifi());
     m_item->setProperty("volumeMenu", m_statusModel->audio());
     m_item->setProperty("batteryMenu", m_statusModel->battery());
+    m_item->setProperty("bluetoothMenu", m_statusModel->bluetooth());
     applyStatusItems();
     // A live Wi-Fi/volume change reaches an open Control Center too.
     if (m_controlCenterOpen)
@@ -2267,7 +2304,13 @@ void ShellController::onTrayMenuTriggered(const QString &service, int id)
 void ShellController::onTrayMenuClosed()
 {
     m_menuOpen = false;
-    QTimer::singleShot(140, this, [this]() {
+    // The logical menu is closed immediately: stop intercepting clicks and
+    // drop the decorative material while the visual exit plays.
+    if (m_protocol) {
+        m_protocol->setPopupInputActive(false);
+        m_protocol->clearPopupPanelRegions();
+    }
+    QTimer::singleShot(210, this, [this]() {
         if (!m_menuOpen)
             updatePopupGeometry();
     });
@@ -2282,9 +2325,13 @@ void ShellController::onStatusMenuOpened()
 void ShellController::onStatusMenuClosed()
 {
     m_menuOpen = false;
-    // Let the close animation (popupClose = 100 ms) play before unmapping the
-    // overlay surface, matching the app-menu dismissal.
-    QTimer::singleShot(140, this, [this]() {
+    if (m_protocol) {
+        m_protocol->setPopupInputActive(false);
+        m_protocol->clearPopupPanelRegions();
+    }
+    // The measured menu exit is 183 ms; keep the overlay mapped for the
+    // visual tail, but the logical interaction and input are already closed.
+    QTimer::singleShot(210, this, [this]() {
         if (!m_menuOpen)
             updatePopupGeometry();
     });
@@ -2300,6 +2347,8 @@ void ShellController::onStatusMenuRefreshRequested(const QString &itemId)
         m_statusClient->refreshAudio();
     else if (itemId == QLatin1String("battery"))
         m_statusClient->refreshBattery();
+    else if (itemId == QLatin1String("bluetooth"))
+        m_statusClient->refreshBluetooth();
 }
 
 void ShellController::onWifiJoinRequested(const QString &ssid, const QString &secret)
@@ -4341,9 +4390,14 @@ void ShellController::onAppMenuOpened(int)
 void ShellController::onAppMenuClosed()
 {
     m_menuOpen = false;
-    // Let the close animation (popupClose = 100 ms) play before unmapping the
-    // overlay surface; the scene-graph hook commits the frames it renders.
-    QTimer::singleShot(140, this, [this]() {
+    if (m_protocol) {
+        m_protocol->setPopupInputActive(false);
+        m_protocol->clearPopupPanelRegions();
+    }
+    // The measured menu exit is 183 ms. The logical menu and input close now;
+    // the overlay keeps rendering the visual tail so a reopen/retarget can
+    // take over before the timer expires.
+    QTimer::singleShot(210, this, [this]() {
         if (!m_menuOpen)
             updatePopupGeometry();
     });
@@ -4461,6 +4515,8 @@ void ShellController::updatePopupGeometry()
     if (!m_menuOpen) {
         m_popupWidth = 0;
         m_popupHeight = 0;
+        m_protocol->setPopupInputActive(false);
+        m_protocol->clearPopupPanelRegions();
         m_protocol->hidePopup();
         render();
         return;
@@ -4484,6 +4540,12 @@ void ShellController::updatePopupGeometry()
     m_popupWidth = width;
     m_popupHeight = height;
     m_protocol->setPopupGeometry(x, y, width, height);
+    // T202: declare the exact attached/detached/status regions for this open
+    // menu. The popup surface accepts input only while it is logically open;
+    // the close path clears both before the visual exit.
+    m_protocol->setPopupPanelRegions(
+        m_item->property("dropdownRegions").toList());
+    m_protocol->setPopupInputActive(true);
     render();
 }
 
@@ -8126,7 +8188,21 @@ void ShellController::renderDock()
         // capsule and tail and would expose glass in its transparent pixels.
         const QRect card = dockRectProperty("activePopoverRect").intersected(popover);
         const QRect backdrop = card.isEmpty() ? QRect() : card.translated(-popover.topLeft());
-        m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph, backdrop);
+        // T202: explicit detached-menu regions replace the legacy single
+        // panel rect. The material and input are live only while a popover is
+        // logically open; the close tail keeps rendering but passes clicks.
+        const bool popoverInputActive =
+            m_dockItem->property("popoverInputActive").toBool();
+        if (popoverInputActive && !backdrop.isEmpty()) {
+            m_protocol->setDockPopupPanelRegion(
+                m_dockItem->property("activePopoverPreset").toString(),
+                backdrop,
+                qRound(m_dockItem->property("activePopoverRadius").toReal()));
+        } else {
+            m_protocol->clearDockPopupPanelRegions();
+        }
+        m_protocol->setDockPopupInputActive(popoverInputActive);
+        m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph, QRect());
         const QRect popupRect(leftGutter + px, headroom + py, pw, ph);
         const QRect popupSource = chromeBufferRect(popupRect);
         targets.append({QStringLiteral("dock-popup"), QSize(pw, ph), popupSource,
@@ -8135,6 +8211,8 @@ void ShellController::renderDock()
                                 image, QSize(pw, ph), popupSource);
                         }});
     } else {
+        m_protocol->clearDockPopupPanelRegions();
+        m_protocol->setDockPopupInputActive(false);
         m_protocol->hideDockPopup();
     }
 

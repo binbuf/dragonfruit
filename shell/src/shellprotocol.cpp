@@ -401,6 +401,52 @@ bool ShellProtocol::setPopupGeometry(int x, int y, int width, int height)
     return true;
 }
 
+void ShellProtocol::setPopupPanelRegions(const QVariantList &regions)
+{
+    if (!m_popupLayer)
+        return;
+    df_layer_surface_clear_panel_regions(m_popupLayer);
+    for (const QVariant &value : regions) {
+        const QVariantMap region = value.toMap();
+        const QString key = region.value(QStringLiteral("key")).toString();
+        const QString preset = region.value(QStringLiteral("preset")).toString();
+        const int width = qRound(region.value(QStringLiteral("w")).toReal());
+        const int height = qRound(region.value(QStringLiteral("h")).toReal());
+        if (key.isEmpty() || width <= 0 || height <= 0)
+            continue;
+        df_layer_surface_set_panel_region(
+            m_popupLayer, key.toUtf8().constData(), preset.toUtf8().constData(),
+            qRound(region.value(QStringLiteral("x")).toReal()),
+            qRound(region.value(QStringLiteral("y")).toReal()), width, height,
+            qRound(region.value(QStringLiteral("tl")).toReal()),
+            qRound(region.value(QStringLiteral("tr")).toReal()),
+            qRound(region.value(QStringLiteral("br")).toReal()),
+            qRound(region.value(QStringLiteral("bl")).toReal()),
+            qRound(region.value(QStringLiteral("overscan")).toReal()));
+    }
+}
+
+void ShellProtocol::clearPopupPanelRegions()
+{
+    if (m_popupLayer)
+        df_layer_surface_clear_panel_regions(m_popupLayer);
+}
+
+void ShellProtocol::setPopupInputActive(bool active)
+{
+    if (!m_popupSurface || !m_compositor)
+        return;
+    if (active) {
+        wl_surface_set_input_region(m_popupSurface, nullptr);
+        return;
+    }
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return;
+    wl_surface_set_input_region(m_popupSurface, region);
+    wl_region_destroy(region);
+}
+
 bool ShellProtocol::commitPopupImage(const QImage &image, const QSize &logicalSize,
                                      const QRect &sourceRect)
 {
@@ -2011,6 +2057,39 @@ bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int lef
     if (m_display)
         wl_display_flush(m_display);
     return true;
+}
+
+void ShellProtocol::setDockPopupPanelRegion(const QString &preset, const QRect &rect,
+                                            int radius)
+{
+    if (!m_dockPopupLayer || rect.isEmpty())
+        return;
+    df_layer_surface_clear_panel_regions(m_dockPopupLayer);
+    const int r = qMax(0, radius);
+    df_layer_surface_set_panel_region(
+        m_dockPopupLayer, "menu", preset.toUtf8().constData(),
+        rect.x(), rect.y(), rect.width(), rect.height(), r, r, r, r, 20);
+}
+
+void ShellProtocol::clearDockPopupPanelRegions()
+{
+    if (m_dockPopupLayer)
+        df_layer_surface_clear_panel_regions(m_dockPopupLayer);
+}
+
+void ShellProtocol::setDockPopupInputActive(bool active)
+{
+    if (!m_dockPopupSurface || !m_compositor)
+        return;
+    if (active) {
+        wl_surface_set_input_region(m_dockPopupSurface, nullptr);
+        return;
+    }
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return;
+    wl_surface_set_input_region(m_dockPopupSurface, region);
+    wl_region_destroy(region);
 }
 
 bool ShellProtocol::commitDockPopupImage(const QImage &image, const QSize &logicalSize,
