@@ -27,6 +27,9 @@ private slots:
         m_theme = m_engine.singletonInstance<QObject *>(QStringLiteral("Dragonfruit"),
                                                         QStringLiteral("Theme"));
         QVERIFY2(m_theme, "the Dragonfruit.Theme singleton must be importable");
+        m_glass = m_engine.singletonInstance<QObject *>(QStringLiteral("Dragonfruit"),
+                                                        QStringLiteral("Glass"));
+        QVERIFY2(m_glass, "the Dragonfruit.Glass singleton must be importable");
     }
 
     // The pure resolver: explicit light/dark win; "auto" and anything unknown
@@ -101,6 +104,44 @@ private slots:
         QCOMPARE(popupOpen->property("duration").toInt(), 160);
     }
 
+    // T196: the same client feeds the Glass resolver's slider and the two
+    // accessibility overrides; the scheme continues to come from Theme.dark.
+    void glassPreferencesFollowSettings()
+    {
+        MockSettingsClient client;
+        ThemeBinding binding(&client, &m_engine);
+        binding.apply();
+        QCOMPARE(m_glass->property("slider").toDouble(), 0.5255);
+        QCOMPARE(m_glass->property("reduceTransparency").toBool(), false);
+        QCOMPARE(m_glass->property("increaseContrast").toBool(), false);
+
+        client.set(QStringLiteral("appearance.transparency"), 0.8);
+        QCOMPARE(m_glass->property("slider").toDouble(), 0.8);
+        client.set(QStringLiteral("accessibility.reduceTransparency"), true);
+        QCOMPARE(m_glass->property("reduceTransparency").toBool(), true);
+        client.set(QStringLiteral("accessibility.increaseContrast"), true);
+        QCOMPARE(m_glass->property("increaseContrast").toBool(), true);
+
+        // Both overrides together, independent of the rollout: Reduce
+        // Transparency is the opaque solid plate and contrast still applies.
+        client.set(QStringLiteral("appearance.colorScheme"), QStringLiteral("light"));
+        QCOMPARE(m_theme->property("dark").toBool(), false);
+        QVariant result;
+        QMetaObject::invokeMethod(m_glass, "resolve", Q_RETURN_ARG(QVariant, result),
+                                  Q_ARG(QVariant, QStringLiteral("menuAttached")),
+                                  Q_ARG(QVariant, QVariantMap{}));
+        const QVariantMap resolved = result.toMap();
+        QCOMPARE(resolved.value(QStringLiteral("renderMode")).toString(),
+                 QStringLiteral("solid"));
+        QVERIFY(resolved.value(QStringLiteral("edge")).toDouble() > 0.0);
+        QCOMPARE(resolved.value(QStringLiteral("sliderApplied")).toBool(), false);
+
+        client.set(QStringLiteral("accessibility.reduceTransparency"), false);
+        client.set(QStringLiteral("accessibility.increaseContrast"), false);
+        client.set(QStringLiteral("appearance.transparency"), 0.5255);
+        QCOMPARE(m_glass->property("slider").toDouble(), 0.5255);
+    }
+
     // "The gallery variant": the component gallery renders whichever scheme the
     // binding set, not the scheme it was constructed with.
     void galleryVariantFollowsTheme()
@@ -164,6 +205,7 @@ private:
 
     QQmlEngine m_engine;
     QObject *m_theme = nullptr;
+    QObject *m_glass = nullptr;
 };
 
 int main(int argc, char *argv[])

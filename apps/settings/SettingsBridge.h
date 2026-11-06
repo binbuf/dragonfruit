@@ -205,6 +205,11 @@ class SettingsBridge : public QObject
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
+    // The glass rollout selected for this process (`legacy`/`replacement`),
+    // read from the same `DRAGONFRUIT_GLASS_ROLLOUT` switch the shell and
+    // compositor use. The Appearance preview resolves with this look, so it
+    // matches the rendered menus rather than hard-coding the replacement.
+    Q_PROPERTY(QString glassRollout READ glassRollout CONSTANT)
     // Temporary diagnostic: whether `DF_SETTINGS_TRACE` is set, so QML can
     // emit `DFTRACE` lines for the pane-switch timing trace.
     Q_PROPERTY(bool trace READ trace CONSTANT)
@@ -247,6 +252,7 @@ public:
     int providerPreloadCount() const;
     bool wallpaperChooserAvailable() const;
     QString startPane() const;
+    QString glassRollout() const;
     bool trace() const;
 
     // Read one key (with an optional fallback for an unknown key).

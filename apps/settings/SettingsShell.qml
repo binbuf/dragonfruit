@@ -44,6 +44,18 @@ Item {
     // `auto` tracks the host style hint live.
     readonly property string colorScheme: Settings.values["appearance.colorScheme"] || "auto"
     readonly property bool hostDark: Application.styleHints.colorScheme === Qt.Dark
+    // T196: the app-local Glass resolver mirrors the same durable preferences
+    // the shell's ThemeBinding writes, so the Appearance/Accessibility
+    // previews are the rendered resolver, not a second formula.
+    readonly property real transparency: {
+        var value = Number(Settings.values["appearance.transparency"]);
+        return isFinite(value) ? Math.max(0, Math.min(1, value))
+                               : Theme.glass.slider.defaultPosition;
+    }
+    readonly property bool reduceTransparency:
+        Settings.values["accessibility.reduceTransparency"] === true
+    readonly property bool increaseContrast:
+        Settings.values["accessibility.increaseContrast"] === true
 
     signal closeRequested()
     signal minimizeRequested()
@@ -241,6 +253,26 @@ Item {
         target: Theme
         property: "reducedMotion"
         value: Settings.values["accessibility.reduceMotion"] === true
+    }
+    Binding {
+        target: Glass
+        property: "rollout"
+        value: Settings.glassRollout
+    }
+    Binding {
+        target: Glass
+        property: "slider"
+        value: root.transparency
+    }
+    Binding {
+        target: Glass
+        property: "reduceTransparency"
+        value: root.reduceTransparency
+    }
+    Binding {
+        target: Glass
+        property: "increaseContrast"
+        value: root.increaseContrast
     }
 
     Component {

@@ -117,7 +117,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 16). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 18). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -139,6 +139,7 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("gestures.missionControl"), true);
     values.insert(QStringLiteral("appearance.colorScheme"), QStringLiteral("auto"));
     values.insert(QStringLiteral("appearance.accent"), QString());
+    values.insert(QStringLiteral("appearance.transparency"), 0.5255);
     values.insert(QStringLiteral("wallpaper.source"), QString());
     values.insert(QStringLiteral("wallpaper.fit"), QStringLiteral("fill"));
     values.insert(QStringLiteral("wallpaper.showOnAllSpaces"), true);
@@ -151,6 +152,8 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("display.rotation"), QStringLiteral("normal"));
     values.insert(QStringLiteral("display.brightness"), 1.0);
     values.insert(QStringLiteral("accessibility.reduceMotion"), false);
+    values.insert(QStringLiteral("accessibility.reduceTransparency"), false);
+    values.insert(QStringLiteral("accessibility.increaseContrast"), false);
     values.insert(QStringLiteral("input.repeatDelay"), qlonglong(200));
     values.insert(QStringLiteral("input.repeatRate"), qlonglong(25));
     values.insert(QStringLiteral("input.pointerSpeed"), 0.0);

@@ -2096,6 +2096,33 @@ fn material_report(state: &DfState) -> String {
             tint,
         ));
     }
+    // T196: the resolved preset the material policy currently produces. The
+    // attached menu is the slider-sensitive surface, the Dock is the persistent
+    // floor, and both carry the same accessibility overrides. A live policy
+    // change updates these values and the `material_revision`.
+    for preset in [
+        crate::material_preset::Preset::MenuAttached,
+        crate::material_preset::Preset::Dock,
+    ] {
+        let resolved = state.resolve_glass_preset(preset);
+        out.push_str(&format!(
+            "material preset={} look={} mode={} alpha={:.4} tint={:.4} blur={:.1} \
+             edge={:.3} edge_width={:.2} foreground={:.3} slider_applied={} \
+             fallback={} revision={}\n",
+            resolved.preset.name(),
+            resolved.look.name(),
+            resolved.render_mode.name(),
+            resolved.alpha,
+            resolved.tint,
+            resolved.blur,
+            resolved.edge,
+            resolved.edge_width,
+            resolved.foreground,
+            resolved.slider_applied as u32,
+            resolved.fallback_reason,
+            state.material_revision,
+        ));
+    }
     out.push_str("end\n");
     out
 }
@@ -2325,19 +2352,27 @@ fn gesture_report(state: &DfState) -> String {
 /// policy.
 ///
 /// `policy scheme=<light|dark> titlebar-double-click=<zoom|minimize|none>
-/// minimized-animation=<genie|scale|none> repeat-delay=<ms> repeat-rate=<Hz>
+/// minimized-animation=<genie|scale|none> transparency=<0..1>
+/// reduce-transparency=<0|1> increase-contrast=<0|1>
+/// material-revision=<n> repeat-delay=<ms> repeat-rate=<Hz>
 /// gestures-enabled=<0|1> gesture-space-switch=<0|1>
 /// gesture-mission-control=<0|1>` followed by `end`. The same report is what a
 /// headless test reads after the shell's `set_motion_policy` /
-/// `set_input_policy` requests, so the one owner is observable end to end.
+/// `set_appearance_policy` / `set_input_policy` requests, so the one owner is
+/// observable end to end. `material-revision` advances only on a real
+/// material-policy change, so a repeated snapshot does not invalidate paint.
 fn policy_report(state: &DfState) -> String {
     let keyboard = &state.input_settings.keyboard;
     let gestures = &state.input_settings.gestures;
     format!(
-        "policy scheme={} titlebar-double-click={} minimized-animation={} repeat-delay={} repeat-rate={} gestures-enabled={} gesture-space-switch={} gesture-mission-control={}\nend\n",
+        "policy scheme={} titlebar-double-click={} minimized-animation={} transparency={:.4} reduce-transparency={} increase-contrast={} material-revision={} repeat-delay={} repeat-rate={} gestures-enabled={} gesture-space-switch={} gesture-mission-control={}\nend\n",
         state.color_scheme.name(),
         state.titlebar_double_click.name(),
         state.minimized_animation().name(),
+        state.appearance.transparency,
+        state.appearance.reduce_transparency as u32,
+        state.appearance.increase_contrast as u32,
+        state.material_revision,
         keyboard.repeat_delay_ms,
         keyboard.repeat_rate_hz,
         gestures.enabled as u32,

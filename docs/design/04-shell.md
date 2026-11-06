@@ -988,7 +988,10 @@ same client the shell's `ThemeBinding` owns, so the whole design-system Theme
 flips live. The `shell/src/controlcenterpolicy.{h,cpp}` mapping is pure and
 unit-tested. Accessible roles are on every tile (grouping + switch/slider
 names, operable text links), and the panel keeps the `ON_DEMAND` + deferred
-dismissal rules of ADR 0060. The Focus and Appearance `… Settings…` links still
+dismissal rules of ADR 0060. The glass preferences (T196) do not change the
+Dark Mode tile: it still writes `appearance.colorScheme` only, while the
+Appearance/Accessibility panes own `appearance.transparency` and the two
+accessibility overrides. The Focus and Appearance `… Settings…` links still
 only log — opening Settings directly on a pane is a follow-up
 ([STATUS.md](STATUS.md) G-10). See
 [adr/0061](adr/0061-control-center-toggles-and-a11y.md).

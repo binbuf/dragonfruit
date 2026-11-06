@@ -12,6 +12,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Increase Contrast</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Motion</source>
         <translation type="unfinished"></translation>
     </message>
@@ -20,7 +28,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Reduce Motion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reduce Transparency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Replace glass on the Dock, menus, panels, and window chrome with an opaque plate. Overrides the Appearance transparency slider and works with the appearance rollout off.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -29,6 +49,10 @@
     </message>
     <message>
         <source>Screen Reader</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Strengthen glass edges and foreground contrast. Applies with Reduce Transparency as well.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -66,11 +90,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Attached menu</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Attached-menu transparency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Auto</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Blue</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -111,6 +147,22 @@
     </message>
     <message>
         <source>Light</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Light attached menus only; higher values are clearer. The Dock, menu bar, windows, and panels keep their own materials. Reduce Transparency overrides this slider.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opaque</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transparency</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3227,6 +3279,13 @@
     </message>
 </context>
 <context>
+    <name>ShellSurfaceBuffer</name>
+    <message>
+        <source>Monitor %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>Sidebar</name>
     <message>
         <source>Sidebar</source>
@@ -3896,13 +3955,6 @@
     </message>
     <message>
         <source>Wi-Fi</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>shellprotocol</name>
-    <message>
-        <source>Monitor %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

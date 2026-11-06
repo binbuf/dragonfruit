@@ -41,6 +41,7 @@ freezes the v1 key set.
 | `gestures.missionControl` | b | true | | settingsd | compositor/input | Vertical swipe opens Mission Control. |
 | `appearance.colorScheme` | s | `auto` | `light`/`dark`/`auto` | settingsd | compositor/window decoration, shell/design-system Theme | Light/dark scheme; auto follows the host style hint. The Control Center dark-mode tile writes `dark`/`light` only (T-11.3b). |
 | `appearance.accent` | s | `` (empty) | `#rrggbb` or empty | settingsd | shell/design-system Theme | Accent color override (`#rrggbb`); empty uses the token default. |
+| `appearance.transparency` | d | 0.5255 | 0.0–1.0 | apps/settings | shell/design-system Glass, compositor/material | Attached-menu glass transparency, 0 (opaque) to 1 (clearer); the measured midpoint is 0.5255. |
 | `wallpaper.source` | s | `` (empty) | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Image path for the selected wallpaper; empty keeps the solid color. |
 | `wallpaper.fit` | s | `fill` | `fill`/`fit`/`stretch`/`center` | apps/settings | shell/wallpaper forwarder, compositor/workspace model | How the wallpaper image maps onto the output. |
 | `wallpaper.showOnAllSpaces` | b | true | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Apply the selection to every Space, or only the active one. |
@@ -53,6 +54,8 @@ freezes the v1 key set.
 | `display.rotation` | s | `normal` | `normal`/`90`/`180`/`270` | apps/settings | shell/display forwarder, compositor/output | Output rotation as clock-wise degrees. |
 | `display.brightness` | d | 1.0 | 0.0–1.0 | shell/control-center | shell/display forwarder, compositor/output | Output brightness level; 1.0 is full brightness. |
 | `accessibility.reduceMotion` | b | false | | settingsd | shell/design-system Theme, compositor/window motion | Global animation policy: collapse motion to instant transitions. |
+| `accessibility.reduceTransparency` | b | false | | apps/settings | shell/design-system Glass, compositor/material | Replace sampled glass with a scheme-appropriate opaque plate; wins over the transparency slider. |
+| `accessibility.increaseContrast` | b | false | | apps/settings | shell/design-system Glass, compositor/material | Strengthen glass edges and foreground contrast, including when Reduce Transparency is active. |
 | `input.repeatDelay` | x | 200 | 0–5000 ms | settingsd | compositor/input keyboard repeat | Milliseconds before a held key begins repeating. |
 | `input.repeatRate` | x | 25 | 0–200 Hz | settingsd | compositor/input keyboard repeat | Key repeat rate in keys per second; 0 disables repeat. |
 | `input.pointerSpeed` | d | 0.0 | -1.0–1.0 | apps/settings | compositor/input pointer acceleration | Pointer tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral. |
@@ -110,8 +113,11 @@ freezes the v1 key set.
 | `shell/Dock` (`libs/settings-client/settingsclient.*`, `shell/src/dockmodel.cpp`) | every `dock.*` key |
 | `apps/settings` (`apps/settings/SettingsBridge.*`, the QML `Settings` singleton) | every key (Wave-1 panes write through it; T-09.1b) |
 | `shell/design-system Theme` (`shell/src/themebinding.*`) | `appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion` |
+| `shell/design-system Glass` (`shell/src/themebinding.*`) | `appearance.transparency`, `accessibility.reduceTransparency`, `accessibility.increaseContrast` — the same writer keeps the QML resolver in step with the forwarded compositor snapshot (T196) |
 | `apps/settings/design-system Theme` (`apps/settings/SettingsShell.qml` bindings, T-09.2) | `appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion` (the app is a separate process, so it mirrors the same keys onto its own `Theme`) |
+| `apps/settings/design-system Glass` (`apps/settings/SettingsShell.qml` bindings, T196) | `appearance.transparency`, `accessibility.reduceTransparency`, `accessibility.increaseContrast` — the app-local resolver drives both pane previews |
 | compositor motion/input (over `df_toplevel_manager` v5, ADR [0034](design/adr/0034-compositor-policy-via-shell-bridge.md)) | `dock.titlebarDoubleClick`, `dock.minimizedAnimation`, `gestures.*`, `accessibility.reduceMotion`, `appearance.colorScheme`, `input.repeatDelay`, `input.repeatRate` |
+| compositor appearance/glass (over `df_toplevel_manager` v9 `set_appearance_policy`, T196) | `appearance.colorScheme` (resolved), `appearance.transparency`, `accessibility.reduceTransparency`, `accessibility.increaseContrast` |
 | compositor pointer (T-15.4b; the `PointerSettings` half of `compositor/src/input/settings.rs`) | `input.pointerSpeed`, `input.naturalScroll`, `input.tapToClick`, `input.leftHanded`, `input.scrollMethod` — `settingsd`-owned preferences the compositor applies live; the keyboard-backlight and emoji-panel bridges remain follow-ups |
 | shell/wallpaper forwarder (`shell/src/wallpaperpolicy.*`, `shell/src/shellcontroller.cpp`) | `wallpaper.source`, `wallpaper.fit`, `wallpaper.showOnAllSpaces`, `wallpaper.builtinDefault`, `wallpaper.providerSource` — the effective source (user choice, then shipped default, then fetched fallback, then solid color) is forwarded to the compositor as `df_workspace.set_wallpaper` |
 | shell/display forwarder (`shell/src/displayspolicy.*`, `shell/src/shellcontroller.cpp`) | `display.scale`, `display.rotation`, `display.brightness` — forwarded to the compositor as `df_output.set_scale` / `df_output.set_transform` / `df_output.set_brightness` |

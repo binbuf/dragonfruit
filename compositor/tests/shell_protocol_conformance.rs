@@ -4165,8 +4165,8 @@ fn reduced_motion_request_single_steps_the_overview() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 7,
-        "the manager must advertise the additive requests through v7"
+        manager_version, 9,
+        "the manager must advertise the additive requests through v9"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -4247,8 +4247,8 @@ fn motion_and_input_policy_requests_apply_live() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 7,
-        "the manager must advertise the additive requests through v7"
+        manager_version, 9,
+        "the manager must advertise the additive requests through v9"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -4360,6 +4360,146 @@ fn motion_and_input_policy_requests_apply_live() {
                 .iter()
                 .any(|(action, source, _)| action == "mission-control" && source == "gesture")
         },
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T196: the shell forwards the effective scheme plus the glass slider and the
+/// two accessibility overrides in one v9 `set_appearance_policy` snapshot. The
+/// compositor applies it atomically, resolves the same preset vocabulary, and
+/// advances its material revision only when the policy really changed, so a
+/// repeated snapshot does not invalidate paint. The overrides apply in both
+/// rollout looks and together.
+#[test]
+fn appearance_policy_round_trips_and_invalidates_only_on_change() {
+    let token = "c4".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-synth-appearance-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-appearance",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    assert_eq!(
+        manager_version, 9,
+        "the manager must advertise the additive requests through v9"
+    );
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.done_count > 0,
+    );
+
+    // Light + the measured midpoint + both overrides: the opaque plate wins
+    // over the slider, and contrast still boosts the edge.
+    manager.set_appearance_policy(Some("light".to_string()), 525_500, 1, 1);
+    let _ = conn.flush();
+    let mut report = String::new();
+    for _ in 0..100 {
+        report = input.query("query policy");
+        if report.contains("transparency=0.5255") && report.contains("reduce-transparency=1") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        report.contains("scheme=light"),
+        "policy not applied: {report:?}"
+    );
+    assert!(
+        report.contains("transparency=0.5255"),
+        "the millionths wire must preserve the schema midpoint: {report:?}"
+    );
+    assert!(
+        report.contains("reduce-transparency=1"),
+        "policy not applied: {report:?}"
+    );
+    assert!(
+        report.contains("increase-contrast=1"),
+        "policy not applied: {report:?}"
+    );
+
+    let material = input.query("query material");
+    assert!(
+        material.contains("material preset=menuAttached"),
+        "the material report must resolve the attached menu: {material:?}"
+    );
+    assert!(
+        material.contains("mode=solid") && material.contains("slider_applied=0"),
+        "Reduce Transparency must win over the slider: {material:?}"
+    );
+
+    let revision = report
+        .split("material-revision=")
+        .nth(1)
+        .and_then(|tail| tail.split_whitespace().next())
+        .and_then(|value| value.parse::<u64>().ok())
+        .expect("the policy report carries a material revision");
+    assert!(revision > 0, "the first snapshot must invalidate paint");
+
+    // The identical snapshot is a no-op: no new revision, no repaint request.
+    manager.set_appearance_policy(Some("light".to_string()), 525_500, 1, 1);
+    let _ = conn.flush();
+    std::thread::sleep(Duration::from_millis(100));
+    let unchanged = input.query("query policy");
+    assert!(
+        unchanged.contains(&format!("material-revision={revision}")),
+        "an unchanged snapshot must not advance the material revision: {unchanged:?}"
+    );
+
+    // Dark + a different slider + only Increase Contrast: the light-only
+    // slider is not applied, but the contrast boost still is.
+    manager.set_appearance_policy(Some("dark".to_string()), 750_000, 0, 1);
+    let _ = conn.flush();
+    let mut dark = String::new();
+    for _ in 0..100 {
+        dark = input.query("query policy");
+        if dark.contains("scheme=dark") && dark.contains("transparency=0.7500") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(dark.contains("scheme=dark"), "policy not applied: {dark:?}");
+    assert!(
+        dark.contains("transparency=0.7500"),
+        "policy not applied: {dark:?}"
+    );
+    assert!(
+        dark.contains("reduce-transparency=0") && dark.contains("increase-contrast=1"),
+        "policy not applied: {dark:?}"
+    );
+    let dark_material = input.query("query material");
+    assert!(
+        dark_material.contains("material preset=menuAttached")
+            && dark_material.contains("scheme=dark"),
+        "the material report must follow the scheme: {dark_material:?}"
+    );
+    assert!(
+        dark_material.contains("slider_applied=0"),
+        "the slider is a light attached-menu exception: {dark_material:?}"
     );
 
     manager.destroy();
