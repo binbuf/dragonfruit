@@ -156,6 +156,12 @@ FocusScope {
         contextMenu.showAt(x, y);
     }
 
+    // Capture/demo seam (T202): open the background menu without a synthetic
+    // pointer so the menu-family capture is deterministic.
+    function openBackgroundMenuFixture() {
+        root.openBackgroundMenu(root.width / 2, root.height / 2);
+    }
+
     function contextAction(action) {
         switch (action) {
         case "openInFiles":

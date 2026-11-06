@@ -88,10 +88,10 @@ def main() -> int:
     checks.check(0.552 < quarter["alpha"] < 0.732,
                  "light slider interpolates between the first two anchors")
 
-    # Unmeasured roles keep their named baseline; the dark attached menu does
-    # not follow the light slider.
+    # Unmeasured roles keep their named baseline; the detached and status
+    # menus follow the measured curve by the documented relative adjustment.
     for name in presets.PRESET_NAMES:
-        if name == presets.SLIDER_PRESET:
+        if name == presets.SLIDER_PRESET or name in presets.RELATIVE_SLIDER_PRESETS:
             continue
         low = presets.resolve(data, name, scheme="light", slider=0.0,
                               rollout="replacement")
@@ -100,6 +100,35 @@ def main() -> int:
         checks.check(not low["sliderApplied"], f"{name}: slider not applied")
         checks.near(low["alpha"], high["alpha"], f"{name}: slider alpha unchanged")
         checks.near(low["tint"], high["tint"], f"{name}: slider tint unchanged")
+    default_position = float(data["glass"]["slider"]["defaultPosition"])
+    for name in presets.RELATIVE_SLIDER_PRESETS:
+        default = presets.resolve(data, name, scheme="light",
+                                  rollout="replacement")
+        explicit = presets.resolve(data, name, scheme="light",
+                                   slider=default_position,
+                                   rollout="replacement")
+        checks.near(default["alpha"], explicit["alpha"],
+                    f"{name}: relative default alpha preserved")
+        checks.near(default["tint"], explicit["tint"],
+                    f"{name}: relative default tint preserved")
+        low = presets.resolve(data, name, scheme="light", slider=0.0,
+                              rollout="replacement")
+        high = presets.resolve(data, name, scheme="light", slider=1.0,
+                               rollout="replacement")
+        checks.check(low["sliderApplied"] and high["sliderApplied"],
+                     f"{name}: relative slider applied")
+        checks.check(low["alpha"] > default["alpha"] > high["alpha"],
+                     f"{name}: relative alpha follows the attached curve")
+        checks.check(low["tint"] < default["tint"] < high["tint"],
+                     f"{name}: relative tint follows the attached curve")
+        dark = presets.resolve(data, name, scheme="dark", slider=0.0,
+                               rollout="replacement")
+        dark_high = presets.resolve(data, name, scheme="dark", slider=1.0,
+                                    rollout="replacement")
+        checks.check(not dark["sliderApplied"] and not dark_high["sliderApplied"],
+                     f"{name}: dark ignores the light slider")
+        checks.near(dark["alpha"], dark_high["alpha"],
+                    f"{name}: dark slider alpha unchanged")
     dark_low = presets.resolve(data, "menuAttached", scheme="dark", slider=0.0,
                                rollout="replacement")
     dark_high = presets.resolve(data, "menuAttached", scheme="dark", slider=1.0,

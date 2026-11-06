@@ -1853,6 +1853,19 @@ Rectangle {
         entryMenu.open = true;
     }
 
+    // Capture/demo seam (T202): open the first app entry's context menu
+    // without a synthetic pointer so the menu-family capture is deterministic.
+    function openEntryMenuFixture() {
+        for (var i = 0; i < entries.length; ++i) {
+            var entry = entries[i];
+            if (!entry || entry.kind === "divider" || entry.kind === "overflow")
+                continue;
+            entryContextMenuRequested(entry, 0, 0);
+            openEntryMenu(entry);
+            return;
+        }
+    }
+
     // Open the window chooser on `entry`. A click passes no second argument;
     // the hover path passes `true` so a pointer leave may close it again
     // (T-14.7p). The anchor is the snapshot proxy, captured from the live
@@ -3141,6 +3154,17 @@ Rectangle {
         return { x: popup.x, y: popup.y, w: popup.width, h: popup.height };
     }
 
+    // T202: the Dock popover overlay is a detached menu family. The shell
+    // declares the active card with this preset so the compositor and QML
+    // resolve the same optics.
+    readonly property string activePopoverPreset: "menuDetached"
+    readonly property real activePopoverRadius: Theme.controls.contextMenu.radius
+    // A popover accepts pointer input only while logically open; the visible
+    // close tail must not intercept clicks (T202).
+    readonly property bool popoverInputActive:
+        entryMenu.open || windowChooser.open || stackPopover.open
+        || appPicker.open || overflowPopover.open || trashEmptyPopover.open
+
     // The hover label's rectangle in Dock-scene coordinates, or an empty rect
     // (T-14.7i). It rides the same popover/headroom path as a menu so a bottom
     // Dock's label is committed (and never clipped) like every other overlay.
@@ -3981,6 +4005,8 @@ Rectangle {
         id: entryMenu
         objectName: "entryMenu"
         model: dock.menuModel
+        materialPreset: "menuDetached"
+        materialBackdrop: "trusted"
         materialBlurActive: dock.popupMaterialBlurActive
         materialTier: dock.popupMaterialTier
         materialFallback: dock.popupMaterialFallback

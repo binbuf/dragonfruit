@@ -23,8 +23,10 @@ QtObject {
     property string rollout: Theme.glass.rollout.defaultMode
     // The active scheme. Bound to the Theme unless a preview/test sets it.
     property string scheme: Theme.dark ? "dark" : "light"
-    // The Appearance transparency slider, 0..1. Only `menuAttached` in light
-    // follows it; every other preset is unchanged.
+    // The Appearance transparency slider, 0..1. Light `menuAttached` follows
+    // the measured File curve directly; light `menuDetached` and `statusMenu`
+    // follow the same curve as a relative adjustment that preserves their
+    // default fits. Every other preset is unchanged.
     property real slider: Theme.glass.slider.defaultPosition
     property bool reduceTransparency: false
     property bool increaseContrast: false
@@ -222,6 +224,22 @@ QtObject {
                 var fitted = _interpolate(position);
                 alpha = fitted.alpha;
                 tint = fitted.tint;
+                sliderApplied = true;
+            } else if (preset.slider === "lightRelative" && scheme === "light") {
+                // The measured curve is the attached File response. Detached
+                // and status menus keep their own default fit and move
+                // relative to it: alpha scales by the attached ratio and tint
+                // takes the attached delta. At the default position the preset
+                // is unchanged.
+                var relativePosition = _sanitize01(
+                    options.slider !== undefined ? options.slider : glass.slider,
+                    Theme.glass.slider.defaultPosition);
+                var defaultPosition = Theme.glass.slider.defaultPosition;
+                var base = _interpolate(defaultPosition);
+                var current = _interpolate(relativePosition);
+                if (base.alpha > 0)
+                    alpha = _sanitize01(alpha * current.alpha / base.alpha, alpha);
+                tint = _sanitize01(tint + (current.tint - base.tint), tint);
                 sliderApplied = true;
             }
         }
