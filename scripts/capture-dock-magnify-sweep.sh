@@ -65,6 +65,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "capture-dock-magnify-sweep: starting the nested demo (socket $SOCKET)"
+DRAGONFRUIT_NESTED_SIZE=1920x1200 \
 DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" setsid make demo DEMO_ARGS="--socket-name $SOCKET" \
     >"$LOG" 2>&1 &
 DEMO_PGID=$!

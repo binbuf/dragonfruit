@@ -107,6 +107,22 @@ pub enum WindowMotionKind {
     Fullscreen,
 }
 
+/// The timing token for a lifecycle motion under the selected minimize mode.
+/// Only genie minimize/restore uses the measured 450 ms envelope; scale keeps
+/// the existing open/close pacing and `none` collapses via `collapses()`.
+pub fn motion_token(
+    kind: WindowMotionKind,
+    minimized_animation: MinimizedAnimation,
+) -> Motion {
+    if matches!(kind, WindowMotionKind::Minimize | WindowMotionKind::Restore)
+        && minimized_animation == MinimizedAnimation::Genie
+    {
+        motion::WINDOW_GENIE
+    } else {
+        kind.token()
+    }
+}
+
 impl WindowMotionKind {
     /// A stable label for the shell protocol and the `query motion` test hook.
     pub const fn name(self) -> &'static str {
@@ -231,11 +247,32 @@ impl WindowMotion {
         now_ms: u64,
         reduced_motion: bool,
     ) -> Self {
+        Self::new_with_motion(
+            kind,
+            origin,
+            target,
+            now_ms,
+            reduced_motion,
+            kind.token(),
+        )
+    }
+
+    /// A lifecycle motion timed with an explicit token. The genie minimize/
+    /// restore uses the measured 450 ms envelope while every other kind keeps
+    /// its own open/close token (T199).
+    pub fn new_with_motion(
+        kind: WindowMotionKind,
+        origin: Rectangle<i32, Logical>,
+        target: Rectangle<i32, Logical>,
+        now_ms: u64,
+        reduced_motion: bool,
+        token: Motion,
+    ) -> Self {
         WindowMotion {
             kind,
             origin,
             target,
-            tween: Tween::from_motion(now_ms, kind.token(), reduced_motion),
+            tween: Tween::from_motion(now_ms, token, reduced_motion),
             frames: 0,
             completed: false,
         }
@@ -602,6 +639,57 @@ mod tests {
         assert!(reduced.is_done(1000));
         assert_eq!(reduced.frame(1000).rect, fullscreen);
         assert_eq!(reduced.frame(1000).alpha, 1.0);
+    }
+
+    #[test]
+    fn genie_selects_the_measured_envelope_only_for_minimize_and_restore() {
+        for kind in [WindowMotionKind::Minimize, WindowMotionKind::Restore] {
+            assert_eq!(
+                motion_token(kind, MinimizedAnimation::Genie).duration_ms,
+                450
+            );
+            assert_eq!(
+                motion_token(kind, MinimizedAnimation::Scale).duration_ms,
+                kind.token().duration_ms
+            );
+        }
+        for kind in [
+            WindowMotionKind::Appear,
+            WindowMotionKind::Close,
+            WindowMotionKind::Zoom,
+            WindowMotionKind::Fullscreen,
+        ] {
+            assert_eq!(
+                motion_token(kind, MinimizedAnimation::Genie).duration_ms,
+                kind.token().duration_ms
+            );
+        }
+    }
+
+    #[test]
+    fn genie_minimize_and_restore_use_the_measured_450ms_envelope() {
+        let tile = rect(10, 10, 48, 48);
+        let target = rect(200, 200, 800, 600);
+        let token = motion::WINDOW_GENIE;
+        assert_eq!(token.duration_ms, 450);
+        assert_eq!(token.reduced_duration_ms, 0);
+
+        let minimize =
+            WindowMotion::new_with_motion(WindowMotionKind::Minimize, tile, target, 0, false, token);
+        let mid = minimize.frame(225);
+        assert!(mid.rect.size.w > tile.size.w && mid.rect.size.w < target.size.w);
+        assert!(mid.alpha > 0.0 && mid.alpha < 1.0);
+        assert!(!minimize.is_done(449));
+        let end = minimize.frame(450);
+        assert_eq!(end.rect, tile);
+        assert_eq!(end.alpha, 0.0);
+        assert!(minimize.is_done(450));
+
+        let restore =
+            WindowMotion::new_with_motion(WindowMotionKind::Restore, tile, target, 0, false, token);
+        assert_eq!(restore.frame(0).rect, tile);
+        assert_eq!(restore.frame(450).rect, target);
+        assert_eq!(restore.frame(450).alpha, 1.0);
     }
 
     #[test]

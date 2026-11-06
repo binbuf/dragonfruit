@@ -72,9 +72,18 @@ DockConfig dockConfigFromValues(const QVariantMap &values)
         const auto it = values.constFind(QLatin1String(key));
         return it == values.constEnd() ? fallback : it.value();
     };
-    config.size = read("dock.size", 0.5).toDouble();
-    config.magnification = read("dock.magnification", 0.5).toDouble();
-    config.position = read("dock.position", QStringLiteral("bottom")).toString();
+    // T199: live settings may arrive from an older/partial writer. Clamp the
+    // continuous ranges and the placement enum here so the QML geometry is
+    // always finite and the anchored edge is well defined.
+    config.size = qBound(0.0, read("dock.size", 0.5).toDouble(), 1.0);
+    config.magnification =
+        qBound(0.0, read("dock.magnification", 0.5).toDouble(), 1.0);
+    const QString position =
+        read("dock.position", QStringLiteral("bottom")).toString();
+    config.position = (position == QLatin1String("left")
+                       || position == QLatin1String("right"))
+                          ? position
+                          : QStringLiteral("bottom");
     config.autohide = read("dock.autohide", false).toBool();
     config.animateOpening = read("dock.animateOpening", true).toBool();
     config.showIndicators = read("dock.showIndicators", true).toBool();

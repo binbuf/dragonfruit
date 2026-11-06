@@ -340,11 +340,10 @@ pub mod component {
         pub const RADIUS: f32 = 27.0_f32;
         pub const INDICATOR_SIZE: f32 = 4.0_f32;
         pub const INDICATOR_GAP: f32 = 8.0_f32;
-        pub const MAGNIFY_PEAK: f32 = 1.25_f32;
-        pub const MAGNIFY_PEAK_MAX: f32 = 1.5_f32;
-        pub const MAGNIFY_FALLOFF: f32 = 3.0_f32;
-        pub const MAGNIFY_WEIGHT_NEAR: f32 = 0.9_f32;
-        pub const MAGNIFY_WEIGHT_MIDDLE: f32 = 0.45_f32;
+        pub const MAGNIFY_PEAK: f32 = 1.217_f32;
+        pub const MAGNIFY_PEAK_MAX: f32 = 2.047_f32;
+        pub const MAGNIFY_INFLUENCE: f32 = 125.1_f32;
+        pub const LAUNCH_LIFT: f32 = 15.0_f32;
         pub const LABEL_SIZE: f32 = 12.0_f32;
         pub const TRASH_SIZE: f32 = 44.0_f32;
         pub const EDGE_MARGIN: f32 = 8.0_f32;
@@ -538,11 +537,11 @@ pub mod component {
         pub const SHADOW_BLUR: f32 = 40.0_f32;
     }
     pub mod tooltip {
-        pub const DWELL: f32 = 250.0_f32;
+        pub const DWELL: f32 = 1400.0_f32;
         pub const OFFSET: f32 = 8.0_f32;
         pub const RADIUS: f32 = 999.0_f32;
         pub const PADDING_H: f32 = 12.0_f32;
-        pub const PADDING_V: f32 = 4.0_f32;
+        pub const PADDING_V: f32 = 8.0_f32;
         pub const MAX_WIDTH: f32 = 260.0_f32;
         pub const FONT_SIZE: f32 = 13.0_f32;
         pub const TAIL_WIDTH: f32 = 16.0_f32;
@@ -1241,8 +1240,8 @@ pub mod motion {
         reduced_duration_ms: 0_u32,
     };
     pub const DOCK_HOVER: Motion = Motion {
-        duration_ms: 160_u32,
-        curve: [0.25_f32, 0.1_f32, 0.25_f32, 1.0_f32],
+        duration_ms: 135_u32,
+        curve: [0.3333333333333333_f32, 0.0_f32, 0.6666666666666666_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };
     pub const DOCK_MAGNIFY_TRACK: Motion = Motion {
@@ -1263,6 +1262,11 @@ pub mod motion {
     pub const WINDOW_CLOSE: Motion = Motion {
         duration_ms: 100_u32,
         curve: [0.4_f32, 0.0_f32, 1.0_f32, 1.0_f32],
+        reduced_duration_ms: 0_u32,
+    };
+    pub const WINDOW_GENIE: Motion = Motion {
+        duration_ms: 450_u32,
+        curve: [0.3333333333333333_f32, 0.0_f32, 0.6666666666666666_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };
     pub const MISSION_CONTROL: Motion = Motion {

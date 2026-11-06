@@ -3,7 +3,9 @@
 ## Status
 
 accepted — amends [0162](0162-dock-hover-zoom-profile-and-label-tail.md) and
-[0111](0111-dock-magnification-tracking-stability.md)
+[0111](0111-dock-magnification-tracking-stability.md); the zoom profile and
+tooltip timing are superseded by
+[0218](0218-dock-motion-raised-cosine-and-tooltip.md)
 
 ## Context
 

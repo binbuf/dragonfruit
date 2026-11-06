@@ -113,6 +113,7 @@ use crate::shell::ShellProtocolState;
 use crate::suspend::SuspendModel;
 use crate::wallpaper::{slide_offset, slide_slots, WallpaperCache, WallpaperSlot};
 use crate::window::grab::{MoveGrab, ResizeGrab};
+use crate::window::motion::motion_token;
 use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
@@ -3386,14 +3387,22 @@ impl DfState {
         // `dock.minimizedAnimation=none` collapses minimize/restore exactly
         // like reduced motion: the window state still changes, only the tween
         // is skipped (T-08.2c).
-        let collapse_minimize =
-            matches!(kind, WindowMotionKind::Minimize | WindowMotionKind::Restore)
-                && self.minimized_animation.collapses();
+        let minimize_kind =
+            matches!(kind, WindowMotionKind::Minimize | WindowMotionKind::Restore);
+        let collapse_minimize = minimize_kind && self.minimized_animation.collapses();
         let reduced = self.animation_clock.reduced_motion() || collapse_minimize;
-        if !self.windows.set_motion(
-            window,
-            WindowMotion::new(kind, origin, geometry, now, reduced),
-        ) {
+        // The genie mode uses the controlled reference's 450 ms envelope. Scale
+        // and None keep their existing open/close timing and collapse policy,
+        // so selecting a mode never silently changes another mode's pacing.
+        let window_motion = WindowMotion::new_with_motion(
+            kind,
+            origin,
+            geometry,
+            now,
+            reduced,
+            motion_token(kind, self.minimized_animation),
+        );
+        if !self.windows.set_motion(window, window_motion) {
             return false;
         }
         if !self.window_motion_driver {
