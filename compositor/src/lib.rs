@@ -14,9 +14,11 @@
 //! T-03.2/T-03.3/T-03.4/T-21.2 tests pin the others' decisions without
 //! hardware.
 
+pub mod design_tokens;
 pub mod drm_bringup;
 pub mod frame_scheduler;
 pub mod input_validation;
+pub mod material_preset;
 pub mod multi_gpu;
 pub mod presentation;
 pub mod refresh;

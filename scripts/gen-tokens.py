@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import material_presets  # noqa: E402
 SOURCE = REPO / "design-system" / "tokens" / "tokens.json"
 QML_OUT = REPO / "design-system" / "Theme.qml"
 RUST_OUT = REPO / "compositor" / "src" / "design_tokens.rs"
@@ -176,6 +178,12 @@ def gen_qml(data: dict) -> str:
     lines.extend(emit_qml_group("primitive", data["primitive"], root, 4, "primitive"))
     lines.append("")
 
+    # T195: the optical material vocabulary is data, not a second role ladder.
+    # The hand-written `Glass` singleton resolves it for QML; the compositor's
+    # `material_preset` module resolves the same generated values.
+    lines.extend(emit_qml_group("glass", data["glass"], root, 4, "glass"))
+    lines.append("")
+
     for scheme in ("light", "dark"):
         node = data["semantic"][scheme]
         muted = resolve(node["color"]["surfaceMuted"], root)
@@ -285,6 +293,9 @@ def gen_rust(data: dict) -> str:
     lines.append("")
     lines.extend(emit_rust_group("component", data["component"], root, 0, "component"))
     lines.append("")
+    # T195: the generated optical presets the compositor resolver consumes.
+    lines.extend(emit_rust_group("glass", data["glass"], root, 0, "glass"))
+    lines.append("")
     lines.append("/// A named motion: full duration, cubic-bezier control points, and")
     lines.append("/// the reduced-motion duration (0 = state change is instant).")
     lines.append("#[derive(Debug, Clone, Copy, PartialEq)]")
@@ -317,6 +328,14 @@ def main() -> int:
     args = parser.parse_args()
 
     data = load()
+    # T195: the glass preset schema is part of the token gate. Reproducibility
+    # is not enough if a value is non-finite, out of range, or loses the three
+    # measured slider anchors.
+    errors = material_presets.validate(data)
+    if errors:
+        for error in errors:
+            print(f"invalid token: {error}", file=sys.stderr)
+        return 1
     outputs = {
         QML_OUT: gen_qml(data),
         RUST_OUT: gen_rust(data),

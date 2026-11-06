@@ -210,6 +210,49 @@ tokens keep its frost tunable independently of the menu bar (T-14.7j, ADR
 it returns the sampled-glass scrim or the milky fallback for the popup family
 and names the recorded reason, so components do not each re-derive a fill.
 
+### Glass material presets and resolution
+
+The top-level `glass` token group (T195, ADR
+[0214](adr/0214-glass-role-presets-and-resolution.md)) is the optical
+vocabulary layered above the existing `MaterialRole` wire values and
+`DegradeTier` ladder. It defines 13 named presets: `dock`, `menuBarVeil`,
+`menuAttached`, `menuDetached`, `statusMenu`, `tooltip`,
+`controlCenterOuter`, `controlCenterModule`, `controlCenterExpanded`,
+`notificationBanner`, `notificationStack`, `notificationLowerPanel`, and
+`windowChrome`. Each preset has a light and a dark calibration with a
+`neutralAlpha`/`neutralTint` fit, a separate perceptual fit and weight, blur,
+edge/foreground contrast, provenance, confidence, and sRGB colour space.
+Resolution mixes the neutral and perceptual fits once rather than applying both
+as overlays.
+
+`scripts/gen-tokens.py` validates the group (finite numbers, ranges, required
+presets, provenance/confidence, the three measured anchors) and generates
+`Theme.glass` plus `design_tokens::glass`. The runtime resolvers are
+`design-system/Glass.qml` and `compositor/src/material_preset.rs`; they return
+explicit optics and one of four rendering modes:
+
+| Mode | Meaning |
+|---|---|
+| `sampled-glass` | The sampled backdrop/glass pass runs. |
+| `no-blur-veil` | A deliberately veil-only surface (the menu bar); never a missing pass. |
+| `solid` | An intentional solid surface, or a safe opaque plate for an unsupported sampled path. |
+| `software-fallback` | The software/headless path has no readback; the opaque plate is the contract. |
+
+Resolution precedence is: Reduce Transparency (opaque scheme plate, sampling
+and lensing off, slider ignored) → rollout look (`legacy` or `replacement`) →
+the light `menuAttached` slider → Increase Contrast edge/foreground boost →
+backend/tier rendering mode. Reduce Motion is orthogonal. The light
+`menuAttached` preset is the only slider response, interpolated piecewise
+through the measured 0.0 / 0.5255 / 1.0 File anchors; dark and every other
+preset keep a named baseline. The Dock (and other persistent chrome) keeps its
+sampled floor at `Minimal`; transient popups may become solid.
+
+The one internal rollout switch is `DRAGONFRUIT_GLASS_ROLLOUT=legacy|replacement`.
+It defaults to `legacy` until T208; the shell controller applies it to the
+`Glass` singleton and the compositor resolver reads the same variable, so
+nested and native fixtures select either look reproducibly. An unset or unknown
+value keeps the existing appearance.
+
 ## Typography and the system font
 
 The desktop's type is **Inter** (SIL OFL 1.1, `assets/fonts/Inter/`), declared as
@@ -270,6 +313,13 @@ rules:
   accessibility bus (see [ADR 0154](adr/0154-atspi-and-keyboard-audit-boundary.md)).
 - Dark/light and reduced-motion variants are part of the definition of done
   for every component.
+- The glass preset schema and resolution policy are checked by
+  `make glass-presets-check` (also part of `make gates`): schema ranges and
+  finite values, the three measured light anchors, unchanged unmeasured slider
+  roles, distinct dark attached/detached presets, the explicit veil mode, safe
+  unsupported paths, and the legacy rollout default. The Rust and QML
+  resolvers pin the same cases in `compositor/tests/material_presets.rs` and
+  the design-system QML tests.
 - The T-17 premium gate signs off the **live** visual floor against the goldens
   with `scripts/capture-t17-visual-floor.sh` (`make t17-visual-floor-capture`):
   one nested session captures dark, light, and dark+reduced-motion chrome and

@@ -7,7 +7,7 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 ## Phase 1 — Evidence, presets, and settings
 
 - [x] T194 — Pin reference evidence and capture a baseline → [194-glass-reference-and-baseline.md](../194-glass-reference-and-baseline.md)
-- [ ] T195 — Define role presets and material resolution → [195-glass-presets-and-resolution.md](../195-glass-presets-and-resolution.md)
+- [x] T195 — Define role presets and material resolution → [195-glass-presets-and-resolution.md](../195-glass-presets-and-resolution.md)
 - [ ] T196 — Connect Appearance and Accessibility to the compositor → [196-glass-live-settings.md](../196-glass-live-settings.md)
 - [ ] T197 — Extend compositor material geometry and composition → [197-glass-panel-composition.md](../197-glass-panel-composition.md)
 
@@ -32,11 +32,11 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-06T07:00:07Z · 1/15 done
+**Pipeline status** — updated 2026-11-06T07:45:28Z · 2/15 done
 
-- Completed: T194
+- Completed: T194, T195
 - Blocked: none
 - Failed: none
-- Remaining: T195, T196, T197, T198, T199, T200, T201, T202, T203, T204, T205, T206, T207, T208
-- Last finished: T194 — done · Reference manifest, bounded ICC-aware comparison tooling, deterministic fixtures/self-test, and baseline evidence/counters landed; host recapture remains explicitly OPEN with probes logged.
+- Remaining: T196, T197, T198, T199, T200, T201, T202, T203, T204, T205, T206, T207, T208
+- Last finished: T195 — done · Generated glass presets/resolvers, explicit render modes, accessibility/slider precedence, and the legacy-default rollout switch landed with full automated coverage; all required gates pass.
 <!-- /symphony:status -->
