@@ -713,7 +713,7 @@ Rectangle {
         StatusItem {
             itemId: "control-center"
             icon: "control-center"
-            accessibleName: qsTr("Control Center")
+            accessibleName: qsTr("Quick Settings")
             backgroundColor: menuBar.color
             onActivated: {
                 menuBar.closeMenus();
@@ -725,7 +725,7 @@ Rectangle {
         StatusItem {
             itemId: "mission-control"
             icon: "mission-control"
-            accessibleName: qsTr("Mission Control")
+            accessibleName: qsTr("Overview")
             backgroundColor: menuBar.color
             onActivated: {
                 menuBar.closeMenus();

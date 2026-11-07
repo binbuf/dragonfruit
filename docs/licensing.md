@@ -88,6 +88,40 @@ constraints between components. Two rules still matter:
   Any binary distribution must ship that notice and license text, and must
   make the corresponding upstream source available under the LGPL terms.
 
+## Asset manifest
+
+Every shipped icon, font, cursor, and wallpaper — plus the runtime wallpaper
+provider and the not-yet-shipped sound and illustration categories — has a
+source/license row in
+[design/asset-manifest.json](design/asset-manifest.json). The manifest names
+the path, upstream source, version, license, license text, notice, and install
+location. `make check-assets` validates it and fails if a file under `assets/`
+is unlisted. No asset with an unknown license may ship.
+
+## Optional services and packaging markers
+
+The chosen optional services are separate processes (or dynamically linked
+libraries) with the notices in [NOTICE](../NOTICE). They are never hard
+dependencies: the core desktop installs, starts, and works with the required
+host stack only. The canonical marker table is
+[packaging/optional-services.json](../packaging/optional-services.json),
+shared by the Fedora and Debian packages:
+
+- `Recommends` for the preferred backend or strongly expected service (restic,
+  GNOME Online Accounts, Orca, speech-dispatcher, ibus/fcitx5, PackageKit,
+  Flatpak, CUPS, SANE, colord, fprintd, accountsservice, and the distro's
+  firewall adapter).
+- `Suggests` for a useful alternate or future delegate (Tracker/Baloo/Recoll,
+  Pika Backup/Timeshift, espeak-ng, LocalSend, GNOME Software/Discover, snapd,
+  and the non-native firewall adapter).
+- Never `Requires`/`Depends` for an optional service. Package names and
+  licenses are verified against the actual archive at packaging time (T259).
+
+The eight naming/licensing decisions are recorded in
+[ADR 0229](design/adr/0229-naming-and-optional-service-decisions.md). Display
+managers are session-entry integrations, not dependencies; GDM is the reference
+and SDDM the secondary tested path, with LightDM and greetd supported.
+
 ## Icon asset governance
 
 Icons are third-party data assets, not linked code. Every vendored icon set

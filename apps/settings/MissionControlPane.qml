@@ -45,8 +45,8 @@ Item {
 
     readonly property var actionOptions: [
         { value: "none", label: qsTr("\u2013") },
-        { value: "mission-control", label: qsTr("Mission Control") },
-        { value: "notification-center", label: qsTr("Notification Center") },
+        { value: "mission-control", label: qsTr("Overview") },
+        { value: "notification-center", label: qsTr("Notifications") },
         { value: "desktop-reveal", label: qsTr("Desktop") },
         { value: "lock-screen", label: qsTr("Lock Screen") }
     ]
@@ -89,7 +89,7 @@ Item {
                 width: parent.width
                 text: qsTr("The settings daemon is not running, so these "
                            + "preferences apply from the built-in defaults. "
-                           + "Mission Control itself is run by the compositor.")
+                           + "Overview itself is run by the compositor.")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
@@ -100,12 +100,12 @@ Item {
         SettingsGroup {
             id: missionControlGroup
             width: parent.width
-            title: qsTr("Mission Control")
+            title: qsTr("Overview")
 
             SettingsRow {
                 width: parent.width
                 label: qsTr("Swipe up to open")
-                description: qsTr("Reveal every open window and Space in the "
+                description: qsTr("Reveal every open window and workspace in the "
                                   + "overview with a three-finger swipe.")
                 controlData: Toggle {
                     id: gestureMissionToggle
@@ -117,10 +117,10 @@ Item {
 
             SettingsRow {
                 width: parent.width
-                label: qsTr("Swipe between Spaces")
+                label: qsTr("Swipe between Workspaces")
                 showSeparator: false
                 description: qsTr("Swipe left or right with three fingers to "
-                                  + "move between Spaces.")
+                                  + "move between workspaces.")
                 controlData: Toggle {
                     id: gestureSpaceToggle
                     text: ""

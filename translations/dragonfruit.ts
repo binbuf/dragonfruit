@@ -440,6 +440,57 @@
     </message>
 </context>
 <context>
+    <name>BluetoothMenu</name>
+    <message>
+        <source>, connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, disconnected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read-only: changes need authorization</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn Bluetooth Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn Bluetooth On</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>BluetoothPane</name>
     <message>
         <source>Bluetooth</source>
@@ -597,10 +648,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Control Center</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Copy %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -641,6 +688,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Hide Bluetooth devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide Networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide Wi-Fi networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>In Full Screen Only</source>
         <translation type="unfinished"></translation>
     </message>
@@ -673,14 +736,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Mission Control</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Mission Control Settings…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Mount</source>
         <translation type="unfinished"></translation>
     </message>
@@ -705,7 +760,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No input devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No networks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -769,7 +832,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Mission Control Settings</source>
+        <source>Open Overview Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -801,6 +864,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overview Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Pin</source>
         <translation type="unfinished"></translation>
     </message>
@@ -825,11 +896,31 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Restart</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Screen Reader On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Bluetooth devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Wi-Fi networks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1986,10 +2077,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Mission Control</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>More Gestures</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2015,6 +2102,10 @@
     </message>
     <message>
         <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2050,11 +2141,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Swipe between Spaces</source>
+        <source>Swipe between Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Swipe between Spaces and open Mission Control.</source>
+        <source>Swipe between workspaces and open Overview.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2255,11 +2346,11 @@
 <context>
     <name>MenuBar</name>
     <message>
-        <source>Control Center</source>
+        <source>Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Mission Control</source>
+        <source>Quick Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2378,7 +2469,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>System and app controls can be configured to appear in both Control Center and the menu bar.</source>
+        <source>System and app controls can be configured to appear in both Quick Settings and the menu bar.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2421,27 +2512,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Mission Control</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Move the pointer to a corner to perform an action. Choose – to leave a corner inactive.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Notification Center</source>
+        <source>Notifications</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reveal every open window and Space in the overview with a three-finger swipe.</source>
+        <source>Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Swipe between Spaces</source>
+        <source>Reveal every open window and workspace in the overview with a three-finger swipe.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Swipe left or right with three fingers to move between Spaces.</source>
+        <source>Swipe between Workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Swipe left or right with three fingers to move between workspaces.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2449,7 +2540,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The settings daemon is not running, so these preferences apply from the built-in defaults. Mission Control itself is run by the compositor.</source>
+        <source>The settings daemon is not running, so these preferences apply from the built-in defaults. Overview itself is run by the compositor.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2503,11 +2594,63 @@
 <context>
     <name>NotificationCenter</name>
     <message>
+        <source>%1 notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 notifications · %2 active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Closed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dismiss</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dismiss notification</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dismissed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Esc to close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Expired</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No notifications</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Notification service unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notifications unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scroll for more</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Suppressed by Focus</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2550,11 +2693,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Notification Center</source>
+        <source>Notifications</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Notification Center shows your notifications in the top-right corner of your screen. You can show and hide Notification Center by clicking the clock in the menu bar.</source>
+        <source>Notifications appear in the top-right corner of your screen. You can show and hide them by clicking the clock in the menu bar.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2632,7 +2775,7 @@
 <context>
     <name>Overview</name>
     <message>
-        <source>Fullscreen space %1</source>
+        <source>Fullscreen workspace %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2640,11 +2783,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Space %1</source>
+        <source>Window %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Window %1</source>
+        <source>Workspace %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3125,10 +3268,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Internet Accounts</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Keyboard</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3145,10 +3284,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Mission Control</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Mouse</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3158,6 +3293,14 @@
     </message>
     <message>
         <source>Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Online Accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3173,15 +3316,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Screen Time</source>
+        <source>Search</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Sound</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Spotlight</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3275,6 +3414,45 @@
     </message>
     <message>
         <source>Show All</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ShellMenus</name>
+    <message>
+        <source>About This System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Log Out %1…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quit to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shut Down…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sleep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Software Center</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3676,7 +3854,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Apply this wallpaper to every Space.</source>
+        <source>Apply this wallpaper to every workspace.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3688,7 +3866,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Choose an image file for this Space.</source>
+        <source>Choose an image file for this workspace.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3736,7 +3914,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show on all Spaces</source>
+        <source>Show on all Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

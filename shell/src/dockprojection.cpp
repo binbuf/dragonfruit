@@ -106,7 +106,7 @@ QVariantList buildDockProjection(const QList<DockWindow> &windows)
             row.insert(QStringLiteral("workspaceIndex"), window.workspaceIndex);
             row.insert(QStringLiteral("workspaceName"),
                        window.workspaceName.isEmpty()
-                           ? QStringLiteral("Space %1").arg(window.workspaceIndex + 1)
+                           ? QStringLiteral("Workspace %1").arg(window.workspaceIndex + 1)
                            : window.workspaceName);
         }
         return row;

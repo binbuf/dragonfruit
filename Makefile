@@ -56,7 +56,7 @@ endif
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -103,6 +103,8 @@ help:
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, icon registries, desktop-name gate"
 	@echo "  make check-tabler — Tabler registry, app artwork, and glyph-reference gate"
+	@echo "  make check-naming — user-facing naming map + desktop/packaging metadata gate"
+	@echo "  make check-assets — asset manifest source/license coverage"
 	@echo "  make check-phosphor — Phosphor registry and glyph-reference gate"
 	@echo "  make glass-selftest — T-19.4 deterministic colour/geometry/MTF/motion self-test"
 	@echo "  make menubar-veil-check — T200 menu-bar depth LUT/readability/fallback fixture"
@@ -170,6 +172,8 @@ gates:
 	$(MAKE) first-party-chrome-check
 	$(MAKE) nested-acceptance-check
 	$(MAKE) experience-schema-check
+	$(MAKE) check-naming
+	$(MAKE) check-assets
 	$(MAKE) e2e
 	$(MAKE) qml-test
 
@@ -883,7 +887,7 @@ check-tabler:
 	./scripts/gen-app-icons.py --check
 	./scripts/check-tabler-icons.py
 
-lint: fmt-check clippy qml-test check-tokens check-design-tokens check-desktop-names check-no-capture-grab check-i18n check-phosphor check-tabler
+lint: fmt-check clippy qml-test check-tokens check-design-tokens check-naming check-assets check-no-capture-grab check-i18n check-phosphor check-tabler
 
 fmt:
 	$(CARGO) fmt --all
@@ -896,6 +900,17 @@ clippy:
 
 check-desktop-names:
 	./scripts/check-desktop-names.sh
+
+# T220: the user-facing naming map, its regression tests, and the asset
+# provenance manifest. `check-desktop-names` is the shell entry point (it also
+# covers desktop entries and packaging metadata); `check-naming` adds the
+# gate's own regression suite; `check-assets` proves every file under assets/
+# has a source, license, and license text.
+check-naming: check-desktop-names
+	python3 tests/naming/test_naming_and_assets.py
+
+check-assets:
+	python3 scripts/check-asset-manifest.py
 
 # T-02 FR-8: capture is portal-only — no screencopy-style grabs, ever.
 check-no-capture-grab:

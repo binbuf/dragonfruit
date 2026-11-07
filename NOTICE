@@ -31,6 +31,17 @@ pictures are fetched from Wikimedia Commons at runtime under their own
 licenses and are never shipped — see
 [docs/licensing.md](docs/licensing.md).
 
+## Asset provenance
+
+Every icon, font, sound, cursor, wallpaper, and illustration has a source and
+license row in
+[docs/design/asset-manifest.json](docs/design/asset-manifest.json). The
+manifest is checked by `make check-assets`; an unlisted file under `assets/`
+fails the gate. No sound file and no standalone illustration ships yet; both
+categories stay explicit so the first new asset must add provenance in the same
+change. Runtime-fetched wallpapers are user data and are never package
+artifacts.
+
 ## System libraries (used via the Linux stack)
 
 | Component | License |
@@ -38,7 +49,58 @@ licenses and are never shipped — see
 | libxkbcommon, libdrm, Mesa/libgbm, libinput, libseat, wayland | MIT |
 | systemd / libudev | LGPL-2.1-or-later |
 | NetworkManager | LGPL-2.1-or-later |
-| PipeWire | MIT |
+| BlueZ | LGPL-2.1-or-later |
+| UDisks2 | LGPL-2.1-or-later |
+| polkit | LGPL-2.1-or-later |
+| xdg-desktop-portal | LGPL-2.1-or-later |
+| PipeWire, WirePlumber | MIT |
+| UPower | GPL-2.0-or-later |
+| power-profiles-daemon | GPL-3.0-or-later |
+
+## Optional and host services (not bundled)
+
+These services are separate processes (or, for Qt, dynamically linked) and are
+never copied into the MIT codebase. None is a hard dependency: the core desktop
+installs, starts, and works without them, and every feature has an absence
+path. Packaging marks them `Recommends` or `Suggests`, never `Requires`; the
+marker table is [packaging/optional-services.json](packaging/optional-services.json)
+(ADR [0229](docs/design/adr/0229-naming-and-optional-service-decisions.md)).
+
+| Capability | Component | License | Integration |
+|---|---|---|---|
+| Search (optional backend) | Tracker | GPL-2.0-or-later | separate process (D-Bus) |
+| Search (optional backend) | Baloo | LGPL-2.1-or-later | separate process (D-Bus) |
+| Search (optional backend) | Recoll | GPL-2.0-or-later | separate process (CLI/D-Bus) |
+| Backup (preferred backend) | restic | BSD-2-Clause | CLI/JSON |
+| Backup (optional delegate) | Pika Backup | GPL-3.0-or-later | separate app |
+| Backup (optional delegate) | Timeshift | GPL-3.0-or-later | separate app |
+| Online accounts | GNOME Online Accounts | LGPL-2.1-or-later | separate process (D-Bus) |
+| Accessibility | Orca | LGPL-2.1-or-later | separate process (AT-SPI) |
+| Accessibility | speech-dispatcher | GPL-2.0-or-later | separate process (API) |
+| Accessibility (optional synthesizer) | espeak-ng | GPL-3.0-or-later | separate process (CLI/API) |
+| Input methods | ibus | LGPL-2.1-or-later | separate process (D-Bus/API) |
+| Input methods | fcitx5 | LGPL-2.1-or-later | separate process (D-Bus/API) |
+| Firewall (Fedora family) | firewalld | GPL-2.0-or-later | separate process (D-Bus) |
+| Firewall (Debian/Ubuntu family) | ufw | GPL-3.0-or-later | separate process (CLI) |
+| Nearby transfer (future delegate) | LocalSend | Apache-2.0 | separate app/protocol |
+| Software center (optional delegate) | GNOME Software | GPL-2.0-or-later | separate app |
+| Software center (optional delegate) | KDE Discover | GPL-2.0-or-later | separate app |
+| Package abstraction | PackageKit | GPL-2.0-or-later | separate process (D-Bus) |
+| Sandboxed apps | Flatpak | LGPL-2.1-or-later | CLI/portal |
+| Optional snap runtime | snapd | GPL-3.0-or-later | CLI/portal |
+| Printing | CUPS | Apache-2.0 | IPP/D-Bus |
+| Scanning | SANE | GPL-2.0-or-later | CLI/API |
+| Color management | colord | LGPL-2.1-or-later | separate process (D-Bus) |
+| Fingerprint authentication | fprintd | LGPL-2.1-or-later | separate process (D-Bus) |
+| User account metadata | accountsservice | GPL-3.0-or-later | separate process (D-Bus) |
+| Display-manager session entries | GDM, SDDM, LightDM, greetd | GPL-2.0-or-later / GPL-3.0-or-later | session entry only |
+
+The display managers are supported session entries, not package dependencies;
+the desktop ships `dragonfruit.desktop` and degrades to the greeter when the
+host display manager is ambiguous (ADR 0173). The per-service absence path and
+the exact distro package names are recorded in
+[packaging/optional-services.json](packaging/optional-services.json) and
+[docs/design/interface-naming-and-licensing.md](docs/design/interface-naming-and-licensing.md#4-third-party-equivalents).
 
 ## Rust crates
 

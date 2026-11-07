@@ -289,7 +289,9 @@ Do not mark a task done with an unrecorded `OPEN` row.
   traces where deterministic.
 - **Distro:** build on Fedora/Ubuntu/Debian/Arch; install/smoke on VMs.
 - **Native:** separate hardware rail; not required for every PR.
-- **Docs:** link check, ADR uniqueness, naming gate, asset manifest check.
+- **Docs:** link check, ADR uniqueness, `make check-naming` (user-facing
+  strings, desktop entries, packaging metadata), and `make check-assets`
+  (asset provenance). Both are in `make gates`.
 - **Experience contract:** `make experience-schema-check` validates the
   surface/state/axis schema, the full capture/test/OPEN mapping, capture
   hashes, and the per-surface thresholds; it prints the coverage summary.

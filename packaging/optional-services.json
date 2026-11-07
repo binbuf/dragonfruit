@@ -1,0 +1,297 @@
+{
+  "schema": 1,
+  "status": "normative",
+  "updated": "2026-11-07",
+  "policy": {
+    "core_rule": "The core desktop must install, start, and be usable with the required host stack only. An optional service is never a hard Requires/Depends.",
+    "markers": {
+      "Recommends": "Most users want it and the feature is first-party or strongly expected; the absence path still exists.",
+      "Suggests": "Useful when the host already provides it; no first-party feature depends on it."
+    },
+    "gpl_rule": "GPL/LGPL services stay separate processes or dynamically linked libraries with notices. No GPL code is copied into MIT files and no GPL library is statically linked.",
+    "verification": "Package names and licenses are verified against the actual distro package at packaging time (T259). A missing optional service degrades the feature; it never blocks the session."
+  },
+  "services": [
+    {
+      "id": "search.tracker",
+      "name": "Tracker",
+      "capability": "Optional search index backend",
+      "license": "GPL-2.0-or-later",
+      "integration": "separate process (D-Bus)",
+      "decision": "optional backend; the built-in filename index is the default",
+      "fedora": { "package": "tracker", "marker": "Suggests" },
+      "debian": { "package": "tracker", "marker": "Suggests" },
+      "absence": "Search uses the built-in filename index."
+    },
+    {
+      "id": "search.baloo",
+      "name": "Baloo",
+      "capability": "Optional search index backend",
+      "license": "LGPL-2.1-or-later",
+      "integration": "separate process (D-Bus)",
+      "decision": "optional backend; the built-in filename index is the default",
+      "fedora": { "package": "baloo", "marker": "Suggests" },
+      "debian": { "package": "baloo-kf5", "marker": "Suggests" },
+      "absence": "Search uses the built-in filename index."
+    },
+    {
+      "id": "search.recoll",
+      "name": "Recoll",
+      "capability": "Optional search index backend",
+      "license": "GPL-2.0-or-later",
+      "integration": "separate process (CLI/D-Bus)",
+      "decision": "optional backend; the built-in filename index is the default",
+      "fedora": { "package": "recoll", "marker": "Suggests" },
+      "debian": { "package": "recoll", "marker": "Suggests" },
+      "absence": "Search uses the built-in filename index."
+    },
+    {
+      "id": "backup.restic",
+      "name": "restic",
+      "capability": "Preferred Backup backend",
+      "license": "BSD-2-Clause",
+      "integration": "CLI/JSON",
+      "decision": "preferred backend for the first-party Backup pane; no custom format or privileged daemon",
+      "fedora": { "package": "restic", "marker": "Recommends" },
+      "debian": { "package": "restic", "marker": "Recommends" },
+      "absence": "The Backup pane shows a note and installation instructions."
+    },
+    {
+      "id": "backup.pika",
+      "name": "Pika Backup",
+      "capability": "Optional separate backup app",
+      "license": "GPL-3.0-or-later",
+      "integration": "separate app",
+      "decision": "optional delegate; not required by the first-party pane",
+      "fedora": { "package": "pika-backup", "marker": "Suggests" },
+      "debian": { "package": "pika-backup", "marker": "Suggests" },
+      "absence": "The first-party Backup pane does not depend on it."
+    },
+    {
+      "id": "backup.timeshift",
+      "name": "Timeshift",
+      "capability": "Optional separate backup app",
+      "license": "GPL-3.0-or-later",
+      "integration": "separate app",
+      "decision": "optional delegate; not required by the first-party pane",
+      "fedora": { "package": "timeshift", "marker": "Suggests" },
+      "debian": { "package": "timeshift", "marker": "Suggests" },
+      "absence": "The first-party Backup pane does not depend on it."
+    },
+    {
+      "id": "accounts.goa",
+      "name": "GNOME Online Accounts",
+      "capability": "Online accounts provider",
+      "license": "LGPL-2.1-or-later",
+      "integration": "separate process (D-Bus)",
+      "decision": "optional adapter; no first-party OAuth implementation",
+      "fedora": { "package": "gnome-online-accounts", "marker": "Recommends" },
+      "debian": { "package": "gnome-online-accounts", "marker": "Recommends" },
+      "absence": "The Online Accounts pane is hidden, not a dead entry."
+    },
+    {
+      "id": "accessibility.orca",
+      "name": "Orca",
+      "capability": "Screen reader",
+      "license": "LGPL-2.1-or-later",
+      "integration": "separate process (AT-SPI)",
+      "decision": "delegate; Dragonfruit provides the toggle and settings, not a screen reader",
+      "fedora": { "package": "orca", "marker": "Recommends" },
+      "debian": { "package": "orca", "marker": "Recommends" },
+      "absence": "Accessibility settings remain available; the screen-reader row is disabled with a reason."
+    },
+    {
+      "id": "accessibility.speech",
+      "name": "speech-dispatcher",
+      "capability": "Speech output",
+      "license": "GPL-2.0-or-later",
+      "integration": "separate process (API)",
+      "decision": "delegate for read-and-speak; optional synthesizer behind it",
+      "fedora": { "package": "speech-dispatcher", "marker": "Recommends" },
+      "debian": { "package": "speech-dispatcher", "marker": "Recommends" },
+      "absence": "Read-and-speak rows are disabled with a reason."
+    },
+    {
+      "id": "accessibility.espeak",
+      "name": "espeak-ng",
+      "capability": "Optional speech synthesizer",
+      "license": "GPL-3.0-or-later",
+      "integration": "separate process (CLI/API)",
+      "decision": "optional synthesizer; Piper is the permissive alternative",
+      "fedora": { "package": "espeak-ng", "marker": "Suggests" },
+      "debian": { "package": "espeak-ng", "marker": "Suggests" },
+      "absence": "Another speech-dispatcher synthesizer or Piper may be used."
+    },
+    {
+      "id": "ime.ibus",
+      "name": "ibus",
+      "capability": "Input method framework",
+      "license": "LGPL-2.1-or-later",
+      "integration": "separate process (D-Bus/API)",
+      "decision": "supported adapter; detect the running framework and never start both",
+      "fedora": { "package": "ibus", "marker": "Recommends" },
+      "debian": { "package": "ibus", "marker": "Recommends" },
+      "absence": "The IME row is hidden or disabled; plain keyboard input still works."
+    },
+    {
+      "id": "ime.fcitx5",
+      "name": "fcitx5",
+      "capability": "Input method framework",
+      "license": "LGPL-2.1-or-later",
+      "integration": "separate process (D-Bus/API)",
+      "decision": "supported adapter; detect the running framework and never start both",
+      "fedora": { "package": "fcitx5", "marker": "Recommends" },
+      "debian": { "package": "fcitx5", "marker": "Recommends" },
+      "absence": "The IME row is hidden or disabled; plain keyboard input still works."
+    },
+    {
+      "id": "firewall.firewalld",
+      "name": "firewalld",
+      "capability": "Firewall backend (Fedora family)",
+      "license": "GPL-2.0-or-later",
+      "integration": "separate process (D-Bus)",
+      "decision": "adapter behind one FirewallStatus contract; no first-party rule editor",
+      "fedora": { "package": "firewalld", "marker": "Recommends" },
+      "debian": { "package": "firewalld", "marker": "Suggests" },
+      "absence": "The pane shows No firewall detected and offers no fake toggle."
+    },
+    {
+      "id": "firewall.ufw",
+      "name": "ufw",
+      "capability": "Firewall backend (Debian/Ubuntu family)",
+      "license": "GPL-3.0-or-later",
+      "integration": "separate process (CLI)",
+      "decision": "adapter behind the same FirewallStatus contract",
+      "fedora": { "package": "ufw", "marker": "Suggests" },
+      "debian": { "package": "ufw", "marker": "Recommends" },
+      "absence": "The pane shows No firewall detected and offers no fake toggle."
+    },
+    {
+      "id": "transfer.localsend",
+      "name": "LocalSend",
+      "capability": "Nearby transfer (future optional delegate)",
+      "license": "Apache-2.0",
+      "integration": "separate app/protocol",
+      "decision": "not integrated in 0.2.0; the only candidate kept for a future Nearby Transfer row",
+      "fedora": { "package": "localsend", "marker": "Suggests" },
+      "debian": { "package": "localsend", "marker": "Suggests" },
+      "absence": "No Nearby Transfer row ships; the feature is omitted, not stubbed."
+    },
+    {
+      "id": "software.gnome-software",
+      "name": "GNOME Software",
+      "capability": "Optional software center",
+      "license": "GPL-2.0-or-later",
+      "integration": "separate app",
+      "decision": "optional delegate for app discovery/install; no hard dependency",
+      "fedora": { "package": "gnome-software", "marker": "Suggests" },
+      "debian": { "package": "gnome-software", "marker": "Suggests" },
+      "absence": "The Software Center row is hidden; package management still works through the host tools."
+    },
+    {
+      "id": "software.discover",
+      "name": "KDE Discover",
+      "capability": "Optional software center",
+      "license": "GPL-2.0-or-later",
+      "integration": "separate app",
+      "decision": "optional delegate; one software center at a time",
+      "fedora": { "package": "plasma-discover", "marker": "Suggests" },
+      "debian": { "package": "plasma-discover", "marker": "Suggests" },
+      "absence": "The Software Center row is hidden."
+    },
+    {
+      "id": "packages.packagekit",
+      "name": "PackageKit",
+      "capability": "Package abstraction",
+      "license": "GPL-2.0-or-later",
+      "integration": "separate process (D-Bus)",
+      "decision": "adapter; the native package manager remains the fallback",
+      "fedora": { "package": "PackageKit", "marker": "Recommends" },
+      "debian": { "package": "packagekit", "marker": "Recommends" },
+      "absence": "Updates use the native distro adapter or show an absence note."
+    },
+    {
+      "id": "packages.flatpak",
+      "name": "Flatpak",
+      "capability": "Sandboxed app runtime and portal integration",
+      "license": "LGPL-2.1-or-later",
+      "integration": "CLI/portal",
+      "decision": "adapter; optional runtime, not a core requirement",
+      "fedora": { "package": "flatpak", "marker": "Recommends" },
+      "debian": { "package": "flatpak", "marker": "Recommends" },
+      "absence": "Flatpak apps are simply unavailable; native apps still run."
+    },
+    {
+      "id": "packages.snapd",
+      "name": "snapd",
+      "capability": "Optional snap runtime",
+      "license": "GPL-3.0-or-later",
+      "integration": "CLI/portal",
+      "decision": "optional; detect, never require",
+      "fedora": { "package": "snapd", "marker": "Suggests" },
+      "debian": { "package": "snapd", "marker": "Suggests" },
+      "absence": "Snap apps are unavailable; native and Flatpak apps still run."
+    },
+    {
+      "id": "print.cups",
+      "name": "CUPS",
+      "capability": "Printing",
+      "license": "Apache-2.0",
+      "integration": "IPP/D-Bus",
+      "decision": "adapter; recommended host service",
+      "fedora": { "package": "cups", "marker": "Recommends" },
+      "debian": { "package": "cups", "marker": "Recommends" },
+      "absence": "The Printers half shows a note and disables only printing."
+    },
+    {
+      "id": "print.sane",
+      "name": "SANE",
+      "capability": "Scanning",
+      "license": "GPL-2.0-or-later",
+      "integration": "CLI/API",
+      "decision": "adapter; recommended host service",
+      "fedora": { "package": "sane-backends", "marker": "Recommends" },
+      "debian": { "package": "sane-backends", "marker": "Recommends" },
+      "absence": "The Scanners half shows a note and disables only scanning."
+    },
+    {
+      "id": "color.colord",
+      "name": "colord",
+      "capability": "Color management",
+      "license": "LGPL-2.1-or-later",
+      "integration": "separate process (D-Bus)",
+      "decision": "adapter; recommended host service",
+      "fedora": { "package": "colord", "marker": "Recommends" },
+      "debian": { "package": "colord", "marker": "Recommends" },
+      "absence": "Color profiles are unavailable; the rest of Displays works."
+    },
+    {
+      "id": "auth.fprintd",
+      "name": "fprintd",
+      "capability": "Fingerprint authentication",
+      "license": "LGPL-2.1-or-later",
+      "integration": "separate process (D-Bus)",
+      "decision": "adapter; recommended when the hardware exists",
+      "fedora": { "package": "fprintd", "marker": "Recommends" },
+      "debian": { "package": "fprintd", "marker": "Recommends" },
+      "absence": "Biometrics rows are hidden; password authentication still works."
+    },
+    {
+      "id": "accounts.accountsservice",
+      "name": "accountsservice",
+      "capability": "User account metadata",
+      "license": "GPL-3.0-or-later",
+      "integration": "separate process (D-Bus)",
+      "decision": "adapter; recommended host service",
+      "fedora": { "package": "accountsservice", "marker": "Recommends" },
+      "debian": { "package": "accountsservice", "marker": "Recommends" },
+      "absence": "Users & Groups shows a note; login and lock still work."
+    }
+  ],
+  "display_managers": {
+    "decision": "support all four session entries through the per-DM adapter; recommend GDM as the reference and SDDM as the secondary tested path",
+    "supported": ["GDM", "SDDM", "LightDM", "greetd"],
+    "packaging_marker": "none: the desktop ships a session .desktop file and does not depend on a specific display manager",
+    "absence": "An ambiguous or unknown display manager degrades to the greeter (ADR 0173)."
+  }
+}

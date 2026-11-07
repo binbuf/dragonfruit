@@ -603,7 +603,7 @@ Item {
                 width: parent.width
                 visible: root.moreGestures
                 label: qsTr("Gestures")
-                description: qsTr("Swipe between Spaces and open Mission Control.")
+                description: qsTr("Swipe between workspaces and open Overview.")
                 controlData: Toggle {
                     id: gesturesEnabledToggle
                     text: ""
@@ -614,7 +614,7 @@ Item {
             SettingsRow {
                 width: parent.width
                 visible: root.moreGestures
-                label: qsTr("Swipe between Spaces")
+                label: qsTr("Swipe between Workspaces")
                 controlData: Toggle {
                     id: gestureSpaceToggle
                     text: ""
@@ -625,7 +625,7 @@ Item {
             SettingsRow {
                 width: parent.width
                 visible: root.moreGestures
-                label: qsTr("Mission Control")
+                label: qsTr("Overview")
                 showSeparator: false
                 controlData: Toggle {
                     id: gestureMissionToggle

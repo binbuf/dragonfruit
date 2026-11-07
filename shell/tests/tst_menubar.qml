@@ -915,8 +915,8 @@ Item {
             }
             verify(controlCenter !== null);
             verify(missionControl !== null);
-            compare(controlCenter.Accessible.name, "Control Center");
-            compare(missionControl.Accessible.name, "Mission Control");
+            compare(controlCenter.Accessible.name, "Quick Settings");
+            compare(missionControl.Accessible.name, "Overview");
 
             mouseClick(controlCenter, controlCenter.width / 2, controlCenter.height / 2);
             compare(ccSpy.count, 1);

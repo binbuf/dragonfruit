@@ -343,8 +343,8 @@ Item {
             SettingsRow {
                 id: showOnAllRow
                 width: parent.width
-                label: qsTr("Show on all Spaces")
-                description: qsTr("Apply this wallpaper to every Space.")
+                label: qsTr("Show on all Workspaces")
+                description: qsTr("Apply this wallpaper to every workspace.")
 
                 controlData: Toggle {
                     id: showOnAllToggle
@@ -459,7 +459,7 @@ Item {
                 width: parent.width
                 label: qsTr("Add Photo…")
                 description: Settings.wallpaperChooserAvailable
-                             ? qsTr("Choose an image file for this Space.")
+                             ? qsTr("Choose an image file for this workspace.")
                              : qsTr("No file chooser is available.")
                 showSeparator: false
 

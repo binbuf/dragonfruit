@@ -197,7 +197,7 @@ Item {
                 objectName: "menuBarControlsDescription"
                 width: parent.width
                 text: qsTr("System and app controls can be configured to "
-                           + "appear in both Control Center and the menu bar.")
+                           + "appear in both Quick Settings and the menu bar.")
                 color: Theme.color.textTertiary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
