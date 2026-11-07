@@ -144,7 +144,7 @@ use smithay::input::pointer::GrabStartData;
 use smithay::{
     delegate_compositor, delegate_content_type, delegate_cursor_shape, delegate_data_control,
     delegate_data_device, delegate_dmabuf, delegate_fractional_scale, delegate_idle_inhibit,
-    delegate_idle_notify, delegate_input_method_manager, delegate_output,
+    delegate_idle_notify, delegate_input_method_manager, delegate_kde_decoration, delegate_output,
     delegate_pointer_constraints, delegate_pointer_gestures, delegate_presentation,
     delegate_relative_pointer, delegate_seat, delegate_security_context, delegate_session_lock,
     delegate_shm, delegate_tablet_manager, delegate_text_input_manager, delegate_viewporter,
@@ -1256,12 +1256,19 @@ impl DfState {
             if let Some(toplevel) = window.toplevel() {
                 self.windows.set_app_id(&window, toplevel_app_id(toplevel));
                 self.windows.set_title(&window, toplevel_title(toplevel));
-                // Decoration tier from `xdg-decoration`: only a client that
-                // negotiated server-side decoration gets our titlebar; a
-                // client that requested CSD (or created no decoration object)
-                // keeps its own (T-01.1).
-                self.windows
-                    .set_decorations(&window, toplevel_decoration_tier(toplevel));
+                // Decoration tier from `xdg-decoration` or KDE's legacy
+                // server-decoration protocol: only a client that negotiated
+                // server-side decoration gets our titlebar; a client that
+                // requested CSD (or created no decoration object) keeps its
+                // own (T-01.1). GTK 3 uses the KDE protocol, and it creates
+                // the object before the first buffer, so consult the recorded
+                // mode first.
+                let tier = self
+                    .kde_decorations
+                    .get(toplevel.wl_surface())
+                    .copied()
+                    .unwrap_or_else(|| toplevel_decoration_tier(toplevel));
+                self.windows.set_decorations(&window, tier);
             }
             // Start the appear transition from the Dock tile the shell handed
             // off for this app (T-02.1b), or a centered origin.
@@ -3030,6 +3037,19 @@ impl DfState {
         };
         let tier = toplevel_decoration_tier(toplevel);
         self.set_decoration_tier(&window, tier);
+    }
+
+    /// Record the tier a client selected through KDE's legacy
+    /// server-decoration protocol and apply it to a mapped window.
+    ///
+    /// GTK 3 creates the decoration object before its first buffer, so the
+    /// map path also reads [`Self::kde_decorations`]; this method covers a
+    /// mode change on a live window.
+    fn record_kde_decoration(&mut self, surface: &WlSurface, tier: DecorationTier) {
+        self.kde_decorations.insert(surface.clone(), tier);
+        if let Some(window) = self.window_for_surface(surface) {
+            self.set_decoration_tier(&window, tier);
+        }
     }
 
     /// Set a mapped window's decoration tier and reflow its geometry when the
@@ -5143,6 +5163,10 @@ impl CompositorHandler for DfState {
         // (FR-2: damage-driven rendering starts at commit granularity).
         self.needs_redraw = true;
     }
+
+    fn destroyed(&mut self, surface: &WlSurface) {
+        self.kde_decorations.remove(surface);
+    }
 }
 
 impl ShmHandler for DfState {
@@ -5396,6 +5420,57 @@ impl XdgShellHandler for DfState {
             return;
         }
         self.remove_window(&window, WindowEventKind::Unmapped);
+    }
+}
+
+impl KdeDecorationHandler for DfState {
+    fn kde_decoration_state(&self) -> &KdeDecorationState {
+        &self.kde_decoration_state
+    }
+
+    fn new_decoration(&mut self, surface: &WlSurface, decoration: &OrgKdeKwinServerDecoration) {
+        // Dragonfruit is SSD-first. This also answers the create request
+        // immediately, so a client that waits for the compositor's mode
+        // before drawing does not stall.
+        decoration.mode(KdeDecorationMode::Server);
+        self.record_kde_decoration(surface, DecorationTier::ServerSide);
+    }
+
+    fn request_mode(
+        &mut self,
+        surface: &WlSurface,
+        decoration: &OrgKdeKwinServerDecoration,
+        mode: WEnum<KdeDecorationMode>,
+    ) {
+        let Ok(mode) = mode.into_result() else {
+            return;
+        };
+        // A client may explicitly ask for CSD (a GTK headerbar, for example)
+        // or no decoration at all. Honor both and keep the compositor from
+        // drawing a titlebar it did not ask for.
+        let tier = match mode {
+            KdeDecorationMode::Server => DecorationTier::ServerSide,
+            _ => DecorationTier::ClientSide,
+        };
+        decoration.mode(mode);
+        self.record_kde_decoration(surface, tier);
+    }
+
+    fn release(&mut self, _decoration: &OrgKdeKwinServerDecoration, surface: &WlSurface) {
+        self.kde_decorations.remove(surface);
+        // The client no longer participates in the KDE protocol; fall back to
+        // its xdg-decoration tier instead of keeping a titlebar it released.
+        let fallback = self.window_for_surface(surface).and_then(|window| {
+            if self.windows.is_closing(&window) {
+                return None;
+            }
+            window
+                .toplevel()
+                .map(|toplevel| (window.clone(), toplevel_decoration_tier(toplevel)))
+        });
+        if let Some((window, tier)) = fallback {
+            self.set_decoration_tier(&window, tier);
+        }
     }
 }
 
@@ -5857,6 +5932,7 @@ delegate_dmabuf!(DfState);
 delegate_shm!(DfState);
 delegate_xdg_shell!(DfState);
 delegate_xdg_decoration!(DfState);
+delegate_kde_decoration!(DfState);
 delegate_viewporter!(DfState);
 delegate_fractional_scale!(DfState);
 delegate_output!(DfState);

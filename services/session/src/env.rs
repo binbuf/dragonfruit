@@ -10,10 +10,12 @@
 //!   and services all connect to this session.
 //! * `DISPLAY=<:N>` — the Xwayland display, when one exists (Wayland-only
 //!   sessions leave it unset).
-//! * `GTK_CSD=0` — ask GTK 3 to use server-side decorations, so cooperative
-//!   GTK applications get the compositor titlebar with the left-side traffic
-//!   lights instead of drawing their own headerbar. GTK 4/libadwaita may still
-//!   draw CSD; the `gtk-decoration-layout` steering in [`crate::toolkit`]
+//! * `GTK_CSD=0` — ask GTK 3 on X11/Xwayland to use server-side decorations,
+//!   so cooperative GTK applications get the compositor titlebar with the
+//!   left-side traffic lights instead of drawing their own headerbar. On
+//!   Wayland, GTK 3 uses the compositor's KDE server-decoration default mode
+//!   instead (see `compositor/src/state.rs`); GTK 4/libadwaita may still draw
+//!   CSD, and the `gtk-decoration-layout` steering in [`crate::toolkit`]
 //!   covers that case.
 //!
 //! Trusted processes additionally get `DRAGONFRUIT_LAUNCH_TOKEN`:
@@ -42,8 +44,10 @@ pub const SESSION_TYPE: &str = "XDG_SESSION_TYPE";
 pub const WAYLAND_DISPLAY: &str = "WAYLAND_DISPLAY";
 /// `DISPLAY`; the Xwayland display, when one exists.
 pub const DISPLAY: &str = "DISPLAY";
-/// `GTK_CSD`; `0` asks GTK 3 to use server-side decorations. The compositor
-/// then draws the left-side traffic lights instead of the client's headerbar.
+/// `GTK_CSD`; `0` asks GTK 3 on X11/Xwayland to use server-side decorations.
+/// The compositor then draws the left-side traffic lights instead of the
+/// client's headerbar. Wayland GTK 3 reads the compositor's KDE
+/// server-decoration default mode instead.
 pub const GTK_CSD: &str = "GTK_CSD";
 /// The value that disables GTK client-side decorations.
 pub const GTK_CSD_DISABLED: &str = "0";
@@ -265,8 +269,8 @@ mod tests {
 
     #[test]
     fn gtk_clients_are_steered_to_server_side_decorations() {
-        // GTK 3 reads GTK_CSD at startup; 0 makes it request SSD, where our
-        // compositor draws the left-side close/minimize/maximize lights.
+        // GTK 3 on X11/Xwayland reads GTK_CSD at startup; 0 makes it request
+        // SSD, where our window manager draws the left-side lights.
         assert_eq!(GTK_CSD, "GTK_CSD");
         assert_eq!(GTK_CSD_DISABLED, "0");
         let env = SessionEnvironment::default_socket();

@@ -32,6 +32,9 @@ use wayland_protocols::xdg::decoration::zv1::client::{
 use wayland_protocols::xdg::shell::client::{
     xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
 };
+use wayland_protocols_misc::server_decoration::client::{
+    org_kde_kwin_server_decoration, org_kde_kwin_server_decoration_manager,
+};
 
 mod common;
 
@@ -76,6 +79,8 @@ struct TestClient {
     shm: Option<wl_shm::WlShm>,
     xdg_wm_base: Option<xdg_wm_base::XdgWmBase>,
     decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+    kde_decoration_manager:
+        Option<org_kde_kwin_server_decoration_manager::OrgKdeKwinServerDecorationManager>,
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
     /// Serial of each pointer button press delivered to the client.
@@ -83,6 +88,9 @@ struct TestClient {
     toplevel_configures: Vec<ToplevelConfigure>,
     /// Decoration modes delivered by `zxdg_toplevel_decoration_v1.configure`.
     decoration_configures: Vec<zxdg_toplevel_decoration_v1::Mode>,
+    /// KDE manager default modes and per-surface decoration modes.
+    kde_default_modes: Vec<org_kde_kwin_server_decoration_manager::Mode>,
+    kde_modes: Vec<org_kde_kwin_server_decoration::Mode>,
     popup_configures: Vec<PopupConfigure>,
     /// Number of `xdg_toplevel.close` events delivered (T-01.2 close control).
     toplevel_close_count: usize,
@@ -118,6 +126,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                 }
                 "zxdg_decoration_manager_v1" => {
                     state.decoration_manager = Some(registry.bind(name, version.min(1), qh, ()));
+                }
+                "org_kde_kwin_server_decoration_manager" => {
+                    state.kde_decoration_manager =
+                        Some(registry.bind(name, version.min(1), qh, ()));
                 }
                 "wl_seat" => {
                     state.seat = Some(registry.bind(name, version.min(9), qh, ()));
@@ -358,6 +370,42 @@ impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for Tes
         if let zxdg_toplevel_decoration_v1::Event::Configure { mode } = event {
             if let Ok(mode) = mode.into_result() {
                 state.decoration_configures.push(mode);
+            }
+        }
+    }
+}
+
+impl Dispatch<org_kde_kwin_server_decoration_manager::OrgKdeKwinServerDecorationManager, ()>
+    for TestClient
+{
+    fn event(
+        state: &mut Self,
+        _: &org_kde_kwin_server_decoration_manager::OrgKdeKwinServerDecorationManager,
+        event: org_kde_kwin_server_decoration_manager::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let org_kde_kwin_server_decoration_manager::Event::DefaultMode { mode } = event {
+            if let Ok(mode) = mode.into_result() {
+                state.kde_default_modes.push(mode);
+            }
+        }
+    }
+}
+
+impl Dispatch<org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
+        event: org_kde_kwin_server_decoration::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let org_kde_kwin_server_decoration::Event::Mode { mode } = event {
+            if let Ok(mode) = mode.into_result() {
+                state.kde_modes.push(mode);
             }
         }
     }
@@ -1557,6 +1605,108 @@ fn late_decoration_object_negotiates_ssd_on_a_mapped_window() {
     assert_eq!(report.titlebar.1 + report.titlebar.3, report.content.1);
 
     decoration.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// GTK 3 on Wayland reads KDE's legacy server-decoration manager default
+/// mode (not `xdg-decoration`) before deciding to draw CSD. Advertising
+/// `Server` and recording the per-surface mode before the first buffer must
+/// give the window the compositor titlebar.
+#[test]
+fn kde_server_decoration_default_mode_server_gets_a_titlebar() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-kde-decoration-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-kde-decoration",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let qh = queue.handle();
+
+    let compositor = state.compositor.clone().unwrap();
+    let wm_base = state.xdg_wm_base.clone().unwrap();
+    let manager = state
+        .kde_decoration_manager
+        .clone()
+        .expect("org_kde_kwin_server_decoration_manager not advertised");
+
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let toplevel = xdg_surface.get_toplevel(&qh, ());
+    toplevel.set_title("KDE Decorated".into());
+    // GTK's path: the KDE decoration object, and no `xdg-decoration` object.
+    let decoration = manager.create(&surface, &qh, ());
+    surface.commit();
+    queue.roundtrip(&mut state).expect("initial configure");
+
+    assert!(
+        state
+            .kde_default_modes
+            .contains(&org_kde_kwin_server_decoration_manager::Mode::Server),
+        "the KDE manager must advertise Server by default: {:?}",
+        state.kde_default_modes
+    );
+    assert!(
+        state
+            .kde_modes
+            .contains(&org_kde_kwin_server_decoration::Mode::Server),
+        "the decoration object must be told Server: {:?}",
+        state.kde_modes
+    );
+
+    let (buffer, file) = shm_buffer(&state, &qh, WINDOW_W, WINDOW_H);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    queue.roundtrip(&mut state).expect("map commit");
+
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports.len() == 1 && reports[0].server_side
+    });
+    assert_eq!(reports[0].titlebar.3, TITLEBAR_HEIGHT);
+    assert_eq!(
+        reports[0].titlebar.1 + reports[0].titlebar.3,
+        reports[0].content.1
+    );
+    let window = reports[0].window;
+
+    // An explicit CSD request is honored: no compositor titlebar.
+    decoration.request_mode(org_kde_kwin_server_decoration::Mode::Client);
+    queue.roundtrip(&mut state).expect("client mode request");
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        !report.server_side
+    });
+    assert_eq!(report.titlebar, (0, 0, 0, 0));
+    assert_eq!((report.content.2, report.content.3), (WINDOW_W, WINDOW_H));
+
+    // And back to SSD.
+    decoration.request_mode(org_kde_kwin_server_decoration::Mode::Server);
+    queue.roundtrip(&mut state).expect("server mode request");
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.server_side
+    });
+    assert_eq!(report.titlebar.3, TITLEBAR_HEIGHT);
+
+    // Releasing the object falls back to the xdg tier (unnegotiated → CSD).
+    decoration.release();
+    queue.roundtrip(&mut state).expect("release");
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        !report.server_side
+    });
+    assert_eq!(report.titlebar, (0, 0, 0, 0));
+
     toplevel.destroy();
     xdg_surface.destroy();
     surface.destroy();

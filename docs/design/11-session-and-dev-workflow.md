@@ -312,11 +312,12 @@ DM greeter → dragonfruit-session-entry
 ```
 
 The toolkit step is the GTK steering compatibility bridge: the session
-environment also exports `GTK_CSD=0` so GTK 3 asks the compositor for
+environment also exports `GTK_CSD=0` so GTK 3 on X11/Xwayland asks for
 server-side decorations, and `--sync-toolkit` writes the left-side
 `gtk-decoration-layout` to the user's GTK 3/4 `settings.ini`, the GLib
 GSettings keyfile, and (when `gsettings` is available) the live dconf value.
-Cooperative GTK 3 clients therefore get the compositor titlebar, while
+On Wayland, GTK 3 reads the compositor's KDE server-decoration default mode
+(`Server`), so cooperative GTK 3 clients get the compositor titlebar, while
 GTK 4/libadwaita CSD apps move their controls left where the toolkit honours
 the setting. It is best-effort and never blocks the session; see
 [05-window-decorations.md](05-window-decorations.md).
