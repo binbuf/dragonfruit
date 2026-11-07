@@ -251,6 +251,22 @@ mod tests {
     }
 
     #[test]
+    fn the_configured_notification_center_corner_dispatches_its_action() {
+        // The default top-right assignment is Notification Center; the corner
+        // must resolve to the same InputAction the keyboard chord uses.
+        let mut detector = HotCornerDetector::default();
+        let now = Instant::now();
+        let loc = (1919.0, 1.0).into();
+        assert!(detector.pointer_moved(loc, bounds(), now).is_none());
+        let fired = detector
+            .poll(now + Duration::from_millis(200))
+            .expect("top-right fires after the default dwell");
+        assert_eq!(fired.corner, HotCorner::TopRight);
+        assert_eq!(fired.action, InputAction::NotificationCenter);
+        assert_eq!(fired.action.name(), "notification-center");
+    }
+
+    #[test]
     fn unassigned_corners_never_fire() {
         let mut detector = HotCornerDetector::new(HotCornerConfig {
             assignments: [HotCornerAction::None; 4],

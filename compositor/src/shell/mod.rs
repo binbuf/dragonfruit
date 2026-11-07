@@ -15,6 +15,7 @@
 //! pure consumer — it never keeps a second copy of compositor state.
 
 pub mod layer;
+pub mod menubar;
 pub mod trust;
 
 use std::collections::HashMap;
@@ -42,16 +43,18 @@ use crate::window::{
 use crate::workspace::{SpaceId, Wallpaper, WallpaperFit};
 
 use layer::{aggregate_reserved_for, Edge, KeyboardInteraction, LayerSurfaceState};
+use menubar::{AutoHideMode, MenuBarVisibility};
 use trust::{Refusal, TrustModel, TrustedRole};
 
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
-/// `df_shell` is version 3 since the multi-region `df_layer_surface` requests
-/// were added; version 2 added `df_layer_surface.set_panel_rect`
-/// (T-14.7b). A Wayland new_id gets its version from the parent object's
-/// version, so the factory bumps in tandem with its child interface.
-const SHELL_INTERFACE_VERSION: u32 = 3;
+/// `df_shell` is version 4 since the menu-bar `set_auto_hide` request was
+/// added (T201); version 3 added the multi-region `df_layer_surface` requests,
+/// and version 2 added `df_layer_surface.set_panel_rect` (T-14.7b). A Wayland
+/// new_id gets its version from the parent object's version, so the factory
+/// bumps in tandem with its child interface.
+const SHELL_INTERFACE_VERSION: u32 = 4;
 
 /// `df_toplevel_manager` is version 9 since `set_appearance_policy` was added
 /// (T196); `activation_result` was the v8 addition (T-14.7g),
@@ -164,6 +167,10 @@ pub struct ShellProtocolState {
     /// shown only on this output, so it never floats across displays (T-10
     /// section 18). `None` before any chrome focus.
     pub chrome_focus_output: Option<String>,
+    /// T201: the menu-bar auto-hide policy and its per-output transient
+    /// reveal. The bar surface is one all-output surface; this state filters
+    /// it per output without creating a second surface.
+    pub menu_bar: MenuBarVisibility,
     /// Windows that asked for activation and have not been seen yet.
     attention: Vec<WindowId>,
     /// Per-output brightness level in [0, 1] (T-11.3a). The compositor owns
@@ -205,6 +212,7 @@ impl ShellProtocolState {
             reserved: ReservedZones::default(),
             output_reserved: HashMap::new(),
             chrome_focus_output: None,
+            menu_bar: MenuBarVisibility::default(),
             attention: Vec::new(),
             output_brightness: HashMap::new(),
             last_material_state: None,
@@ -371,6 +379,18 @@ fn protocol_string_opt(value: Option<String>) -> Option<String> {
     value.map(|value| protocol_string(&value))
 }
 
+/// Whether a chrome surface currently has a buffer (is mapped).
+fn surface_has_buffer(surface: &WlSurface) -> bool {
+    smithay::wayland::compositor::with_states(surface, |states| {
+        states
+            .cached_state
+            .get::<smithay::wayland::compositor::SurfaceAttributes>()
+            .current()
+            .buffer
+            .is_some()
+    })
+}
+
 // --- DfState integration ---------------------------------------------------
 
 impl DfState {
@@ -443,14 +463,23 @@ impl DfState {
     /// has not been resolved yet.
     pub fn refresh_reserved_zones(&mut self) {
         let names: Vec<String> = self.space.outputs().map(|output| output.name()).collect();
+        let focus_output = self.shell.chrome_focus_output.clone();
         let mut per_output: HashMap<String, ReservedZones> = HashMap::new();
         let mut union = ReservedZones::default();
         for name in &names {
-            let zones = aggregate_reserved_for(
-                name,
-                self.shell.layers.iter().map(|entry| &entry.state),
-                ReservedZones::default(),
-            );
+            let fullscreen = self.fullscreen_client_covers_output(name);
+            let menu_bar_visible = self.menu_bar_visible_on(name, fullscreen);
+            let layers = self
+                .shell
+                .layers
+                .iter()
+                .filter(|entry| entry.state.visible_on_output(name, focus_output.as_deref()))
+                // T201: a concealed menu bar reserves nothing. The Dock keeps
+                // its existing fullscreen behavior (its own auto-hide owns
+                // the reserved zone).
+                .filter(|entry| entry.state.namespace != "menubar" || menu_bar_visible)
+                .map(|entry| &entry.state);
+            let zones = aggregate_reserved_for(name, layers, ReservedZones::default());
             union.top = union.top.max(zones.top);
             union.bottom = union.bottom.max(zones.bottom);
             union.left = union.left.max(zones.left);
@@ -652,9 +681,15 @@ impl DfState {
         output_geometry: Rectangle<i32, Logical>,
     ) -> Vec<ChromeSurface> {
         let fullscreen = self.fullscreen_client_covers_output(output_name);
+        let menu_bar_visible = self.menu_bar_visible_on(output_name, fullscreen);
         self.chrome_surfaces(output_name, output_geometry)
             .into_iter()
             .filter(|chrome| {
+                // T201: the menu bar has its own per-output auto-hide policy;
+                // every other surface keeps the T-21.3 fullscreen rule.
+                if chrome.namespace == "menubar" {
+                    return menu_bar_visible;
+                }
                 !fullscreen || crate::shell::layer::visible_in_fullscreen(chrome.layer)
             })
             .collect()
@@ -732,6 +767,131 @@ impl DfState {
         self.focus_chrome_surface(&surface)
     }
 
+    // --- menu-bar auto-hide (T201) ----------------------------------------
+
+    /// The live `menu.autoHide` policy.
+    pub fn menu_bar_auto_hide(&self) -> AutoHideMode {
+        self.shell.menu_bar.mode()
+    }
+
+    /// Apply a `menu.autoHide` change. A live change clears the old transient
+    /// reveal; the next edge/keyboard interaction applies the new mode.
+    pub fn set_menu_bar_auto_hide(&mut self, mode: AutoHideMode) {
+        if !self.shell.menu_bar.set_mode(mode) {
+            return;
+        }
+        // A live policy change starts from the resting state: `always` is
+        // concealed until the next edge/keyboard reveal even if the pointer
+        // happens to sit at the top edge.
+        self.refresh_reserved_zones();
+        self.needs_redraw = true;
+    }
+
+    /// Whether the menu bar is revealed on `output` right now.
+    pub fn menu_bar_revealed_on(&self, output: &str) -> bool {
+        self.shell.menu_bar.is_revealed(output)
+    }
+
+    /// Whether the menu bar is visible on `output` under the live policy.
+    pub fn menu_bar_visible_on(&self, output: &str, fullscreen: bool) -> bool {
+        self.shell
+            .menu_bar
+            .visible_on(output, fullscreen, self.menu_bar_active_on(output))
+    }
+
+    /// Whether an active menu/focus interaction keeps the bar up on `output`.
+    ///
+    /// The bar holds keyboard focus while a dropdown is open (the popup
+    /// surface is keyboard-`none`), and a mapped `menubar-popup` overlay is
+    /// the other half of the same interaction. Either one keeps a transient
+    /// reveal alive after the pointer leaves the top edge.
+    pub fn menu_bar_active_on(&self, output: &str) -> bool {
+        // `menu_bar_keyboard_focused` is cached by `focus_changed`; querying
+        // the keyboard here would deadlock when this runs from that callback.
+        if self.menu_bar_keyboard_focused {
+            return true;
+        }
+        self.shell.layers.iter().any(|entry| {
+            entry.state.namespace == "menubar-popup"
+                && entry
+                    .state
+                    .visible_on_output(output, self.shell.chrome_focus_output.as_deref())
+                && surface_has_buffer(&entry.surface)
+        })
+    }
+
+    /// Apply the pointer position to the menu-bar reveal on the output it is
+    /// over. Called before hit-testing so a concealed bar is revealed before
+    /// the same motion/click is routed.
+    pub fn update_menu_bar_reveal(&mut self, location: Point<f64, Logical>) -> bool {
+        let Some(output) = self.space.outputs().find(|output| {
+            self.space
+                .output_geometry(output)
+                .is_some_and(|geometry| geometry.to_f64().contains(location))
+        }) else {
+            return false;
+        };
+        let Some(geometry) = self.space.output_geometry(&output) else {
+            return false;
+        };
+        let name = output.name();
+        let fullscreen = self.fullscreen_client_covers_output(&name);
+        let active = self.menu_bar_active_on(&name);
+        let local_y = location.y - f64::from(geometry.loc.y);
+        if !self.shell.menu_bar.update_pointer(
+            &name,
+            local_y,
+            fullscreen,
+            active,
+            self.menu_bar_pointer_seen,
+        ) {
+            return false;
+        }
+        self.refresh_reserved_zones();
+        self.needs_redraw = true;
+        true
+    }
+
+    /// Re-evaluate the reveal state from the current pointer and focus. Used
+    /// after a focus change, unlock, and a fullscreen transition.
+    pub fn sync_menu_bar_reveal(&mut self) -> bool {
+        let Some(location) = self
+            .seat
+            .get_pointer()
+            .map(|pointer| pointer.current_location())
+        else {
+            return false;
+        };
+        self.update_menu_bar_reveal(location)
+    }
+
+    /// Reveal and focus the menu bar (Ctrl+F2). The compositor owns the focus
+    /// transfer; the shell owns in-bar navigation. Returns whether the bar
+    /// was found and accepted focus.
+    pub fn focus_menu_bar(&mut self) -> bool {
+        let (output, _) = self.focused_output();
+        if let Some(output) = output {
+            self.shell.menu_bar.reveal(&output);
+            self.refresh_reserved_zones();
+            self.needs_redraw = true;
+        }
+        let Some(surface) = self.chrome_surface_by_namespace("menubar") else {
+            return false;
+        };
+        self.focus_chrome_surface(&surface)
+    }
+
+    /// Drop the menu-bar transient reveal on lock. Returns whether anything
+    /// changed.
+    pub fn clear_menu_bar_reveal(&mut self) -> bool {
+        if !self.shell.menu_bar.clear() {
+            return false;
+        }
+        self.refresh_reserved_zones();
+        self.needs_redraw = true;
+        true
+    }
+
     /// Whether an **above-window** chrome surface currently holds the keyboard.
     ///
     /// The Files desktop surface is a layer surface too, but it composites
@@ -789,8 +949,16 @@ impl DfState {
             .active_window
             .as_ref()
             .and_then(|window| window.wl_surface().map(|surface| surface.into_owned()));
+        let target_is_none = target.is_none();
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, target, SERIAL_COUNTER.next_serial());
+        }
+        // Smithay's `set_focus(None)` sends the leave but does not invoke
+        // `focus_changed`, so clear the cached menu-bar focus here and
+        // re-apply the reveal rule.
+        if target_is_none {
+            self.menu_bar_keyboard_focused = false;
+            self.sync_menu_bar_reveal();
         }
     }
 
@@ -1894,6 +2062,7 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
         let mut reconfigure = false;
         let mut reserve_changed = false;
         let mut focus_chrome: Option<WlSurface> = None;
+        let mut menu_bar_mode: Option<AutoHideMode> = None;
         if let Some(entry) = state.layer_entry_mut(resource) {
             match request {
                 df_layer_surface::Request::SetLayer { layer } => {
@@ -2009,9 +2178,22 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
                 df_layer_surface::Request::ClearPanelRegions => {
                     entry.pending_panel_regions = Some(Vec::new());
                 }
+                df_layer_surface::Request::SetAutoHide { mode } => {
+                    // T201: only the menu bar consumes the auto-hide policy.
+                    // A different namespace is ignored rather than silently
+                    // taking the Dock's own auto-hide behavior.
+                    if entry.state.namespace == "menubar" {
+                        menu_bar_mode = Some(AutoHideMode::from_wire(
+                            mode.into_result().map(|value| value as u32).unwrap_or(2),
+                        ));
+                    }
+                }
                 df_layer_surface::Request::AckConfigure { .. } => {}
                 df_layer_surface::Request::Destroy => {}
             }
+        }
+        if let Some(mode) = menu_bar_mode {
+            state.set_menu_bar_auto_hide(mode);
         }
         if let Some(surface) = focus_chrome {
             state.focus_chrome_surface(&surface);

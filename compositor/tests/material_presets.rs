@@ -3,9 +3,9 @@
 //!
 //! The heavy cases live next to the resolver; this integration test pins the
 //! contract the compositor gate runs: variant precedence, the three measured
-//! light anchors, unchanged unmeasured slider roles, distinct dark
-//! attached/detached presets, the veil/unsupported distinction, and the safe
-//! default rollout.
+//! light anchors, the relative detached/status response, unchanged unmeasured
+//! slider roles, distinct dark attached/detached presets, the veil/unsupported
+//! distinction, and the safe default rollout.
 
 use dragonfruit_compositor::material_preset::{
     resolve, safe_solid, Accessibility, Backend, Preset, RenderMode, ResolveInput, Rollout, Scheme,
@@ -55,12 +55,43 @@ fn slider_does_not_move_unmeasured_roles() {
                 slider: 1.0,
                 ..replacement(preset, scheme)
             });
-            let expected = preset == Preset::MenuAttached && scheme == Scheme::Light;
-            assert_eq!(low.slider_applied, expected, "{} {scheme:?}", preset.name());
-            if !expected {
+            let direct = preset == Preset::MenuAttached && scheme == Scheme::Light;
+            let relative = matches!(preset, Preset::MenuDetached | Preset::StatusMenu)
+                && scheme == Scheme::Light;
+            assert_eq!(
+                low.slider_applied,
+                direct || relative,
+                "{} {scheme:?}",
+                preset.name()
+            );
+            if !direct && !relative {
                 assert_eq!((low.alpha, low.tint), (high.alpha, high.tint));
             }
         }
+    }
+}
+
+#[test]
+fn light_detached_and_status_follow_the_attached_curve_relatively() {
+    for preset in [Preset::MenuDetached, Preset::StatusMenu] {
+        let default = resolve(replacement(preset, Scheme::Light));
+        let explicit = resolve(ResolveInput {
+            slider: dragonfruit_compositor::design_tokens::glass::slider::DEFAULT_POSITION,
+            ..replacement(preset, Scheme::Light)
+        });
+        assert!((default.alpha - explicit.alpha).abs() < 1e-6);
+        assert!((default.tint - explicit.tint).abs() < 1e-6);
+        let low = resolve(ResolveInput {
+            slider: 0.0,
+            ..replacement(preset, Scheme::Light)
+        });
+        let high = resolve(ResolveInput {
+            slider: 1.0,
+            ..replacement(preset, Scheme::Light)
+        });
+        assert!(low.slider_applied && high.slider_applied);
+        assert!(low.alpha > default.alpha && default.alpha > high.alpha);
+        assert!(low.tint < default.tint && default.tint < high.tint);
     }
 }
 
@@ -116,6 +147,43 @@ fn veil_is_explicit_and_unsupported_sampled_paths_are_safe() {
         assert_eq!(resolved.blur, 0.0);
     }
     assert_eq!(safe_solid(Scheme::Light, "unknown-preset").render_mode, RenderMode::Solid);
+}
+
+#[test]
+fn notification_materials_are_three_distinct_presets() {
+    // T205: the measured Light banner/stack/lower fits and the Dark stack.
+    for (preset, scheme, alpha, tint) in [
+        (Preset::NotificationBanner, Scheme::Light, 0.549, 0.976),
+        (Preset::NotificationStack, Scheme::Light, 0.551, 0.706),
+        (Preset::NotificationStack, Scheme::Dark, 0.507, 0.550),
+        (Preset::NotificationLowerPanel, Scheme::Light, 0.407, 0.852),
+    ] {
+        let resolved = resolve(replacement(preset, scheme));
+        assert!((resolved.alpha - alpha).abs() < 1e-6, "{}", preset.name());
+        assert!((resolved.tint - tint).abs() < 1e-6, "{}", preset.name());
+        assert_eq!(resolved.render_mode, RenderMode::SampledGlass);
+    }
+    // The uncovered Dark banner/lower panel are explicit adaptations, not
+    // invented measured fits.
+    for preset in [Preset::NotificationBanner, Preset::NotificationLowerPanel] {
+        let resolved = resolve(replacement(preset, Scheme::Dark));
+        assert_eq!(resolved.confidence, "adapted", "{}", preset.name());
+    }
+    // All three are independently distinguishable over the mid backdrop.
+    for scheme in [Scheme::Light, Scheme::Dark] {
+        let mut outputs = Vec::new();
+        for preset in [
+            Preset::NotificationBanner,
+            Preset::NotificationStack,
+            Preset::NotificationLowerPanel,
+        ] {
+            let resolved = resolve(replacement(preset, scheme));
+            outputs.push(0.502 * (1.0 - resolved.alpha) + resolved.tint * resolved.alpha);
+        }
+        let spread = outputs.iter().cloned().fold(f32::MIN, f32::max)
+            - outputs.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(spread > 0.02, "{scheme:?} materials collapsed: {outputs:?}");
+    }
 }
 
 #[test]

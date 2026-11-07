@@ -32,6 +32,17 @@ Item {
     property int materialFallback: 0
     readonly property string materialFallbackReason:
         Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
+    // T202: the top-level dropdown is the attached preset; nested panels are
+    // detached cards. The bar scene has the compositor's trusted backdrop.
+    property string materialPreset: "menuAttached"
+    readonly property string submenuPreset: "menuDetached"
+    readonly property bool trustedBackdrop: true
+    readonly property real attachedRadius: Theme.controls.contextMenu.attachedRadius
+    readonly property real popupAnchorOffset:
+        Math.max(0, Theme.controls.menuBar.height - Theme.controls.menuBarMenu.barHeight)
+    readonly property color submenuFill:
+        Material.menuFill(submenuPreset, materialBlurActive, materialTier,
+                          materialFallback, trustedBackdrop)
 
     signal triggered(int index, var item)
     signal opened()
@@ -109,6 +120,33 @@ Item {
         }
         return out;
     }
+    // T202: material regions for the shell overlay, in this item's
+    // coordinates. The attached dropdown has square top corners; the nested
+    // panel is a detached card. The shell maps both to the bar surface.
+    readonly property var regions: {
+        var out = [];
+        if (popup.visible || popup.open) {
+            out.push({
+                key: "menu", preset: root.materialPreset,
+                x: popup.x, y: popup.y, w: popup.width, h: popup.height,
+                tl: 0, tr: 0, br: root.attachedRadius, bl: root.attachedRadius,
+                overscan: 20
+            });
+        }
+        if (root.openSubmenuIndex >= 0 && submenuPanel.width > 0) {
+            out.push({
+                key: "submenu", preset: root.submenuPreset,
+                x: submenuPanel.x, y: submenuPanel.y,
+                w: submenuPanel.width, h: submenuPanel.height,
+                tl: Theme.controls.contextMenu.radius,
+                tr: Theme.controls.contextMenu.radius,
+                br: Theme.controls.contextMenu.radius,
+                bl: Theme.controls.contextMenu.radius, overscan: 20
+            });
+        }
+        return out;
+    }
+
     // The bounding box of the dropdown plus any open submenu, in root
     // coordinates. The shell commits this as the `overlay` popup rectangle so
     // the nested panel is not clipped.
@@ -300,12 +338,16 @@ Item {
     Popup {
         id: popup
         anchorItem: barBackground
+        anchorOffset: root.popupAnchorOffset
         preferredWidth: Theme.controls.menuBarMenu.minWidth
         horizontalPadding: Theme.controls.menuBarMenu.padding
         verticalPadding: Theme.controls.menuBarMenu.padding
         accessibleRole: Accessible.PopupMenu
         accessibleName: root.title
         escapeCloses: false
+        motionPreset: "menu"
+        materialPreset: root.materialPreset
+        materialBackdrop: "trusted"
         materialBlurActive: root.materialBlurActive
         materialTier: root.materialTier
         materialFallback: root.materialFallback
@@ -454,18 +496,17 @@ Item {
         Shadow {
             width: subPanel.width
             height: subPanel.height
-            radius: Theme.controls.popup.radius
+            radius: Theme.controls.contextMenu.radius
             blur: Theme.controls.popup.shadowBlur
         }
 
         Rectangle {
             objectName: "submenuSurface"
             anchors.fill: parent
-            radius: Theme.controls.popup.radius
-            // The compositor material's scrim (T-20.3): the submenu is a
-            // `Popup`, so it shares `material.popupOpacity`; without the
-            // sampled pass it takes the same milky complement as the parent.
-            color: Material.popupFill(root.materialBlurActive)
+            radius: Theme.controls.contextMenu.radius
+            // Submenus are detached cards: all-rounded corners and the same
+            // resolved detached fill as the context/tray family.
+            color: root.submenuFill
             border.width: Theme.controls.window.borderWidth
             border.color: Theme.color.border
             antialiasing: true

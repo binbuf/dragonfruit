@@ -239,6 +239,121 @@ void main() {
 }
 "#;
 
+/// The menu-bar no-blur veil shader (T200).
+///
+/// The veil samples the **sharp** live scene at the current pixel and blends
+/// it toward the scheme's veil colour with a depth-dependent alpha LUT. A
+/// bounded 5-tap luminance probe only selects the readability correction; it
+/// never filters the displayed backdrop. The LUT is supplied as four `vec4`
+/// uniforms (eight depths and eight alphas), so the shader holds no measured
+/// literal. `panel_uv_offset/scale` reconstruct the panel-normalized depth
+/// even when the drawn span is a slice of the padded material region.
+pub const VEIL_SHADER: &str = r#"#version 100
+
+//_DEFINES_
+
+#if defined(EXTERNAL)
+#extension GL_OES_EGL_image_external : require
+#endif
+
+precision mediump float;
+#if defined(EXTERNAL)
+uniform samplerExternalOES tex;
+#else
+uniform sampler2D tex;
+#endif
+
+uniform float alpha;
+varying vec2 v_coords;
+
+uniform vec3 veil_color;
+uniform float veil_height;
+uniform float veil_strip;
+uniform float veil_light;
+uniform float veil_readability;
+uniform float veil_readability_fade;
+uniform vec2 veil_probe;
+uniform vec4 veil_depth_a;
+uniform vec4 veil_depth_b;
+uniform vec4 veil_alpha_a;
+uniform vec4 veil_alpha_b;
+uniform vec2 panel_uv_offset;
+uniform vec2 panel_uv_scale;
+
+float luminance(vec3 c) {
+    return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+float lut_alpha(float depth) {
+    if (depth <= veil_depth_a.x)
+        return veil_alpha_a.x;
+    if (depth <= veil_depth_a.y)
+        return mix(veil_alpha_a.x, veil_alpha_a.y,
+                   (depth - veil_depth_a.x) / max(veil_depth_a.y - veil_depth_a.x, 1e-4));
+    if (depth <= veil_depth_a.z)
+        return mix(veil_alpha_a.y, veil_alpha_a.z,
+                   (depth - veil_depth_a.y) / max(veil_depth_a.z - veil_depth_a.y, 1e-4));
+    if (depth <= veil_depth_a.w)
+        return mix(veil_alpha_a.z, veil_alpha_a.w,
+                   (depth - veil_depth_a.z) / max(veil_depth_a.w - veil_depth_a.z, 1e-4));
+    if (depth <= veil_depth_b.x)
+        return mix(veil_alpha_a.w, veil_alpha_b.x,
+                   (depth - veil_depth_a.w) / max(veil_depth_b.x - veil_depth_a.w, 1e-4));
+    if (depth <= veil_depth_b.y)
+        return mix(veil_alpha_b.x, veil_alpha_b.y,
+                   (depth - veil_depth_b.x) / max(veil_depth_b.y - veil_depth_b.x, 1e-4));
+    if (depth <= veil_depth_b.z)
+        return mix(veil_alpha_b.y, veil_alpha_b.z,
+                   (depth - veil_depth_b.y) / max(veil_depth_b.z - veil_depth_b.y, 1e-4));
+    if (depth <= veil_depth_b.w)
+        return mix(veil_alpha_b.z, veil_alpha_b.w,
+                   (depth - veil_depth_b.z) / max(veil_depth_b.w - veil_depth_b.z, 1e-4));
+    return 0.0;
+}
+
+float local_luminance(vec2 uv) {
+    vec3 color = texture2D(tex, uv).rgb * 0.4;
+    color += texture2D(tex, clamp(uv + vec2(veil_probe.x, 0.0), 0.0, 1.0)).rgb * 0.15;
+    color += texture2D(tex, clamp(uv - vec2(veil_probe.x, 0.0), 0.0, 1.0)).rgb * 0.15;
+    color += texture2D(tex, clamp(uv + vec2(0.0, veil_probe.y), 0.0, 1.0)).rgb * 0.15;
+    color += texture2D(tex, clamp(uv - vec2(0.0, veil_probe.y), 0.0, 1.0)).rgb * 0.15;
+    return luminance(color);
+}
+
+float adapted_alpha(float base, float depth, float lum) {
+    if (depth >= veil_strip + veil_readability_fade)
+        return base;
+    float need = 0.0;
+    if (veil_light > 0.5) {
+        if (lum < veil_readability)
+            need = (veil_readability - lum) / max(1.0 - lum, 1e-4);
+    } else {
+        if (lum > veil_readability)
+            need = (lum - veil_readability) / max(lum, 1e-4);
+    }
+    // Fade the correction out past the reference strip; a hard 39 pt step is
+    // visible over a bright Dark window.
+    float t = clamp((depth - veil_strip) / max(veil_readability_fade, 1e-4), 0.0, 1.0);
+    float weight = 1.0 - t * t * (3.0 - 2.0 * t);
+    return base + max(need - base, 0.0) * weight;
+}
+
+void main() {
+    vec2 panel_uv = panel_uv_offset + v_coords * panel_uv_scale;
+    float depth = panel_uv.y * veil_height;
+    vec4 base = texture2D(tex, v_coords);
+    float lum = local_luminance(v_coords);
+    float veil = adapted_alpha(lut_alpha(depth), depth, lum);
+    vec3 color = mix(base.rgb, veil_color, veil);
+
+#if defined(NO_ALPHA)
+    gl_FragColor = vec4(color, 1.0) * alpha;
+#else
+    gl_FragColor = vec4(color, base.a) * alpha;
+#endif
+}
+"#;
+
 /// The liquid-glass shader uniform carrying the panel size in physical pixels.
 pub const GLASS_SIZE_UNIFORM: &str = "glass_size";
 /// The liquid-glass shader uniform carrying the corner radius (physical px).
@@ -702,6 +817,10 @@ pub struct BackdropBlurElement {
     /// for the plain blurred compose (the scene texture, or a driver that
     /// refused the glass shader).
     glass: Option<(GlassSpec, GlesTexProgram)>,
+    /// The menu-bar no-blur veil parameters and compiled program (T200).
+    /// Mutually exclusive with `glass`; the sharp path uses this to paint the
+    /// depth LUT over the live scene.
+    veil: Option<(crate::window::menubar_veil::VeilSpec, GlesTexProgram)>,
 }
 
 impl BackdropBlurElement {
@@ -724,6 +843,7 @@ impl BackdropBlurElement {
             corners: CornerRadii::uniform(corner_radius),
             scale,
             glass: None,
+            veil: None,
         }
     }
 
@@ -774,6 +894,17 @@ impl BackdropBlurElement {
         self
     }
 
+    /// Apply the menu-bar no-blur veil (T200). The element samples the sharp
+    /// scene texture directly; the shader only blends the depth LUT over it.
+    pub fn with_veil(
+        mut self,
+        spec: crate::window::menubar_veil::VeilSpec,
+        program: GlesTexProgram,
+    ) -> Self {
+        self.veil = Some((spec, program));
+        self
+    }
+
     /// The rounded spans of the panel at the token/per-region corner radii.
     fn spans(&self) -> Vec<Rectangle<i32, Logical>> {
         crate::window::corner::rounded_rect_spans_with_radii(self.panel, self.corners)
@@ -821,26 +952,35 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
         // the material region, so the span is intersected with that part.
         // The glass uniforms carry the per-span panel mapping so the SDF and
         // corner lens stay panel-relative even when the texture is a slice.
-        let program = self.glass.as_ref().map(|(_, program)| program);
+        let program = self
+            .veil
+            .as_ref()
+            .map(|(_, program)| program)
+            .or_else(|| self.glass.as_ref().map(|(_, program)| program));
         for span in self.spans() {
             let Some((visible, src)) =
                 map_span_to_texture(span, self.texture_region, self.texture_size)
             else {
                 continue;
             };
-            let uniforms = self
-                .glass
-                .as_ref()
-                .map(|(spec, _)| {
-                    spec.uniforms(
-                        panel_physical.size,
-                        self.corners.max(),
-                        self.scale,
-                        self.panel,
-                        visible,
-                    )
-                })
-                .unwrap_or_default();
+            let uniforms = if let Some((spec, _)) = self.veil.as_ref() {
+                spec.uniforms(
+                    self.scale,
+                    self.panel,
+                    self.texture_region,
+                    self.texture_size,
+                )
+            } else if let Some((spec, _)) = self.glass.as_ref() {
+                spec.uniforms(
+                    panel_physical.size,
+                    self.corners.max(),
+                    self.scale,
+                    self.panel,
+                    visible,
+                )
+            } else {
+                Vec::new()
+            };
             let dst = physical_span(visible, self.panel, panel_physical);
             // Smithay hands the element damage in the element's local
             // coordinates, but `render_texture_from_to` expects it local to
@@ -1119,6 +1259,37 @@ mod tests {
         assert!(GLASS_SHADER.contains("refraction"));
         assert!(GLASS_SHADER.contains("specular_width"));
         assert!(GLASS_SHADER.contains("tint_amount"));
+    }
+
+    #[test]
+    fn the_veil_shader_declares_its_lut_and_probe_uniforms() {
+        assert!(VEIL_SHADER.contains("//_DEFINES_"));
+        assert!(VEIL_SHADER.contains("varying vec2 v_coords;"));
+        assert!(VEIL_SHADER.contains("uniform sampler2D tex;"));
+        assert!(VEIL_SHADER.contains("uniform float alpha;"));
+        for name in [
+            crate::window::menubar_veil::VEIL_COLOR_UNIFORM,
+            crate::window::menubar_veil::VEIL_HEIGHT_UNIFORM,
+            crate::window::menubar_veil::VEIL_STRIP_UNIFORM,
+            crate::window::menubar_veil::VEIL_LIGHT_UNIFORM,
+            crate::window::menubar_veil::VEIL_READABILITY_UNIFORM,
+            crate::window::menubar_veil::VEIL_READABILITY_FADE_UNIFORM,
+            crate::window::menubar_veil::VEIL_PROBE_UNIFORM,
+            crate::window::menubar_veil::VEIL_DEPTH_A_UNIFORM,
+            crate::window::menubar_veil::VEIL_DEPTH_B_UNIFORM,
+            crate::window::menubar_veil::VEIL_ALPHA_A_UNIFORM,
+            crate::window::menubar_veil::VEIL_ALPHA_B_UNIFORM,
+            crate::window::menubar_veil::VEIL_PANEL_UV_OFFSET_UNIFORM,
+            crate::window::menubar_veil::VEIL_PANEL_UV_SCALE_UNIFORM,
+        ] {
+            assert!(VEIL_SHADER.contains(name), "veil shader is missing {name}");
+        }
+        // The sharp centre sample is separate from the luminance probe; the
+        // displayed backdrop is never spatially filtered.
+        assert!(VEIL_SHADER.contains("vec4 base = texture2D(tex, v_coords);"));
+        assert!(VEIL_SHADER.contains("local_luminance"));
+        assert!(VEIL_SHADER.contains("adapted_alpha"));
+        assert!(VEIL_SHADER.contains("gl_FragColor"));
     }
 
     #[test]

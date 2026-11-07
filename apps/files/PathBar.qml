@@ -11,21 +11,27 @@ Item {
 
     // [{ label, uri }] from the platform seam (Files.breadcrumb).
     property var model: []
+    // T206: the path bar is unclassified chrome and stays opaque; the app
+    // rounds only its bottom-right window corner.
+    property color fillColor: Theme.color.chrome
+    property color borderColor: Theme.color.border
+    property real bottomRightRadius: 0
 
     signal navigated(string uri)
 
     implicitHeight: Theme.controls.button.height + 2 * Theme.primitive.spacing.xs
 
-    Rectangle {
+    ChromeSheet {
         anchors.fill: parent
-        color: Theme.color.chrome
+        color: root.fillColor
+        bottomRightRadius: root.bottomRightRadius
     }
     Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
         height: Theme.controls.window.borderWidth
-        color: Theme.color.border
+        color: root.borderColor
     }
 
     Row {

@@ -80,6 +80,18 @@ bool FilesDesktop::start(const QString &socketName, const QString &tokenHex,
     if (!m_protocol->createDesktopSurface())
         return false;
 
+    // Capture/demo seam (T202): open the desktop background menu once the
+    // surface is up. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_DESKTOP_CONTEXT_FIXTURE")) {
+        QTimer::singleShot(1500, this, [this]() {
+            if (m_item)
+                QMetaObject::invokeMethod(m_item, "openBackgroundMenuFixture");
+        });
+    }
+
+    if (!m_protocol->createDesktopSurface())
+        return false;
+
     const int fd = m_protocol->displayFd();
     if (fd >= 0) {
         m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);

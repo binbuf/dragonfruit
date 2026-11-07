@@ -21,6 +21,9 @@ Item {
     property string currentPaneId: ""
     property var history: []
     property int historyIndex: -1
+    // Bound to the host Window's focus so the titlebar/controls show the
+    // focused state; the app-local chrome material itself is focus-invariant.
+    property bool windowActive: true
     // Guards the sidebar selection sync so setting `currentIndex`
     // programmatically is not mistaken for a user navigation.
     property bool syncing: false
@@ -28,12 +31,14 @@ Item {
     property alias searchField: searchField
     property alias sidebar: sidebar
     property alias sidebarPane: sidebarPane
+    property alias toolbar: toolbar
     property alias titleBar: titleBar
     property alias appWindow: appWindow
     property alias header: header
     property alias backButton: backButton
     property alias forwardButton: forwardButton
     property alias paneBody: paneBody
+    property alias detailSheet: detailSheet
     property alias resizeEdges: resizeEdges
 
     // The app-local theme owner (T-09.2). The shell's `ThemeBinding` lives in
@@ -56,6 +61,11 @@ Item {
         Settings.values["accessibility.reduceTransparency"] === true
     readonly property bool increaseContrast:
         Settings.values["accessibility.increaseContrast"] === true
+    // The app-local rollout/capability view. Production follows the process
+    // environment and platform bridge; tests and captures may override them
+    // without changing the shared singleton's binding.
+    property string glassRollout: Settings.glassRollout
+    property bool appChromeSupported: Settings.appChromeSupported
 
     signal closeRequested()
     signal minimizeRequested()
@@ -257,7 +267,7 @@ Item {
     Binding {
         target: Glass
         property: "rollout"
-        value: Settings.glassRollout
+        value: root.glassRollout
     }
     Binding {
         target: Glass
@@ -273,6 +283,11 @@ Item {
         target: Glass
         property: "increaseContrast"
         value: root.increaseContrast
+    }
+    Binding {
+        target: Glass
+        property: "appChromeSupported"
+        value: root.appChromeSupported
     }
 
     Component {
@@ -389,12 +404,15 @@ Item {
         id: appWindow
         anchors.fill: parent
         title: qsTr("Settings")
-        active: true
+        active: root.windowActive
+        // T206: the sidebar/toolbar carry the measured app-local alpha; the
+        // detail sheet below stays opaque.
+        chromeTransparent: true
 
         titleBarData: TitleBar {
             id: titleBar
             title: qsTr("Settings")
-            active: true
+            active: root.windowActive
             onCloseRequested: root.closeRequested()
             onMinimizeRequested: root.minimizeRequested()
             onZoomRequested: root.zoomRequested()
@@ -407,11 +425,13 @@ Item {
             spacing: 0
 
             // Sidebar: a muted source list with local pane search on top.
-            Rectangle {
+            ChromeSheet {
                 id: sidebarPane
                 width: Theme.controls.sidebar.width
                 height: parent.height
-                color: Theme.color.surfaceMuted
+                color: Material.appChromeFill("settingsSidebar",
+                                             Theme.color.surfaceMuted)
+                bottomLeftRadius: Theme.controls.window.radius
 
                 Column {
                     anchors.fill: parent
@@ -430,6 +450,8 @@ Item {
                         id: sidebar
                         width: parent.width
                         height: Math.max(0, parent.height - searchField.height - parent.spacing)
+                        // The outer ChromeSheet owns the app-local material.
+                        fillColor: "transparent"
                         sections: [{
                             items: root.visiblePanes.map(function(pane) {
                                 return {
@@ -457,7 +479,21 @@ Item {
             Rectangle {
                 width: parent.width - sidebarPane.width
                 height: parent.height
-                color: Theme.color.surface
+                color: "transparent"
+
+                // The toolbar keeps the app-local material; the scrolling
+                // detail sheet below it is the opaque content surface and owns
+                // the bottom-right window corner.
+                ChromeSheet {
+                    id: detailSheet
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.topMargin: Theme.controls.toolbar.height
+                    anchors.bottom: parent.bottom
+                    color: Theme.color.surface
+                    bottomRightRadius: Theme.controls.window.radius
+                }
 
                 Column {
                     anchors.fill: parent
@@ -467,6 +503,10 @@ Item {
                         id: toolbar
                         width: parent.width
                         title: root.currentPane ? root.currentPane.title : ""
+                        fillColor: Material.appChromeFill("settingsToolbar",
+                                                          Theme.color.chrome)
+                        borderColor: Material.appChromeBorder("settingsToolbar",
+                                                              Theme.color.border)
 
                         Button {
                             id: backButton

@@ -25,6 +25,7 @@ Item {
         Component { id: wifiMenuComponent; WifiMenu { } }
         Component { id: volumeMenuComponent; VolumeMenu { } }
         Component { id: batteryMenuComponent; BatteryMenu { } }
+        Component { id: bluetoothMenuComponent; BluetoothMenu { } }
 
         SignalSpy { id: wifiJoinSpy; signalName: "joinRequested" }
         SignalSpy { id: wifiRefreshSpy; signalName: "refreshRequested" }
@@ -34,10 +35,14 @@ Item {
         SignalSpy { id: statusSpy; signalName: "statusItemActivated" }
         SignalSpy { id: ccSpy; signalName: "controlCenterRequested" }
         SignalSpy { id: mcSpy; signalName: "missionControlRequested" }
+        SignalSpy { id: clockSpy; signalName: "clockActivated" }
         SignalSpy { id: openedSpy; signalName: "appMenuOpened" }
         SignalSpy { id: closedSpy; signalName: "appMenuClosed" }
         SignalSpy { id: triggeredSpy; signalName: "appMenuTriggered" }
         SignalSpy { id: traySpy; signalName: "trayMenuTriggered" }
+        SignalSpy { id: bluetoothPowerSpy; signalName: "bluetoothPowerToggleRequested" }
+        SignalSpy { id: bluetoothDeviceSpy; signalName: "bluetoothDeviceToggled" }
+        SignalSpy { id: bluetoothSettingsSpy; signalName: "bluetoothSettingsRequested" }
 
         function make(component, props) {
             var obj = createTemporaryObject(component, stage, props || {});
@@ -289,11 +294,403 @@ Item {
             Theme.dark = false;
         }
 
+        // -- T200: the compositor no-blur veil -------------------------------
+
+        function test_replacement_veil_moves_the_wash_to_the_compositor() {
+            // In the replacement rail the QML surface paints no fill: the
+            // compositor's sharp veil is the only backdrop. The shell still
+            // declares the full 95 pt visual extent, while the reference strip
+            // and Dragonfruit's layout height stay separate.
+            Glass.rollout = "replacement";
+            Theme.dark = false;
+            var bar = make(menuBarComponent, {
+                width: 600,
+                materialBlurActive: true
+            });
+            compare(bar.veilResolution.renderMode, "no-blur-veil");
+            compare(bar.veilActive, true);
+            compare(bar.color.a, 0, "the QML wash must be gone");
+            compare(bar.compositorPanelActive, true);
+            compare(bar.compositorPanelHeight, 95);
+            compare(bar.compositorPanelRadius, 0);
+            compare(bar.veilExtent, 95);
+            compare(bar.referenceStripHeight, 39);
+            fuzzyCompare(bar.veilResolution.tint, 1.0, 0.001,
+                         "the Light veil is a white lift");
+
+            // Dark uses the documented black wash, still with no QML fill.
+            Theme.dark = true;
+            bar.materialBlurActive = true;
+            compare(bar.veilActive, true);
+            compare(bar.color.a, 0);
+            fuzzyCompare(bar.veilResolution.tint, 0.0, 0.001,
+                         "the Dark veil is a black wash");
+            bar.destroy();
+            Glass.rollout = "legacy";
+            Theme.dark = false;
+        }
+
+        function test_veil_fallback_and_accessibility_stay_scheme_appropriate() {
+            Glass.rollout = "replacement";
+            // No sampled scene texture: the compositor cannot draw the veil,
+            // so QML keeps the milky plate and declares no material panel.
+            for (var scheme = 0; scheme < 2; ++scheme) {
+                Theme.dark = scheme === 1;
+                var bar = make(menuBarComponent, {
+                    width: 600,
+                    materialBlurActive: false
+                });
+                compare(bar.veilActive, false);
+                compare(bar.compositorPanelActive, false);
+                verify(bar.color.a >= 0.8, "the fallback must read as a plate");
+                fuzzyCompare(bar.color.r, Theme.color.chromeFallbackFill.r, 0.001);
+                fuzzyCompare(bar.color.g, Theme.color.chromeFallbackFill.g, 0.001);
+                fuzzyCompare(bar.color.b, Theme.color.chromeFallbackFill.b, 0.001);
+                bar.destroy();
+            }
+
+            // Reduce Transparency is the explicit opaque scheme plate, not a
+            // sampled strip. The compositor resolves the veil to solid and the
+            // shell commits an empty panel set.
+            Theme.dark = false;
+            var reduced = make(menuBarComponent, {
+                width: 600,
+                materialBlurActive: true,
+                reduceTransparency: true
+            });
+            compare(reduced.veilResolution.renderMode, "solid");
+            compare(reduced.veilActive, false);
+            compare(reduced.compositorPanelActive, false);
+            verify(reduced.color.a >= 0.8);
+            reduced.destroy();
+
+            // The legacy rail keeps the old sampled QML fill and the 28 pt
+            // panel; it must not silently switch to the veil extent.
+            Glass.rollout = "legacy";
+            var legacy = make(menuBarComponent, {
+                width: 600,
+                materialBlurActive: true
+            });
+            compare(legacy.veilResolution.renderMode, "sampled-glass");
+            compare(legacy.veilActive, false);
+            compare(legacy.compositorPanelActive, true);
+            compare(legacy.compositorPanelHeight, Theme.controls.menuBar.height);
+            compare(legacy.compositorPanelRadius, Theme.controls.menuBar.radius);
+            fuzzyCompare(legacy.color.a, Theme.material.chromeOpacity, 0.001);
+            legacy.destroy();
+            Theme.dark = false;
+        }
+
+        // -- T201: menu-bar visibility settings ------------------------------
+
+        function test_show_background_off_keeps_items_but_drops_fill_and_panel() {
+            // The old rail's background toggle must clear both the QML fill and
+            // the compositor's material panel; only the items remain.
+            Glass.rollout = "replacement";
+            Theme.dark = false;
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 600,
+                showBackground: false,
+                materialBlurActive: true,
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                statusItems: defaultStatus()
+            });
+            compare(bar.color.a, 0, "no QML fill with the background off");
+            compare(bar.veilActive, false);
+            compare(bar.compositorPanelActive, false);
+            verify(bar.appMenuAt(0) !== null, "the system menu stays");
+            verify(bar.appMenuAt(1) !== null, "the application menu stays");
+            verify(bar.appMenuAt(2) !== null, "the app's exported menu stays");
+            verify(bar.statusItemAt(0) !== null, "the status row stays");
+
+            // Turning it back on restores the same live scene's veil.
+            bar.showBackground = true;
+            waitForRendering(stage);
+            compare(bar.veilActive, true);
+            compare(bar.compositorPanelActive, true);
+
+            // The legacy rail must also clear its sampled strip, not leave a
+            // stale 28 pt panel behind.
+            Glass.rollout = "legacy";
+            var legacy = make(menuBarComponent, {
+                width: 600,
+                showBackground: false,
+                materialBlurActive: true
+            });
+            compare(legacy.color.a, 0);
+            compare(legacy.compositorPanelActive, false);
+            legacy.showBackground = true;
+            waitForRendering(stage);
+            compare(legacy.compositorPanelActive, true);
+            fuzzyCompare(legacy.color.a, Theme.material.chromeOpacity, 0.001);
+            legacy.destroy();
+            bar.destroy();
+            Glass.rollout = "replacement";
+            Theme.dark = false;
+        }
+
+        function test_auto_hide_modes_apply_the_visibility_rule() {
+            // The compositor owns the actual per-output reveal; this is the
+            // same pure rule the bar exposes for its scene/tests.
+            var never = make(menuBarComponent, { autoHideMode: "never" });
+            compare(never.visibleIn(false, false, false), true);
+            compare(never.visibleIn(true, false, false), true);
+            compare(never.visibleIn(true, false, true), true);
+
+            var always = make(menuBarComponent, { autoHideMode: "always" });
+            compare(always.visibleIn(false, false, false), false,
+                    "always starts hidden on the desktop");
+            compare(always.visibleIn(true, false, false), false,
+                    "always starts hidden in fullscreen");
+            compare(always.visibleIn(false, true, false), true,
+                    "the edge reveal shows it");
+            compare(always.visibleIn(false, false, true), true,
+                    "an active menu/focus keeps it available");
+            compare(always.visibleIn(true, true, false), true);
+
+            var full = make(menuBarComponent, { autoHideMode: "full-screen" });
+            compare(full.visibleIn(false, false, false), true,
+                    "full-screen mode is normal on the desktop");
+            compare(full.visibleIn(true, false, false), false,
+                    "full-screen mode hides over fullscreen");
+            compare(full.visibleIn(true, true, false), true,
+                    "the fullscreen edge reveal shows it");
+            compare(full.visibleIn(true, false, true), true,
+                    "an active fullscreen menu keeps it available");
+
+            // Live toggles re-evaluate the same rule.
+            full.autoHideMode = "always";
+            compare(full.autoHideAlways, true);
+            compare(full.visibleIn(false, false, false), false);
+            full.autoHideMode = "never";
+            compare(full.visibleIn(true, false, false), true);
+            compare(full.autoHideInFullscreen, false);
+
+            // The schema default is full-screen.
+            var defaultBar = make(menuBarComponent, {});
+            compare(defaultBar.autoHideMode, "full-screen");
+            compare(defaultBar.visibleIn(false, false, false), true);
+            compare(defaultBar.visibleIn(true, false, false), false);
+
+            defaultBar.destroy();
+            full.destroy();
+            always.destroy();
+            never.destroy();
+        }
+
         function compareColor(actual, expected, label) {
             fuzzyCompare(actual.r, expected.r, 0.001, label + " red");
             fuzzyCompare(actual.g, expected.g, 0.001, label + " green");
             fuzzyCompare(actual.b, expected.b, 0.001, label + " blue");
             fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
+        }
+
+        // -- T202: menu families ------------------------------------------
+        function bluetoothModel(overrides) {
+            var model = {
+                state: "available", present: true, powered: true,
+                discovering: false, readOnly: false,
+                label: "Bluetooth on",
+                knownDevices: [
+                    { address: "AA:BB:CC:DD:EE:FF", name: "Headset",
+                      connected: true },
+                    { address: "11:22:33:44:55:66", name: "Speaker",
+                      connected: false }
+                ]
+            };
+            for (var key in (overrides || {}))
+                model[key] = overrides[key];
+            return model;
+        }
+
+        function test_menu_family_presets_and_regions() {
+            var savedRollout = Glass.rollout;
+            try {
+            Glass.rollout = "replacement";
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 800,
+                appName: "Test",
+                appMenuModel: [ { title: "File", items: [
+                    { label: "Open With", type: "submenu",
+                      submenu: [ { label: "Text" }, { label: "Image" } ] }
+                ] } ],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                statusItems: defaultStatus(),
+                wifiMenu: { state: "available", label: "Wi-Fi", networks: [] },
+                trayMenu: [ { id: 1, type: "item", label: "Show", enabled: true } ]
+            });
+            bar.openMenu(2);
+            waitForRendering(stage);
+            compare(bar.dropdownPreset, "menuAttached");
+            verify(bar.dropdownRegions.length >= 1);
+            compare(bar.dropdownRegions[0].preset, "menuAttached");
+            compare(bar.dropdownRegions[0].tl, 0);
+            compare(bar.dropdownRegions[0].tr, 0);
+            fuzzyCompare(bar.dropdownRegions[0].br,
+                         Theme.controls.contextMenu.attachedRadius, 0.001);
+            var popup = bar.appMenuAt(2).popup;
+            compare(popup.materialPreset, "menuAttached");
+            compare(popup.materialBackdrop, "trusted");
+            compare(popup.motionPreset, "menu");
+            verify(Math.abs(popup.surfaceFill.a
+                            - Glass.resolve("menuAttached", {
+                                  scheme: Theme.dark ? "dark" : "light",
+                                  rollout: "replacement",
+                                  slider: Glass.slider,
+                                  backend: "gpu-sampled", tier: "full"
+                              }).alpha) < 1e-4);
+
+            bar.appMenuAt(2).openSubmenu(0);
+            waitForRendering(stage);
+            verify(bar.dropdownRegions.length >= 2);
+            compare(bar.dropdownRegions[1].preset, "menuDetached");
+
+            bar.closeMenus();
+            bar.openStatusMenu("wifi");
+            waitForRendering(stage);
+            compare(bar.dropdownPreset, "statusMenu");
+            compare(bar.dropdownRegions[0].preset, "statusMenu");
+            compare(findChild(bar, "wifiMenu").popup.materialPreset,
+                    "statusMenu");
+            bar.closeStatusMenu();
+
+            bar.openTrayMenu("app");
+            waitForRendering(stage);
+            compare(bar.dropdownPreset, "menuDetached");
+            compare(bar.dropdownRegions[0].preset, "menuDetached");
+            bar.closeTrayMenu();
+            } finally {
+                Glass.rollout = savedRollout;
+            }
+        }
+
+        function test_menu_close_motion_and_reduce_motion() {
+            var savedReduced = Theme.reducedMotion;
+            Theme.reducedMotion = false;
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 800,
+                appName: "Test",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            bar.openMenu(2);
+            waitForRendering(stage);
+            var popup = bar.appMenuAt(2).popup;
+            compare(Theme.motion.menuClose.fullDuration, 183);
+            fuzzyCompare(popup.closeScale, 0.95, 0.001);
+            compare(popup.motionPreset, "menu");
+            bar.closeMenus();
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, -1, "logical close is immediate");
+            compare(popup.open, false, "interaction closes before the visual exit");
+            // Reopen before the exit timer: the new menu is the live one.
+            bar.openMenu(3);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, 3);
+            compare(bar.appMenuAt(3).popup.open, true);
+            bar.closeMenus();
+
+            Theme.reducedMotion = true;
+            var reduced = make(menuBarComponent, {
+                width: 800,
+                appName: "Test",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            reduced.openMenu(2);
+            waitForRendering(stage);
+            fuzzyCompare(reduced.appMenuAt(2).popup.closeScale, 1.0, 0.001);
+            compare(Theme.motion.menuClose.duration, 0);
+            reduced.closeMenus();
+            Theme.reducedMotion = savedReduced;
+        }
+
+        function test_bluetooth_status_menu_routes_the_action_policy() {
+            bluetoothPowerSpy.clear();
+            bluetoothDeviceSpy.clear();
+            bluetoothSettingsSpy.clear();
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 900,
+                appName: "Test",
+                appMenuModel: [],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                statusItems: [
+                    { id: "bluetooth", icon: "bluetooth",
+                      accessibleName: "Bluetooth", available: true,
+                      enabled: true }
+                ],
+                bluetoothMenu: bluetoothModel({})
+            });
+            bluetoothPowerSpy.target = bar;
+            bluetoothDeviceSpy.target = bar;
+            bluetoothSettingsSpy.target = bar;
+            bar.openStatusMenu("bluetooth");
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "bluetooth");
+            var menu = findChild(bar, "bluetoothMenu");
+            verify(menu !== null);
+            compare(menu.popup.open, true);
+            compare(menu.popup.materialPreset, "statusMenu");
+            compare(menu.materialBackdrop, "trusted");
+            menu.togglePower();
+            compare(bluetoothPowerSpy.count, 1);
+            compare(bluetoothPowerSpy.signalArguments[0][0], false);
+            menu.toggleDevice("11:22:33:44:55:66");
+            compare(bluetoothDeviceSpy.count, 1);
+            compare(bluetoothDeviceSpy.signalArguments[0][0],
+                    "11:22:33:44:55:66");
+            compare(bluetoothDeviceSpy.signalArguments[0][1], true);
+            menu.settingsRequested();
+            compare(bluetoothSettingsSpy.count, 1);
+            bar.closeStatusMenu();
+        }
+
+        function test_bluetooth_absent_read_only_and_menu_bar_gate() {
+            var absent = make(bluetoothMenuComponent, {
+                model: bluetoothModel({ state: "unavailable" })
+            });
+            compare(absent.available, false);
+            compare(absent.writable, false);
+            compare(absent.togglePower(), undefined);
+            var readOnly = make(bluetoothMenuComponent, {
+                model: bluetoothModel({ readOnly: true })
+            });
+            compare(readOnly.available, true);
+            compare(readOnly.writable, false);
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 900,
+                appName: "Test",
+                appMenuModel: [],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                statusItems: [
+                    { id: "bluetooth", icon: "bluetooth",
+                      accessibleName: "Bluetooth", available: true }
+                ],
+                bluetoothMenu: bluetoothModel({ state: "unavailable" })
+            });
+            bar.openStatusMenu("bluetooth");
+            compare(bar.openStatusItem, "", "absent adapter has no menu");
+            var hidden = make(menuBarComponent, {
+                width: 900,
+                statusItems: [
+                    { id: "bluetooth", icon: "bluetooth",
+                      accessibleName: "Bluetooth", available: false }
+                ]
+            });
+            compare(hidden.statusItemAt(0).visible, false);
         }
 
         function test_popup_role_material_covers_every_menu_popover() {
@@ -1008,6 +1405,20 @@ Item {
             clock.showDate = true;
             waitForRendering(stage);
             compare(clock.dateText, Qt.formatDate(fixed, Locale.ShortFormat));
+        }
+
+        function test_the_clock_is_the_notification_center_entry_point() {
+            var bar = make(menuBarComponent, {
+                appMenu: [],
+                statusItems: [],
+                showDate: true
+            });
+            clockSpy.target = bar;
+            clockSpy.clear();
+            var clock = findChild(bar, "clock");
+            verify(clock);
+            mouseClick(clock, clock.width / 2, clock.height / 2);
+            compare(clockSpy.count, 1);
         }
 
         // -- Status glyph rendering (FR-5) ---------------------------------

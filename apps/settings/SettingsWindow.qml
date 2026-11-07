@@ -28,6 +28,7 @@ Window {
     SettingsShell {
         id: shell
         anchors.fill: parent
+        windowActive: win.active
 
         onCloseRequested: win.close()
         onMinimizeRequested: win.showMinimized()

@@ -157,6 +157,14 @@ ladder.
   skips the sampled material pass when no visible panel intersects the
   client, and only the DRM primary-plane result advances the real
   `direct_scanouts` counter (T-21.3, [ADR 0210](adr/0210-fullscreen-chrome-suppression-and-scanout-counters.md)).
+  The menu bar is the one policy exception: its `menu.autoHide` mode decides
+  whether it hides over fullscreen (`full-screen`), stays (`never`), or
+  reveals on demand (`always`/`full-screen`). A concealed bar is removed from
+  the visible-chrome list per output, so it contributes no reserved zone,
+  input hit area, or material panel and the output remains scanout-eligible.
+  A revealed or explicitly kept bar is a real composition requirement and
+  keeps the material pass. See
+  [ADR 0220](adr/0220-menu-bar-auto-hide-visibility.md).
   The `tearing-control` protocol is **not implemented yet**; the design target
   is to honor it for fullscreen games (see [14-risks.md](14-risks.md) and
   [STATUS.md](STATUS.md) G-13).
@@ -412,7 +420,10 @@ come from `component.elevation.{low,med,high,overlay}` (which reference
 window (the SSD titlebar strip included, via `WindowInsets::outset`) is
 shadowed, a window mid-appear/minimize/zoom carries the same lifecycle
 `MotionFrame` as its content, and a minimizing/closing ghost keeps its shadow.
-Fullscreen windows cast none.
+Fullscreen windows cast none. T206 emits the shadow as a ring outside the
+window's rounded body (`shadow_elements_outside`), so a first-party window with
+translucent app-local sidebar/toolbar chrome cannot sample its own shadow
+through the transparent surface; opaque windows are visually unchanged.
 
 The titlebar, client surface, and shadow are emitted **per window**, in
 `Space` stacking order: the titlebar first (above its own content), then the
@@ -559,8 +570,8 @@ The chrome **rollout** landed in **T-20.3**
 resolves through `MaterialRole`: the menu bar is `Chrome`, the Dock is `Dock`,
 the Applications drawer is `Drawer`, and every overlay — menu-bar dropdowns
 (`menubar-popup`), Dock context menus/popovers (`dock-popup`), the OSD
-(`osd`), notification banners (`notification`), and Control Center
-(`control-center`) — is `Popup`. Persistent panels keep their declared rect
+(`osd`), notification banners (`notification`), the Notification Center
+(`notification-center`), and Control Center (`control-center`) — is `Popup`. Persistent panels keep their declared rect
 (the Dock plate and the drawer card via `set_panel_rect`); overlay popups are
 tight to the overlay surface, and the OSD declares its visible card separately
 because its surface is larger than the card to fit the shadow. The backdrop
@@ -630,7 +641,9 @@ T197 adds the additive v3 **multi-region** metadata
 region with an optional known T195 preset, per-corner radii, and bounded
 overscan; `clear_panel_regions` commits an empty set. Requests are latched with
 the next `wl_surface.commit`, clipped to the surface and owning output, and
-bounded to eight regions. The input region and reserved zone stay independent,
+bounded to 32 regions (raised from eight by T203 for the Control Center's
+outer plate, 19 module capsules and expanded lists). The input region and
+reserved zone stay independent,
 and a legacy `set_panel_rect` client keeps one `panel` region. Each region
 resolves its preset through the live T195/T196 policy and keeps a stable
 `PanelKey` (surface + region key). A filtered region runs Kawase; a veil
@@ -638,6 +651,54 @@ preset resolves to the sharp path, which samples the compositor's region scene
 texture with no blur allocation. `PanelBlurKey` includes the region's full
 sample footprint (blur/lens kernel plus overscan), while `PanelPaintKey` makes
 tint/scheme/tier changes repaint without rebuilding the cached texture.
+
+T203 uses the same multi-region path for the Control Center. The shell declares
+one outer plate, one capsule per visible module, and an expanded Wi-Fi/Bluetooth
+list when open; the module/list regions are clipped to the scroll viewport so a
+scrolled-out item leaves no stale patch. The compositor resolves the three
+Control Center presets through the same T195/T196 policy and, on the
+replacement rail, builds the measured flat-band + rim + capsule-end lens glass
+from the resolved own-layer values. Regions are declared outer → modules →
+expanded, so the compositor draws the outer plate first and the opaque
+module/list materials replace it inside their capsules; the Light module
+composite therefore matches the measured 0.391/0.317 effective fit without
+compounding a second alpha over the outer.
+
+T205 uses the same path for the notification banner and the open Notification
+Center. The `notification` surface declares one `banner` region sized to the
+visible card, and `notification-center` declares two disjoint regions, `stack`
+and `lower`, separated by the panel gap. All three resolve the measured
+`notificationBanner`/`notificationStack`/`notificationLowerPanel` presets
+through the same flat-band glass family; because the flat-band output is
+opaque, a banner and Center that overlap would double-frost, so the shell
+insets the stack below an active banner card. Regions are cleared on close and
+re-declared on history/layout changes; the QML shadow is disabled on the
+sampled path so it cannot darken the compositor plate.
+
+T200 turns the menu bar into the explicit no-blur veil
+([ADR 0219](adr/0219-menubar-no-blur-veil.md)). The veil preset takes the sharp
+path and `VEIL_SHADER` samples the live scene directly; the measured Light
+depth LUT (0.451 at 5 pt, zero by 95 pt) is a white lift, and Dark uses the
+documented black baseline with the same depth shape. A bounded local luminance
+probe may only raise the LUT alpha inside the 39 pt reference strip for
+foreground readability; the displayed scene is never spatially filtered. The
+menu-bar layer surface is configured to the 95 pt visual extent while its
+exclusive zone and committed input strip remain the 28 pt bar, so the lower
+veil is visual-only. The shell commits a `veil` panel region with the full
+extent and clears it for the fallback, Reduce Transparency or a hidden bar.
+The sharp element's commit follows the scene cache's real-damage commit, so a
+moving window under the bar repaints the veil and a settled scene does not.
+`query material` prints the veil mode, extent, strip and LUT samples.
+
+T201 makes the veil follow `menu.autoHide` on each output. The compositor owns
+the conceal/reveal state (`compositor/src/shell/menubar.rs`): `never` keeps the
+bar and veil over fullscreen, `always` starts concealed and reveals from the
+top edge or Control-F2, and `full-screen` is normal on the desktop and reveals
+on demand over fullscreen. A concealed bar is filtered out before
+`chrome_blur_panels`, so its veil region cannot leave a sampled strip behind;
+`menu.showBackground=false` clears the panel region on every rail. `query
+menubar` prints the mode and each output's fullscreen/revealed/active/visible
+state plus the reserved top strip.
 
 `BackdropPass` gates the pass: the backend opens a rendered frame once
 (`DfState::begin_render_frame`) and each output applies the backdrop at most

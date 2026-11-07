@@ -126,6 +126,10 @@ public slots:
 
 private:
     void seedBanner();
+    // T205 capture/demo seam: `DF_NOTIFY_FIXTURE=empty|populated|concurrent|
+    // scrollable|banner-empty` seeds the Center's empty, populated,
+    // banner-and-history, scrollable and banner-only states deterministically.
+    void seedCaptureFixture(const QString &mode);
     void remove(quint32 id, const QString &reason);
     QByteArray policyJson() const;
 

@@ -107,6 +107,39 @@ falls back to the Tabler-backed `Icon.qml` vocabulary. See ADR
 [0164](adr/0164-settings-category-tile.md) and ADR
 [0185](adr/0185-tabler-line-icons.md).
 
+## Window chrome material (T206)
+
+The Settings window is a first-party CSD surface: `SettingsWindow.qml` draws
+the design-system `TitleBar` and `SettingsShell` owns the sidebar, toolbar and
+detail sheet. T206 gives the sidebar and toolbar their observed near-opaque
+appearance without changing the opaque content sheet:
+
+- Light sidebar `settingsSidebar` 0.986/0.857 and toolbar
+  `settingsToolbar` 0.961/0.965 (measured).
+- Dark uses the Finder-derived 0.935/0.218 sidebar and 0.900/0.247 toolbar as
+  an explicit **adapted** baseline; System Settings Dark has no independent
+  fit.
+- The window frame/content backing is transparent only behind those two
+  surfaces (`AppWindow.chromeTransparent`); the titlebar keeps its opaque
+  backing and the scrolling detail sheet stays `Theme.color.surface`.
+- `Material.appChromeFill()` resolves the preset through the shared `Glass`
+  resolver. Reduce Transparency uses the shared opaque plate; a
+  non-composited/unsupported client keeps the existing opaque
+  `surfaceMuted`/`chrome` fills; Increase Contrast raises the separator ink.
+  Focus is a controls/text state: the titlebar/controls dim, the material does
+  not change.
+- `SettingsShell` mirrors `appearance.colorScheme`,
+  `appearance.accent`, `accessibility.reduceMotion`,
+  `accessibility.reduceTransparency` and `accessibility.increaseContrast` onto
+  its own `Theme`/`Glass` singletons, the same app-local pattern ADR 0037
+  established. `Settings.appChromeSupported` is the client-alpha capability
+  seam (`DF_APP_CHROME_SOLID=1` forces the opaque capture path).
+
+The preset stores scalar alpha/tint only, so the reference's small sidebar
+chroma pickup is not reproduced; T206 captures record the rendered channel
+spread separately. ADR [0225](adr/0225-first-party-app-chrome-presets.md)
+records the decision and the unresolved chroma transport.
+
 ## Wallpaper sources (T-18)
 
 The Wallpaper pane presents three source rows: **Featured** (Wikimedia

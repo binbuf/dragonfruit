@@ -1375,6 +1375,243 @@ lockPolicy: lockPolicyModel(600),
             fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
         }
 
+        function test_control_center_material_regions_are_distinct_and_stable() {
+            var savedRollout = Glass.rollout;
+            var savedReduce = Glass.reduceTransparency;
+            var savedContrast = Glass.increaseContrast;
+            try {
+                Glass.rollout = "replacement";
+                Glass.reduceTransparency = false;
+                Glass.increaseContrast = false;
+                Theme.dark = false;
+                var panel = make({
+                    wifi: { state: "available", radioEnabled: true, label: "home",
+                            networks: [
+                                { ssid: "home", strength: 82, security: "WPA2",
+                                  secured: true, active: true, band: "5 GHz" },
+                                { ssid: "guest", strength: 61, security: "Open",
+                                  secured: false, active: false, band: "2.4 GHz" }
+                            ] },
+                    bluetooth: bluetoothModel("available", true, true, false,
+                                              [{ address: "AA:BB:CC:DD:EE:FF",
+                                                 name: "WF-1000XM6", connected: true }]),
+                    materialBlurActive: true,
+                    materialTier: 0,
+                    materialFallback: 0
+                });
+                compare(panel.sampledGlass, true);
+                compare(panel.outerGlass.preset, "controlCenterOuter");
+                compare(panel.moduleGlass.preset, "controlCenterModule");
+                compare(panel.expandedGlass.preset, "controlCenterExpanded");
+                fuzzyCompare(panel.outerGlass.alpha, 0.265, 0.001, "outer alpha");
+                fuzzyCompare(panel.moduleGlass.alpha, 0.391, 0.001,
+                             "module effective alpha");
+                compare(panel.outerFill.a, 0.0);
+                compare(panel.moduleFill.a, 0.0);
+                compare(panel.expandedFill.a, 0.0);
+
+                var regions = panel.materialRegions;
+                verify(regions.length >= 3, "outer + modules expected");
+                compare(regions[0].key, "outer");
+                compare(regions[0].preset, "controlCenterOuter");
+                var seen = {};
+                var modules = 0;
+                for (var i = 0; i < regions.length; ++i) {
+                    var region = regions[i];
+                    verify(region.key.length > 0);
+                    verify(!seen[region.key], "duplicate region " + region.key);
+                    seen[region.key] = true;
+                    verify(region.w > 0 && region.h > 0, region.key);
+                    if (region.preset === "controlCenterModule")
+                        ++modules;
+                }
+                verify(modules >= 2, "visible modules are separate regions");
+                verify(regions.length <= 32, "region bound");
+                verify(seen["module-wifi"] === true);
+                verify(seen["module-bluetooth"] === true);
+            } finally {
+                Glass.rollout = savedRollout;
+                Glass.reduceTransparency = savedReduce;
+                Glass.increaseContrast = savedContrast;
+                Theme.dark = false;
+            }
+        }
+
+        function test_control_center_solid_fallback_and_accessibility_variants() {
+            var savedRollout = Glass.rollout;
+            var savedReduce = Glass.reduceTransparency;
+            var savedContrast = Glass.increaseContrast;
+            try {
+                Glass.rollout = "replacement";
+                Glass.reduceTransparency = true;
+                Glass.increaseContrast = false;
+                Theme.dark = false;
+                var solid = make({
+                    wifi: { state: "available", radioEnabled: true, label: "home" },
+                    materialBlurActive: false,
+                    materialTier: 2,
+                    materialFallback: 0
+                });
+                compare(solid.sampledGlass, false);
+                compare(solid.outerGlass.renderMode, "solid");
+                verify(solid.outerFill.a >= 0.95, "outer solid plate");
+                verify(solid.moduleFill.a >= 0.9, "module solid plate");
+                verify(solid.moduleBorderWidth >= 1, "module rim on solid path");
+                compare(solid.outerBorderWidth >= 1, true);
+
+                Glass.reduceTransparency = false;
+                Glass.increaseContrast = true;
+                var contrast = make({
+                    wifi: { state: "available", radioEnabled: true, label: "home" },
+                    materialBlurActive: true,
+                    materialTier: 0,
+                    materialFallback: 0
+                });
+                verify(contrast.outerGlass.edge > 0.3,
+                       "Increase Contrast raises the outer rim");
+                fuzzyCompare(contrast.outerGlass.edge, 0.65, 0.001,
+                             "contrast outer rim");
+                verify(contrast.outerGlass.edgeWidth > 1.0,
+                       "contrast widens the compositor-painted rim");
+            } finally {
+                Glass.rollout = savedRollout;
+                Glass.reduceTransparency = savedReduce;
+                Glass.increaseContrast = savedContrast;
+                Theme.dark = false;
+            }
+        }
+
+        function test_expanded_wifi_and_bluetooth_lists_add_regions() {
+            var panel = make({
+                wifi: { state: "available", radioEnabled: true, label: "home",
+                        networks: [
+                            { ssid: "home", strength: 82, security: "WPA2",
+                              secured: true, active: true, band: "5 GHz" },
+                            { ssid: "guest", strength: 61, security: "Open",
+                              secured: false, active: false, band: "2.4 GHz" }
+                        ] },
+                bluetooth: bluetoothModel("available", true, true, false,
+                                          [{ address: "AA:BB:CC:DD:EE:FF",
+                                             name: "WF-1000XM6", connected: true }])
+            });
+            var wifiList = findChild(panel, "wifiNetworkList");
+            var bluetoothList = findChild(panel, "bluetoothExpandedList");
+            verify(wifiList !== null);
+            verify(bluetoothList !== null);
+            compare(wifiList.visible, false);
+            compare(bluetoothList.visible, false);
+            compare(panel.wifiNetworks.length, 2);
+
+            panel.toggleWifiExpanded();
+            waitForRendering(stage);
+            compare(wifiList.visible, true);
+            var wifiKeys = panel.materialRegions.map(function(region) {
+                return region.key;
+            });
+            verify(wifiKeys.indexOf("expanded-wifi") >= 0);
+            verify(findChild(wifiList, "wifiNetworkName") !== null);
+
+            panel.toggleBluetoothExpanded();
+            waitForRendering(stage);
+            compare(bluetoothList.visible, true);
+            var keys = panel.materialRegions.map(function(region) {
+                return region.key;
+            });
+            verify(keys.indexOf("expanded-bluetooth") >= 0);
+            verify(findChild(bluetoothList, "bluetoothDeviceName") !== null);
+
+            panel.toggleWifiExpanded();
+            panel.toggleBluetoothExpanded();
+            waitForRendering(stage);
+            compare(wifiList.visible, false);
+            compare(bluetoothList.visible, false);
+            var collapsedKeys = panel.materialRegions.map(function(region) {
+                return region.key;
+            });
+            compare(collapsedKeys.indexOf("expanded-wifi"), -1);
+            compare(collapsedKeys.indexOf("expanded-bluetooth"), -1);
+        }
+
+        function test_expanded_lists_stay_inside_scroll_bounds() {
+            var panel = make({
+                wifi: { state: "available", radioEnabled: true, label: "home",
+                        networks: [
+                            { ssid: "home", strength: 82, security: "WPA2",
+                              secured: true, active: true, band: "5 GHz" }
+                        ] },
+                bluetooth: bluetoothModel("available", true, true, false,
+                                          [{ address: "AA:BB:CC:DD:EE:FF",
+                                             name: "WF-1000XM6", connected: true }])
+            });
+            panel.width = 360;
+            panel.height = 400;
+            panel.wifiExpanded = true;
+            panel.bluetoothExpanded = true;
+            waitForRendering(stage);
+            var scroll = findChild(panel, "controlCenterScroll");
+            verify(scroll !== null);
+            compare(scroll.boundsBehavior, Flickable.StopAtBounds);
+            verify(scroll.contentHeight > scroll.height,
+                   "expanded content scrolls in a short surface");
+            var regions = panel.materialRegions;
+            for (var i = 1; i < regions.length; ++i) {
+                var region = regions[i];
+                verify(region.x >= scroll.x - 0.5, region.key + " left bound");
+                verify(region.y >= scroll.y - 0.5, region.key + " top bound");
+                verify(region.x + region.w <= scroll.x + scroll.width + 0.5,
+                       region.key + " right bound");
+                verify(region.y + region.h <= scroll.y + scroll.height + 0.5,
+                       region.key + " bottom bound");
+            }
+        }
+
+        function test_expanded_disclosures_are_accessible_actions() {
+            var panel = make({
+                wifi: { state: "available", radioEnabled: true, label: "home",
+                        networks: [] },
+                bluetooth: bluetoothModel("available", true, true, false)
+            });
+            var wifiDisclosure = findChild(panel, "wifiDisclosure");
+            var bluetoothDisclosure = findChild(panel, "bluetoothDisclosure");
+            verify(wifiDisclosure !== null);
+            verify(bluetoothDisclosure !== null);
+            compare(wifiDisclosure.Accessible.role, Accessible.Button);
+            compare(wifiDisclosure.Accessible.name, "Show Wi-Fi networks");
+            compare(wifiDisclosure.activeFocusOnTab, true);
+            compare(bluetoothDisclosure.Accessible.role, Accessible.Button);
+            compare(bluetoothDisclosure.Accessible.name, "Show Bluetooth devices");
+            compare(bluetoothDisclosure.activeFocusOnTab, true);
+            wifiDisclosure.activated();
+            compare(panel.wifiExpanded, true);
+            compare(wifiDisclosure.Accessible.name, "Hide Wi-Fi networks");
+        }
+
+        function test_light_sampled_modules_switch_to_light_foreground() {
+            var savedRollout = Glass.rollout;
+            var savedReduce = Glass.reduceTransparency;
+            try {
+                Glass.rollout = "replacement";
+                Glass.reduceTransparency = false;
+                Theme.dark = false;
+                var sampled = make({ materialBlurActive: true, materialTier: 0,
+                                     materialFallback: 0 });
+                verify(sampled.moduleTextPrimary.r > 0.8,
+                       "light-on-glass text on the sampled light module");
+                verify(sampled.moduleAccent.r > 0.8,
+                       "light accent on the sampled light module");
+
+                Glass.reduceTransparency = true;
+                var solid = make({ materialBlurActive: false, materialTier: 2,
+                                   materialFallback: 0 });
+                verify(solid.moduleTextPrimary.r < 0.3,
+                       "scheme text on the light solid plate");
+            } finally {
+                Glass.rollout = savedRollout;
+                Glass.reduceTransparency = savedReduce;
+                Theme.dark = false;
+            }
+        }
+
         function test_popup_role_material_covers_the_control_center() {
             // T-21.2c: Control Center is the transient Popup role. The panel
             // keeps its geometry and rim; only the fill switches between the

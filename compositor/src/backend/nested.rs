@@ -294,9 +294,31 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                             None
                         }
                     };
+                // T200: the menu-bar no-blur veil. Failure is non-fatal: the
+                // sharp path falls back to the glass flat-band compose (a
+                // scheme-appropriate plate) instead of the raw scene.
+                let veil_program =
+                    match std::borrow::BorrowMut::<GlesRenderer>::borrow_mut(backend.renderer())
+                        .compile_custom_texture_shader(
+                            crate::window::VEIL_SHADER,
+                            &crate::window::veil_uniform_names(),
+                        ) {
+                        Ok(program) => {
+                            crate::trace::log("material", "veil-program=compiled");
+                            Some(program)
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "dragonfruit-compositor: menu-bar veil shader unavailable \
+                                 ({err}); using the glass flat-band fallback"
+                            );
+                            None
+                        }
+                    };
                 *shared_init.borrow_mut() = Some(NestedData {
                     blur_program,
                     glass_program,
+                    veil_program,
                     material_textures: MaterialTextureCache::default(),
                     backend,
                     damage_tracker: OutputDamageTracker::new(
@@ -367,6 +389,10 @@ struct NestedData {
     /// when the driver refused it; the panel then keeps the plain blurred
     /// compose with no lens, specular rim, or adaptive tint.
     glass_program: Option<GlesTexProgram>,
+    /// The compiled menu-bar no-blur veil program (T200), or `None` when the
+    /// driver refused it; the sharp veil then falls back to the flat-band
+    /// glass compose.
+    veil_program: Option<GlesTexProgram>,
     /// Reused scene/blur textures for the two-pass material pass.
     material_textures: MaterialTextureCache,
     damage_tracker: OutputDamageTracker,
@@ -556,6 +582,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     BlurPrograms {
                         blur: data.blur_program.as_ref(),
                         glass: data.glass_program.as_ref(),
+                        veil: data.veil_program.as_ref(),
                         chain_size,
                     },
                     &blur_panels,
@@ -872,6 +899,7 @@ where
 struct BlurPrograms<'a> {
     blur: Option<&'a GlesTexProgram>,
     glass: Option<&'a GlesTexProgram>,
+    veil: Option<&'a GlesTexProgram>,
     /// The full output's physical size: the Kawase chain keeps that as its
     /// first destination so the panel's visual blur is unchanged from the
     /// pre-region path.
@@ -939,6 +967,10 @@ fn build_blur_elements(
             // Veil/sharp path: sample the compositor's scene texture directly.
             // No Kawase allocation and no blur pass is scheduled; the element
             // covers the whole padded region and clips to the region corners.
+            // The scene commit advances only on real scene damage, so a moving
+            // window under the bar damages the veil while a settled scene does
+            // not (T200).
+            slot.note_sharp_scene_commit(scene.cache.commit());
             let commit = slot.commit();
             let element = crate::window::BackdropBlurElement::new(
                 scene.texture.clone(),
@@ -951,6 +983,20 @@ fn build_blur_elements(
             .with_commit(commit)
             .with_texture_region(scene.region.rect)
             .with_corners(panel.corners);
+            // T200: a resolved veil uses its own depth-LUT shader. If the
+            // driver refused that program, the flat-band glass compose keeps
+            // a scheme-appropriate plate instead of exposing the raw scene.
+            let element = if let Some(veil) = panel.veil {
+                match programs.veil {
+                    Some(program) => element.with_veil(veil, program.clone()),
+                    None => match programs.glass {
+                        Some(glass) => element.with_glass(panel.glass, glass.clone()),
+                        None => element,
+                    },
+                }
+            } else {
+                element
+            };
             elements.push(NestedOutputElements::Blur(element));
             continue;
         }

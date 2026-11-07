@@ -44,6 +44,7 @@
 //! query gesture
 //! query switcher
 //! query policy
+//! query menubar
 //! query lock
 //! query session
 //! query spaces
@@ -737,6 +738,10 @@ pub enum SyntheticCommand {
     /// scheme, titlebar double-click, minimized animation, keyboard repeat,
     /// and gesture switches, followed by `end`.
     QueryPolicy,
+    /// Read-only menu-bar visibility introspection (T201): the live auto-hide
+    /// mode and, per output, the fullscreen/revealed/active/visible state and
+    /// reserved top strip, followed by `end`.
+    QueryMenuBar,
     /// Read-only session-lock introspection (T-12.3c): the fail-secure
     /// `locked` flag, the live lock-surface count, and whether a client
     /// currently holds keyboard focus, followed by `end`. Never unlocks.
@@ -978,12 +983,13 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("gesture") => SyntheticCommand::QueryGesture,
             Some("switcher") => SyntheticCommand::QuerySwitcher,
             Some("policy") => SyntheticCommand::QueryPolicy,
+            Some("menubar") => SyntheticCommand::QueryMenuBar,
             Some("lock") => SyntheticCommand::QueryLock,
             Some("session") => SyntheticCommand::QuerySession,
             Some("magnifier") => SyntheticCommand::QueryMagnifier,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, scale, identity, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock, session, magnifier)"
+                    "query requires a known subject (decorations, scale, identity, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, menubar, lock, session, magnifier)"
                         .into(),
                 );
             }
@@ -1294,6 +1300,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryPolicy => {
                 unreachable!("query policy is handled by apply_datagram")
             }
+            SyntheticCommand::QueryMenuBar => {
+                unreachable!("query menubar is handled by apply_datagram")
+            }
             SyntheticCommand::QueryLock => {
                 unreachable!("query lock is handled by apply_datagram")
             }
@@ -1552,6 +1561,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryPolicy) => {
                 if let Some((socket, peer)) = &reply {
                     let report = policy_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryMenuBar) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = menubar_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -2130,6 +2148,7 @@ fn material_report(state: &DfState) -> String {
     // change updates these values and the `material_revision`.
     for preset in [
         crate::material_preset::Preset::MenuAttached,
+        crate::material_preset::Preset::MenuBarVeil,
         crate::material_preset::Preset::Dock,
     ] {
         let resolved = state.resolve_glass_preset(preset);
@@ -2156,6 +2175,20 @@ fn material_report(state: &DfState) -> String {
             resolved.fallback_reason,
             state.material_revision,
         ));
+    }
+    // T200: the veil diagnostic is deliberately explicit about the depth LUT
+    // and the no-blur mode, so a capture log can prove the strip did not take
+    // the sampled path.
+    let veil = state.resolve_glass_preset(crate::material_preset::Preset::MenuBarVeil);
+    match crate::window::menubar_veil::VeilSpec::for_resolved(&veil) {
+        Some(spec) => out.push_str(&format!("{}\n", spec.diagnostic(veil.render_mode))),
+        None => out.push_str(&format!(
+            "material veil mode={} fallback={} extent={:.1} strip={:.1}\n",
+            veil.render_mode.name(),
+            veil.fallback_reason,
+            crate::window::menubar_veil::VEIL_EXTENT,
+            crate::window::menubar_veil::VEIL_STRIP_HEIGHT,
+        )),
     }
     out.push_str("end\n");
     out
@@ -2413,6 +2446,32 @@ fn policy_report(state: &DfState) -> String {
         gestures.space_switch as u32,
         gestures.mission_control as u32,
     )
+}
+
+/// `query menubar` report (T201): the live menu-bar auto-hide policy and its
+/// per-output reveal/visibility/reservation.
+///
+/// `menubar mode=<never|always|full-screen>` followed by one
+/// `menubar output <name> fullscreen=<0|1> revealed=<0|1> active=<0|1>
+/// visible=<0|1> reserved-top=<px>` line per output, then `end`.
+fn menubar_report(state: &DfState) -> String {
+    let mut out = format!("menubar mode={}\n", state.menu_bar_auto_hide().name());
+    for output in state.space.outputs() {
+        let name = output.name();
+        let fullscreen = state.fullscreen_client_covers_output(&name);
+        let active = state.menu_bar_active_on(&name);
+        out.push_str(&format!(
+            "menubar output {} fullscreen={} revealed={} active={} visible={} reserved-top={}\n",
+            name,
+            fullscreen as u32,
+            state.menu_bar_revealed_on(&name) as u32,
+            active as u32,
+            state.menu_bar_visible_on(&name, fullscreen) as u32,
+            state.shell.reserved_zones_for(&name).top,
+        ));
+    }
+    out.push_str("end\n");
+    out
 }
 
 /// The `query lock` report (T-12.3c): the fail-secure session-lock state.

@@ -32,6 +32,7 @@ use smithay::input::keyboard::xkb::keysyms;
 use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
 
 use crate::design_tokens::component::{context_menu, window as window_tokens};
+use crate::material_preset::{self, Backend, Preset, ResolveInput, Rollout};
 use crate::window::decoration::{color_from_rgba, ColorScheme};
 use crate::window::{WindowId, WindowMenuCommand};
 
@@ -498,8 +499,38 @@ impl WindowMenu {
             ));
         };
 
-        let border_color = color_from_rgba(self.scheme.border());
-        let surface = color_from_rgba(self.scheme.surface_elevated());
+        // T202: the SSD window menu is a compositor-owned context menu. It
+        // has no trusted shell backdrop, so the replacement look uses the
+        // detached menu preset's opaque local fallback rather than a
+        // translucent slab over an unfiltered window.
+        let resolved = material_preset::resolve(ResolveInput {
+            preset: Preset::MenuDetached,
+            scheme: match self.scheme {
+                ColorScheme::Light => material_preset::Scheme::Light,
+                ColorScheme::Dark => material_preset::Scheme::Dark,
+            },
+            backend: Backend::Software,
+            rollout: Rollout::from_env(),
+            ..ResolveInput::default()
+        });
+        let replacement = resolved.look == Rollout::Replacement;
+        let (surface, border_color) = if replacement {
+            let tint = resolved.tint.clamp(0.0, 1.0);
+            (
+                Color32F::new(tint, tint, tint, 1.0),
+                Color32F::new(
+                    (tint * 0.65).clamp(0.0, 1.0),
+                    (tint * 0.65).clamp(0.0, 1.0),
+                    (tint * 0.65).clamp(0.0, 1.0),
+                    1.0,
+                ),
+            )
+        } else {
+            (
+                color_from_rgba(self.scheme.surface_elevated()),
+                color_from_rgba(self.scheme.border()),
+            )
+        };
         let accent = color_from_rgba(self.scheme.accent());
 
         let mut push_panel =

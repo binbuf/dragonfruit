@@ -89,6 +89,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     materialpolicy.cpp
     menubrokerclient.cpp
     menubrokerpolicy.cpp
+    notificationcenter.cpp
+    notificationcenter.h
     notificationclient.cpp
     notificationmodel.cpp
     osdmodel.cpp

@@ -88,10 +88,10 @@ def main() -> int:
     checks.check(0.552 < quarter["alpha"] < 0.732,
                  "light slider interpolates between the first two anchors")
 
-    # Unmeasured roles keep their named baseline; the dark attached menu does
-    # not follow the light slider.
+    # Unmeasured roles keep their named baseline; the detached and status
+    # menus follow the measured curve by the documented relative adjustment.
     for name in presets.PRESET_NAMES:
-        if name == presets.SLIDER_PRESET:
+        if name == presets.SLIDER_PRESET or name in presets.RELATIVE_SLIDER_PRESETS:
             continue
         low = presets.resolve(data, name, scheme="light", slider=0.0,
                               rollout="replacement")
@@ -100,6 +100,35 @@ def main() -> int:
         checks.check(not low["sliderApplied"], f"{name}: slider not applied")
         checks.near(low["alpha"], high["alpha"], f"{name}: slider alpha unchanged")
         checks.near(low["tint"], high["tint"], f"{name}: slider tint unchanged")
+    default_position = float(data["glass"]["slider"]["defaultPosition"])
+    for name in presets.RELATIVE_SLIDER_PRESETS:
+        default = presets.resolve(data, name, scheme="light",
+                                  rollout="replacement")
+        explicit = presets.resolve(data, name, scheme="light",
+                                   slider=default_position,
+                                   rollout="replacement")
+        checks.near(default["alpha"], explicit["alpha"],
+                    f"{name}: relative default alpha preserved")
+        checks.near(default["tint"], explicit["tint"],
+                    f"{name}: relative default tint preserved")
+        low = presets.resolve(data, name, scheme="light", slider=0.0,
+                              rollout="replacement")
+        high = presets.resolve(data, name, scheme="light", slider=1.0,
+                               rollout="replacement")
+        checks.check(low["sliderApplied"] and high["sliderApplied"],
+                     f"{name}: relative slider applied")
+        checks.check(low["alpha"] > default["alpha"] > high["alpha"],
+                     f"{name}: relative alpha follows the attached curve")
+        checks.check(low["tint"] < default["tint"] < high["tint"],
+                     f"{name}: relative tint follows the attached curve")
+        dark = presets.resolve(data, name, scheme="dark", slider=0.0,
+                               rollout="replacement")
+        dark_high = presets.resolve(data, name, scheme="dark", slider=1.0,
+                                    rollout="replacement")
+        checks.check(not dark["sliderApplied"] and not dark_high["sliderApplied"],
+                     f"{name}: dark ignores the light slider")
+        checks.near(dark["alpha"], dark_high["alpha"],
+                    f"{name}: dark slider alpha unchanged")
     dark_low = presets.resolve(data, "menuAttached", scheme="dark", slider=0.0,
                                rollout="replacement")
     dark_high = presets.resolve(data, "menuAttached", scheme="dark", slider=1.0,
@@ -143,6 +172,92 @@ def main() -> int:
         checks.check(veil["fallbackReason"] == "none",
                      f"veil has no fallback reason on {backend}")
         checks.check(veil["blur"] == 0.0, f"veil requests no blur on {backend}")
+
+    # T200: the measured Light depth LUT is exact at the reference samples and
+    # ends by 95 pt; the veil colour is the scheme's lift/wash, not the legacy
+    # neutral plate.
+    light_veil = presets.resolve(data, "menuBarVeil", scheme="light",
+                                 rollout="replacement")
+    checks.near(light_veil["tint"], 1.0, "Light veil is a white lift")
+    checks.near(light_veil["stripHeight"], 39, "reference strip is 39 pt")
+    checks.near(light_veil["extent"], 95, "veil extent is 95 pt")
+    measured = {
+        5: 0.45098037, 15: 0.43921566, 25: 0.40784317, 35: 0.35686272,
+        50: 0.24313729, 75: 0.05882353, 90: 0.00784314, 95: 0.0,
+    }
+    for depth, expected in measured.items():
+        actual = light_veil["veil"][f"alpha{depth}"]
+        checks.check(abs(actual - expected) <= 0.03,
+                     f"Light LUT alpha at {depth} pt is within 0.03")
+    checks.check(light_veil["veil"]["alpha95"] == 0.0,
+                 "Light LUT ends at zero by 95 pt")
+    dark_veil = presets.resolve(data, "menuBarVeil", scheme="dark",
+                                rollout="replacement")
+    checks.near(dark_veil["tint"], 0.0, "Dark veil is a black wash")
+    checks.check(dark_veil["veil"]["alpha95"] == 0.0,
+                 "Dark LUT ends at zero by 95 pt")
+
+    # T206: first-party app chrome. The measured Light Settings/Files fits and
+    # the measured Dark Files fits are exact; Settings Dark is an adaptation
+    # from Finder. The presets are near-opaque solid, never sampled passes.
+    app_targets = {
+        ("settingsSidebar", "light"): (0.986, 0.857, "measured"),
+        ("settingsToolbar", "light"): (0.961, 0.965, "measured"),
+        ("settingsSidebar", "dark"): (0.935, 0.218, "adapted"),
+        ("settingsToolbar", "dark"): (0.900, 0.247, "adapted"),
+        ("filesSidebar", "light"): (0.985, 0.858, "measured"),
+        ("filesToolbar", "light"): (0.994, 0.922, "measured"),
+        ("filesSidebar", "dark"): (0.935, 0.218, "measured"),
+        ("filesToolbar", "dark"): (0.900, 0.247, "measured"),
+    }
+    for (name, scheme), (alpha, tint, confidence) in app_targets.items():
+        result = presets.resolve(data, name, scheme=scheme,
+                                 rollout="replacement")
+        checks.near(result["alpha"], alpha, f"{name} {scheme} alpha")
+        checks.near(result["tint"], tint, f"{name} {scheme} tint")
+        checks.check(result["renderMode"] == "solid",
+                     f"{name} {scheme} is an app-local solid preset")
+        checks.check(result["blur"] == 0.0,
+                     f"{name} {scheme} does not sample")
+        checks.check(result["confidence"] == confidence,
+                     f"{name} {scheme} confidence is {confidence}")
+        checks.check(result["alpha"] >= 0.9,
+                     f"{name} {scheme} stays near-opaque")
+        checks.check(result["fallbackReason"] == "none",
+                     f"{name} {scheme} names no fallback")
+        legacy = presets.resolve(data, name, scheme=scheme)
+        checks.check(legacy["look"] == "legacy",
+                     f"{name} {scheme} keeps the legacy look by default")
+        reduced = presets.resolve(data, name, scheme=scheme,
+                                  reduce_transparency=True,
+                                  rollout="replacement")
+        checks.check(reduced["renderMode"] == "solid" and reduced["alpha"] >= 0.9,
+                     f"{name} {scheme} Reduce Transparency uses the opaque plate")
+    for scheme in presets.SCHEMES:
+        sidebar = presets.resolve(data, "filesSidebar", scheme=scheme,
+                                  rollout="replacement")
+        toolbar = presets.resolve(data, "filesToolbar", scheme=scheme,
+                                  rollout="replacement")
+        checks.check((sidebar["alpha"], sidebar["tint"])
+                     != (toolbar["alpha"], toolbar["tint"]),
+                     f"Files {scheme} sidebar/toolbar are independent")
+        for name in ("settingsSidebar", "settingsToolbar"):
+            entry = presets.resolve(data, name, scheme=scheme,
+                                    rollout="replacement")
+            checks.check(entry["alpha"] >= 0.9,
+                         f"{name} {scheme} is near-opaque")
+    # The app presets do not follow the light attached-menu slider.
+    for name in presets.APP_CHROME_PRESETS:
+        low = presets.resolve(data, name, scheme="light", slider=0.0,
+                              rollout="replacement")
+        high = presets.resolve(data, name, scheme="light", slider=1.0,
+                               rollout="replacement")
+        checks.check(not low["sliderApplied"] and not high["sliderApplied"],
+                     f"{name} ignores the menu slider")
+        checks.near(low["alpha"], high["alpha"],
+                    f"{name} slider does not move alpha")
+        checks.near(low["tint"], high["tint"],
+                    f"{name} slider does not move tint")
 
     # Unsupported sampled paths are safe and explicit.
     for backend, mode in (("gpu-no-sampled-blur", "solid"),
@@ -197,6 +312,57 @@ def main() -> int:
     checks.check(presets.rollout_from_env(
         {"DRAGONFRUIT_GLASS_ROLLOUT": "bogus"}) == "legacy",
         "unknown rollout is safe")
+
+    # T205: the banner, stack and lower panel are three measured/adapted
+    # materials with independent resolution, not one Popup plate.
+    notification_targets = {
+        ("notificationBanner", "light"): (0.549, 0.976),
+        ("notificationStack", "light"): (0.551, 0.706),
+        ("notificationStack", "dark"): (0.507, 0.550),
+        ("notificationLowerPanel", "light"): (0.407, 0.852),
+    }
+    for (name, scheme), (alpha, tint) in notification_targets.items():
+        result = presets.resolve(data, name, scheme=scheme,
+                                 rollout="replacement")
+        checks.near(result["alpha"], alpha, f"{name}.{scheme} alpha")
+        checks.near(result["tint"], tint, f"{name}.{scheme} tint")
+        checks.check(result["renderMode"] == "sampled-glass",
+                     f"{name}.{scheme} keeps sampled glass")
+    for name in ("notificationBanner", "notificationStack",
+                 "notificationLowerPanel"):
+        for scheme in ("light", "dark"):
+            reduced = presets.resolve(data, name, scheme=scheme,
+                                      rollout="replacement",
+                                      reduce_transparency=True)
+            checks.check(reduced["renderMode"] == "solid"
+                         and reduced["alpha"] >= 0.95,
+                         f"{name}.{scheme} Reduce Transparency is the opaque plate")
+            software = presets.resolve(data, name, scheme=scheme,
+                                       rollout="replacement", backend="software")
+            checks.check(software["renderMode"] == "software-fallback",
+                         f"{name}.{scheme} software fallback is explicit")
+    for scheme in ("light", "dark"):
+        banner = presets.resolve(data, "notificationBanner", scheme=scheme,
+                                 rollout="replacement")
+        stack = presets.resolve(data, "notificationStack", scheme=scheme,
+                                rollout="replacement")
+        lower = presets.resolve(data, "notificationLowerPanel", scheme=scheme,
+                                rollout="replacement")
+        outputs = {
+            "banner": 0.502 * (1 - banner["alpha"]) + banner["tint"] * banner["alpha"],
+            "stack": 0.502 * (1 - stack["alpha"]) + stack["tint"] * stack["alpha"],
+            "lower": 0.502 * (1 - lower["alpha"]) + lower["tint"] * lower["alpha"],
+        }
+        checks.check(max(outputs.values()) - min(outputs.values()) > 0.02,
+                     f"{scheme} notification materials are distinct")
+    checks.check(
+        data["glass"]["presets"]["notificationBanner"]["dark"]["confidence"]
+        == "adapted",
+        "the uncovered Dark banner is labelled adapted")
+    checks.check(
+        data["glass"]["presets"]["notificationLowerPanel"]["dark"]["confidence"]
+        == "adapted",
+        "the uncovered Dark lower panel is labelled adapted")
 
     # The token file stays JSON-reproducible.
     serialized = json.dumps(data, sort_keys=True)

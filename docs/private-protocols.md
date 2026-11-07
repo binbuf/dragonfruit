@@ -98,7 +98,7 @@ an optional known T195 glass preset, a rect, four per-corner radii, and a
 bounded overscan for rim/shadow/veil. `clear_panel_regions` commits an empty
 set. Both are commit-latched with the buffer they describe.
 
-- The compositor validates keys and preset names, bounds the list to eight
+- The compositor validates keys and preset names, bounds the list to 32
   regions, clips each rect to the surface and the owning output, and ignores
   invalid metadata without disturbing the committed list. The first request
   after a commit starts from the committed list; `clear_panel_regions` is the
@@ -109,6 +109,18 @@ set. Both are commit-latched with the buffer they describe.
 - A legacy client that only sends `set_panel_rect` keeps one `panel` region
   and its existing optics. A surface with no region metadata keeps the derived
   panel (input-region bounds ∩ reserved strip).
+
+### Menu-bar auto-hide (v4, T201)
+
+`df_layer_surface.set_auto_hide(mode)` applies to the `menubar` namespace and
+mirrors `menu.autoHide`: `never` (visible on the desktop and over fullscreen),
+`always` (concealed until the top edge or Control-F2 reveals it), and
+`full_screen` (normal on the desktop, reveal-on-demand over fullscreen). The
+compositor owns the per-output revealed state. A concealed bar is removed from
+the visible-chrome list, so it contributes no reserved zone, input hit area, or
+material panel; a revealed bar keeps its normal reservation and input strip,
+and an open menu or menu-bar focus keeps it revealed. Other namespaces ignore
+the request (the Dock has its own auto-hide).
 - Region identity is `(namespace, layer, surface object, region key)`, so a
   stable key keeps its element id and cached filtered texture across unrelated
   scene damage and tint-only changes. Removed regions and surfaces drop their
@@ -117,9 +129,23 @@ set. Both are commit-latched with the buffer they describe.
   to the sharp path, which samples the compositor's region scene texture with
   no blur allocation. Neither path exposes the texture to QML or reads it back
   to the CPU.
+- T200 uses the same mechanism for the menu-bar veil: the shell configures the
+  layer surface to the 95 pt visual extent but keeps its exclusive zone and
+  committed input strip at the 28 pt bar, then declares a `veil` region with
+  the full extent. The lower 67 pt is visual-only. Clearing the region (hidden
+  bar, Reduce Transparency, or no sampled scene texture) leaves no material.
+- T205 declares the notification banner's visible card as one `banner` region
+  on `notification` (so a no-action card's transparent strip is not frosted)
+  and the Center's `stack`/`lower` regions on `notification-center`. The two
+  Center regions are disjoint; an active banner insets the stack below the
+  card. All three regions are cleared before their surface is unmapped, so a
+  closed notification surface leaves no stale material.
 
 Layers match `wlr-layer-shell`'s ordering: `background`, `bottom`, `top`,
-`overlay`. The menu bar and Dock are `top`; menus and the OSD are `overlay`.
+`overlay`. The menu bar and Dock are `top`; menus, the OSD and the Notification
+Center (`notification-center`) are `overlay`. The Center is a per-output
+transient surface with its own input region and an OnDemand keyboard policy; it
+reserves no zone and never creates a second hidden layer.
 
 > **Out of scope for T-07:** rendering the chrome. The compositor owns
 > placement, reserved zones, and configuration; the shell draws it

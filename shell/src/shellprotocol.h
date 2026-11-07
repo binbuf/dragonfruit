@@ -98,6 +98,21 @@ public:
     // height and exclusive zone. The compositor answers with `configure`.
     bool createMenuBarSurface(int height, int exclusiveZone);
 
+    // Declare the menu bar's material panel before its next content commit
+    // (T200). `height` is the visual veil extent (the surface itself may only
+    // commit the bar strip); `cornerRadius` preserves the legacy chrome shape
+    // when the replacement veil is not active. `active=false` commits an
+    // explicit empty panel set so a hidden/fallback bar contributes no
+    // sampled or feather material.
+    void setMenuBarFrameGeometry(bool active, int width, int height,
+                                 int cornerRadius);
+
+    // T201: forward the `menu.autoHide` policy. The compositor owns the
+    // per-output reveal; `mode` is `never`, `always`, or `full-screen`.
+    // Safe before the layer surface exists: the latest mode is sent when the
+    // surface is created.
+    void setMenuBarAutoHide(const QString &mode);
+
     // Create the dropdown `overlay` layer surface (T-09). It starts unmapped;
     // `setPopupGeometry` + `commitPopupImage` place and reveal it, `hidePopup`
     // unmaps it. Unlike the bar it reserves no zone and never takes keyboard.
@@ -106,6 +121,16 @@ public:
     // Place the popup layer surface at window coordinates `(x, y)` sized
     // `(width, height)`. The compositor answers with a fresh `configure`.
     bool setPopupGeometry(int x, int y, int width, int height);
+
+    // T202: declare the popup's independently keyed material regions with the
+    // pixels they describe. `regions` maps key/preset/x/y/w/h/tl/tr/br/bl/
+    // overscan; an empty list clears the material. The region requests are
+    // commit-latched by the compositor.
+    void setPopupPanelRegions(const QVariantList &regions);
+    void clearPopupPanelRegions();
+    // The popup surface accepts pointer input only while a menu is logically
+    // open; the closing animation must not intercept clicks.
+    void setPopupInputActive(bool active);
 
     // Attach `image` to the popup surface and commit. The image must be
     // ARGB32(_Premultiplied). `logicalSize` is the surface contract; the image
@@ -146,6 +171,11 @@ public:
     // popup's next frame. An empty panel leaves a tooltip without a backdrop.
     bool setDockPopupGeometry(int top, int right, int bottom, int left, int width, int height,
                               const QRect &panel);
+    // T202: one detached-menu material region for the active Dock popover,
+    // plus the same open-only input contract as the menu-bar popup.
+    void setDockPopupPanelRegion(const QString &preset, const QRect &rect, int radius);
+    void clearDockPopupPanelRegions();
+    void setDockPopupInputActive(bool active);
 
     // Attach `image` to the Dock popup surface and commit.
     bool commitDockPopupImage(const QImage &image, const QSize &logicalSize = QSize(),
@@ -249,12 +279,56 @@ public:
     // pass every click through. Applied on the next buffer commit.
     bool setBannerInputRegion(int width, int height);
 
+    // Declare the banner card's one material region (T205), surface-local
+    // logical coordinates, commit-latched with `commitBannerImage`. The
+    // transparent strip below a no-action card declares no material.
+    void setBannerPanelRegions(const QVariantList &regions);
+    void clearBannerPanelRegions();
+
     // Attach `image` to the banner surface and commit. The image must be
     // ARGB32(_Premultiplied).
     bool commitBannerImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the banner surface (attach a null buffer).
     bool hideBanner();
+
+    // Create the Notification Center overlay (T204): an `overlay` layer
+    // surface anchored to the top-right corner, namespace
+    // "notification-center", mapped only while the Center is open. It reserves
+    // nothing (`exclusive_zone = -1`) and takes the keyboard on demand so
+    // Escape, outside click-away and keyboard traversal work. `width`/`height`
+    // are the panel surface size; `topMargin` clears the menu bar.
+    bool createNotificationCenterSurface(int width, int height, int topMargin);
+
+    // Re-apply the Center surface size after a scale change reduces the
+    // logical output height.
+    bool setNotificationCenterSize(int width, int height);
+
+    // Set the Center's clickable input region to the full `width` x `height`
+    // top-left rect (a non-positive size passes everything through). Applied
+    // with the next buffer commit.
+    bool setNotificationCenterInputRegion(int width, int height);
+
+    // Take the keyboard while the Center is open (`grab` true) and return the
+    // layer to OnDemand when it closes. The Center is a modal history surface:
+    // opening it from the clock or a hot corner must route Escape/Up/Down/
+    // Return to the list without a second click, and an outside click must
+    // read as focus loss.
+    bool setNotificationCenterKeyboardGrab(bool grab);
+
+    // Declare the Center's independently keyed material regions (T205): the
+    // notification stack and the separately toned lower panel. Coordinates are
+    // surface-local logical; the list is commit-latched with
+    // `commitNotificationCenterImage`.
+    void setNotificationCenterPanelRegions(const QVariantList &regions);
+    void clearNotificationCenterPanelRegions();
+
+    // Attach `image` to the notification-center surface and commit.
+    bool commitNotificationCenterImage(const QImage &image,
+                                       const QSize &logicalSize = QSize());
+
+    // Unmap the notification-center surface (attach a null buffer).
+    bool hideNotificationCenter();
 
     // Create the Control Center panel overlay (T-11.3a): an `overlay` layer
     // surface anchored to the top-right corner, namespace "control-center",
@@ -273,6 +347,14 @@ public:
     // top-left rect (a non-positive size passes everything through). Applied
     // with the next buffer commit.
     bool setControlCenterInputRegion(int width, int height);
+
+    // Declare the independently keyed material regions of the open panel
+    // (T203): the outer plate, every visible module capsule, and any expanded
+    // list. Coordinates are surface-local logical; the list is commit-latched
+    // with `commitControlCenterImage`. `clearControlCenterPanelRegions`
+    // removes them when the panel hides.
+    void setControlCenterPanelRegions(const QVariantList &regions);
+    void clearControlCenterPanelRegions();
 
     // Attach `image` to the control-center surface and commit.
     bool commitControlCenterImage(const QImage &image, const QSize &logicalSize = QSize());
@@ -641,6 +723,7 @@ public:
         Dock,
         DockPopup,
         Banner,
+        NotificationCenter,
         ControlCenter,
         Overview,
         Chooser,
@@ -669,6 +752,7 @@ signals:
     void overviewConfigured(int width, int height, uint32_t serial);
     void switcherConfigured(int width, int height, uint32_t serial);
     void bannerConfigured(int width, int height, uint32_t serial);
+    void notificationCenterConfigured(int width, int height, uint32_t serial);
     void controlCenterConfigured(int width, int height, uint32_t serial);
     void osdConfigured(int width, int height, uint32_t serial);
     // FileChooser picker overlay (T-13.2b).
@@ -743,6 +827,9 @@ signals:
     // The compositor announced a new output scale (`df_output.scale`).
     void outputScaleChanged(qreal scale);
     void outputRefreshChanged();
+    // An output disappeared (hotplug detach). Transient chrome anchored to it
+    // must close rather than wait for a stale configure.
+    void outputRemoved();
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // A matched application accelerator for the focused app (T-14.2b): the
@@ -775,6 +862,17 @@ signals:
     void bannerPointerMoved(qreal x, qreal y);
     void bannerPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void bannerPointerLeft();
+    // Notification Center input (T204), in center-surface coordinates.
+    void notificationCenterPointerMoved(qreal x, qreal y);
+    void notificationCenterPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void notificationCenterPointerLeft();
+    // The Notification Center specifically holds the keyboard (T204): key
+    // events drive Up/Down/Home/End/Return/Delete/Escape in its scene.
+    void notificationCenterKeyboardFocused(bool focused);
+    void notificationCenterKeyEvent(uint32_t key, bool pressed);
+    // The compositor closed the Center layer (output teardown or a protocol
+    // close). The shell drops its panel state and releases focus.
+    void notificationCenterSurfaceClosed();
     // Control Center panel input (T-11.3a), in panel-surface coordinates.
     void controlCenterPointerMoved(qreal x, qreal y);
     void controlCenterPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
@@ -893,6 +991,8 @@ private:
                   const QSize &logicalSize = QSize(),
                   const QRect &sourceRect = QRect());
     bool applyDockSurfaceGeometry(wl_surface *surface);
+    // Commit pending menu-bar material metadata on a damage-free frame.
+    bool applyMenuBarSurfaceGeometry(wl_surface *surface);
     ShellSurfaceBuffer *surfaceBuffer(wl_surface *surface);
     bool ensureShmSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
                        const QSize &size);
@@ -958,6 +1058,9 @@ private:
                                     int32_t width, int32_t height);
     static void onBannerConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                   int32_t width, int32_t height);
+    static void onNotificationCenterConfigure(void *data, df_layer_surface *layer,
+                                              uint32_t serial, int32_t width, int32_t height);
+    static void onNotificationCenterLayerClosed(void *data, df_layer_surface *layer);
     static void onControlCenterConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                          int32_t width, int32_t height);
     static void onOsdConfigure(void *data, df_layer_surface *layer, uint32_t serial,
@@ -1150,6 +1253,22 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     df_toplevel_manager *m_manager = nullptr;
     wl_surface *m_surface = nullptr;
     df_layer_surface *m_layer = nullptr;
+    // The menu-bar material panel last committed (T200). Kept so a settled
+    // frame does not resend identical region metadata.
+    bool m_menuBarPanelActive = false;
+    // Whether any panel request (region or explicit empty set) has been
+    // committed for this surface. The first inactive frame must clear the
+    // derived default panel, not just a previously active veil.
+    bool m_menuBarPanelInitialized = false;
+    // A region request is pending and must be committed even when the
+    // menubar pixels did not change (showBackground/material toggles).
+    bool m_menuBarPanelDirty = false;
+    int m_menuBarPanelWidth = 0;
+    int m_menuBarPanelHeight = 0;
+    int m_menuBarPanelRadius = 0;
+    // T201: the menu-bar auto-hide wire value. Kept so the request can be
+    // sent once the layer surface exists.
+    uint32_t m_menuBarAutoHide = 2; // full-screen; see df_layer_surface.auto_hide_mode
     wl_surface *m_popupSurface = nullptr;
     df_layer_surface *m_popupLayer = nullptr;
     wl_surface *m_dockSurface = nullptr;
@@ -1207,6 +1326,13 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     df_layer_surface *m_bannerLayer = nullptr;
     bool m_bannerMapped = false;
     bool m_pointerOnBanner = false;
+    // Notification Center overlay (T204): a top-right `overlay` surface
+    // mapped only while the Center is open.
+    wl_surface *m_notificationCenterSurface = nullptr;
+    df_layer_surface *m_notificationCenterLayer = nullptr;
+    bool m_notificationCenterMapped = false;
+    bool m_pointerOnNotificationCenter = false;
+    bool m_keyboardOnNotificationCenter = false;
     // Control Center panel overlay (T-11.3a): a top-right `overlay` surface
     // mapped only while the panel is open.
     wl_surface *m_controlCenterSurface = nullptr;

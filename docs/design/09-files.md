@@ -166,6 +166,27 @@ T-10.4b's decision; this slice keeps the browsing model in QML so the listing
 attaches to `FilesBrowser.currentUri` without a UI rewrite. See
 [adr/0048](adr/0048-files-app-shell-location-provider.md).
 
+**Implementation status (T206).** The Files window now consumes the same
+app-local chrome material as Settings. The sidebar uses `filesSidebar`
+(Light 0.985/0.858, Dark 0.935/0.218) and the toolbar `filesToolbar` (Light
+0.994/0.922, Dark 0.900/0.247); both Dark values are measured, and the two
+surfaces stay independent in both schemes. The listing/content sheet and the
+path bar remain opaque; `PathBar` rounds only the bottom-right window corner.
+`AppWindow.chromeTransparent` removes the generic frame/content backing, the
+titlebar keeps an opaque backing, and `ChromeSheet` draws the sidebar
+(bottom-left) and detail/path-bar (bottom-right) corners as one fill so alpha
+is applied exactly once. `Material.appChromeFill()` supplies the fill; Reduce
+Transparency, the non-composited `DF_APP_CHROME_SOLID=1` fallback, and Increase
+Contrast use the shared resolver, and focus remains a controls/text state.
+`FilesSettings` (a small wrapper over the shared settings client) mirrors
+`appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion`,
+`accessibility.reduceTransparency` and `accessibility.increaseContrast` onto
+the Files process's `Theme`/`Glass`; the window no longer relies on the host
+style hint alone. The preset transport is scalar alpha/tint, so the reference
+sidebar's small chroma pickup remains an explicit follow-up (ADR
+[0225](adr/0225-first-party-app-chrome-presets.md)).
+`make first-party-chrome-check`/`-capture` cover both apps.
+
 **Implementation status (T-10.4b).** The list and icon views are real and
 render the `files-core` listing. Because the project has no cxx-qt and the
 pinned toolchain is offline, the bridge is a **hand-written C ABI**
