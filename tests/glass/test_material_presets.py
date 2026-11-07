@@ -197,6 +197,68 @@ def main() -> int:
     checks.check(dark_veil["veil"]["alpha95"] == 0.0,
                  "Dark LUT ends at zero by 95 pt")
 
+    # T206: first-party app chrome. The measured Light Settings/Files fits and
+    # the measured Dark Files fits are exact; Settings Dark is an adaptation
+    # from Finder. The presets are near-opaque solid, never sampled passes.
+    app_targets = {
+        ("settingsSidebar", "light"): (0.986, 0.857, "measured"),
+        ("settingsToolbar", "light"): (0.961, 0.965, "measured"),
+        ("settingsSidebar", "dark"): (0.935, 0.218, "adapted"),
+        ("settingsToolbar", "dark"): (0.900, 0.247, "adapted"),
+        ("filesSidebar", "light"): (0.985, 0.858, "measured"),
+        ("filesToolbar", "light"): (0.994, 0.922, "measured"),
+        ("filesSidebar", "dark"): (0.935, 0.218, "measured"),
+        ("filesToolbar", "dark"): (0.900, 0.247, "measured"),
+    }
+    for (name, scheme), (alpha, tint, confidence) in app_targets.items():
+        result = presets.resolve(data, name, scheme=scheme,
+                                 rollout="replacement")
+        checks.near(result["alpha"], alpha, f"{name} {scheme} alpha")
+        checks.near(result["tint"], tint, f"{name} {scheme} tint")
+        checks.check(result["renderMode"] == "solid",
+                     f"{name} {scheme} is an app-local solid preset")
+        checks.check(result["blur"] == 0.0,
+                     f"{name} {scheme} does not sample")
+        checks.check(result["confidence"] == confidence,
+                     f"{name} {scheme} confidence is {confidence}")
+        checks.check(result["alpha"] >= 0.9,
+                     f"{name} {scheme} stays near-opaque")
+        checks.check(result["fallbackReason"] == "none",
+                     f"{name} {scheme} names no fallback")
+        legacy = presets.resolve(data, name, scheme=scheme)
+        checks.check(legacy["look"] == "legacy",
+                     f"{name} {scheme} keeps the legacy look by default")
+        reduced = presets.resolve(data, name, scheme=scheme,
+                                  reduce_transparency=True,
+                                  rollout="replacement")
+        checks.check(reduced["renderMode"] == "solid" and reduced["alpha"] >= 0.9,
+                     f"{name} {scheme} Reduce Transparency uses the opaque plate")
+    for scheme in presets.SCHEMES:
+        sidebar = presets.resolve(data, "filesSidebar", scheme=scheme,
+                                  rollout="replacement")
+        toolbar = presets.resolve(data, "filesToolbar", scheme=scheme,
+                                  rollout="replacement")
+        checks.check((sidebar["alpha"], sidebar["tint"])
+                     != (toolbar["alpha"], toolbar["tint"]),
+                     f"Files {scheme} sidebar/toolbar are independent")
+        for name in ("settingsSidebar", "settingsToolbar"):
+            entry = presets.resolve(data, name, scheme=scheme,
+                                    rollout="replacement")
+            checks.check(entry["alpha"] >= 0.9,
+                         f"{name} {scheme} is near-opaque")
+    # The app presets do not follow the light attached-menu slider.
+    for name in presets.APP_CHROME_PRESETS:
+        low = presets.resolve(data, name, scheme="light", slider=0.0,
+                              rollout="replacement")
+        high = presets.resolve(data, name, scheme="light", slider=1.0,
+                               rollout="replacement")
+        checks.check(not low["sliderApplied"] and not high["sliderApplied"],
+                     f"{name} ignores the menu slider")
+        checks.near(low["alpha"], high["alpha"],
+                    f"{name} slider does not move alpha")
+        checks.near(low["tint"], high["tint"],
+                    f"{name} slider does not move tint")
+
     # Unsupported sampled paths are safe and explicit.
     for backend, mode in (("gpu-no-sampled-blur", "solid"),
                           ("software", "software-fallback")):

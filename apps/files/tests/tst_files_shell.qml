@@ -146,6 +146,75 @@ Item {
             verify(!shell.forwardButton.enabled);
         }
 
+        // -- T206 app-local chrome ---------------------------------------------
+
+        function test_first_party_chrome_uses_measured_app_material() {
+            var savedScheme = Settings.values["appearance.colorScheme"];
+            var savedAccent = Settings.values["appearance.accent"];
+            var savedReduce = Settings.values["accessibility.reduceTransparency"];
+            var savedContrast = Settings.values["accessibility.increaseContrast"];
+            var shell = make();
+            try {
+                shell.glassRollout = "replacement";
+                shell.appChromeSupported = true;
+                Settings.set("appearance.colorScheme", "light");
+                Settings.set("appearance.accent", "");
+                Settings.set("accessibility.reduceTransparency", false);
+                Settings.set("accessibility.increaseContrast", false);
+                tryCompare(Theme, "dark", false);
+                waitForRendering(stage);
+
+                compare(shell.appWindow.chromeTransparent, true);
+                fuzzyCompare(shell.sidebarPane.color.a, 0.985, 1e-4);
+                fuzzyCompare(shell.sidebarPane.color.r, 0.858, 1e-4);
+                fuzzyCompare(shell.toolbar.fillColor.a, 0.994, 1e-4);
+                fuzzyCompare(shell.toolbar.fillColor.r, 0.922, 1e-4);
+                fuzzyCompare(shell.detailSheet.color.a, 1.0, 1e-6);
+                fuzzyCompare(shell.pathBar.fillColor.a, 1.0, 1e-6);
+                compare(shell.pathBar.bottomRightRadius,
+                        Theme.controls.window.radius);
+
+                // Files mirrors the shared appearance/accent keys, not just
+                // the scheme.
+                Settings.set("appearance.accent", "#123456");
+                tryCompare(Theme, "accentOverride", "#123456");
+
+                // The measured Dark Files values are independent per surface.
+                Settings.set("appearance.colorScheme", "dark");
+                tryCompare(Theme, "dark", true);
+                waitForRendering(stage);
+                fuzzyCompare(shell.sidebarPane.color.a, 0.935, 1e-4);
+                fuzzyCompare(shell.sidebarPane.color.r, 0.218, 1e-4);
+                fuzzyCompare(shell.toolbar.fillColor.a, 0.900, 1e-4);
+                fuzzyCompare(shell.toolbar.fillColor.r, 0.247, 1e-4);
+
+                // Reduce Transparency takes the shared opaque plate.
+                Settings.set("accessibility.reduceTransparency", true);
+                waitForRendering(stage);
+                fuzzyCompare(shell.sidebarPane.color.a, 0.96, 1e-4);
+                fuzzyCompare(shell.sidebarPane.color.r, 0.1, 1e-4);
+
+                // A non-composited client keeps the opaque source-list plate.
+                shell.appChromeSupported = false;
+                waitForRendering(stage);
+                fuzzyCompare(shell.sidebarPane.color.a, 1.0, 1e-6);
+                fuzzyCompare(shell.sidebarPane.color.r,
+                             Theme.color.surfaceMuted.r, 1e-6);
+                fuzzyCompare(shell.toolbar.fillColor.a, 1.0, 1e-6);
+
+                // Focus is a controls/text state, not a material change.
+                shell.windowActive = false;
+                compare(shell.titleBar.active, false);
+            } finally {
+                Settings.set("appearance.colorScheme", savedScheme);
+                Settings.set("appearance.accent", savedAccent);
+                Settings.set("accessibility.reduceTransparency", savedReduce);
+                Settings.set("accessibility.increaseContrast", savedContrast);
+                shell.glassRollout = "legacy";
+                shell.appChromeSupported = true;
+            }
+        }
+
         // -- Sidebar changes the browsing model ---------------------------------
 
         function test_sidebar_selection_changes_the_model() {

@@ -127,6 +127,71 @@ Item {
             verify(!shell.forwardButton.enabled);
         }
 
+        // -- T206 app-local chrome ---------------------------------------------
+
+        function test_first_party_chrome_uses_measured_app_material() {
+            var savedScheme = Settings.values["appearance.colorScheme"];
+            var savedReduce = Settings.values["accessibility.reduceTransparency"];
+            var savedContrast = Settings.values["accessibility.increaseContrast"];
+            var shell = make();
+            try {
+                shell.glassRollout = "replacement";
+                shell.appChromeSupported = true;
+                Settings.set("appearance.colorScheme", "light");
+                Settings.set("accessibility.reduceTransparency", false);
+                Settings.set("accessibility.increaseContrast", false);
+                tryCompare(Theme, "dark", false);
+                waitForRendering(stage);
+
+                compare(shell.appWindow.chromeTransparent, true);
+                fuzzyCompare(shell.sidebarPane.color.a, 0.986, 1e-4);
+                fuzzyCompare(shell.sidebarPane.color.r, 0.857, 1e-4);
+                fuzzyCompare(shell.toolbar.fillColor.a, 0.961, 1e-4);
+                fuzzyCompare(shell.toolbar.fillColor.r, 0.965, 1e-4);
+                fuzzyCompare(shell.detailSheet.color.a, 1.0, 1e-6);
+                compare(shell.detailSheet.bottomRightRadius,
+                        Theme.controls.window.radius);
+
+                // Dark Settings is the explicit Finder-derived adaptation.
+                Settings.set("appearance.colorScheme", "dark");
+                tryCompare(Theme, "dark", true);
+                waitForRendering(stage);
+                fuzzyCompare(shell.sidebarPane.color.a, 0.935, 1e-4);
+                fuzzyCompare(shell.sidebarPane.color.r, 0.218, 1e-4);
+                fuzzyCompare(shell.toolbar.fillColor.a, 0.900, 1e-4);
+                fuzzyCompare(shell.toolbar.fillColor.r, 0.247, 1e-4);
+
+                // Reduce Transparency takes the shared opaque plate.
+                Settings.set("accessibility.reduceTransparency", true);
+                waitForRendering(stage);
+                fuzzyCompare(shell.sidebarPane.color.a, 0.96, 1e-4);
+                fuzzyCompare(shell.sidebarPane.color.r, 0.1, 1e-4);
+
+                // A non-composited client keeps the opaque source-list plate.
+                shell.appChromeSupported = false;
+                waitForRendering(stage);
+                fuzzyCompare(shell.sidebarPane.color.a, 1.0, 1e-6);
+                fuzzyCompare(shell.sidebarPane.color.r,
+                             Theme.color.surfaceMuted.r, 1e-6);
+                fuzzyCompare(shell.toolbar.fillColor.a, 1.0, 1e-6);
+                fuzzyCompare(shell.toolbar.fillColor.r, Theme.color.chrome.r, 1e-6);
+
+                // Focus is a controls/text state, not a material change.
+                shell.windowActive = false;
+                compare(shell.titleBar.active, false);
+                shell.appChromeSupported = true;
+                Settings.set("accessibility.reduceTransparency", false);
+                waitForRendering(stage);
+                fuzzyCompare(shell.sidebarPane.color.a, 0.935, 1e-4);
+            } finally {
+                Settings.set("appearance.colorScheme", savedScheme);
+                Settings.set("accessibility.reduceTransparency", savedReduce);
+                Settings.set("accessibility.increaseContrast", savedContrast);
+                shell.glassRollout = "legacy";
+                shell.appChromeSupported = true;
+            }
+        }
+
         // -- Search -------------------------------------------------------------
 
         function test_search_filters_panes() {
