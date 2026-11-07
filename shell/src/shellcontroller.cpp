@@ -1190,6 +1190,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(bannerObject, SIGNAL(actionInvoked(QString)), this,
             SLOT(onBannerActionInvoked(QString)));
     connect(bannerObject, SIGNAL(activated()), this, SLOT(onBannerActivated()));
+    // T205: the card region follows the action-row height, so re-render when
+    // the QML layout re-declares it.
+    connect(bannerObject, SIGNAL(materialRegionsChanged()), this,
+            SLOT(scheduleBannerRender()));
     bindChromePacing(m_producers.value(m_bannerWindow), QStringLiteral("banner"),
                      [this]() { renderBanner(); });
     connect(m_protocol, &ShellProtocol::bannerConfigured, this,
@@ -1242,6 +1246,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onNotificationCenterActionRequested(int,QString)));
     connect(notificationCenterObject, SIGNAL(dismissEntryRequested(int)), this,
             SLOT(onNotificationCenterEntryDismissRequested(int)));
+    // T205: the stack/lower regions follow the QML layout and the banner
+    // inset; re-render when the binding settles so the compositor never keeps
+    // the pre-layout region list.
+    connect(notificationCenterObject, SIGNAL(materialRegionsChanged()), this,
+            SLOT(scheduleNotificationCenterRender()));
     bindChromePacing(m_producers.value(m_notificationCenterWindow),
                      QStringLiteral("notification-center"),
                      [this]() { renderNotificationCenter(); });
@@ -1262,6 +1271,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_notificationCenterWidth = kNotificationCenterWidth;
     m_notificationCenterHeight = kNotificationCenterHeight;
     applyNotificationCenterData();
+    // Capture/demo seam (T205): open the Center deterministically for the
+    // material captures without injecting the Control-Shift-N chord. Never
+    // set in a normal session.
+    if (qEnvironmentVariable("DF_NOTIFY_CENTER_FIXTURE") == QLatin1String("open")) {
+        QTimer::singleShot(0, this, [this]() { showNotificationCenter(); });
+    }
 
     // Control Center panel (T-11.3a): a top-right offscreen scene rendered
     // into its own overlay surface. It is a pure view; the taps/gestures it
@@ -2768,9 +2783,11 @@ void ShellController::onNotificationCenterStateClosed(const QString &reason)
     m_notificationCenterPending = false;
     m_notificationCenterButtons = Qt::NoButton;
     if (m_protocol) {
-        // Clear the input region before unmapping so a stale clickable panel
-        // never survives the close, then hand focus back to the active window.
+        // Clear the input region and the material regions before unmapping so
+        // a stale clickable or frosted panel never survives the close, then
+        // hand focus back to the active window.
         m_protocol->setNotificationCenterInputRegion(0, 0);
+        m_protocol->clearNotificationCenterPanelRegions();
         m_protocol->setNotificationCenterKeyboardGrab(false);
         m_protocol->hideNotificationCenter();
         if (m_notificationCenterKeyboardFocused)
@@ -2916,6 +2933,21 @@ void ShellController::applyNotificationCenterData()
     m_notificationCenterItem->setProperty("selectedIndex",
                                           m_notificationCenter->selectedIndex());
     m_notificationCenterItem->setProperty("available", m_notificationCenter->available());
+    // T205: a co-visible banner owns the top strip; inset the Center's stack
+    // below the card so the two trusted surfaces never overlap or sample one
+    // another. The inset follows the banner's action-row height.
+    const bool hasBanner = m_notificationModel && m_notificationModel->hasBanner();
+    int bannerCardHeight = 0;
+    if (hasBanner) {
+        const QVariantList actions =
+            m_notificationModel->banner().value(QStringLiteral("actions")).toList();
+        bannerCardHeight = actions.isEmpty() ? kBannerCardHeight
+                                             : kBannerCardActionsHeight;
+    }
+    m_notificationCenterItem->setProperty(
+        "bannerInset", hasBanner ? bannerCardHeight + kBannerTopGap : 0);
+    if (m_notificationCenterOpen)
+        scheduleNotificationCenterRender();
 }
 
 void ShellController::renderNotificationCenter()
@@ -2930,6 +2962,12 @@ void ShellController::renderNotificationCenter()
                        QSize(m_notificationCenterWidth, m_notificationCenterHeight),
                        QSize(m_notificationCenterWidth, m_notificationCenterHeight),
                        m_chromeScale);
+    // T205: the stack and lower panel are disjoint, independently keyed
+    // regions; the list is commit-latched with the image below.
+    if (m_protocol) {
+        m_protocol->setNotificationCenterPanelRegions(
+            m_notificationCenterItem->property("materialRegions").toList());
+    }
     const QSize logical(m_notificationCenterWidth, m_notificationCenterHeight);
     commitChromeScene(m_notificationCenterWindow,
                       {{QStringLiteral("notification-center"), logical, QRect(),
@@ -7265,6 +7303,9 @@ void ShellController::showCurrentBanner()
     m_bannerPending = true;
     if (m_bannerWidth > 0 && m_bannerHeight > 0)
         renderBanner();
+    // T205: a banner appearing while the Center is open moves the stack down.
+    if (m_notificationCenterOpen)
+        applyNotificationCenterData();
 }
 
 void ShellController::applyBannerInputRegion()
@@ -7289,8 +7330,12 @@ void ShellController::hideCurrentBanner()
     m_bannerId = 0;
     if (m_protocol) {
         m_protocol->setBannerInputRegion(0, 0);
+        m_protocol->clearBannerPanelRegions();
         m_protocol->hideBanner();
     }
+    // T205: the Center reclaims the top strip once the banner is gone.
+    if (m_notificationCenterOpen)
+        applyNotificationCenterData();
 }
 
 void ShellController::onBannerConfigured(int width, int height, quint32)
@@ -7396,6 +7441,12 @@ void ShellController::renderBanner()
         return;
     prepareChromeScene(m_bannerWindow, m_bannerItem, QSize(m_bannerWidth, m_bannerHeight),
                        QSize(m_bannerWidth, m_bannerHeight), m_chromeScale);
+    // T205: declare the visible card, not the transparent strip below a
+    // no-action banner, before the image commit latches the region list.
+    if (m_protocol) {
+        m_protocol->setBannerPanelRegions(
+            m_bannerItem->property("materialRegions").toList());
+    }
     const QSize logical(m_bannerWidth, m_bannerHeight);
     commitChromeScene(m_bannerWindow,
                       {{QStringLiteral("banner"), logical, QRect(),

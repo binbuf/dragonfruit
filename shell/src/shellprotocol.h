@@ -279,6 +279,12 @@ public:
     // pass every click through. Applied on the next buffer commit.
     bool setBannerInputRegion(int width, int height);
 
+    // Declare the banner card's one material region (T205), surface-local
+    // logical coordinates, commit-latched with `commitBannerImage`. The
+    // transparent strip below a no-action card declares no material.
+    void setBannerPanelRegions(const QVariantList &regions);
+    void clearBannerPanelRegions();
+
     // Attach `image` to the banner surface and commit. The image must be
     // ARGB32(_Premultiplied).
     bool commitBannerImage(const QImage &image, const QSize &logicalSize = QSize());
@@ -309,6 +315,13 @@ public:
     // Return to the list without a second click, and an outside click must
     // read as focus loss.
     bool setNotificationCenterKeyboardGrab(bool grab);
+
+    // Declare the Center's independently keyed material regions (T205): the
+    // notification stack and the separately toned lower panel. Coordinates are
+    // surface-local logical; the list is commit-latched with
+    // `commitNotificationCenterImage`.
+    void setNotificationCenterPanelRegions(const QVariantList &regions);
+    void clearNotificationCenterPanelRegions();
 
     // Attach `image` to the notification-center surface and commit.
     bool commitNotificationCenterImage(const QImage &image,

@@ -292,5 +292,265 @@ Item {
             }
             Theme.dark = false;
         }
+
+        // --- T205: banner, stack and lower-panel materials ------------------
+
+        function test_the_banner_uses_the_notification_banner_preset() {
+            var savedRollout = Glass.rollout;
+            try {
+                Glass.rollout = "replacement";
+                Theme.dark = false;
+                var banner = make(bannerComponent, {
+                    summary: "New message",
+                    materialBlurActive: true,
+                    materialTier: 0,
+                    materialFallback: 0
+                });
+                compare(banner.bannerGlass.preset, "notificationBanner");
+                fuzzyCompare(banner.bannerGlass.alpha, 0.549, 0.001,
+                             "light banner alpha");
+                fuzzyCompare(banner.bannerGlass.tint, 0.976, 0.001,
+                             "light banner tint");
+                compare(banner.sampledGlass, true);
+                compare(banner.cardFill.a, 0.0);
+                var regions = banner.materialRegions;
+                compare(regions.length, 1);
+                compare(regions[0].key, "banner");
+                compare(regions[0].preset, "notificationBanner");
+                compare(regions[0].h, 96);
+                compare(findChild(banner, "bannerCard").color.a, 0.0);
+
+                var withActions = make(bannerComponent, {
+                    summary: "New message",
+                    actions: [{ key: "reply", label: "Reply" }]
+                });
+                compare(withActions.materialRegions[0].h, 132);
+
+                Theme.dark = true;
+                var dark = make(bannerComponent, { summary: "New message" });
+                compare(dark.bannerGlass.scheme, "dark");
+                fuzzyCompare(dark.bannerGlass.alpha, 0.56, 0.001,
+                             "dark banner alpha");
+                fuzzyCompare(dark.bannerGlass.tint, 0.30, 0.001,
+                             "dark banner tint");
+            } finally {
+                Glass.rollout = savedRollout;
+                Theme.dark = false;
+            }
+        }
+
+        function test_the_banner_fallbacks_use_the_shared_policy() {
+            var savedRollout = Glass.rollout;
+            var savedReduce = Glass.reduceTransparency;
+            var savedContrast = Glass.increaseContrast;
+            try {
+                Glass.rollout = "replacement";
+                Glass.reduceTransparency = true;
+                Glass.increaseContrast = false;
+                Theme.dark = false;
+                var reduced = make(bannerComponent, {
+                    summary: "New message",
+                    materialBlurActive: true,
+                    materialTier: 0,
+                    materialFallback: 0
+                });
+                compare(reduced.bannerGlass.renderMode, "solid");
+                verify(reduced.cardFill.a >= 0.95, "Reduce Transparency plate");
+                compare(reduced.sampledGlass, false);
+
+                Glass.reduceTransparency = false;
+                var software = make(bannerComponent, {
+                    summary: "New message",
+                    materialBlurActive: true,
+                    materialTier: 0,
+                    materialFallback: 2
+                });
+                compare(software.bannerGlass.renderMode, "software-fallback");
+                verify(software.cardFill.a >= 0.95, "software plate");
+                compare(software.materialFallbackReason, "software");
+
+                var minimal = make(bannerComponent, {
+                    summary: "New message",
+                    materialBlurActive: false,
+                    materialTier: 2,
+                    materialFallback: 0
+                });
+                compare(minimal.bannerGlass.renderMode, "solid");
+                compare(minimal.materialFallbackReason, "minimal");
+                verify(minimal.cardFill.a >= 0.95, "minimal plate");
+
+                Glass.rollout = "legacy";
+                var legacy = make(bannerComponent, {
+                    summary: "New message",
+                    materialBlurActive: true
+                });
+                compare(legacy.sampledGlass, false);
+                compareColor(legacy.cardFill, Material.popupFill(true), "legacy");
+            } finally {
+                Glass.rollout = savedRollout;
+                Glass.reduceTransparency = savedReduce;
+                Glass.increaseContrast = savedContrast;
+                Theme.dark = false;
+            }
+        }
+
+        function test_the_center_declares_disjoint_stack_and_lower_regions() {
+            var savedRollout = Glass.rollout;
+            try {
+                Glass.rollout = "replacement";
+                Theme.dark = false;
+                var center = make(centerComponent, {
+                    history: [activeEntry(7, "New message"),
+                              historyEntry(6, "Old message", "expired")]
+                });
+                compare(center.stackGlass.preset, "notificationStack");
+                compare(center.lowerGlass.preset, "notificationLowerPanel");
+                fuzzyCompare(center.stackGlass.alpha, 0.551, 0.001,
+                             "light stack alpha");
+                fuzzyCompare(center.stackGlass.tint, 0.706, 0.001,
+                             "light stack tint");
+                fuzzyCompare(center.lowerGlass.alpha, 0.407, 0.001,
+                             "light lower alpha");
+                fuzzyCompare(center.lowerGlass.tint, 0.852, 0.001,
+                             "light lower tint");
+                compare(center.stackFill.a, 0.0);
+                compare(center.lowerFill.a, 0.0);
+
+                var regions = center.materialRegions;
+                compare(regions.length, 2);
+                compare(regions[0].key, "stack");
+                compare(regions[0].preset, "notificationStack");
+                compare(regions[1].key, "lower");
+                compare(regions[1].preset, "notificationLowerPanel");
+                compare(regions[0].y, 0);
+                compare(regions[1].y, center.height - center.lowerPanelHeight);
+                verify(regions[0].y + regions[0].h <= regions[1].y,
+                       "stack and lower must not overlap");
+                verify(regions[1].x + regions[1].w <= center.width);
+                verify(regions[1].y + regions[1].h <= center.height);
+
+                // A co-visible banner insets the stack; the regions stay
+                // disjoint and the transparent top strip declares no material.
+                center.bannerInset = 140;
+                waitForRendering(stage);
+                regions = center.materialRegions;
+                compare(regions.length, 2);
+                compare(regions[0].y, 140);
+                compare(regions[1].y, center.height - center.lowerPanelHeight);
+                verify(regions[0].y + regions[0].h <= regions[1].y,
+                       "banner inset keeps the regions disjoint");
+                verify(regions.length <= 32, "region bound");
+            } finally {
+                Glass.rollout = savedRollout;
+                Theme.dark = false;
+            }
+        }
+
+        function test_the_center_light_and_dark_materials_are_distinct() {
+            var savedRollout = Glass.rollout;
+            try {
+                Glass.rollout = "replacement";
+                Theme.dark = false;
+                var light = make(centerComponent, { history: [] });
+                fuzzyCompare(light.stackGlass.alpha, 0.551, 0.001,
+                             "light stack alpha");
+                fuzzyCompare(light.stackGlass.tint, 0.706, 0.001,
+                             "light stack tint");
+                var lightAlpha = light.stackGlass.alpha;
+                var lightTint = light.stackGlass.tint;
+                Theme.dark = true;
+                var dark = make(centerComponent, { history: [] });
+                fuzzyCompare(dark.stackGlass.alpha, 0.507, 0.001,
+                             "dark stack alpha");
+                fuzzyCompare(dark.stackGlass.tint, 0.550, 0.001,
+                             "dark stack tint");
+                fuzzyCompare(dark.lowerGlass.alpha, 0.40, 0.001,
+                             "dark lower alpha");
+                fuzzyCompare(dark.lowerGlass.tint, 0.30, 0.001,
+                             "dark lower tint");
+                verify(lightAlpha !== dark.stackGlass.alpha
+                       || lightTint !== dark.stackGlass.tint,
+                       "Light and Dark stacks must be distinct");
+                verify(dark.lowerGlass.alpha !== dark.stackGlass.alpha
+                       || dark.lowerGlass.tint !== dark.stackGlass.tint,
+                       "Dark lower panel must be distinct from the stack");
+            } finally {
+                Glass.rollout = savedRollout;
+                Theme.dark = false;
+            }
+        }
+
+        function test_the_center_empty_and_scrollable_states() {
+            var center = make(centerComponent, { history: [] });
+            var empty = findChild(center, "emptyHistory");
+            verify(empty.visible);
+            compare(empty.text, "No notifications");
+            compare(center.lowerSummary, "0 notifications");
+            compare(findChild(center, "historyScrollBar").visible, false);
+            compare(findChild(center, "historyList").count, 0);
+
+            var unavailable = make(centerComponent, {
+                history: [],
+                available: false
+            });
+            compare(findChild(unavailable, "emptyHistory").text,
+                    "Notifications unavailable");
+            compare(unavailable.lowerSummary, "Notification service unavailable");
+
+            var rows = [];
+            for (var i = 0; i < 18; ++i)
+                rows.push(historyEntry(100 + i, "Message " + (i + 1),
+                                       i % 2 === 0 ? "expired" : "dismissed"));
+            var scrollable = make(centerComponent, { history: rows });
+            var list = findChild(scrollable, "historyList");
+            verify(list.contentHeight > list.height,
+                   "18 rows overflow the stack viewport");
+            verify(findChild(scrollable, "historyScrollBar").visible);
+            compare(findChild(scrollable, "lowerPanelHint").text,
+                    "Scroll for more");
+            compare(scrollable.lowerSummary, "18 notifications");
+        }
+
+        function test_the_center_fallbacks_use_the_shared_policy() {
+            var savedRollout = Glass.rollout;
+            var savedReduce = Glass.reduceTransparency;
+            var savedContrast = Glass.increaseContrast;
+            try {
+                Glass.rollout = "replacement";
+                Glass.reduceTransparency = true;
+                Glass.increaseContrast = false;
+                Theme.dark = false;
+                var reduced = make(centerComponent, { history: [] });
+                compare(reduced.stackGlass.renderMode, "solid");
+                compare(reduced.lowerGlass.renderMode, "solid");
+                verify(reduced.stackFill.a >= 0.95, "stack Reduce Transparency");
+                verify(reduced.lowerFill.a >= 0.95, "lower Reduce Transparency");
+
+                Glass.reduceTransparency = false;
+                var software = make(centerComponent, {
+                    history: [],
+                    materialBlurActive: true,
+                    materialTier: 0,
+                    materialFallback: 2
+                });
+                compare(software.stackGlass.renderMode, "software-fallback");
+                compare(software.lowerGlass.renderMode, "software-fallback");
+                compare(software.materialFallbackReason, "software");
+                verify(software.stackFill.a >= 0.95);
+                verify(software.lowerFill.a >= 0.95);
+
+                Glass.increaseContrast = true;
+                var contrast = make(centerComponent, { history: [] });
+                verify(contrast.stackGlass.edge > 0.3,
+                       "Increase Contrast raises the stack rim");
+                verify(contrast.lowerGlass.edge > 0.3,
+                       "Increase Contrast raises the lower rim");
+            } finally {
+                Glass.rollout = savedRollout;
+                Glass.reduceTransparency = savedReduce;
+                Glass.increaseContrast = savedContrast;
+                Theme.dark = false;
+            }
+        }
     }
 }

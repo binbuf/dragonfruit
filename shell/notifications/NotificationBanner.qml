@@ -27,6 +27,29 @@ Item {
     readonly property string materialFallbackReason:
         Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
 
+    // T205: the banner is its own optical preset, not the shared Popup plate.
+    // The compositor paints the measured flat band on the sampled path; the
+    // QML complement is transparent there and paints the same resolved
+    // tint/alpha on solid, software and Reduce Transparency. Legacy keeps the
+    // pre-T205 popup fill.
+    readonly property var bannerGlass: Glass.resolve("notificationBanner", {
+        scheme: Theme.dark ? "dark" : "light",
+        rollout: Glass.rollout,
+        reduceTransparency: Glass.reduceTransparency,
+        increaseContrast: Glass.increaseContrast,
+        backend: materialFallback === 2 ? "software"
+               : materialBlurActive ? "gpu-sampled" : "gpu-no-sampled-blur",
+        tier: materialTier === 2 ? "minimal" : materialTier === 1 ? "reduced" : "full"
+    })
+    readonly property bool replacementLook: Glass.rollout === "replacement"
+    readonly property bool sampledGlass: replacementLook && materialBlurActive
+        && bannerGlass.renderMode === "sampled-glass"
+    readonly property color cardFill: sampledGlass ? "transparent"
+        : replacementLook
+          ? Qt.rgba(bannerGlass.tint, bannerGlass.tint, bannerGlass.tint,
+                    bannerGlass.alpha)
+          : Material.popupFill(materialBlurActive)
+
     signal actionInvoked(string key)
     signal activated()
 
@@ -38,6 +61,19 @@ Item {
                                     : root.urgency === "low" ? Theme.color.textTertiary
                                     : Theme.color.accent
 
+    // T205: the banner's one material region is the visible card, not the
+    // surface's transparent strip below a no-action card. The compositor
+    // commit-latches this list with the banner image; `banner` is the stable
+    // key and `notificationBanner` the measured preset.
+    readonly property var materialRegions: [{
+        key: "banner",
+        preset: "notificationBanner",
+        x: 0, y: 0, w: width, h: cardHeight,
+        tl: Theme.controls.popup.radius, tr: Theme.controls.popup.radius,
+        br: Theme.controls.popup.radius, bl: Theme.controls.popup.radius,
+        overscan: 8
+    }]
+
     // The scene is exactly the surface; the transparent area below the card
     // passes clicks through (the shell only makes the card clickable).
     width: 380
@@ -47,6 +83,11 @@ Item {
         anchors.fill: card
         radius: card.radius
         level: "overlay"
+        // T205: the compositor's flat band is opaque and already sits behind
+        // the card. A QML shadow under a transparent sampled fill would show
+        // through and darken the measured material, so it is only painted on
+        // the solid/software paths where the card carries its own fill.
+        visible: !root.sampledGlass
     }
 
     Rectangle {
@@ -55,10 +96,11 @@ Item {
         width: parent.width
         height: root.cardHeight
         radius: Theme.controls.popup.radius
-        // The compositor material's scrim (T-20.3): a banner is a `Popup`, so
-        // the fill carries `material.popupOpacity`; without the sampled pass
-        // it switches to the milky complement. The rim stays opaque.
-        color: Material.popupFill(root.materialBlurActive)
+        // T205: the sampled compositor pass paints the banner material; the
+        // QML card is transparent then and carries the same resolved fill on
+        // the solid/software/accessibility paths. The rim stays opaque so the
+        // card edge and urgency stripe remain legible at every tier.
+        color: root.cardFill
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true

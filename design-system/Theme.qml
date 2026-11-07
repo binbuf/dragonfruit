@@ -567,8 +567,8 @@ QtObject {
                     readonly property real foreground: 0.0
                 }
                 readonly property var dark: QtObject {
-                    readonly property string confidence: "baseline"
-                    readonly property string provenance: "The dark banner is uncovered as an independent fit; named baseline 0.56/0.30"
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "T205: the dark banner is uncovered as an independent fit (underconstrained); adapted readable 0.56/0.30 so it reads lighter than the dark stack and keeps light-on-glass text contrast"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.56
@@ -641,15 +641,15 @@ QtObject {
                     readonly property real foreground: 0.0
                 }
                 readonly property var dark: QtObject {
-                    readonly property string confidence: "baseline"
-                    readonly property string provenance: "The dark lower panel is uncovered; named baseline 0.48/0.28"
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "T205: the dark lower panel is uncovered as an independent fit (underconstrained); adapted readable 0.40/0.30 so it reads below the dark stack on black/mid/white and stays distinct from the dark banner"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
-                        readonly property real neutralAlpha: 0.48
-                        readonly property real neutralTint: 0.28
+                        readonly property real neutralAlpha: 0.4
+                        readonly property real neutralTint: 0.3
                         readonly property real perceptualWeight: 0.0
-                        readonly property real perceptualAlpha: 0.48
-                        readonly property real perceptualTint: 0.28
+                        readonly property real perceptualAlpha: 0.4
+                        readonly property real perceptualTint: 0.3
                     }
                     readonly property real blur: 18.0
                     readonly property real edge: 0.0

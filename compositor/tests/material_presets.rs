@@ -150,6 +150,43 @@ fn veil_is_explicit_and_unsupported_sampled_paths_are_safe() {
 }
 
 #[test]
+fn notification_materials_are_three_distinct_presets() {
+    // T205: the measured Light banner/stack/lower fits and the Dark stack.
+    for (preset, scheme, alpha, tint) in [
+        (Preset::NotificationBanner, Scheme::Light, 0.549, 0.976),
+        (Preset::NotificationStack, Scheme::Light, 0.551, 0.706),
+        (Preset::NotificationStack, Scheme::Dark, 0.507, 0.550),
+        (Preset::NotificationLowerPanel, Scheme::Light, 0.407, 0.852),
+    ] {
+        let resolved = resolve(replacement(preset, scheme));
+        assert!((resolved.alpha - alpha).abs() < 1e-6, "{}", preset.name());
+        assert!((resolved.tint - tint).abs() < 1e-6, "{}", preset.name());
+        assert_eq!(resolved.render_mode, RenderMode::SampledGlass);
+    }
+    // The uncovered Dark banner/lower panel are explicit adaptations, not
+    // invented measured fits.
+    for preset in [Preset::NotificationBanner, Preset::NotificationLowerPanel] {
+        let resolved = resolve(replacement(preset, Scheme::Dark));
+        assert_eq!(resolved.confidence, "adapted", "{}", preset.name());
+    }
+    // All three are independently distinguishable over the mid backdrop.
+    for scheme in [Scheme::Light, Scheme::Dark] {
+        let mut outputs = Vec::new();
+        for preset in [
+            Preset::NotificationBanner,
+            Preset::NotificationStack,
+            Preset::NotificationLowerPanel,
+        ] {
+            let resolved = resolve(replacement(preset, scheme));
+            outputs.push(0.502 * (1.0 - resolved.alpha) + resolved.tint * resolved.alpha);
+        }
+        let spread = outputs.iter().cloned().fold(f32::MIN, f32::max)
+            - outputs.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(spread > 0.02, "{scheme:?} materials collapsed: {outputs:?}");
+    }
+}
+
+#[test]
 fn rollout_defaults_to_the_existing_appearance() {
     assert_eq!(Rollout::default(), Rollout::Legacy);
     let legacy = resolve(ResolveInput {

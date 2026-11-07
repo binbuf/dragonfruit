@@ -1015,8 +1015,29 @@ history with their status, never stale active actions. The service keeps
 banner delivery, expiry, replacement, urgency, Focus policy and badge
 semantics; a service absence clears the stale view into an accessible
 "Notifications unavailable" state, and the existing `availableChanged` refresh
-repopulates it after reconnect. T205 owns the notification-stack material
-calibration. See [adr/0223](adr/0223-notification-center-mapping.md).
+repopulates it after reconnect. See
+[adr/0223](adr/0223-notification-center-mapping.md).
+
+**T205 status (notification materials).** The banner and Center now carry
+three distinct materials. `NotificationBanner.qml` resolves
+`notificationBanner` and declares one `banner` region sized to the visible
+card (96 pt, or 132 pt with actions), so the transparent strip below a
+no-action banner is never frosted. `NotificationCenter.qml` resolves
+`notificationStack` and `notificationLowerPanel` and declares two disjoint
+regions, `stack` and `lower`; the lower panel is a fixed summary/hint footer,
+while the stack holds the title and scrollable history. An active banner sets
+the Center's `bannerInset`, moving the stack below the card so both surfaces
+stay co-visible without overlap or double-frosting. The shell commit-latches
+the region lists with each image, re-declares them on history/layout changes,
+and clears them before unmapping. On the sampled path the compositor's opaque
+flat band is the plate and QML is transparent; solid, software-fallback and
+Reduce Transparency paint the same resolved tint/alpha, and the legacy rollout
+keeps `Material.popupFill()`. The empty history shows a deliberate
+"No notifications"/"Notifications unavailable" state, and an overflowing
+history shows a visible scroll thumb plus "Scroll for more". The Dark banner
+and lower panel are readable, labelled adaptations because the reference has
+no independent Dark fit. See
+[adr/0224](adr/0224-notification-banner-stack-lower-panel.md).
 
 **T-11.3a status.** The Control Center panel exists: the menu-bar item (or the
 Control-Option-C shortcut, routed as the compositor's `control-center` input

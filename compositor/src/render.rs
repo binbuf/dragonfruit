@@ -482,6 +482,10 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             // own region stacked over the outer plate, so the composite is
             // built from the resolved own-layer values rather than a second
             // copy of the measured effective alpha.
+            // T205: the notification banner, stack and lower panel are the
+            // same measured flat-band family. Each is a disjoint region, so
+            // the shader consumes the resolved alpha/tint directly instead of
+            // the generic Popup adaptive tint.
             let flat_fit = resolved.look == Rollout::Replacement
                 && matches!(
                     preset,
@@ -489,6 +493,9 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                         | Preset::ControlCenterOuter
                         | Preset::ControlCenterModule
                         | Preset::ControlCenterExpanded
+                        | Preset::NotificationBanner
+                        | Preset::NotificationStack
+                        | Preset::NotificationLowerPanel
                 );
             let dock_fit = flat_fit && preset == Preset::Dock;
             let base_spec = if dock_fit {
