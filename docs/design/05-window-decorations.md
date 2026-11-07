@@ -27,20 +27,38 @@ applications place controls on the left.
 
 ### GTK steering (compatibility bridge)
 
-The session applies the standard GTK window-control layout
-(`close,minimize,maximize:` — close, minimize, maximize on the left) before
-any application can launch. `dragonfruit-session --sync-toolkit` writes it to
-the user's `gtk-3.0/settings.ini`, `gtk-4.0/settings.ini`, and the GLib
-GSettings keyfile, then updates the live `org.gnome.desktop.wm.preferences
-button-layout` value through `gsettings` when that tool is available. The
-session entry calls it at login; running the command by hand inside a live
-session updates a dconf-backed desktop immediately. GTK 3/4 and libadwaita
-apps that use `GtkWindowControls`/`AdwHeaderBar` move their controls left.
+The session applies two complementary GTK defaults before any application can
+launch:
 
+- `GTK_CSD=0` in the session environment asks GTK 3 to use server-side
+  decorations. A cooperative GTK 3 client then negotiates `xdg-decoration`
+  with the compositor, which draws the same left-side
+  close/minimize/maximize titlebar as every other Tier-2 window.
+- The standard GTK window-control layout (`close,minimize,maximize:` — close,
+  minimize, maximize on the left) covers clients that keep client-side
+  decoration (GTK 4/libadwaita, or a GTK 3 app that still draws its own
+  headerbar). `dragonfruit-session --sync-toolkit` writes it to the user's
+  `gtk-3.0/settings.ini`, `gtk-4.0/settings.ini`, and the GLib GSettings
+  keyfile, then updates the live `org.gnome.desktop.wm.preferences
+  button-layout` value through `gsettings` when that tool is available. The
+  session entry calls it at login; running the command by hand inside a live
+  session updates a dconf-backed desktop immediately.
+
+GTK 4/libadwaita may ignore `GTK_CSD`; the layout setting is the fallback.
 This remains a best-effort bridge: an application that draws its own controls
 (Electron/Chromium, SDL, some toolkits, and apps with a hard-coded headerbar)
 keeps them where it draws them. We do not inject a second titlebar or fake
 controls into client pixels (the tier-3 dignity rule above).
+
+### Other toolkits
+
+| Toolkit | What makes the controls appear on the left |
+|---|---|
+| Qt 5/6 | Qt Wayland negotiates server-side decoration by default when the compositor offers `xdg-decoration`; Dragonfruit advertises it. Do not set `QT_WAYLAND_DISABLE_WINDOWDECORATION=1`. |
+| GTK 3 | `GTK_CSD=0` (session default) → compositor SSD; otherwise `gtk-decoration-layout` moves CSD controls left. |
+| GTK 4/libadwaita | `gtk-decoration-layout` moves `GtkWindowControls`/`AdwHeaderBar` controls left; many apps still draw their own headerbar. |
+| Electron/Chromium | Prefer the platform titlebar: Chromium `--gtk-window-decorations` / `--enable-features=UseGtkThemeFrame`; VS Code `"window.titleBarStyle": "native"`. Apps without such an option keep their own frame. |
+| X11 (Xwayland) | The compositor draws the frame; X11 apps are Tier 2 without per-app cooperation. |
 
 ## Negotiation
 
@@ -214,6 +232,9 @@ not turn the SSD titlebar into glass, so the titlebar fill remains the
 token-opaque surface described above. `_NET_FRAME_EXTENTS` is still not
 published to X11 clients ([STATUS.md](STATUS.md) G-16). The label-less window
 menu is the main decoration gap (G-06). The GTK steering bridge now runs from
-the session entry (`dragonfruit-session --sync-toolkit`), so cooperative GTK
-CSD apps place their controls on the left; Electron/Chromium and other
-self-drawn frames remain the documented tier-3 boundary.
+the session entry (`dragonfruit-session --sync-toolkit`), and the session
+exports `GTK_CSD=0` so GTK 3 asks for compositor SSD; the compositor also
+answers a decoration object created after the initial configure with the SSD
+mode, so a lazily negotiating client still gets the left-side titlebar.
+Electron/Chromium and other self-drawn frames remain the documented tier-3
+boundary.

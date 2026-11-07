@@ -13,10 +13,11 @@ use std::path::PathBuf;
 /// contract must agree on it.
 const SOCKET: &str = "dragonfruit-wayland";
 /// The static part of the session environment every unit carries.
-const STATIC_ENV: [(&str, &str); 3] = [
+const STATIC_ENV: [(&str, &str); 4] = [
     ("XDG_CURRENT_DESKTOP", "dragonfruit"),
     ("XDG_SESSION_TYPE", "wayland"),
     ("WAYLAND_DISPLAY", SOCKET),
+    ("GTK_CSD", "0"),
 ];
 /// Dynamic values the session entry imports into the user manager; every unit
 /// passes them through.

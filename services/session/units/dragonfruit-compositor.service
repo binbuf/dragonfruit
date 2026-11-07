@@ -23,6 +23,7 @@ Restart=no
 Environment=XDG_CURRENT_DESKTOP=dragonfruit
 Environment=XDG_SESSION_TYPE=wayland
 Environment=WAYLAND_DISPLAY=dragonfruit-wayland
+Environment=GTK_CSD=0
 PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
 
 [Install]

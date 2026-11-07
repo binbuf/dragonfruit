@@ -311,11 +311,14 @@ DM greeter → dragonfruit-session-entry
   7. rm "$XDG_RUNTIME_DIR/<socket>"{,.lock,.x11-display,.launch-token}
 ```
 
-The toolkit step is the GTK steering compatibility bridge: it writes the left-side
+The toolkit step is the GTK steering compatibility bridge: the session
+environment also exports `GTK_CSD=0` so GTK 3 asks the compositor for
+server-side decorations, and `--sync-toolkit` writes the left-side
 `gtk-decoration-layout` to the user's GTK 3/4 `settings.ini`, the GLib
-GSettings keyfile, and (when `gsettings` is available) the live dconf value,
-so cooperative GTK/libadwaita CSD apps match the compositor and first-party
-titlebars. It is best-effort and never blocks the session; see
+GSettings keyfile, and (when `gsettings` is available) the live dconf value.
+Cooperative GTK 3 clients therefore get the compositor titlebar, while
+GTK 4/libadwaita CSD apps move their controls left where the toolkit honours
+the setting. It is best-effort and never blocks the session; see
 [05-window-decorations.md](05-window-decorations.md).
 
 The compositor is the anchor: when it exits (a clean logout or a crash), the
