@@ -296,8 +296,8 @@ def main():
         "The scenario names are the same, but the T183 run used shorter "
         "windows (idle 5.3 s, Dock sweep 2.7 s, Mission Control 2.6 s). The "
         "v0.1.1 run uses the T192b set (idle 60 s, Dock sweep 10 s, Mission "
-        "Control 6.5 s). Compare the per-frame percentiles, not the frame "
-        "counts; the counts are not normalized for elapsed time."
+        "Control with the 10-window set). Compare the per-frame percentiles, "
+        "not the frame counts; the counts are not normalized for elapsed time."
     )
     add("")
     add("| scenario | T183 elapsed s | v0.1.1 elapsed s | T183 commits | v0.1.1 commits |")
@@ -426,6 +426,51 @@ def main():
         " included) no longer crashes at teardown and reports zero shm"
         " commits; this measured comparison run keeps the overview on the"
         " deliberate fallback row so the fallback rate is visible."
+    )
+    add("")
+
+    add("## Regressions and p95/p99 outliers")
+    add("")
+    menubar = current.get("menubar-open", {})
+    popover = current.get("dock-popover-open", {})
+    mission = current.get("mission-control", {})
+    add(
+        "The steady-state Dock sweep improves on every percentile, but the "
+        "first-frame rows still carry outliers that are reported rather than "
+        "averaged away:"
+    )
+    add("")
+    add(
+        f"- menubar-open: shell commit p95/p99 "
+        f"{menubar.get('commit_p95', 0)}/{menubar.get('commit_p99', 0)} us "
+        f"(T183 {baseline.get('menubar-open', {}).get('commit_p95', 0)}/"
+        f"{baseline.get('menubar-open', {}).get('commit_p99', 0)} us), "
+        f"compositor frame p99 {menubar.get('frame_p99', 0)} us."
+    )
+    add(
+        f"- dock-popover-open: shell commit p95/p99 "
+        f"{popover.get('commit_p95', 0)}/{popover.get('commit_p99', 0)} us "
+        f"(T183 {baseline.get('dock-popover-open', {}).get('commit_p95', 0)}/"
+        f"{baseline.get('dock-popover-open', {}).get('commit_p99', 0)} us), "
+        f"compositor frame p99 {popover.get('frame_p99', 0)} us."
+    )
+    add(
+        f"- mission-control: shell commit p99 "
+        f"{mission.get('commit_p99', 0)} us and compositor frame p99 "
+        f"{mission.get('frame_p99', 0)} us with 10 windows; the overview "
+        "surface's shm fallback is counted in the transport table, and the "
+        "zero-fallback full-rail verification still shows the 10-window "
+        "overview is the expensive pass."
+    )
+    add("")
+    add(
+        "These are first-frame interval outliers, not the steady-state Dock "
+        "sweep. The shell's `commit_us` ring is cleared per scenario, so the "
+        "first commit after a state change includes the QML scene rebuild and "
+        "the blur/glass pass; the T183 baseline used a shorter window and the "
+        "offscreen-QPA path, so its interval does not include the same first "
+        "frame. T193 must either reduce this first-frame cost or accept it "
+        "with a documented budget; it is not averaged into the p50."
     )
     add("")
 
