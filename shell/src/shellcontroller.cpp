@@ -2199,14 +2199,28 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (qEnvironmentVariableIsSet("DF_LOCK_FIXTURE")) {
         const int lockDelay = qMax(1, qEnvironmentVariableIntValue("DF_LOCK_FIXTURE"));
         const int unlockDelay = qEnvironmentVariableIntValue("DF_LOCK_UNLOCK_MS");
+        qInfo() << "shell: lock fixture lock-ms=" << lockDelay
+                << "unlock-ms=" << unlockDelay;
         QTimer::singleShot(lockDelay, this, [this]() {
             if (m_protocol)
                 m_protocol->lockSession();
         });
         if (unlockDelay > 0) {
-            QTimer::singleShot(unlockDelay, this, [this]() {
-                if (m_protocol && m_protocol->isSessionLocked())
+            // The lock event can arrive after the requested unlock delay while
+            // the lock UI is still configuring (the nested host throttles the
+            // first commits). Retry until the protocol reports the locked
+            // state, then unlock once; the seam stays inert unless set.
+            auto *unlockTimer = new QTimer(this);
+            unlockTimer->setInterval(250);
+            connect(unlockTimer, &QTimer::timeout, this, [this, unlockTimer]() {
+                if (m_protocol && m_protocol->isSessionLocked()) {
+                    qInfo() << "shell: lock fixture unlocking";
                     m_protocol->unlockSession();
+                    unlockTimer->stop();
+                }
+            });
+            QTimer::singleShot(unlockDelay, this, [unlockTimer]() {
+                unlockTimer->start();
             });
         }
     }
