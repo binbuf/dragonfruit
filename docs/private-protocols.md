@@ -136,7 +136,10 @@ the request (the Dock has its own auto-hide).
   bar, Reduce Transparency, or no sampled scene texture) leaves no material.
 
 Layers match `wlr-layer-shell`'s ordering: `background`, `bottom`, `top`,
-`overlay`. The menu bar and Dock are `top`; menus and the OSD are `overlay`.
+`overlay`. The menu bar and Dock are `top`; menus, the OSD and the Notification
+Center (`notification-center`) are `overlay`. The Center is a per-output
+transient surface with its own input region and an OnDemand keyboard policy; it
+reserves no zone and never creates a second hidden layer.
 
 > **Out of scope for T-07:** rendering the chrome. The compositor owns
 > placement, reserved zones, and configuration; the shell draws it

@@ -35,6 +35,7 @@ Item {
         SignalSpy { id: statusSpy; signalName: "statusItemActivated" }
         SignalSpy { id: ccSpy; signalName: "controlCenterRequested" }
         SignalSpy { id: mcSpy; signalName: "missionControlRequested" }
+        SignalSpy { id: clockSpy; signalName: "clockActivated" }
         SignalSpy { id: openedSpy; signalName: "appMenuOpened" }
         SignalSpy { id: closedSpy; signalName: "appMenuClosed" }
         SignalSpy { id: triggeredSpy; signalName: "appMenuTriggered" }
@@ -1404,6 +1405,20 @@ Item {
             clock.showDate = true;
             waitForRendering(stage);
             compare(clock.dateText, Qt.formatDate(fixed, Locale.ShortFormat));
+        }
+
+        function test_the_clock_is_the_notification_center_entry_point() {
+            var bar = make(menuBarComponent, {
+                appMenu: [],
+                statusItems: [],
+                showDate: true
+            });
+            clockSpy.target = bar;
+            clockSpy.clear();
+            var clock = findChild(bar, "clock");
+            verify(clock);
+            mouseClick(clock, clock.width / 2, clock.height / 2);
+            compare(clockSpy.count, 1);
         }
 
         // -- Status glyph rendering (FR-5) ---------------------------------
