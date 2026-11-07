@@ -1,0 +1,22 @@
+[package]
+name = "dragonfruit-distro-adapters"
+description = "Cross-distro administration adapter contract: updates, firewall, users/groups, time, locale, autologin, default apps, and app discovery (T221)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# Dependency-free on purpose: the Settings host and every concrete distro
+# backend depend on this contract, so it must not drag in a package manager,
+# D-Bus stack, or distro tooling. The backends own their commands and APIs
+# behind these traits; nothing above an adapter knows the distribution.
+[dependencies]
+
+[lib]
+name = "dragonfruit_distro_adapters"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dragonfruit-distro-probe"
+path = "src/bin/distro-probe.rs"

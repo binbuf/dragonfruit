@@ -26,6 +26,7 @@ numbered records.
 | [22-total-experience.md](22-total-experience.md) | The whole-desktop target: shell, navigation, Settings, motion, HUDs, ownership |
 | [settings-business-logic-map.md](settings-business-logic-map.md) | Every Settings pane/row to its owner and absence path |
 | [distro-compatibility.md](distro-compatibility.md) | Fedora/Ubuntu/Debian/Arch host-service and packaging contract |
+| [distro-adapter-contract.md](distro-adapter-contract.md) | Cross-distro adapter traits, command matrix, dependency sets, mock, and probe (T221) |
 | [interface-naming-and-licensing.md](interface-naming-and-licensing.md) | Generic names, original assets, third-party substitutions |
 | [motion-and-feedback.md](motion-and-feedback.md) | Motion language, HUDs, sound, cursor |
 | [evidence-and-acceptance.md](evidence-and-acceptance.md) | Capture, measurement, and acceptance process |

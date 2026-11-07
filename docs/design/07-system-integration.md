@@ -95,6 +95,29 @@ is never a startup blocker. `MockAdapter` simulates the lifecycle with
 `kill()`/`restart()`, which is how the headless suite asserts re-subscribe and
 absence with no bus.
 
+## The cross-distro administration contract (T221)
+
+The runtime adapters above are one family. The **administration** capabilities
+Settings needs — updates, firewall, users/groups, time, locale, autologin,
+default apps, and app discovery — are a second family, because their tools
+differ per distribution. They live in the dependency-free
+`services/distro-adapters` crate (`dragonfruit-distro-adapters`) and are
+documented in [distro-adapter-contract.md](distro-adapter-contract.md) and
+[ADR 0230](adr/0230-distro-adapter-contract-and-stubs.md).
+
+The shape is deliberately the same three-state discipline as the runtime
+adapters, with one addition: `CapabilityStatus::Unsupported` is the typed
+answer for a selected backend that is not implemented yet (the T221 stubs) or
+for an unknown distribution. `Absent` stays the normal "host tool is not
+installed" state. Every trait extends `CapabilityAdapter`, so a Settings pane
+asks `available()` / `status()` and never names a distribution. The concrete
+backends land in T254–T259 behind the same traits; the UI does not change.
+
+The adapter is selected from `/etc/os-release` + service detection, never a
+hardcoded list in QML. A missing optional service disables only its feature;
+the required/recommended/optional sets and their absence paths are in the
+contract's dependency table and [12-packaging.md](12-packaging.md).
+
 ## The NetworkManager read path (T-07.2a)
 
 The first concrete adapter is `dragonfruit-networkmanager`

@@ -61,6 +61,12 @@ jobs:
       - name: Rust unit tests
         run: cargo test --workspace 2>&1 | tee logs/rust-test.log
 
+      # T221: the cross-distro contract is exercised by `cargo test` above; this
+      # step records the detected capabilities of the CI host (Ubuntu) so the
+      # matrix has a second distribution's probe output.
+      - name: Distro adapter contract probe (T221)
+        run: cargo run -q -p dragonfruit-distro-adapters --bin dragonfruit-distro-probe 2>&1 | tee logs/distro-probe.log
+
       - name: Desktop-name grep gate
         run: ./scripts/check-desktop-names.sh 2>&1 | tee logs/grep-gate.log
 
