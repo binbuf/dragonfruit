@@ -642,7 +642,7 @@ Item {
         {
             id: "mission-control",
             kind: "info",
-            title: qsTr("Mission Control"),
+            title: qsTr("Overview"),
             subtitle: root.missionControlLabel,
             visible: root.missionControlVisible,
             enabled: root.missionControlVisible
@@ -985,7 +985,7 @@ Item {
 
     focus: true
     Accessible.role: Accessible.Pane
-    Accessible.name: qsTr("Control Center")
+    Accessible.name: qsTr("Quick Settings")
 
     Keys.onEscapePressed: (event) => {
         root.closed();
@@ -1878,7 +1878,7 @@ Item {
                 radius: Theme.primitive.radius.md
                 color: root.moduleFill
                 Accessible.role: Accessible.Grouping
-                Accessible.name: qsTr("Mission Control")
+                Accessible.name: qsTr("Overview")
 
                 Column {
                     id: missionControlColumn
@@ -1906,7 +1906,7 @@ Item {
 
                             Text {
                                 objectName: "missionControlTitle"
-                                text: qsTr("Mission Control")
+                                text: qsTr("Overview")
                                 color: root.moduleTextPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 font.weight: Theme.primitive.font.weightMedium
@@ -1925,8 +1925,8 @@ Item {
 
                     TextLink {
                         objectName: "missionControlSettingsLink"
-                        text: qsTr("Mission Control Settings\u2026")
-                        accessibleName: qsTr("Open Mission Control Settings")
+                        text: qsTr("Overview Settings\u2026")
+                        accessibleName: qsTr("Open Overview Settings")
                         onActivated: root.missionControlSettingsRequested()
                     }
                 }

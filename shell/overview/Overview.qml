@@ -160,8 +160,8 @@ Item {
 
                 Accessible.role: Accessible.ListItem
                 Accessible.name: fullscreen
-                    ? qsTr("Fullscreen space %1").arg(modelData.name)
-                    : qsTr("Space %1").arg(modelData.name)
+                    ? qsTr("Fullscreen workspace %1").arg(modelData.name)
+                    : qsTr("Workspace %1").arg(modelData.name)
                 Accessible.focusable: true
                 Accessible.selected: spaceActive
 

@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | target policy |
-| **Date** | 2026-11-06 |
+| **Status** | normative policy (T220, 2026-11-07) |
+| **Date** | 2026-11-06 (decisions recorded 2026-11-07) |
 | **Scope** | every user-facing name, icon, sound, font, cursor, wallpaper, and optional third-party dependency |
-| **Related** | [22-total-experience.md](22-total-experience.md), [distro-compatibility.md](distro-compatibility.md), [ADR 0220](adr/0220-generic-naming-and-third-party-substitution.md) |
+| **Related** | [22-total-experience.md](22-total-experience.md), [distro-compatibility.md](distro-compatibility.md), [ADR 0220](adr/0220-generic-naming-and-third-party-substitution.md), [ADR 0229](adr/0229-naming-and-optional-service-decisions.md), [naming-gate.json](naming-gate.json), [asset-manifest.json](asset-manifest.json), [packaging/optional-services.json](../../packaging/optional-services.json) |
 
 ## 1. Principles
 
@@ -32,6 +32,12 @@
 > user-facing map below is authoritative for strings, screenshots, packaging,
 > and new UI. A string audit may migrate the old names gradually; it must not
 > reintroduce an Apple term.
+>
+> **Machine-readable enforcement (T220).** The forbidden user-facing terms are
+> listed in [naming-gate.json](naming-gate.json); `make check-naming` scans
+> QML/C++ user-facing strings, `*.desktop` values, and packaging metadata
+> against that list. The human map below stays the source of truth for the
+> replacement term and the internal name.
 
 ## 2. Naming map
 
@@ -183,7 +189,41 @@ The shortcut grammar is Linux-like (Super/Alt/Ctrl) while the physical key
 positions and the displayed glyphs preserve the macOS muscle memory where
 possible. The keymap is documented in [../keymap.md](../keymap.md).
 
+### 2.5 Packaging and identity names
+
+These are the only names allowed in package metadata, desktop entries, D-Bus
+names, and AppStream text. They are also enforced by the naming gate.
+
+| Surface | Name |
+|---|---|
+| Product / desktop | Dragonfruit |
+| Package prefix | `dragonfruit-*` (`dragonfruit-compositor`, `dragonfruit-shell`, `dragonfruit-settingsd`, `dragonfruit-settings`, `dragonfruit-files`, `dragonfruit-portal`, `dragonfruit-session`, `dragonfruit-desktop`) |
+| Session file | `dragonfruit.desktop` |
+| Desktop names | `dragonfruit` (`XDG_CURRENT_DESKTOP` and `DesktopNames`) |
+| D-Bus namespace | `org.dragonfruit.*` |
+| First-party app ids | `org.dragonfruit.Settings`, `org.dragonfruit.Files` |
+| Settings app name | Dragonfruit Settings |
+| Files app name | Dragonfruit Files |
+| Wallpaper share path | `share/dragonfruit/wallpapers/` |
+| Cursor theme install path | `share/icons/capitaine-cursors` |
+
+No package `Summary`, `Description`, `GenericName`, `Name`, `Keywords`, or
+AppStream field may use an Apple product name. The package descriptions may
+say "a Linux desktop" and name the host services they integrate; they must not
+claim to be macOS or to ship Apple assets.
+
 ## 3. Asset policy
+
+### 3.0 Manifest
+
+[asset-manifest.json](asset-manifest.json) is the provenance record for every
+shipped asset and every runtime-provided category. Each shipped row names the
+path, source, version, license, license text, notice, and install location.
+`make check-assets` validates the rows and fails if a file under `assets/` is
+not covered. Sound and illustration have explicit `none-shipped` rows, and the
+Wikimedia provider has a `runtime-provider` row, so the first new file must add
+provenance in the same change. Categories with no files are not silently
+forgotten.
 
 ### 3.1 Icons
 
@@ -325,6 +365,13 @@ expected license; the packaging metadata and `NOTICE` must be checked against
 the actual package version before release. When a license is ambiguous, the
 component is optional and separate-process until resolved.
 
+The eight open questions from T220 are now decided in
+[ADR 0229](adr/0229-naming-and-optional-service-decisions.md); the candidate
+rows above remain the inventory. The chosen optional services and their
+`Recommends`/`Suggests` markers are in
+[packaging/optional-services.json](../../packaging/optional-services.json),
+and the same rows are mirrored in `NOTICE`.
+
 ## 5. Linking and distribution policy
 
 1. **MIT codebase.** Original compositor, shell, services, protocols, design
@@ -352,7 +399,11 @@ component is optional and separate-process until resolved.
 
 Before a release:
 
-- [ ] `scripts/check-desktop-names.sh` passes and covers user-facing strings.
+- [ ] `make check-naming` passes; it runs `scripts/check-desktop-names.sh`
+      (user-facing QML/C++ strings, desktop entries, packaging metadata) and
+      the gate's regression suite.
+- [ ] `make check-assets` passes; every file under `assets/` has a
+      source/license row.
 - [ ] No Apple trademark appears in UI, desktop files, package metadata, or
       screenshots (except historical design docs marked local-only).
 - [ ] Every new asset has a source/license entry.
@@ -363,23 +414,28 @@ Before a release:
 - [ ] The naming map is reflected in the Settings catalog and shell strings.
 - [ ] A legal review is completed before the first public release.
 
-## 7. Open decisions
+`make gates` runs the naming and asset gates together with the rest of the
+release gate.
 
-These are tracked in the task set and must be decided before implementation:
+## 7. Decisions (formerly open questions)
 
-1. **Nearby transfer**: omit, LocalSend (Apache-2.0), KDE Connect (GPL), or
-   Warpinator (GPL)?
-2. **Search backend**: built-in, Tracker, Baloo, or Recoll?
-3. **Backup UI**: restic + first-party front end, Pika, Timeshift, or no
-   first-party UI?
-4. **Online accounts**: GOA dependency or omit?
-5. **Accessibility**: Orca integration depth and shell AT-SPI export.
-6. **IME**: ibus, fcitx5, or both?
-7. **Display manager**: recommend one or support all four?
-8. **Firewall**: firewalld + ufw adapters or a single nftables abstraction?
+T220 recorded the outcomes in
+[ADR 0229](adr/0229-naming-and-optional-service-decisions.md). The short form:
 
-The default position in this document is the safest permissive/optional path;
-the task that implements the feature must record the final decision in an ADR.
+| Question | Decision | Owner |
+|---|---|---|
+| Nearby transfer | Omit in 0.2.0; LocalSend (Apache-2.0) is the only future candidate, no package dependency, no dead row. | T258/T259 if revisited |
+| Search backend | Built-in filename index is the default; Tracker, Baloo, and Recoll are optional separate-process backends. | T246 |
+| Backup UI | restic (BSD-2-Clause) is the preferred backend behind a thin first-party pane; Pika/Timeshift are optional delegates; no custom format or privileged daemon. | T226 |
+| Online accounts | Optional GNOME Online Accounts adapter; no first-party OAuth; the pane is hidden when GOA is absent. | T228 |
+| Accessibility depth | AT-SPI apps, Orca delegate, speech-dispatcher delegate, first-party magnifier; shell-chrome AT-SPI export is a T252 release gate. | T252 |
+| IME | Support ibus and fcitx5 as separate processes, detect one framework, never start both; no embedded IME engine. | T253 |
+| Display manager | Support GDM, SDDM, LightDM, and greetd through the per-DM session-entry adapter; GDM is the reference and SDDM the secondary tested path. | T259 |
+| Firewall | firewalld (D-Bus) and ufw (CLI) adapters behind one `FirewallStatus` contract; no first-party nftables rule editor; absent manager means "No firewall detected". | T225 |
+
+The default position remains the safest permissive/optional path. Any later
+change to one of these decisions is a new ADR, not a silent implementation
+choice.
 
 ## 8. References
 
@@ -389,3 +445,7 @@ the task that implements the feature must record the final decision in an ADR.
 - [Cross-distro contract](distro-compatibility.md)
 - [Total experience design](22-total-experience.md)
 - [ADR 0220](adr/0220-generic-naming-and-third-party-substitution.md)
+- [ADR 0229](adr/0229-naming-and-optional-service-decisions.md)
+- [naming-gate.json](naming-gate.json)
+- [asset-manifest.json](asset-manifest.json)
+- [packaging/optional-services.json](../../packaging/optional-services.json)

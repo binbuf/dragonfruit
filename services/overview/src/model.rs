@@ -113,8 +113,8 @@ impl HotCornerAction {
     pub const fn label(self) -> &'static str {
         match self {
             HotCornerAction::None => "–",
-            HotCornerAction::MissionControl => "Mission Control",
-            HotCornerAction::NotificationCenter => "Notification Center",
+            HotCornerAction::MissionControl => "Overview",
+            HotCornerAction::NotificationCenter => "Notifications",
             HotCornerAction::DesktopReveal => "Desktop",
             HotCornerAction::LockScreen => "Lock Screen",
         }

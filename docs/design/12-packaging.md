@@ -46,6 +46,27 @@ sudo dnf install dragonfruit-desktop
 | `dragonfruit-session` | `dragonfruit-session` binary, `share/wayland-sessions/dragonfruit.desktop`, `bin/dragonfruit-session-entry`, systemd user units and target (installed with `dragonfruit-session --install-session "$RPM_BUILD_ROOT/usr"`) |
 | `dragonfruit-desktop` | Meta-package requiring the above |
 
+### Optional dependency markers
+
+The canonical `Recommends`/`Suggests` table is
+[`packaging/optional-services.json`](../../packaging/optional-services.json),
+shared with Debian and recorded in `NOTICE`. Rules:
+
+- The core desktop must install, start, and work with the required host stack
+  only. An optional service is never a hard `Requires`/`Depends`.
+- `Recommends` for the preferred backend or strongly expected service
+  (restic, GNOME Online Accounts, Orca, speech-dispatcher, ibus/fcitx5,
+  PackageKit, Flatpak, CUPS, SANE, colord, fprintd, accountsservice, and the
+  distro's firewall adapter).
+- `Suggests` for a useful alternate or future delegate (Tracker/Baloo/Recoll,
+  Pika Backup/Timeshift, espeak-ng, LocalSend, GNOME Software/Discover, snapd,
+  and the non-native firewall adapter).
+- Do not require a display manager. Ship the session `.desktop` entry and
+  support GDM, SDDM, LightDM, and greetd through the per-DM adapter (ADR
+  [0173](adr/0173-display-manager-session-selection-seam.md)).
+- The eight naming/licensing decisions are recorded in ADR
+  [0229](adr/0229-naming-and-optional-service-decisions.md).
+
 ### Parallel-install rules
 
 - Everything we ship lives under the `dragonfruit` namespace: session file

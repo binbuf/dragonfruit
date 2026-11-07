@@ -109,15 +109,14 @@ Item {
         SettingsGroup {
             id: centerGroup
             width: parent.width
-            title: qsTr("Notification Center")
+            title: qsTr("Notifications")
 
             Text {
                 objectName: "notificationsCenterDescription"
                 width: parent.width
-                text: qsTr("Notification Center shows your notifications in the "
-                           + "top-right corner of your screen. You can show and "
-                           + "hide Notification Center by clicking the clock in "
-                           + "the menu bar.")
+                text: qsTr("Notifications appear in the top-right corner of your "
+                           + "screen. You can show and hide them by clicking the "
+                           + "clock in the menu bar.")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap

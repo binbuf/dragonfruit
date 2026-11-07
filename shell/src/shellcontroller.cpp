@@ -4954,7 +4954,7 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
     } else if (action == QLatin1String("app-store")) {
         // No app-store equivalent exists yet; the item is disabled (T-09
         // open question in design/04-shell.md).
-        qInfo() << "shell: App Store requested (no equivalent yet)";
+        qInfo() << "shell: Software Center requested (no equivalent yet)";
     } else {
         // T-14 dispatches the resolved action back to the owning app; until
         // that channel exists the placeholder logs so the demo has feedback.

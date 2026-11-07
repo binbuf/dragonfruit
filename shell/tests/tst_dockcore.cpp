@@ -876,7 +876,7 @@ private slots:
         // Newest first: window 2 (Space index 0, a generated name).
         QCOMPARE(windows.at(0).toMap().value(QStringLiteral("workspaceIndex")).toInt(), 0);
         QCOMPARE(windows.at(0).toMap().value(QStringLiteral("workspaceName")).toString(),
-                 QStringLiteral("Space 1"));
+                 QStringLiteral("Workspace 1"));
         QCOMPARE(windows.at(1).toMap().value(QStringLiteral("workspaceIndex")).toInt(), 2);
         QCOMPARE(windows.at(1).toMap().value(QStringLiteral("workspaceName")).toString(),
                  QStringLiteral("Code"));

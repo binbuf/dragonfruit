@@ -126,8 +126,8 @@
         <translation>Conectado</translation>
     </message>
     <message>
-        <source>Control Center</source>
-        <translation>Centro de control</translation>
+        <source>Quick Settings</source>
+        <translation>Ajustes rápidos</translation>
     </message>
     <message>
         <source>Copy %1</source>
@@ -202,12 +202,12 @@
         <translation>Ajustes de Barra de menús…</translation>
     </message>
     <message>
-        <source>Mission Control</source>
-        <translation>Mission Control</translation>
+        <source>Overview</source>
+        <translation>Vista general</translation>
     </message>
     <message>
-        <source>Mission Control Settings…</source>
-        <translation>Ajustes de Mission Control…</translation>
+        <source>Overview Settings…</source>
+        <translation>Ajustes de Vista general…</translation>
     </message>
     <message>
         <source>Mount</source>
@@ -298,8 +298,8 @@
         <translation>Abrir Ajustes de Barra de menús</translation>
     </message>
     <message>
-        <source>Open Mission Control Settings</source>
-        <translation>Abrir Ajustes de Mission Control</translation>
+        <source>Open Overview Settings</source>
+        <translation>Abrir Ajustes de Vista general</translation>
     </message>
     <message>
         <source>Open Printers &amp; Scanners Settings</source>
@@ -1163,12 +1163,12 @@
 <context>
     <name>MenuBar</name>
     <message>
-        <source>Control Center</source>
-        <translation>Centro de control</translation>
+        <source>Quick Settings</source>
+        <translation>Ajustes rápidos</translation>
     </message>
     <message>
-        <source>Mission Control</source>
-        <translation>Mission Control</translation>
+        <source>Overview</source>
+        <translation>Vista general</translation>
     </message>
     <message>
         <source>System</source>
@@ -1232,16 +1232,16 @@
 <context>
     <name>Overview</name>
     <message>
-        <source>Fullscreen space %1</source>
-        <translation>Mesa a pantalla completa %1</translation>
+        <source>Fullscreen workspace %1</source>
+        <translation>Espacio de trabajo a pantalla completa %1</translation>
     </message>
     <message>
         <source>Restore %1</source>
         <translation>Restaurar %1</translation>
     </message>
     <message>
-        <source>Space %1</source>
-        <translation>Mesa %1</translation>
+        <source>Workspace %1</source>
+        <translation>Espacio de trabajo %1</translation>
     </message>
     <message>
         <source>Window %1</source>
@@ -1559,8 +1559,8 @@
         <translation>General</translation>
     </message>
     <message>
-        <source>Internet Accounts</source>
-        <translation>Cuentas de internet</translation>
+        <source>Online Accounts</source>
+        <translation>Cuentas en línea</translation>
     </message>
     <message>
         <source>Keyboard</source>
@@ -1579,8 +1579,8 @@
         <translation>Barra de menús</translation>
     </message>
     <message>
-        <source>Mission Control</source>
-        <translation>Mission Control</translation>
+        <source>Overview</source>
+        <translation>Vista general</translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -1607,16 +1607,12 @@
         <translation>Privacidad</translation>
     </message>
     <message>
-        <source>Screen Time</source>
-        <translation>Tiempo en pantalla</translation>
-    </message>
-    <message>
         <source>Sound</source>
         <translation>Sonido</translation>
     </message>
     <message>
-        <source>Spotlight</source>
-        <translation>Spotlight</translation>
+        <source>Search</source>
+        <translation>Búsqueda</translation>
     </message>
     <message>
         <source>Storage</source>

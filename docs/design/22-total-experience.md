@@ -85,7 +85,10 @@ implementation without changing the mental model.
    name. The accessibility settings are part of the design, not a later audit.
 7. **Original assets and generic names.** Reproduce the interaction, never
    Apple's bitmaps, symbols, sounds, trademarks, or code. The naming map is in
-   [interface-naming-and-licensing.md](interface-naming-and-licensing.md).
+   [interface-naming-and-licensing.md](interface-naming-and-licensing.md) and
+   is enforced by `make check-naming`; every asset's source/license is in
+   [asset-manifest.json](asset-manifest.json) and enforced by
+   `make check-assets`.
 8. **Distro-neutral.** Reuse the host's NetworkManager, BlueZ, PipeWire,
    UPower, UDisks2, CUPS, SANE, accountsservice, PackageKit, portals, and
    display manager. Distro differences live behind adapters.

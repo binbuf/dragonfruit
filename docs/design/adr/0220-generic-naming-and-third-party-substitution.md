@@ -2,7 +2,9 @@
 
 ## Status
 
-proposed — governs user-facing names, assets, and optional dependencies.
+accepted — governs user-facing names, assets, and optional dependencies. T220
+landed the naming gate and asset manifest; the eight open questions are decided
+in [ADR 0229](0229-naming-and-optional-service-decisions.md).
 
 ## Context
 

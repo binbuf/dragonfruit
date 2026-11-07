@@ -699,7 +699,7 @@ lockPolicy: lockPolicyModel(600),
             var link = findChild(panel, "missionControlSettingsLink");
             verify(link !== null, "the Mission Control Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
-            compare(link.Accessible.name, "Open Mission Control Settings");
+            compare(link.Accessible.name, "Open Overview Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(missionControlSettingsSpy.count, 1);
         }
@@ -1272,7 +1272,7 @@ lockPolicy: lockPolicyModel(600),
         function test_tiles_carry_accessible_roles_and_names() {
             var panel = make({ focusPolicy: focusModel("off"), dark: false });
             compare(panel.Accessible.role, Accessible.Pane);
-            compare(panel.Accessible.name, "Control Center");
+            compare(panel.Accessible.name, "Quick Settings");
 
             var focusToggle = findChild(panel, "focusToggle");
             verify(focusToggle !== null);

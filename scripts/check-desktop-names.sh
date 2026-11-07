@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# Desktop-name gate (T-01, FR-3): fails when any source or build file
-# hardcodes a desktop name. `dragonfruit` is the only legal name
-# (XDG_CURRENT_DESKTOP is a public contract — docs/ipc-versioning.md).
+# Desktop-name gate (T-01, FR-3) and user-facing naming gate (T220): fails
+# when any source or build file hardcodes another desktop name, and when a
+# user-facing string, desktop entry, or packaging manifest uses a forbidden
+# Apple term from docs/design/naming-gate.json.
 #
-# Design docs (docs/) are exempt: they legitimately discuss other
-# desktops. Code, build files, and scripts are not. A line carrying the
-# marker `df-allow-desktop-name` is exempt (negative tests, etc.).
+# `dragonfruit` is the only legal desktop name (XDG_CURRENT_DESKTOP is a
+# public contract — docs/ipc-versioning.md). Design docs (docs/) are exempt:
+# they legitimately discuss other desktops and the reference platform. Code,
+# build files, and scripts are not. A line carrying the marker
+# `df-allow-desktop-name` (or `df-allow-name` for the naming half) is exempt
+# (negative tests, etc.).
 set -uo pipefail
 
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
@@ -46,11 +50,14 @@ while IFS= read -r -d '' f; do
     fi
 done < <(scan_files)
 
-# 2. Any XDG_CURRENT_DESKTOP assignment in code must set `dragonfruit`.
+# 2. Any literal XDG_CURRENT_DESKTOP assignment in code must set
+# `dragonfruit`. A read (`${XDG_CURRENT_DESKTOP:-...}`) is not an assignment
+# and must not trip the gate; that was the long-standing false positive in
+# the diagnostics scripts.
 while IFS= read -r -d '' f; do
     [ "$f" = "./scripts/check-desktop-names.sh" ] && continue
-    hits=$(grep -nE 'XDG_CURRENT_DESKTOP[[:space:]]*=' "$f" 2>/dev/null \
-        | grep -vE 'XDG_CURRENT_DESKTOP[[:space:]]*=[[:space:]]*("dragonfruit"|\{DESKTOP_NAME\}|dragonfruit)' \
+    hits=$(grep -nE '(^|[[:space:]])(export[[:space:]]+)?XDG_CURRENT_DESKTOP[[:space:]]*=' "$f" 2>/dev/null \
+        | grep -vE 'XDG_CURRENT_DESKTOP[[:space:]]*=[[:space:]]*(\$|\{|"dragonfruit"|dragonfruit)' \
         | grep -v 'df-allow-desktop-name' || true)
     if [ -n "$hits" ]; then
         echo "ERROR: $f assigns XDG_CURRENT_DESKTOP to something other than 'dragonfruit':"
@@ -59,7 +66,15 @@ while IFS= read -r -d '' f; do
     fi
 done < <(scan_files)
 
+# 3. User-facing strings, desktop entries, and packaging metadata must use the
+# generic names in docs/design/interface-naming-and-licensing.md. The Python
+# helper owns the QML/C++ string extraction and the machine-readable map; the
+# shell gate stays the single entry point used by lint and the release gate.
+if ! python3 scripts/check-user-facing-names.py --root "$repo_root"; then
+    status=1
+fi
+
 if [ "$status" -eq 0 ]; then
-    echo "check-desktop-names: OK — only 'dragonfruit' appears in code"
+    echo "check-desktop-names: OK — only 'dragonfruit' appears in code; user-facing names are generic"
 fi
 exit "$status"
