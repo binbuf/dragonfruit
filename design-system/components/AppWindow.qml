@@ -20,12 +20,22 @@ Item {
     // compositor's SSD shadow uses the same level, so the two agree (FR-2).
     property string shadowLevel: "high"
     property real cornerRadius: Theme.controls.window.radius
+    // T206: first-party apps that draw their own app-local glass chrome make
+    // the frame/content backing transparent so their sidebar/toolbar alpha
+    // composites against the compositor's lower scene. The titlebar keeps an
+    // opaque chrome backing, and the app shells paint their own opaque detail
+    // sheet. Generic AppWindow users keep the original opaque surface.
+    property bool chromeTransparent: false
 
     implicitWidth: 640
     implicitHeight: 420
 
     Shadow {
-        visible: root.showShadow
+        // The compositor draws the real window shadow. The QML approximation
+        // is only a fallback for surfaces without one; with transparent chrome
+        // it would leak through the sidebar/toolbar alpha and darken the
+        // measured material.
+        visible: root.showShadow && !root.chromeTransparent
         level: root.shadowLevel
         width: root.width
         height: root.height
@@ -36,10 +46,31 @@ Item {
         id: frame
         anchors.fill: parent
         radius: root.cornerRadius
-        color: Theme.color.surface
+        color: root.chromeTransparent ? "transparent" : Theme.color.surface
         border.width: Theme.controls.window.borderWidth
         border.color: root.active ? Theme.color.border : Theme.color.separator
         antialiasing: true
+    }
+
+    // Keep the titlebar on its existing opaque chrome even when the app-local
+    // glass starts below it: the T206 effect is clipped to the sidebar and
+    // toolbar, never the window controls or the drag strip.
+    ChromeSheet {
+        id: titleBarBacking
+        visible: root.chromeTransparent
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.topMargin: Theme.controls.window.borderWidth
+        anchors.leftMargin: Theme.controls.window.borderWidth
+        anchors.rightMargin: Theme.controls.window.borderWidth
+        height: Math.max(0, titleBarArea.height
+                         - Theme.controls.window.borderWidth)
+        color: Theme.color.chrome
+        topLeftRadius: Math.max(0, root.cornerRadius
+                                - Theme.controls.window.borderWidth)
+        topRightRadius: Math.max(0, root.cornerRadius
+                                 - Theme.controls.window.borderWidth)
     }
 
     Item {
@@ -58,9 +89,11 @@ Item {
         anchors.bottom: parent.bottom
 
         // Opaque content backing so the surface reads as one sheet under the
-        // titlebar's translucency.
+        // titlebar's translucency. App-local glass chrome disables it and paints
+        // its own opaque detail sheet below the toolbar.
         Rectangle {
             anchors.fill: parent
+            visible: !root.chromeTransparent
             color: Theme.color.surface
             radius: root.cornerRadius
         }

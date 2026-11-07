@@ -98,6 +98,11 @@ int main(int argc, char **argv)
         return 2;
     qputenv("XDG_CACHE_HOME", cacheHome.path().toUtf8());
 
+    // T206: the Files shell mirrors the desktop appearance/accessibility keys
+    // onto its own Theme/Glass. The mock client keeps the headless test off
+    // the session bus and serves the documented schema defaults.
+    qputenv("DF_SETTINGS_FIXTURE", "1");
+
     FilesTestSetup setup;
     return quick_test_main_with_setup(argc, argv, "tst_files_shell",
                                       QUICK_TEST_SOURCE_DIR, &setup);

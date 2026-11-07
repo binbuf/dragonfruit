@@ -52,6 +52,19 @@ PRESET_NAMES = (
     "notificationStack",
     "notificationLowerPanel",
     "windowChrome",
+    # T206: first-party app chrome. These are client-alpha presets consumed by
+    # QML only; the compositor never resolves them because it never draws the
+    # app's sidebar/toolbar.
+    "settingsSidebar",
+    "settingsToolbar",
+    "filesSidebar",
+    "filesToolbar",
+)
+APP_CHROME_PRESETS = (
+    "settingsSidebar",
+    "settingsToolbar",
+    "filesSidebar",
+    "filesToolbar",
 )
 SCHEMES = ("light", "dark")
 ROLES = ("chrome", "dock", "popup", "drawer")
@@ -722,6 +735,45 @@ def self_test() -> list[str]:
     check(unknown["renderMode"] == "solid", "unknown preset must be solid")
     check(unknown["fallbackReason"] == "unknown-preset",
           "unknown preset must name its reason")
+
+    # T206: first-party app chrome is near-opaque client alpha, not a sampled
+    # pass. The measured Light Settings/Files fits and the measured Dark Files
+    # fits are pinned; Settings Dark is an explicit adaptation from Finder.
+    app_targets = {
+        ("settingsSidebar", "light"): (0.986, 0.857, "measured"),
+        ("settingsToolbar", "light"): (0.961, 0.965, "measured"),
+        ("settingsSidebar", "dark"): (0.935, 0.218, "adapted"),
+        ("settingsToolbar", "dark"): (0.900, 0.247, "adapted"),
+        ("filesSidebar", "light"): (0.985, 0.858, "measured"),
+        ("filesToolbar", "light"): (0.994, 0.922, "measured"),
+        ("filesSidebar", "dark"): (0.935, 0.218, "measured"),
+        ("filesToolbar", "dark"): (0.900, 0.247, "measured"),
+    }
+    for (name, scheme), (alpha, tint, confidence) in app_targets.items():
+        result = resolve(data, name, scheme=scheme, rollout="replacement")
+        near(result["alpha"], alpha, f"{name} {scheme} alpha")
+        near(result["tint"], tint, f"{name} {scheme} tint")
+        check(result["renderMode"] == "solid",
+              f"{name} {scheme} must be an app-local solid preset")
+        check(result["blur"] == 0.0, f"{name} {scheme} must not request sampling")
+        check(result["confidence"] == confidence,
+              f"{name} {scheme} confidence must be {confidence}")
+        check(result["alpha"] >= 0.9,
+              f"{name} {scheme} must stay near-opaque")
+        legacy = resolve(data, name, scheme=scheme)
+        check(legacy["look"] == "legacy",
+              f"{name} {scheme} must keep the legacy look by default")
+        reduced = resolve(data, name, scheme=scheme, reduce_transparency=True,
+                          rollout="replacement")
+        check(reduced["renderMode"] == "solid" and reduced["alpha"] >= 0.9,
+              f"{name} {scheme} Reduce Transparency must use the opaque plate")
+    # The two Files surfaces stay independent in both schemes.
+    for scheme in ("light", "dark"):
+        sidebar = resolve(data, "filesSidebar", scheme=scheme, rollout="replacement")
+        toolbar = resolve(data, "filesToolbar", scheme=scheme, rollout="replacement")
+        check((sidebar["alpha"], sidebar["tint"])
+              != (toolbar["alpha"], toolbar["tint"]),
+              f"Files {scheme} sidebar and toolbar must be independent presets")
 
     # The persistent Dock floor keeps sampling when the controller visits
     # Minimal; transient popups may become solid.

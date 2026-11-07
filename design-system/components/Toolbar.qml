@@ -10,6 +10,10 @@ Item {
     id: root
 
     property string title: ""
+    // T206: first-party apps pass the resolved app-local material fill and
+    // separator ink; the defaults preserve the existing opaque chrome.
+    property color fillColor: Theme.color.chrome
+    property color borderColor: Theme.color.border
     default property alias contentData: leadingRow.data
     property alias leading: leadingRow
     property alias trailingData: trailingRow.data
@@ -20,7 +24,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: Theme.color.chrome
+        color: root.fillColor
     }
 
     Rectangle {
@@ -28,7 +32,7 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: Theme.controls.window.borderWidth
-        color: Theme.color.border
+        color: root.borderColor
     }
 
     Text {

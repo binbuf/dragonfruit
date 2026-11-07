@@ -694,6 +694,154 @@ QtObject {
                     readonly property real foreground: 0.0
                 }
             }
+            readonly property var settingsSidebar: QtObject {
+                readonly property string role: "chrome"
+                readonly property string render: "solid"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "T206 REFERENCE.md light System Settings sidebar 0.986/0.857. The muted sidebar shows a small chroma pickup; the preset stores only a scalar neutral tint, so the chroma component stays an explicit transport gap (ADR 0225)."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.986
+                        readonly property real neutralTint: 0.857
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.986
+                        readonly property real perceptualTint: 0.857
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "T206 Settings Dark is not independently measured; adapted from the measured Finder dark sidebar 0.935/0.218 (REFERENCE.md) because System Settings and Finder share the near-opaque source-list material."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.935
+                        readonly property real neutralTint: 0.218
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.935
+                        readonly property real perceptualTint: 0.218
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var settingsToolbar: QtObject {
+                readonly property string role: "chrome"
+                readonly property string render: "solid"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "T206 REFERENCE.md light System Settings toolbar 0.961/0.965. Near-opaque, so the scalar tint carries the visible result; no chroma channel is stored."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.961
+                        readonly property real neutralTint: 0.965
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.961
+                        readonly property real perceptualTint: 0.965
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "T206 Settings Dark is not independently measured; adapted from the measured Finder dark toolbar 0.900/0.247 (REFERENCE.md)."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.9
+                        readonly property real neutralTint: 0.247
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.9
+                        readonly property real perceptualTint: 0.247
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var filesSidebar: QtObject {
+                readonly property string role: "chrome"
+                readonly property string render: "solid"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "T206 REFERENCE.md light Finder sidebar 0.985/0.858. The muted sidebar shows the measured small chroma pickup; the scalar preset cannot carry it (ADR 0225)."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.985
+                        readonly property real neutralTint: 0.858
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.985
+                        readonly property real perceptualTint: 0.858
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "T206 REFERENCE.md dark Finder sidebar 0.935/0.218."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.935
+                        readonly property real neutralTint: 0.218
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.935
+                        readonly property real perceptualTint: 0.218
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var filesToolbar: QtObject {
+                readonly property string role: "chrome"
+                readonly property string render: "solid"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "T206 REFERENCE.md light Finder toolbar 0.994/0.922."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.994
+                        readonly property real neutralTint: 0.922
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.994
+                        readonly property real perceptualTint: 0.922
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "T206 REFERENCE.md dark Finder toolbar 0.900/0.247."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.9
+                        readonly property real neutralTint: 0.247
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.9
+                        readonly property real perceptualTint: 0.247
+                    }
+                    readonly property real blur: 0.0
+                    readonly property real edge: 0.08
+                    readonly property real edgeWidth: 1.0
+                    readonly property real foreground: 0.0
+                }
+            }
         }
     }
 

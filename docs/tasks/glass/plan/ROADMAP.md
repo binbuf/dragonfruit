@@ -24,7 +24,7 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [x] T203 — Distinguish Control Center panel and module materials → [203-glass-control-center.md](../203-glass-control-center.md)
 - [x] T204 — Map the Notification Center and route its actions → [204-glass-notification-center-integration.md](../204-glass-notification-center-integration.md)
 - [x] T205 — Calibrate notification banner, stack, and lower panel → [205-glass-notification-materials.md](../205-glass-notification-materials.md)
-- [ ] T206 — Apply restrained glass to Settings and Files chrome → [206-glass-first-party-window-chrome.md](../206-glass-first-party-window-chrome.md)
+- [x] T206 — Apply restrained glass to Settings and Files chrome → [206-glass-first-party-window-chrome.md](../206-glass-first-party-window-chrome.md)
 
 ## Phase 4 — Acceptance and rollout
 
@@ -32,11 +32,11 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-07T02:17:20Z · 12/15 done
+**Pipeline status** — updated 2026-11-07T04:20:31Z · 13/15 done
 
-- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202, T203, T204, T205
+- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202, T203, T204, T205, T206
 - Blocked: none
 - Failed: none
-- Remaining: T206, T207, T208
-- Last finished: T205 — done · Notification banner/stack/lower-panel materials calibrated and region-mapped; Light/Dark empty, populated, concurrent, scrollable, software and accessibility captures pass with recorded residuals; tst_notifications and make gates pass 84/84.
+- Remaining: T207, T208
+- Last finished: T206 — done · Applied measured near-opaque Settings/Files sidebar and toolbar presets with opaque content, live app-local appearance/accessibility bindings, shadow-ring fix, and 22-case Light/Dark capture evidence; make gates passes.
 <!-- /symphony:status -->
