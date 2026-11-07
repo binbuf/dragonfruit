@@ -17,6 +17,7 @@
 - **T205 — Notification banner, stack and lower-panel materials**: **Three optical presets.** `notificationBanner`, `notificationStack` and; banner Light 0.549/0.976 (measured), Dark 0.56/0.30 (adapted);
 - **T206 — Settings and Files app-local chrome**: **Presets** in `design-system/tokens/tokens.json` (17 total):; Settings Light 0.986/0.857 sidebar, 0.961/0.965 toolbar (measured).
 - **T207 — nested and fallback acceptance**: `tests/glass/t207-cases.json` — checked-in case matrix, flat-band mask and; `scripts/t207-nested-acceptance.py` — `plan`, `score` and `check`. The
+- **T208 — native DRM acceptance and rollout gate**: `docs/captures/t208-native-acceptance.md` — native acceptance report:; `docs/captures/t208-native-stats.txt` — raw `SIGUSR1` transcript (idle,
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -34,6 +35,7 @@
 - [T205](progress/T205.md) — **Three optical presets.** `notificationBanner`, `notificationStack` and
 - [T206](progress/T206.md) — **Presets** in `design-system/tokens/tokens.json` (17 total):
 - [T207](progress/T207.md) — `tests/glass/t207-cases.json` — checked-in case matrix, flat-band mask and
+- [T208](progress/T208.md) — `docs/captures/t208-native-acceptance.md` — native acceptance report:
 <!-- symphony:digest:end -->
 
 Implementation notes go in `progress/TNN.md`. Record the actual test commands, evidence paths, measured deltas, and any open rows with their rerun steps.

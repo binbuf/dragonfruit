@@ -1465,8 +1465,33 @@ and gated by `make nested-acceptance-check`:
   adapted Dark Settings chrome, the Dark attached menu baseline, and the
   dmabuf capture-row boundary (`make t21-gpu-rollout` is the transport
   evidence; the dev demo shell is offscreen/SHM).
-- The release rail remains the default (`glass.rollout.defaultMode=legacy`)
-  until T208; `DRAGONFRUIT_GLASS_ROLLOUT` is the A/B and rollback switch.
+- The release rail remains the default (`glass.rollout.defaultMode=legacy`);
+  `DRAGONFRUIT_GLASS_ROLLOUT` is the A/B and rollback switch. T208 re-verified
+  the native baseline but left the native replacement/rollback gate OPEN, so
+  the default was **not** flipped.
+
+T208's native DRM acceptance is recorded in
+[`t208-native-acceptance.md`](t208-native-acceptance.md) and
+[`t208-native-stats.txt`](t208-native-stats.txt). The stills are
+`t208-native-light-desktop.png`, `-dark-desktop.png`, `-light-live-under-dock.png`,
+`-dark-live-under-dock.png`, `-light-live-under-menubar.png`,
+`-dark-live-under-menubar.png`, `-menu-light.png`, `-control-center-light.png`,
+`-control-center-dark.png`, `-notification-light.png`, `-notification-dark.png`,
+`-mission-control.png`, `-lock.png`, and `-fullscreen.png`. They are the real
+KMS primary-plane scanout (dev-only `scripts/t208-kms-readback.c`:
+`pidfd_getfd` of the compositor's DRM fd + `drmModeGetFB2` + three-plane
+dma-buf EGL import), not screencopy, a portal grant or a nested window; the
+hardware cursor and overlay planes are not in the stills. The fullscreen row
+used the trusted shell protocol driver `scripts/t208-shell-fullscreen.c`.
+
+The native session's running release is pre-T195/T196, so these stills are the
+matched **legacy baseline**: the replacement native visual/perf rows, native
+direct scanout (fullscreen candidates advanced 4019→11261 while
+`direct_scanouts` stayed 0), native lock-exit, native accessibility overrides,
+hotplug/mixed refresh, GPU timer queries and the native rollback render cycle
+remain OPEN. The default stays `legacy`; the exact free-seat rerun commands and
+the missing `seat0`/`card1`/`DP-1` row are in the report. T207 remains the
+replacement A/B evidence.
 
 Guidelines:
 

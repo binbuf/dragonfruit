@@ -1,0 +1,257 @@
+T208 — native DRM evidence transcript
+=====================================
+
+recorded: 2026-11-06T23:48:00-08:00 .. 2026-11-07T00:01:00-08:00
+host:     Linux fedora 7.2.13-200.fc44.x86_64 x86_64
+session:  native Dragonfruit, XDG_SESSION_TYPE=wayland, seat0, VT2, session 2
+gpu:      04:00.0 AMD/ATI Lucienne [1002:164c] rev c1, amdgpu, card1/renderD128
+output:   DP-1 connected, 3840x2160 @ 143.999 Hz, mode source, VRR on
+logical:  2560x1440 at display.scale=1.5 (settingsd)
+build:    installed release symlinks; compositor target/release/dragonfruit-compositor
+          mtime 2026-11-05 20:59 (pre-T195/T196: no glass rollout, schema 17)
+capture:  dev-only KMS readback: pidfd_getfd of the compositor DRM fd,
+          drmModeGetFB2 primary plane, three-plane dma-buf EGL import,
+          GLES shader + glReadPixels -> PPM -> PNG. Primary plane only.
+          not screencopy, not a portal grant, not a nested window.
+
+## make native-status
+bash scripts/native-session.sh status
+native-session: host desktop: dragonfruit
+native-session: install prefix: /usr
+native-session: selected profile: release
+native-session: installed profile: release
+native-session: armed state: /home/user/.local/state/dragonfruit/dev-session.json
+native-session: session environment: /home/user/.config/dragonfruit/native.env
+native-session: login-manager preselect: installed (/etc/plasmalogin.conf.d/99-dragonfruit-dev.conf)
+native-session: native capture: installed (/home/user/.local/state/dragonfruit/native-captures)
+native-session: latest capture: /home/user/.local/state/dragonfruit/native-captures/20261106-152200-2297
+native-session: recovery: bash /home/user/repos/binbuf/dragonfruit/scripts/native-session.sh recover
+  UNIT                               STATE
+  dragonfruit-session.target         active
+  dragonfruit-compositor.service     active
+  dragonfruit-shell.service          active
+  dragonfruit-settingsd.service      active
+  dragonfruit-menu-broker.service    active
+  dragonfruit-app-index.service      active
+  dragonfruit-notifications.service  active
+  dragonfruit-wallpaperd.service     active
+  dragonfruit-portal.service         active
+
+## native visual live-backdrop means (0..255, full 4K crop)
+scheme  surface   baseline  under-white-panel  delta
+light   menu bar     224.9              238.8  +13.9
+light   Dock          80.9              169.7  +88.8
+dark    menu bar      48.6               74.9  +26.3
+dark    Dock          42.5              135.0  +92.5
+
+## idle window: 60 s, no fixtures, light scheme
+--- before (SIGUSR1-12) ---
+dragonfruit-compositor: degrade stats (SIGUSR1-11): tier=minimal forced=0 budget_us=6944 samples=83905 over_budget=1324 downgrades=2 upgrades=0 tiers=full:5596,reduced:2001,minimal:76308 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=1
+dragonfruit-compositor: frame timing (SIGUSR1-11): samples=8192 samples_total=83905 avg_us=2411 p50_us=1980 p95_us=4948 p99_us=8756 max_us=144826 window_max_us=21416 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-11): output=DP-1 samples=4096 samples_total=63109 avg_us=167968 p50_us=6946 p95_us=1001478 p99_us=1005316 max_us=60006080 window_max_us=1696741 missed=42963 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+dragonfruit-compositor: render stats (SIGUSR1-12): frames_rendered=84044 frames_skipped_no_damage=2980 direct_scanouts=0 animation_frames_stepped=1385 client_wakeups=236312 latency_us_last=2757 latency_us_max=239902 latency_samples=29713 latency_dropped=37 scene_transforms=6958 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-12): chrome_shm_imports=3157 chrome_shm_bytes=7005905256 chrome_dmabuf_imports=0 chrome_frame_callbacks=3039
+dragonfruit-compositor: scanout stats (SIGUSR1-12): direct_scanouts=0 material_frames=85695 direct_scanout_candidates=0 frames_rendered=84044 frames_skipped_no_damage=2980 considered=87024
+dragonfruit-compositor: output material stats (SIGUSR1-12): output=DP-1 material_frames=85695 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=232 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: animation stats (SIGUSR1-12): frames_stepped=1385 animations_started=204 animations_completed=204 reduced_motion=false interval_us=6944
+dragonfruit-compositor: refresh stats (SIGUSR1-12): refresh_hz=143.999 source=mode interval_us=6944 deadline_us=6944 outputs=1 override=0
+dragonfruit-compositor: material stats (SIGUSR1-12): backdrop_passes=86095 backdrop_skipped=0 path=gpu blur_passes=85695 blur_panels=171096 blur_draws=85695 blur_skips=162413 blur_miss_first=64 blur_miss_scene=8036 blur_miss_source=559 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=232 material_scene_allocations=101 material_panel_allocations=131 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: gpu stats (SIGUSR1-12): enabled=0 available=0 gpu_time=unavailable reason=disabled scene_samples=0 scene_total=0 scene_p50_us=0 scene_p95_us=0 scene_p99_us=0 scene_max_us=0 blur_samples=0 blur_total=0 blur_p50_us=0 blur_p95_us=0 blur_p99_us=0 blur_max_us=0 composite_samples=0 composite_total=0 composite_p50_us=0 composite_p95_us=0 composite_p99_us=0 composite_max_us=0
+dragonfruit-compositor: scheme stats (SIGUSR1-12): scheme=light
+dragonfruit-compositor: degrade stats (SIGUSR1-12): tier=minimal forced=0 budget_us=6944 samples=84042 over_budget=1324 downgrades=2 upgrades=0 tiers=full:5596,reduced:2001,minimal:76445 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=1
+dragonfruit-compositor: frame timing (SIGUSR1-12): samples=8192 samples_total=84042 avg_us=2405 p50_us=1967 p95_us=4935 p99_us=8747 max_us=144826 window_max_us=21416 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-12): output=DP-1 samples=4096 samples_total=63246 avg_us=197737 p50_us=6946 p95_us=1001804 p99_us=1005724 max_us=60006080 window_max_us=1696741 missed=43100 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+--- after (SIGUSR1-13) ---
+dragonfruit-compositor: degrade stats (SIGUSR1-12): tier=minimal forced=0 budget_us=6944 samples=84042 over_budget=1324 downgrades=2 upgrades=0 tiers=full:5596,reduced:2001,minimal:76445 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=1
+dragonfruit-compositor: frame timing (SIGUSR1-12): samples=8192 samples_total=84042 avg_us=2405 p50_us=1967 p95_us=4935 p99_us=8747 max_us=144826 window_max_us=21416 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-12): output=DP-1 samples=4096 samples_total=63246 avg_us=197737 p50_us=6946 p95_us=1001804 p99_us=1005724 max_us=60006080 window_max_us=1696741 missed=43100 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+dragonfruit-compositor: render stats (SIGUSR1-13): frames_rendered=84107 frames_skipped_no_damage=2980 direct_scanouts=0 animation_frames_stepped=1385 client_wakeups=236438 latency_us_last=2757 latency_us_max=239902 latency_samples=29713 latency_dropped=37 scene_transforms=7021 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-13): chrome_shm_imports=3158 chrome_shm_bytes=7006550376 chrome_dmabuf_imports=0 chrome_frame_callbacks=3040
+dragonfruit-compositor: scanout stats (SIGUSR1-13): direct_scanouts=0 material_frames=85758 direct_scanout_candidates=0 frames_rendered=84107 frames_skipped_no_damage=2980 considered=87087
+dragonfruit-compositor: output material stats (SIGUSR1-13): output=DP-1 material_frames=85758 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=232 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: animation stats (SIGUSR1-13): frames_stepped=1385 animations_started=204 animations_completed=204 reduced_motion=false interval_us=6944
+dragonfruit-compositor: refresh stats (SIGUSR1-13): refresh_hz=143.999 source=mode interval_us=6944 deadline_us=6944 outputs=1 override=0
+dragonfruit-compositor: material stats (SIGUSR1-13): backdrop_passes=86158 backdrop_skipped=0 path=gpu blur_passes=85758 blur_panels=171222 blur_draws=85758 blur_skips=162539 blur_miss_first=64 blur_miss_scene=8036 blur_miss_source=559 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=232 material_scene_allocations=101 material_panel_allocations=131 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: gpu stats (SIGUSR1-13): enabled=0 available=0 gpu_time=unavailable reason=disabled scene_samples=0 scene_total=0 scene_p50_us=0 scene_p95_us=0 scene_p99_us=0 scene_max_us=0 blur_samples=0 blur_total=0 blur_p50_us=0 blur_p95_us=0 blur_p99_us=0 blur_max_us=0 composite_samples=0 composite_total=0 composite_p50_us=0 composite_p95_us=0 composite_p99_us=0 composite_max_us=0
+dragonfruit-compositor: scheme stats (SIGUSR1-13): scheme=light
+dragonfruit-compositor: degrade stats (SIGUSR1-13): tier=minimal forced=0 budget_us=6944 samples=84105 over_budget=1324 downgrades=2 upgrades=0 tiers=full:5596,reduced:2001,minimal:76508 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=1
+dragonfruit-compositor: frame timing (SIGUSR1-13): samples=8192 samples_total=84105 avg_us=2405 p50_us=1969 p95_us=4938 p99_us=8747 max_us=144826 window_max_us=21416 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-13): output=DP-1 samples=4096 samples_total=63309 avg_us=212447 p50_us=6946 p95_us=1001943 p99_us=1005826 max_us=60006080 window_max_us=1696741 missed=43163 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+
+idle deltas: frames_rendered +63, animation_frames_stepped +0,
+client_wakeups +126, chrome_shm_imports +1, chrome_shm_bytes +645120,
+chrome_frame_callbacks +1, blur_passes +63, blur_panels +126,
+blur_skips +126, material_allocations 232 (flat), missed +63.
+The shell chrome produced 1 frame; the remaining frames are the
+Konsole cursor blink. Idle p95/p99 ~1.00 s is the 1 Hz idle VRR
+cadence, not a dropped 144 Hz frame; p50 is 6.946 ms.
+
+## load window: 35 s vkcube --wsi wayland --c 100000
+--- during (SIGUSR1-19) ---
+dragonfruit-compositor: frame request (SIGUSR1-18): output=DP-1 refresh_hz=143.999 period_us=6944 last_presented_us=30744473593 next_deadline_us=30744480537 idle=0 due=1 urgent=0 animation=0 in_flight=0 presentations=67276 last_interval_us=953618 vrr=on vrr_interval_us=-1 vrr_min_us=6944 vrr_max_us=41666
+dragonfruit-compositor: material stats (SIGUSR1-18): backdrop_passes=96673 backdrop_skipped=0 path=gpu blur_passes=96273 blur_panels=192252 blur_draws=96273 blur_skips=183547 blur_miss_first=64 blur_miss_scene=8054 blur_miss_source=563 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=235 material_scene_allocations=101 material_panel_allocations=134 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: gpu stats (SIGUSR1-18): enabled=0 available=0 gpu_time=unavailable reason=disabled scene_samples=0 scene_total=0 scene_p50_us=0 scene_p95_us=0 scene_p99_us=0 scene_max_us=0 blur_samples=0 blur_total=0 blur_p50_us=0 blur_p95_us=0 blur_p99_us=0 blur_max_us=0 composite_samples=0 composite_total=0 composite_p50_us=0 composite_p95_us=0 composite_p99_us=0 composite_max_us=0
+dragonfruit-compositor: scheme stats (SIGUSR1-18): scheme=light
+dragonfruit-compositor: degrade stats (SIGUSR1-18): tier=full forced=0 budget_us=6944 samples=94620 over_budget=1593 downgrades=2 upgrades=2 tiers=full:7856,reduced:3112,minimal:83652 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
+dragonfruit-compositor: frame timing (SIGUSR1-18): samples=8192 samples_total=94620 avg_us=2966 p50_us=1659 p95_us=7152 p99_us=8389 max_us=144826 window_max_us=14145 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-18): output=DP-1 samples=4096 samples_total=67275 avg_us=58427 p50_us=6945 p95_us=602457 p99_us=1002198 max_us=60006080 window_max_us=1573735 missed=43684 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+dragonfruit-compositor: render stats (SIGUSR1-19): frames_rendered=99847 frames_skipped_no_damage=2980 direct_scanouts=0 animation_frames_stepped=1391 client_wakeups=283499 latency_us_last=2757 latency_us_max=239902 latency_samples=29713 latency_dropped=37 scene_transforms=22761 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-19): chrome_shm_imports=3176 chrome_shm_bytes=7045073256 chrome_dmabuf_imports=0 chrome_frame_callbacks=3058
+dragonfruit-compositor: scanout stats (SIGUSR1-19): direct_scanouts=0 material_frames=101498 direct_scanout_candidates=0 frames_rendered=99847 frames_skipped_no_damage=2980 considered=102827
+dragonfruit-compositor: output material stats (SIGUSR1-19): output=DP-1 material_frames=101498 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=235 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: animation stats (SIGUSR1-19): frames_stepped=1391 animations_started=207 animations_completed=207 reduced_motion=false interval_us=6944
+dragonfruit-compositor: refresh stats (SIGUSR1-19): refresh_hz=143.999 source=mode interval_us=6944 deadline_us=6944 outputs=1 override=0
+dragonfruit-compositor: frame request (SIGUSR1-19): output=DP-1 refresh_hz=143.999 period_us=6944 last_presented_us=30837443383 next_deadline_us=30837450551 idle=0 due=1 urgent=0 animation=0 in_flight=1 presentations=71527 last_interval_us=7168 vrr=on vrr_interval_us=7168 vrr_min_us=6944 vrr_max_us=41666
+dragonfruit-compositor: material stats (SIGUSR1-19): backdrop_passes=101898 backdrop_skipped=0 path=gpu blur_passes=101498 blur_panels=202702 blur_draws=101498 blur_skips=193993 blur_miss_first=64 blur_miss_scene=8057 blur_miss_source=564 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=235 material_scene_allocations=101 material_panel_allocations=134 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: gpu stats (SIGUSR1-19): enabled=0 available=0 gpu_time=unavailable reason=disabled scene_samples=0 scene_total=0 scene_p50_us=0 scene_p95_us=0 scene_p99_us=0 scene_max_us=0 blur_samples=0 blur_total=0 blur_p50_us=0 blur_p95_us=0 blur_p99_us=0 blur_max_us=0 composite_samples=0 composite_total=0 composite_p50_us=0 composite_p95_us=0 composite_p99_us=0 composite_max_us=0
+dragonfruit-compositor: scheme stats (SIGUSR1-19): scheme=light
+dragonfruit-compositor: degrade stats (SIGUSR1-19): tier=full forced=0 budget_us=6944 samples=99845 over_budget=2295 downgrades=2 upgrades=2 tiers=full:13081,reduced:3112,minimal:83652 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
+dragonfruit-compositor: frame timing (SIGUSR1-19): samples=8192 samples_total=99845 avg_us=6143 p50_us=6179 p95_us=8400 p99_us=8662 max_us=144826 window_max_us=14154 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-19): output=DP-1 samples=4096 samples_total=71526 avg_us=8330 p50_us=6947 p95_us=12716 p99_us=13157 max_us=60006080 window_max_us=17509 missed=44668 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+--- after vkcube exit (SIGUSR1-20) ---
+dragonfruit-compositor: frame request (SIGUSR1-19): output=DP-1 refresh_hz=143.999 period_us=6944 last_presented_us=30837443383 next_deadline_us=30837450551 idle=0 due=1 urgent=0 animation=0 in_flight=1 presentations=71527 last_interval_us=7168 vrr=on vrr_interval_us=7168 vrr_min_us=6944 vrr_max_us=41666
+dragonfruit-compositor: material stats (SIGUSR1-19): backdrop_passes=101898 backdrop_skipped=0 path=gpu blur_passes=101498 blur_panels=202702 blur_draws=101498 blur_skips=193993 blur_miss_first=64 blur_miss_scene=8057 blur_miss_source=564 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=235 material_scene_allocations=101 material_panel_allocations=134 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: gpu stats (SIGUSR1-19): enabled=0 available=0 gpu_time=unavailable reason=disabled scene_samples=0 scene_total=0 scene_p50_us=0 scene_p95_us=0 scene_p99_us=0 scene_max_us=0 blur_samples=0 blur_total=0 blur_p50_us=0 blur_p95_us=0 blur_p99_us=0 blur_max_us=0 composite_samples=0 composite_total=0 composite_p50_us=0 composite_p95_us=0 composite_p99_us=0 composite_max_us=0
+dragonfruit-compositor: scheme stats (SIGUSR1-19): scheme=light
+dragonfruit-compositor: degrade stats (SIGUSR1-19): tier=full forced=0 budget_us=6944 samples=99845 over_budget=2295 downgrades=2 upgrades=2 tiers=full:13081,reduced:3112,minimal:83652 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
+dragonfruit-compositor: frame timing (SIGUSR1-19): samples=8192 samples_total=99845 avg_us=6143 p50_us=6179 p95_us=8400 p99_us=8662 max_us=144826 window_max_us=14154 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-19): output=DP-1 samples=4096 samples_total=71526 avg_us=8330 p50_us=6947 p95_us=12716 p99_us=13157 max_us=60006080 window_max_us=17509 missed=44668 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+dragonfruit-compositor: render stats (SIGUSR1-20): frames_rendered=100003 frames_skipped_no_damage=2980 direct_scanouts=0 animation_frames_stepped=1391 client_wakeups=283959 latency_us_last=2757 latency_us_max=239902 latency_samples=29713 latency_dropped=37 scene_transforms=22917 scene_transform_skipped=0
+dragonfruit-compositor: chrome stats (SIGUSR1-20): chrome_shm_imports=3178 chrome_shm_bytes=7050848616 chrome_dmabuf_imports=0 chrome_frame_callbacks=3060
+dragonfruit-compositor: scanout stats (SIGUSR1-20): direct_scanouts=0 material_frames=101654 direct_scanout_candidates=0 frames_rendered=100003 frames_skipped_no_damage=2980 considered=102983
+dragonfruit-compositor: output material stats (SIGUSR1-20): output=DP-1 material_frames=101654 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=235 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: animation stats (SIGUSR1-20): frames_stepped=1391 animations_started=207 animations_completed=207 reduced_motion=false interval_us=6944
+dragonfruit-compositor: refresh stats (SIGUSR1-20): refresh_hz=143.999 source=mode interval_us=6944 deadline_us=6944 outputs=1 override=0
+dragonfruit-compositor: frame request (SIGUSR1-20): output=DP-1 refresh_hz=143.999 period_us=6944 last_presented_us=30842589083 next_deadline_us=30842596027 idle=0 due=1 urgent=0 animation=0 in_flight=0 presentations=71659 last_interval_us=1001906 vrr=on vrr_interval_us=-1 vrr_min_us=6944 vrr_max_us=41666
+dragonfruit-compositor: material stats (SIGUSR1-20): backdrop_passes=102054 backdrop_skipped=0 path=gpu blur_passes=101654 blur_panels=203014 blur_draws=101654 blur_skips=194302 blur_miss_first=64 blur_miss_scene=8059 blur_miss_source=565 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=235 material_scene_allocations=101 material_panel_allocations=134 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: gpu stats (SIGUSR1-20): enabled=0 available=0 gpu_time=unavailable reason=disabled scene_samples=0 scene_total=0 scene_p50_us=0 scene_p95_us=0 scene_p99_us=0 scene_max_us=0 blur_samples=0 blur_total=0 blur_p50_us=0 blur_p95_us=0 blur_p99_us=0 blur_max_us=0 composite_samples=0 composite_total=0 composite_p50_us=0 composite_p95_us=0 composite_p99_us=0 composite_max_us=0
+dragonfruit-compositor: scheme stats (SIGUSR1-20): scheme=light
+dragonfruit-compositor: degrade stats (SIGUSR1-20): tier=full forced=0 budget_us=6944 samples=100001 over_budget=2323 downgrades=2 upgrades=2 tiers=full:13237,reduced:3112,minimal:83652 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
+dragonfruit-compositor: frame timing (SIGUSR1-20): samples=8192 samples_total=100001 avg_us=6216 p50_us=6198 p95_us=8404 p99_us=8664 max_us=144826 window_max_us=14154 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-20): output=DP-1 samples=4096 samples_total=71658 avg_us=9319 p50_us=6954 p95_us=12728 p99_us=13200 max_us=60006080 window_max_us=1001906 missed=44701 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+
+load reading: compositor frame p50/p95/p99 6179/8400/8662 us;
+presentation interval p50/p95/p99 6947/12716/13157 us;
+budget_us=6944, refresh_hz=143.999; missed +984 over the 35 s load.
+material path=gpu, blur_draws=101498, blur_panels=202702,
+backdrop_skipped=0, material_allocations=235 (+3 from idle).
+shell material roles under load: chrome/dock/popup/drawer tier=0 blur=1.
+
+## resource trend
+elapsed_s,comp_fd,comp_rss_kb,comp_hwm_kb,shell_fd,shell_rss_kb,shell_hwm_kb
+0,93,115896,328588,15,232616,232616
+5,93,115896,328588,15,232616,232616
+10,93,115896,328588,15,232616,232616
+15,93,115896,328588,15,232616,232616
+20,93,115896,328588,15,232616,232616
+25,93,115896,328588,15,232616,232616
+30,93,115896,328588,15,232616,232616
+35,93,115896,328588,15,232616,232616
+40,93,115896,328588,15,232616,232616
+45,93,115896,328588,15,232616,232616
+50,93,117880,328588,15,232616,232616
+55,93,117880,328588,15,232616,232616
+--- vkcube load ---
+elapsed_s,comp_fd,comp_rss_kb,comp_hwm_kb,shell_fd,shell_rss_kb
+0,96,117888,328588,15,232820
+2,107,117888,328588,19,235096
+4,107,117888,328588,19,235096
+6,107,117888,328588,19,235096
+8,107,117888,328588,19,235096
+11,107,117888,328588,19,235112
+13,107,117888,328588,19,235112
+17,107,121212,328588,20,235584
+19,107,121212,328588,20,235584
+22,107,121212,328588,20,235584
+24,107,121212,328588,20,235584
+26,107,121212,328588,20,235584
+28,107,121212,328588,20,235584
+
+idle: compositor fd 93 flat, RSS 115896 -> 117880 KB (+1984 KB);
+shell fd 15 flat, RSS 232616 KB flat. load: compositor fd 96 -> 107
+during vkcube -> 96 after; RSS 117888 -> 121216 KB (+3328 KB);
+shell fd 15 -> 19 -> 15; RSS 232820 -> 236164 KB (+3344 KB).
+material_allocations 232 -> 235; no unbounded growth after client exit.
+
+## native fullscreen / direct scanout
+driver: scripts/t208-shell-fullscreen.c, token reissued after stopping the shell
+target: vkcube toplevel; fullscreen held ~14 s, then unfullscreen
+
+--- driver log ---
+token_len=64
+shell-fullscreen: authenticated lockstep=1
+shell-fullscreen: toplevel title=dragonfruit : node — Konsole
+shell-fullscreen: toplevel app_id=org.kde.konsole
+shell-fullscreen: toplevel state=0x2
+shell-fullscreen: toplevel title=vkcube
+shell-fullscreen: toplevel app_id=
+shell-fullscreen: toplevel state=0x0
+shell-fullscreen: toplevel title=208-glass-native-rollout.md - dragonfruit - Visual Studio Code
+shell-fullscreen: toplevel app_id=code
+shell-fullscreen: toplevel state=0x0
+shell-fullscreen: fullscreen vkcube
+shell-fullscreen: unfullscreen vkcube
+
+--- scanout during fullscreen ---
+dragonfruit-compositor: scanout stats (SIGUSR1-20): direct_scanouts=0 material_frames=101654 direct_scanout_candidates=0 frames_rendered=100003 frames_skipped_no_damage=2980 considered=102983
+dragonfruit-compositor: output material stats (SIGUSR1-20): output=DP-1 material_frames=101654 direct_scanouts=0 direct_scanout_candidates=0 material_allocations=235 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: material stats (SIGUSR1-20): backdrop_passes=102054 backdrop_skipped=0 path=gpu blur_passes=101654 blur_panels=203014 blur_draws=101654 blur_skips=194302 blur_miss_first=64 blur_miss_scene=8059 blur_miss_source=565 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=235 material_scene_allocations=101 material_panel_allocations=134 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: degrade stats (SIGUSR1-20): tier=full forced=0 budget_us=6944 samples=100001 over_budget=2323 downgrades=2 upgrades=2 tiers=full:13237,reduced:3112,minimal:83652 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=0
+dragonfruit-compositor: frame timing (SIGUSR1-20): samples=8192 samples_total=100001 avg_us=6216 p50_us=6198 p95_us=8404 p99_us=8664 max_us=144826 window_max_us=14154 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-20): output=DP-1 samples=4096 samples_total=71658 avg_us=9319 p50_us=6954 p95_us=12728 p99_us=13200 max_us=60006080 window_max_us=1001906 missed=44701 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+dragonfruit-compositor: scanout stats (SIGUSR1-21): direct_scanouts=0 material_frames=102524 direct_scanout_candidates=4019 frames_rendered=105878 frames_skipped_no_damage=2980 considered=108858
+dragonfruit-compositor: output material stats (SIGUSR1-21): output=DP-1 material_frames=102524 direct_scanouts=0 direct_scanout_candidates=4019 material_allocations=235 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: material stats (SIGUSR1-21): backdrop_passes=102924 backdrop_skipped=0 path=gpu blur_passes=102524 blur_panels=204754 blur_draws=102524 blur_skips=196036 blur_miss_first=64 blur_miss_scene=8064 blur_miss_source=566 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=235 material_scene_allocations=101 material_panel_allocations=134 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: degrade stats (SIGUSR1-21): tier=reduced forced=0 budget_us=6944 samples=105876 over_budget=2377 downgrades=3 upgrades=2 tiers=full:13622,reduced:8602,minimal:83652 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=1
+dragonfruit-compositor: frame timing (SIGUSR1-21): samples=8192 samples_total=105876 avg_us=2653 p50_us=1406 p95_us=7393 p99_us=8602 max_us=144826 window_max_us=17412 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-21): output=DP-1 samples=4096 samples_total=73255 avg_us=84449 p50_us=6946 p95_us=1000710 p99_us=1002995 max_us=60006080 window_max_us=1659362 missed=45057 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+
+--- scanout after unfullscreen ---
+dragonfruit-compositor: scanout stats (SIGUSR1-21): direct_scanouts=0 material_frames=102524 direct_scanout_candidates=4019 frames_rendered=105878 frames_skipped_no_damage=2980 considered=108858
+dragonfruit-compositor: output material stats (SIGUSR1-21): output=DP-1 material_frames=102524 direct_scanouts=0 direct_scanout_candidates=4019 material_allocations=235 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: material stats (SIGUSR1-21): backdrop_passes=102924 backdrop_skipped=0 path=gpu blur_passes=102524 blur_panels=204754 blur_draws=102524 blur_skips=196036 blur_miss_first=64 blur_miss_scene=8064 blur_miss_source=566 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=235 material_scene_allocations=101 material_panel_allocations=134 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: degrade stats (SIGUSR1-21): tier=reduced forced=0 budget_us=6944 samples=105876 over_budget=2377 downgrades=3 upgrades=2 tiers=full:13622,reduced:8602,minimal:83652 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=1
+dragonfruit-compositor: frame timing (SIGUSR1-21): samples=8192 samples_total=105876 avg_us=2653 p50_us=1406 p95_us=7393 p99_us=8602 max_us=144826 window_max_us=17412 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-21): output=DP-1 samples=4096 samples_total=73255 avg_us=84449 p50_us=6946 p95_us=1000710 p99_us=1002995 max_us=60006080 window_max_us=1659362 missed=45057 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+dragonfruit-compositor: scanout stats (SIGUSR1-22): direct_scanouts=0 material_frames=102524 direct_scanout_candidates=11261 frames_rendered=115175 frames_skipped_no_damage=2980 considered=118155
+dragonfruit-compositor: output material stats (SIGUSR1-22): output=DP-1 material_frames=102524 direct_scanouts=0 direct_scanout_candidates=11261 material_allocations=235 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: material stats (SIGUSR1-22): backdrop_passes=102924 backdrop_skipped=0 path=gpu blur_passes=102524 blur_panels=204754 blur_draws=102524 blur_skips=196036 blur_miss_first=64 blur_miss_scene=8064 blur_miss_source=566 blur_miss_spec=24 blur_miss_chain=0 blur_downsample_max=16 material_allocations=235 material_scene_allocations=101 material_panel_allocations=134 material_region_px=8294400 material_region=3840x2160
+dragonfruit-compositor: degrade stats (SIGUSR1-22): tier=reduced forced=0 budget_us=6944 samples=115173 over_budget=2377 downgrades=3 upgrades=2 tiers=full:13622,reduced:17899,minimal:83652 budget_source=refresh down_window_us=200000 up_window_us=3000000 latched=1
+dragonfruit-compositor: frame timing (SIGUSR1-22): samples=8192 samples_total=115173 avg_us=723 p50_us=409 p95_us=1907 p99_us=2304 max_us=144826 window_max_us=10948 max_interval_ms=60002
+dragonfruit-compositor: presentation stats (SIGUSR1-22): output=DP-1 samples=4096 samples_total=75128 avg_us=83814 p50_us=6945 p95_us=1000710 p99_us=1002995 max_us=60006080 window_max_us=1659362 missed=45060 budget_us=6944 refresh_hz=143.999 source=mode vrr=on
+
+fullscreen entry PASS: the KMS still shows the client covering the
+output with chrome suppressed. direct_scanout_candidates advanced
+4019 -> 11261, but direct_scanouts stayed 0: the eligible fullscreen
+client was composited, not scanned out. This is the T190d/T192 gap.
+
+## native lock / privacy
+command: shell restart with DF_LOCK_FIXTURE=2500 (first run)
+journal: dragonfruit-compositor: session locked (fail-secure)
+journal: dragonfruit-compositor: session lock covers 1 output(s)
+KMS still: docs/captures/t208-native-lock.png (lock UI only)
+The first timed unlock did not complete before the shell restarted;
+the recovery run (DF_LOCK_FIXTURE=1000 DF_LOCK_UNLOCK_MS=8000)
+logged "session unlocked" and restored the desktop. Native lock-exit
+remains OPEN; the current source has the T207 retry fix.
+
+## make native-perf
+vkcube: 120 frames in 377 ms = 318.30 fps (client loop, not panel pacing)
+
+## rollback configuration check (no session cycle)
+DRAGONFRUIT_GLASS_ROLLOUT=legacy bash scripts/native-session.sh rebuild \
+    --no-build --no-install --no-logout
+native.env: DRAGONFRUIT_GLASS_ROLLOUT="legacy"
+compositor drop-in: Environment="DRAGONFRUIT_GLASS_ROLLOUT=legacy"
+shell drop-in:      Environment="DRAGONFRUIT_GLASS_ROLLOUT=legacy"
+restored byte-for-byte; no GLASS_ROLLOUT remains. The native render
+cycle that reads it is OPEN.
+
+## environment limits
+- single GPU (Lucienne), normal transform; no multi-GPU/rotated variant
+- one connected output (DP-1); no hotplug/mixed-refresh row
+- GPU timer queries disabled in the running compositor
+  (DRAGONFRUIT_GPU_TIMING=1 requires a compositor restart)
+- hardware cursor and overlay planes are not in the KMS readback
+- the running release is pre-T195/T196; the replacement native row
+  needs a rebuilt compositor/shell and a session restart

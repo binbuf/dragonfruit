@@ -29,14 +29,14 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 ## Phase 4 — Acceptance and rollout
 
 - [x] T207 — Verify the replacement in nested and fallback sessions → [207-glass-nested-acceptance.md](../207-glass-nested-acceptance.md)
-- [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
+- [~] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md) ⟵ blocked
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-07T07:14:39Z · 14/15 done
+**Pipeline status** — updated 2026-11-07T08:50:14Z · 14/15 done
 
 - Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202, T203, T204, T205, T206, T207
-- Blocked: none
+- Blocked: T208
 - Failed: none
-- Remaining: T208
-- Last finished: T207 — done · T207 nested legacy/replacement acceptance landed with 50 rows and 16/16 A/B pairs passing, flat-band/reference and per-surface scores, interaction/fallback evidence, ADR/docs, and green check-tokens/visual-test/gates; native DRM stays OPEN for T208.
+- Remaining: none
+- Last finished: T208 — blocked · Native baseline verified and evidence/docs landed; nested T207, t21-gpu-rollout and make gates pass; default stays legacy because native replacement/perf, direct scanout, lock-exit and rollback need a free DRM seat/operator login (running build pre-T195/T196).
 <!-- /symphony:status -->
