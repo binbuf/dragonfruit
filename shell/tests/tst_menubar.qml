@@ -1502,12 +1502,18 @@ Item {
 
         // -- System menu brand mark (T-09) ----------------------------------
 
-        function test_logo_renders_pixels_and_tints() {
-            // Drawn large enough that the thin line-art has solid interior
-            // pixels to sample (at menu-bar size it is entirely antialiased).
-            var logo = make(logoComponent, { size: 120, color: Theme.color.textPrimary });
-            // The art is taller than wide (270 x 322); the aspect is preserved.
-            verify(logo.implicitHeight > logo.implicitWidth);
+        function test_logo_renders_pixels_and_tints_data() {
+            return [
+                { tag: "menu-size", size: Theme.controls.menuBar.iconSize },
+                { tag: "large", size: 120 }
+            ];
+        }
+
+        function test_logo_renders_pixels_and_tints(data) {
+            var logo = make(logoComponent, { size: data.size, color: Theme.color.textPrimary });
+            // Swept Trio uses a square view box and a solid, tintable body.
+            compare(logo.implicitWidth, data.size);
+            compare(logo.implicitHeight, data.size);
             var img = grabImage(logo);
             verify(imageContainsColor(img, Theme.color.textPrimary),
                    "the dragonfruit mark should render visible pixels");
