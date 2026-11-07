@@ -989,6 +989,35 @@ always part of the accessible name. The existing Dock launch-failure
 notification (T-11.1b) remains the failure path. See
 [adr/0059](adr/0059-menu-bar-focus-reflection.md).
 
+**T204 status (Notification Center).** The Center is mapped. Its entry points
+are the menu-bar clock (`MenuBar.clockActivated`), the compositor's
+`notification-center` input action (the default Control-Shift-N shortcut and
+any configured hot corner), all routed through the same
+`ShellController::toggleNotificationCenter()` path. The Center is a trusted
+top-right `notification-center` overlay layer surface with its own panel-sized
+input region, OnDemand keyboard interaction (exclusive while open) and the
+compositor's per-output overlay rule: with no explicit output it anchors on the
+output where the invoking interaction happened. It closes on Escape, outside
+focus loss, lock, output teardown and a competing ambient overlay, clearing the
+input region and returning keyboard focus to the previously focused window.
+
+The history view is `shell/src/notificationcenter.{h,cpp}`, a Wayland-free
+controller fed by the existing decoded `History()` model. It normalizes every
+row to a stable `key` (the service id), marks a row `active` only while the
+service still has it open and Focus/DND did not suppress it, and filters the
+action list to empty for history-only rows. Selection follows the stable key
+across history updates; Up/Down/Home/End traverse, Return invokes an active
+row's `default` action or dismisses a plain active row, and Delete/Backspace
+dismiss the selection. Pointer action buttons and the row dismiss control
+route through the same `NotificationClient::invoke`/`dismiss` contract as the
+banner. Expired, closed, dismissed and DND-suppressed rows remain visible
+history with their status, never stale active actions. The service keeps
+banner delivery, expiry, replacement, urgency, Focus policy and badge
+semantics; a service absence clears the stale view into an accessible
+"Notifications unavailable" state, and the existing `availableChanged` refresh
+repopulates it after reconnect. T205 owns the notification-stack material
+calibration. See [adr/0223](adr/0223-notification-center-mapping.md).
+
 **T-11.3a status.** The Control Center panel exists: the menu-bar item (or the
 Control-Option-C shortcut, routed as the compositor's `control-center` input
 action) opens a top-right `control-center` overlay surface rendered from

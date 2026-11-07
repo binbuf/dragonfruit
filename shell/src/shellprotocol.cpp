@@ -674,6 +674,116 @@ bool ShellProtocol::setBannerInputRegion(int width, int height)
     return true;
 }
 
+// --- Notification Center overlay (T204) ------------------------------------
+
+bool ShellProtocol::createNotificationCenterSurface(int width, int height, int topMargin)
+{
+    if (m_notificationCenterSurface || m_notificationCenterLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_notificationCenterSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_notificationCenterSurface);
+    m_notificationCenterLayer = df_shell_get_layer_surface(
+        m_shell, m_notificationCenterSurface, nullptr, DF_SHELL_LAYER_OVERLAY,
+        "notification-center");
+    if (!m_notificationCenterLayer)
+        return fail(QStringLiteral("compositor refused the notification-center layer surface"));
+    static const df_layer_surface_listener listener = { onNotificationCenterConfigure,
+                                                        onNotificationCenterLayerClosed };
+    df_layer_surface_add_listener(m_notificationCenterLayer, &listener, this);
+
+    // Top-right corner, below the menu bar. The overlay is per-output: with no
+    // explicit output the compositor places it on the output the invoking
+    // interaction happened on (the clock click's chrome focus, or the pointer
+    // output for a keyboard/hot-corner trigger). Reserve nothing and take the
+    // keyboard on demand so Escape, click-away and traversal work.
+    df_layer_surface_set_anchor(m_notificationCenterLayer, kAnchorRight | kAnchorTop);
+    df_layer_surface_set_margin(m_notificationCenterLayer, topMargin, kBannerMargin, 0, 0);
+    df_layer_surface_set_size(m_notificationCenterLayer, width, height);
+    df_layer_surface_set_exclusive_zone(m_notificationCenterLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_notificationCenterLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    // Everything passes through until the Center's own input region is applied
+    // with its first committed buffer.
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_notificationCenterSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_notificationCenterSurface, nullptr, 0, 0);
+    wl_surface_commit(m_notificationCenterSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the notification-center surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setNotificationCenterSize(int width, int height)
+{
+    if (!m_notificationCenterLayer || width <= 0 || height <= 0)
+        return false;
+    df_layer_surface_set_size(m_notificationCenterLayer, width, height);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::setNotificationCenterInputRegion(int width, int height)
+{
+    if (!m_notificationCenterSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    // Applied with the next buffer commit (`commitNotificationCenterImage`).
+    wl_surface_set_input_region(m_notificationCenterSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::setNotificationCenterKeyboardGrab(bool grab)
+{
+    if (!m_notificationCenterLayer)
+        return false;
+    df_layer_surface_set_keyboard_interaction(
+        m_notificationCenterLayer,
+        grab ? DF_LAYER_SURFACE_KEYBOARD_INTERACTION_EXCLUSIVE
+             : DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::commitNotificationCenterImage(const QImage &image,
+                                                  const QSize &logicalSize)
+{
+    if (!m_notificationCenterSurface)
+        return false;
+    if (!commitTo(m_notificationCenterSurface, image, logicalSize))
+        return false;
+    m_notificationCenterMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideNotificationCenter()
+{
+    if (!m_notificationCenterSurface || !m_notificationCenterLayer)
+        return false;
+    if (!m_notificationCenterMapped)
+        return true;
+    cancelPendingFrame(QStringLiteral("notification-center"));
+    wl_surface_attach(m_notificationCenterSurface, nullptr, 0, 0);
+    wl_surface_commit(m_notificationCenterSurface);
+    resetSurfaceScale(m_notificationCenterSurface);
+    m_notificationCenterMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 // --- Control Center overlay (T-11.3a) --------------------------------------
 
 bool ShellProtocol::createControlCenterSurface(int width, int height, int topMargin)
@@ -1820,6 +1930,8 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufFor(
             m_switcherMapped = true;
         else if (surface == m_bannerSurface)
             m_bannerMapped = true;
+        else if (surface == m_notificationCenterSurface)
+            m_notificationCenterMapped = true;
         else if (surface == m_controlCenterSurface)
             m_controlCenterMapped = true;
         else if (surface == m_osdSurface)
@@ -2268,6 +2380,8 @@ QString ShellProtocol::surfaceLabel(wl_surface *surface) const
         return QStringLiteral("switcher");
     if (surface == m_bannerSurface)
         return QStringLiteral("banner");
+    if (surface == m_notificationCenterSurface)
+        return QStringLiteral("notification-center");
     if (surface == m_controlCenterSurface)
         return QStringLiteral("control-center");
     if (surface == m_osdSurface)
@@ -2305,6 +2419,8 @@ wl_surface *ShellProtocol::surfaceForLabel(const QString &label) const
         return m_switcherSurface;
     if (label == QLatin1String("banner"))
         return m_bannerSurface;
+    if (label == QLatin1String("notification-center"))
+        return m_notificationCenterSurface;
     if (label == QLatin1String("control-center"))
         return m_controlCenterSurface;
     if (label == QLatin1String("osd"))
@@ -3054,6 +3170,10 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_switcherLayer);
     if (m_switcherSurface)
         wl_surface_destroy(m_switcherSurface);
+    if (m_notificationCenterLayer)
+        df_layer_surface_destroy(m_notificationCenterLayer);
+    if (m_notificationCenterSurface)
+        wl_surface_destroy(m_notificationCenterSurface);
     if (m_controlCenterLayer)
         df_layer_surface_destroy(m_controlCenterLayer);
     if (m_controlCenterSurface)
@@ -3162,6 +3282,7 @@ void ShellProtocol::teardown()
     m_overviewMapped = false;
     m_pointerOnOverview = false;
     m_pointerOnBanner = false;
+    m_pointerOnNotificationCenter = false;
     m_pointerOnControlCenter = false;
     m_pointerOnChooser = false;
     m_pointerOnScreenshot = false;
@@ -3169,6 +3290,7 @@ void ShellProtocol::teardown()
     m_pointerOnPolkit = false;
     m_pointerOnAppsDrawer = false;
     m_keyboardOnOverview = false;
+    m_keyboardOnNotificationCenter = false;
     m_keyboardOnControlCenter = false;
     m_keyboardOnChooser = false;
     m_keyboardOnScreenshot = false;
@@ -3187,6 +3309,9 @@ void ShellProtocol::teardown()
     m_appsDrawerLayer = nullptr;
     m_appsDrawerSurface = nullptr;
     m_appsDrawerMapped = false;
+    m_notificationCenterLayer = nullptr;
+    m_notificationCenterSurface = nullptr;
+    m_notificationCenterMapped = false;
     m_controlCenterLayer = nullptr;
     m_controlCenterSurface = nullptr;
     m_controlCenterMapped = false;
@@ -3375,10 +3500,31 @@ void ShellProtocol::onBannerConfigure(void *data, df_layer_surface *, uint32_t s
     emit self->bannerConfigured(width, height, serial);
 }
 
+void ShellProtocol::onNotificationCenterConfigure(void *data, df_layer_surface *,
+                                                  uint32_t serial, int32_t width,
+                                                  int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_notificationCenterLayer)
+        df_layer_surface_ack_configure(self->m_notificationCenterLayer, serial);
+    emit self->notificationCenterConfigured(width, height, serial);
+}
+
 void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
     emit self->surfaceClosed();
+}
+
+void ShellProtocol::onNotificationCenterLayerClosed(void *data, df_layer_surface *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_notificationCenterLayer = nullptr;
+    self->m_notificationCenterSurface = nullptr;
+    self->m_notificationCenterMapped = false;
+    self->m_pointerOnNotificationCenter = false;
+    self->m_keyboardOnNotificationCenter = false;
+    emit self->notificationCenterSurfaceClosed();
 }
 
 void ShellProtocol::onControlCenterConfigure(void *data, df_layer_surface *, uint32_t serial,
@@ -4004,6 +4150,8 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_dockPopupSurface && surface == self->m_dockPopupSurface;
     self->m_pointerOnDock = self->m_dockSurface && surface == self->m_dockSurface;
     self->m_pointerOnBanner = self->m_bannerSurface && surface == self->m_bannerSurface;
+    self->m_pointerOnNotificationCenter =
+        self->m_notificationCenterSurface && surface == self->m_notificationCenterSurface;
     self->m_pointerOnControlCenter =
         self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
     self->m_pointerOnOverview =
@@ -4050,6 +4198,12 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         emit self->screencastPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
+    if (self->m_pointerOnNotificationCenter) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->notificationCenterPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnControlCenter) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -4088,6 +4242,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     auto *self = static_cast<ShellProtocol *>(data);
     const bool wasOverview = self->m_pointerOnOverview;
     const bool wasBanner = self->m_pointerOnBanner;
+    const bool wasNotificationCenter = self->m_pointerOnNotificationCenter;
     const bool wasControlCenter = self->m_pointerOnControlCenter;
     const bool wasChooser = self->m_pointerOnChooser;
     const bool wasScreenshot = self->m_pointerOnScreenshot;
@@ -4100,6 +4255,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnDockPopup = false;
     self->m_pointerOnDock = false;
     self->m_pointerOnBanner = false;
+    self->m_pointerOnNotificationCenter = false;
     self->m_pointerOnControlCenter = false;
     self->m_pointerOnOverview = false;
     self->m_pointerOnChooser = false;
@@ -4119,6 +4275,8 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
         emit self->appsDrawerPointerLeft();
     else if (wasOverview)
         emit self->overviewPointerLeft();
+    else if (wasNotificationCenter)
+        emit self->notificationCenterPointerLeft();
     else if (wasControlCenter)
         emit self->controlCenterPointerLeft();
     else if (wasBanner)
@@ -4165,6 +4323,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->screencastPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnNotificationCenter) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->notificationCenterPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnControlCenter) {
@@ -4229,6 +4393,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                                            state == WL_POINTER_BUTTON_STATE_PRESSED);
         return;
     }
+    if (self->m_pointerOnNotificationCenter) {
+        emit self->notificationCenterPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                                   state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     if (self->m_pointerOnControlCenter) {
         emit self->controlCenterPointerButton(self->m_pointerX, self->m_pointerY, button,
                                               state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -4270,6 +4439,8 @@ ShellProtocol::PointerSurface ShellProtocol::currentPointerSurface() const
         return PointerSurface::Screenshot;
     if (m_pointerOnScreenCast)
         return PointerSurface::ScreenCast;
+    if (m_pointerOnNotificationCenter)
+        return PointerSurface::NotificationCenter;
     if (m_pointerOnControlCenter)
         return PointerSurface::ControlCenter;
     if (m_pointerOnOverview)
@@ -4310,6 +4481,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
     self->m_keyboardOnDock = self->m_dockSurface && surface == self->m_dockSurface;
     self->m_keyboardOnOverview =
         self->m_overviewSurface && surface == self->m_overviewSurface;
+    self->m_keyboardOnNotificationCenter =
+        self->m_notificationCenterSurface && surface == self->m_notificationCenterSurface;
     self->m_keyboardOnControlCenter =
         self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
     self->m_keyboardOnChooser =
@@ -4328,6 +4501,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->dockKeyboardFocused(true);
     if (self->m_keyboardOnOverview)
         emit self->overviewKeyboardFocused(true);
+    if (self->m_keyboardOnNotificationCenter)
+        emit self->notificationCenterKeyboardFocused(true);
     if (self->m_keyboardOnControlCenter)
         emit self->controlCenterKeyboardFocused(true);
     if (self->m_keyboardOnChooser)
@@ -4349,6 +4524,9 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_dockSurface && surface == self->m_dockSurface);
     const bool wasOverview = self->m_keyboardOnOverview
             || (self->m_overviewSurface && surface == self->m_overviewSurface);
+    const bool wasNotificationCenter = self->m_keyboardOnNotificationCenter
+            || (self->m_notificationCenterSurface
+                && surface == self->m_notificationCenterSurface);
     const bool wasControlCenter = self->m_keyboardOnControlCenter
             || (self->m_controlCenterSurface && surface == self->m_controlCenterSurface);
     const bool wasChooser = self->m_keyboardOnChooser
@@ -4363,6 +4541,7 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_appsDrawerSurface && surface == self->m_appsDrawerSurface);
     self->m_keyboardOnDock = false;
     self->m_keyboardOnOverview = false;
+    self->m_keyboardOnNotificationCenter = false;
     self->m_keyboardOnControlCenter = false;
     self->m_keyboardOnChooser = false;
     self->m_keyboardOnScreenshot = false;
@@ -4375,6 +4554,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->dockKeyboardFocused(false);
     if (wasOverview)
         emit self->overviewKeyboardFocused(false);
+    if (wasNotificationCenter)
+        emit self->notificationCenterKeyboardFocused(false);
     if (wasControlCenter)
         emit self->controlCenterKeyboardFocused(false);
     if (wasChooser)
@@ -4407,6 +4588,11 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
     }
     if (self->m_keyboardOnAppsDrawer) {
         emit self->appsDrawerKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+        return;
+    }
+    if (self->m_keyboardOnNotificationCenter) {
+        emit self->notificationCenterKeyEvent(key,
+                                              state == WL_KEYBOARD_KEY_STATE_PRESSED);
         return;
     }
     if (self->m_keyboardOnChooser) {
@@ -4982,6 +5168,9 @@ void ShellProtocol::onOutputRemoved(void *data, df_output *output)
     self->m_outputInfo.remove(output);
     if (previous != self->outputRefreshMilliHz())
         emit self->outputRefreshChanged();
+    // Transient overlays are per-output; close them rather than leaving a
+    // stale configure anchored to a display that no longer exists.
+    emit self->outputRemoved();
 }
 void ShellProtocol::onWorkspaceName(void *data, df_workspace *workspace, const char *name)
 {

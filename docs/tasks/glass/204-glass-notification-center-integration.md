@@ -34,4 +34,75 @@ Reuse the shell's overlay configure/commit/pacing infrastructure and existing no
 
 ## Hand-off
 
-_(Implementation session records routing, surface ownership and service behavior.)_
+Implemented on the replacement rail.
+
+**Routing and surface ownership.** The Center is a top-right
+`notification-center` `overlay` layer surface created by `ShellProtocol` with
+its own panel-sized input region and a modal keyboard grab while open. It is
+created without an explicit output, so the compositor's per-output overlay rule
+anchors it on the output that produced the invoking interaction. The menu-bar
+clock (`MenuBar.clockActivated`) and the compositor's `notification-center`
+input action (Control-Shift-N and any configured hot corner, including the
+default top-right corner) both call
+`ShellController::toggleNotificationCenter()`; the view's close path calls
+`hideNotificationCenter()`. Opening the Center closes the
+Control Center, Applications drawer, Mission Control, chooser, screenshot,
+ScreenCast or polkit overlay. Escape, outside focus loss, lock, output removal,
+compositor surface closure or a competing overlay close it, clear the input
+region and release keyboard focus back to the active window.
+
+**History and actions.** `shell/src/notificationcenter.{h,cpp}` is the
+Wayland-free normalized state. It keys every row by the service id, follows
+that key across history refreshes, marks a row active only when `reason` and
+`closedAt` are unset and `suppressed` is false, and strips the action list from
+every history-only row. Up/Down/Home/End traverse, Return invokes an active
+row's `default` action or dismisses a plain active row, and Delete/Backspace
+dismiss the selection. Pointer action buttons and the row dismiss control route
+through the existing `NotificationClient::invoke`/`dismiss` service contract.
+The QML view is `shell/notifications/NotificationCenter.qml`; it renders the
+stable rows, accessible empty/unavailable states and the active-only action
+controls. Expired, closed, dismissed and DND-suppressed rows remain visible
+history with no active actions.
+
+**Service behavior.** Banner delivery, expiry, replacement, urgency, Focus/DND
+policy and the existing badge semantics stay with `services/notifications`; the
+Center is a projection plus the two existing write calls. Absence clears the
+stale rows into an accessible "Notifications unavailable" state while the
+Center stays mapped, and service re-registration refreshes the same Center.
+The mock client now mirrors the service's Focus/DND admission rule so the
+headless round-trip covers suppressed history. T205 owns the notification-stack
+and lower-panel material calibration; T204 uses the shared Popup role until
+then.
+
+**Checks (final tree).**
+
+- `cargo test -p dragonfruit-notifications` — 24 unit + 12 session-bus tests
+  passed.
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor hot_corners`
+  — 5 passed, including the configured top-right Notification Center corner.
+- `cargo test -p dragonfruit-compositor --test shell_protocol_conformance
+  synthetic_input_drives_shortcuts_hot_corners_and_gestures` — passed, including
+  the configured hot-corner `notification-center` action.
+- `ctest --test-dir build -R '^tst_notificationmodel$|^tst_notificationcenter$|^tst_notifications$|^tst_menubar$'`
+  — 4/4 passed.
+- `make gates` — passed: glass self-test, preset checks, menu-bar veil, menu
+  families and Control Center material checks, e2e, and 84/84 ctest
+  (including `tst_notificationcenter`, `tst_notificationmodel`,
+  `tst_notifications` and `tst_menubar`).
+
+Integration coverage maps to the acceptance rows: `tst_menubar` clicks the
+clock and asserts `clockActivated`; the compositor hot-corner unit/conformance
+tests assert the configured top-right corner dispatches `notification-center`;
+`tst_notificationcenter` drives the mock service through live, DND-suppressed,
+expired/dismissed and reconnect states; `tst_notifications` covers populated
+and empty/unavailable views plus keyboard traversal, action invocation,
+dismissal and Escape; the controller's close reasons cover Escape/outside/lock/
+output/competing, with `releaseKeyboardFocus()` restoring the prior window.
+
+Docs: `docs/design/04-shell.md` T204 status,
+`docs/private-protocols.md` layer/namespace note, and ADR
+`docs/design/adr/0223-notification-center-mapping.md`. Reusable notes and
+follow-ups are in `docs/tasks/glass/plan/progress/T204.md`.
+
+No blockers. Remaining work is T205's material calibration and the optional
+follow-ups listed in the progress note.

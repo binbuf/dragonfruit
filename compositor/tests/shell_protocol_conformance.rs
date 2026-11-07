@@ -4279,6 +4279,30 @@ fn synthetic_input_drives_shortcuts_hot_corners_and_gestures() {
         |state| state.overviews.iter().any(|(active, _)| *active == 1),
     );
 
+    // --- hot corner: the configured top-right corner is Notification Center
+    state.hot_corners.clear();
+    state.input_actions.clear();
+    input.send("motion-abs 0.999 0.001");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.hot_corners.is_empty(),
+    );
+    // TopRight == 1 in the `df_toplevel_manager.hot_corner` enum.
+    assert_eq!(state.hot_corners[0].0, 1, "top-right corner fired");
+    assert!(
+        state
+            .input_actions
+            .iter()
+            .any(|(action, source, _)| action == "notification-center" && source == "hot-corner"),
+        "the configured top-right corner must dispatch Notification Center: {:?}",
+        state.input_actions
+    );
+    // Leave the corner so the detector can fire again for later cases.
+    input.send("motion-abs 0.5 0.5");
+
     // --- gesture: four-finger vertical swipe drives shared progress ------
     state.input_actions.clear();
     state.progress_events = 0;

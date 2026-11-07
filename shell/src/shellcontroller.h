@@ -35,6 +35,7 @@
 #include "lockauth.h"
 #include "materialpolicy.h"
 #include "menubrokerclient.h"
+#include "notificationcenter.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "osdmodel.h"
@@ -97,6 +98,27 @@ private slots:
     void onControlCenterPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onControlCenterPointerLeft();
     void onControlCenterKeyboardFocused(bool focused);
+    // Notification Center (T204): the clock entry point, its own overlay
+    // surface and pointer/keyboard stream, and the service-backed history.
+    void onClockActivated();
+    void onNotificationCenterStateClosed(const QString &reason);
+    void onNotificationCenterConfigured(int width, int height, quint32 serial);
+    void onNotificationCenterPointerMoved(qreal x, qreal y);
+    void onNotificationCenterPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onNotificationCenterPointerLeft();
+    void onNotificationCenterKeyboardFocused(bool focused);
+    void onNotificationCenterKeyEvent(quint32 key, bool pressed);
+    void onNotificationCenterSurfaceClosed();
+    // The Center view's own requests. They are routed into the pure
+    // `NotificationCenter` state, which validates active rows and emits the
+    // service invoke/dismiss calls.
+    void onNotificationCenterDismissRequested();
+    void onNotificationCenterMoveRequested(int delta);
+    void onNotificationCenterSelectRequested(int index);
+    void onNotificationCenterActivateRequested();
+    void onNotificationCenterDismissSelectedRequested();
+    void onNotificationCenterActionRequested(int id, const QString &actionKey);
+    void onNotificationCenterEntryDismissRequested(int id);
     // T-11.4a: the OSD overlay surface, its auto-dismiss tick, and the
     // volume/brightness gestures that present it.
     void onOsdConfigured(int width, int height, quint32 serial);
@@ -533,6 +555,16 @@ private:
     void applyBannerInputRegion();
     void renderBanner();
     void scheduleBannerRender();
+    // Notification Center (T204): map/unmap the top-right overlay, push the
+    // normalized service history, and commit its frames. The pure
+    // `NotificationCenter` state owns selection and action validation.
+    void toggleNotificationCenter();
+    void showNotificationCenter();
+    void hideNotificationCenter(const QString &reason = QString());
+    void applyNotificationCenterData();
+    void renderNotificationCenter();
+    void scheduleNotificationCenterRender();
+    void updateNotificationCenterGeometry();
     // Control Center panel (T-11.3a): seed the panel's tile state, map/unmap
     // the top-right overlay surface, and commit its frames from the scene
     // graph (the banner/Dock FR-14 path).
@@ -849,6 +881,20 @@ private:
     quint32 m_bannerId = 0;
     Qt::MouseButtons m_bannerButtons = Qt::NoButton;
     bool m_bannerSceneGraphCommitLogged = false;
+    // Notification Center (T204): the pure service-history state and a
+    // top-right overlay scene, unmapped until the clock, keyboard action or
+    // configured hot corner opens it.
+    NotificationCenter *m_notificationCenter = nullptr;
+    QQuickWindow *m_notificationCenterWindow = nullptr;
+    QQuickItem *m_notificationCenterItem = nullptr;
+    int m_notificationCenterWidth = 0;
+    int m_notificationCenterHeight = 0;
+    bool m_notificationCenterOpen = false;
+    bool m_notificationCenterPending = false;
+    bool m_notificationCenterRenderPending = false;
+    Qt::MouseButtons m_notificationCenterButtons = Qt::NoButton;
+    bool m_notificationCenterKeyboardFocused = false;
+    bool m_notificationCenterSceneGraphCommitLogged = false;
     // Control Center panel (T-11.3a): a top-right overlay scene, unmapped
     // until the panel opens.
     QQuickWindow *m_controlCenterWindow = nullptr;
