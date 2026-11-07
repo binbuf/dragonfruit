@@ -422,9 +422,10 @@ def main():
         "zero copy bytes. This is why the aggregate Mission Control p99 can be "
         "worse than T183 even though the dmabuf surfaces are much faster: the "
         "16 ms overview fallback frame is a counted fallback, not a dmabuf "
-        "frame. The full GPU rail currently crashes the shell during Mission "
-        "Control teardown (T193 follow-up), so the overview surface is the "
-        "visible, deliberate fallback in this run."
+        "frame. The T192c full-rail verification run (overview surface"
+        " included) no longer crashes at teardown and reports zero shm"
+        " commits; this measured comparison run keeps the overview on the"
+        " deliberate fallback row so the fallback rate is visible."
     )
     add("")
 
@@ -470,8 +471,8 @@ def main():
         "Mission Control is the one shared row with a worse aggregate p99. "
         "Its dmabuf surfaces still improve, but the overview surface is the "
         "counted SHM fallback and its ~16 ms commit dominates the aggregate "
-        "p99. That is a real regression to file for T193 (along with the full "
-        "GPU rail teardown crash), not an averaging artifact."
+        "p99. That is a real regression to file for T193, not an averaging "
+        "artifact; the T192b full-rail teardown crash itself is fixed."
     )
     add("")
     add(

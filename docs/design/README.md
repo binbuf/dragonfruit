@@ -29,6 +29,7 @@ numbered records.
 | [interface-naming-and-licensing.md](interface-naming-and-licensing.md) | Generic names, original assets, third-party substitutions |
 | [motion-and-feedback.md](motion-and-feedback.md) | Motion language, HUDs, sound, cursor |
 | [evidence-and-acceptance.md](evidence-and-acceptance.md) | Capture, measurement, and acceptance process |
+| [experience-schema.md](experience-schema.md) | Machine-readable surface/state/axis/evidence manifest and per-surface thresholds |
 | [14-risks.md](14-risks.md) | Risks, hard limits, IP constraints |
 | [architecture-audit-native-rendering.md](architecture-audit-native-rendering.md) | The native DRM/material/shell-transport audit and its implementation record |
 | [advisor-briefing.md](advisor-briefing.md) | Historical context pack; superseded where it conflicts with STATUS/audit |

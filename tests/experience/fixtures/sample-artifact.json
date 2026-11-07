@@ -1,0 +1,25 @@
+{
+  "id": "S-DOCK-13",
+  "surface": "S-DOCK",
+  "state": "hover-magnified",
+  "summary": "Hover magnification",
+  "evidence_class": "still",
+  "axes": "light-1x",
+  "trigger": "bash scripts/capture-dock-magnify.sh",
+  "acceptance": {
+    "dimensions": [
+      "material",
+      "geometry",
+      "typography",
+      "contrast"
+    ],
+    "metric": "Hover magnification matches the spatial profile and the 135 ms envelope."
+  },
+  "verification": {
+    "kind": "capture",
+    "path": "docs/captures/t14-dock-magnify-center-light.png",
+    "sha256": "f81887d7a369ea3f1bb62739b15224de06c186415adbacb1461f9eea6aeb1a95",
+    "command": "bash scripts/capture-dock-magnify.sh"
+  },
+  "status": "captured"
+}

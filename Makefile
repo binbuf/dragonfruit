@@ -169,6 +169,7 @@ gates:
 	$(MAKE) notification-materials-check
 	$(MAKE) first-party-chrome-check
 	$(MAKE) nested-acceptance-check
+	$(MAKE) experience-schema-check
 	$(MAKE) e2e
 	$(MAKE) qml-test
 
@@ -825,6 +826,20 @@ nested-acceptance-check:
 
 nested-acceptance-capture: build
 	bash scripts/capture-t207-nested-acceptance.sh
+
+# T219: the experience/evidence contract. Validates the surface/state/axis
+# schema, the full inventory mapping (capture/test/OPEN), the capture hashes,
+# and the per-surface acceptance thresholds; prints the coverage summary by
+# surface. Hardware-independent and part of `make gates`.
+experience-schema-check:
+	python3 scripts/t219-experience-schema.py --check
+	python3 tests/experience/test_experience_schema.py
+
+experience-schema-coverage:
+	python3 scripts/t219-experience-schema.py --coverage
+
+experience-schema-open:
+	python3 scripts/t219-experience-schema.py --list-open
 
 # T-19.4: optional reference checkout verification. The manifest is committed
 # and the full macOS checkout stays optional; a requested reference run fails
