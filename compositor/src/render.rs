@@ -34,7 +34,7 @@ use crate::material_preset::{Preset, RenderMode, Rollout};
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
 use crate::window::{
-    backdrop_elements_with_corners, is_backdrop_panel, shadow_elements, BlurSpec, CornerRadii,
+    backdrop_elements_with_corners, is_backdrop_panel, shadow_elements_outside, BlurSpec, CornerRadii,
     DegradeTier, DockOptics, GlassSpec, MaterialRole, PanelKey, RegionFilter, SceneTransform,
     ShadowLevel, ShadowSpec, WindowState,
 };
@@ -357,6 +357,10 @@ pub struct BlurPanel {
     pub spec: BlurSpec,
     /// The Tahoe liquid-glass parameters for this panel (T-20.2).
     pub glass: GlassSpec,
+    /// The menu-bar no-blur veil parameters (T200), when this region resolved
+    /// to `NoBlurVeil`. The sharp path draws the depth LUT over the live
+    /// scene instead of a filtered glass compose.
+    pub veil: Option<crate::window::menubar_veil::VeilSpec>,
     /// Filtered (Kawase) or sharp (direct scene sample, veil-only).
     pub filter: RegionFilter,
     /// Paint inputs; changes here repaint but reuse the filtered texture.
@@ -470,12 +474,37 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 RenderMode::NoBlurVeil => RegionFilter::Sharp,
                 RenderMode::SampledGlass => RegionFilter::Filtered,
             };
-            let dock_fit = preset == Preset::Dock && resolved.look == Rollout::Replacement;
+            // A no-blur veil carries its depth LUT; every other preset has no
+            // veil and keeps the glass/sharp compose.
+            let veil = crate::window::menubar_veil::VeilSpec::for_resolved(&resolved);
+            // T203: the Control Center family uses the same measured flat-band
+            // + rim + capsule-end lens model as the Dock. Each module is its
+            // own region stacked over the outer plate, so the composite is
+            // built from the resolved own-layer values rather than a second
+            // copy of the measured effective alpha.
+            // T205: the notification banner, stack and lower panel are the
+            // same measured flat-band family. Each is a disjoint region, so
+            // the shader consumes the resolved alpha/tint directly instead of
+            // the generic Popup adaptive tint.
+            let flat_fit = resolved.look == Rollout::Replacement
+                && matches!(
+                    preset,
+                    Preset::Dock
+                        | Preset::ControlCenterOuter
+                        | Preset::ControlCenterModule
+                        | Preset::ControlCenterExpanded
+                        | Preset::NotificationBanner
+                        | Preset::NotificationStack
+                        | Preset::NotificationLowerPanel
+                );
+            let dock_fit = flat_fit && preset == Preset::Dock;
             let base_spec = if dock_fit {
                 BlurSpec::for_dock(
                     resolved.blur,
                     role.corner_radius(&chrome.namespace),
                 )
+            } else if flat_fit {
+                BlurSpec::new(resolved.blur, role.corner_radius(&chrome.namespace))
             } else {
                 role.blur_spec_for(scheme, &chrome.namespace)
             };
@@ -487,7 +516,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             if filter == RegionFilter::Filtered && !material.blur_active {
                 continue;
             }
-            let glass = if dock_fit {
+            let mut glass = if dock_fit {
                 let optics = match scheme {
                     crate::window::ColorScheme::Light => DockOptics::light(),
                     crate::window::ColorScheme::Dark => DockOptics::dark(),
@@ -508,12 +537,46 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                     .tier
                     .glass(glass)
                     .unwrap_or(glass)
+            } else if flat_fit {
+                // T203: every field is the resolver's own-layer value. The
+                // outer, module and expanded-list regions are drawn in that
+                // order, so the module/expanded paint composites over the
+                // outer plate instead of replacing it.
+                let mut glass = GlassSpec::default();
+                glass.flat_band = true;
+                glass.flat_alpha = resolved.alpha;
+                glass.tint = resolved.tint;
+                glass.tint_color = [resolved.tint, resolved.tint, resolved.tint];
+                glass.rim_peak = resolved.edge;
+                glass.rim_half_width = resolved.edge_width;
+                glass.rim_tail = resolved.edge_tail;
+                glass.corner_peak = resolved.corner_lens_peak;
+                glass.corner_distance = resolved.corner_lens_distance;
+                glass.corner_tail = resolved.corner_lens_tail;
+                material
+                    .tier
+                    .glass(glass)
+                    .unwrap_or(glass)
             } else {
                 material
                     .tier
                     .glass(role.glass_spec(scheme))
                     .unwrap_or_else(|| role.glass_spec(scheme))
             };
+            if let Some(veil) = veil {
+                // If the veil program is unavailable, the flat-band glass
+                // compose is the safe scheme-appropriate plate. Keep the
+                // colour and a representative strip alpha; no rim/lens.
+                glass.flat_band = true;
+                glass.flat_alpha = veil.alpha_at(veil.strip * 0.5);
+                glass.tint = veil.color[0];
+                glass.tint_color = veil.color;
+                glass.refraction = 0.0;
+                glass.specular = 0.0;
+                glass.specular_width = 0.0;
+                glass.rim_peak = 0.0;
+                glass.corner_peak = 0.0;
+            }
             let corners = region.corners.unwrap_or_else(|| {
                 CornerRadii::uniform(spec.corner_radius.round().max(0.0) as i32)
             });
@@ -534,6 +597,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 overscan: region.overscan,
                 spec,
                 glass,
+                veil,
                 filter,
                 paint: RegionPaint {
                     scheme,
@@ -791,9 +855,17 @@ fn push_window_shadow<E>(
     };
     let window_rect = state.insets_for(window).outset(geometry);
     elements.extend(
-        shadow_elements(window_rect, spec, scale, output_geometry.loc, motion)
-            .into_iter()
-            .map(E::from),
+        shadow_elements_outside(
+            window_rect,
+            spec,
+            scale,
+            output_geometry.loc,
+            motion,
+            window_rect,
+            spec.radius.round() as i32,
+        )
+        .into_iter()
+        .map(E::from),
     );
 }
 

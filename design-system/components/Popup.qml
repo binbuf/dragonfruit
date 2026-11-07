@@ -14,8 +14,34 @@ Item {
     property int preferredWidth: Theme.controls.popup.minWidth
     property int horizontalPadding: Theme.controls.popup.padding
     property int verticalPadding: Theme.controls.popup.padding
+    property real anchorOffset: Theme.controls.popup.offset
     property int accessibleRole: Accessible.Pane
     property string accessibleName: ""
+    // T202: the shared menu-family preset and whether the compositor has a
+    // trusted sampled backdrop behind this surface. App-owned surfaces keep
+    // `local` and paint the deterministic opaque plate.
+    property string materialPreset: "menuDetached"
+    property string materialBackdrop: "local"
+    // Attached menus have square top corners and rounded bottom corners;
+    // detached/status menus are all-rounded. `cornerRadius` is the bottom
+    // radius, `cornerTopRadius` the top pair.
+    readonly property real cornerRadius: Material.menuRadius(materialPreset)
+    readonly property real cornerTopRadius:
+        materialPreset === "menuAttached" ? 0 : cornerRadius
+    readonly property bool trustedBackdrop: materialBackdrop === "trusted"
+    readonly property var glassResolution:
+        Material.menuResolution(materialPreset, materialBlurActive, materialTier,
+                                materialFallback, trustedBackdrop)
+    readonly property color surfaceFill:
+        Material.menuFill(materialPreset, materialBlurActive, materialTier,
+                          materialFallback, trustedBackdrop)
+    // `menu` uses the measured menu motion; `popup` keeps the generic popup
+    // timing for non-menu surfaces (e.g. the Appearance color picker).
+    property string motionPreset: "popup"
+    readonly property var openMotion:
+        motionPreset === "menu" ? Theme.motion.menuOpen : Theme.motion.popupOpen
+    readonly property var closeMotion:
+        motionPreset === "menu" ? Theme.motion.menuClose : Theme.motion.popupClose
     // When false the owner handles Escape itself (e.g. a menu with an open
     // submenu closes the submenu first) and the popup stays open.
     property bool escapeCloses: true
@@ -50,15 +76,32 @@ Item {
             return Qt.point((root.parent ? root.parent.width : 0) / 2 - width / 2,
                             (root.parent ? root.parent.height : 0) / 2 - height / 2);
         var p = anchorItem.mapToItem(root.parent, 0, anchorItem.height);
-        return Qt.point(p.x, p.y + Theme.controls.popup.offset);
+        return Qt.point(p.x, p.y + root.anchorOffset);
     }
+    // The anchor point in popup-local coordinates: the surface shrinks toward
+    // this point on close (T202).
+    readonly property point anchorLocal: {
+        if (!anchorItem)
+            return Qt.point(width / 2, 0);
+        var p = anchorItem.mapToItem(root, anchorItem.width / 2, anchorItem.height);
+        return Qt.point(Math.max(0, Math.min(width, p.x)),
+                        Math.max(0, Math.min(height, p.y)));
+    }
+    readonly property real closeScale:
+        motionPreset === "menu" ? Material.menuCloseScale(materialPreset) : 0.97
+    readonly property real exitTranslateX: (1 - scale) * anchorLocal.x
+    readonly property real exitTranslateY: (1 - scale) * anchorLocal.y
 
     width: Math.max(preferredWidth, contentColumn.implicitWidth + 2 * horizontalPadding)
     height: contentColumn.implicitHeight + 2 * verticalPadding
     x: anchorPoint.x
     y: anchorPoint.y
-    scale: open ? 1.0 : 0.97
-    transformOrigin: Item.Top
+    scale: open ? 1.0 : closeScale
+    transformOrigin: Item.TopLeft
+    transform: Translate {
+        x: root.open ? 0 : root.exitTranslateX
+        y: root.open ? 0 : root.exitTranslateY
+    }
     opacity: open ? 1.0 : 0.0
 
     onOpenChanged: {
@@ -71,39 +114,61 @@ Item {
     }
 
     Behavior on opacity {
+        enabled: !Theme.reducedMotion
         NumberAnimation {
-            duration: root.open ? Theme.motion.popupOpen.duration : Theme.motion.popupClose.duration
+            duration: root.open ? root.openMotion.duration : root.closeMotion.duration
             easing.type: Easing.Bezier
-            easing.bezierCurve: root.open ? Theme.motion.popupOpen.curve : Theme.motion.popupClose.curve
+            easing.bezierCurve: root.open ? root.openMotion.curve : root.closeMotion.curve
         }
     }
     Behavior on scale {
+        enabled: !Theme.reducedMotion
         NumberAnimation {
-            duration: root.open ? Theme.motion.popupOpen.duration : Theme.motion.popupClose.duration
+            duration: root.open ? root.openMotion.duration : root.closeMotion.duration
             easing.type: Easing.Bezier
-            easing.bezierCurve: root.open ? Theme.motion.popupOpen.curve : Theme.motion.popupClose.curve
+            easing.bezierCurve: root.open ? root.openMotion.curve : root.closeMotion.curve
         }
     }
 
     Shadow {
         width: root.width
         height: root.height
-        radius: Theme.controls.popup.radius
+        radius: root.cornerRadius
         blur: Theme.controls.popup.shadowBlur
     }
 
     Rectangle {
         objectName: "popupSurface"
         anchors.fill: parent
-        radius: Theme.controls.popup.radius
+        radius: root.cornerRadius
         // The panel is the compositor material's scrim: the fill carries the
-        // token alpha (`material.popupOpacity`) so the sampled backdrop blur
-        // and liquid-glass pass show through; the rim/hairline stays opaque.
+        // resolved preset alpha/tint so the sampled backdrop blur and
+        // liquid-glass pass show through; the rim/hairline stays opaque.
         // Without the sampled pass it switches to the milky complement.
-        color: Material.popupFill(root.materialBlurActive)
+        color: root.surfaceFill
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true
+    }
+
+    // Square the attached menu's top corners while keeping the bottom pair
+    // rounded. The compositor region carries the same per-corner geometry.
+    Rectangle {
+        visible: root.cornerTopRadius < root.cornerRadius
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: root.cornerRadius
+        color: root.surfaceFill
+        antialiasing: true
+    }
+    Rectangle {
+        visible: root.cornerTopRadius < root.cornerRadius
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: Theme.controls.window.borderWidth
+        color: Theme.color.border
     }
 
     Column {

@@ -476,6 +476,26 @@ set_tests_properties(tst_notificationmodel PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Notification Center state tests (T204): stable-keyed history normalization,
+# active-only actions, keyboard selection, DND-suppressed rows, reconnect and
+# close reasons. No bus, Wayland, or QML.
+qt_add_executable(tst_notificationcenter
+    tst_notificationcenter.cpp
+)
+target_link_libraries(tst_notificationcenter PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_notificationcenter
+    COMMAND tst_notificationcenter
+)
+set_tests_properties(tst_notificationcenter PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Notification chrome tests (T-11.1a): the banner card and the notification
 # center render the decoded service views.
 qt_add_executable(tst_notifications

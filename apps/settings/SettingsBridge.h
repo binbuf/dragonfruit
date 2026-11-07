@@ -210,6 +210,10 @@ class SettingsBridge : public QObject
     // compositor use. The Appearance preview resolves with this look, so it
     // matches the rendered menus rather than hard-coding the replacement.
     Q_PROPERTY(QString glassRollout READ glassRollout CONSTANT)
+    // T206: whether the app window has a client-alpha composition path. A
+    // capture/diagnostic can force the opaque fallback with
+    // `DF_APP_CHROME_SOLID=1`; the normal Wayland process is supported.
+    Q_PROPERTY(bool appChromeSupported READ appChromeSupported CONSTANT)
     // Temporary diagnostic: whether `DF_SETTINGS_TRACE` is set, so QML can
     // emit `DFTRACE` lines for the pane-switch timing trace.
     Q_PROPERTY(bool trace READ trace CONSTANT)
@@ -253,6 +257,7 @@ public:
     bool wallpaperChooserAvailable() const;
     QString startPane() const;
     QString glassRollout() const;
+    bool appChromeSupported() const;
     bool trace() const;
 
     // Read one key (with an optional fallback for an unknown key).

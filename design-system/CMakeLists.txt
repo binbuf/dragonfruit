@@ -43,6 +43,7 @@ qt_add_qml_module(dragonfruit-design-system
         components/SettingsCategoryIcon.qml
         components/FocusRing.qml
         components/Shadow.qml
+        components/ChromeSheet.qml
         components/Button.qml
         components/Sidebar.qml
         components/Toolbar.qml
@@ -134,6 +135,7 @@ df_qml_lint(design-system
     components/SettingsCategoryIcon.qml
     components/FocusRing.qml
     components/Shadow.qml
+    components/ChromeSheet.qml
     components/Button.qml
     components/Sidebar.qml
     components/Toolbar.qml

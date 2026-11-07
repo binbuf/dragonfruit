@@ -1,0 +1,38 @@
+T207 nested and fallback acceptance — OPEN rows
+timestamp: 2026-11-06T21:50:00Z
+verdict: OPEN (native DRM row)
+
+## Native DRM / physical panel row
+
+status: OPEN
+reason: this session runs inside the native Dragonfruit session; restarting
+        its DRM compositor to run a native A/B would end the session the
+        capture is running in. T208 owns the native DRM seat, panel mode,
+        mixed-output, direct-scanout and default-enable row.
+rerun: make native-capture && make t21-presentation-bench && make native-perf
+evidence boundary: the T207 scores are nested compositor output only; the
+        nested refresh override is scheduling-policy evidence, not the
+        physical panel rate.
+
+## Native reference capture
+
+status: OPEN (optional)
+reason: the macOS reference checkout is present for the flat-band crops, but
+        the live host still cannot provide a native KMS readback from inside
+        this session. The committed T194 baseline and the macOS reference
+        crops remain the comparison inputs.
+rerun: WAYLAND_DISPLAY=<host-socket> make nested-acceptance-capture
+
+## Approved adaptations (not missed criteria)
+
+- 1.5x/2x Dock MTF: the nested scene-texture scale path attenuates the
+  checker shoulder; the 1x fit, the model and the registered flat band pass.
+- Dark notification banner/lower panel: underconstrained in the reference;
+  the adapted values are labelled in the token provenance and the report.
+- Dark Settings chrome: adapted from the measured Finder pair; the reference
+  has no independent Settings Dark fit.
+- Dark attached File menu: the published Dark crop is pixel-identical to the
+  Light crop; the attached menu keeps a documented baseline.
+- dmabuf capture row: the dev demo launches the shell offscreen, so the live
+  T207 row records the SHM rail; the dmabuf rail is exercised by the fresh
+  `make t21-gpu-rollout` run (docs/captures/t21-gpu-rollout.txt).

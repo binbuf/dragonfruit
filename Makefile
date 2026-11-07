@@ -56,7 +56,7 @@ endif
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -105,6 +105,16 @@ help:
 	@echo "  make check-tabler — Tabler registry, app artwork, and glyph-reference gate"
 	@echo "  make check-phosphor — Phosphor registry and glyph-reference gate"
 	@echo "  make glass-selftest — T-19.4 deterministic colour/geometry/MTF/motion self-test"
+	@echo "  make menubar-veil-check — T200 menu-bar depth LUT/readability/fallback fixture"
+	@echo "  make menubar-veil-capture — T200 live nested veil over dark/light windows + fallback"
+	@echo "  make menu-families-check — T202 attached/detached/status menu presets and motion"
+	@echo "  make menu-families-capture — T202 live nested menu-family stills"
+	@echo "  make notification-materials-check — T205 banner/stack/lower-panel presets and regions"
+	@echo "  make notification-materials-capture — T205 live nested Light/Dark notification stills"
+	@echo "  make first-party-chrome-check — T206 Settings/Files sidebar and toolbar presets"
+	@echo "  make first-party-chrome-capture — T206 live Settings/Files chrome over neutral/saturated backdrops"
+	@echo "  make nested-acceptance-check — T207 evidence matrix and per-surface report gate"
+	@echo "  make nested-acceptance-capture — T207 nested legacy/replacement A/B and interaction captures"
 	@echo "  make glass-reference-verify — T-19.4 optional reference checkout hash/revision check"
 	@echo "  make glass-reference-manifest — regenerate docs/captures/glass-reference-manifest.json"
 	@echo "  make glass-baseline-capture — T-19.4 live baseline recapture (OPEN without a host)"
@@ -153,6 +163,12 @@ test: cargo-test qml-test visual-test
 gates:
 	$(MAKE) glass-selftest
 	$(MAKE) glass-presets-check
+	$(MAKE) menubar-veil-check
+	$(MAKE) menu-families-check
+	$(MAKE) control-center-materials-check
+	$(MAKE) notification-materials-check
+	$(MAKE) first-party-chrome-check
+	$(MAKE) nested-acceptance-check
 	$(MAKE) e2e
 	$(MAKE) qml-test
 
@@ -762,6 +778,53 @@ glass-selftest:
 glass-presets-check:
 	python3 scripts/material_presets.py --check
 	python3 tests/glass/test_material_presets.py
+
+# T200: the no-blur menu-bar veil's measured depth LUT, checker-size
+# independence, live-window readability and scheme-appropriate fallback.
+menubar-veil-check:
+	python3 scripts/t200-menubar-veil.py --check
+
+menubar-veil-capture: build
+	bash scripts/capture-t200-menubar-veil.sh
+
+# T202: attached/detached/status menu presets, relative light slider response,
+# dark File mid/black calibration, local fallback and measured close motion.
+menu-families-check:
+	python3 scripts/t202-menu-families.py --check
+
+menu-families-capture: build
+	bash scripts/capture-t202-menus.sh
+
+# T203: outer plate, module capsules, expanded-list material and region map.
+control-center-materials-check:
+	python3 scripts/t203-control-center.py --check
+
+control-center-materials-capture: build
+	bash scripts/capture-t203-control-center.sh
+
+# T205: banner, notification stack and separately toned lower panel.
+notification-materials-check:
+	python3 scripts/t205-notification-materials.py --check
+
+notification-materials-capture: build
+	bash scripts/capture-t205-notification-materials.sh
+
+# T206: Settings/Files sidebar and toolbar app-local presets, the transparent
+# window frame, the opaque detail sheet/path bar, and the solid fallback.
+first-party-chrome-check:
+	python3 scripts/t206-first-party-chrome.py --check
+
+first-party-chrome-capture: build
+	bash scripts/capture-t206-first-party-chrome.sh
+
+# T207: the nested legacy/replacement acceptance matrix. `--check` is the
+# hardware-independent gate (case coverage, evidence rows, per-surface
+# reports); the capture target runs the live A/B and interaction set.
+nested-acceptance-check:
+	python3 scripts/t207-nested-acceptance.py check
+
+nested-acceptance-capture: build
+	bash scripts/capture-t207-nested-acceptance.sh
 
 # T-19.4: optional reference checkout verification. The manifest is committed
 # and the full macOS checkout stays optional; a requested reference run fails

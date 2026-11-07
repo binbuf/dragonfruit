@@ -55,6 +55,7 @@ pub mod primitive {
         pub const MD: f32 = 10.0_f32;
         pub const LG: f32 = 14.0_f32;
         pub const XL: f32 = 20.0_f32;
+        pub const XXL: f32 = 28.0_f32;
         pub const PILL: f32 = 999.0_f32;
     }
     pub mod spacing {
@@ -436,6 +437,8 @@ pub mod component {
         pub const MIN_WIDTH: f32 = 180.0_f32;
         pub const SHORTCUT_GAP: f32 = 24.0_f32;
         pub const SUBMENU_DELAY: f32 = 150.0_f32;
+        pub const ATTACHED_RADIUS: f32 = 12.5_f32;
+        pub const CLOSE_SCALE: f32 = 0.95_f32;
     }
     pub mod shortcut_hint {
         pub const GAP: f32 = 2.0_f32;
@@ -740,16 +743,30 @@ pub mod glass {
             pub const ROLE: &str = "chrome";
             pub const RENDER: &str = "veil";
             pub const SLIDER: &str = "none";
+            pub const STRIP_HEIGHT: f32 = 39.0_f32;
+            pub const EXTENT: f32 = 95.0_f32;
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
                 pub const PROVENANCE: &str = "REFERENCE.md menu-bar veil: alpha 0.451 at y=5pt, then 0.439/0.408/0.357/0.243/0.059/0.008 to y=90pt; white background shows no visible veil; the veil is not a blur";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.451_f32;
-                    pub const NEUTRAL_TINT: f32 = 0.0_f32;
+                    pub const NEUTRAL_TINT: f32 = 1.0_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
                     pub const PERCEPTUAL_ALPHA: f32 = 0.451_f32;
-                    pub const PERCEPTUAL_TINT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 1.0_f32;
+                }
+                pub mod veil {
+                    pub const PROBE: f32 = 8.0_f32;
+                    pub const READABILITY: f32 = 0.35_f32;
+                    pub const ALPHA_5: f32 = 0.45098037_f32;
+                    pub const ALPHA_15: f32 = 0.43921566_f32;
+                    pub const ALPHA_25: f32 = 0.40784317_f32;
+                    pub const ALPHA_35: f32 = 0.35686272_f32;
+                    pub const ALPHA_50: f32 = 0.24313729_f32;
+                    pub const ALPHA_75: f32 = 0.05882353_f32;
+                    pub const ALPHA_90: f32 = 0.00784314_f32;
+                    pub const ALPHA_95: f32 = 0.0_f32;
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
@@ -758,7 +775,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "No standalone dark veil was measured; named Dragonfruit baseline 0.48 neutral alpha";
+                pub const PROVENANCE: &str = "No standalone dark veil was measured; named Dragonfruit baseline: the measured light depth profile scaled to a 0.48 peak over black, with a 0.20 post-veil readability ceiling";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.48_f32;
@@ -766,6 +783,18 @@ pub mod glass {
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
                     pub const PERCEPTUAL_ALPHA: f32 = 0.48_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.0_f32;
+                }
+                pub mod veil {
+                    pub const PROBE: f32 = 8.0_f32;
+                    pub const READABILITY: f32 = 0.2_f32;
+                    pub const ALPHA_5: f32 = 0.48_f32;
+                    pub const ALPHA_15: f32 = 0.4674_f32;
+                    pub const ALPHA_25: f32 = 0.434_f32;
+                    pub const ALPHA_35: f32 = 0.3798_f32;
+                    pub const ALPHA_50: f32 = 0.2588_f32;
+                    pub const ALPHA_75: f32 = 0.0626_f32;
+                    pub const ALPHA_90: f32 = 0.00835_f32;
+                    pub const ALPHA_95: f32 = 0.0_f32;
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
@@ -795,14 +824,14 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "adapted";
-                pub const PROVENANCE: &str = "The published dark File fit is contaminated by a light crop (REFERENCE.md); named attached-menu baseline 0.62/0.30 pending a controlled recapture. Perceptual mapping is mixed at 0.35, not overlaid at full strength";
+                pub const PROVENANCE: &str = "The published dark File fit is contaminated by a light crop (REFERENCE.md); the attached-menu baseline is anchored to the valid dark mid/black context/status family (alpha 0.66 / tint 0.26), mixed 25% toward a deeper adapted baseline. The white row stays open for a controlled recapture.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.62_f32;
-                    pub const NEUTRAL_TINT: f32 = 0.3_f32;
-                    pub const PERCEPTUAL_WEIGHT: f32 = 0.35_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.58_f32;
-                    pub const PERCEPTUAL_TINT: f32 = 0.34_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.65_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.27_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.25_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.62_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.3_f32;
                 }
                 pub const BLUR: f32 = 10.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
@@ -813,7 +842,7 @@ pub mod glass {
         pub mod menu_detached {
             pub const ROLE: &str = "popup";
             pub const RENDER: &str = "sampled";
-            pub const SLIDER: &str = "none";
+            pub const SLIDER: &str = "lightRelative";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
                 pub const PROVENANCE: &str = "REFERENCE.md common light status/context menus cluster near alpha 0.55 and near-white tint; detached menus are rounded cards";
@@ -850,7 +879,7 @@ pub mod glass {
         pub mod status_menu {
             pub const ROLE: &str = "popup";
             pub const RENDER: &str = "sampled";
-            pub const SLIDER: &str = "none";
+            pub const SLIDER: &str = "lightRelative";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
                 pub const PROVENANCE: &str = "REFERENCE.md light status menus join the common context-menu cluster; 8pt blur is a local adaptation";
@@ -927,7 +956,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md later controlled Control Center light outer fit alpha 0.265 / tint 0.373";
+                pub const PROVENANCE: &str = "REFERENCE.md later controlled Control Center light outer fit alpha 0.265 / tint 0.373; REPORT.md 3.5/Appendix A give the 8 pt blur, 0.30 rim and 6 pt/24 pt capsule-end lens";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.265_f32;
@@ -936,14 +965,19 @@ pub mod glass {
                     pub const PERCEPTUAL_ALPHA: f32 = 0.265_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.373_f32;
                 }
-                pub const BLUR: f32 = 20.0_f32;
-                pub const EDGE: f32 = 0.0_f32;
-                pub const EDGE_WIDTH: f32 = 0.0_f32;
+                pub const BLUR: f32 = 8.0_f32;
+                pub const EDGE: f32 = 0.3_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.1_f32;
+                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 24.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md later controlled Control Center dark outer fit alpha 0.489 / tint 0.677";
+                pub const PROVENANCE: &str = "REFERENCE.md later controlled Control Center dark outer fit alpha 0.489 / tint 0.677; blur/rim/lens reuse the light capsule fit because the dark end caustic was not separately measured";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.489_f32;
@@ -952,9 +986,14 @@ pub mod glass {
                     pub const PERCEPTUAL_ALPHA: f32 = 0.489_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.677_f32;
                 }
-                pub const BLUR: f32 = 20.0_f32;
-                pub const EDGE: f32 = 0.0_f32;
-                pub const EDGE_WIDTH: f32 = 0.0_f32;
+                pub const BLUR: f32 = 8.0_f32;
+                pub const EDGE: f32 = 0.3_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.1_f32;
+                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 24.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }
@@ -964,7 +1003,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured-effective";
-                pub const PROVENANCE: &str = "REFERENCE.md Wi-Fi module light fit 0.391/0.317 is an observed effective stacked response, not an independent layer";
+                pub const PROVENANCE: &str = "REFERENCE.md Wi-Fi module light fit 0.391/0.317 is an observed effective stacked response. The compositor flat-band output is opaque, so this preset is the module's final composite in its own region; it is not layered a second time over the outer plate";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.391_f32;
@@ -973,25 +1012,35 @@ pub mod glass {
                     pub const PERCEPTUAL_ALPHA: f32 = 0.391_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.317_f32;
                 }
-                pub const BLUR: f32 = 12.0_f32;
-                pub const EDGE: f32 = 0.0_f32;
-                pub const EDGE_WIDTH: f32 = 0.0_f32;
+                pub const BLUR: f32 = 8.0_f32;
+                pub const EDGE: f32 = 0.3_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.1_f32;
+                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 24.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
-                pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "No reliable dark module decomposition; named baseline 0.52/0.55";
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "No reliable dark module decomposition; adapted effective 0.65/0.44 so the opaque module reads darker than the 0.489/0.677 dark outer plate";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.52_f32;
-                    pub const NEUTRAL_TINT: f32 = 0.55_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.65_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.44_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.52_f32;
-                    pub const PERCEPTUAL_TINT: f32 = 0.55_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.65_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.44_f32;
                 }
-                pub const BLUR: f32 = 12.0_f32;
-                pub const EDGE: f32 = 0.0_f32;
-                pub const EDGE_WIDTH: f32 = 0.0_f32;
+                pub const BLUR: f32 = 8.0_f32;
+                pub const EDGE: f32 = 0.3_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.1_f32;
+                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 24.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }
@@ -1000,35 +1049,45 @@ pub mod glass {
             pub const RENDER: &str = "sampled";
             pub const SLIDER: &str = "none";
             pub mod light {
-                pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "The expanded list is unmeasured in light; named baseline 0.86/0.20";
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "The expanded list is unmeasured in light; adapted readable near-opaque light plate (0.94/0.96) so dark list text stays legible";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.86_f32;
-                    pub const NEUTRAL_TINT: f32 = 0.2_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.94_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.96_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.86_f32;
-                    pub const PERCEPTUAL_TINT: f32 = 0.2_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.94_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.96_f32;
                 }
                 pub const BLUR: f32 = 8.0_f32;
-                pub const EDGE: f32 = 0.0_f32;
-                pub const EDGE_WIDTH: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.22_f32;
+                pub const EDGE_WIDTH: f32 = 0.75_f32;
+                pub const EDGE_TAIL: f32 = 4.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.05_f32;
+                pub const CORNER_LENS_PEAK: f32 = 4.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 16.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 32.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "observed-luma";
-                pub const PROVENANCE: &str = "REFERENCE.md Bluetooth expanded list is dark (~0.13 luma) with no reliable alpha decomposition; named 0.86/0.13 baseline";
+                pub const PROVENANCE: &str = "REFERENCE.md Bluetooth expanded list is dark (~0.13 luma) with no reliable alpha decomposition; near-opaque 0.96/0.13 keeps the composite within 0.04 luma over white/black";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.86_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.96_f32;
                     pub const NEUTRAL_TINT: f32 = 0.13_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.86_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.96_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.13_f32;
                 }
                 pub const BLUR: f32 = 8.0_f32;
-                pub const EDGE: f32 = 0.0_f32;
-                pub const EDGE_WIDTH: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.22_f32;
+                pub const EDGE_WIDTH: f32 = 0.75_f32;
+                pub const EDGE_TAIL: f32 = 4.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.05_f32;
+                pub const CORNER_LENS_PEAK: f32 = 4.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 16.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 32.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }
@@ -1053,8 +1112,8 @@ pub mod glass {
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
-                pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "The dark banner is uncovered as an independent fit; named baseline 0.56/0.30";
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "T205: the dark banner is uncovered as an independent fit (underconstrained); adapted readable 0.56/0.30 so it reads lighter than the dark stack and keeps light-on-glass text contrast";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.56_f32;
@@ -1127,15 +1186,15 @@ pub mod glass {
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
-                pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "The dark lower panel is uncovered; named baseline 0.48/0.28";
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "T205: the dark lower panel is uncovered as an independent fit (underconstrained); adapted readable 0.40/0.30 so it reads below the dark stack on black/mid/white and stays distinct from the dark banner";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.48_f32;
-                    pub const NEUTRAL_TINT: f32 = 0.28_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.4_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.3_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.48_f32;
-                    pub const PERCEPTUAL_TINT: f32 = 0.28_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.4_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.3_f32;
                 }
                 pub const BLUR: f32 = 18.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
@@ -1180,6 +1239,154 @@ pub mod glass {
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }
+        pub mod settings_sidebar {
+            pub const ROLE: &str = "chrome";
+            pub const RENDER: &str = "solid";
+            pub const SLIDER: &str = "none";
+            pub mod light {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light System Settings sidebar 0.986/0.857. The muted sidebar shows a small chroma pickup; the preset stores only a scalar neutral tint, so the chroma component stays an explicit transport gap (ADR 0225).";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.986_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.857_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.986_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.857_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "T206 Settings Dark is not independently measured; adapted from the measured Finder dark sidebar 0.935/0.218 (REFERENCE.md) because System Settings and Finder share the near-opaque source-list material.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.935_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.218_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.935_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.218_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
+        pub mod settings_toolbar {
+            pub const ROLE: &str = "chrome";
+            pub const RENDER: &str = "solid";
+            pub const SLIDER: &str = "none";
+            pub mod light {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light System Settings toolbar 0.961/0.965. Near-opaque, so the scalar tint carries the visible result; no chroma channel is stored.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.961_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.965_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.961_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.965_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "T206 Settings Dark is not independently measured; adapted from the measured Finder dark toolbar 0.900/0.247 (REFERENCE.md).";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.9_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.247_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.9_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.247_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
+        pub mod files_sidebar {
+            pub const ROLE: &str = "chrome";
+            pub const RENDER: &str = "solid";
+            pub const SLIDER: &str = "none";
+            pub mod light {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light Finder sidebar 0.985/0.858. The muted sidebar shows the measured small chroma pickup; the scalar preset cannot carry it (ADR 0225).";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.985_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.858_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.985_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.858_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md dark Finder sidebar 0.935/0.218.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.935_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.218_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.935_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.218_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
+        pub mod files_toolbar {
+            pub const ROLE: &str = "chrome";
+            pub const RENDER: &str = "solid";
+            pub const SLIDER: &str = "none";
+            pub mod light {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light Finder toolbar 0.994/0.922.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.994_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.922_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.994_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.922_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md dark Finder toolbar 0.900/0.247.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.9_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.247_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.9_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.247_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
     }
 }
 
@@ -1200,7 +1407,7 @@ pub mod motion {
         reduced_duration_ms: 0_u32,
     };
     pub const MENU_CLOSE: Motion = Motion {
-        duration_ms: 100_u32,
+        duration_ms: 183_u32,
         curve: [0.4_f32, 0.0_f32, 1.0_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };

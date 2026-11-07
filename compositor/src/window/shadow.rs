@@ -191,11 +191,66 @@ pub fn shadow_elements(
     output_origin: Point<i32, Logical>,
     motion: Option<MotionFrame>,
 ) -> Vec<SolidColorRenderElement> {
+    shadow_elements_with_occluder(rect, spec, scale, output_origin, motion, None)
+}
+
+/// The shadow ring outside a window's rounded body (T206).
+///
+/// The shadow layers are drawn behind the window and normally covered by its
+/// opaque surface. A first-party window with app-local translucent chrome
+/// leaves parts of that surface transparent, so the shadow would show through
+/// and darken the measured sidebar/toolbar. This variant subtracts the
+/// window's rounded rectangle from every shadow span, keeping the drop shadow
+/// only where it belongs: outside the window body.
+pub fn shadow_elements_outside(
+    rect: Rectangle<i32, Logical>,
+    spec: ShadowSpec,
+    scale: Scale<f64>,
+    output_origin: Point<i32, Logical>,
+    motion: Option<MotionFrame>,
+    window: Rectangle<i32, Logical>,
+    radius: i32,
+) -> Vec<SolidColorRenderElement> {
+    shadow_elements_with_occluder(
+        rect,
+        spec,
+        scale,
+        output_origin,
+        motion,
+        Some((window, radius)),
+    )
+}
+
+fn shadow_elements_with_occluder(
+    rect: Rectangle<i32, Logical>,
+    spec: ShadowSpec,
+    scale: Scale<f64>,
+    output_origin: Point<i32, Logical>,
+    motion: Option<MotionFrame>,
+    occluder: Option<(Rectangle<i32, Logical>, i32)>,
+) -> Vec<SolidColorRenderElement> {
     const SHADOW_SALT: u64 = 0x7368_6164_6f77_7773; // "shadowws"
+    let occluder_spans = occluder.map(|(window, radius)| {
+        rounded_rect_spans(window, radius, RoundedCorners::All)
+    });
     let mut elements = Vec::new();
     for (index, layer) in shadow_layers(rect, spec).into_iter().enumerate() {
         let radius = layer.radius.round() as i32;
-        for span in rounded_rect_spans(layer.rect, radius, RoundedCorners::All) {
+        let mut spans = rounded_rect_spans(layer.rect, radius, RoundedCorners::All);
+        if let Some(cuts) = &occluder_spans {
+            spans = spans
+                .into_iter()
+                .flat_map(|span| {
+                    cuts.iter().fold(vec![span], |pieces, cut| {
+                        pieces
+                            .into_iter()
+                            .flat_map(|piece| subtract_rect(piece, *cut))
+                            .collect()
+                    })
+                })
+                .collect();
+        }
+        for span in spans {
             let (span_rect, color) = motion_transform(span, layer.color, rect, motion);
             let local = Rectangle::new(
                 (
@@ -218,6 +273,34 @@ pub fn shadow_elements(
     // `shadow_layers` is back-to-front; Smithay consumes front-to-back.
     elements.reverse();
     elements
+}
+
+/// Subtract `cut` from `rect`, returning the remaining non-overlapping
+/// rectangles (top, bottom, left, right). Used to keep a shadow out of the
+/// translucent window body while preserving the outside fringe.
+fn subtract_rect(
+    rect: Rectangle<i32, Logical>,
+    cut: Rectangle<i32, Logical>,
+) -> Vec<Rectangle<i32, Logical>> {
+    let left = rect.loc.x.max(cut.loc.x);
+    let top = rect.loc.y.max(cut.loc.y);
+    let right = (rect.loc.x + rect.size.w).min(cut.loc.x + cut.size.w);
+    let bottom = (rect.loc.y + rect.size.h).min(cut.loc.y + cut.size.h);
+    if left >= right || top >= bottom {
+        return vec![rect];
+    }
+    let mut pieces = Vec::with_capacity(4);
+    let mut push = |x: i32, y: i32, w: i32, h: i32| {
+        if w > 0 && h > 0 {
+            pieces.push(Rectangle::new((x, y).into(), (w, h).into()));
+        }
+    };
+    push(rect.loc.x, rect.loc.y, rect.size.w, top - rect.loc.y);
+    push(rect.loc.x, bottom, rect.size.w,
+         rect.loc.y + rect.size.h - bottom);
+    push(rect.loc.x, top, left - rect.loc.x, bottom - top);
+    push(right, top, rect.loc.x + rect.size.w - right, bottom - top);
+    pieces
 }
 
 #[cfg(test)]
@@ -372,6 +455,40 @@ mod tests {
         assert!(!elements
             .iter()
             .any(|element| element.geometry(1.0.into()).contains(union.loc)));
+    }
+
+    #[test]
+    fn shadow_outside_omits_the_window_body_but_keeps_the_fringe() {
+        let window = rect(100, 200, 400, 300);
+        let spec = ShadowLevel::High.spec(ColorScheme::Dark);
+        let elements = shadow_elements_outside(
+            window,
+            spec,
+            1.0.into(),
+            Point::from((0, 0)),
+            None,
+            window,
+            spec.radius.round() as i32,
+        );
+        // The centre of the window (where translucent chrome would sample the
+        // lower scene) must never receive a shadow element.
+        let centre = Point::from((300, 350)).to_physical_precise_round(1.0);
+        assert!(!elements
+            .iter()
+            .any(|element| element.geometry(1.0.into()).contains(centre)));
+        // The outside fringe still reaches the full shadow bounds.
+        assert_eq!(
+            merged_bounds(&elements, 1.0.into()),
+            shadow_bounds(window, spec).to_physical_precise_round(1.0)
+        );
+    }
+
+    #[test]
+    fn subtract_rect_leaves_four_non_overlapping_pieces() {
+        let pieces = subtract_rect(rect(0, 0, 10, 10), rect(3, 3, 4, 4));
+        assert_eq!(pieces.len(), 4);
+        let area: i32 = pieces.iter().map(|piece| piece.size.w * piece.size.h).sum();
+        assert_eq!(area, 100 - 16);
     }
 
     #[test]

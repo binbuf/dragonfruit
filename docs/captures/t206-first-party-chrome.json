@@ -1,0 +1,2630 @@
+{
+  "backend": "nested",
+  "rollout": "replacement",
+  "size": "1920x1200",
+  "scale": 1,
+  "cases": [
+    {
+      "label": "settings-light-neutral",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-neutral.png",
+      "query": "docs/captures/t206-settings-light-neutral.txt",
+      "present": true
+    },
+    {
+      "label": "settings-light-saturated",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-saturated.png",
+      "query": "docs/captures/t206-settings-light-saturated.txt",
+      "present": true
+    },
+    {
+      "label": "settings-dark-neutral",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-dark-neutral.png",
+      "query": "docs/captures/t206-settings-dark-neutral.txt",
+      "present": true
+    },
+    {
+      "label": "settings-dark-saturated",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-dark-saturated.png",
+      "query": "docs/captures/t206-settings-dark-saturated.txt",
+      "present": true
+    },
+    {
+      "label": "settings-light-unfocused",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "unfocused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-unfocused.png",
+      "query": "docs/captures/t206-settings-light-unfocused.txt",
+      "present": true
+    },
+    {
+      "label": "settings-dark-unfocused",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "unfocused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-dark-unfocused.png",
+      "query": "docs/captures/t206-settings-dark-unfocused.txt",
+      "present": true
+    },
+    {
+      "label": "settings-light-reduce",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "reduce",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": true,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-reduce.png",
+      "query": "docs/captures/t206-settings-light-reduce.txt",
+      "present": true
+    },
+    {
+      "label": "settings-dark-reduce",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "reduce",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": true,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-dark-reduce.png",
+      "query": "docs/captures/t206-settings-dark-reduce.txt",
+      "present": true
+    },
+    {
+      "label": "settings-light-solid",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "solid",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": true,
+      "capture": "docs/captures/t206-settings-light-solid.png",
+      "query": "docs/captures/t206-settings-light-solid.txt",
+      "present": true
+    },
+    {
+      "label": "settings-dark-solid",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "solid",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": true,
+      "capture": "docs/captures/t206-settings-dark-solid.png",
+      "query": "docs/captures/t206-settings-dark-solid.txt",
+      "present": true
+    },
+    {
+      "label": "settings-light-contrast",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "contrast",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": true,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-contrast.png",
+      "query": "docs/captures/t206-settings-light-contrast.txt",
+      "present": true
+    },
+    {
+      "label": "files-light-neutral",
+      "app": "files",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-neutral.png",
+      "query": "docs/captures/t206-files-light-neutral.txt",
+      "present": true
+    },
+    {
+      "label": "files-light-saturated",
+      "app": "files",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-saturated.png",
+      "query": "docs/captures/t206-files-light-saturated.txt",
+      "present": true
+    },
+    {
+      "label": "files-dark-neutral",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-dark-neutral.png",
+      "query": "docs/captures/t206-files-dark-neutral.txt",
+      "present": true
+    },
+    {
+      "label": "files-dark-saturated",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-dark-saturated.png",
+      "query": "docs/captures/t206-files-dark-saturated.txt",
+      "present": true
+    },
+    {
+      "label": "files-light-unfocused",
+      "app": "files",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "unfocused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-unfocused.png",
+      "query": "docs/captures/t206-files-light-unfocused.txt",
+      "present": true
+    },
+    {
+      "label": "files-dark-unfocused",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "unfocused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-dark-unfocused.png",
+      "query": "docs/captures/t206-files-dark-unfocused.txt",
+      "present": true
+    },
+    {
+      "label": "files-light-reduce",
+      "app": "files",
+      "scheme": "light",
+      "variant": "reduce",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": true,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-reduce.png",
+      "query": "docs/captures/t206-files-light-reduce.txt",
+      "present": true
+    },
+    {
+      "label": "files-dark-reduce",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "reduce",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": true,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-dark-reduce.png",
+      "query": "docs/captures/t206-files-dark-reduce.txt",
+      "present": true
+    },
+    {
+      "label": "files-light-solid",
+      "app": "files",
+      "scheme": "light",
+      "variant": "solid",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": true,
+      "capture": "docs/captures/t206-files-light-solid.png",
+      "query": "docs/captures/t206-files-light-solid.txt",
+      "present": true
+    },
+    {
+      "label": "files-dark-solid",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "solid",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": true,
+      "capture": "docs/captures/t206-files-dark-solid.png",
+      "query": "docs/captures/t206-files-dark-solid.txt",
+      "present": true
+    },
+    {
+      "label": "files-light-contrast",
+      "app": "files",
+      "scheme": "light",
+      "variant": "contrast",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": true,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-contrast.png",
+      "query": "docs/captures/t206-files-light-contrast.txt",
+      "present": true
+    }
+  ],
+  "note": "Compositor-own render of the live Qt Settings/Files window over neutral and saturated backdrops. Sidebar and toolbar are sampled separately; the detail sheet and path bar are opaque. The unfocused rows verify the material is focus-invariant, and the solid rows force the non-composited opaque plate.",
+  "scoring": {
+    "cases": 22,
+    "present": 22,
+    "max_fit_error": 0.005130784313725545,
+    "max_chroma_spread": 0.07450980392156864,
+    "failures": []
+  },
+  "rows": [
+    {
+      "label": "settings-light-neutral",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-neutral.png",
+      "query": "docs/captures/t206-settings-light-neutral.txt",
+      "present": true,
+      "fit_error": 0.0013846078431372089,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 12.41,
+          "secondary": 5.454
+        },
+        "toolbar": {
+          "primary": 15.509,
+          "secondary": 6.816
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.490196,
+        0.490196,
+        0.490196
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.85098,
+          0.85098,
+          0.85098
+        ],
+        "expected": [
+          0.851865,
+          0.851865,
+          0.851865
+        ],
+        "fit_error": 0.000884,
+        "chroma_spread": 0.0,
+        "contrast_primary": 12.41,
+        "contrast_secondary": 5.454
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.945098,
+          0.945098,
+          0.945098
+        ],
+        "expected": [
+          0.946483,
+          0.946483,
+          0.946483
+        ],
+        "fit_error": 0.001385,
+        "chroma_spread": 0.0,
+        "contrast_primary": 15.509,
+        "contrast_secondary": 6.816
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "settings-light-saturated",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-saturated.png",
+      "query": "docs/captures/t206-settings-light-saturated.txt",
+      "present": true,
+      "fit_error": 0.003666960784313611,
+      "chroma": 0.03137254901960784,
+      "contrast": {
+        "sidebar": {
+          "primary": 12.367,
+          "secondary": 5.435
+        },
+        "toolbar": {
+          "primary": 15.208,
+          "secondary": 6.684
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.858824,
+        0.121569,
+        0.247059
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.858824,
+          0.847059,
+          0.847059
+        ],
+        "expected": [
+          0.857026,
+          0.846704,
+          0.848461
+        ],
+        "fit_error": 0.001798,
+        "chroma_spread": 0.011765,
+        "contrast_primary": 12.367,
+        "contrast_secondary": 5.435
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.960784,
+          0.929412,
+          0.933333
+        ],
+        "expected": [
+          0.960859,
+          0.932106,
+          0.937
+        ],
+        "fit_error": 0.003667,
+        "chroma_spread": 0.031373,
+        "contrast_primary": 15.208,
+        "contrast_secondary": 6.684
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "settings-dark-neutral",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-dark-neutral.png",
+      "query": "docs/captures/t206-settings-dark-neutral.txt",
+      "present": true,
+      "fit_error": 0.004758823529411815,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 10.121,
+          "secondary": 5.721
+        },
+        "toolbar": {
+          "primary": 8.794,
+          "secondary": 4.971
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.47451,
+        0.47451,
+        0.47451
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.239216,
+          0.239216,
+          0.239216
+        ],
+        "expected": [
+          0.234673,
+          0.234673,
+          0.234673
+        ],
+        "fit_error": 0.004543,
+        "chroma_spread": 0.0,
+        "contrast_primary": 10.121,
+        "contrast_secondary": 5.721
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.27451,
+          0.27451,
+          0.27451
+        ],
+        "expected": [
+          0.269751,
+          0.269751,
+          0.269751
+        ],
+        "fit_error": 0.004759,
+        "chroma_spread": 0.0,
+        "contrast_primary": 8.794,
+        "contrast_secondary": 4.971
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      }
+    },
+    {
+      "label": "settings-dark-saturated",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-dark-saturated.png",
+      "query": "docs/captures/t206-settings-dark-saturated.txt",
+      "present": true,
+      "fit_error": 0.005130784313725545,
+      "chroma": 0.07450980392156864,
+      "contrast": {
+        "sidebar": {
+          "primary": 10.73,
+          "secondary": 6.065
+        },
+        "toolbar": {
+          "primary": 9.542,
+          "secondary": 5.393
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.827451,
+        0.117647,
+        0.235294
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.262745,
+          0.211765,
+          0.219608
+        ],
+        "expected": [
+          0.257614,
+          0.211477,
+          0.219124
+        ],
+        "fit_error": 0.005131,
+        "chroma_spread": 0.05098,
+        "contrast_primary": 10.73,
+        "contrast_secondary": 6.065
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.309804,
+          0.235294,
+          0.247059
+        ],
+        "expected": [
+          0.305045,
+          0.234065,
+          0.245829
+        ],
+        "fit_error": 0.004759,
+        "chroma_spread": 0.07451,
+        "contrast_primary": 9.542,
+        "contrast_secondary": 5.393
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      }
+    },
+    {
+      "label": "settings-light-unfocused",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "unfocused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-unfocused.png",
+      "query": "docs/captures/t206-settings-light-unfocused.txt",
+      "present": true,
+      "fit_error": 0.0013846078431372089,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 12.41,
+          "secondary": 5.454
+        },
+        "toolbar": {
+          "primary": 15.509,
+          "secondary": 6.816
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.490196,
+        0.490196,
+        0.490196
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.85098,
+          0.85098,
+          0.85098
+        ],
+        "expected": [
+          0.851865,
+          0.851865,
+          0.851865
+        ],
+        "fit_error": 0.000884,
+        "chroma_spread": 0.0,
+        "contrast_primary": 12.41,
+        "contrast_secondary": 5.454
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.945098,
+          0.945098,
+          0.945098
+        ],
+        "expected": [
+          0.946483,
+          0.946483,
+          0.946483
+        ],
+        "fit_error": 0.001385,
+        "chroma_spread": 0.0,
+        "contrast_primary": 15.509,
+        "contrast_secondary": 6.816
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "settings-dark-unfocused",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "unfocused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-dark-unfocused.png",
+      "query": "docs/captures/t206-settings-dark-unfocused.txt",
+      "present": true,
+      "fit_error": 0.004758823529411815,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 10.121,
+          "secondary": 5.721
+        },
+        "toolbar": {
+          "primary": 8.794,
+          "secondary": 4.971
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.47451,
+        0.47451,
+        0.47451
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.239216,
+          0.239216,
+          0.239216
+        ],
+        "expected": [
+          0.234673,
+          0.234673,
+          0.234673
+        ],
+        "fit_error": 0.004543,
+        "chroma_spread": 0.0,
+        "contrast_primary": 10.121,
+        "contrast_secondary": 5.721
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.27451,
+          0.27451,
+          0.27451
+        ],
+        "expected": [
+          0.269751,
+          0.269751,
+          0.269751
+        ],
+        "fit_error": 0.004759,
+        "chroma_spread": 0.0,
+        "contrast_primary": 8.794,
+        "contrast_secondary": 4.971
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      }
+    },
+    {
+      "label": "settings-light-reduce",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "reduce",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": true,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-reduce.png",
+      "query": "docs/captures/t206-settings-light-reduce.txt",
+      "present": true,
+      "fit_error": 0.0003803921568628077,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 16.068,
+          "secondary": 7.062
+        },
+        "toolbar": {
+          "primary": 16.068,
+          "secondary": 7.062
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.490196,
+        0.490196,
+        0.490196
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.960784,
+          0.960784,
+          0.960784
+        ],
+        "expected": [
+          0.960404,
+          0.960404,
+          0.960404
+        ],
+        "fit_error": 0.00038,
+        "chroma_spread": 0.0,
+        "contrast_primary": 16.068,
+        "contrast_secondary": 7.062
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.960784,
+          0.960784,
+          0.960784
+        ],
+        "expected": [
+          0.960404,
+          0.960404,
+          0.960404
+        ],
+        "fit_error": 0.00038,
+        "chroma_spread": 0.0,
+        "contrast_primary": 16.068,
+        "contrast_secondary": 7.062
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "settings-dark-reduce",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "reduce",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": true,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-dark-reduce.png",
+      "query": "docs/captures/t206-settings-dark-reduce.txt",
+      "present": true,
+      "fit_error": 0.0012549019607843298,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 15.707,
+          "secondary": 8.878
+        },
+        "toolbar": {
+          "primary": 15.707,
+          "secondary": 8.878
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.47451,
+        0.47451,
+        0.47451
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.113725,
+          0.113725,
+          0.113725
+        ],
+        "expected": [
+          0.11498,
+          0.11498,
+          0.11498
+        ],
+        "fit_error": 0.001255,
+        "chroma_spread": 0.0,
+        "contrast_primary": 15.707,
+        "contrast_secondary": 8.878
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.113725,
+          0.113725,
+          0.113725
+        ],
+        "expected": [
+          0.11498,
+          0.11498,
+          0.11498
+        ],
+        "fit_error": 0.001255,
+        "chroma_spread": 0.0,
+        "contrast_primary": 15.707,
+        "contrast_secondary": 8.878
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      }
+    },
+    {
+      "label": "settings-light-solid",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "solid",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": true,
+      "capture": "docs/captures/t206-settings-light-solid.png",
+      "query": "docs/captures/t206-settings-light-solid.txt",
+      "present": true,
+      "fit_error": 0.00045098039215685226,
+      "chroma": 0.015686274509803866,
+      "contrast": {
+        "sidebar": {
+          "primary": 16.311,
+          "secondary": 7.169
+        },
+        "toolbar": {
+          "primary": 17.518,
+          "secondary": 7.699
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.858824,
+        0.121569,
+        0.247059
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.972549,
+          0.964706,
+          0.980392
+        ],
+        "expected": [
+          0.973,
+          0.965,
+          0.98
+        ],
+        "fit_error": 0.000451,
+        "chroma_spread": 0.015686,
+        "contrast_primary": 16.311,
+        "contrast_secondary": 7.169
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0,
+        "chroma_spread": 0.0,
+        "contrast_primary": 17.518,
+        "contrast_secondary": 7.699
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "settings-dark-solid",
+      "app": "settings",
+      "scheme": "dark",
+      "variant": "solid",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": true,
+      "capture": "docs/captures/t206-settings-dark-solid.png",
+      "query": "docs/captures/t206-settings-dark-solid.txt",
+      "present": true,
+      "fit_error": 0.0004705882352941393,
+      "chroma": 0.05882352941176469,
+      "contrast": {
+        "sidebar": {
+          "primary": 13.723,
+          "secondary": 7.757
+        },
+        "toolbar": {
+          "primary": 13.723,
+          "secondary": 7.757
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.47451,
+        0.47451,
+        0.47451
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.176471,
+          0.145098,
+          0.203922
+        ],
+        "expected": [
+          0.176,
+          0.145,
+          0.204
+        ],
+        "fit_error": 0.000471,
+        "chroma_spread": 0.058824,
+        "contrast_primary": 13.723,
+        "contrast_secondary": 7.757
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.176471,
+          0.145098,
+          0.203922
+        ],
+        "expected": [
+          0.176,
+          0.145,
+          0.204
+        ],
+        "fit_error": 0.000471,
+        "chroma_spread": 0.058824,
+        "contrast_primary": 13.723,
+        "contrast_secondary": 7.757
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      }
+    },
+    {
+      "label": "settings-light-contrast",
+      "app": "settings",
+      "scheme": "light",
+      "variant": "contrast",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": true,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-settings-light-contrast.png",
+      "query": "docs/captures/t206-settings-light-contrast.txt",
+      "present": true,
+      "fit_error": 0.0013846078431372089,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 12.41,
+          "secondary": 5.454
+        },
+        "toolbar": {
+          "primary": 15.509,
+          "secondary": 6.816
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.490196,
+        0.490196,
+        0.490196
+      ],
+      "sidebar": {
+        "rect": [
+          1042,
+          700,
+          1046,
+          704
+        ],
+        "actual": [
+          0.85098,
+          0.85098,
+          0.85098
+        ],
+        "expected": [
+          0.851865,
+          0.851865,
+          0.851865
+        ],
+        "fit_error": 0.000884,
+        "chroma_spread": 0.0,
+        "contrast_primary": 12.41,
+        "contrast_secondary": 5.454
+      },
+      "toolbar": {
+        "rect": [
+          1234,
+          640,
+          1238,
+          644
+        ],
+        "actual": [
+          0.945098,
+          0.945098,
+          0.945098
+        ],
+        "expected": [
+          0.946483,
+          0.946483,
+          0.946483
+        ],
+        "fit_error": 0.001385,
+        "chroma_spread": 0.0,
+        "contrast_primary": 15.509,
+        "contrast_secondary": 6.816
+      },
+      "detail": {
+        "rect": [
+          1816,
+          1196,
+          1820,
+          1200
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "files-light-neutral",
+      "app": "files",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-neutral.png",
+      "query": "docs/captures/t206-files-light-neutral.txt",
+      "present": true,
+      "fit_error": 0.002419019607843187,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 12.531,
+          "secondary": 5.507
+        },
+        "toolbar": {
+          "primary": 14.694,
+          "secondary": 6.458
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.490196,
+        0.490196,
+        0.490196
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.854902,
+          0.854902,
+          0.854902
+        ],
+        "expected": [
+          0.852483,
+          0.852483,
+          0.852483
+        ],
+        "fit_error": 0.002419,
+        "chroma_spread": 0.0,
+        "contrast_primary": 12.531,
+        "contrast_secondary": 5.507
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.921569,
+          0.921569,
+          0.921569
+        ],
+        "expected": [
+          0.919409,
+          0.919409,
+          0.919409
+        ],
+        "fit_error": 0.002159,
+        "chroma_spread": 0.0,
+        "contrast_primary": 14.694,
+        "contrast_secondary": 6.458
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "files-light-saturated",
+      "app": "files",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-saturated.png",
+      "query": "docs/captures/t206-files-light-saturated.txt",
+      "present": true,
+      "fit_error": 0.004732745098039337,
+      "chroma": 0.01176470588235301,
+      "contrast": {
+        "sidebar": {
+          "primary": 12.488,
+          "secondary": 5.488
+        },
+        "toolbar": {
+          "primary": 14.618,
+          "secondary": 6.424
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.858824,
+        0.121569,
+        0.247059
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.862745,
+          0.85098,
+          0.85098
+        ],
+        "expected": [
+          0.858012,
+          0.846954,
+          0.848836
+        ],
+        "fit_error": 0.004733,
+        "chroma_spread": 0.011765,
+        "contrast_primary": 12.488,
+        "contrast_secondary": 5.488
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.92549,
+          0.917647,
+          0.917647
+        ],
+        "expected": [
+          0.921621,
+          0.917197,
+          0.91795
+        ],
+        "fit_error": 0.003869,
+        "chroma_spread": 0.007843,
+        "contrast_primary": 14.618,
+        "contrast_secondary": 6.424
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "files-dark-neutral",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-dark-neutral.png",
+      "query": "docs/captures/t206-files-dark-neutral.txt",
+      "present": true,
+      "fit_error": 0.004758823529411815,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 10.121,
+          "secondary": 5.721
+        },
+        "toolbar": {
+          "primary": 8.794,
+          "secondary": 4.971
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.47451,
+        0.47451,
+        0.47451
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.239216,
+          0.239216,
+          0.239216
+        ],
+        "expected": [
+          0.234673,
+          0.234673,
+          0.234673
+        ],
+        "fit_error": 0.004543,
+        "chroma_spread": 0.0,
+        "contrast_primary": 10.121,
+        "contrast_secondary": 5.721
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.27451,
+          0.27451,
+          0.27451
+        ],
+        "expected": [
+          0.269751,
+          0.269751,
+          0.269751
+        ],
+        "fit_error": 0.004759,
+        "chroma_spread": 0.0,
+        "contrast_primary": 8.794,
+        "contrast_secondary": 4.971
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          0.176471,
+          0.145098,
+          0.203922
+        ],
+        "expected": [
+          0.176,
+          0.145,
+          0.204
+        ],
+        "fit_error": 0.000471
+      }
+    },
+    {
+      "label": "files-dark-saturated",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-dark-saturated.png",
+      "query": "docs/captures/t206-files-dark-saturated.txt",
+      "present": true,
+      "fit_error": 0.005130784313725545,
+      "chroma": 0.07450980392156864,
+      "contrast": {
+        "sidebar": {
+          "primary": 10.73,
+          "secondary": 6.065
+        },
+        "toolbar": {
+          "primary": 9.542,
+          "secondary": 5.393
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.827451,
+        0.117647,
+        0.235294
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.262745,
+          0.211765,
+          0.219608
+        ],
+        "expected": [
+          0.257614,
+          0.211477,
+          0.219124
+        ],
+        "fit_error": 0.005131,
+        "chroma_spread": 0.05098,
+        "contrast_primary": 10.73,
+        "contrast_secondary": 6.065
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.309804,
+          0.235294,
+          0.247059
+        ],
+        "expected": [
+          0.305045,
+          0.234065,
+          0.245829
+        ],
+        "fit_error": 0.004759,
+        "chroma_spread": 0.07451,
+        "contrast_primary": 9.542,
+        "contrast_secondary": 5.393
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          0.176471,
+          0.145098,
+          0.203922
+        ],
+        "expected": [
+          0.176,
+          0.145,
+          0.204
+        ],
+        "fit_error": 0.000471
+      }
+    },
+    {
+      "label": "files-light-unfocused",
+      "app": "files",
+      "scheme": "light",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "unfocused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-unfocused.png",
+      "query": "docs/captures/t206-files-light-unfocused.txt",
+      "present": true,
+      "fit_error": 0.002419019607843187,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 12.531,
+          "secondary": 5.507
+        },
+        "toolbar": {
+          "primary": 14.694,
+          "secondary": 6.458
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.490196,
+        0.490196,
+        0.490196
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.854902,
+          0.854902,
+          0.854902
+        ],
+        "expected": [
+          0.852483,
+          0.852483,
+          0.852483
+        ],
+        "fit_error": 0.002419,
+        "chroma_spread": 0.0,
+        "contrast_primary": 12.531,
+        "contrast_secondary": 5.507
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.921569,
+          0.921569,
+          0.921569
+        ],
+        "expected": [
+          0.919409,
+          0.919409,
+          0.919409
+        ],
+        "fit_error": 0.002159,
+        "chroma_spread": 0.0,
+        "contrast_primary": 14.694,
+        "contrast_secondary": 6.458
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "files-dark-unfocused",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "sampled",
+      "wallpaper": "neutral",
+      "focus": "unfocused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-dark-unfocused.png",
+      "query": "docs/captures/t206-files-dark-unfocused.txt",
+      "present": true,
+      "fit_error": 0.004758823529411815,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 10.121,
+          "secondary": 5.721
+        },
+        "toolbar": {
+          "primary": 8.794,
+          "secondary": 4.971
+        }
+      },
+      "fallback": false,
+      "backdrop": [
+        0.47451,
+        0.47451,
+        0.47451
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.239216,
+          0.239216,
+          0.239216
+        ],
+        "expected": [
+          0.234673,
+          0.234673,
+          0.234673
+        ],
+        "fit_error": 0.004543,
+        "chroma_spread": 0.0,
+        "contrast_primary": 10.121,
+        "contrast_secondary": 5.721
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.27451,
+          0.27451,
+          0.27451
+        ],
+        "expected": [
+          0.269751,
+          0.269751,
+          0.269751
+        ],
+        "fit_error": 0.004759,
+        "chroma_spread": 0.0,
+        "contrast_primary": 8.794,
+        "contrast_secondary": 4.971
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          0.176471,
+          0.145098,
+          0.203922
+        ],
+        "expected": [
+          0.176,
+          0.145,
+          0.204
+        ],
+        "fit_error": 0.000471
+      }
+    },
+    {
+      "label": "files-light-reduce",
+      "app": "files",
+      "scheme": "light",
+      "variant": "reduce",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": true,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-reduce.png",
+      "query": "docs/captures/t206-files-light-reduce.txt",
+      "present": true,
+      "fit_error": 0.0003803921568628077,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 16.068,
+          "secondary": 7.062
+        },
+        "toolbar": {
+          "primary": 16.068,
+          "secondary": 7.062
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.490196,
+        0.490196,
+        0.490196
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.960784,
+          0.960784,
+          0.960784
+        ],
+        "expected": [
+          0.960404,
+          0.960404,
+          0.960404
+        ],
+        "fit_error": 0.00038,
+        "chroma_spread": 0.0,
+        "contrast_primary": 16.068,
+        "contrast_secondary": 7.062
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.960784,
+          0.960784,
+          0.960784
+        ],
+        "expected": [
+          0.960404,
+          0.960404,
+          0.960404
+        ],
+        "fit_error": 0.00038,
+        "chroma_spread": 0.0,
+        "contrast_primary": 16.068,
+        "contrast_secondary": 7.062
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "files-dark-reduce",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "reduce",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": true,
+      "increase_contrast": false,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-dark-reduce.png",
+      "query": "docs/captures/t206-files-dark-reduce.txt",
+      "present": true,
+      "fit_error": 0.0012549019607843298,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 15.707,
+          "secondary": 8.878
+        },
+        "toolbar": {
+          "primary": 15.707,
+          "secondary": 8.878
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.47451,
+        0.47451,
+        0.47451
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.113725,
+          0.113725,
+          0.113725
+        ],
+        "expected": [
+          0.11498,
+          0.11498,
+          0.11498
+        ],
+        "fit_error": 0.001255,
+        "chroma_spread": 0.0,
+        "contrast_primary": 15.707,
+        "contrast_secondary": 8.878
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.113725,
+          0.113725,
+          0.113725
+        ],
+        "expected": [
+          0.11498,
+          0.11498,
+          0.11498
+        ],
+        "fit_error": 0.001255,
+        "chroma_spread": 0.0,
+        "contrast_primary": 15.707,
+        "contrast_secondary": 8.878
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          0.176471,
+          0.145098,
+          0.203922
+        ],
+        "expected": [
+          0.176,
+          0.145,
+          0.204
+        ],
+        "fit_error": 0.000471
+      }
+    },
+    {
+      "label": "files-light-solid",
+      "app": "files",
+      "scheme": "light",
+      "variant": "solid",
+      "wallpaper": "saturated",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": true,
+      "capture": "docs/captures/t206-files-light-solid.png",
+      "query": "docs/captures/t206-files-light-solid.txt",
+      "present": true,
+      "fit_error": 0.00045098039215685226,
+      "chroma": 0.015686274509803866,
+      "contrast": {
+        "sidebar": {
+          "primary": 16.311,
+          "secondary": 7.169
+        },
+        "toolbar": {
+          "primary": 17.518,
+          "secondary": 7.699
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.858824,
+        0.121569,
+        0.247059
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.972549,
+          0.964706,
+          0.980392
+        ],
+        "expected": [
+          0.973,
+          0.965,
+          0.98
+        ],
+        "fit_error": 0.000451,
+        "chroma_spread": 0.015686,
+        "contrast_primary": 16.311,
+        "contrast_secondary": 7.169
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0,
+        "chroma_spread": 0.0,
+        "contrast_primary": 17.518,
+        "contrast_secondary": 7.699
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    },
+    {
+      "label": "files-dark-solid",
+      "app": "files",
+      "scheme": "dark",
+      "variant": "solid",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": false,
+      "solid_fallback": true,
+      "capture": "docs/captures/t206-files-dark-solid.png",
+      "query": "docs/captures/t206-files-dark-solid.txt",
+      "present": true,
+      "fit_error": 0.0004705882352941393,
+      "chroma": 0.05882352941176469,
+      "contrast": {
+        "sidebar": {
+          "primary": 13.723,
+          "secondary": 7.757
+        },
+        "toolbar": {
+          "primary": 13.723,
+          "secondary": 7.757
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.47451,
+        0.47451,
+        0.47451
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.176471,
+          0.145098,
+          0.203922
+        ],
+        "expected": [
+          0.176,
+          0.145,
+          0.204
+        ],
+        "fit_error": 0.000471,
+        "chroma_spread": 0.058824,
+        "contrast_primary": 13.723,
+        "contrast_secondary": 7.757
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.176471,
+          0.145098,
+          0.203922
+        ],
+        "expected": [
+          0.176,
+          0.145,
+          0.204
+        ],
+        "fit_error": 0.000471,
+        "chroma_spread": 0.058824,
+        "contrast_primary": 13.723,
+        "contrast_secondary": 7.757
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          0.113725,
+          0.090196,
+          0.137255
+        ],
+        "expected": [
+          0.114,
+          0.09,
+          0.137
+        ],
+        "fit_error": 0.000275
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          0.176471,
+          0.145098,
+          0.203922
+        ],
+        "expected": [
+          0.176,
+          0.145,
+          0.204
+        ],
+        "fit_error": 0.000471
+      }
+    },
+    {
+      "label": "files-light-contrast",
+      "app": "files",
+      "scheme": "light",
+      "variant": "contrast",
+      "wallpaper": "neutral",
+      "focus": "focused",
+      "reduce_transparency": false,
+      "increase_contrast": true,
+      "solid_fallback": false,
+      "capture": "docs/captures/t206-files-light-contrast.png",
+      "query": "docs/captures/t206-files-light-contrast.txt",
+      "present": true,
+      "fit_error": 0.002419019607843187,
+      "chroma": 0.0,
+      "contrast": {
+        "sidebar": {
+          "primary": 12.531,
+          "secondary": 5.507
+        },
+        "toolbar": {
+          "primary": 14.694,
+          "secondary": 6.458
+        }
+      },
+      "fallback": true,
+      "backdrop": [
+        0.490196,
+        0.490196,
+        0.490196
+      ],
+      "sidebar": {
+        "rect": [
+          952,
+          700,
+          956,
+          704
+        ],
+        "actual": [
+          0.854902,
+          0.854902,
+          0.854902
+        ],
+        "expected": [
+          0.852483,
+          0.852483,
+          0.852483
+        ],
+        "fit_error": 0.002419,
+        "chroma_spread": 0.0,
+        "contrast_primary": 12.531,
+        "contrast_secondary": 5.507
+      },
+      "toolbar": {
+        "rect": [
+          1192,
+          640,
+          1196,
+          644
+        ],
+        "actual": [
+          0.921569,
+          0.921569,
+          0.921569
+        ],
+        "expected": [
+          0.919409,
+          0.919409,
+          0.919409
+        ],
+        "fit_error": 0.002159,
+        "chroma_spread": 0.0,
+        "contrast_primary": 14.694,
+        "contrast_secondary": 6.458
+      },
+      "detail": {
+        "rect": [
+          1906,
+          1160,
+          1910,
+          1164
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      },
+      "pathbar": {
+        "rect": [
+          1906,
+          1198,
+          1910,
+          1202
+        ],
+        "actual": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "expected": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "fit_error": 0.0
+      }
+    }
+  ],
+  "chroma": {
+    "transport": "scalar-neutral-tint",
+    "unresolved": true,
+    "note": "The measured sidebar chroma pickup is not carried by the alpha/tint preset. The capture rows report the rendered channel spread; a future token/channel transport is required to reproduce the pickup itself."
+  }
+}

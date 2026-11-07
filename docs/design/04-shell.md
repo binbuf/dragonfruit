@@ -177,6 +177,29 @@ The top menu bar hosts, from left to right:
 - The Control Center entry point
 - A Mission Control button/gesture target
 
+The menu family uses the shared glass presets (T202): the menu-bar dropdown is
+`menuAttached`, the tray context menu and Dock context menu are
+`menuDetached`, and the Wi-Fi/Bluetooth/volume/battery popovers are
+`statusMenu`; submenus are detached cards. The shell declares each open panel
+as a material region on the `menubar-popup`/`dock-popup` overlay with the
+attached square-top/rounded-bottom or detached all-rounded corners. The
+overlay accepts pointer input only while the menu is logically open; the
+183 ms, 0.95-scale exit tail is visual only and can be retargeted by a reopen.
+App-owned Files/desktop context menus paint the opaque local fallback because
+they have no trusted compositor backdrop. The Bluetooth slot now reads the
+existing bridge-host adapter and Menu Bar visibility key; it raises the same
+power/device/settings actions as the Control Center tile and hides on absence.
+
+`menu.autoHide` is applied per output by the compositor (T201). `never` keeps
+the bar over the desktop and fullscreen; `always` starts concealed and reveals
+from the top edge or Control-F2; `full-screen` is normal on the desktop and
+reveals on demand over fullscreen. A revealed bar stays available while a
+menu is open or the bar holds keyboard focus, then conceals again and releases
+its reservation, input strip, and veil. `menu.showBackground` still owns both
+the foreground fill and the compositor veil; with it off the items remain
+interactive but no material panel is committed. See
+[ADR 0220](adr/0220-menu-bar-auto-hide-visibility.md).
+
 The system menu and application menu are **shell-owned chrome**, not part of
 the application's exported model: an app that exports nothing still gets a
 complete menu bar, and an app that exports menus gets them *after* the fixed
@@ -971,6 +994,56 @@ hides in `off`, shows the crescent in `focus`, and shows it *selected*
 always part of the accessible name. The existing Dock launch-failure
 notification (T-11.1b) remains the failure path. See
 [adr/0059](adr/0059-menu-bar-focus-reflection.md).
+
+**T204 status (Notification Center).** The Center is mapped. Its entry points
+are the menu-bar clock (`MenuBar.clockActivated`), the compositor's
+`notification-center` input action (the default Control-Shift-N shortcut and
+any configured hot corner), all routed through the same
+`ShellController::toggleNotificationCenter()` path. The Center is a trusted
+top-right `notification-center` overlay layer surface with its own panel-sized
+input region, OnDemand keyboard interaction (exclusive while open) and the
+compositor's per-output overlay rule: with no explicit output it anchors on the
+output where the invoking interaction happened. It closes on Escape, outside
+focus loss, lock, output teardown and a competing ambient overlay, clearing the
+input region and returning keyboard focus to the previously focused window.
+
+The history view is `shell/src/notificationcenter.{h,cpp}`, a Wayland-free
+controller fed by the existing decoded `History()` model. It normalizes every
+row to a stable `key` (the service id), marks a row `active` only while the
+service still has it open and Focus/DND did not suppress it, and filters the
+action list to empty for history-only rows. Selection follows the stable key
+across history updates; Up/Down/Home/End traverse, Return invokes an active
+row's `default` action or dismisses a plain active row, and Delete/Backspace
+dismiss the selection. Pointer action buttons and the row dismiss control
+route through the same `NotificationClient::invoke`/`dismiss` contract as the
+banner. Expired, closed, dismissed and DND-suppressed rows remain visible
+history with their status, never stale active actions. The service keeps
+banner delivery, expiry, replacement, urgency, Focus policy and badge
+semantics; a service absence clears the stale view into an accessible
+"Notifications unavailable" state, and the existing `availableChanged` refresh
+repopulates it after reconnect. See
+[adr/0223](adr/0223-notification-center-mapping.md).
+
+**T205 status (notification materials).** The banner and Center now carry
+three distinct materials. `NotificationBanner.qml` resolves
+`notificationBanner` and declares one `banner` region sized to the visible
+card (96 pt, or 132 pt with actions), so the transparent strip below a
+no-action banner is never frosted. `NotificationCenter.qml` resolves
+`notificationStack` and `notificationLowerPanel` and declares two disjoint
+regions, `stack` and `lower`; the lower panel is a fixed summary/hint footer,
+while the stack holds the title and scrollable history. An active banner sets
+the Center's `bannerInset`, moving the stack below the card so both surfaces
+stay co-visible without overlap or double-frosting. The shell commit-latches
+the region lists with each image, re-declares them on history/layout changes,
+and clears them before unmapping. On the sampled path the compositor's opaque
+flat band is the plate and QML is transparent; solid, software-fallback and
+Reduce Transparency paint the same resolved tint/alpha, and the legacy rollout
+keeps `Material.popupFill()`. The empty history shows a deliberate
+"No notifications"/"Notifications unavailable" state, and an overflowing
+history shows a visible scroll thumb plus "Scroll for more". The Dark banner
+and lower panel are readable, labelled adaptations because the reference has
+no independent Dark fit. See
+[adr/0224](adr/0224-notification-banner-stack-lower-panel.md).
 
 **T-11.3a status.** The Control Center panel exists: the menu-bar item (or the
 Control-Option-C shortcut, routed as the compositor's `control-center` input

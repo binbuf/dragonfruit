@@ -1,0 +1,149 @@
+{
+  "presets": {
+    "attached": "menuAttached",
+    "detached": "menuDetached",
+    "status": "statusMenu",
+    "submenu": "menuDetached"
+  },
+  "light_attached": {
+    "alpha": 0.552,
+    "target_alpha": 0.55,
+    "alpha_delta": 0.002,
+    "tint": 0.993,
+    "blur": 10.0,
+    "target_blur": 10.0,
+    "blur_delta": 0.0,
+    "shadow_extent": 20.0,
+    "target_shadow_extent": 20.0,
+    "shadow_delta": 0.0,
+    "bottom_corner": 12.5,
+    "target_bottom_corner": 12.5,
+    "render_mode": "sampled-glass",
+    "confidence": "measured"
+  },
+  "light_slider": {
+    "low": {
+      "position": 0.0,
+      "alpha": 0.732,
+      "tint": 0.953,
+      "expected_alpha": 0.732,
+      "expected_tint": 0.953
+    },
+    "mid": {
+      "position": 0.5255,
+      "alpha": 0.552,
+      "tint": 0.993,
+      "expected_alpha": 0.552,
+      "expected_tint": 0.993
+    },
+    "high": {
+      "position": 1.0,
+      "alpha": 0.415,
+      "tint": 0.997,
+      "expected_alpha": 0.415,
+      "expected_tint": 0.997
+    }
+  },
+  "light_relative": {
+    "menuDetached": {
+      "default_alpha": 0.55,
+      "low_alpha": 0.729348,
+      "high_alpha": 0.413496,
+      "default_tint": 0.96,
+      "low_tint": 0.92,
+      "high_tint": 0.964
+    },
+    "statusMenu": {
+      "default_alpha": 0.55,
+      "low_alpha": 0.729348,
+      "high_alpha": 0.413496,
+      "default_tint": 0.96,
+      "low_tint": 0.92,
+      "high_tint": 0.964
+    }
+  },
+  "dark_menus": {
+    "attached": {
+      "alpha": 0.6425,
+      "tint": 0.2775,
+      "mid_output": 0.357759,
+      "black_output": 0.178294,
+      "reference_mid": 0.34228,
+      "reference_black": 0.1716,
+      "mid_delta": 0.015479,
+      "black_delta": 0.006694,
+      "confidence": "adapted",
+      "white_row": "open"
+    },
+    "detached": {
+      "alpha": 0.66,
+      "tint": 0.26,
+      "mid_output": 0.34228,
+      "black_output": 0.1716,
+      "reference_mid": 0.34228,
+      "reference_black": 0.1716,
+      "mid_delta": 0.0,
+      "black_delta": 0.0,
+      "confidence": "measured",
+      "white_row": "open"
+    },
+    "status": {
+      "alpha": 0.66,
+      "tint": 0.26,
+      "mid_output": 0.34228,
+      "black_output": 0.1716,
+      "reference_mid": 0.34228,
+      "reference_black": 0.1716,
+      "mid_delta": 0.0,
+      "black_delta": 0.0,
+      "confidence": "measured",
+      "white_row": "open"
+    }
+  },
+  "dark_file_decision": {
+    "rejected_crop": "captures/coverage/dark_menu_file__neutral_white.png (pixel-identical to the Light File crop)",
+    "valid_rows": [
+      "mid",
+      "black"
+    ],
+    "white_row": "open",
+    "action": "calibrated the attached baseline against the valid dark context/status family; a controlled white-row recapture remains open"
+  },
+  "fallback": {
+    "trusted": {
+      "render_mode": "sampled-glass",
+      "alpha": 0.55,
+      "blur": 10.0
+    },
+    "app_local": {
+      "render_mode": "software-fallback",
+      "alpha": 0.98,
+      "blur": 0.0
+    },
+    "reduce_transparency": {
+      "render_mode": "solid",
+      "alpha": 0.98,
+      "blur": 0.0
+    }
+  },
+  "motion": {
+    "close_ms": 183,
+    "target_close_ms": 183,
+    "terminal_scale": 0.95,
+    "target_terminal_scale": 0.95,
+    "reduced_motion_ms": 0,
+    "anchor_translation": "toward the anchor point; interaction closes immediately"
+  },
+  "captures": [
+    "docs/captures/t202-attached-dark.png",
+    "docs/captures/t202-attached-light-high.png",
+    "docs/captures/t202-attached-light-low.png",
+    "docs/captures/t202-attached-light.png",
+    "docs/captures/t202-context-desktop.png",
+    "docs/captures/t202-context-dock.png",
+    "docs/captures/t202-context-files.png",
+    "docs/captures/t202-status-bluetooth.png",
+    "docs/captures/t202-status-wifi.png"
+  ],
+  "capture_note": "Live captures are produced by `make menu-families-capture`; optical fit rows above are model checks because the nested desktop has no controlled backdrop."
+}

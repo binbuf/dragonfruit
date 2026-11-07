@@ -1433,6 +1433,66 @@ fit from the controlled reference sweep (A 1.0676, R 125.1 pt, observed
 that host is unavailable the QML and compositor regressions are the executable
 evidence and the capture limitation is recorded.
 
+T207's nested and fallback acceptance is produced by
+`make nested-acceptance-capture` (`scripts/capture-t207-nested-acceptance.sh`)
+and gated by `make nested-acceptance-check`:
+
+- `tests/glass/t207-cases.json` is the checked-in case matrix, tolerance
+  contract and flat-band mask. It covers stationary and moving backdrops,
+  light/dark, slider 0/0.5255/1, Reduce Transparency, Increase Contrast,
+  Reduce Motion, 1x/1.5x/2x, Full/Reduced/Minimal, software/SHM/dmabuf,
+  menus, Control Center, Notification Center, Dock popover, Settings/Files,
+  lock/lock-exit, fullscreen/fullscreen-exit, live output change and idle
+  settle.
+- `docs/captures/t207-nested-acceptance-capture.json` is the raw manifest:
+  one row per rollout and case with the capture, query, stats and log path.
+  A/B rows run the same scene and settings twice with
+  `DRAGONFRUIT_GLASS_ROLLOUT=legacy` and `=replacement`.
+- `docs/captures/t207-nested-acceptance.json` / `.md` are the scored report.
+  It publishes the legacy/replacement padded area, refresh-relative p50/p95
+  timing, material allocations, blur-cache misses, transport/copies, idle
+  frames/wakeups, the Dock flat-band mean/p95/SSIM against the macOS
+  `dock_interior` crop (mean <0.02, p95 <0.05, SSIM >0.90), and the
+  per-surface T198/T200/T202/T203/T205/T206 scores.
+- `docs/captures/t207-<case>-<rollout>.png` are the compositor's own renders;
+  matching `.txt` files are the live `query scale`/`query material`/`query
+  lock`/`query scanout` dumps and `-stats.txt` files are the SIGUSR1
+  compositor/shell counter windows. Logs are under
+  `docs/captures/t207-logs/`.
+- `docs/captures/t207-nested-acceptance.open.txt` records the native DRM row
+  (T208) and the approved adaptations: 1.5x/2x Dock MTF on the nested
+  scene-texture path, the underconstrained Dark notification surfaces, the
+  adapted Dark Settings chrome, the Dark attached menu baseline, and the
+  dmabuf capture-row boundary (`make t21-gpu-rollout` is the transport
+  evidence; the dev demo shell is offscreen/SHM).
+- The release rail remains the default (`glass.rollout.defaultMode=legacy`);
+  `DRAGONFRUIT_GLASS_ROLLOUT` is the A/B and rollback switch. T208 re-verified
+  the native baseline but left the native replacement/rollback gate OPEN, so
+  the default was **not** flipped.
+
+T208's native DRM acceptance is recorded in
+[`t208-native-acceptance.md`](t208-native-acceptance.md) and
+[`t208-native-stats.txt`](t208-native-stats.txt). The stills are
+`t208-native-light-desktop.png`, `-dark-desktop.png`, `-light-live-under-dock.png`,
+`-dark-live-under-dock.png`, `-light-live-under-menubar.png`,
+`-dark-live-under-menubar.png`, `-menu-light.png`, `-control-center-light.png`,
+`-control-center-dark.png`, `-notification-light.png`, `-notification-dark.png`,
+`-mission-control.png`, `-lock.png`, and `-fullscreen.png`. They are the real
+KMS primary-plane scanout (dev-only `scripts/t208-kms-readback.c`:
+`pidfd_getfd` of the compositor's DRM fd + `drmModeGetFB2` + three-plane
+dma-buf EGL import), not screencopy, a portal grant or a nested window; the
+hardware cursor and overlay planes are not in the stills. The fullscreen row
+used the trusted shell protocol driver `scripts/t208-shell-fullscreen.c`.
+
+The native session's running release is pre-T195/T196, so these stills are the
+matched **legacy baseline**: the replacement native visual/perf rows, native
+direct scanout (fullscreen candidates advanced 4019→11261 while
+`direct_scanouts` stayed 0), native lock-exit, native accessibility overrides,
+hotplug/mixed refresh, GPU timer queries and the native rollback render cycle
+remain OPEN. The default stays `legacy`; the exact free-seat rerun commands and
+the missing `seat0`/`card1`/`DP-1` row are in the report. T207 remains the
+replacement A/B evidence.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

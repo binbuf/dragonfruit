@@ -24,6 +24,10 @@
 - **T190b — T-21.3 Region-sized scene render and caching**: `compositor/src/window/material_region.rs`:; `MaterialRegion::full_output` (diagnostic/rollback region),
 - **T190c — T-21.3 Stable scene/panel IDs and damage**: `compositor/src/window/material_cache.rs`:; `PanelKey` is an allocation-free hash of the chrome surface's
 - **T190d — T-21.3 direct-scanout preservation and material counters**: `compositor/src/window/scanout.rs` (new): pure `covers_output` and; Fullscreen chrome suppression:
+- **T191a — T-21.4a native rebuild, diagnostics, and rollback**: `docs/captures/t21-native-material.txt`: native DP-1 DRM diagnostics from; `docs/captures/t21-native-material-rollback.open.txt`: the rollback
+- **T191b — T-21.4a native visual sweep and evidence boundary**: `docs/captures/t21-native-*.png`: native stills read from the real DP-1; Live-content proof: an override-redirect white X11 panel moved behind the
+- **T192a — T-21.4b GPU/chrome timing counters**: `compositor/src/gpu_timer.rs` (new): opt-in `DRAGONFRUIT_GPU_TIMING=1`; Support detection covers `GL_EXT_disjoint_timer_query` (GLES `EXT` entry
+- **T192b — T-21.4b Benchmark script and nested scenario run**: `scripts/t21-presentation-bench.sh` + `scripts/t21-presentation-bench-driver.py`; `scripts/t21-presentation-bench-report.py`, and `make
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -48,6 +52,10 @@
 - [T190b](progress/T190b.md) — `compositor/src/window/material_region.rs`:
 - [T190c](progress/T190c.md) — `compositor/src/window/material_cache.rs`:
 - [T190d](progress/T190d.md) — `compositor/src/window/scanout.rs` (new): pure `covers_output` and
+- [T191a](progress/T191a.md) — `docs/captures/t21-native-material.txt`: native DP-1 DRM diagnostics from
+- [T191b](progress/T191b.md) — `docs/captures/t21-native-*.png`: native stills read from the real DP-1
+- [T192a](progress/T192a.md) — `compositor/src/gpu_timer.rs` (new): opt-in `DRAGONFRUIT_GPU_TIMING=1`
+- [T192b](progress/T192b.md) — `scripts/t21-presentation-bench.sh` + `scripts/t21-presentation-bench-driver.py`
 <!-- symphony:digest:end -->
 
 Shared index for the symphony run. Each task session writes its own note file under the progress/

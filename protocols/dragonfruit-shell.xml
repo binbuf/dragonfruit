@@ -19,7 +19,7 @@
 -->
 <protocol name="dragonfruit_shell">
 
-  <interface name="df_shell" version="3">
+  <interface name="df_shell" version="4">
     <description summary="chrome-surface factory for trusted session clients">
       Creates `df_layer_surface`s. Binding this global requires a successful
       `df_core.authenticate` (T-07 trust model).
@@ -59,7 +59,7 @@
     </enum>
   </interface>
 
-  <interface name="df_layer_surface" version="3">
+  <interface name="df_layer_surface" version="4">
     <description summary="an anchored, layered chrome surface">
       Requests may be sent before the first commit; the compositor sends a
       `configure` with the resolved size and serial, which the client must
@@ -180,6 +180,30 @@
       </description>
     </request>
 
+    <request name="set_auto_hide" since="4">
+      <description summary="set the menu-bar auto-hide policy">
+        Applies to the `menubar` surface only; other namespaces ignore it.
+        The compositor owns the revealed state on each output. `never` keeps
+        the bar visible in the desktop and in fullscreen. `always` starts
+        concealed and reveals it from the top edge or the menu-bar focus
+        shortcut. `full_screen` shows the bar normally on the desktop and
+        conceals it in fullscreen until it is revealed. A concealed bar
+        contributes no reserved zone, input hit area, or material panel, so
+        the output stays eligible for direct scanout. A revealed bar keeps
+        its normal reservation, input region, and material until it conceals
+        again; an active menu or keyboard focus keeps it revealed.
+      </description>
+      <arg name="mode" type="uint" enum="auto_hide_mode"/>
+    </request>
+
+    <enum name="auto_hide_mode">
+      <description summary="menu-bar auto-hide policy">
+        Mirrors the `menu.autoHide` settings values.
+      </description>
+      <entry name="never" value="0"/>
+      <entry name="always" value="1"/>
+      <entry name="full_screen" value="2"/>
+    </enum>
 
     <event name="configure">
       <arg name="serial" type="uint"/>

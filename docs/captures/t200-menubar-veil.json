@@ -1,0 +1,53 @@
+{
+  "backend": "nested",
+  "rollout": "replacement",
+  "captures": {
+    "light": "t200-menubar-veil-light.png",
+    "dark": "t200-menubar-veil-dark.png",
+    "fallback": "t200-menubar-veil-fallback.png"
+  },
+  "light_black_window_lut": {
+    "5": {
+      "capture": 0.45098,
+      "measured": 0.45098037,
+      "delta": 0.0
+    },
+    "15": {
+      "capture": 0.439216,
+      "measured": 0.43921566,
+      "delta": 0.0
+    },
+    "25": {
+      "capture": 0.403922,
+      "measured": 0.40784317,
+      "delta": -0.003922
+    },
+    "35": {
+      "capture": 0.352941,
+      "measured": 0.35686272,
+      "delta": -0.003922
+    },
+    "50": {
+      "capture": 0.239216,
+      "measured": 0.24313729,
+      "delta": -0.003922
+    },
+    "75": {
+      "capture": 0.058824,
+      "measured": 0.05882353,
+      "delta": -0.0
+    },
+    "90": {
+      "capture": 0.007843,
+      "measured": 0.00784314,
+      "delta": -0.0
+    },
+    "95": {
+      "capture": 0.0,
+      "measured": 0.0,
+      "delta": 0.0
+    }
+  },
+  "light_white_window_invisible": true,
+  "fallback_plate": true
+}

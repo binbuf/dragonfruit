@@ -51,7 +51,7 @@ The executable v0.1.1 task set is in
 | P3 shell transport | **baseline + HiDPI done (T-21.1a/b)** | Shell is software-rendered offscreen QPA; `grabWindow` + `QImage` + fresh `wl_shm` per commit. HiDPI chrome now commits physical buffers with `buffer_scale`/`wp_viewport` ([ADR 0192](design/adr/0192-chrome-scale-physical-buffer-and-viewport.md)); pooling, frame callbacks, and GPU transport remain T185/T186. Measured in [`captures/t21-chrome-baseline.txt`](captures/t21-chrome-baseline.txt); transport decision [ADR 0191](design/adr/0191-chrome-transport-render-control-and-shm-fallback.md). |
 | P4 refresh-aware scheduling | **wired (T-21.2b)** | The animation clock and degrade budget use the fastest active output's period, with `DRAGONFRUIT_REFRESH_HZ` test overrides and `refresh_hz`/`source` stats ([ADR 0199](design/adr/0199-refresh-clock-wiring.md)). Per-output urgent/animation requests and earliest-deadline arming are wired ([ADR 0201](design/adr/0201-per-output-frame-requests-and-earliest-deadline.md)); VRR adaptation, chrome callbacks, and synthetic 60+144 evidence are wired ([ADR 0202](design/adr/0202-vrr-adaptation-and-mixed-refresh-evidence.md)). Native mixed-refresh remains an explicit `OPEN` artifact until a free two-output DRM seat runs it. |
 | P5 multi-GPU | **single-GPU only** | Material path disables itself on a multi-GPU seat; shell falls back. |
-| P6 native visual verification | **native stills captured (T191b); partial** | T191b read the real DP-1 KMS scanout buffer with a dev-only `pidfd_getfd` + dma-buf readback (not screencopy) and committed light/dark Dock/menu stills over live content, plus menu, drawer, Control Center, OSD, notification, Dock popover, Dock magnification, Mission Control, lock, and fullscreen stills. The Dock/menu bar measurably brighten when a white client is moved behind them (dark menu bar mean 55.0→113.2; Dock 45.4→161.6; light Dock 68.7→183.5). The readback covers the active CRTC's primary plane only, so the hardware cursor and overlay planes are not in the stills; direct scanout stayed 0. Nested captures remain reference only. |
+| P6 native visual verification | **native baseline re-verified (T208); replacement native row OPEN** | T191b/T208 read the real DP-1 KMS scanout buffer with a dev-only `pidfd_getfd` + dma-buf readback (not screencopy) and committed light/dark Dock/menu stills over live content, plus menu, Control Center, notification, Mission Control, lock and fullscreen. T208 re-measured the live backdrop (light Dock 80.9→169.7, dark Dock 42.5→135.0; light menu bar 224.9→238.8, dark 48.6→74.9), idle/load presentation and resources, and the fullscreen path. The readback covers the active CRTC's primary plane only; direct scanout stayed 0 (fullscreen candidates 4019→11261) and the running native build is pre-T195/T196, so the replacement native row and native rollback cycle remain OPEN. Nested captures remain reference only. |
 
 **Status (T191b, 2026-11-05):** the native **visual** sweep is captured on
 DP-1 (3840x2160 @ 143.999 Hz, amdgpu Lucienne, scale 2 → 2560x1440 logical).
@@ -70,6 +70,19 @@ plane only: the hardware cursor and overlay planes are not in the stills, and
 The native **rollback render** remains open for the same reason as T191a: it
 needs a session cycle ([`captures/t21-native-material-rollback.open.txt`](captures/t21-native-material-rollback.open.txt)).
 Nested captures remain reference only; diagnostics are not pixel proof.
+
+**Status (T208, 2026-11-07):** the native baseline was re-verified on the live
+DRM session (`seat0`, VT2, `card1`, amdgpu Lucienne, DP-1 3840x2160 @ 143.999
+Hz, scale 1.5). The KMS stills and the raw `SIGUSR1` transcript are
+[`captures/t208-native-acceptance.md`](captures/t208-native-acceptance.md) and
+[`captures/t208-native-stats.txt`](captures/t208-native-stats.txt). The
+running release is **pre-T195/T196**: the replacement native visual/perf
+rows, native accessibility overrides, native direct scanout (fullscreen
+candidates advanced but `direct_scanouts=0`), native lock-exit, hotplug/mixed
+refresh, GPU timer queries and the native rollback render cycle remain OPEN.
+The shipped default therefore stays `legacy`; `scripts/native-session.sh` now
+persists `DRAGONFRUIT_GLASS_ROLLOUT` so the rollback survives a rebuild. T207
+remains the replacement A/B evidence.
 
 ---
 
@@ -104,6 +117,15 @@ are evidenced by `captures/t21-native-*.png`. The fullscreen still is not
 direct-scanout proof (`direct_scanouts=0`, 47 candidates), and the hardware
 cursor is not in the KMS readback. The native rollback render remains the
 T191a OPEN artifact.
+
+**Status (T208, 2026-11-07):** the native baseline was re-checked on the live
+release (`path=gpu`, `blur_draws=101498`, `blur_panels=202702`,
+`backdrop_skipped=0`, allocations 232→235 under vkcube load; shell role
+`dock/chrome tier=0 blur=1`). Fullscreen entry works and suppresses chrome,
+but the eligible client was composited (`direct_scanout_candidates=11261`,
+`direct_scanouts=0`). The running build predates the replacement, so the
+default-on replacement native row and the native rollback cycle stay OPEN; see
+[`captures/t208-native-acceptance.md`](captures/t208-native-acceptance.md).
 
 **Acceptance**
 
@@ -169,8 +191,8 @@ bottom Dock are both blurred; a Dock-only frame is smaller. Multi-rect/tiled
 regions are a follow-up, not part of this slice.
 
 T197 adds multi-region metadata without changing that single-union texture
-(ADR 0216). A chrome surface may declare up to eight independently keyed
-visual regions with per-corner radii and bounded overscan; each is clipped to
+(ADR 0216). A chrome surface may declare up to 32 independently keyed visual
+regions with per-corner radii and bounded overscan; each is clipped to
 the surface/output and resolved through the live preset policy. The region
 padding is now the full sample footprint: max(blur radius, Kawase chain,
 refraction/lens reach, declared overscan). A veil preset takes the sharp path,
@@ -178,6 +200,20 @@ sampling the same compositor scene texture directly with no Kawase allocation
 and no `blur_draws`/`blur_passes` increment. `PanelBlurKey` includes the padded
 footprint and filter, while `PanelPaintKey` advances the element commit for
 tint/scheme/tier-only changes so the cached texture is reused.
+
+T200 gives the menu bar its own no-blur veil (ADR 0219). The preset resolves to
+the sharp path and the `VEIL_SHADER` samples the live scene at the current
+pixel; there is no Kawase allocation and no blur counter. A measured depth LUT
+is a white lift in Light (0.451 at 5 pt, fading to zero by 95 pt) and a black
+wash in Dark (the same shape at a 0.48 peak). A bounded 5-tap luminance probe
+inside the 39 pt reference strip can only raise the LUT alpha for readability;
+it never filters the displayed backdrop. The layer surface is 95 pt tall so the
+compositor can draw below the bar, while the exclusive zone, input buffer and
+committed strip stay at Dragonfruit's 28 pt bar. The shell declares the `veil`
+panel region with the full visual extent and clears it for the fallback,
+Reduce Transparency or a hidden bar. The veil element's commit follows the
+scene cache's real-damage commit, so a moving window under the bar repaints the
+veil while a settled scene stays damage-free.
 
 **Acceptance**
 
@@ -787,6 +823,14 @@ The readback shows the **primary plane only**. The hardware cursor, overlay
 planes, and direct-scanout buffers are not in these stills; cursor sharpness
 and direct scanout remain T190d/T192. Nested captures are reference only.
 
+**Status (T208, 2026-11-07):** the baseline stills were refreshed with the
+committed dev-only tool `scripts/t208-kms-readback.c` (the T191b method) and
+the fullscreen row used `scripts/t208-shell-fullscreen.c` through the trusted
+shell protocol. The native build is pre-T195/T196, so these stills are the
+matched legacy baseline; the replacement native stills, native accessibility
+overrides, native direct scanout and native lock-exit remain OPEN. See
+[`captures/t208-native-acceptance.md`](captures/t208-native-acceptance.md).
+
 ### R6.1 Trusted native capture
 
 **Work**
@@ -896,6 +940,28 @@ missed-deadline counts) are T192c.
   Mission Control teardown (null `Shadow.qml` overview material); the
   benchmark excludes the overview surface from the GPU rail and records the
   fallback plus the T193 follow-up.
+- The T207 acceptance (`make nested-acceptance-capture`,
+  `docs/captures/t207-nested-acceptance.md`) runs the same nested scenes twice
+  with `DRAGONFRUIT_GLASS_ROLLOUT=legacy` and `=replacement`, and publishes the
+  matched padded area, refresh-relative p50/p95 timing, material allocations,
+  blur-cache misses, transport/copies, idle frames/wakeups and the Dock
+  flat-band mean/p95/SSIM against the macOS `dock_interior` crop. The 1x
+  flat band passes mean <0.02, p95 <0.05 and SSIM >0.90 at 1x/1.5x/2x; the
+  1.5x/2x checker MTF remains the approved nested scene-texture adaptation.
+  The release rail stays `legacy`; the switch is the rollback path.
+- T208 native acceptance (`docs/captures/t208-native-acceptance.md`,
+  `make native-status`/`make native-capture`/`make native-perf` plus the
+  dev-only `scripts/t208-kms-readback.c` and
+  `scripts/t208-shell-fullscreen.c`) records the real KMS baseline: idle
+  shell chrome 1 frame/60 s, vkcube-load frame p50/p95/p99
+  6179/8400/8662 us, presentation p50/p95/p99 6947/12716/13157 us at
+  `budget_us=6944`/143.999 Hz, `path=gpu` with `blur_draws=101498` and
+  `backdrop_skipped=0`, SHM-only transport, flat fd/memory after the client
+  exits, and fullscreen entry with chrome suppressed but
+  `direct_scanouts=0` (candidates 4019→11261). The running native build is
+  pre-T195/T196; the replacement native row, native rollback cycle,
+  accessibility overrides, hotplug/mixed refresh and GPU timer queries remain
+  OPEN. The default is not flipped.
 
 ### R8.3 Docs
 

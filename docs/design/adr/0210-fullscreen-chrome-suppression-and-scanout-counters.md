@@ -18,7 +18,11 @@ material frames with direct scanouts and had no per-output breakdown.
   `shell::layer::visible_in_fullscreen`, and the filtered list is
   `DfState::visible_chrome_surfaces`. Frame-callback bookkeeping keeps using
   the unfiltered `chrome_surfaces`, so a hidden chrome surface is not left
-  waiting on a callback.
+  waiting on a callback. T201 adds one deliberate menu-bar exception: the
+  `menu.autoHide` policy can keep the bar visible over fullscreen (`never`) or
+  reveal it on demand (`always`/`full-screen`), and a concealed bar drops its
+  reservation and material panel. See
+  [ADR 0220](0220-menu-bar-auto-hide-visibility.md).
 - The direct-scanout policy is the pure
   `window::scanout::direct_scanout_candidate`: a fullscreen rect that covers
   the output and no visible material panel intersecting it. Both backends

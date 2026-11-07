@@ -170,9 +170,15 @@ impl Preset {
         }
     }
 
-    /// Only the light attached-menu preset follows the measured File slider.
+    /// The light attached-menu preset follows the measured File slider.
     pub fn follows_slider(self) -> bool {
         token_slider(self) == "lightAttached"
+    }
+
+    /// The detached/status menus follow the same measured curve as a
+    /// relative adjustment that preserves their own default fit.
+    pub fn follows_slider_relative(self) -> bool {
+        token_slider(self) == "lightRelative"
     }
 }
 
@@ -506,23 +512,44 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
         (Preset::WindowChrome, Scheme::Light) => cal!(window_chrome, light),
         (Preset::WindowChrome, Scheme::Dark) => cal!(window_chrome, dark),
     };
-    if preset == Preset::Dock {
-        let (edge_tail, sharp, peak, distance, tail) = match scheme {
-            Scheme::Light => (
-                p::dock::light::EDGE_TAIL,
-                p::dock::light::SHARP_FRACTION,
-                p::dock::light::CORNER_LENS_PEAK,
-                p::dock::light::CORNER_LENS_DISTANCE,
-                p::dock::light::CORNER_LENS_TAIL,
-            ),
-            Scheme::Dark => (
-                p::dock::dark::EDGE_TAIL,
-                p::dock::dark::SHARP_FRACTION,
-                p::dock::dark::CORNER_LENS_PEAK,
-                p::dock::dark::CORNER_LENS_DISTANCE,
-                p::dock::dark::CORNER_LENS_TAIL,
-            ),
+    // T203: the flat-band + rim + capsule-end lens fields are carried for the
+    // Dock and the Control Center family. Other presets keep the legacy
+    // adaptive tint/rim (the generated zero defaults).
+    macro_rules! lens {
+        ($preset:ident, $scheme:ident) => {
+            (
+                p::$preset::$scheme::EDGE_TAIL,
+                p::$preset::$scheme::SHARP_FRACTION,
+                p::$preset::$scheme::CORNER_LENS_PEAK,
+                p::$preset::$scheme::CORNER_LENS_DISTANCE,
+                p::$preset::$scheme::CORNER_LENS_TAIL,
+            )
         };
+    }
+    let lens = match (preset, scheme) {
+        (Preset::Dock, Scheme::Light) => Some(lens!(dock, light)),
+        (Preset::Dock, Scheme::Dark) => Some(lens!(dock, dark)),
+        (Preset::ControlCenterOuter, Scheme::Light) => {
+            Some(lens!(control_center_outer, light))
+        }
+        (Preset::ControlCenterOuter, Scheme::Dark) => {
+            Some(lens!(control_center_outer, dark))
+        }
+        (Preset::ControlCenterModule, Scheme::Light) => {
+            Some(lens!(control_center_module, light))
+        }
+        (Preset::ControlCenterModule, Scheme::Dark) => {
+            Some(lens!(control_center_module, dark))
+        }
+        (Preset::ControlCenterExpanded, Scheme::Light) => {
+            Some(lens!(control_center_expanded, light))
+        }
+        (Preset::ControlCenterExpanded, Scheme::Dark) => {
+            Some(lens!(control_center_expanded, dark))
+        }
+        _ => None,
+    };
+    if let Some((edge_tail, sharp, peak, distance, tail)) = lens {
         calibration.edge_tail = edge_tail;
         calibration.sharp_fraction = sharp;
         calibration.corner_lens_peak = peak;
@@ -721,6 +748,19 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
             let position = sanitize01(slider, glass::slider::DEFAULT_POSITION);
             (alpha, tint) = interpolate(position);
             slider_applied = true;
+        } else if preset.follows_slider_relative() && scheme == Scheme::Light {
+            // The measured curve is the attached File response. Detached and
+            // status menus keep their own default fit and move relative to it:
+            // alpha scales by the attached ratio and tint takes the attached
+            // delta. At the default position the preset is unchanged.
+            let position = sanitize01(slider, glass::slider::DEFAULT_POSITION);
+            let (base_alpha, base_tint) = interpolate(glass::slider::DEFAULT_POSITION);
+            let (current_alpha, current_tint) = interpolate(position);
+            if base_alpha > 0.0 {
+                alpha = sanitize01(alpha * current_alpha / base_alpha, alpha);
+            }
+            tint = sanitize01(tint + (current_tint - base_tint), tint);
+            slider_applied = true;
         }
     }
 
@@ -851,6 +891,40 @@ mod tests {
     }
 
     #[test]
+    fn control_center_module_carries_the_effective_fit_as_its_final_composite() {
+        let outer = resolve(input(Preset::ControlCenterOuter, Scheme::Light));
+        let module = resolve(input(Preset::ControlCenterModule, Scheme::Light));
+        // The flat-band shader output is opaque, so the module preset is the
+        // final composite in its region; it is not a second layer over the
+        // outer plate.
+        assert!((module.alpha - 0.391).abs() < 1e-6);
+        assert!((module.tint - 0.317).abs() < 1e-6);
+        assert!(module.alpha > outer.alpha);
+        assert!(module.tint < outer.tint);
+        // The outer/module capsule optics are the measured 0.30 rim and
+        // 6 pt / 24 pt corner lens family.
+        for resolved in [outer, module] {
+            assert!((resolved.edge - 0.30).abs() < 1e-6);
+            assert!((resolved.corner_lens_peak - 6.0).abs() < 1e-6);
+            assert!((resolved.corner_lens_distance - 24.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn expanded_dark_list_is_near_background_independent() {
+        let expanded = resolve(input(Preset::ControlCenterExpanded, Scheme::Dark));
+        assert!(expanded.alpha >= 0.94);
+        let outputs = [0.0_f32, 0.502, 1.0].map(|background| {
+            background * (1.0 - expanded.alpha) + expanded.tint * expanded.alpha
+        });
+        let spread = outputs.iter().cloned().fold(f32::MIN, f32::max)
+            - outputs.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(spread < 0.05, "spread {spread}");
+        let mean = outputs.iter().sum::<f32>() / outputs.len() as f32;
+        assert!((mean - 0.13).abs() < 0.02, "mean {mean}");
+    }
+
+    #[test]
     fn preset_names_round_trip() {
         assert_eq!(Preset::ALL.len(), PRESET_NAMES.len());
         for (preset, name) in Preset::ALL.into_iter().zip(PRESET_NAMES) {
@@ -865,6 +939,10 @@ mod tests {
         for preset in Preset::ALL {
             assert_eq!(preset.role().name(), token_role(preset));
             assert_eq!(preset.follows_slider(), token_slider(preset) == "lightAttached");
+            assert_eq!(
+                preset.follows_slider_relative(),
+                token_slider(preset) == "lightRelative"
+            );
             let expected_render = match token_render(preset) {
                 "veil" => IntendedRender::Veil,
                 "solid" => IntendedRender::Solid,
@@ -892,7 +970,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_light_attached_menu_follows_the_slider() {
+    fn only_the_light_menu_presets_follow_the_slider() {
         for preset in Preset::ALL {
             for scheme in [Scheme::Light, Scheme::Dark] {
                 let low = resolve(ResolveInput {
@@ -903,13 +981,54 @@ mod tests {
                     slider: 1.0,
                     ..input(preset, scheme)
                 });
-                let expected = preset == Preset::MenuAttached && scheme == Scheme::Light;
-                assert_eq!(low.slider_applied, expected, "{} {scheme:?}", preset.name());
-                if !expected {
+                let direct = preset == Preset::MenuAttached && scheme == Scheme::Light;
+                let relative = matches!(preset, Preset::MenuDetached | Preset::StatusMenu)
+                    && scheme == Scheme::Light;
+                assert_eq!(
+                    low.slider_applied,
+                    direct || relative,
+                    "{} {scheme:?}",
+                    preset.name()
+                );
+                if !direct && !relative {
                     assert_eq!(low.alpha, high.alpha, "{} {scheme:?}", preset.name());
                     assert_eq!(low.tint, high.tint, "{} {scheme:?}", preset.name());
                 }
             }
+        }
+    }
+
+    #[test]
+    fn light_detached_and_status_follow_the_attached_curve_relatively() {
+        for preset in [Preset::MenuDetached, Preset::StatusMenu] {
+            let default = resolve(input(preset, Scheme::Light));
+            let explicit = resolve(ResolveInput {
+                slider: glass::slider::DEFAULT_POSITION,
+                ..input(preset, Scheme::Light)
+            });
+            assert!((default.alpha - explicit.alpha).abs() < 1e-6);
+            assert!((default.tint - explicit.tint).abs() < 1e-6);
+            let low = resolve(ResolveInput {
+                slider: 0.0,
+                ..input(preset, Scheme::Light)
+            });
+            let high = resolve(ResolveInput {
+                slider: 1.0,
+                ..input(preset, Scheme::Light)
+            });
+            assert!(low.slider_applied && high.slider_applied);
+            assert!(low.alpha > default.alpha && default.alpha > high.alpha);
+            assert!(low.tint < default.tint && default.tint < high.tint);
+            let dark_low = resolve(ResolveInput {
+                slider: 0.0,
+                ..input(preset, Scheme::Dark)
+            });
+            let dark_high = resolve(ResolveInput {
+                slider: 1.0,
+                ..input(preset, Scheme::Dark)
+            });
+            assert!(!dark_low.slider_applied && !dark_high.slider_applied);
+            assert_eq!((dark_low.alpha, dark_low.tint), (dark_high.alpha, dark_high.tint));
         }
     }
 

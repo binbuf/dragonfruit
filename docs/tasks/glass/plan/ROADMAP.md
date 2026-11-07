@@ -15,28 +15,28 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 
 - [x] T198 — Calibrate Dock optics → [198-glass-dock-optics.md](../198-glass-dock-optics.md)
 - [x] T199 — Match Dock magnification and tooltip behavior → [199-glass-dock-motion.md](../199-glass-dock-motion.md)
-- [ ] T200 — Render the no-blur menu-bar veil → [200-glass-menubar-veil.md](../200-glass-menubar-veil.md)
-- [ ] T201 — Connect menu-bar visibility settings → [201-glass-menubar-visibility.md](../201-glass-menubar-visibility.md)
-- [ ] T202 — Apply glass to dropdowns, context menus, and status menus → [202-glass-menu-families.md](../202-glass-menu-families.md)
+- [x] T200 — Render the no-blur menu-bar veil → [200-glass-menubar-veil.md](../200-glass-menubar-veil.md)
+- [x] T201 — Connect menu-bar visibility settings → [201-glass-menubar-visibility.md](../201-glass-menubar-visibility.md)
+- [x] T202 — Apply glass to dropdowns, context menus, and status menus → [202-glass-menu-families.md](../202-glass-menu-families.md)
 
 ## Phase 3 — System panels and first-party windows
 
-- [ ] T203 — Distinguish Control Center panel and module materials → [203-glass-control-center.md](../203-glass-control-center.md)
-- [ ] T204 — Map the Notification Center and route its actions → [204-glass-notification-center-integration.md](../204-glass-notification-center-integration.md)
-- [ ] T205 — Calibrate notification banner, stack, and lower panel → [205-glass-notification-materials.md](../205-glass-notification-materials.md)
-- [ ] T206 — Apply restrained glass to Settings and Files chrome → [206-glass-first-party-window-chrome.md](../206-glass-first-party-window-chrome.md)
+- [x] T203 — Distinguish Control Center panel and module materials → [203-glass-control-center.md](../203-glass-control-center.md)
+- [x] T204 — Map the Notification Center and route its actions → [204-glass-notification-center-integration.md](../204-glass-notification-center-integration.md)
+- [x] T205 — Calibrate notification banner, stack, and lower panel → [205-glass-notification-materials.md](../205-glass-notification-materials.md)
+- [x] T206 — Apply restrained glass to Settings and Files chrome → [206-glass-first-party-window-chrome.md](../206-glass-first-party-window-chrome.md)
 
 ## Phase 4 — Acceptance and rollout
 
-- [ ] T207 — Verify the replacement in nested and fallback sessions → [207-glass-nested-acceptance.md](../207-glass-nested-acceptance.md)
-- [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
+- [x] T207 — Verify the replacement in nested and fallback sessions → [207-glass-nested-acceptance.md](../207-glass-nested-acceptance.md)
+- [~] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md) ⟵ blocked
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-06T14:52:18Z · 6/15 done
+**Pipeline status** — updated 2026-11-07T08:50:14Z · 14/15 done
 
-- Completed: T194, T195, T196, T197, T198, T199
-- Blocked: none
+- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202, T203, T204, T205, T206, T207
+- Blocked: T208
 - Failed: none
-- Remaining: T200, T201, T202, T203, T204, T205, T206, T207, T208
-- Last finished: T199 — done · Landed the measured raised-cosine Dock profile, 135 ms smoothstep envelope, controlled tooltip shape/dwell/stale-identity handling, 450 ms genie timing, 15 pt launch lift, calibration evidence and capture artifacts; all required tests and make gates pass.
+- Remaining: none
+- Last finished: T208 — blocked · Native baseline verified and evidence/docs landed; nested T207, t21-gpu-rollout and make gates pass; default stays legacy because native replacement/perf, direct scanout, lock-exit and rollback need a free DRM seat/operator login (running build pre-T195/T196).
 <!-- /symphony:status -->

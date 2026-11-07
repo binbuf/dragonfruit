@@ -15,6 +15,8 @@ qt_add_qml_module(dragonfruit-files-ui
     SOURCES
         FilesBridge.cpp
         FilesBridge.h
+        FilesSettings.cpp
+        FilesSettings.h
         FilesDirectoryModel.cpp
         FilesDirectoryModel.h
         FilesThumbnailProvider.cpp
@@ -32,6 +34,7 @@ target_link_libraries(dragonfruit-files-ui PUBLIC
     Qt6::Core Qt6::Gui Qt6::Quick
     dragonfruit-design-systemplugin
     dragonfruit-files-core
+    dragonfruit-settings-client
 )
 
 qt_add_executable(dragonfruit-files
