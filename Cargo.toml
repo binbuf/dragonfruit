@@ -12,6 +12,7 @@ members = [
     "services/app-index",
     "services/session",
     "services/system-adapters",
+    "services/distro-adapters",
     "services/networkmanager",
     "services/audio",
     "services/power",

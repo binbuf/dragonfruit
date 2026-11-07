@@ -2,7 +2,9 @@
 
 ## Status
 
-proposed — governs distro integration for v0.2.0.
+accepted — T221 lands the contract in
+[ADR 0230](0230-distro-adapter-contract-and-stubs.md); T254–T259 implement the
+concrete backends.
 
 ## Context
 

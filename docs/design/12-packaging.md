@@ -66,6 +66,11 @@ shared with Debian and recorded in `NOTICE`. Rules:
   [0173](adr/0173-display-manager-session-selection-seam.md)).
 - The eight naming/licensing decisions are recorded in ADR
   [0229](adr/0229-naming-and-optional-service-decisions.md).
+- The runtime required/recommended/optional sets and their absence behaviour
+  are encoded in `services/distro-adapters/src/dependency.rs` and reference
+  this marker table by id; see
+  [distro-adapter-contract.md](distro-adapter-contract.md) §6. The table here
+  stays canonical for package names and licenses.
 
 ### Parallel-install rules
 

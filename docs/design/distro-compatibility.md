@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Status** | target design |
-| **Date** | 2026-11-06 |
+| **Status** | target design; adapter contract landed (T221) |
+| **Date** | 2026-11-07 |
 | **Reference distro** | Fedora 44 |
 | **Supported distros** | Fedora 44+, Ubuntu 24.04+/26.04+, Debian 13+, Arch Linux (rolling) |
-| **Related** | [22-total-experience.md](22-total-experience.md), [settings map](settings-business-logic-map.md), [naming/licensing](interface-naming-and-licensing.md), [ADR 0221](adr/0221-cross-distro-host-service-contract.md) |
+| **Related** | [distro-adapter-contract.md](distro-adapter-contract.md), [22-total-experience.md](22-total-experience.md), [settings map](settings-business-logic-map.md), [naming/licensing](interface-naming-and-licensing.md), [ADR 0221](adr/0221-cross-distro-host-service-contract.md), [ADR 0230](adr/0230-distro-adapter-contract-and-stubs.md) |
 
 ## 1. Goal
 
@@ -23,6 +23,11 @@ The compatibility goal is:
   supported distros all use systemd);
 - a clean install and first login on each supported distro;
 - a documented absence path for every optional service.
+
+The concrete adapter contract, trait set, per-distro command matrix, dependency
+sets, and probe live in
+[distro-adapter-contract.md](distro-adapter-contract.md). The rest of this
+document is the policy the contract implements.
 
 ## 2. Support tiers
 
@@ -374,34 +379,53 @@ Rules:
 
 ### 13.2 Dependency policy
 
-- **Required:** Wayland/DRM/Mesa, libinput, systemd/logind, NetworkManager,
-  BlueZ, PipeWire/WirePlumber, UPower, UDisks2, polkit, xdg-desktop-portal,
-  Qt 6, Rust toolchain at build time.
-- **Recommended:** CUPS, SANE, colord, fprintd, PackageKit, accountsservice,
-  GNOME Online Accounts, ibus/fcitx5, Orca.
-- **Optional:** Tracker/Baloo/Recoll, restic/Pika/Timeshift, LocalSend/KDE
-  Connect.
+The canonical `Recommends`/`Suggests` package markers are
+[`packaging/optional-services.json`](../../packaging/optional-services.json),
+shared with Debian and mirrored in `NOTICE`. The runtime contract encodes the
+same sets in `services/distro-adapters/src/dependency.rs` and references the
+marker table by id instead of duplicating package names or licenses.
+
+| Set | Members | Absence behaviour |
+|---|---|---|
+| **Required** | Wayland/DRM/Mesa, libinput + udev, systemd/logind, NetworkManager, BlueZ, PipeWire/WirePlumber, UPower, UDisks2, polkit, xdg-desktop-portal + backend, Qt 6, Xwayland, Rust toolchain at build time | A missing session service shows a shell banner and disables the affected feature; the rest of the desktop works. Xwayland absence disables X11 apps only. The Rust toolchain is build-time only. |
+| **Recommended** | CUPS, SANE, colord, fprintd, PackageKit, accountsservice, GNOME Online Accounts, ibus/fcitx5, Orca, speech-dispatcher, Flatpak | Feature-level absence: one line, no fake toggle. PackageKit falls back to the native backend; GOA/Software Center panes hide; fingerprint/IME rows hide; printing/scanning/color/a11y disable only their half. |
+| **Optional** | Tracker/Baloo/Recoll, restic/Pika/Timeshift, LocalSend, snapd, firewalld/ufw/nftables/iptables, espeak-ng, GNOME Software/Discover | Built-in fallback (search), feature disabled (backup, Flatpak/Snap, firewall), or pane hidden (Nearby Transfer, Software Center). No first-party feature depends on an optional service. |
+
+Rules:
+
 - Do not bundle GPL services into the MIT codebase. Use separate processes or
   dynamic linking with the license notices.
 - Record every optional dependency's license in `NOTICE` and the packaging
   metadata.
 - The desktop must boot and be usable with the required set only; every
   optional feature has an absence path.
+- A missing optional service disables only the affected feature; it never
+  blocks session startup and never produces a repeated error dialog.
 
-### 13.3 CI matrix
+### 13.3 CI matrix and clean-VM smoke plan
 
 | Job | Distro | What it proves |
 |---|---|---|
-| Build | Fedora 44 | Rust + Qt + CMake |
-| Build | Ubuntu 24.04 | Rust + Qt + CMake |
-| Build | Debian 13 | Rust + Qt + CMake |
-| Build | Arch | Rust + Qt + CMake |
+| Build | Fedora 44 | Rust + Qt + CMake; `make gates` |
+| Build | Ubuntu 24.04 | Rust + Qt + CMake; `make gates`; the probe records the Ubuntu host |
+| Build | Debian 13 | Rust + Qt + CMake; `make gates` |
+| Build | Arch | Rust + Qt + CMake; `make gates` |
 | Install | Fedora 44 VM | package install, session entry, first login |
 | Install | Ubuntu 24.04 VM | package install, session entry, first login |
 | Install | Debian 13 VM | package install, session entry, first login |
 | Install | Arch VM | package install, session entry, first login |
 | Feature smoke | each | shell, Dock, menu bar, Settings, Files, network, audio |
 | Absence | each | stop optional services; panes degrade |
+| Adapter contract | all four | `cargo test -p dragonfruit-distro-adapters`; probe output per host |
+
+The clean-VM smoke plan is a seven-step pass per distro: fresh image, install
+the required set, select the session entry and log in, run the feature smoke,
+run `dragonfruit-distro-probe`, stop each optional service and verify the
+documented absence, then commit the transcript and package versions. The full
+checklist and the adapter contract are in
+[distro-adapter-contract.md §9](distro-adapter-contract.md#9-ci-matrix-and-clean-vm-smoke-plan).
+A package is not done when it builds; it is done when a clean VM reaches a
+usable desktop.
 
 ## 14. Distro differences table
 
@@ -433,20 +457,51 @@ Rules:
 - Never silently fall back to an unsafe or unsupported path.
 - Every absence path has a test (headless mock or VM service stop).
 
-## 16. Implementation tasks
+## 16. Adapter contract (T221)
+
+The contract lives in the dependency-free `services/distro-adapters` crate
+(`dragonfruit-distro-adapters`) and is documented in
+[distro-adapter-contract.md](distro-adapter-contract.md). Its shape:
+
+- **One trait per capability** — `UpdateProvider`, `FirewallProvider`,
+  `UserGroupProvider`, `TimeProvider`, `LocaleProvider`, `AutologinProvider`,
+  `DefaultAppsProvider`, `AppDiscoveryProvider`. Every trait extends
+  `CapabilityAdapter`, so a Settings pane can ask `available()` / `status()`
+  without knowing the distribution.
+- **Three statuses** — `Available`, `Absent`, `Unsupported`. Absence is a
+  normal state, not an error dialog; `Unsupported` is the T221 stub or an
+  unknown distribution and carries the eventual command/API.
+- **One typed error** — `DistroError::NotSupported` / `Absent` / `Failed`. The
+  `NotSupported` display starts with `not supported:`.
+- **Detection from `/etc/os-release`** — `ID` first, then `ID_LIKE`, with
+  Ubuntu checked before Debian. An unrecognized host is `Unknown`, never a
+  guessed backend.
+- **Four stubs** — Fedora, Ubuntu, Debian, Arch. Every method returns
+  `NotSupported` today and every status is `Unsupported`, but each carries the
+  correct command/API from the matrix. T254–T259 implement the concrete
+  backends behind the same traits.
+- **A mock backend** — `MockBackend` drives all three states, every write, and
+  the absence paths with no daemon, package manager, or distro tool on the CI
+  host.
+- **A live probe** — `make distro-contract-check` runs the contract tests and
+  prints the detected distro, host capability probe, and selected backend
+  status. The probe never executes a distro command.
+
+## 17. Implementation tasks
 
 | Task | Scope |
 |---|---|
-| T221 | This contract + distro matrix |
-| T243 | App discovery and install locations |
-| T244 | Startup apps and login items |
-| T245 | Users/groups, admin auth, polkit |
-| T246 | Software updates and package management |
-| T247 | Default apps, MIME, portals |
-| T248 | Cross-distro validation matrix and packaging |
+| T221 | Contract, trait stubs, matrix, dependency sets, mock, probe (landed) |
+| T254 | App discovery and install locations |
+| T255 | Startup apps and login items |
+| T256 | Users/groups, admin auth, polkit |
+| T257 | Software updates and package management |
+| T258 | Default apps, MIME, portals |
+| T259 | Cross-distro validation matrix and packaging |
 
-## 17. References
+## 18. References
 
+- [Cross-distro adapter contract](distro-adapter-contract.md)
 - [Existing system integration design](07-system-integration.md)
 - [Existing packaging design](12-packaging.md)
 - [Existing settings design](08-settings.md)
@@ -454,3 +509,4 @@ Rules:
 - [Settings business-logic map](settings-business-logic-map.md)
 - [Naming/licensing](interface-naming-and-licensing.md)
 - [ADR 0221](adr/0221-cross-distro-host-service-contract.md)
+- [ADR 0230](adr/0230-distro-adapter-contract-and-stubs.md)
