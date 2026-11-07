@@ -30,6 +30,8 @@ const EXPECTED_GLOBALS: &[&str] = &[
     // shells
     "xdg_wm_base",
     "zxdg_decoration_manager_v1",
+    // GTK 3 on Wayland reads KDE's legacy manager default mode to choose SSD.
+    "org_kde_kwin_server_decoration_manager",
     // outputs
     "zxdg_output_manager_v1",
     // buffers and scaling

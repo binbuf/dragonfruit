@@ -27,13 +27,19 @@ applications place controls on the left.
 
 ### GTK steering (compatibility bridge)
 
-The session applies two complementary GTK defaults before any application can
-launch:
+GTK steering combines three mechanisms, all in place before any application
+can launch:
 
-- `GTK_CSD=0` in the session environment asks GTK 3 to use server-side
-  decorations. A cooperative GTK 3 client then negotiates `xdg-decoration`
-  with the compositor, which draws the same left-side
-  close/minimize/maximize titlebar as every other Tier-2 window.
+- On Wayland, GTK 3 decides between CSD and SSD from the legacy KDE
+  `org_kde_kwin_server_decoration_manager` default mode, not from
+  `xdg-decoration` or `GTK_CSD`. The compositor advertises that global with
+  default mode `Server`; a cooperative GTK 3 client then requests SSD and
+  gets the same left-side close/minimize/maximize titlebar as every other
+  Tier-2 window. A GTK 3 app that explicitly asks for CSD (a headerbar) is
+  honored and keeps its own decoration.
+- On X11/Xwayland, `GTK_CSD=0` in the session environment asks GTK 3 for
+  server-side decorations; the X11 path is already Tier 2 under our window
+  manager.
 - The standard GTK window-control layout (`close,minimize,maximize:` — close,
   minimize, maximize on the left) covers clients that keep client-side
   decoration (GTK 4/libadwaita, or a GTK 3 app that still draws its own
@@ -44,7 +50,9 @@ launch:
   session entry calls it at login; running the command by hand inside a live
   session updates a dconf-backed desktop immediately.
 
-GTK 4/libadwaita may ignore `GTK_CSD`; the layout setting is the fallback.
+GTK 4/libadwaita may ignore both `GTK_CSD` and the KDE protocol; the layout
+setting is the fallback.
+
 This remains a best-effort bridge: an application that draws its own controls
 (Electron/Chromium, SDL, some toolkits, and apps with a hard-coded headerbar)
 keeps them where it draws them. We do not inject a second titlebar or fake
@@ -55,17 +63,21 @@ controls into client pixels (the tier-3 dignity rule above).
 | Toolkit | What makes the controls appear on the left |
 |---|---|
 | Qt 5/6 | Qt Wayland negotiates server-side decoration by default when the compositor offers `xdg-decoration`; Dragonfruit advertises it. Do not set `QT_WAYLAND_DISABLE_WINDOWDECORATION=1`. |
-| GTK 3 | `GTK_CSD=0` (session default) → compositor SSD; otherwise `gtk-decoration-layout` moves CSD controls left. |
+| GTK 3 | Wayland: the compositor's KDE server-decoration default mode `Server` → compositor SSD. X11: `GTK_CSD=0` (session default). If the app forces CSD, `gtk-decoration-layout` moves its controls left. |
 | GTK 4/libadwaita | `gtk-decoration-layout` moves `GtkWindowControls`/`AdwHeaderBar` controls left; many apps still draw their own headerbar. |
 | Electron/Chromium | Prefer the platform titlebar: Chromium `--gtk-window-decorations` / `--enable-features=UseGtkThemeFrame`; VS Code `"window.titleBarStyle": "native"`. Apps without such an option keep their own frame. |
 | X11 (Xwayland) | The compositor draws the frame; X11 apps are Tier 2 without per-app cooperation. |
 
 ## Negotiation
 
-Decoration mode follows `xdg-decoration` the way the protocol defines it:
+Decoration mode follows `xdg-decoration` (and, for GTK 3, KDE's legacy
+server-decoration protocol) the way the protocols define them:
 
 - The compositor advertises server-side decoration as its preference when a
-  client creates a `zxdg_toplevel_decoration_v1` object.
+  client creates a `zxdg_toplevel_decoration_v1` object. It also advertises
+  `org_kde_kwin_server_decoration_manager` with default mode `Server`; a
+  surface that creates a KDE decoration object is recorded as SSD unless the
+  client explicitly requests `Client`.
 - A client that negotiates server-side decoration gets our compositor-drawn
   titlebar (Tier 2).
 - A client that never creates a decoration object, or explicitly requests
@@ -74,7 +86,8 @@ Decoration mode follows `xdg-decoration` the way the protocol defines it:
   as well as third-party CSD clients, so the compositor never draws a second
   titlebar over them.
 - Expected third-party outcomes: Qt apps typically negotiate SSD (very good);
-  GTK apps draw their own headerbars (Tier 3, steerable left via GTK
+  GTK 3 apps negotiate SSD through the KDE default mode (very good); GTK
+  4/libadwaita apps draw their own headerbars (Tier 3, steerable left via GTK
   settings we document and configure); Electron/Chromium and most SDL games
   are CSD (Tier 3).
 - Xwayland windows: the X server is an ordinary `xdg-shell` client and does
@@ -232,9 +245,10 @@ not turn the SSD titlebar into glass, so the titlebar fill remains the
 token-opaque surface described above. `_NET_FRAME_EXTENTS` is still not
 published to X11 clients ([STATUS.md](STATUS.md) G-16). The label-less window
 menu is the main decoration gap (G-06). The GTK steering bridge now runs from
-the session entry (`dragonfruit-session --sync-toolkit`), and the session
-exports `GTK_CSD=0` so GTK 3 asks for compositor SSD; the compositor also
-answers a decoration object created after the initial configure with the SSD
-mode, so a lazily negotiating client still gets the left-side titlebar.
-Electron/Chromium and other self-drawn frames remain the documented tier-3
-boundary.
+the session entry (`dragonfruit-session --sync-toolkit`), the session exports
+`GTK_CSD=0` for X11 GTK 3, and the compositor advertises KDE's legacy
+server-decoration manager with default mode `Server` for Wayland GTK 3. The
+compositor also answers a decoration object created after the initial
+configure with the SSD mode, so a lazily negotiating client still gets the
+left-side titlebar. Electron/Chromium and other self-drawn frames remain the
+documented tier-3 boundary.

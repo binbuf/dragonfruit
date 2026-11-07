@@ -1179,6 +1179,10 @@ Standard protocols the compositor implements or consumes:
 - `viewporter` + `fractional-scale` for fractional scaling
 - `xdg-decoration` for SSD negotiation (see
   [05-window-decorations.md](05-window-decorations.md))
+- `org_kde_kwin_server_decoration_manager` with default mode `Server`, the
+  legacy protocol GTK 3 checks on Wayland before deciding to draw CSD. It is
+  advertised for compatibility; a client that explicitly requests `Client`
+  keeps its own decoration.
 - Pointer constraints, relative pointer, `cursor-shape`, `idle-inhibit`
 - `wp-content-type-manager-v1` content-type hints. The global is advertised,
   but the compositor does not yet apply a content-type-specific scanout policy;

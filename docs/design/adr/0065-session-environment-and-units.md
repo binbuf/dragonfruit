@@ -60,10 +60,12 @@ harness (T-12.6) all consume, so they are fixed here.
 
 ## Amendment (2026-11)
 
-The base environment also carries `GTK_CSD=0`. GTK 3 reads it at startup and
-requests server-side decoration, so the compositor draws the left-side
-close/minimize/maximize titlebar instead of the client's headerbar. The
-session entry imports it with the other base variables. This is a toolkit
-compatibility default, not a session-identity variable; GTK 4/libadwaita may
-ignore it and remains covered by the `gtk-decoration-layout` steering in
-[05-window-decorations.md](../05-window-decorations.md).
+The base environment also carries `GTK_CSD=0`. GTK 3 on X11/Xwayland reads it
+at startup and requests server-side decoration, so the compositor draws the
+left-side close/minimize/maximize titlebar instead of the client's headerbar.
+Wayland GTK 3 uses the compositor's KDE `org_kde_kwin_server_decoration_manager`
+default mode (`Server`) instead; GTK 4/libadwaita may ignore both and remains
+covered by the `gtk-decoration-layout` steering in
+[05-window-decorations.md](../05-window-decorations.md). The session entry
+imports `GTK_CSD` with the other base variables. This is a toolkit
+compatibility default, not a session-identity variable.

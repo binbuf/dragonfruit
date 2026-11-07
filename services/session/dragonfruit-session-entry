@@ -63,8 +63,9 @@ eval "$("$session_bin" --print-env --socket-name "$socket")"
 # layout from the toolkit settings, not from the compositor. Apply the
 # desktop's left-side layout before any app can launch. Best-effort — the
 # settings.ini/keyfile fallbacks are written even when gsettings is absent.
-# `--print-env` also exported GTK_CSD=0 above, which asks GTK 3 to use
-# server-side decorations so the compositor draws the traffic lights.
+# `--print-env` also exported GTK_CSD=0 above, which asks GTK 3 on
+# X11/Xwayland to use server-side decorations so the compositor draws the
+# traffic lights. Wayland GTK 3 uses the compositor's KDE default mode.
 "$session_bin" --sync-toolkit >/dev/null 2>&1 || true
 
 # An installed session carries its QML modules under the install prefix; a
