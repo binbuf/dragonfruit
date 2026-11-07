@@ -8,14 +8,19 @@
 //!
 //! The values are never owned here: `settingsd` is the single writer
 //! ([01-architecture.md](../../docs/design/01-architecture.md)). This module
-//! only *projects* the `org.dragonfruit.Settings1` snapshot onto the two
-//! portal namespaces:
+//! only *projects* the `org.dragonfruit.Settings1` snapshot onto the portal
+//! namespaces:
 //!
 //! * [`APPEARANCE_NAMESPACE`] (`org.freedesktop.appearance`) — the standard
 //!   cross-toolkit keys `color-scheme`, `contrast`, and (when the accent is a
 //!   concrete `#rrggbb`) `accent-color`.
 //! * [`DESKTOP_NAMESPACE`] (`org.dragonfruit.desktop`) — every settingsd key
 //!   under its own name, read-only, so a caller can read our whole schema.
+//! * [`GNOME_WM_NAMESPACE`] (`org.gnome.desktop.wm.preferences`) — the
+//!   standard compatibility namespace toolkits already query. Dragonfruit
+//!   projects its window-control layout as `button-layout` here; GTK 4 and
+//!   portal-aware toolkits read it in a Flatpak sandbox, where the host GTK
+//!   settings files are not visible.
 //!
 //! # Absent settingsd is normal
 //!
@@ -35,6 +40,10 @@ use zbus::zvariant::{Array, OwnedValue};
 pub const APPEARANCE_NAMESPACE: &str = "org.freedesktop.appearance";
 /// The Dragonfruit read-only namespace exposing every settingsd key.
 pub const DESKTOP_NAMESPACE: &str = "org.dragonfruit.desktop";
+/// The standard GNOME compatibility namespace toolkits already query.
+pub const GNOME_WM_NAMESPACE: &str = "org.gnome.desktop.wm.preferences";
+/// The key that carries the window-control layout in [`GNOME_WM_NAMESPACE`].
+pub const GNOME_BUTTON_LAYOUT_KEY: &str = "button-layout";
 
 /// The Settings portal version (`org.freedesktop.impl.portal.Settings`).
 pub const SETTINGS_VERSION: u32 = 2;
@@ -77,6 +86,7 @@ impl SettingsSnapshot {
             namespaces: BTreeMap::new(),
         };
         snapshot.refresh_appearance();
+        snapshot.refresh_gnome_compat();
         snapshot
     }
 
@@ -94,6 +104,7 @@ impl SettingsSnapshot {
             desktop.insert(key, value);
         }
         snapshot.refresh_appearance();
+        snapshot.refresh_gnome_compat();
         snapshot
     }
 
@@ -174,6 +185,21 @@ impl SettingsSnapshot {
                 appearance.remove(ACCENT_COLOR_KEY);
             }
         }
+    }
+
+    /// Seed the GNOME compatibility namespace with the desktop's
+    /// window-control layout. This is the value sandboxed Electron/GTK apps
+    /// read through the Settings portal; it matches the session's GTK
+    /// steering and the compositor's left-side traffic lights.
+    fn refresh_gnome_compat(&mut self) {
+        let wm = self
+            .namespaces
+            .entry(GNOME_WM_NAMESPACE.to_owned())
+            .or_default();
+        wm.insert(
+            GNOME_BUTTON_LAYOUT_KEY.to_owned(),
+            OwnedValue::from(zbus::zvariant::Str::from(df_ipc::WINDOW_BUTTON_LAYOUT)),
+        );
     }
 
     /// A desktop-namespace value decoded as text.
@@ -361,6 +387,19 @@ mod tests {
         );
         assert_eq!(snapshot.read(APPEARANCE_NAMESPACE, ACCENT_COLOR_KEY), None);
         assert!(snapshot.desktop_key("appearance.colorScheme").is_none());
+    }
+
+    #[test]
+    fn the_gnome_compat_namespace_carries_the_window_control_layout() {
+        let snapshot = SettingsSnapshot::new();
+        let value = snapshot
+            .read(GNOME_WM_NAMESPACE, GNOME_BUTTON_LAYOUT_KEY)
+            .expect("button-layout is always present");
+        assert_eq!(
+            String::try_from(value.try_clone().unwrap()).unwrap(),
+            df_ipc::WINDOW_BUTTON_LAYOUT
+        );
+        assert_eq!(df_ipc::WINDOW_BUTTON_LAYOUT, "close,minimize,maximize:");
     }
 
     #[test]

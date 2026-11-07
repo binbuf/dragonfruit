@@ -174,6 +174,7 @@ mod tests {
             "DF_SESSION_START_TIMEOUT",
             "start \"$target\"",
             "stop \"$target\"",
+            "xdg-desktop-portal.service",
             "reset-failed",
             "$socket.x11-display",
             "$socket.launch-token",

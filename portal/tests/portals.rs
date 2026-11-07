@@ -309,13 +309,24 @@ fn the_settings_portal_answers_appearance_and_desktop_reads() {
         settings_read(&client, "org.freedesktop.appearance", "contrast").expect("Read");
     assert_eq!(u32::try_from(contrast).unwrap(), 0);
 
+    // Sandboxed Electron/GTK clients read the window-control layout from the
+    // standard GNOME compatibility namespace.
+    let layout: OwnedValue =
+        settings_read(&client, "org.gnome.desktop.wm.preferences", "button-layout")
+            .expect("Read button-layout");
+    assert_eq!(
+        String::try_from(layout).unwrap(),
+        df_ipc::WINDOW_BUTTON_LAYOUT
+    );
+
     // An absent key is a typed error, not a silent empty value.
     assert!(settings_read(&client, "org.freedesktop.appearance", "nope").is_err());
     assert!(settings_read(&client, "org.example.absent", "whatever").is_err());
 
-    // Both namespaces are present in a ReadAll.
+    // All namespaces are present in a ReadAll.
     let all = settings_read_all(&client, "");
     assert!(all.contains_key("org.freedesktop.appearance"));
+    assert!(all.contains_key("org.gnome.desktop.wm.preferences"));
     let appearance = settings_read_all(&client, "org.freedesktop.appearance");
     let keys = appearance
         .get("org.freedesktop.appearance")

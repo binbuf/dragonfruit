@@ -16,5 +16,7 @@ Wants=dragonfruit-wallpaperd.service
 Wants=dragonfruit-portal.service
 After=dragonfruit-compositor.service
 
-[Install]
-WantedBy=graphical-session.target
+# Started directly by dragonfruit-session-entry. It is deliberately not
+# WantedBy=graphical-session.target: the portal backend pulls in the generic
+# graphical target (which xdg-desktop-portal.service requires), so making this
+# target a child of it would create a dependency cycle.

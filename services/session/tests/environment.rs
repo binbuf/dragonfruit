@@ -295,6 +295,16 @@ fn sync_toolkit_writes_the_left_layout_and_calls_gsettings() {
     permissions.set_mode(0o755);
     std::fs::set_permissions(&fake, permissions).expect("chmod");
 
+    // A Flatpak app that has run before has a sandbox config tree; the sync
+    // must update it too, because the sandbox cannot see the host files.
+    let flatpak_gtk3 = root.join(".var/app/com.example.Editor/config/gtk-3.0/settings.ini");
+    std::fs::create_dir_all(flatpak_gtk3.parent().unwrap()).expect("flatpak config dir");
+    std::fs::write(
+        &flatpak_gtk3,
+        "[Settings]\ngtk-theme-name=Breeze\ngtk-decoration-layout=appmenu:close\n",
+    )
+    .expect("seed flatpak settings");
+
     let output = Command::new(env!("CARGO_BIN_EXE_dragonfruit-session"))
         .arg("--sync-toolkit")
         .env("XDG_CONFIG_HOME", &config)
@@ -322,6 +332,16 @@ fn sync_toolkit_writes_the_left_layout_and_calls_gsettings() {
     assert!(
         keyfile.contains("button-layout='close,minimize,maximize:'"),
         "{keyfile}"
+    );
+
+    let flatpak_text = std::fs::read_to_string(&flatpak_gtk3).expect("flatpak settings exist");
+    assert!(
+        flatpak_text.contains("gtk-theme-name=Breeze"),
+        "the app's own keys survive: {flatpak_text}"
+    );
+    assert!(
+        flatpak_text.contains("gtk-decoration-layout=close,minimize,maximize:"),
+        "the sandbox gets the desktop layout: {flatpak_text}"
     );
 
     std::fs::remove_dir_all(&root).ok();
