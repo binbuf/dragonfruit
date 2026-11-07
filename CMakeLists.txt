@@ -13,7 +13,11 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.11 REQUIRED COMPONENTS Core Gui Quick QuickTest Test DBus)
 
-qt_standard_project_setup()
+# `REQUIRES` also opts in to every Qt policy introduced up to that version
+# (QTP0001, QTP0004, ...). Without it the policies stay unset and every
+# `qt_add_qml_module` emits a developer warning. The version matches the
+# `find_package(Qt6 6.11 ...)` above.
+qt_standard_project_setup(REQUIRES 6.11)
 
 enable_testing()
 
