@@ -21,8 +21,8 @@ cd "$(dirname "$0")/.."
 
 STATE="${1:-motion}"
 case "$STATE" in
-    motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center) ;;
-    *) echo "usage: $0 motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center" >&2; exit 2 ;;
+    motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center|notification-center) ;;
+    *) echo "usage: $0 motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center|notification-center" >&2; exit 2 ;;
 esac
 
 SETTLE="${SETTLE:-2}"
@@ -39,6 +39,7 @@ MENU_INDEX="${MENU_INDEX:-0}"
 STATUS_MENU="${STATUS_MENU:-wifi}"
 OUT="${OUT:-docs/captures/t21-chrome-$STATE.png}"
 FORCE_TIER="${FORCE_TIER:-}"
+FORCE_MATERIAL_PATH="${FORCE_MATERIAL_PATH:-}"
 SYNTH="${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must be set}/$SOCKET.synth"
 SHOTS="$SCRATCH/shots"
 LOG="$SCRATCH/demo.log"
@@ -99,6 +100,11 @@ case "$STATE" in
         if [ -n "${CONTROL_CENTER_ABSENT:-}" ]; then
             EXTRA_ENV+=(DF_CONTROL_CENTER_ABSENT="$CONTROL_CENTER_ABSENT")
         fi
+        ;;
+    notification-center)
+        DELAY=9000
+        EXTRA_ENV=(DF_NOTIFY_FIXTURE="${NOTIFY_FIXTURE:-1}"
+                   DF_NOTIFY_CENTER_FIXTURE=open)
         ;;
     popover)
         DELAY=16000
@@ -189,6 +195,18 @@ import sys
 
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
 sock.sendto(f"set degrade-tier {sys.argv[2]}".encode(), sys.argv[1])
+PY
+    sleep 0.5
+fi
+# T205 evidence: force the no-sampled-material software path so the QML
+# solid/software complement is captured rather than inferred.
+if [ -n "$FORCE_MATERIAL_PATH" ]; then
+    python3 - "$SYNTH" "$FORCE_MATERIAL_PATH" <<'PY'
+import socket
+import sys
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+sock.sendto(f"set material-path {sys.argv[2]}".encode(), sys.argv[1])
 PY
     sleep 0.5
 fi

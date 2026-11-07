@@ -251,6 +251,57 @@ def main() -> int:
         {"DRAGONFRUIT_GLASS_ROLLOUT": "bogus"}) == "legacy",
         "unknown rollout is safe")
 
+    # T205: the banner, stack and lower panel are three measured/adapted
+    # materials with independent resolution, not one Popup plate.
+    notification_targets = {
+        ("notificationBanner", "light"): (0.549, 0.976),
+        ("notificationStack", "light"): (0.551, 0.706),
+        ("notificationStack", "dark"): (0.507, 0.550),
+        ("notificationLowerPanel", "light"): (0.407, 0.852),
+    }
+    for (name, scheme), (alpha, tint) in notification_targets.items():
+        result = presets.resolve(data, name, scheme=scheme,
+                                 rollout="replacement")
+        checks.near(result["alpha"], alpha, f"{name}.{scheme} alpha")
+        checks.near(result["tint"], tint, f"{name}.{scheme} tint")
+        checks.check(result["renderMode"] == "sampled-glass",
+                     f"{name}.{scheme} keeps sampled glass")
+    for name in ("notificationBanner", "notificationStack",
+                 "notificationLowerPanel"):
+        for scheme in ("light", "dark"):
+            reduced = presets.resolve(data, name, scheme=scheme,
+                                      rollout="replacement",
+                                      reduce_transparency=True)
+            checks.check(reduced["renderMode"] == "solid"
+                         and reduced["alpha"] >= 0.95,
+                         f"{name}.{scheme} Reduce Transparency is the opaque plate")
+            software = presets.resolve(data, name, scheme=scheme,
+                                       rollout="replacement", backend="software")
+            checks.check(software["renderMode"] == "software-fallback",
+                         f"{name}.{scheme} software fallback is explicit")
+    for scheme in ("light", "dark"):
+        banner = presets.resolve(data, "notificationBanner", scheme=scheme,
+                                 rollout="replacement")
+        stack = presets.resolve(data, "notificationStack", scheme=scheme,
+                                rollout="replacement")
+        lower = presets.resolve(data, "notificationLowerPanel", scheme=scheme,
+                                rollout="replacement")
+        outputs = {
+            "banner": 0.502 * (1 - banner["alpha"]) + banner["tint"] * banner["alpha"],
+            "stack": 0.502 * (1 - stack["alpha"]) + stack["tint"] * stack["alpha"],
+            "lower": 0.502 * (1 - lower["alpha"]) + lower["tint"] * lower["alpha"],
+        }
+        checks.check(max(outputs.values()) - min(outputs.values()) > 0.02,
+                     f"{scheme} notification materials are distinct")
+    checks.check(
+        data["glass"]["presets"]["notificationBanner"]["dark"]["confidence"]
+        == "adapted",
+        "the uncovered Dark banner is labelled adapted")
+    checks.check(
+        data["glass"]["presets"]["notificationLowerPanel"]["dark"]["confidence"]
+        == "adapted",
+        "the uncovered Dark lower panel is labelled adapted")
+
     # The token file stays JSON-reproducible.
     serialized = json.dumps(data, sort_keys=True)
     checks.check(serialized == json.dumps(presets.load(), sort_keys=True),

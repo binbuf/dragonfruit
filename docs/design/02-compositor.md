@@ -567,8 +567,8 @@ The chrome **rollout** landed in **T-20.3**
 resolves through `MaterialRole`: the menu bar is `Chrome`, the Dock is `Dock`,
 the Applications drawer is `Drawer`, and every overlay — menu-bar dropdowns
 (`menubar-popup`), Dock context menus/popovers (`dock-popup`), the OSD
-(`osd`), notification banners (`notification`), and Control Center
-(`control-center`) — is `Popup`. Persistent panels keep their declared rect
+(`osd`), notification banners (`notification`), the Notification Center
+(`notification-center`), and Control Center (`control-center`) — is `Popup`. Persistent panels keep their declared rect
 (the Dock plate and the drawer card via `set_panel_rect`); overlay popups are
 tight to the overlay surface, and the OSD declares its visible card separately
 because its surface is larger than the card to fit the shadow. The backdrop
@@ -660,6 +660,17 @@ expanded, so the compositor draws the outer plate first and the opaque
 module/list materials replace it inside their capsules; the Light module
 composite therefore matches the measured 0.391/0.317 effective fit without
 compounding a second alpha over the outer.
+
+T205 uses the same path for the notification banner and the open Notification
+Center. The `notification` surface declares one `banner` region sized to the
+visible card, and `notification-center` declares two disjoint regions, `stack`
+and `lower`, separated by the panel gap. All three resolve the measured
+`notificationBanner`/`notificationStack`/`notificationLowerPanel` presets
+through the same flat-band glass family; because the flat-band output is
+opaque, a banner and Center that overlap would double-frost, so the shell
+insets the stack below an active banner card. Regions are cleared on close and
+re-declared on history/layout changes; the QML shadow is disabled on the
+sampled path so it cannot darken the compositor plate.
 
 T200 turns the menu bar into the explicit no-blur veil
 ([ADR 0219](adr/0219-menubar-no-blur-veil.md)). The veil preset takes the sharp

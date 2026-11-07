@@ -134,6 +134,12 @@ the request (the Dock has its own auto-hide).
   committed input strip at the 28 pt bar, then declares a `veil` region with
   the full extent. The lower 67 pt is visual-only. Clearing the region (hidden
   bar, Reduce Transparency, or no sampled scene texture) leaves no material.
+- T205 declares the notification banner's visible card as one `banner` region
+  on `notification` (so a no-action card's transparent strip is not frosted)
+  and the Center's `stack`/`lower` regions on `notification-center`. The two
+  Center regions are disjoint; an active banner insets the stack below the
+  card. All three regions are cleared before their surface is unmapped, so a
+  closed notification surface leaves no stale material.
 
 Layers match `wlr-layer-shell`'s ordering: `background`, `bottom`, `top`,
 `overlay`. The menu bar and Dock are `top`; menus, the OSD and the Notification

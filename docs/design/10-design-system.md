@@ -319,6 +319,40 @@ over neutral and grid backdrops; `scripts/t203-control-center.py` reports the
 outer and nested composite error separately and checks that the expanded list
 moves the visible material without a stale region.
 
+### Notification materials (T205)
+
+The banner and the Notification Center are three materials, not one Popup
+plate. The transient banner uses `notificationBanner` (Light 0.549/0.976); the
+Center stack uses `notificationStack` (Light 0.551/0.706, Dark 0.507/0.550);
+the separately toned lower panel uses `notificationLowerPanel` (Light
+0.407/0.852). The Dark banner (0.56/0.30) and Dark lower panel (0.40/0.30) are
+uncovered as independent fits; their token confidence is `adapted` and capture
+rows label them underconstrained.
+
+The compositor's replacement rail builds all three with the same measured
+flat-band family as the Dock/Control Center, consuming the resolved
+alpha/tint directly. The `notification` surface declares one `banner` region
+sized to the visible card (96 pt, or 132 pt with actions), so the transparent
+strip below a no-action banner is never frosted. The `notification-center`
+surface declares two disjoint regions, `stack` and `lower`, separated by the
+panel gap and commit-latched with the image. When a banner is active the shell
+insets the stack below the banner card, keeping both trusted surfaces
+co-visible without overlap or double-frosting. QML is transparent on the
+sampled path and paints the same resolved tint/alpha on solid,
+software-fallback and Reduce Transparency; the legacy rollout keeps
+`Material.popupFill()`. The QML card shadow is disabled on the sampled path so
+it cannot darken the opaque compositor flat band.
+
+The Center has a deliberate empty state in the stack and a summary in the
+lower panel; the history list scrolls with a visible thumb and a
+"Scroll for more" hint when rows overflow. ADR
+[0224](adr/0224-notification-banner-stack-lower-panel.md) records the region
+and adaptation decision. `make notification-materials-capture` records
+Light/Dark empty, banner-only, populated, concurrent and scrollable states plus
+Reduce Transparency, Increase Contrast and the software path over neutral/grid
+backdrops; `scripts/t205-notification-materials.py` reports independent banner,
+stack and lower-panel fit errors.
+
 ### Dock optics fit (T198)
 
 The Dock preset carries the measured optical fit beyond the flat band:
