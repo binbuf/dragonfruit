@@ -5,6 +5,7 @@
 
 set_source_files_properties(SettingsPanes.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(SettingsMenu.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(SettingsMap.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_library(dragonfruit-settings-ui STATIC)
 qt_add_qml_module(dragonfruit-settings-ui
@@ -39,6 +40,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         VpnClient.h
     QML_FILES
         SettingsPanes.qml
+        SettingsMap.qml
         SettingsMenu.qml
         PaneHeader.qml
         AppearancePane.qml
@@ -64,6 +66,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         PrivacyPane.qml
         AccessibilityPane.qml
         NetworkPane.qml
+        SettingsDebugView.qml
         SettingsShell.qml
         SettingsWindow.qml
 )
@@ -100,6 +103,7 @@ install(FILES "${CMAKE_SOURCE_DIR}/assets/icons/apps/org.dragonfruit.Settings.sv
 
 df_qml_lint(app-settings
     SettingsPanes.qml
+    SettingsMap.qml
     SettingsMenu.qml
     PaneHeader.qml
     AppearancePane.qml
@@ -125,6 +129,7 @@ df_qml_lint(app-settings
     PrivacyPane.qml
     AccessibilityPane.qml
     NetworkPane.qml
+    SettingsDebugView.qml
     SettingsShell.qml
     SettingsWindow.qml
 )

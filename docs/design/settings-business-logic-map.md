@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | target design |
+| **Status** | target design; the T222 executable projection is `apps/settings/SettingsMap.qml` |
 | **Date** | 2026-11-06 |
 | **Scope** | every macOS System Settings pane, sub-pane, and row that Dragonfruit ships, adapts, delegates, or omits |
 | **Companions** | [22-total-experience.md](22-total-experience.md), [distro-compatibility.md](distro-compatibility.md), [interface-naming-and-licensing.md](interface-naming-and-licensing.md) |
@@ -98,6 +98,42 @@ app's sidebar may group panes differently, but the catalog is complete.
 | 28 | Mouse | Mouse | Ship | `settingsd` + compositor input |
 | 29 | Trackpad | Trackpad | Ship/Adapt | `settingsd` + compositor input |
 | 30 | Game Controllers | Game Controllers | Adapt/Delegate | udev/SDL; optional |
+
+### 4.1 Executable projection (T222)
+
+`apps/settings/SettingsMap.qml` is the runtime projection of this catalog and
+the row tables below. It owns each pane's id, label, icon, shipped flag, owner,
+deep link (`settings://pane/<id>`), and absence kind, plus row-level
+`{ id, section, label, control, owner, key, absence, state }` metadata. The
+Settings debug view reads it directly; T223's search index reads the same rows.
+
+- `apps/settings/SettingsPanes.qml` is the one ordered sidebar catalog. Its
+  entries mirror `SettingsMap.panes` one-for-one, and
+  `apps/settings/tests/tst_settings_map.qml` fails on any drift.
+- A row `state` is `shipped` (visible in the current pane), `planned` (lands
+  with T225–T229), or `omitted` (deliberately absent). Every `shipped` row must
+  have a non-empty owner, key/API, and one of the five absence kinds; the test
+  feeds the validator an unowned row to prove it fails.
+- The existing `storage`, `mission-control`, and `menu-bar` panes keep their
+  ids and top-level placement. New panes use the map names; user-facing titles
+  follow the T220 naming map (`Quick Settings`, `Overview`, `Search`, `Backup`,
+  `Fingerprint`, and so on).
+- Omitted panes are not in the catalog and therefore cannot appear in the
+  sidebar. Their executable ids and reasons live in `SettingsMap.omittedPanes`;
+  the test asserts each is absent and documented.
+- Help → Pane & Row Owners… opens the in-app debug view; Help →
+  Business-Logic Map opens this document. `DF_SETTINGS_DEBUG=1` opens the
+  debug view on launch for scripted checks.
+
+| Executable omitted id | Reference pane | Why |
+|---|---|---|
+| `vendor-account` | Apple Account | Vendor account service; no Linux equivalent |
+| `nearby-transfer` | AirDrop & Handoff | No permissive drop-in; optional LocalSend/KDE Connect later |
+| `managed-devices` | Device Management | Mobile-device management is vendor-specific |
+| `usage-limits` | Screen Time | Vendor parental controls; not shipped |
+| `game-service` | Game Center | Vendor game service; no equivalent |
+| `wallet` | Wallet & Apple Pay | Vendor payment service; not shipped |
+| `device-location` | Find My | Vendor device-location service; not shipped |
 
 ## 5. Row-level mapping
 
@@ -207,6 +243,7 @@ Owner: `settingsd` + host/distro adapters. Each sub-pane has its own owner.
 | Categories | Categories | Chart/list | UDisks2 + filesystem usage | Apps, documents, media, system, other |
 | Manage… | Manage storage… | Button | Files/Storage | Opens Files or a cleanup view |
 | — | Volumes | List | UDisks2 | Mount/eject/format (delegated where needed) |
+| — | Removable media | List | UDisks2 | Eject; absent → note |
 
 #### 5.5.4 Login Items & Extensions
 
@@ -441,6 +478,8 @@ the difference.
 ### 5.12 Desktop & Dock
 
 Owner: `settingsd` → compositor/shell. Absence: live on defaults; no error.
+The existing top-level Overview pane (`mission-control`) projects the Mission
+Control and Hot Corners rows below; it keeps its id.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
@@ -454,6 +493,9 @@ Owner: `settingsd` → compositor/shell. Absence: live on defaults; no error.
 | Animate opening applications | Animate opening apps | Toggle | existing: `dock.animateOpening` | Live |
 | Show indicators for open apps | Show running indicators | Toggle | existing: `dock.showIndicators` | Live |
 | Show suggested and recent apps | Show recent apps | Toggle | existing: `dock.showRecentApps` | Live |
+| — | Open window chooser on hover | Toggle | existing: `dock.chooserOnHover` | Live |
+| — | Bounce app icons when windows minimize | Toggle | existing: `dock.minimizeReaction` | Live |
+| — | Show application menus in menu bar | Toggle | existing: `menu.global` | Live |
 | Show items | Desktop items | Segmented | `desktop.showItems` | On desktop / in Stage Manager |
 | Click wallpaper to show desktop | Click wallpaper to reveal desktop | Popup | `desktop.clickWallpaper` | Always / only in Stage Manager / never |
 | Stage Manager | Stage Manager | Toggle | `stageManager.enabled` | Live |
@@ -495,6 +537,7 @@ always available; Featured empty, never an error.
 |---|---|---|---|---|
 | Current wallpaper | Current wallpaper | Preview | existing: `wallpaper.source` | Live |
 | Show on all Spaces | Show on all workspaces | Toggle | existing: `wallpaper.showOnAllSpaces` | Live |
+| — | Fit | Popup | existing: `wallpaper.fit` | Fill/fit/stretch/center; live |
 | Screen Saver… | Screen saver… | Button | `settingsd` | Deep link |
 | Clock Appearance… | Clock appearance… | Button | `settingsd` | Deep link |
 | Dynamic Wallpapers | Dynamic | Grid | `wallpaperd` | Our own assets; optional |
@@ -659,6 +702,7 @@ Owner: `settingsd` + compositor input.
 | Secondary click | Secondary click | Popup | `input.secondaryClick` | Right/left |
 | Scroll speed | Scroll speed | Slider | `input.scrollSpeed` | Live |
 | Double-click speed | Double-click speed | Slider | `input.doubleClickSpeed` | Live |
+| — | Scroll method | Popup | existing: `input.scrollMethod` | Two fingers/edge/button |
 | — | Left-handed | Toggle | existing: `input.leftHanded` | Live |
 
 ### 5.26 Trackpad
@@ -740,7 +784,9 @@ Every row must define one of:
 
 The pane catalog's `shipped` flag and the row-level owner are enforced in the
 same change. A pane cannot ship with a row that has no owner; a row cannot ship
-with an untested absence path.
+with an untested absence path. `SettingsMap.validate()` is the executable form
+of that rule: the map test runs it over every pane/row and also feeds it an
+intentionally unowned row to prove the gate fails.
 
 ## 8. Implementation order
 
@@ -762,3 +808,4 @@ with an untested absence path.
 - [ADR 0219](adr/0219-total-experience-scope-and-parity-bar.md)
 - [ADR 0220](adr/0220-generic-naming-and-third-party-substitution.md)
 - [ADR 0221](adr/0221-cross-distro-host-service-contract.md)
+- [ADR 0231](adr/0231-executable-settings-map.md)

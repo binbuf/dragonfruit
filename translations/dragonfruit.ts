@@ -3103,6 +3103,1512 @@
     </message>
 </context>
 <context>
+    <name>SettingsDebugView</name>
+    <message>
+        <source>%1  |  owner: %2  |  absence: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every visible row has an owner and an absence path. Source: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No pane selected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Business-Logic Map</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pane</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pane &amp; row owners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>absence: %1  |  deep link: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>no</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>omitted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>owner: %1  |  key/API: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>planned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>shipped: %1  |  deep link: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>visible</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>yes</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SettingsMap</name>
+    <message>
+        <source>24-hour time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>About</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accent color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accessibility options...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accessibility shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adaptive color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add account...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add controls...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add group...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add menu-bar controls...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add printer or scanner...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add service...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add user...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Admin group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Alert sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Alert volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allowed apps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allowed people</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Animate opening applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>App intents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>App management</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>App notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Appearance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Appearance stays live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Arrangement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask to join hotspots</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask to join networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio descriptions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto keyboard brightness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-brightness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-hide menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Autofill source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic login</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatically hide and show Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Available networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back up automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back up now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Background services</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backlight off after</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Badge</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery and power profiles are unavailable because their host services are not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery health</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery level</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Biometrics &amp; Password</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Biometrics are unavailable because no fingerprint service is running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth is unavailable because its host service is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bounce app icons when windows minimize</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Brightness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Built-in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calendar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calendars</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Captions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Categories</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change password...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Charging</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose destination...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cityscapes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Click pressure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Click wallpaper to reveal desktop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock appearance...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock options...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Color preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Color profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Contacts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Controllers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current wallpaper</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dark mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date &amp; Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date and time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default browser</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default paper size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default printer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop &amp; Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop and Dock preferences stay live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Developer tools</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device location</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dictation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Directory account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Discoverable as...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disk encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display off on AC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display off on battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display preferences stay live; output rows show No display when none is present.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Displays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Do Not Disturb</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock position on screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Double-click speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Durable accessibility preferences stay live; the live status rows show their own absence note.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Durable preferences stay live; the host-stack rows show their own absence note.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dynamic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extensions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>File sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files and folders</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fingerprint for user switching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fingerprint purchases</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fingerprints</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firewall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firewall options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>First day of week</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus modes are unavailable because the notification service is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full disk access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Game Controllers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Game service</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>General</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Guest user</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Haptic feedback</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardening mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hearing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hearing devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Highlight color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hot Corners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hot corners...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hover text</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Indexing status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input sources</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Internet sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Join hidden network...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Key repeat rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard brightness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard navigation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard preferences stay live; the device inventory shows its own absence note.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard shortcuts...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Landscapes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Language &amp; Region</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Languages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last charged</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left-handed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live captions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Location</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock-screen preferences stay live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Locked keyring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Login Items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Login window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Look up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Magnification</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Magnifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manage storage...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Managed devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mapping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Media sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu Bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu bar items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu-bar preferences stay live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Minimize windows into application icon</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Minimized window animation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mobile-device management is vendor-specific.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More gestures</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Motion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Motor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mouse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name recognition</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Natural scrolling</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nearby Transfer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nearby devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Network services are unavailable because NetworkManager is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Night light</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No game controller service is available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No permissive drop-in; an optional third-party transfer service may follow.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Now Playing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Number format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Online Accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Online accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Online accounts are not installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open a window chooser by hovering</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Options &amp; supplies...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Options...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other modules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other services</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output &amp; Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overview preferences stay live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair trackpad...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paired devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Password</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passwords &amp; Autofill</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passwords &amp; autofill</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passwords...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Permissions are unavailable because the permission store is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Photos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play effects through</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pointer control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pointer preferences stay live; the device inventory shows its own absence note.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pointer speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power buttons</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presentation preferences stay live; the per-app list shows its own absence note.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Press Super key to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Printer sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Printers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Printers &amp; Scanners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Printers and scanners are unavailable because their host services are not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Privacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Privacy &amp; Security</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Processor, memory, serial, OS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Profiles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quick Settings customization stays live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quick sheet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read &amp; speak</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rebuild index</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recent apps in Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recent items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refresh rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Region</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Regulatory info</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reminders</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote login</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote management</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removable media</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Repeat delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Require password</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rotation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scale/resolution</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scanners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen Saver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen casting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen reader</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen saver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen saver...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen-on usage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen-saver preferences stay live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scroll &amp; zoom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scroll bars</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scroll method</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scroll speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search preferences stay live; the indexing rows show the service state.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search privacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Secondary click</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Service actions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Search in menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show application menus in menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show date</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show indicators for open applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show menu bar background</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show on all workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show password hints</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show previews</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show suggested and recent apps in Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show user name/photo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show with clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sidebar icon size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Software Update</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Software sources</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound Effects</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound Effects and Balance stay live; device routing shows its own absence note.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speech recognition</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start after</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start at login</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup Disk</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup disk</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Storage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Storage is unavailable because UDisks2 is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Style</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Swipe between Workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Swipe up to open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sync toggles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System Info...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TV mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tap to click</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Temperature</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Test</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Text replacements...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The shipped default wallpaper is always available; Featured is empty, never an error.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The user list is read-only while the account service is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Third-party items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Time zone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trackpad</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trackpad preferences stay live; the device inventory shows its own absence note.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transparency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UI sounds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Usage limits</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Usage range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use fingerprint for authentication</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use fingerprint to unlock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Users</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Users &amp; Groups</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vendor account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vendor account service; no Linux equivalent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vendor device-location service; not shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vendor game service; no equivalent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vendor parental controls; not shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vendor payment service; not shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vision</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Voice control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume feedback</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volumes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wallet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wallpaper</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wallpaper tinting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Web search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When display is asleep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When locked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi is unavailable because NetworkManager is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widgets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Window title bar double-click action</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your photos</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SettingsMenu</name>
     <message>
         <source>%1 Help</source>
@@ -3118,6 +4624,10 @@
     </message>
     <message>
         <source>Bring All to Front</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Business-Logic Map</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3166,6 +4676,10 @@
     </message>
     <message>
         <source>Minimize</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pane &amp; Row Owners…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3264,6 +4778,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Game Controllers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>General</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3313,6 +4831,14 @@
     </message>
     <message>
         <source>Privacy &amp; Security</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen Saver</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

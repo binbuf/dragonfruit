@@ -89,7 +89,10 @@ QtObject {
         {
             title: qsTr("Help"),
             items: [
-                { label: qsTr("%1 Help").arg(root.appName), action: "help" }
+                { label: qsTr("%1 Help").arg(root.appName), action: "help" },
+                { type: "separator" },
+                { label: qsTr("Pane & Row Owners…"), action: "help.debug" },
+                { label: qsTr("Business-Logic Map"), action: "help.map" }
             ]
         }
     ]

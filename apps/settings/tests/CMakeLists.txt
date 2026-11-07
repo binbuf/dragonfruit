@@ -548,6 +548,31 @@ set_tests_properties(tst_settings_live PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Settings map/catalog tests (T222): the executable business-logic map agrees
+# with the pane catalog, every visible row has an owner/key/absence path, an
+# unowned row fails validation, omitted panes are absent and documented, and
+# the debug view exposes pane/row owners. `DF_SETTINGS_FIXTURE` keeps the
+# cases off the host bus.
+qt_add_executable(tst_settings_map
+    tst_settings_map.cpp
+)
+target_link_libraries(tst_settings_map PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_map)
+
+add_test(
+    NAME tst_settings_map
+    COMMAND tst_settings_map
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_map.qml
+)
+set_tests_properties(tst_settings_map PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Absent-provider matrix tests (T-09.6b): with no settingsd and no
 # xdg-desktop-portal, every shipped pane still renders and every control stays
 # functional on the schema defaults, and only a pane with a real body is

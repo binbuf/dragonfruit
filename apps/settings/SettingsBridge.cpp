@@ -16,6 +16,7 @@
 #include "settingsclient.h"
 
 #include <QColor>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -423,6 +424,45 @@ bool SettingsBridge::wallpaperChooserAvailable() const
 QString SettingsBridge::startPane() const
 {
     return qEnvironmentVariable("DF_SETTINGS_START_PANE");
+}
+
+QString SettingsBridge::mapDocPath() const
+{
+    const QString override =
+        qEnvironmentVariable("DF_SETTINGS_MAP_DOC").trimmed();
+    if (!override.isEmpty())
+        return override;
+
+    const QString relative =
+        QStringLiteral("docs/design/settings-business-logic-map.md");
+    // The test binary and the installed app both live below the build tree;
+    // walk up until the document resolves so the Help link works from a
+    // headless test and a normal dev launch.
+    QDir dir(QCoreApplication::applicationDirPath());
+    for (int depth = 0; depth < 10; ++depth) {
+        const QString candidate = dir.absoluteFilePath(relative);
+        if (QFileInfo::exists(candidate))
+            return candidate;
+        if (!dir.cdUp())
+            break;
+    }
+    const QString cwdCandidate = QDir::current().absoluteFilePath(relative);
+    if (QFileInfo::exists(cwdCandidate))
+        return cwdCandidate;
+    return relative;
+}
+
+QUrl SettingsBridge::mapDocUrl() const
+{
+    const QString path = mapDocPath();
+    if (path.isEmpty() || !QFileInfo::exists(path))
+        return {};
+    return QUrl::fromLocalFile(path);
+}
+
+bool SettingsBridge::debugView() const
+{
+    return qEnvironmentVariableIsSet("DF_SETTINGS_DEBUG");
 }
 
 QString SettingsBridge::glassRollout() const

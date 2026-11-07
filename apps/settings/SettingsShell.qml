@@ -40,6 +40,7 @@ Item {
     property alias paneBody: paneBody
     property alias detailSheet: detailSheet
     property alias resizeEdges: resizeEdges
+    property alias debugView: debugView
 
     // The app-local theme owner (T-09.2). The shell's `ThemeBinding` lives in
     // the shell process; the Settings app is a separate process, so these
@@ -145,6 +146,12 @@ Item {
         searchField.forceActiveFocus();
     }
 
+    // T222: open the pane/row owner debug view for the current pane (or an
+    // explicit pane id). The Help menu and `DF_SETTINGS_DEBUG=1` call this.
+    function showDebugView(paneId) {
+        debugView.show(paneId || root.currentPaneId);
+    }
+
     // The pane-body registry: a pane appears here once its content has landed.
     // T-09.3…T-09.5 add their components alongside "appearance".
     function paneComponent(id) {
@@ -217,6 +224,15 @@ Item {
             root.currentPaneId = first;
             root.syncSelection();
         }
+        // `DF_SETTINGS_DEBUG=1` opens the owner debug view on launch so a
+        // scripted check can inspect the current pane's row metadata.
+        if (Settings.debugView && first.length > 0)
+            root.showDebugView(first);
+    }
+
+    onCurrentPaneIdChanged: {
+        if (debugView.open && root.currentPaneId.length > 0)
+            debugView.paneId = root.currentPaneId;
     }
 
     onSearchTextChanged: {
@@ -576,6 +592,13 @@ Item {
                 }
             }
         }
+    }
+
+    // T222: the executable map's debug view. It sits above the window content
+    // and is opened from Help → Pane & Row Owners… or `DF_SETTINGS_DEBUG=1`.
+    SettingsDebugView {
+        id: debugView
+        anchors.fill: parent
     }
 
     // The frameless window owns its edge input; the shared grips report the

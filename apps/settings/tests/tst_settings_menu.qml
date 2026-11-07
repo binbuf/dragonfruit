@@ -75,6 +75,14 @@ Item {
             compare(view[2].submenu.length, 4);
             compare(view[2].submenu[0].action, "pane.appearance");
             compare(view[2].submenu[3].action, "pane.wallpaper");
+
+            // Help links the executable map's debug view and the document.
+            var help = menus[4].items;
+            compare(help.length, 4);
+            compare(help[0].action, "help");
+            compare(help[1].type, "separator");
+            compare(help[2].action, "help.debug");
+            compare(help[3].action, "help.map");
         }
 
         function test_published_model_is_json_serializable() {
