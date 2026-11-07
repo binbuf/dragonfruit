@@ -27,8 +27,24 @@ Item {
     // Guards the sidebar selection sync so setting `currentIndex`
     // programmatically is not mistaken for a user navigation.
     property bool syncing: false
+    // T223: the deep-link landing. `pendingPaneId`/`pendingRowId` survive the
+    // pane Loader swap and are consumed once the body exists.
+    property string pendingPaneId: ""
+    property string pendingRowId: ""
+    property var highlightTarget: null
+    // How long the deep-link landing wash stays visible. Tests/captures raise
+    // it so a slow software render cannot outrun the evidence.
+    property int highlightHoldMs: 1800
+    // The pane id whose body is currently mounted. `onCurrentPaneIdChanged`
+    // can fire before the Loader swaps, so a pending deep link waits for this
+    // to match instead of searching the outgoing pane's rows.
+    property string loadedPaneId: ""
+
+    readonly property bool searchActive: root.searchText.trim().length > 0
+    readonly property var searchResults: SettingsSearch.search(root.searchText)
 
     property alias searchField: searchField
+    property alias searchResultsList: searchResultsList
     property alias sidebar: sidebar
     property alias sidebarPane: sidebarPane
     property alias toolbar: toolbar
@@ -39,6 +55,9 @@ Item {
     property alias forwardButton: forwardButton
     property alias paneBody: paneBody
     property alias detailSheet: detailSheet
+    property alias detailScroll: detailScroll
+    property alias detailContent: detailContent
+    property alias helpButton: helpButton
     property alias resizeEdges: resizeEdges
     property alias debugView: debugView
 
@@ -112,6 +131,7 @@ Item {
         if (!id || id === root.currentPaneId)
             return;
         root.trace("selectPane " + id);
+        root.clearPendingHighlight();
         var next = root.history.slice(0, root.historyIndex + 1);
         next.push(id);
         root.history = next;
@@ -123,6 +143,7 @@ Item {
     function back() {
         if (!root.canGoBack)
             return;
+        root.clearPendingHighlight();
         root.historyIndex -= 1;
         root.currentPaneId = root.history[root.historyIndex];
         root.syncSelection();
@@ -131,6 +152,7 @@ Item {
     function forward() {
         if (!root.canGoForward)
             return;
+        root.clearPendingHighlight();
         root.historyIndex += 1;
         root.currentPaneId = root.history[root.historyIndex];
         root.syncSelection();
@@ -144,6 +166,179 @@ Item {
 
     function focusSearch() {
         searchField.forceActiveFocus();
+    }
+
+    // T223: parse `settings://pane/<id>` and
+    // `settings://pane/<id>/row/<rowId>`. The row segment is optional; a row
+    // link is only accepted when the map knows the row and marks it shipped.
+    function parseDeepLink(url) {
+        var text = String(url || "").trim();
+        var prefix = "settings://pane/";
+        if (text.indexOf(prefix) !== 0)
+            return null;
+        var rest = text.substring(prefix.length);
+        var hash = rest.indexOf("#");
+        if (hash >= 0)
+            rest = rest.substring(0, hash);
+        var parts = rest.split("/");
+        var paneId = decodeURIComponent(parts[0] || "");
+        var rowId = "";
+        if (parts.length >= 3 && parts[1] === "row")
+            rowId = decodeURIComponent(parts[2] || "");
+        return { paneId: paneId, rowId: rowId };
+    }
+
+    function deepLink(url) {
+        var link = root.parseDeepLink(url);
+        if (link === null)
+            return false;
+        var pane = SettingsPanes.paneById(link.paneId);
+        if (pane === null || !pane.shipped)
+            return false;
+        if (link.rowId.length > 0) {
+            var row = SettingsMap.rowFor(link.paneId, link.rowId);
+            if (row === null || row.state !== "shipped")
+                return false;
+        }
+        root.searchText = "";
+        if (root.currentPaneId !== link.paneId)
+            root.selectPane(link.paneId);
+        root.pendingPaneId = link.paneId;
+        root.pendingRowId = link.rowId;
+        if (root.currentPaneId === link.paneId)
+            Qt.callLater(root.revealPending);
+        return true;
+    }
+
+    function activateSearchResult(result) {
+        if (result === null || result === undefined)
+            return;
+        root.searchText = "";
+        root.deepLink(result.deepLink);
+    }
+
+    function clearPendingHighlight() {
+        root.pendingPaneId = "";
+        root.pendingRowId = "";
+        highlightTimer.stop();
+        if (root.highlightTarget !== null) {
+            root.highlightTarget.highlighted = false;
+            root.highlightTarget = null;
+        }
+    }
+
+    // Walk the loaded pane body for the map row's rendered SettingsRow. The
+    // `settingsId` is the stable match; the label/synonym match lets rows that
+    // predate the T223 wiring (or a reference label with different wording)
+    // still land on the right control.
+    function findRowTarget(item, row) {
+        if (item === null || item === undefined || item.visible === false)
+            return null;
+        if (row !== null && item.settingsId !== undefined
+                && item.settingsId === row.id)
+            return item;
+        if (row !== null && item.label !== undefined
+                && item.showSeparator !== undefined
+                && root.rowLabelMatches(item.label, row))
+            return item;
+        var children = item.children;
+        for (var i = 0; i < children.length; ++i) {
+            var found = root.findRowTarget(children[i], row);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
+    function rowLabelMatches(bodyLabel, row) {
+        var body = SettingsSearch.normalize(bodyLabel);
+        if (body.length === 0)
+            return false;
+        var candidates = [row.label];
+        var synonyms = SettingsSearch.rowSynonymsFor(row.paneId, row.id);
+        for (var i = 0; i < synonyms.length; ++i)
+            candidates.push(synonyms[i]);
+        for (var c = 0; c < candidates.length; ++c) {
+            var target = SettingsSearch.normalize(candidates[c]);
+            if (target.length === 0)
+                continue;
+            if (body === target || body.indexOf(target) >= 0
+                    || target.indexOf(body) >= 0)
+                return true;
+        }
+        return false;
+    }
+
+    function findSectionTarget(item, section) {
+        if (item === null || item === undefined || item.visible === false)
+            return null;
+        var wanted = SettingsSearch.normalize(section);
+        if (wanted.length > 0 && item.sectionId !== undefined
+                && item.sectionId === section)
+            return item;
+        if (wanted.length > 0 && item.title !== undefined
+                && item.rows !== undefined) {
+            var title = SettingsSearch.normalize(item.title);
+            if (title === wanted || title.indexOf(wanted) >= 0
+                    || wanted.indexOf(title) >= 0)
+                return item;
+        }
+        var children = item.children;
+        for (var i = 0; i < children.length; ++i) {
+            var found = root.findSectionTarget(children[i], section);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
+    // Scroll the detail view to the pending row/section and hold the accent
+    // wash long enough to be visible. Called from Loader.onLoaded and from the
+    // same-pane deep-link path.
+    function revealPending() {
+        if (root.pendingPaneId.length === 0
+                || root.pendingPaneId !== root.currentPaneId
+                || root.pendingPaneId !== root.loadedPaneId)
+            return;
+        var body = paneBody.item;
+        if (body === null)
+            return;
+        var row = root.pendingRowId.length > 0
+                ? SettingsMap.rowFor(root.pendingPaneId, root.pendingRowId) : null;
+        var target = row !== null ? root.findRowTarget(body, row) : null;
+        if (target === null && row !== null)
+            target = root.findSectionTarget(body, row.section);
+        if (target === null)
+            target = body;
+        var point = target.mapToItem(detailContent, 0, 0);
+        detailScroll.flickable.contentY = Math.max(
+            0, Math.min(detailScroll.maxY,
+                        point.y - Theme.primitive.spacing.lg));
+        if (target.highlighted !== undefined) {
+            if (root.highlightTarget !== null && root.highlightTarget !== target)
+                root.highlightTarget.highlighted = false;
+            root.highlightTarget = target;
+            target.highlighted = true;
+            highlightTimer.restart();
+        }
+        if (target.focusFirstControl !== undefined)
+            target.focusFirstControl();
+        else if (target.forceActiveFocus !== undefined)
+            target.forceActiveFocus();
+        root.pendingPaneId = "";
+        root.pendingRowId = "";
+    }
+
+    Timer {
+        id: highlightTimer
+        interval: root.highlightHoldMs
+        repeat: false
+        onTriggered: {
+            if (root.highlightTarget !== null) {
+                root.highlightTarget.highlighted = false;
+                root.highlightTarget = null;
+            }
+        }
     }
 
     // T222: open the pane/row owner debug view for the current pane (or an
@@ -233,6 +428,10 @@ Item {
     onCurrentPaneIdChanged: {
         if (debugView.open && root.currentPaneId.length > 0)
             debugView.paneId = root.currentPaneId;
+        if (root.pendingPaneId.length > 0
+                && root.pendingPaneId === root.currentPaneId
+                && root.pendingPaneId === root.loadedPaneId)
+            Qt.callLater(root.revealPending);
     }
 
     onSearchTextChanged: {
@@ -460,32 +659,68 @@ Item {
                         placeholderText: qsTr("Search")
                         onTextChanged: root.searchText = searchField.text
                         onCleared: root.searchText = ""
+                        // T223: Down/Up move into the ranked result list; Return
+                        // opens the highlighted result; Escape clears and then
+                        // returns focus to the sidebar.
+                        onAccepted: searchResultsList.activateCurrent()
+                        onEscapePressed: {
+                            if (root.searchText.length > 0)
+                                root.searchText = "";
+                            else
+                                sidebar.forceActiveFocus();
+                        }
+                        Keys.onDownPressed: (event) => {
+                            searchResultsList.focusList();
+                            event.accepted = true;
+                        }
+                        Keys.onUpPressed: (event) => {
+                            searchResultsList.focusList();
+                            event.accepted = true;
+                        }
                     }
 
-                    Sidebar {
-                        id: sidebar
+                    Item {
                         width: parent.width
                         height: Math.max(0, parent.height - searchField.height - parent.spacing)
-                        // The outer ChromeSheet owns the app-local material.
-                        fillColor: "transparent"
-                        sections: [{
-                            items: root.visiblePanes.map(function(pane) {
-                                return {
-                                    label: pane.title,
-                                    icon: pane.icon,
-                                    category: SettingsPanes.categoryStyle(pane)
-                                };
-                            })
-                        }]
 
-                        onActivated: (index, item) => {
-                            if (index >= 0 && index < root.visiblePanes.length)
-                                root.selectPane(root.visiblePanes[index].id);
+                        Sidebar {
+                            id: sidebar
+                            anchors.fill: parent
+                            visible: !root.searchActive
+                            // The outer ChromeSheet owns the app-local material.
+                            fillColor: "transparent"
+                            sections: [{
+                                items: root.visiblePanes.map(function(pane) {
+                                    return {
+                                        label: pane.title,
+                                        icon: pane.icon,
+                                        category: SettingsPanes.categoryStyle(pane)
+                                    };
+                                })
+                            }]
+
+                            onActivated: (index, item) => {
+                                if (index >= 0 && index < root.visiblePanes.length)
+                                    root.selectPane(root.visiblePanes[index].id);
+                            }
+                            onCurrentIndexChanged: {
+                                if (!root.syncing && sidebar.currentIndex >= 0
+                                        && sidebar.currentIndex < root.visiblePanes.length)
+                                    root.selectPane(root.visiblePanes[sidebar.currentIndex].id);
+                            }
                         }
-                        onCurrentIndexChanged: {
-                            if (!root.syncing && sidebar.currentIndex >= 0
-                                    && sidebar.currentIndex < root.visiblePanes.length)
-                                root.selectPane(root.visiblePanes[sidebar.currentIndex].id);
+
+                        SettingsSearchResults {
+                            id: searchResultsList
+                            anchors.fill: parent
+                            visible: root.searchActive
+                            results: root.searchResults
+                            query: root.searchText
+                            onActivated: (result) => root.activateSearchResult(result)
+                            onDismissed: {
+                                root.searchText = "";
+                                searchField.forceActiveFocus();
+                            }
                         }
                     }
                 }
@@ -549,6 +784,7 @@ Item {
                         scrollbarVisible: true
 
                         Column {
+                            id: detailContent
                             x: Theme.primitive.spacing.xl
                             width: Math.max(0, detailScroll.width - 2 * Theme.primitive.spacing.xl)
                             spacing: Theme.primitive.spacing.lg
@@ -569,7 +805,12 @@ Item {
                                 id: paneBody
                                 width: parent.width
                                 sourceComponent: root.paneComponent(root.currentPaneId)
-                                onLoaded: root.trace("paneLoaded " + root.currentPaneId)
+                                onLoaded: {
+                                    root.loadedPaneId = root.currentPaneId;
+                                    root.trace("paneLoaded " + root.currentPaneId);
+                                    if (root.pendingPaneId === root.currentPaneId)
+                                        Qt.callLater(root.revealPending);
+                                }
                             }
 
                             SettingsGroup {
@@ -589,6 +830,28 @@ Item {
                             }
                         }
                     }
+                }
+
+                // T223: the reference's bottom-right `?` help control. It
+                // opens this pane's anchor in the business-logic map, so it
+                // is a live document link, never a dead button. With the
+                // document absent (a minimal install) the control disables
+                // instead of pretending to open something.
+                Button {
+                    id: helpButton
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.rightMargin: Theme.primitive.spacing.lg
+                    anchors.bottomMargin: Theme.primitive.spacing.lg
+                    z: 10
+                    text: "?" // df-allow-untranslated: help glyph
+                    variant: "ghost"
+                    accessibleName: root.currentPane
+                                    ? qsTr("Help for %1").arg(root.currentPane.title)
+                                    : qsTr("Help")
+                    enabled: Settings.mapDocUrl.toString().length > 0
+                    onClicked: Qt.openUrlExternally(
+                                   Settings.helpUrl(root.currentPaneId))
                 }
             }
         }

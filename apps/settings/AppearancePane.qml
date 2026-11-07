@@ -143,11 +143,15 @@ Item {
         SettingsGroup {
             width: parent.width
             title: qsTr("Appearance")
+            sectionId: "Appearance"
 
             SettingsRow {
                 id: schemeRow
                 width: parent.width
                 label: qsTr("Appearance")
+                settingsId: "scheme"
+                owner: "settingsd + compositor"
+                settingsKey: "appearance.colorScheme"
                 showSeparator: false
 
                 controlData: SegmentedControl {

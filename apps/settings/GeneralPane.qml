@@ -113,12 +113,8 @@ Item {
                 objectName: "generalAboutRow"
                 width: parent.width
                 label: qsTr("About")
-                controlData: Button {
-                    icon: "chevron-right"
-                    variant: "ghost"
-                    accessibleName: qsTr("About This System")
-                    onClicked: aboutDialog.show()
-                }
+                disclosure: true
+                onDisclosureClicked: aboutDialog.show()
             }
 
             SettingsRow {
@@ -128,12 +124,8 @@ Item {
                 label: qsTr("Software Update")
                 description: root.updateSummary
                 showSeparator: false
-                controlData: Button {
-                    icon: "chevron-right"
-                    variant: "ghost"
-                    accessibleName: qsTr("Software Update")
-                    onClicked: updateDialog.show()
-                }
+                disclosure: true
+                onDisclosureClicked: updateDialog.show()
             }
         }
 

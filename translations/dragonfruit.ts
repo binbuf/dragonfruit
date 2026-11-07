@@ -4871,6 +4871,47 @@
     </message>
 </context>
 <context>
+    <name>SettingsRow</name>
+    <message>
+        <source>Help for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show details</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SettingsSearch</name>
+    <message>
+        <source>%1 › %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SettingsSearchResults</name>
+    <message>
+        <source>No results for “%1”.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pane</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Section</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Setting</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SettingsShell</name>
     <message>
         <source>Back</source>
@@ -4882,6 +4923,14 @@
     </message>
     <message>
         <source>Forward</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Help for %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

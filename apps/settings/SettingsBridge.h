@@ -286,6 +286,12 @@ public:
     // Every key the schema (and the defaults table) knows.
     Q_INVOKABLE QStringList keys() const;
 
+    // T223: the `?` help target. Returns the business-logic map URL with a
+    // pane anchor (`#pane-<id>`), or an empty URL when the document is not
+    // installed. The Settings shell disables its help control in that case
+    // rather than opening a dead link.
+    Q_INVOKABLE QUrl helpUrl(const QString &topic) const;
+
     // Open the portal file chooser at the user's Pictures directory. A chosen
     // image is announced through `wallpaperPhotoChosen`; a cancelled or
     // unavailable chooser emits nothing (the pane stays on the current image).

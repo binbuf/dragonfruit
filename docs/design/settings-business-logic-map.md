@@ -124,6 +124,15 @@ Settings debug view reads it directly; T223's search index reads the same rows.
 - Help → Pane & Row Owners… opens the in-app debug view; Help →
   Business-Logic Map opens this document. `DF_SETTINGS_DEBUG=1` opens the
   debug view on launch for scripted checks.
+- T223's `apps/settings/SettingsSearch.qml` indexes the shipped pane titles,
+  the section names, and the `shipped` rows above, plus synonyms and help text
+  (owner, key/API, absence kind, pane absence note). It never indexes an
+  unshipped pane or a `planned`/`omitted` row. Results deep-link as
+  `settings://pane/<id>` or `settings://pane/<id>/row/<rowId>`; the shell
+  resolves a row by `SettingsRow.settingsId` first and label/synonym second,
+  then scrolls/highlights it. A row that is custom pane chrome lands on its
+  section group instead. Each pane heading below carries an
+  `<a id="pane-<id>">` anchor for the bottom-right `?` help control.
 
 | Executable omitted id | Reference pane | Why |
 |---|---|---|
@@ -149,6 +158,7 @@ The tables below use these columns:
 Proposed keys are namespaced and must be added to `settingsd` with the
 additive-only rule. Existing keys are shown as `existing: …`.
 
+<a id="pane-wifi"></a>
 ### 5.1 Wi-Fi
 
 Owner: NetworkManager (`org.freedesktop.NetworkManager`). Absence: the pane
@@ -166,6 +176,7 @@ shows a one-line note, the toggle is disabled, no write is attempted.
 | Advanced… | Advanced… | Sheet | NM + `settingsd` | TCP/IP, DNS, proxies, MAC randomization, hardware |
 | — | Quick sheet | Panel | Shell | Same state; Settings… deep link |
 
+<a id="pane-bluetooth"></a>
 ### 5.2 Bluetooth
 
 Owner: BlueZ (`org.bluez`). Absence: note, toggle disabled, no write.
@@ -179,6 +190,7 @@ Owner: BlueZ (`org.bluez`). Absence: note, toggle disabled, no write.
 | — | Advanced… | Sheet | BlueZ + `settingsd` | Adapter name, class, pairing policy |
 | — | Quick sheet | Panel | Shell | Same state; Settings… deep link |
 
+<a id="pane-network"></a>
 ### 5.3 Network
 
 Owner: NetworkManager + firewall adapter. Absence: per-service rows show
@@ -196,6 +208,7 @@ Owner: NetworkManager + firewall adapter. Absence: per-service rows show
 | — | Firewall options | Sheet | firewall adapter | Open ports, services, zones/rules |
 | — | Add service… | Sheet | NM | Connection editor (limited first pass) |
 
+<a id="pane-battery"></a>
 ### 5.4 Battery
 
 Owner: UPower + power-profiles-daemon/platform profile. Absence: note; no
@@ -213,6 +226,7 @@ profile write; read-only level if available.
 | Options… | Battery options | Sheet | `settingsd` | Show percentage, menu-bar item, low-battery warning |
 | — | Power settings | Rows | `settingsd` | Sleep/display-off timers link to Lock Screen |
 
+<a id="pane-general"></a>
 ### 5.5 General
 
 Owner: `settingsd` + host/distro adapters. Each sub-pane has its own owner.
@@ -321,6 +335,7 @@ shows the available provider or a note; it does not store secrets itself.
 | AutoFill from… | Autofill source | Popup | `defaults.passwordManager` | Provider selection; hidden if none |
 | — | Locked keyring | Info | Secret Service | Status/unlock entry |
 
+<a id="pane-appearance"></a>
 ### 5.6 Appearance
 
 Owner: `settingsd` + compositor/design system. Absence: live on schema
@@ -337,6 +352,7 @@ defaults; no error banner.
 | Show scroll bars | Scroll bars | Popup | `appearance.scrollBars` | Automatic/always/when scrolling |
 | — | Motion | Link | `accessibility.reduceMotion` | Deep link to Accessibility |
 
+<a id="pane-accessibility"></a>
 ### 5.7 Accessibility
 
 Owner: `settingsd` + compositor + host accessibility services. Delegated
@@ -376,6 +392,7 @@ disables only the delegated control.
 | Siri | — | Omit | — | Apple service |
 | Shortcuts | Accessibility shortcuts | Sheet | `settingsd` | Keyboard shortcuts |
 
+<a id="pane-control-center"></a>
 ### 5.8 Control Center
 
 Owner: `settingsd` + shell `ControlCenterPolicy` + adapters.
@@ -401,6 +418,7 @@ Owner: `settingsd` + shell `ControlCenterPolicy` + adapters.
 | Other Modules | Other modules | List | `settingsd` | Accessibility shortcuts, etc. |
 | Add Controls… | Add controls… | Sheet | `settingsd` | Customization |
 
+<a id="pane-menu-bar"></a>
 ### 5.9 Menu Bar
 
 Owner: `settingsd` → shell/menu bar. Absence: live on defaults; no error.
@@ -423,6 +441,7 @@ Owner: `settingsd` → shell/menu bar. Absence: live on defaults; no error.
 | Sound | Sound | Checkbox + popup | existing: `menu.control.volume` | Show when active/always |
 | — | Third-party items | List | StatusNotifier registry | Show/hide; overflow policy |
 
+<a id="pane-search"></a>
 ### 5.10 Search (Spotlight-equivalent)
 
 Owner: search service + `app-index` + `settingsd`. Siri is omitted.
@@ -438,6 +457,7 @@ Owner: search service + `app-index` + `settingsd`. Siri is omitted.
 | — | Indexing status | Info | search service | Progress/error/absent |
 | — | Rebuild index | Button | search service | Progress |
 
+<a id="pane-privacy"></a>
 ### 5.11 Privacy & Security
 
 Owner: portals, polkit, LUKS, firewall adapter. Linux has no exact equivalent
@@ -475,6 +495,7 @@ the difference.
 | Extensions | Extensions | List | portal extensions | Enable/disable |
 | Advanced… | Advanced… | Sheet | adapters | Firewall, network, etc. |
 
+<a id="pane-desktop-dock"></a>
 ### 5.12 Desktop & Dock
 
 Owner: `settingsd` → compositor/shell. Absence: live on defaults; no error.
@@ -507,6 +528,7 @@ Control and Hot Corners rows below; it keeps its id.
 | Windows | Windows | Disclosure | `tiling.*` | Tiling/split view |
 | Default web browser | Default browser | Popup | `defaults.browser` + portal | Opens default-apps |
 
+<a id="pane-displays"></a>
 ### 5.13 Displays
 
 Owner: compositor output API + colord/display adapter. Absence: settingsd
@@ -528,6 +550,7 @@ controls live on defaults; output rows show `No display`/`Unavailable`.
 | Arrangement | Arrangement | Canvas | compositor | Drag displays; primary |
 | Rotation | Rotation | Popup | existing: `display.rotation` | 0/90/180/270 |
 
+<a id="pane-wallpaper"></a>
 ### 5.14 Wallpaper
 
 Owner: `settingsd` + `wallpaperd` + compositor. Absence: built-in default
@@ -546,6 +569,7 @@ always available; Featured empty, never an error.
 | Cityscape | Cityscapes | Grid | `wallpaperd` | Featured/offline |
 | — | Built-in | Grid | shipped assets | Default; offline |
 
+<a id="pane-screen-saver"></a>
 ### 5.15 Screen Saver
 
 Owner: shell/compositor + `settingsd`.
@@ -558,6 +582,7 @@ Owner: shell/compositor + `settingsd`.
 | Options… | Options… | Sheet | `settingsd` | Style-specific |
 | Hot Corners… | Hot corners… | Sheet | existing: `overview.hotCorner*` | Same policy |
 
+<a id="pane-notifications"></a>
 ### 5.16 Notifications
 
 Owner: notification service + `settingsd`.
@@ -575,6 +600,7 @@ Owner: notification service + `settingsd`.
 | Badges | Badge | Toggle | notification service | Dock badge |
 | Focus | Focus | Link | Focus pane | Deep link |
 
+<a id="pane-sound"></a>
 ### 5.17 Sound
 
 Owner: PipeWire/WirePlumber + `settingsd`.
@@ -591,6 +617,7 @@ Owner: PipeWire/WirePlumber + `settingsd`.
 | Input | Input | Tab | PipeWire | Device table, volume, mute |
 | — | Test | Button | PipeWire | Plays a test sound |
 
+<a id="pane-focus"></a>
 ### 5.18 Focus
 
 Owner: notification service + `settingsd`.
@@ -604,6 +631,7 @@ Owner: notification service + `settingsd`.
 | Time | Schedule | Sheet | notification service | Start/end |
 | Shortcuts | Shortcut | Recorder | `settingsd` | Global shortcut |
 
+<a id="pane-lock-screen"></a>
 ### 5.19 Lock Screen
 
 Owner: `settingsd` + compositor/lock + logind.
@@ -620,6 +648,7 @@ Owner: `settingsd` + compositor/lock + logind.
 | Show Sleep/Restart/Shut Down | Power buttons | Toggle | existing: `lock.showPowerButtons` | Lock UI |
 | Accessibility Options… | Accessibility options… | Button | `settingsd` | Lock UI |
 
+<a id="pane-biometrics"></a>
 ### 5.20 Biometrics & Password
 
 Owner: `fprintd` + PAM + distro adapter. Absence: note; no fingerprint write.
@@ -633,6 +662,7 @@ Owner: `fprintd` + PAM + distro adapter. Absence: note; no fingerprint write.
 | Use Touch ID for autofill | Use fingerprint for authentication | Toggle | PAM | Live |
 | Use Touch ID for fast user switching | Fingerprint for user switching | Toggle | PAM/display manager | If supported |
 
+<a id="pane-users-groups"></a>
 ### 5.21 Users & Groups
 
 Owner: accountsservice + distro adapter + polkit. Absence: read-only list;
@@ -648,6 +678,7 @@ no add/remove.
 | Network account server | Directory account | Button | SSSD/FreeIPA adapter | Optional |
 | — | Admin group | Info | distro adapter | `wheel`/`sudo` mapping |
 
+<a id="pane-online-accounts"></a>
 ### 5.22 Online Accounts
 
 Owner: GNOME Online Accounts if present; otherwise omit. Absence: the pane
@@ -660,6 +691,7 @@ shows an explicit "Online accounts are not installed" note.
 | Mail/Contacts/Calendars/Notes | Sync toggles | Toggles | GOA | Per-account |
 | — | Remove account | Button | GOA | Confirmation |
 
+<a id="pane-printers"></a>
 ### 5.23 Printers & Scanners
 
 Owner: CUPS + SANE. Absence: note; no add/queue write.
@@ -673,6 +705,7 @@ Owner: CUPS + SANE. Absence: note; no add/queue write.
 | Options & Supplies… | Options & supplies… | Sheet | CUPS | Driver/status |
 | — | Scanners | List | SANE | Scan action (delegated) |
 
+<a id="pane-keyboard"></a>
 ### 5.24 Keyboard
 
 Owner: `settingsd` + compositor input + ibus/fcitx5.
@@ -691,6 +724,7 @@ Owner: `settingsd` + compositor input + ibus/fcitx5.
 | Text Replacements… | Text replacements… | Sheet | `settingsd`/IME | List |
 | Dictation | Dictation | Toggle + options | speech-to-text delegate | Optional; absent → note |
 
+<a id="pane-mouse"></a>
 ### 5.25 Mouse
 
 Owner: `settingsd` + compositor input.
@@ -705,6 +739,7 @@ Owner: `settingsd` + compositor input.
 | — | Scroll method | Popup | existing: `input.scrollMethod` | Two fingers/edge/button |
 | — | Left-handed | Toggle | existing: `input.leftHanded` | Live |
 
+<a id="pane-trackpad"></a>
 ### 5.26 Trackpad
 
 Owner: `settingsd` + compositor input (libinput).
@@ -721,6 +756,7 @@ Owner: `settingsd` + compositor input (libinput).
 | More Gestures | More gestures | Tab | `gestures.*` | Mission Control/workspaces |
 | Set Up Bluetooth Trackpad… | Pair trackpad… | Button | BlueZ | If supported |
 
+<a id="pane-game-controllers"></a>
 ### 5.27 Game Controllers
 
 Owner: udev/SDL; optional. Absence: note; no mapping write.

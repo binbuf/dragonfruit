@@ -110,6 +110,7 @@ Item {
             id: centerGroup
             width: parent.width
             title: qsTr("Notifications")
+            sectionId: "Notifications"
 
             Text {
                 objectName: "notificationsCenterDescription"
@@ -126,6 +127,9 @@ Item {
             SettingsRow {
                 width: parent.width
                 label: qsTr("Show previews")
+                settingsId: "previews"
+                owner: "settingsd"
+                settingsKey: "notifications.showPreviews"
                 controlData: Select {
                     id: previewSelect
                     accessibleName: qsTr("Show previews")

@@ -100,10 +100,14 @@ Item {
             id: dockGroup
             width: parent.width
             title: qsTr("Dock")
+            sectionId: "Dock"
 
             SettingsRow {
                 width: parent.width
                 label: qsTr("Size")
+                settingsId: "size"
+                owner: "settingsd"
+                settingsKey: "dock.size"
                 controlData: Slider {
                     id: sizeSlider
                     width: 220
