@@ -286,6 +286,37 @@ public:
     // Unmap the banner surface (attach a null buffer).
     bool hideBanner();
 
+    // Create the Notification Center overlay (T204): an `overlay` layer
+    // surface anchored to the top-right corner, namespace
+    // "notification-center", mapped only while the Center is open. It reserves
+    // nothing (`exclusive_zone = -1`) and takes the keyboard on demand so
+    // Escape, outside click-away and keyboard traversal work. `width`/`height`
+    // are the panel surface size; `topMargin` clears the menu bar.
+    bool createNotificationCenterSurface(int width, int height, int topMargin);
+
+    // Re-apply the Center surface size after a scale change reduces the
+    // logical output height.
+    bool setNotificationCenterSize(int width, int height);
+
+    // Set the Center's clickable input region to the full `width` x `height`
+    // top-left rect (a non-positive size passes everything through). Applied
+    // with the next buffer commit.
+    bool setNotificationCenterInputRegion(int width, int height);
+
+    // Take the keyboard while the Center is open (`grab` true) and return the
+    // layer to OnDemand when it closes. The Center is a modal history surface:
+    // opening it from the clock or a hot corner must route Escape/Up/Down/
+    // Return to the list without a second click, and an outside click must
+    // read as focus loss.
+    bool setNotificationCenterKeyboardGrab(bool grab);
+
+    // Attach `image` to the notification-center surface and commit.
+    bool commitNotificationCenterImage(const QImage &image,
+                                       const QSize &logicalSize = QSize());
+
+    // Unmap the notification-center surface (attach a null buffer).
+    bool hideNotificationCenter();
+
     // Create the Control Center panel overlay (T-11.3a): an `overlay` layer
     // surface anchored to the top-right corner, namespace "control-center",
     // mapped only while the panel is open. It reserves nothing
@@ -679,6 +710,7 @@ public:
         Dock,
         DockPopup,
         Banner,
+        NotificationCenter,
         ControlCenter,
         Overview,
         Chooser,
@@ -707,6 +739,7 @@ signals:
     void overviewConfigured(int width, int height, uint32_t serial);
     void switcherConfigured(int width, int height, uint32_t serial);
     void bannerConfigured(int width, int height, uint32_t serial);
+    void notificationCenterConfigured(int width, int height, uint32_t serial);
     void controlCenterConfigured(int width, int height, uint32_t serial);
     void osdConfigured(int width, int height, uint32_t serial);
     // FileChooser picker overlay (T-13.2b).
@@ -781,6 +814,9 @@ signals:
     // The compositor announced a new output scale (`df_output.scale`).
     void outputScaleChanged(qreal scale);
     void outputRefreshChanged();
+    // An output disappeared (hotplug detach). Transient chrome anchored to it
+    // must close rather than wait for a stale configure.
+    void outputRemoved();
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // A matched application accelerator for the focused app (T-14.2b): the
@@ -813,6 +849,17 @@ signals:
     void bannerPointerMoved(qreal x, qreal y);
     void bannerPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void bannerPointerLeft();
+    // Notification Center input (T204), in center-surface coordinates.
+    void notificationCenterPointerMoved(qreal x, qreal y);
+    void notificationCenterPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void notificationCenterPointerLeft();
+    // The Notification Center specifically holds the keyboard (T204): key
+    // events drive Up/Down/Home/End/Return/Delete/Escape in its scene.
+    void notificationCenterKeyboardFocused(bool focused);
+    void notificationCenterKeyEvent(uint32_t key, bool pressed);
+    // The compositor closed the Center layer (output teardown or a protocol
+    // close). The shell drops its panel state and releases focus.
+    void notificationCenterSurfaceClosed();
     // Control Center panel input (T-11.3a), in panel-surface coordinates.
     void controlCenterPointerMoved(qreal x, qreal y);
     void controlCenterPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
@@ -998,6 +1045,9 @@ private:
                                     int32_t width, int32_t height);
     static void onBannerConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                   int32_t width, int32_t height);
+    static void onNotificationCenterConfigure(void *data, df_layer_surface *layer,
+                                              uint32_t serial, int32_t width, int32_t height);
+    static void onNotificationCenterLayerClosed(void *data, df_layer_surface *layer);
     static void onControlCenterConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                          int32_t width, int32_t height);
     static void onOsdConfigure(void *data, df_layer_surface *layer, uint32_t serial,
@@ -1263,6 +1313,13 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     df_layer_surface *m_bannerLayer = nullptr;
     bool m_bannerMapped = false;
     bool m_pointerOnBanner = false;
+    // Notification Center overlay (T204): a top-right `overlay` surface
+    // mapped only while the Center is open.
+    wl_surface *m_notificationCenterSurface = nullptr;
+    df_layer_surface *m_notificationCenterLayer = nullptr;
+    bool m_notificationCenterMapped = false;
+    bool m_pointerOnNotificationCenter = false;
+    bool m_keyboardOnNotificationCenter = false;
     // Control Center panel overlay (T-11.3a): a top-right `overlay` surface
     // mapped only while the panel is open.
     wl_surface *m_controlCenterSurface = nullptr;

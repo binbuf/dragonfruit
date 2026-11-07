@@ -134,6 +134,14 @@ constexpr int kBannerCardHeight = 96;
 constexpr int kBannerCardActionsHeight = 132;
 constexpr int kBannerTopGap = 8;
 
+// The Notification Center (T204): a fixed panel surface anchored to the
+// top-right corner below the menu bar. The QML panel fills the surface, so
+// its input region is the whole thing; the surface is clamped to the output
+// height on fractional scales like the Control Center.
+constexpr int kNotificationCenterWidth = 360;
+constexpr int kNotificationCenterHeight = 620;
+constexpr int kNotificationCenterTopGap = 8;
+
 // The Control Center panel (T-11.3a): a fixed panel surface anchored to the
 // top-right corner below the menu bar. The panel fills the surface, so its
 // input region is the whole thing.
@@ -373,6 +381,7 @@ ShellController::~ShellController()
     // The opt-in transport counters land on the clean-exit path too; SIGUSR1
     // remains the per-scenario trigger (T-21.1a).
     ChromeStats::instance().emitStats(QStringLiteral("exit"));
+    delete m_notificationCenterWindow;
     delete m_controlCenterWindow;
     delete m_osdWindow;
     delete m_bannerWindow;
@@ -640,6 +649,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                           "popupMaterial");
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
+    // T204: the menu-bar clock is the primary Notification Center entry
+    // point. It toggles the same surface as the keyboard/hot-corner action.
+    connect(m_item, SIGNAL(clockActivated()), this, SLOT(onClockActivated()));
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
     connect(m_item, SIGNAL(statusItemActivated(QString)), this,
             SLOT(onStatusItemActivated(QString)));
@@ -935,6 +947,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     };
     setDockTrackingInterval();
     connect(m_protocol, &ShellProtocol::outputRefreshChanged, this, setDockTrackingInterval);
+    // T204: a detached output closes the per-output Center instead of leaving
+    // a stale panel anchored to a display that no longer exists.
+    connect(m_protocol, &ShellProtocol::outputRemoved, this, [this]() {
+        if (m_notificationCenterOpen)
+            hideNotificationCenter(QStringLiteral("output"));
+    });
     connect(m_dockTrackingTimer, &QChronoTimer::timeout, this, &ShellController::scheduleDockRender);
     connect(m_dockItem, SIGNAL(pointerTrackingActiveChanged()),
             this, SLOT(onDockPointerTrackingChanged()));
@@ -1100,6 +1118,26 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // (headless/capture only). A banner maps the top-right `notification`
     // overlay; an empty queue unmaps it.
     m_notificationModel = new NotificationModel(this);
+    // T204: the Center's own state validates active rows and owns the keyboard
+    // selection. The service remains the single owner of history, expiry,
+    // Focus/DND, banner replacement and urgency.
+    m_notificationCenter = new NotificationCenter(this);
+    connect(m_notificationCenter, &NotificationCenter::changed, this, [this]() {
+        if (m_notificationCenterOpen)
+            applyNotificationCenterData();
+    });
+    connect(m_notificationCenter, &NotificationCenter::closed, this,
+            &ShellController::onNotificationCenterStateClosed);
+    connect(m_notificationCenter, &NotificationCenter::invokeRequested, this,
+            [this](quint32 id, const QString &key) {
+                if (m_notificationClient)
+                    m_notificationClient->invoke(id, key);
+            });
+    connect(m_notificationCenter, &NotificationCenter::dismissRequested, this,
+            [this](quint32 id) {
+                if (m_notificationClient)
+                    m_notificationClient->dismiss(id);
+            });
     if (qEnvironmentVariableIsSet("DF_NOTIFY_FIXTURE")) {
         m_notificationClient = new MockNotificationClient(this);
         // Capture/demo seam (T-11.2b): start the fixture in a Focus/DND mode
@@ -1111,6 +1149,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     } else {
         m_notificationClient = new DbusNotificationClient(this);
     }
+    // A service that was already absent at startup does not emit a change;
+    // seed the Center's unavailable state from the client once.
+    m_notificationCenter->setAvailable(m_notificationClient->isAvailable());
     connect(m_notificationModel, &NotificationModel::changed, this, [this]() {
         if (m_notificationModel->hasBanner())
             showCurrentBanner();
@@ -1163,6 +1204,64 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The Focus item exists now that the notification model is wired; the
     // first apply above ran before it.
     applyStatusItems();
+
+    // Notification Center (T204): a top-right offscreen scene rendered into
+    // its own `notification-center` overlay surface. It is a pure view of the
+    // normalized service history; actions and dismissal go back through the
+    // same `NotificationClient` the banner uses.
+    m_notificationCenterWindow = createChromeProducer()->window();
+    m_notificationCenterWindow->setColor(Qt::transparent);
+    QQmlComponent notificationCenterComponent(m_engine);
+    notificationCenterComponent.loadFromModule(QStringLiteral("Dragonfruit.Notifications"),
+                                               QStringLiteral("NotificationCenter"));
+    if (notificationCenterComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: NotificationCenter QML error: %s\n",
+                qPrintable(notificationCenterComponent.errorString()));
+        return false;
+    }
+    QObject *notificationCenterObject = notificationCenterComponent.create();
+    m_notificationCenterItem = qobject_cast<QQuickItem *>(notificationCenterObject);
+    if (!m_notificationCenterItem) {
+        fprintf(stderr, "dragonfruit-shell: NotificationCenter QML did not produce an item\n");
+        return false;
+    }
+    m_notificationCenterItem->setParentItem(m_notificationCenterWindow->contentItem());
+    setMaterialProperties(m_notificationCenterItem,
+                          m_materialPolicy.applied(MaterialPolicy::Popup));
+    connect(notificationCenterObject, SIGNAL(closed()), this,
+            SLOT(onNotificationCenterDismissRequested()));
+    connect(notificationCenterObject, SIGNAL(moveRequested(int)), this,
+            SLOT(onNotificationCenterMoveRequested(int)));
+    connect(notificationCenterObject, SIGNAL(selectRequested(int)), this,
+            SLOT(onNotificationCenterSelectRequested(int)));
+    connect(notificationCenterObject, SIGNAL(activateRequested()), this,
+            SLOT(onNotificationCenterActivateRequested()));
+    connect(notificationCenterObject, SIGNAL(dismissSelectedRequested()), this,
+            SLOT(onNotificationCenterDismissSelectedRequested()));
+    connect(notificationCenterObject, SIGNAL(actionInvoked(int,QString)), this,
+            SLOT(onNotificationCenterActionRequested(int,QString)));
+    connect(notificationCenterObject, SIGNAL(dismissEntryRequested(int)), this,
+            SLOT(onNotificationCenterEntryDismissRequested(int)));
+    bindChromePacing(m_producers.value(m_notificationCenterWindow),
+                     QStringLiteral("notification-center"),
+                     [this]() { renderNotificationCenter(); });
+    connect(m_protocol, &ShellProtocol::notificationCenterConfigured, this,
+            &ShellController::onNotificationCenterConfigured);
+    connect(m_protocol, &ShellProtocol::notificationCenterPointerMoved, this,
+            &ShellController::onNotificationCenterPointerMoved);
+    connect(m_protocol, &ShellProtocol::notificationCenterPointerButton, this,
+            &ShellController::onNotificationCenterPointerButton);
+    connect(m_protocol, &ShellProtocol::notificationCenterPointerLeft, this,
+            &ShellController::onNotificationCenterPointerLeft);
+    connect(m_protocol, &ShellProtocol::notificationCenterKeyboardFocused, this,
+            &ShellController::onNotificationCenterKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::notificationCenterKeyEvent, this,
+            &ShellController::onNotificationCenterKeyEvent);
+    connect(m_protocol, &ShellProtocol::notificationCenterSurfaceClosed, this,
+            &ShellController::onNotificationCenterSurfaceClosed);
+    m_notificationCenterWidth = kNotificationCenterWidth;
+    m_notificationCenterHeight = kNotificationCenterHeight;
+    applyNotificationCenterData();
 
     // Control Center panel (T-11.3a): a top-right offscreen scene rendered
     // into its own overlay surface. It is a pure view; the taps/gestures it
@@ -1603,6 +1702,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // a banner is active (T-11.1a).
     if (!m_protocol->createBannerSurface(kBannerWidth, kBannerSurfaceHeight,
                                          barHeight + kBannerTopGap))
+        return false;
+    // The Notification Center is a top-right `overlay` surface, unmapped until
+    // the clock, keyboard action or configured hot corner opens it (T204).
+    if (!m_protocol->createNotificationCenterSurface(
+            kNotificationCenterWidth, kNotificationCenterHeight,
+            barHeight + kNotificationCenterTopGap))
         return false;
     // The Control Center panel is a top-right `overlay` surface, unmapped until
     // the menu-bar item (or its shortcut) opens it (T-11.3a).
@@ -2587,6 +2692,278 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
     render();
 }
 
+// --- Notification Center (T204) --------------------------------------------
+
+void ShellController::onClockActivated()
+{
+    // The menu-bar clock is the pointer entry point. The compositor's
+    // `notification-center` input action reaches the same toggle from a
+    // keyboard shortcut or a configured hot corner (onInputAction).
+    toggleNotificationCenter();
+}
+
+void ShellController::toggleNotificationCenter()
+{
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("toggle"));
+    else
+        showNotificationCenter();
+}
+
+void ShellController::showNotificationCenter()
+{
+    if (!m_notificationCenterItem || !m_notificationCenter)
+        return;
+    // One ambient panel at a time: opening the Center retires an open menu,
+    // the Control Center, the Applications drawer and Mission Control rather
+    // than stacking transient overlays.
+    if (m_item) {
+        QMetaObject::invokeMethod(m_item, "closeMenus");
+        QMetaObject::invokeMethod(m_item, "closeStatusMenu");
+    }
+    if (m_controlCenterOpen)
+        hideControlCenter();
+    if (m_appsDrawerOpen)
+        hideAppsDrawer();
+    if (m_overviewActive && m_protocol)
+        m_protocol->exitMissionControl();
+
+    m_notificationCenterOpen = true;
+    m_notificationCenterPending = true;
+    const bool available = m_notificationClient && m_notificationClient->isAvailable();
+    m_notificationCenter->setAvailable(available);
+    if (m_notificationClient)
+        m_notificationClient->refresh();
+    m_notificationCenter->open();
+    updateNotificationCenterGeometry();
+    applyNotificationCenterData();
+    if (m_notificationCenterWidth > 0 && m_notificationCenterHeight > 0)
+        renderNotificationCenter();
+    // Take active focus so Escape and Up/Down/Return reach the list; the
+    // compositor hands the keyboard to the OnDemand layer surface.
+    m_notificationCenterItem->forceActiveFocus();
+    if (m_protocol) {
+        m_protocol->setNotificationCenterInputRegion(m_notificationCenterWidth,
+                                                     m_notificationCenterHeight);
+        m_protocol->setNotificationCenterKeyboardGrab(true);
+    }
+}
+
+void ShellController::hideNotificationCenter(const QString &reason)
+{
+    // `NotificationCenter::close` emits `closed`, which lands in
+    // `onNotificationCenterStateClosed` and owns the surface teardown. If the
+    // state was already closed (a compositor-driven surface close), run the
+    // teardown directly.
+    if (m_notificationCenter && m_notificationCenter->isOpen()) {
+        m_notificationCenter->close(reason);
+        return;
+    }
+    onNotificationCenterStateClosed(reason);
+}
+
+void ShellController::onNotificationCenterStateClosed(const QString &reason)
+{
+    m_notificationCenterOpen = false;
+    m_notificationCenterPending = false;
+    m_notificationCenterButtons = Qt::NoButton;
+    if (m_protocol) {
+        // Clear the input region before unmapping so a stale clickable panel
+        // never survives the close, then hand focus back to the active window.
+        m_protocol->setNotificationCenterInputRegion(0, 0);
+        m_protocol->setNotificationCenterKeyboardGrab(false);
+        m_protocol->hideNotificationCenter();
+        if (m_notificationCenterKeyboardFocused)
+            m_protocol->releaseKeyboardFocus();
+    }
+    m_notificationCenterKeyboardFocused = false;
+    if (!reason.isEmpty())
+        qInfo() << "shell: notification center closed:" << reason;
+}
+
+void ShellController::onNotificationCenterDismissRequested()
+{
+    hideNotificationCenter(QStringLiteral("escape"));
+}
+
+void ShellController::onNotificationCenterMoveRequested(int delta)
+{
+    if (m_notificationCenter)
+        m_notificationCenter->moveSelection(delta);
+}
+
+void ShellController::onNotificationCenterSelectRequested(int index)
+{
+    if (m_notificationCenter)
+        m_notificationCenter->selectIndex(index);
+}
+
+void ShellController::onNotificationCenterActivateRequested()
+{
+    if (m_notificationCenter)
+        m_notificationCenter->activateSelected();
+}
+
+void ShellController::onNotificationCenterDismissSelectedRequested()
+{
+    if (m_notificationCenter)
+        m_notificationCenter->dismissSelected();
+}
+
+void ShellController::onNotificationCenterActionRequested(int id, const QString &actionKey)
+{
+    if (m_notificationCenter)
+        m_notificationCenter->invoke(static_cast<quint32>(id), actionKey);
+}
+
+void ShellController::onNotificationCenterEntryDismissRequested(int id)
+{
+    if (m_notificationCenter)
+        m_notificationCenter->dismiss(static_cast<quint32>(id));
+}
+
+void ShellController::onNotificationCenterConfigured(int width, int height, quint32)
+{
+    // The compositor's pre-layout configure is the full output; the panel's
+    // own size follows (the same rule as the Control Center).
+    updateNotificationCenterGeometry();
+    if (width != kNotificationCenterWidth || height != m_notificationCenterHeight)
+        return;
+    m_notificationCenterWidth = width;
+    if (m_protocol)
+        m_protocol->setNotificationCenterInputRegion(m_notificationCenterWidth,
+                                                     m_notificationCenterHeight);
+    if (m_notificationCenterPending)
+        renderNotificationCenter();
+}
+
+void ShellController::onNotificationCenterPointerMoved(qreal x, qreal y)
+{
+    if (!m_notificationCenterWindow)
+        return;
+    sendChromePointer(m_notificationCenterWindow, QEvent::MouseMove, QPointF(x, y),
+                      Qt::NoButton, m_notificationCenterButtons);
+    scheduleNotificationCenterRender();
+}
+
+void ShellController::onNotificationCenterPointerButton(qreal x, qreal y, quint32 button,
+                                                        bool pressed)
+{
+    if (!m_notificationCenterWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_notificationCenterButtons |= qtButton;
+    else
+        m_notificationCenterButtons &= ~qtButton;
+    sendChromePointer(m_notificationCenterWindow,
+                      pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+                      QPointF(x, y), qtButton, m_notificationCenterButtons);
+    scheduleNotificationCenterRender();
+}
+
+void ShellController::onNotificationCenterPointerLeft()
+{
+    if (!m_notificationCenterWindow)
+        return;
+    sendChromePointer(m_notificationCenterWindow, QEvent::MouseMove, QPointF(-1, -1),
+                      Qt::NoButton, m_notificationCenterButtons);
+    scheduleNotificationCenterRender();
+}
+
+void ShellController::onNotificationCenterKeyboardFocused(bool focused)
+{
+    const bool wasFocused = m_notificationCenterKeyboardFocused;
+    m_notificationCenterKeyboardFocused = focused;
+    if (!focused && wasFocused && m_notificationCenterOpen) {
+        // Losing the keyboard is the click-away dismissal. A focus hand-off
+        // during the opening click arrives before the surface ever holds it,
+        // so only a real loss closes.
+        hideNotificationCenter(QStringLiteral("outside"));
+    } else if (focused && m_notificationCenterOpen && m_notificationCenterItem) {
+        m_notificationCenterItem->forceActiveFocus();
+    }
+}
+
+void ShellController::onNotificationCenterKeyEvent(quint32 key, bool pressed)
+{
+    if (!m_notificationCenterWindow || !m_notificationCenterOpen)
+        return;
+    sendChromeKeyEvent(m_notificationCenterWindow, key, pressed,
+                       m_protocol ? m_protocol->keyboardModifiers() : 0);
+    scheduleNotificationCenterRender();
+}
+
+void ShellController::onNotificationCenterSurfaceClosed()
+{
+    // The compositor closed the layer (output teardown). Drop the panel state
+    // without trying to unmap a surface that no longer exists.
+    if (m_notificationCenter)
+        m_notificationCenter->close(QStringLiteral("output"));
+    m_notificationCenterOpen = false;
+    m_notificationCenterPending = false;
+    m_notificationCenterButtons = Qt::NoButton;
+    m_notificationCenterKeyboardFocused = false;
+}
+
+void ShellController::applyNotificationCenterData()
+{
+    if (!m_notificationCenterItem || !m_notificationCenter)
+        return;
+    m_notificationCenterItem->setProperty("history", m_notificationCenter->history());
+    m_notificationCenterItem->setProperty("selectedIndex",
+                                          m_notificationCenter->selectedIndex());
+    m_notificationCenterItem->setProperty("available", m_notificationCenter->available());
+}
+
+void ShellController::renderNotificationCenter()
+{
+    if (!m_notificationCenterOpen || !m_notificationCenterPending
+        || !m_notificationCenterWindow || !m_notificationCenterItem) {
+        return;
+    }
+    if (m_notificationCenterWidth <= 0 || m_notificationCenterHeight <= 0)
+        return;
+    prepareChromeScene(m_notificationCenterWindow, m_notificationCenterItem,
+                       QSize(m_notificationCenterWidth, m_notificationCenterHeight),
+                       QSize(m_notificationCenterWidth, m_notificationCenterHeight),
+                       m_chromeScale);
+    const QSize logical(m_notificationCenterWidth, m_notificationCenterHeight);
+    commitChromeScene(m_notificationCenterWindow,
+                      {{QStringLiteral("notification-center"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitNotificationCenterImage(image, logical);
+                        }}});
+}
+
+void ShellController::scheduleNotificationCenterRender()
+{
+    if (m_notificationCenterRenderPending)
+        return;
+    m_notificationCenterRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_notificationCenterRenderPending = false;
+        renderNotificationCenter();
+    });
+}
+
+void ShellController::updateNotificationCenterGeometry()
+{
+    if (!m_protocol)
+        return;
+    const QSize output = m_protocol->outputLogicalSize();
+    if (output.isEmpty())
+        return;
+    const int available = output.height() - m_barHeight - kNotificationCenterTopGap;
+    const int target = qMin(kNotificationCenterHeight, available);
+    if (target <= 0 || target == m_notificationCenterHeight)
+        return;
+    m_notificationCenterHeight = target;
+    m_protocol->setNotificationCenterSize(kNotificationCenterWidth, target);
+}
+
 void ShellController::onControlCenterRequested()
 {
     toggleControlCenter();
@@ -2604,6 +2981,9 @@ void ShellController::showControlCenter()
 {
     if (!m_controlCenterItem)
         return;
+    // The two top-right ambient panels are mutually exclusive.
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_controlCenterOpen = true;
     m_controlCenterPending = true;
     updateControlCenterGeometry();
@@ -3236,6 +3616,8 @@ void ShellController::showChooser()
 {
     if (!m_chooserItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_chooserActive = true;
     m_chooserPending = true;
     applyChooserData();
@@ -3422,6 +3804,9 @@ void ShellController::startScreenshot(const QString &mode)
 {
     if (!m_screenshot)
         return;
+    // The selection overlay is modal; retire the ambient Center first.
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_screenshot->beginLocal(mode);
 }
 
@@ -3519,6 +3904,8 @@ void ShellController::showScreenshot()
 {
     if (!m_screenshotItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_screenshotActive = true;
     m_screenshotPending = true;
     applyScreenshotData();
@@ -3750,6 +4137,8 @@ void ShellController::showScreenCast()
 {
     if (!m_screencastItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_screencastActive = true;
     m_screencastPending = true;
     applyScreenCastData();
@@ -3950,6 +4339,8 @@ void ShellController::showPolkit()
 {
     if (!m_polkitItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_polkitActive = true;
     m_polkitPending = true;
     m_polkitResponse.clear();
@@ -4123,6 +4514,10 @@ void ShellController::onPolkitKeyEvent(quint32 key, bool pressed, bool shift)
 
 void ShellController::onSessionLocked()
 {
+    // Lock is a hard close for ambient panels: no notification history or
+    // input region may remain above the fail-secure lock surface.
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("lock"));
     // A lock clears the clipboard history by default; pinned entries survive
     // (T-13.5b, ADR 0082).
     if (m_clipboard && m_clipboard->clearOnLock())
@@ -4420,6 +4815,8 @@ void ShellController::onLockKeyEvent(quint32 key, bool pressed, bool shift)
 
 void ShellController::onMissionControlRequested()
 {
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_protocol->enterMissionControl();
 }
 
@@ -4663,6 +5060,15 @@ void ShellController::onKeyboardFocused(bool focused)
                 hideControlCenter();
         });
     }
+    // Same click-away rule for the Notification Center. Its dedicated focus
+    // signal normally handles this; the bar's focus loss is the fallback for
+    // an open triggered by the clock while the bar held the keyboard.
+    if (!focused && m_notificationCenterOpen) {
+        QTimer::singleShot(0, this, [this]() {
+            if (m_notificationCenterOpen && !m_notificationCenterKeyboardFocused)
+                hideNotificationCenter(QStringLiteral("outside"));
+        });
+    }
 }
 
 void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface, qreal x,
@@ -4684,6 +5090,9 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
         break;
     case ShellProtocol::PointerSurface::Polkit:
         window = m_polkitWindow;
+        break;
+    case ShellProtocol::PointerSurface::NotificationCenter:
+        window = m_notificationCenterWindow;
         break;
     case ShellProtocol::PointerSurface::ControlCenter:
         window = m_controlCenterWindow;
@@ -4763,6 +5172,9 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
     case ShellProtocol::PointerSurface::Polkit:
         schedulePolkitRender();
         break;
+    case ShellProtocol::PointerSurface::NotificationCenter:
+        scheduleNotificationCenterRender();
+        break;
     case ShellProtocol::PointerSurface::ControlCenter:
         scheduleControlCenterRender();
         break;
@@ -4803,6 +5215,13 @@ void ShellController::onKeyEvent(quint32 key, bool pressed, quint32 modifiers)
     // chrome surface currently holds the keyboard.
     if (pressed && qtKey == Qt::Key_Escape && m_controlCenterOpen) {
         hideControlCenter();
+        return;
+    }
+    // T204: the Center's own scene owns traversal while it holds the keyboard
+    // (`notificationCenterKeyEvent`); this is the fallback for a Center opened
+    // from the bar before the compositor hands it focus.
+    if (pressed && qtKey == Qt::Key_Escape && m_notificationCenterOpen) {
+        hideNotificationCenter(QStringLiteral("escape"));
         return;
     }
     // An open Dock popover or Dock keyboard focus owns the keys (navigation,
@@ -5095,6 +5514,11 @@ void ShellController::onInputAction(const QString &action, const QString &)
     } else if (action == QLatin1String("control-center")) {
         // T-11.3a: the Control Center keyboard shortcut toggles the panel.
         toggleControlCenter();
+    } else if (action == QLatin1String("notification-center")) {
+        // T204: the same action comes from the declared keyboard shortcut and
+        // any configured hot corner. The shell owns the Center; the
+        // compositor only routes the trigger (and picks the invoking output).
+        toggleNotificationCenter();
     } else if (action == QLatin1String("show-apps")) {
         // T-19.2: the Applications drawer shortcut (F4) toggles the launcher.
         toggleAppsDrawer();
@@ -5167,6 +5591,8 @@ void ShellController::applyMaterialState()
     const bool dockPopupChanged = setMaterialProperties(m_dockItem, popup, "popupMaterial");
     const bool drawerChanged = setMaterialProperties(m_appsDrawerItem, drawer);
     const bool bannerChanged = setMaterialProperties(m_bannerItem, popup);
+    const bool notificationCenterChanged =
+        setMaterialProperties(m_notificationCenterItem, popup);
     const bool controlCenterChanged = setMaterialProperties(m_controlCenterItem, popup);
     const bool osdChanged = setMaterialProperties(m_osdItem, popup);
 
@@ -5181,6 +5607,8 @@ void ShellController::applyMaterialState()
         scheduleAppsDrawerRender();
     if (bannerChanged && m_bannerPending)
         scheduleBannerRender();
+    if (notificationCenterChanged && m_notificationCenterOpen)
+        scheduleNotificationCenterRender();
     if (controlCenterChanged && m_controlCenterOpen)
         scheduleControlCenterRender();
     if (osdChanged && m_osdActive)
@@ -6562,6 +6990,8 @@ void ShellController::onOverviewConfigured(int width, int height, quint32)
 void ShellController::onOverviewChanged(bool active)
 {
     m_overviewActive = active;
+    if (active && m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     if (!m_overviewItem)
         return;
     m_overviewItem->setProperty("active", active);
@@ -6717,6 +7147,9 @@ void ShellController::onAppSwitcherChanged(bool active, const QVariantList &entr
                                            const QString &selectedAppId, int direction)
 {
     m_switcherActive = active;
+    // The Cmd-Tab overlay is a competing transient surface.
+    if (active && m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     if (!m_switcherItem)
         return;
     // The compositor owns the recency order and the selection; the shell only
@@ -6761,6 +7194,10 @@ void ShellController::onNotificationAvailable(bool available)
 {
     if (!m_notificationModel)
         return;
+    // The Center stays mapped through a service restart: absence shows its
+    // accessible unavailable state and the next `History()` repopulates it.
+    if (m_notificationCenter)
+        m_notificationCenter->setAvailable(available);
     if (available) {
         m_notificationClient->refresh();
     } else {
@@ -6780,8 +7217,17 @@ void ShellController::onNotificationBanners(const QByteArray &json)
 
 void ShellController::onNotificationHistory(const QByteArray &json)
 {
-    if (m_notificationModel)
-        m_notificationModel->applyHistoryJson(json);
+    if (!m_notificationModel)
+        return;
+    m_notificationModel->applyHistoryJson(json);
+    // The Center's active rows are derived only from the service's history
+    // fields (`reason`/`closedAt`/`suppressed`), never from the banner view.
+    if (m_notificationCenter) {
+        const bool available = m_notificationClient && m_notificationClient->isAvailable();
+        m_notificationCenter->setAvailable(available);
+        if (available)
+            m_notificationCenter->setHistory(m_notificationModel->history());
+    }
 }
 
 void ShellController::onNotificationFocusPolicy(const QByteArray &json)
@@ -6993,6 +7439,8 @@ void ShellController::showAppsDrawer()
 {
     if (!m_appsDrawerItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_appsDrawerOpen = true;
     m_appsDrawerPending = true;
     refreshAppsDrawer(true);
@@ -8090,6 +8538,7 @@ void ShellController::onChromeScaleChanged(qreal scale)
     if (qFuzzyCompare(m_chromeScale, safe))
         return;
     m_chromeScale = safe;
+    updateNotificationCenterGeometry();
     updateControlCenterGeometry();
     rerenderChrome();
 }
@@ -8108,6 +8557,8 @@ void ShellController::rerenderChrome()
         renderAppsDrawer();
     if (m_bannerPending)
         renderBanner();
+    if (m_notificationCenterPending)
+        renderNotificationCenter();
     if (m_controlCenterPending)
         renderControlCenter();
     if (m_osdActive)

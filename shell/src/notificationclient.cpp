@@ -274,33 +274,47 @@ void MockNotificationClient::notify(const QString &appName, const QString &summa
             { QStringLiteral("label"),
               i < actionLabels.size() ? actionLabels.at(i) : actionKeys.at(i) } });
     }
+    const QString effectiveUrgency =
+        urgency.isEmpty() ? QStringLiteral("normal") : urgency;
     const QJsonObject banner{
         { QStringLiteral("id"), static_cast<double>(id) },
         { QStringLiteral("appName"), appName },
         { QStringLiteral("appIcon"), QString() },
         { QStringLiteral("summary"), summary },
         { QStringLiteral("body"), body },
-        { QStringLiteral("urgency"),
-          urgency.isEmpty() ? QStringLiteral("normal") : urgency },
+        { QStringLiteral("urgency"), effectiveUrgency },
         { QStringLiteral("createdAt"), static_cast<double>(now) },
         { QStringLiteral("deadline"), static_cast<double>(now + 5000) },
         { QStringLiteral("actions"), actions },
     };
-    m_bannerId = id;
-    m_bannerJson = QJsonDocument(QJsonArray{ banner }).toJson(QJsonDocument::Compact);
+
+    // Mirror the service's Focus/DND admission rule (T-11.2a): off admits
+    // everything, focus admits critical urgency, dnd admits nothing without an
+    // allow list. A suppressed notification is still recorded in history and
+    // batched, but never replaces the active banner.
+    const bool admitted = m_focusMode == QLatin1String("off")
+        || (m_focusMode == QLatin1String("focus")
+            && effectiveUrgency == QLatin1String("critical"));
 
     // The history records the open entry immediately, exactly like the
     // service (reason/closedAt null until it leaves the queue).
     QJsonObject entry = banner;
     entry.insert(QStringLiteral("closedAt"), QJsonValue::Null);
     entry.insert(QStringLiteral("reason"), QJsonValue::Null);
+    entry.insert(QStringLiteral("suppressed"), !admitted);
     QJsonArray history = QJsonDocument::fromJson(m_historyJson).array();
     history.prepend(entry);
     m_historyJson = QJsonDocument(history).toJson(QJsonDocument::Compact);
 
-    m_expiry.stop();
-    m_expiry.setInterval(5000);
-    m_expiry.start();
+    if (admitted) {
+        m_bannerId = id;
+        m_bannerJson = QJsonDocument(QJsonArray{ banner }).toJson(QJsonDocument::Compact);
+        m_expiry.stop();
+        m_expiry.setInterval(5000);
+        m_expiry.start();
+    } else {
+        ++m_focusBatched;
+    }
     refresh();
     emit notified(id);
 }
