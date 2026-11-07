@@ -61,8 +61,9 @@ is its fallback ([ADR 0191](adr/0191-chrome-transport-render-control-and-shm-fal
 first slice added a read-only `zwp_linux_dmabuf_v1`/EGL capability probe and a
 `GpuChromeFrameProducer` render-control/FBO skeleton behind the T185 producer
 ([ADR 0194](adr/0194-gpu-chrome-probe-and-render-control-spike.md)). T186b
-adds the opt-in Dock transport: with `DRAGONFRUIT_CHROME_GPU=1` and a host
-`WAYLAND_DISPLAY`, the shell uses the Wayland QPA for the Qt GL context only,
+adds the GPU-first Dock transport: unless `DRAGONFRUIT_CHROME_GPU` is
+`0`/`off`/`false`, and with a host `WAYLAND_DISPLAY`, the shell uses the
+Wayland QPA for the Qt GL context only,
 renders every chrome scene through the GPU producer, and exports the Dock's
 FBO as a dmabuf (EGLImage + `eglExportDMABUFImageMESA`, exact
 FourCC/modifier from the compositor feedback, `y_invert` for the GL origin).

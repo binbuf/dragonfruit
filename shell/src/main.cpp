@@ -28,12 +28,14 @@ int main(int argc, char *argv[])
         fprintf(stderr, "dragonfruit-shell: %s\n", message.toLocal8Bit().constData());
     });
 
-    // The private protocol connection is ours, so the default QPA is the
-    // offscreen platform. The T-21.1d GPU rail needs a GL-capable Qt platform:
-    // when `DRAGONFRUIT_CHROME_GPU` is opt-in and a host Wayland display is
-    // present, use the Wayland QPA for the Qt-side GL context only. The chrome
-    // surfaces stay on the shell's own libwayland connection (ADR 0195); no
-    // QQuickWindow is shown, so the QPA creates no toplevel.
+    // The private protocol connection is ours, so the shell does not need a
+    // QPA of its own unless the GPU rail can run. GPU-first: when the
+    // transport is requested (the default, unless `DRAGONFRUIT_CHROME_GPU`
+    // is 0/off/false) and a host Wayland display is present, use the Wayland
+    // QPA for the Qt-side GL context only. The chrome surfaces stay on the
+    // shell's own libwayland connection (ADR 0195); no QQuickWindow is shown,
+    // so the QPA creates no toplevel. A missing/no-GPU host falls back to the
+    // offscreen software rail in the producer.
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
         if (GpuChromeFrameProducer::environmentRequested()
             && !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
