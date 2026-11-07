@@ -514,6 +514,16 @@ QStringList SettingsBridge::keys() const
     return m_client->values().keys();
 }
 
+QUrl SettingsBridge::helpUrl(const QString &topic) const
+{
+    QUrl url = mapDocUrl();
+    if (url.isEmpty())
+        return {};
+    if (!topic.trimmed().isEmpty())
+        url.setFragment(topic.trimmed());
+    return url;
+}
+
 QString SettingsBridge::localPathFromUri(const QString &uri)
 {
     const QUrl url(uri);

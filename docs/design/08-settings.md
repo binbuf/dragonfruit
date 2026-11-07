@@ -109,6 +109,54 @@ Map** document; the debug view shows the selected pane's owner/absence/deep
 link and every row's owner/key/absence/state. See ADR
 [0231](adr/0231-executable-settings-map.md).
 
+## Search, deep links, and row anatomy (T223)
+
+`apps/settings/SettingsSearch.qml` is the one local Settings index. It is built
+once from the executable map and the pane catalog: every shipped pane title,
+every map section, and every shipped row, plus synonyms and help text (the row's
+owner, key/API, absence kind, and the pane's absence note). Unshipped panes and
+`planned`/`omitted` rows are not indexed, so search can never advertise a
+half-pane. Search is a pure synchronous scan — no bus, daemon, or separate
+search service.
+
+Ranking is field-weighted: exact label, label prefix, word start, substring,
+then synonyms, section, pane title, and help text. A pane whose own name matches
+sorts first, so `display` opens Displays before an Accessibility row called
+Display, and `battery` opens Battery before the menu-bar Battery checkbox.
+Technical key/control terms are weighted below the user's words.
+
+The result list (`SettingsSearchResults.qml`) replaces the sidebar pane list
+while the search field has text. It shows pane, section, and row results, is a
+real AT-SPI list, and supports Up/Down/Home/End/Return/Escape; Down from the
+search field hands focus to the list. An empty query restores the sidebar and a
+no-match query shows an explicit "No results" state.
+
+A result carries a `settings://pane/<id>` or
+`settings://pane/<id>/row/<rowId>` deep link. The shell accepts a row link only
+when the map knows the row and marks it shipped, swaps the pane, then finds the
+rendered `SettingsRow` by `settingsId` first and label/synonym second. It
+scrolls the detail view to the row, paints an accent wash, and moves keyboard
+focus into the row's control. A row that is custom pane chrome rather than a
+`SettingsRow` lands on its `SettingsGroup` section, and a section-less pane
+lands at its top; a result is never a dead link. Back/forward remain pane
+history, not row history.
+
+`SettingsRow` owns the one row anatomy: label, description, control, disclosure
+chevron, trailing action, and help affordance. `settingsId`, `owner`, and
+`settingsKey` link a rendered row back to the map, and `highlighted` is the
+deep-link landing state. Long labels elide and long descriptions wrap; the
+control slot stays inside the row. `SettingsGroup` carries `sectionId` for
+section-level landings.
+
+The bottom-right `?` help control opens
+`Settings.helpUrl(paneId)` — the business-logic map with a `#pane-<id>` anchor
+— and disables when the document is not installed, rather than opening a dead
+link. The four reference header panes (General, Accessibility, Notifications,
+Privacy & Security) keep their header card; settings-list panes stay headerless.
+See ADR [0232](adr/0232-settings-search-and-deep-links.md). The deterministic
+visual check is `make t223-settings-search-capture`
+(`docs/captures/t223-settings-{search,deep-link,long-strings}.png`).
+
 ## Category icons (T-19.1b)
 
 The Settings sidebar rows and the detail-pane header card draw their icons as

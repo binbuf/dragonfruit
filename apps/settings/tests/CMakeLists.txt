@@ -573,6 +573,29 @@ set_tests_properties(tst_settings_map PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Settings search/deep-link/row-anatomy tests (T223): the local index covers
+# panes/sections/rows with synonyms and help text, results rank and deep-link,
+# keyboard navigation and history work, and long strings never clip a control.
+qt_add_executable(tst_settings_search
+    tst_settings_search.cpp
+)
+target_link_libraries(tst_settings_search PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_search)
+
+add_test(
+    NAME tst_settings_search
+    COMMAND tst_settings_search
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_search.qml
+)
+set_tests_properties(tst_settings_search PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Absent-provider matrix tests (T-09.6b): with no settingsd and no
 # xdg-desktop-portal, every shipped pane still renders and every control stays
 # functional on the schema defaults, and only a pane with a real body is
