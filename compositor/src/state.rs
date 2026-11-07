@@ -33,9 +33,13 @@ use smithay::desktop::{
 use smithay::reexports::calloop::{LoopHandle, LoopSignal, RegistrationToken};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+use smithay::reexports::wayland_protocols_misc::server_decoration::server::{
+    org_kde_kwin_server_decoration::{Mode as KdeDecorationMode, OrgKdeKwinServerDecoration},
+    org_kde_kwin_server_decoration_manager::Mode as KdeDefaultMode,
+};
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
 use smithay::reexports::wayland_server::protocol::{wl_buffer, wl_seat, wl_surface::WlSurface};
-use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource as _};
+use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource as _, WEnum};
 use smithay::utils::{
     Buffer, Clock, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Serial, Size,
     SERIAL_COUNTER,
@@ -72,6 +76,7 @@ use smithay::wayland::selection::data_device::{
 use smithay::wayland::selection::wlr_data_control::{DataControlHandler, DataControlState};
 use smithay::wayland::selection::SelectionHandler;
 use smithay::wayland::session_lock::{SessionLockHandler, SessionLockManagerState, SessionLocker};
+use smithay::wayland::shell::kde::decoration::{KdeDecorationHandler, KdeDecorationState};
 use smithay::wayland::shell::xdg::{
     decoration::{XdgDecorationHandler, XdgDecorationState}, PopupSurface, PositionerState,
     SurfaceCachedState, ToplevelSurface, XdgShellHandler, XdgShellState, XdgToplevelSurfaceData,
@@ -695,6 +700,16 @@ pub struct DfState {
     dmabuf_formats: Vec<smithay::backend::allocator::Format>,
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
+    /// KDE's legacy server-decoration global. GTK 3 on Wayland reads its
+    /// manager default mode (not `xdg-decoration`) to decide whether to draw
+    /// CSD, so advertising it with `Server` is what lets GTK 3 windows get
+    /// the compositor titlebar and its left-side traffic lights.
+    pub kde_decoration_state: KdeDecorationState,
+    /// Decoration tier recorded by the KDE server-decoration protocol for
+    /// surfaces that have not mapped yet. GTK 3 creates the object before its
+    /// first buffer, so the map path consults this before falling back to
+    /// `xdg-decoration`.
+    kde_decorations: HashMap<WlSurface, DecorationTier>,
     pub viewporter_state: ViewporterState,
     pub fractional_scale_state: FractionalScaleManagerState,
     pub output_manager_state: OutputManagerState,
@@ -982,6 +997,12 @@ impl DfState {
         let shm_state = ShmState::new::<DfState>(display_handle, Vec::new());
         let xdg_shell_state = XdgShellState::new::<DfState>(display_handle);
         let xdg_decoration_state = XdgDecorationState::new::<DfState>(display_handle);
+        // GTK 3 Wayland checks this manager's default mode, not
+        // `xdg-decoration`, when deciding whether to use CSD. Server is the
+        // desktop's preference; a client that explicitly requests Client is
+        // still honored by the handler below.
+        let kde_decoration_state =
+            KdeDecorationState::new::<DfState>(display_handle, KdeDefaultMode::Server);
         let viewporter_state = ViewporterState::new::<DfState>(display_handle);
         let fractional_scale_state = FractionalScaleManagerState::new::<DfState>(display_handle);
         let output_manager_state =
@@ -1038,6 +1059,8 @@ impl DfState {
             dmabuf_formats: Vec::new(),
             xdg_shell_state,
             xdg_decoration_state,
+            kde_decoration_state,
+            kde_decorations: HashMap::new(),
             viewporter_state,
             fractional_scale_state,
             output_manager_state,
@@ -5383,6 +5406,14 @@ impl XdgDecorationHandler for DfState {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(DecorationMode::ServerSide);
         });
+        // A client may create the decoration object after its initial
+        // xdg-shell configure (some toolkits do so lazily). Apply the tier
+        // now, not only at map time, and send the decoration configure the
+        // client is waiting for; otherwise a mapped window can keep its CSD
+        // while the compositor believes it is SSD — or the client can stop
+        // drawing controls and get none at all.
+        self.apply_decoration_mode(&toplevel);
+        let _ = toplevel.send_configure();
     }
 
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {

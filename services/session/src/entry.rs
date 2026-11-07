@@ -162,6 +162,7 @@ mod tests {
             "XDG_SESSION_TYPE",
             "WAYLAND_DISPLAY",
             "DISPLAY",
+            "GTK_CSD",
             "DRAGONFRUIT_LAUNCH_TOKEN",
             "DRAGONFRUIT_DEV_RETURN",
             "DRAGONFRUIT_DEV_BIN",

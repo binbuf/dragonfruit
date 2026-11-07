@@ -21,6 +21,9 @@ RestartSec=1
 Environment=XDG_CURRENT_DESKTOP=dragonfruit
 Environment=XDG_SESSION_TYPE=wayland
 Environment=WAYLAND_DISPLAY=dragonfruit-wayland
+# Ask GTK 3 clients launched by the shell to use server-side decorations, so
+# the compositor draws the left-side traffic lights.
+Environment=GTK_CSD=0
 PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
 
 [Install]

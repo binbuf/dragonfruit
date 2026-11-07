@@ -44,12 +44,12 @@ fn unique_path(label: &str) -> PathBuf {
     ))
 }
 
-/// `sh` writes the five contract variables, one per line, to `$1`.
+/// `sh` writes the six contract variables, one per line, to `$1`.
 fn probe_args(out: &Path) -> Vec<String> {
     vec![
         "-c".to_string(),
         "printf '%s\\n' \"$XDG_CURRENT_DESKTOP\" \"$XDG_SESSION_TYPE\" \
-         \"$WAYLAND_DISPLAY\" \"$DISPLAY\" \"$DRAGONFRUIT_LAUNCH_TOKEN\" > \"$1\""
+         \"$WAYLAND_DISPLAY\" \"$DISPLAY\" \"$GTK_CSD\" \"$DRAGONFRUIT_LAUNCH_TOKEN\" > \"$1\""
             .to_string(),
         "sh".to_string(),
         out.to_string_lossy().into_owned(),
@@ -88,6 +88,7 @@ fn a_trusted_child_sees_the_whole_session_environment() {
             env::WAYLAND_SESSION_TYPE,
             "df-env-test",
             ":7",
+            env::GTK_CSD_DISABLED,
             token.as_str(),
         ],
         "every contract variable reached the child: {contents:?}"
@@ -261,6 +262,10 @@ fn print_env_without_armed_state_leaves_the_return_unset() {
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).expect("env output is UTF-8");
     assert!(!text.contains("DRAGONFRUIT_DEV_RETURN"), "{text}");
+    assert!(
+        text.lines().any(|line| line == "GTK_CSD=0"),
+        "the session must steer GTK to server-side decorations: {text}"
+    );
 }
 
 #[test]

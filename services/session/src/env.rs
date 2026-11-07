@@ -10,6 +10,11 @@
 //!   and services all connect to this session.
 //! * `DISPLAY=<:N>` — the Xwayland display, when one exists (Wayland-only
 //!   sessions leave it unset).
+//! * `GTK_CSD=0` — ask GTK 3 to use server-side decorations, so cooperative
+//!   GTK applications get the compositor titlebar with the left-side traffic
+//!   lights instead of drawing their own headerbar. GTK 4/libadwaita may still
+//!   draw CSD; the `gtk-decoration-layout` steering in [`crate::toolkit`]
+//!   covers that case.
 //!
 //! Trusted processes additionally get `DRAGONFRUIT_LAUNCH_TOKEN`:
 //!
@@ -37,6 +42,11 @@ pub const SESSION_TYPE: &str = "XDG_SESSION_TYPE";
 pub const WAYLAND_DISPLAY: &str = "WAYLAND_DISPLAY";
 /// `DISPLAY`; the Xwayland display, when one exists.
 pub const DISPLAY: &str = "DISPLAY";
+/// `GTK_CSD`; `0` asks GTK 3 to use server-side decorations. The compositor
+/// then draws the left-side traffic lights instead of the client's headerbar.
+pub const GTK_CSD: &str = "GTK_CSD";
+/// The value that disables GTK client-side decorations.
+pub const GTK_CSD_DISABLED: &str = "0";
 /// `DRAGONFRUIT_LAUNCH_TOKEN`; the one-time private-protocol token.
 pub const LAUNCH_TOKEN: &str = "DRAGONFRUIT_LAUNCH_TOKEN";
 /// `DRAGONFRUIT_DEV_RETURN`; the desktop the real-session harness should
@@ -151,6 +161,7 @@ impl SessionEnvironment {
             ),
             (SESSION_TYPE.to_string(), WAYLAND_SESSION_TYPE.to_string()),
             (WAYLAND_DISPLAY.to_string(), self.socket_name.clone()),
+            (GTK_CSD.to_string(), GTK_CSD_DISABLED.to_string()),
         ];
         if let Some(display) = &self.x11_display {
             env.push((DISPLAY.to_string(), display.clone()));
@@ -248,7 +259,18 @@ mod tests {
             Some(DEFAULT_SOCKET_NAME)
         );
         assert_eq!(env.base_value(DISPLAY).as_deref(), Some(":0"));
+        assert_eq!(env.base_value(GTK_CSD).as_deref(), Some("0"));
         assert_eq!(env.base_value(LAUNCH_TOKEN), None, "not trusted by default");
+    }
+
+    #[test]
+    fn gtk_clients_are_steered_to_server_side_decorations() {
+        // GTK 3 reads GTK_CSD at startup; 0 makes it request SSD, where our
+        // compositor draws the left-side close/minimize/maximize lights.
+        assert_eq!(GTK_CSD, "GTK_CSD");
+        assert_eq!(GTK_CSD_DISABLED, "0");
+        let env = SessionEnvironment::default_socket();
+        assert_eq!(env.base_value(GTK_CSD).as_deref(), Some("0"));
     }
 
     #[test]

@@ -63,6 +63,8 @@ eval "$("$session_bin" --print-env --socket-name "$socket")"
 # layout from the toolkit settings, not from the compositor. Apply the
 # desktop's left-side layout before any app can launch. Best-effort — the
 # settings.ini/keyfile fallbacks are written even when gsettings is absent.
+# `--print-env` also exported GTK_CSD=0 above, which asks GTK 3 to use
+# server-side decorations so the compositor draws the traffic lights.
 "$session_bin" --sync-toolkit >/dev/null 2>&1 || true
 
 # An installed session carries its QML modules under the install prefix; a
@@ -84,7 +86,7 @@ fi
 # can never leak into the host desktop's user manager.
 "$systemctl" --user import-environment \
     XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY \
-    DISPLAY DRAGONFRUIT_LAUNCH_TOKEN DRAGONFRUIT_DEV_RETURN DRAGONFRUIT_DEV_BIN \
+    DISPLAY GTK_CSD DRAGONFRUIT_LAUNCH_TOKEN DRAGONFRUIT_DEV_RETURN DRAGONFRUIT_DEV_BIN \
     XDG_SESSION_ID XDG_SESSION_DESKTOP XDG_SESSION_CLASS XDG_SESSION_PATH \
     XDG_VTNR XDG_SEAT QML_IMPORT_PATH QML2_IMPORT_PATH
 

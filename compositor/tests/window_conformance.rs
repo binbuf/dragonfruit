@@ -81,6 +81,8 @@ struct TestClient {
     /// Serial of each pointer button press delivered to the client.
     pointer_button_serials: Vec<u32>,
     toplevel_configures: Vec<ToplevelConfigure>,
+    /// Decoration modes delivered by `zxdg_toplevel_decoration_v1.configure`.
+    decoration_configures: Vec<zxdg_toplevel_decoration_v1::Mode>,
     popup_configures: Vec<PopupConfigure>,
     /// Number of `xdg_toplevel.close` events delivered (T-01.2 close control).
     toplevel_close_count: usize,
@@ -346,13 +348,18 @@ impl Dispatch<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, ()> for TestC
 
 impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for TestClient {
     fn event(
-        _: &mut Self,
+        state: &mut Self,
         _: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
-        _: zxdg_toplevel_decoration_v1::Event,
+        event: zxdg_toplevel_decoration_v1::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        if let zxdg_toplevel_decoration_v1::Event::Configure { mode } = event {
+            if let Ok(mode) = mode.into_result() {
+                state.decoration_configures.push(mode);
+            }
+        }
     }
 }
 
@@ -1488,6 +1495,68 @@ fn unnegotiated_toplevel_defaults_to_self_decoration() {
     assert_eq!(window.titlebar, (0, 0, 0, 0));
     assert_eq!((window.content.2, window.content.3), (WINDOW_W, WINDOW_H));
 
+    toplevel.destroy();
+    xdg_surface.destroy();
+    surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// A decoration object created after the initial xdg-shell configure must
+/// still negotiate SSD: the compositor sends the decoration configure the
+/// client is waiting for and retrofits the titlebar to the already-mapped
+/// window. Without this a lazily-created decoration leaves the client on its
+/// own CSD (or with no controls at all).
+#[test]
+fn late_decoration_object_negotiates_ssd_on_a_mapped_window() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-late-decoration-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-late-decoration",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Map first with no decoration object: the client is Tier 3.
+    let (surface, xdg_surface, toplevel, file) = map_toplevel_unnegotiated(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports.len() == 1 && !reports[0].server_side
+    });
+    let window = reports[0].window;
+
+    // Create the decoration object only now, as a lazy toolkit may.
+    let manager = state
+        .decoration_manager
+        .clone()
+        .expect("zxdg_decoration_manager_v1 not advertised");
+    let decoration = manager.get_toplevel_decoration(&toplevel, &queue.handle(), ());
+    queue.roundtrip(&mut state).expect("decoration configure");
+
+    assert!(
+        state
+            .decoration_configures
+            .contains(&zxdg_toplevel_decoration_v1::Mode::ServerSide),
+        "the compositor must answer a late decoration object with its SSD \
+         preference: {:?}",
+        state.decoration_configures
+    );
+
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.server_side
+    });
+    assert_eq!(report.titlebar.3, TITLEBAR_HEIGHT);
+    assert_eq!(report.titlebar.1 + report.titlebar.3, report.content.1);
+
+    decoration.destroy();
     toplevel.destroy();
     xdg_surface.destroy();
     surface.destroy();

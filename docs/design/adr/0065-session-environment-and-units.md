@@ -57,3 +57,13 @@ harness (T-12.6) all consume, so they are fixed here.
   `DRAGONFRUIT_LAUNCH_TOKEN` and writes the hand-off file (`shell::provision`).
 - The `--wait-socket` helper uses file existence, not a connect test; a stale
   socket path is the compositor's teardown bug, not the gate's.
+
+## Amendment (2026-11)
+
+The base environment also carries `GTK_CSD=0`. GTK 3 reads it at startup and
+requests server-side decoration, so the compositor draws the left-side
+close/minimize/maximize titlebar instead of the client's headerbar. The
+session entry imports it with the other base variables. This is a toolkit
+compatibility default, not a session-identity variable; GTK 4/libadwaita may
+ignore it and remains covered by the `gtk-decoration-layout` steering in
+[05-window-decorations.md](../05-window-decorations.md).
