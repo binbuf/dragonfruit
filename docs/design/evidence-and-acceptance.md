@@ -5,7 +5,7 @@
 | **Status** | target process |
 | **Date** | 2026-11-06 |
 | **Scope** | how total-experience claims are captured, measured, reviewed, and gated |
-| **Related** | [22-total-experience.md](22-total-experience.md), [motion/feedback](motion-and-feedback.md), `macos-liquid-glass-review/docs/CAPTURE-PLAN.md`, [STATUS.md](STATUS.md) |
+| **Related** | [22-total-experience.md](22-total-experience.md), [motion/feedback](motion-and-feedback.md), [experience schema](experience-schema.md), `macos-liquid-glass-review/docs/CAPTURE-PLAN.md`, [STATUS.md](STATUS.md) |
 
 ## 1. Why this process exists
 
@@ -39,6 +39,12 @@ Nested screenshots are **reference evidence**, never native proof. A still of a
 nested session does not prove the DRM path, HiDPI sharpness, or the cursor.
 
 ## 3. Artifact schema
+
+The canonical machine-readable schema is
+[experience-schema.md](experience-schema.md) and
+`docs/captures/experience-schema.json`; the manifest is
+`docs/captures/experience-manifest.json`. The example below is the shape the
+contract preserves, not a second schema.
 
 Every artifact has an entry in a manifest:
 
@@ -174,7 +180,10 @@ A release is accepted when:
 
 ## 6. Tolerances
 
-Starting points; refine in the implementing task.
+Starting points; refine in the implementing task. The resolved per-surface
+contract is `docs/captures/experience-thresholds.json` (profiles plus
+per-surface overrides); this table is the source for those values. Tighten a
+value with a design note; never silently loosen one.
 
 | Dimension | Tolerance |
 |---|---|
@@ -281,6 +290,9 @@ Do not mark a task done with an unrecorded `OPEN` row.
 - **Distro:** build on Fedora/Ubuntu/Debian/Arch; install/smoke on VMs.
 - **Native:** separate hardware rail; not required for every PR.
 - **Docs:** link check, ADR uniqueness, naming gate, asset manifest check.
+- **Experience contract:** `make experience-schema-check` validates the
+  surface/state/axis schema, the full capture/test/OPEN mapping, capture
+  hashes, and the per-surface thresholds; it prints the coverage summary.
 
 The CI must not require a Mac or a GPU for the ordinary test suite.
 

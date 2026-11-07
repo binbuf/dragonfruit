@@ -992,12 +992,18 @@ def main():
     )
     add("")
     add(
-        "**Known follow-up (T193):** the full GPU rail crashes the shell during"
-        " Mission Control teardown (`GpuChromeFrameProducer::destroySlotResources`"
-        " after null `Shadow.qml` material state). This run excludes the"
-        " overview surface from the GPU rail so the rest of the scenario set"
-        " completes; the overview row is the visible shm fallback. See the run"
-        " notes above for the backtrace and the reproduction command."
+        "**Full-rail verification (T192c):** the T192b Mission Control"
+        " teardown crash is fixed. The shell no longer deletes windows that"
+        " the chrome producers own, and the producer destroys its slot"
+        " targets before `QQuickRenderControl::invalidate()`. A verification"
+        " run with the overview surface included"
+        " (`CHROME_GPU_SURFACES=dock,dock-popup,menubar,menubar-popup,overview`)"
+        " and the 10-window Mission Control scenario completes and tears down"
+        " cleanly with zero shm commits and zero copy bytes. The measured run"
+        " keeps the overview on the deliberate shm fallback so the fallback"
+        " rate stays visible next to the dmabuf rows; the zero-fallback"
+        " full-rail evidence is"
+        " `docs/captures/t21-presentation-bench-fullrail.txt`."
     )
     add("")
 

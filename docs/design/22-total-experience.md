@@ -6,7 +6,7 @@
 | **Date** | 2026-11-06 |
 | **Release** | v0.2.0 |
 | **Scope** | every core shell surface, interaction, animation, HUD, menu-bar extra, and System Settings pane |
-| **Related** | [Track 22](tracks/22-total-experience-parity.md), [settings map](settings-business-logic-map.md), [distro contract](distro-compatibility.md), [naming/licensing](interface-naming-and-licensing.md), [motion/feedback](motion-and-feedback.md), [evidence/acceptance](evidence-and-acceptance.md) |
+| **Related** | [Track 22](tracks/22-total-experience-parity.md), [settings map](settings-business-logic-map.md), [distro contract](distro-compatibility.md), [naming/licensing](interface-naming-and-licensing.md), [motion/feedback](motion-and-feedback.md), [evidence/acceptance](evidence-and-acceptance.md), [experience schema](experience-schema.md) |
 
 ## 1. Why this design exists
 
@@ -69,7 +69,10 @@ implementation without changing the mental model.
    second source of truth.
 2. **Evidence before implementation.** Every geometry, timing, material, label,
    and state comes from a capture or a named host API. If evidence is missing,
-   the task writes `OPEN`; it does not invent a value.
+   the task writes `OPEN`; it does not invent a value. The machine-readable
+   inventory, axes, evidence class, and per-surface thresholds are the
+   [experience schema](experience-schema.md); `make experience-schema-check`
+   keeps every state mapped to a capture, a test, or an `OPEN` row.
 3. **Vertical slices.** A task crosses compositor → shell → service → app where
    needed, so integration failures surface early.
 4. **No dead affordances.** Every click, key, gesture, and menu row either does
@@ -496,6 +499,7 @@ third-party substitutions are listed in
 - [Interface naming and licensing](interface-naming-and-licensing.md)
 - [Motion and feedback](motion-and-feedback.md)
 - [Evidence and acceptance](evidence-and-acceptance.md)
+- [Experience schema and thresholds](experience-schema.md)
 - [macOS surface inventory](../reference/desktop-experience-inventory.md)
 - [Existing shell design](04-shell.md)
 - [Existing workspaces design](03-workspaces.md)

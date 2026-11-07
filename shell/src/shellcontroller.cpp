@@ -381,20 +381,15 @@ ShellController::~ShellController()
     // The opt-in transport counters land on the clean-exit path too; SIGUSR1
     // remains the per-scenario trigger (T-21.1a).
     ChromeStats::instance().emitStats(QStringLiteral("exit"));
-    delete m_notificationCenterWindow;
-    delete m_controlCenterWindow;
-    delete m_osdWindow;
-    delete m_bannerWindow;
-    delete m_switcherWindow;
-    delete m_appsDrawerWindow;
-    delete m_overviewWindow;
-    delete m_chooserWindow;
-    delete m_screenshotWindow;
-    delete m_screencastWindow;
-    delete m_polkitWindow;
-    delete m_lockWindow;
-    delete m_dockWindow;
-    delete m_window;
+    // The producers own their QQuickWindows: a render-control window is a
+    // child of the render control, and the software producer's destructor
+    // deletes its own window. Delete the producers here (before the QML
+    // engine is torn down) instead of deleting the windows and leaving the
+    // producers with dangling window pointers. That double ownership was the
+    // T192b full-rail teardown crash and made a failed start unrecoverable.
+    const QList<ChromeFrameProducer *> producers = m_producers.values();
+    m_producers.clear();
+    qDeleteAll(producers);
 }
 
 QString ShellController::lastError() const

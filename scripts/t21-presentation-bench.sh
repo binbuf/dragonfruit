@@ -41,12 +41,11 @@ MATRIX_REFRESHES="${MATRIX_REFRESHES:-60 120 240}"
 KEEP_SCRATCH="${KEEP_SCRATCH:-0}"
 SKIP_NATIVE="${SKIP_NATIVE:-0}"
 SKIP_TIERS="${SKIP_TIERS:-0}"
-# The default GPU rail includes the overview surface. On this tree the
-# overview's GPU producer crashes the shell during Mission Control teardown
-# (SIGSEGV in GpuChromeFrameProducer::destroySlotResources, with null
-# Shadow.qml material warnings). T192b records that as a follow-up and keeps
-# the benchmark's measured surfaces on the GPU rail; the overview row is shm.
-# Set CHROME_GPU_SURFACES=all to reproduce the full-rail crash.
+# Keep the overview surface on the pooled-shm fallback so every run carries a
+# visible, counted fallback row next to the dmabuf rows. T192c fixed the
+# T192b full-rail teardown crash, so `CHROME_GPU_SURFACES=all` is now a valid
+# verification run; it still falls back to shm for Mission Control on this
+# host, which is why the measured set uses the explicit surface list.
 CHROME_GPU_SURFACES="${CHROME_GPU_SURFACES:-dock,dock-popup,menubar,menubar-popup}"
 SCRATCH="${SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/dragonfruit-t21-bench.XXXXXX")}"
 HOST_INFO="$SCRATCH/host-info.txt"
@@ -133,11 +132,12 @@ stop_session() {
     SESSION_ACTIVE=0
 }
 
-start_session() {
+start_session_once() {
     local name="$1" refresh="$2"
     local log_dir="$RAW_DIR/$name"
     local scratch_dir="$SCRATCH/$name"
     local bus_info bus_addr
+    SESSION_ACTIVE=1
     SOCKET="dragonfruit-t21-bench-${name}-$$"
     SYNTH="$XDG_RUNTIME_DIR/$SOCKET.synth"
     SHOTS="$scratch_dir/shots"
@@ -153,7 +153,7 @@ start_session() {
     BUS_PID="$(printf '%s\n' "$bus_info" | sed -n '2p')"
     if [ -z "$bus_addr" ] || [ -z "$BUS_PID" ]; then
         echo "t21-presentation-bench: private session bus did not start" >&2
-        exit 1
+        return 1
     fi
 
     SESSION_ENV=(
@@ -178,31 +178,33 @@ start_session() {
         target/debug/dragonfruit-compositor --backend nested --socket-name "$SOCKET" \
         >"$log_dir/compositor.txt" 2>&1 &
     COMP_PID=$!
-    SESSION_ACTIVE=1
     if ! t21_wait_for_file "$XDG_RUNTIME_DIR/$SOCKET" 300 0.1; then
         echo "t21-presentation-bench: compositor socket never appeared; log:" >&2
         tail -30 "$log_dir/compositor.txt" >&2
-        exit 1
+        return 1
     fi
     if ! t21_wait_for_file "$SYNTH" 100 0.1; then
         echo "t21-presentation-bench: synthetic-input socket never appeared; log:" >&2
         tail -30 "$log_dir/compositor.txt" >&2
-        exit 1
+        return 1
     fi
 
-    # Core dev services: the shell's Dock identity and menu model use them.
-    # They are best-effort; the shell degrades when one is missing.
-    for service in dragonfruit-app-index dragonfruit-menu-broker; do
+    # Core dev services: settingsd is the shell's only settings source and
+    # app-index/menu-broker supply the Dock identity and global menu. They are
+    # best-effort; the shell degrades when one is missing, but a missing
+    # settingsd makes the first start wait on D-Bus timeouts.
+    for service in dragonfruit-settingsd dragonfruit-app-index dragonfruit-menu-broker; do
         if [ -x "target/debug/$service" ]; then
             env "${SESSION_ENV[@]}" WAYLAND_DISPLAY="$SOCKET" \
                 "target/debug/$service" >"$log_dir/$service.txt" 2>&1 &
             SERVICE_PIDS="$SERVICE_PIDS $!"
         fi
     done
-    # Wait for the two service names before starting the shell; the shell's
-    # own client still tolerates their absence.
+    # Wait for the service names before starting the shell; the shell's own
+    # client still tolerates their absence.
     if command -v gdbus >/dev/null 2>&1; then
-        for name in org.dragonfruit.AppIndex1 org.dragonfruit.MenuBroker1; do
+        for name in org.dragonfruit.Settings1 org.dragonfruit.AppIndex1 \
+                    org.dragonfruit.MenuBroker1; do
             for _ in $(seq 1 100); do
                 if gdbus call --session --dest org.freedesktop.DBus \
                     --object-path /org/freedesktop/DBus \
@@ -235,16 +237,34 @@ start_session() {
         if ! kill -0 "$SHELL_PID" 2>/dev/null; then
             echo "t21-presentation-bench: shell exited early; log:" >&2
             tail -40 "$log_dir/shell.txt" >&2
-            exit 1
+            return 1
         fi
         sleep 0.1
     done
     if ! grep -aq "menu bar configured" "$log_dir/shell.txt" 2>/dev/null; then
         echo "t21-presentation-bench: shell never configured its menu bar; log:" >&2
         tail -40 "$log_dir/shell.txt" >&2
-        exit 1
+        return 1
     fi
     sleep "$SETTLE"
+}
+
+# A live host can close the nested compositor window (or a first shell start
+# can lose a race) between sessions. Retry the whole session a couple of
+# times instead of aborting the benchmark; the raw logs are overwritten per
+# attempt and the final attempt is the one the report reads.
+start_session() {
+    local name="$1" refresh="$2"
+    local attempt
+    for attempt in 1 2 3; do
+        if start_session_once "$name" "$refresh"; then
+            return 0
+        fi
+        echo "t21-presentation-bench: session $name failed (attempt $attempt/3); retrying" >&2
+        stop_session
+        sleep 2
+    done
+    return 1
 }
 
 run_driver() {
@@ -353,41 +373,24 @@ cat >"$SCRATCH/run-notes.txt" <<EOF
 
 The measured chrome surfaces use the GPU dmabuf rail:
 \`DRAGONFRUIT_CHROME_GPU_SURFACES=$CHROME_GPU_SURFACES\`.
-The overview surface is excluded because the full GPU rail crashes the shell
-during Mission Control in this tree (finding below); the overview row is
-therefore the pooled-shm fallback with reason \`not-selected\`, and its copy
-bytes are counted in the shm column.
+The overview surface is deliberately kept on the pooled-shm fallback
+(\`reason=not-selected\`) so this run carries a visible fallback row; its copy
+bytes are counted in the shm column and are never averaged into a dmabuf row.
 
-## Finding: full GPU rail + Mission Control teardown crash
+## T192b full-rail teardown finding (fixed in T192c)
 
-With the default full GPU rail (\`CHROME_GPU_SURFACES=all\`), the shell
-segfaults during the Mission Control scenario. The core backtrace is:
-
-\`\`\`text
-#0 QQuickRenderTarget::operator=(QQuickRenderTarget const&)
-#1 QQuickWindow::setRenderTarget(QQuickRenderTarget const&)
-#2 GpuChromeFrameProducer::destroySlotResources(int)
-#3 GpuChromeFrameProducer::releaseGpu()
-#4 GpuChromeFrameProducer::~GpuChromeFrameProducer()
-#5 ShellController::~ShellController()
-#6 main
-\`\`\`
-
-The shell log immediately before the crash is full of
-\`qrc:/Dragonfruit/components/Shadow.qml:27/28: TypeError: Cannot read
-property 'offsetY'/'layers' of null\`, so the overview surface's material
-state is null before the GPU producer tears down. This is a real
-shell/GPU-overview regression found by the benchmark, not a benchmark-script
-bug. It is out of T192b's scope (T192b does not fix regressions); file it as a
-T193 follow-up. Reproduce with:
-
-\`\`\`bash
-CHROME_GPU_SURFACES=all make t21-presentation-bench
-\`\`\`
-
-The workaround above keeps every measured scenario on the GPU rail except the
-overview surface, so the rest of the benchmark is unblocked and the fallback is
-visible rather than hidden.
+T192b recorded a shell segfault at Mission Control teardown when the overview
+surface was on the GPU rail. The core backtrace ran through
+\`GpuChromeFrameProducer::destroySlotResources\` and
+\`QQuickRenderControl::invalidate()\`, and the shell also deleted windows that
+the producers own. T192c fixed the producer/window ownership and the
+invalidate ordering. A full-rail verification run with the overview included
+(\`CHROME_GPU_SURFACES=dock,dock-popup,menubar,menubar-popup,overview\`,
+10-window Mission Control) completes and tears down cleanly with zero shm
+commits and zero copy bytes. The measured run below still keeps the overview
+on the shm fallback so the fallback rate stays visible next to the dmabuf
+rows; the full-rail run is the separate zero-fallback verification, recorded
+in \`docs/captures/t21-presentation-bench-fullrail.txt\`.
 
 ## Live visual check
 

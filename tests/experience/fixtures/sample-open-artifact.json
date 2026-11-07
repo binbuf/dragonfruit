@@ -1,0 +1,24 @@
+{
+  "id": "N-STAGE-01",
+  "surface": "N-STAGE",
+  "state": "off",
+  "summary": "Stage off",
+  "evidence_class": "still",
+  "axes": "open-intended",
+  "trigger": "make t17-navigation-capture after T242",
+  "acceptance": {
+    "dimensions": [
+      "geometry",
+      "motion",
+      "contrast"
+    ],
+    "metric": "Stage/tiling state matches the macOS reference."
+  },
+  "verification": {
+    "kind": "open",
+    "reason": "Stage and window tiling are design-only (T242).",
+    "rerun": "make t17-navigation-capture after T242",
+    "owner": "T242"
+  },
+  "status": "open"
+}
