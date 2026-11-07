@@ -23,7 +23,7 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 
 - [x] T203 — Distinguish Control Center panel and module materials → [203-glass-control-center.md](../203-glass-control-center.md)
 - [x] T204 — Map the Notification Center and route its actions → [204-glass-notification-center-integration.md](../204-glass-notification-center-integration.md)
-- [ ] T205 — Calibrate notification banner, stack, and lower panel → [205-glass-notification-materials.md](../205-glass-notification-materials.md)
+- [x] T205 — Calibrate notification banner, stack, and lower panel → [205-glass-notification-materials.md](../205-glass-notification-materials.md)
 - [ ] T206 — Apply restrained glass to Settings and Files chrome → [206-glass-first-party-window-chrome.md](../206-glass-first-party-window-chrome.md)
 
 ## Phase 4 — Acceptance and rollout
@@ -32,11 +32,11 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 - [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-07T00:33:25Z · 11/15 done
+**Pipeline status** — updated 2026-11-07T02:17:20Z · 12/15 done
 
-- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202, T203, T204
+- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202, T203, T204, T205
 - Blocked: none
 - Failed: none
-- Remaining: T205, T206, T207, T208
-- Last finished: T204 — done · Notification Center is mapped, routed from clock/keyboard/hot-corner, service-backed with stable active-only actions, full teardown/focus behavior, integration coverage, docs and ADR; make gates passes 84/84.
+- Remaining: T206, T207, T208
+- Last finished: T205 — done · Notification banner/stack/lower-panel materials calibrated and region-mapped; Light/Dark empty, populated, concurrent, scrollable, software and accessibility captures pass with recorded residuals; tst_notifications and make gates pass 84/84.
 <!-- /symphony:status -->

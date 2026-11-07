@@ -98,6 +98,33 @@ constexpr uint32_t kAnchorRight = 8;
 // The banner card's inset from the output's right edge (T-11.1a).
 constexpr int kBannerMargin = 8;
 
+// Replace one layer surface's independently keyed material-region list
+// (T197/T203/T205). The caller commit-latches it with the next surface image.
+void applyPanelRegions(df_layer_surface *layer, const QVariantList &regions)
+{
+    if (!layer)
+        return;
+    df_layer_surface_clear_panel_regions(layer);
+    for (const QVariant &value : regions) {
+        const QVariantMap region = value.toMap();
+        const QString key = region.value(QStringLiteral("key")).toString();
+        const QString preset = region.value(QStringLiteral("preset")).toString();
+        const int width = qRound(region.value(QStringLiteral("w")).toReal());
+        const int height = qRound(region.value(QStringLiteral("h")).toReal());
+        if (key.isEmpty() || width <= 0 || height <= 0)
+            continue;
+        df_layer_surface_set_panel_region(
+            layer, key.toUtf8().constData(), preset.toUtf8().constData(),
+            qRound(region.value(QStringLiteral("x")).toReal()),
+            qRound(region.value(QStringLiteral("y")).toReal()), width, height,
+            qRound(region.value(QStringLiteral("tl")).toReal()),
+            qRound(region.value(QStringLiteral("tr")).toReal()),
+            qRound(region.value(QStringLiteral("br")).toReal()),
+            qRound(region.value(QStringLiteral("bl")).toReal()),
+            qRound(region.value(QStringLiteral("overscan")).toReal()));
+    }
+}
+
 // The Dock's surface anchor for a position (T-10 section 5). A bottom Dock
 // stretches the full width; a vertical Dock stretches the full height and
 // sits on the left or right edge.
@@ -674,6 +701,17 @@ bool ShellProtocol::setBannerInputRegion(int width, int height)
     return true;
 }
 
+void ShellProtocol::setBannerPanelRegions(const QVariantList &regions)
+{
+    applyPanelRegions(m_bannerLayer, regions);
+}
+
+void ShellProtocol::clearBannerPanelRegions()
+{
+    if (m_bannerLayer)
+        df_layer_surface_clear_panel_regions(m_bannerLayer);
+}
+
 // --- Notification Center overlay (T204) ------------------------------------
 
 bool ShellProtocol::createNotificationCenterSurface(int width, int height, int topMargin)
@@ -755,6 +793,17 @@ bool ShellProtocol::setNotificationCenterKeyboardGrab(bool grab)
     if (m_display)
         wl_display_flush(m_display);
     return true;
+}
+
+void ShellProtocol::setNotificationCenterPanelRegions(const QVariantList &regions)
+{
+    applyPanelRegions(m_notificationCenterLayer, regions);
+}
+
+void ShellProtocol::clearNotificationCenterPanelRegions()
+{
+    if (m_notificationCenterLayer)
+        df_layer_surface_clear_panel_regions(m_notificationCenterLayer);
 }
 
 bool ShellProtocol::commitNotificationCenterImage(const QImage &image,
@@ -852,28 +901,7 @@ bool ShellProtocol::setControlCenterInputRegion(int width, int height)
 
 void ShellProtocol::setControlCenterPanelRegions(const QVariantList &regions)
 {
-    if (!m_controlCenterLayer)
-        return;
-    df_layer_surface_clear_panel_regions(m_controlCenterLayer);
-    for (const QVariant &value : regions) {
-        const QVariantMap region = value.toMap();
-        const QString key = region.value(QStringLiteral("key")).toString();
-        const QString preset = region.value(QStringLiteral("preset")).toString();
-        const int width = qRound(region.value(QStringLiteral("w")).toReal());
-        const int height = qRound(region.value(QStringLiteral("h")).toReal());
-        if (key.isEmpty() || width <= 0 || height <= 0)
-            continue;
-        df_layer_surface_set_panel_region(
-            m_controlCenterLayer, key.toUtf8().constData(),
-            preset.toUtf8().constData(),
-            qRound(region.value(QStringLiteral("x")).toReal()),
-            qRound(region.value(QStringLiteral("y")).toReal()), width, height,
-            qRound(region.value(QStringLiteral("tl")).toReal()),
-            qRound(region.value(QStringLiteral("tr")).toReal()),
-            qRound(region.value(QStringLiteral("br")).toReal()),
-            qRound(region.value(QStringLiteral("bl")).toReal()),
-            qRound(region.value(QStringLiteral("overscan")).toReal()));
-    }
+    applyPanelRegions(m_controlCenterLayer, regions);
 }
 
 void ShellProtocol::clearControlCenterPanelRegions()

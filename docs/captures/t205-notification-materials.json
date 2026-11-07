@@ -1,0 +1,1209 @@
+{
+  "task": "T205",
+  "presets": {
+    "banner": "notificationBanner",
+    "stack": "notificationStack",
+    "lower": "notificationLowerPanel"
+  },
+  "underconstrained": [
+    "notificationBanner_dark",
+    "notificationLowerPanel_dark"
+  ],
+  "check": {
+    "targets": {
+      "notificationBanner_light": {
+        "alpha": 0.549,
+        "tint": 0.976
+      },
+      "notificationStack_light": {
+        "alpha": 0.551,
+        "tint": 0.706
+      },
+      "notificationStack_dark": {
+        "alpha": 0.507,
+        "tint": 0.55
+      },
+      "notificationLowerPanel_light": {
+        "alpha": 0.407,
+        "tint": 0.852
+      }
+    },
+    "resolved": {
+      "notificationBanner_light": {
+        "alpha": 0.549,
+        "tint": 0.976,
+        "blur": 14.0,
+        "renderMode": "sampled-glass",
+        "confidence": "measured"
+      },
+      "notificationBanner_dark": {
+        "alpha": 0.56,
+        "tint": 0.3,
+        "blur": 14.0,
+        "renderMode": "sampled-glass",
+        "confidence": "adapted"
+      },
+      "notificationStack_light": {
+        "alpha": 0.551,
+        "tint": 0.706,
+        "blur": 14.0,
+        "renderMode": "sampled-glass",
+        "confidence": "measured"
+      },
+      "notificationStack_dark": {
+        "alpha": 0.507,
+        "tint": 0.55,
+        "blur": 14.0,
+        "renderMode": "sampled-glass",
+        "confidence": "measured"
+      },
+      "notificationLowerPanel_light": {
+        "alpha": 0.407,
+        "tint": 0.852,
+        "blur": 18.0,
+        "renderMode": "sampled-glass",
+        "confidence": "measured"
+      },
+      "notificationLowerPanel_dark": {
+        "alpha": 0.4,
+        "tint": 0.3,
+        "blur": 18.0,
+        "renderMode": "sampled-glass",
+        "confidence": "adapted"
+      }
+    },
+    "distinctness": {
+      "light": {
+        "notificationBanner": [
+          0.535824,
+          0.762226,
+          0.986824
+        ],
+        "notificationStack": [
+          0.389006,
+          0.614404,
+          0.838006
+        ],
+        "notificationLowerPanel": [
+          0.346764,
+          0.64445,
+          0.939764
+        ]
+      },
+      "dark": {
+        "notificationBanner": [
+          0.168,
+          0.38888,
+          0.608
+        ],
+        "notificationStack": [
+          0.27885,
+          0.526336,
+          0.77185
+        ],
+        "notificationLowerPanel": [
+          0.12,
+          0.4212,
+          0.72
+        ]
+      }
+    },
+    "contrast": {
+      "notificationBanner": {
+        "black": 0.168,
+        "mid": 0.38888,
+        "confidence": "adapted",
+        "underconstrained": true
+      },
+      "notificationLowerPanel": {
+        "black": 0.12,
+        "mid": 0.4212,
+        "confidence": "adapted",
+        "underconstrained": true
+      }
+    },
+    "region_bound": 32
+  },
+  "captures": {
+    "manifest": "docs/captures/t205-notification-materials-capture.json",
+    "cases": [
+      {
+        "label": "empty-light-neutral",
+        "state": "empty",
+        "scheme": "light",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/panel",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-empty-light-neutral.png",
+        "materials": {
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.6157,
+            "expected": 0.6144,
+            "fit_error": 0.0013,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.6431,
+            "expected": 0.6444,
+            "fit_error": 0.0013,
+            "tolerance": 0.08,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "empty-dark-neutral",
+        "state": "empty",
+        "scheme": "dark",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/panel",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-empty-dark-neutral.png",
+        "materials": {
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.5255,
+            "expected": 0.5263,
+            "fit_error": 0.0008,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.4196,
+            "expected": 0.4212,
+            "fit_error": 0.0016,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "banner-empty-light-neutral",
+        "state": "banner-empty",
+        "scheme": "light",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-banner-empty-light-neutral.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.7608,
+            "expected": 0.7622,
+            "fit_error": 0.0014,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.6157,
+            "expected": 0.6144,
+            "fit_error": 0.0013,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.6431,
+            "expected": 0.6444,
+            "fit_error": 0.0013,
+            "tolerance": 0.08,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "banner-empty-dark-neutral",
+        "state": "banner-empty",
+        "scheme": "dark",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-banner-empty-dark-neutral.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.3882,
+            "expected": 0.3889,
+            "fit_error": 0.0006,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.5255,
+            "expected": 0.5263,
+            "fit_error": 0.0008,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.4196,
+            "expected": 0.4212,
+            "fit_error": 0.0016,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "populated-light-neutral",
+        "state": "populated",
+        "scheme": "light",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/panel",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-populated-light-neutral.png",
+        "materials": {
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.6157,
+            "expected": 0.6144,
+            "fit_error": 0.0013,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.6431,
+            "expected": 0.6444,
+            "fit_error": 0.0013,
+            "tolerance": 0.08,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "populated-dark-neutral",
+        "state": "populated",
+        "scheme": "dark",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/panel",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-populated-dark-neutral.png",
+        "materials": {
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.5255,
+            "expected": 0.5263,
+            "fit_error": 0.0008,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.4196,
+            "expected": 0.4212,
+            "fit_error": 0.0016,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "concurrent-light-neutral",
+        "state": "concurrent",
+        "scheme": "light",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-light-neutral.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.7608,
+            "expected": 0.7622,
+            "fit_error": 0.0014,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.6157,
+            "expected": 0.6144,
+            "fit_error": 0.0013,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.6431,
+            "expected": 0.6444,
+            "fit_error": 0.0013,
+            "tolerance": 0.08,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "concurrent-light-grid",
+        "state": "concurrent",
+        "scheme": "light",
+        "variant": "sampled",
+        "wallpaper": "grid",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-light-grid.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.5051,
+            "actual": 0.8,
+            "expected": 0.7636,
+            "fit_error": 0.0364,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass",
+            "region_var": 0.0,
+            "backdrop_var": 0.01745
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.5042,
+            "actual": 0.6157,
+            "expected": 0.6154,
+            "fit_error": 0.0003,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass",
+            "region_var": 0.01047,
+            "backdrop_var": 0.02414
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.5042,
+            "actual": 0.6431,
+            "expected": 0.6458,
+            "fit_error": 0.0026,
+            "tolerance": 0.08,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass",
+            "region_var": 0.0,
+            "backdrop_var": 0.02414
+          }
+        }
+      },
+      {
+        "label": "concurrent-dark-neutral",
+        "state": "concurrent",
+        "scheme": "dark",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-dark-neutral.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.3882,
+            "expected": 0.3889,
+            "fit_error": 0.0006,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.5255,
+            "expected": 0.5263,
+            "fit_error": 0.0008,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.4196,
+            "expected": 0.4212,
+            "fit_error": 0.0016,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "concurrent-dark-grid",
+        "state": "concurrent",
+        "scheme": "dark",
+        "variant": "sampled",
+        "wallpaper": "grid",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-dark-grid.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.5051,
+            "actual": 0.4275,
+            "expected": 0.3902,
+            "fit_error": 0.0372,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass",
+            "region_var": 0.0,
+            "backdrop_var": 0.01746
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.5042,
+            "actual": 0.5255,
+            "expected": 0.5274,
+            "fit_error": 0.0019,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass",
+            "region_var": 0.01107,
+            "backdrop_var": 0.02414
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.5042,
+            "actual": 0.4196,
+            "expected": 0.4225,
+            "fit_error": 0.0029,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass",
+            "region_var": 0.0,
+            "backdrop_var": 0.02414
+          }
+        }
+      },
+      {
+        "label": "scrollable-light-neutral",
+        "state": "scrollable",
+        "scheme": "light",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/panel",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-scrollable-light-neutral.png",
+        "materials": {
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.6157,
+            "expected": 0.6144,
+            "fit_error": 0.0013,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.6431,
+            "expected": 0.6444,
+            "fit_error": 0.0013,
+            "tolerance": 0.08,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "scrollable-dark-neutral",
+        "state": "scrollable",
+        "scheme": "dark",
+        "variant": "sampled",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/panel",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-scrollable-dark-neutral.png",
+        "materials": {
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.5255,
+            "expected": 0.5263,
+            "fit_error": 0.0008,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.4196,
+            "expected": 0.4212,
+            "fit_error": 0.0016,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "concurrent-light-reduce",
+        "state": "concurrent",
+        "scheme": "light",
+        "variant": "reduce-transparency",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-light-reduce.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.9588,
+            "expected": 0.9606,
+            "fit_error": 0.0018,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "solid"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.9588,
+            "expected": 0.9606,
+            "fit_error": 0.0018,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "solid"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.9608,
+            "expected": 0.9606,
+            "fit_error": 0.0001,
+            "tolerance": 0.08,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "solid"
+          }
+        }
+      },
+      {
+        "label": "concurrent-dark-reduce",
+        "state": "concurrent",
+        "scheme": "dark",
+        "variant": "reduce-transparency",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-dark-reduce.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.1039,
+            "expected": 0.1161,
+            "fit_error": 0.0122,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "solid"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.1039,
+            "expected": 0.1161,
+            "fit_error": 0.0122,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "solid"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.102,
+            "expected": 0.1161,
+            "fit_error": 0.0141,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "solid"
+          }
+        }
+      },
+      {
+        "label": "concurrent-light-contrast",
+        "state": "concurrent",
+        "scheme": "light",
+        "variant": "increase-contrast",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-light-contrast.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.7608,
+            "expected": 0.7622,
+            "fit_error": 0.0014,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.6157,
+            "expected": 0.6144,
+            "fit_error": 0.0013,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.6431,
+            "expected": 0.6444,
+            "fit_error": 0.0013,
+            "tolerance": 0.08,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "concurrent-dark-contrast",
+        "state": "concurrent",
+        "scheme": "dark",
+        "variant": "increase-contrast",
+        "wallpaper": "neutral",
+        "material_path": "gpu",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "menubar/veil",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-dark-contrast.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.3882,
+            "expected": 0.3889,
+            "fit_error": 0.0006,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.5255,
+            "expected": 0.5263,
+            "fit_error": 0.0008,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "sampled-glass"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.4196,
+            "expected": 0.4212,
+            "fit_error": 0.0016,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "sampled-glass"
+          }
+        }
+      },
+      {
+        "label": "concurrent-light-software",
+        "state": "concurrent",
+        "scheme": "light",
+        "variant": "software",
+        "wallpaper": "neutral",
+        "material_path": "software",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-light-software.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.9569,
+            "expected": 0.9606,
+            "fit_error": 0.0038,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "software-fallback"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.9569,
+            "expected": 0.9606,
+            "fit_error": 0.0038,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "software-fallback"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.9569,
+            "expected": 0.9606,
+            "fit_error": 0.0038,
+            "tolerance": 0.08,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "software-fallback"
+          }
+        }
+      },
+      {
+        "label": "concurrent-dark-software",
+        "state": "concurrent",
+        "scheme": "dark",
+        "variant": "software",
+        "wallpaper": "neutral",
+        "material_path": "software",
+        "regions": [
+          "app-switcher/panel",
+          "apps-drawer/panel",
+          "control-center/panel",
+          "desktop/panel",
+          "dock-popup/panel",
+          "dock/panel",
+          "file-chooser/panel",
+          "menubar-popup/panel",
+          "notification-center/lower",
+          "notification-center/stack",
+          "notification/banner",
+          "osd/panel",
+          "overview/panel",
+          "polkit/panel",
+          "screencast/panel",
+          "screenshot/panel"
+        ],
+        "capture": "docs/captures/t205-concurrent-dark-software.png",
+        "materials": {
+          "banner": {
+            "preset": "notificationBanner",
+            "backdrop": 0.502,
+            "actual": 0.1059,
+            "expected": 0.1161,
+            "fit_error": 0.0102,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "software-fallback"
+          },
+          "stack": {
+            "preset": "notificationStack",
+            "backdrop": 0.502,
+            "actual": 0.1059,
+            "expected": 0.1161,
+            "fit_error": 0.0102,
+            "tolerance": 0.06,
+            "underconstrained": false,
+            "confidence": "measured",
+            "renderMode": "software-fallback"
+          },
+          "lower": {
+            "preset": "notificationLowerPanel",
+            "backdrop": 0.502,
+            "actual": 0.102,
+            "expected": 0.1161,
+            "fit_error": 0.0141,
+            "tolerance": 0.12,
+            "underconstrained": true,
+            "confidence": "adapted",
+            "renderMode": "software-fallback"
+          }
+        }
+      }
+    ],
+    "errors": []
+  }
+}

@@ -1112,8 +1112,8 @@ pub mod glass {
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
-                pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "The dark banner is uncovered as an independent fit; named baseline 0.56/0.30";
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "T205: the dark banner is uncovered as an independent fit (underconstrained); adapted readable 0.56/0.30 so it reads lighter than the dark stack and keeps light-on-glass text contrast";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.56_f32;
@@ -1186,15 +1186,15 @@ pub mod glass {
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
-                pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "The dark lower panel is uncovered; named baseline 0.48/0.28";
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "T205: the dark lower panel is uncovered as an independent fit (underconstrained); adapted readable 0.40/0.30 so it reads below the dark stack on black/mid/white and stays distinct from the dark banner";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.48_f32;
-                    pub const NEUTRAL_TINT: f32 = 0.28_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.4_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.3_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.48_f32;
-                    pub const PERCEPTUAL_TINT: f32 = 0.28_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.4_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.3_f32;
                 }
                 pub const BLUR: f32 = 18.0_f32;
                 pub const EDGE: f32 = 0.0_f32;

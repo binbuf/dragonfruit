@@ -1,0 +1,47 @@
+scale output NESTED-1 physical=2880x1800 logical=2880x1800 scale=1.000
+scale chrome desktop logical=0,0,2880,1800 physical=0,0,2880,1800
+scale region desktop panel preset=- logical=0,0,2880,1800 physical=0,0,2880,1800 corners=0,0,0,0 overscan=0
+scale chrome desktop logical=0,0,2880,1800 physical=0,0,2880,1800
+scale region desktop panel preset=- logical=0,0,2880,1800 physical=0,0,2880,1800 corners=0,0,0,0 overscan=0
+scale chrome menubar logical=0,0,2880,95 physical=0,0,2880,95
+scale region menubar veil preset=menuBarVeil logical=0,0,2880,95 physical=0,0,2880,95 corners=0,0,0,0 overscan=0
+scale chrome dock logical=1199,1714,483,78 physical=1199,1714,483,78
+scale region dock panel preset=- logical=1199,1714,483,78 physical=1199,1714,483,78 corners=0,0,0,0 overscan=0
+scale chrome menubar-popup logical=0,0,2880,1800 physical=0,0,2880,1800
+scale region menubar-popup panel preset=- logical=0,0,2880,1800 physical=0,0,2880,1800 corners=0,0,0,0 overscan=0
+scale chrome dock-popup logical=0,0,2880,1800 physical=0,0,2880,1800
+scale region dock-popup panel preset=- logical=0,0,2880,1800 physical=0,0,2880,1800 corners=0,0,0,0 overscan=0
+scale chrome overview logical=0,0,2880,1800 physical=0,0,2880,1800
+scale region overview panel preset=- logical=0,0,2880,1800 physical=0,0,2880,1800 corners=0,0,0,0 overscan=0
+scale chrome app-switcher logical=0,0,2880,1800 physical=0,0,2880,1800
+scale region app-switcher panel preset=- logical=0,0,2880,1800 physical=0,0,2880,1800 corners=0,0,0,0 overscan=0
+scale chrome notification logical=2492,36,380,132 physical=2492,36,380,132
+scale region notification banner preset=notificationBanner logical=2492,36,380,132 physical=2492,36,380,132 corners=14,14,14,14 overscan=8
+scale chrome notification-center logical=2512,176,360,480 physical=2512,176,360,480
+scale region notification-center stack preset=notificationStack logical=2512,176,360,408 physical=2512,176,360,408 corners=14,14,14,14 overscan=8
+scale region notification-center lower preset=notificationLowerPanel logical=2512,592,360,64 physical=2512,592,360,64 corners=14,14,14,14 overscan=8
+scale chrome control-center logical=2512,36,360,1164 physical=2512,36,360,1164
+scale region control-center panel preset=- logical=2512,36,360,1164 physical=2512,36,360,1164 corners=0,0,0,0 overscan=0
+scale chrome osd logical=1330,790,220,220 physical=1330,790,220,220
+scale region osd panel preset=- logical=1330,790,220,220 physical=1330,790,220,220 corners=0,0,0,0 overscan=0
+scale chrome file-chooser logical=1120,680,640,440 physical=1120,680,640,440
+scale region file-chooser panel preset=- logical=1120,680,640,440 physical=1120,680,640,440 corners=0,0,0,0 overscan=0
+scale chrome screenshot logical=0,0,2880,1800 physical=0,0,2880,1800
+scale region screenshot panel preset=- logical=0,0,2880,1800 physical=0,0,2880,1800 corners=0,0,0,0 overscan=0
+scale chrome screencast logical=1160,670,560,460 physical=1160,670,560,460
+scale region screencast panel preset=- logical=1160,670,560,460 physical=1160,670,560,460 corners=0,0,0,0 overscan=0
+scale chrome polkit logical=1200,690,480,420 physical=1200,690,480,420
+scale region polkit panel preset=- logical=1200,690,480,420 physical=1200,690,480,420 corners=0,0,0,0 overscan=0
+scale chrome apps-drawer logical=0,0,2880,1800 physical=0,0,2880,1800
+scale region apps-drawer panel preset=- logical=0,0,2880,1800 physical=0,0,2880,1800 corners=0,0,0,0 overscan=0
+end
+material scheme=light tier=full path=gpu chrome=ffffffff elevated=ffffffff border=ded6e5ff accent=b32a66ff
+material glass role=chrome blur=24.0 refraction=6.0 specular=0.45 specular_width=2.0 tint=0.16
+material glass role=dock blur=30.0 refraction=8.0 specular=0.50 specular_width=2.5 tint=0.22
+material glass role=popup blur=30.0 refraction=8.0 specular=0.50 specular_width=2.5 tint=0.20
+material glass role=drawer blur=30.0 refraction=8.0 specular=0.50 specular_width=2.5 tint=0.20
+material preset=menuAttached look=replacement mode=sampled-glass alpha=0.5520 tint=0.9930 blur=10.0 edge=0.350 edge_width=0.50 edge_tail=0.0 sharp=0.000 corner_peak=0.0 corner_distance=0.0 corner_tail=0.0 foreground=0.200 slider_applied=1 fallback=none revision=2
+material preset=menuBarVeil look=replacement mode=no-blur-veil alpha=0.4510 tint=1.0000 blur=0.0 edge=0.350 edge_width=0.50 edge_tail=0.0 sharp=0.000 corner_peak=0.0 corner_distance=0.0 corner_tail=0.0 foreground=0.200 slider_applied=0 fallback=none revision=2
+material preset=dock look=replacement mode=sampled-glass alpha=0.2530 tint=0.6040 blur=3.9 edge=0.747 edge_width=1.50 edge_tail=6.0 sharp=0.120 corner_peak=9.6 corner_distance=15.0 corner_tail=50.0 foreground=0.200 slider_applied=0 fallback=none revision=2
+material veil mode=no-blur-veil extent=95.0 strip=39.0 probe=8.0 tint=1.000 readability=0.350 alphas=0.4510,0.4392,0.4078,0.3569,0.2431,0.0588,0.0078,0.0000
+end

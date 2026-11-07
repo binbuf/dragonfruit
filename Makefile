@@ -109,6 +109,8 @@ help:
 	@echo "  make menubar-veil-capture — T200 live nested veil over dark/light windows + fallback"
 	@echo "  make menu-families-check — T202 attached/detached/status menu presets and motion"
 	@echo "  make menu-families-capture — T202 live nested menu-family stills"
+	@echo "  make notification-materials-check — T205 banner/stack/lower-panel presets and regions"
+	@echo "  make notification-materials-capture — T205 live nested Light/Dark notification stills"
 	@echo "  make glass-reference-verify — T-19.4 optional reference checkout hash/revision check"
 	@echo "  make glass-reference-manifest — regenerate docs/captures/glass-reference-manifest.json"
 	@echo "  make glass-baseline-capture — T-19.4 live baseline recapture (OPEN without a host)"
@@ -160,6 +162,7 @@ gates:
 	$(MAKE) menubar-veil-check
 	$(MAKE) menu-families-check
 	$(MAKE) control-center-materials-check
+	$(MAKE) notification-materials-check
 	$(MAKE) e2e
 	$(MAKE) qml-test
 
@@ -792,6 +795,13 @@ control-center-materials-check:
 
 control-center-materials-capture: build
 	bash scripts/capture-t203-control-center.sh
+
+# T205: banner, notification stack and separately toned lower panel.
+notification-materials-check:
+	python3 scripts/t205-notification-materials.py --check
+
+notification-materials-capture: build
+	bash scripts/capture-t205-notification-materials.sh
 
 # T-19.4: optional reference checkout verification. The manifest is committed
 # and the full macOS checkout stays optional; a requested reference run fails

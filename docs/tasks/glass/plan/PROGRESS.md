@@ -14,6 +14,7 @@
 - **T202 — menu-family glass**: **Three presets, one mapping.** `menuAttached` (menu-bar dropdown),; **Attached geometry.** `component.contextMenu.attachedRadius = 12.5` and
 - **T203 — Control Center panel, module and expanded-list materials**: `design-system/tokens/tokens.json` Control Center presets now carry the; `controlCenterOuter`: Light 0.265/0.373, Dark 0.489/0.677, blur 8,
 - **T204 — Notification Center mapping and action routing**: **Trusted overlay.** `ShellProtocol` creates a top-right; **One entry route.** `MenuBar.clockActivated` -> `onClockActivated` and the
+- **T205 — Notification banner, stack and lower-panel materials**: **Three optical presets.** `notificationBanner`, `notificationStack` and; banner Light 0.549/0.976 (measured), Dark 0.56/0.30 (adapted);
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -28,6 +29,7 @@
 - [T202](progress/T202.md) — **Three presets, one mapping.** `menuAttached` (menu-bar dropdown),
 - [T203](progress/T203.md) — `design-system/tokens/tokens.json` Control Center presets now carry the
 - [T204](progress/T204.md) — **Trusted overlay.** `ShellProtocol` creates a top-right
+- [T205](progress/T205.md) — **Three optical presets.** `notificationBanner`, `notificationStack` and
 <!-- symphony:digest:end -->
 
 Implementation notes go in `progress/TNN.md`. Record the actual test commands, evidence paths, measured deltas, and any open rows with their rerun steps.

@@ -222,10 +222,21 @@ MockNotificationClient::MockNotificationClient(QObject *parent, bool seedFixture
 {
     m_expiry.setSingleShot(true);
     connect(&m_expiry, &QTimer::timeout, this, [this]() { expire(m_bannerId); });
-    if (seedFixture)
-        seedBanner();
-    else
+    if (!seedFixture) {
         m_bannerJson = QByteArrayLiteral("[]");
+        return;
+    }
+    // T205: the capture/demo fixture can select the Center's empty, populated,
+    // concurrent, scrollable and banner-only states. The default (`1`) keeps
+    // the historical single banner.
+    const QString fixture = qEnvironmentVariable("DF_NOTIFY_FIXTURE");
+    if (fixture == QLatin1String("empty") || fixture == QLatin1String("populated")
+        || fixture == QLatin1String("concurrent") || fixture == QLatin1String("scrollable")
+        || fixture == QLatin1String("banner-empty")) {
+        seedCaptureFixture(fixture);
+    } else {
+        seedBanner();
+    }
 }
 
 void MockNotificationClient::seedBanner()
@@ -240,6 +251,103 @@ void MockNotificationClient::seedBanner()
     m_expiry.setInterval(60000);
     if (m_bannerId != 0)
         m_expiry.start();
+}
+
+void MockNotificationClient::seedCaptureFixture(const QString &mode)
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    int count = 0;
+    bool banner = false;
+    if (mode == QLatin1String("populated")) {
+        count = 4;
+    } else if (mode == QLatin1String("concurrent")) {
+        count = 4;
+        banner = true;
+    } else if (mode == QLatin1String("scrollable")) {
+        count = 18;
+    } else if (mode == QLatin1String("banner-empty")) {
+        banner = true;
+    }
+
+    QJsonArray history;
+    QJsonObject activeBanner;
+    quint32 activeId = 0;
+    for (int i = 0; i < count; ++i) {
+        const quint32 id = m_nextId++;
+        QJsonArray actions;
+        if (banner && i == 0) {
+            actions.append(QJsonObject{
+                { QStringLiteral("key"), QStringLiteral("reply") },
+                { QStringLiteral("label"), QStringLiteral("Reply") } });
+            actions.append(QJsonObject{
+                { QStringLiteral("key"), QStringLiteral("default") },
+                { QStringLiteral("label"), QStringLiteral("Open") } });
+        }
+        QJsonObject entry{
+            { QStringLiteral("id"), static_cast<double>(id) },
+            { QStringLiteral("appName"),
+              i % 2 == 0 ? QStringLiteral("Mail") : QStringLiteral("Chat") },
+            { QStringLiteral("appIcon"), QString() },
+            { QStringLiteral("summary"), QStringLiteral("Message %1").arg(i + 1) },
+            { QStringLiteral("body"), QStringLiteral("Fixture notification body %1").arg(i + 1) },
+            { QStringLiteral("urgency"),
+              i == 0 ? QStringLiteral("critical") : QStringLiteral("normal") },
+            { QStringLiteral("createdAt"), static_cast<double>(now - i * 60000) },
+            { QStringLiteral("deadline"), static_cast<double>(now + 600000) },
+            { QStringLiteral("actions"), actions },
+            { QStringLiteral("suppressed"), false },
+        };
+        if (banner && i == 0) {
+            entry.insert(QStringLiteral("closedAt"), QJsonValue::Null);
+            entry.insert(QStringLiteral("reason"), QJsonValue::Null);
+            activeBanner = entry;
+            activeId = id;
+        } else {
+            entry.insert(QStringLiteral("closedAt"),
+                         static_cast<double>(now - (i + 1) * 60000));
+            entry.insert(QStringLiteral("reason"),
+                         i % 3 == 0 ? QStringLiteral("expired")
+                                    : i % 3 == 1 ? QStringLiteral("dismissed")
+                                                 : QStringLiteral("closed"));
+        }
+        history.append(entry);
+    }
+    // `banner-empty` shows an active banner over an empty Center history so a
+    // capture can distinguish all three materials with the empty state.
+    if (banner && count == 0) {
+        const quint32 id = m_nextId++;
+        QJsonArray actions;
+        actions.append(QJsonObject{
+            { QStringLiteral("key"), QStringLiteral("default") },
+            { QStringLiteral("label"), QStringLiteral("Open") } });
+        activeBanner = QJsonObject{
+            { QStringLiteral("id"), static_cast<double>(id) },
+            { QStringLiteral("appName"), QStringLiteral("Mail") },
+            { QStringLiteral("appIcon"), QString() },
+            { QStringLiteral("summary"), QStringLiteral("New message") },
+            { QStringLiteral("body"), QStringLiteral("Fixture banner with actions") },
+            { QStringLiteral("urgency"), QStringLiteral("normal") },
+            { QStringLiteral("createdAt"), static_cast<double>(now) },
+            { QStringLiteral("deadline"), static_cast<double>(now + 600000) },
+            { QStringLiteral("actions"), actions },
+            { QStringLiteral("closedAt"), QJsonValue::Null },
+            { QStringLiteral("reason"), QJsonValue::Null },
+            { QStringLiteral("suppressed"), false },
+        };
+        activeId = id;
+    }
+
+    m_historyJson = QJsonDocument(history).toJson(QJsonDocument::Compact);
+    if (banner) {
+        m_bannerJson = QJsonDocument(QJsonArray{ activeBanner })
+                           .toJson(QJsonDocument::Compact);
+        m_bannerId = activeId;
+        m_expiry.stop();
+    } else {
+        m_bannerJson = QByteArrayLiteral("[]");
+        m_bannerId = 0;
+        m_expiry.stop();
+    }
 }
 
 void MockNotificationClient::refresh()
