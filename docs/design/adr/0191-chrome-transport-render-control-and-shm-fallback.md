@@ -77,5 +77,12 @@ remains OPEN for the hardware rail.
 `DRAGONFRUIT_CHROME_GPU`, with per-surface `path=dmabuf|shm` stats and the
 pooled shm path as the explicit fallback. The rollout, shared-scene release
 rules, and measured implicit-sync limits are in
-[ADR 0197](0197-gpu-chrome-rollout-and-per-surface-stats.md); the default
-remains off until T192/T193.
+[ADR 0197](0197-gpu-chrome-rollout-and-per-surface-stats.md).
+
+**GPU-first update.** The transport is no longer opt-in. An unset
+`DRAGONFRUIT_CHROME_GPU` (or `auto`/`1`/`on`/`true`) requests the GPU rail;
+`0`/`off`/`false` forces the T185 path for diagnostics and tests. The producer
+is the capability gate: a failed context/export or a Mesa software renderer
+(llvmpipe/softpipe/swrast) records the reason and keeps the shell on the
+software scene graph. This matches the product rule that performance-sensitive
+chrome must use the integrated or discrete GPU whenever one exists.

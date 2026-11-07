@@ -42,8 +42,11 @@ fallback to be explicit, never a black surface or a double render.
   `dmabuf_reuses`, and `copy_bytes`. A successful dmabuf frame has
   `copy_bytes=0`; a fallback frame is counted and names its reason
   (`ring-exhausted`, `sync-timeout`, `no-viewporter`, `import-failed`, ...).
-- **The default stays off.** `DRAGONFRUIT_CHROME_GPU` is unchanged. The
-  capture-only `DRAGONFRUIT_CHROME_GPU_SURFACES` filter isolates one surface
+- **The default is now GPU-first.** An unset `DRAGONFRUIT_CHROME_GPU` requests
+  the rail; `0`/`off`/`false` forces the pooled-shm fallback. The capability
+  probe/producer decides availability, including rejecting software GL
+  renderers. (This supersedes the original T186d "default stays off"
+  decision.) The capture-only `DRAGONFRUIT_CHROME_GPU_SURFACES` filter isolates one surface
   per nested run; it does not change the shipping default.
 - **One fallback contract.** A hard export/format failure abandons the rail
   for the session; a transient ring/fence failure keeps it enabled and retries

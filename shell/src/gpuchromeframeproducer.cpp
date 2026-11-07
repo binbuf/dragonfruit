@@ -28,6 +28,21 @@ QSize physicalSize(const QSize &logical, qreal dpr)
                  qMax(1, qCeil(logical.height() * dpr)));
 }
 
+// Mesa's software rasterizers are valid GL contexts but there is no GPU
+// acceleration behind them. Treat them as "no advanced GPU": the caller then
+// keeps the T185 software scene graph instead of pretending the GPU rail is
+// active.
+bool softwareGlRenderer(const char *name)
+{
+    if (!name)
+        return false;
+    const QString renderer = QString::fromLatin1(name).toLower();
+    return renderer.contains(QLatin1String("llvmpipe"))
+        || renderer.contains(QLatin1String("softpipe"))
+        || renderer.contains(QLatin1String("swrast"))
+        || renderer.contains(QLatin1String("software rasterizer"));
+}
+
 } // namespace
 
 GpuChromeFrameProducer::GpuChromeFrameProducer(QObject *parent)
@@ -42,13 +57,21 @@ GpuChromeFrameProducer::~GpuChromeFrameProducer()
 
 bool GpuChromeFrameProducer::environmentRequested()
 {
-    const QByteArray value = qgetenv("DRAGONFRUIT_CHROME_GPU").trimmed();
-    return !value.isEmpty() && value != "0";
+    // GPU-first: an unset switch means "use the GPU when the host can". The
+    // producer's initialization is the capability check; a failure is a
+    // recorded shm fallback, not a reason to start on the CPU unconditionally.
+    const QByteArray value =
+        qgetenv("DRAGONFRUIT_CHROME_GPU").trimmed().toLower();
+    if (value.isEmpty())
+        return true;
+    return value != "0" && value != "off" && value != "false";
 }
 
 QString GpuChromeFrameProducer::environmentValue()
 {
-    return QString::fromLocal8Bit(qgetenv("DRAGONFRUIT_CHROME_GPU"));
+    const QByteArray value = qgetenv("DRAGONFRUIT_CHROME_GPU").trimmed();
+    return value.isEmpty() ? QStringLiteral("auto")
+                           : QString::fromLocal8Bit(value);
 }
 
 void GpuChromeFrameProducer::setFailure(const QString &reason)
@@ -67,12 +90,6 @@ bool GpuChromeFrameProducer::initialize(QString *reason)
         return true;
     }
     m_reason.clear();
-
-    // The scene-graph adaptation is process-global. The shell chooses this
-    // rail at startup (before the first chrome window) when the GPU transport
-    // is requested; a process that already created a software window fails
-    // cleanly here and the caller stays on the T185 shm path.
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     m_context = new QOpenGLContext(this);
     QSurfaceFormat format;
@@ -102,6 +119,25 @@ bool GpuChromeFrameProducer::initialize(QString *reason)
             *reason = m_reason;
         return false;
     }
+
+    // Check the renderer before creating any QQuickWindow: the scene-graph
+    // adaptation is process-global, so a software GL renderer must be
+    // rejected while the controller can still choose the T185 software path.
+    const char *probeRenderer = reinterpret_cast<const char *>(
+        m_context->functions()->glGetString(GL_RENDERER));
+    if (softwareGlRenderer(probeRenderer)) {
+        m_context->doneCurrent();
+        setFailure(QStringLiteral("software-renderer"));
+        if (reason)
+            *reason = m_reason;
+        return false;
+    }
+
+    // The scene-graph adaptation is process-global. The shell chooses this
+    // rail at startup (before the first chrome window) when the GPU transport
+    // is requested; a process that already created a software window fails
+    // cleanly here and the caller stays on the T185 shm path.
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     m_renderControl = new QQuickRenderControl(this);
     m_window = new QQuickWindow(m_renderControl);
@@ -143,8 +179,7 @@ bool GpuChromeFrameProducer::initialize(QString *reason)
         .arg(QString::fromLatin1(version ? version : "unknown"),
              QString::fromLatin1(renderer ? renderer : "unknown"))
         .arg(m_dpr, 0, 'g', 4)
-        .arg(environmentValue().isEmpty() ? QStringLiteral("unset")
-                                          : environmentValue());
+        .arg(environmentValue());
     if (reason)
         reason->clear();
     return true;

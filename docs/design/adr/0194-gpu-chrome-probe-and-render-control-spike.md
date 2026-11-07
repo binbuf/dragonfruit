@@ -51,17 +51,17 @@ surfaces stay on the shell's own libwayland connection.
   original context current produces a valid but empty frame. The producer
   stores the context current after `initialize()` and uses that for every FBO,
   target, readback, and teardown.
-- **The flag stays off and failure is explicit.** `DRAGONFRUIT_CHROME_GPU`
-  is unset by default and still only parsed by the new producer. A missing
-  dmabuf global, feedback, EGL export extension, compatible format, or GL
-  context records a reason (`no-dmabuf`, `no-feedback`, `no-egl-export`,
-  `no-format`, `no-gl-context`, …) and leaves the T185 shm producer in charge.
-  No path falls back to a black surface.
-- **No production commit path in T186a.** The private layer protocol is
-  unchanged and the normal shell never instantiates the GPU producer. The
-  spike is exercised by `build/shell/tests/t21-gpu-smoke` against a nested
-  compositor; the committed evidence is `docs/captures/t21-gpu-probe.txt` and
-  `t21-gpu-smoke.png`.
+- **The flag was off for the spike; it is now GPU-first.** An unset
+  `DRAGONFRUIT_CHROME_GPU` requests the rail; only `0`/`off`/`false` forces
+  the software path. A missing dmabuf global, feedback, EGL export extension,
+  compatible format, or hardware GL context (including llvmpipe/softpipe/
+  swrast) records a reason (`no-dmabuf`, `no-feedback`, `no-egl-export`,
+  `no-format`, `no-gl-context`, `software-renderer`, …) and leaves the T185
+  shm producer in charge. No path falls back to a black surface.
+- **T186a itself had no production commit path.** The private layer protocol
+  was unchanged in that slice and the spike is exercised by
+  `build/shell/tests/t21-gpu-smoke` against a nested compositor; the committed
+  evidence is `docs/captures/t21-gpu-probe.txt` and `t21-gpu-smoke.png`.
 
 ## Consequences
 

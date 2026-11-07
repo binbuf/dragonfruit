@@ -401,9 +401,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 {
     m_barHeight = barHeight;
     m_waylandDisplay = socketName;
-    // T-21.1d: the GPU rail is opt-in and decided before the first chrome
-    // producer. A requested-but-unavailable rail records a reason and keeps
-    // every surface on the T185 producer.
+    // T-21.1d: the GPU rail is GPU-first (unless explicitly disabled) and
+    // decided before the first chrome producer. A requested-but-unavailable
+    // rail records a reason and keeps every surface on the T185 producer.
     m_gpuChromeRequested = GpuChromeFrameProducer::environmentRequested();
     const QString gpuSurfaces = qEnvironmentVariable("DRAGONFRUIT_CHROME_GPU_SURFACES");
     if (!gpuSurfaces.isEmpty()) {
@@ -8134,11 +8134,13 @@ QRect ShellController::chromeBufferRect(const QRect &logical) const
 
 ChromeFrameProducer *ShellController::createChromeProducer()
 {
-    // T-21.1d: one opt-in attempt at the GPU producer. The scene-graph API is
-    // process-global, so this must happen before any other QQuickWindow is
+    // T-21.1d: one GPU-first attempt at the GPU producer. The scene-graph API
+    // is process-global, so this must happen before any other QQuickWindow is
     // constructed. If the context/export prerequisites are missing the whole
     // shell stays on the T185 software producer; a failed attempt that already
-    // created a window falls back to the producer's grabWindow rail.
+    // created a window falls back to the producer's grabWindow rail. The
+    // producer rejects software GL renderers before creating that window, so
+    // a no-GPU host gets the software scene graph rather than llvmpipe.
     if (m_gpuChromeRequested && m_gpuChromeState != GpuChromeState::Failed) {
         auto *gpu = new GpuChromeFrameProducer(this);
         gpu->setDmabufFormats(m_protocol ? m_protocol->gpuCapabilities().formats

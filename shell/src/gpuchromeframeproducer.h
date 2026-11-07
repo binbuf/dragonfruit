@@ -97,7 +97,10 @@ public:
     int dmabufRingLiveCount() const { return m_ring.liveCount(); }
     quint64 dmabufRingAllocations() const { return m_ring.allocations(); }
 
-    // `DRAGONFRUIT_CHROME_GPU` is opt-in; unset or "0" keeps the T185 path.
+    // GPU-first transport policy. `DRAGONFRUIT_CHROME_GPU` is an opt-out:
+    // unset/"auto" (and "1"/"on"/"true") request the GPU rail, which falls
+    // back to the T185 software/shm path if any prerequisite is missing.
+    // "0"/"off"/"false" forces the T185 path (diagnostics and tests).
     static bool environmentRequested();
     static QString environmentValue();
 

@@ -30,6 +30,7 @@
 #include "chromescale.h"
 #include "chromestats.h"
 #include "dockdrops.h"
+#include "gpuchromeframeproducer.h"
 #include "dockprojection.h"
 #include "dragonfruit-core-client-protocol.h"
 // wayland-scanner emits `namespace` as a C argument name for the chrome
@@ -3430,10 +3431,10 @@ void ShellProtocol::onRegistryGlobal(void *data, wl_registry *registry, uint32_t
             wl_registry_bind(registry, name, &wp_viewporter_interface,
                              std::min(version, 1u)));
     } else if (iface == QLatin1String("zwp_linux_dmabuf_v1")) {
-        // T-21.1d: only bind the transport object when the opt-in GPU rail is
-        // requested. The default shell never creates a dmabuf.
-        const QByteArray gpu = qgetenv("DRAGONFRUIT_CHROME_GPU").trimmed();
-        if (!gpu.isEmpty() && gpu != "0") {
+        // T-21.1d: bind the transport object when the GPU rail is requested
+        // (GPU-first default, or an explicit 1/on/auto). A forced 0/off/false
+        // keeps the shell on the pooled-shm path and creates no dmabuf.
+        if (GpuChromeFrameProducer::environmentRequested()) {
             self->m_dmabuf = static_cast<zwp_linux_dmabuf_v1 *>(
                 wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface,
                                  std::min(version, 5u)));
