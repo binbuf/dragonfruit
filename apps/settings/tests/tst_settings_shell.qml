@@ -43,7 +43,7 @@ Item {
         function test_catalog_is_the_reference_ia() {
             compare(SettingsPanes.catalog[0].id, "wifi");
             compare(SettingsPanes.catalog[SettingsPanes.catalog.length - 1].id,
-                    "printers");
+                    "game-controllers");
             // Only panes whose content has landed are advertised (no half panes).
             compare(SettingsPanes.shippedPanes.length, 22);
         }
@@ -210,12 +210,11 @@ Item {
 
             shell.searchText = "";
             compare(ids(shell), JSON.stringify(
-                ["bluetooth", "network", "battery", "storage", "general",
-                 "accessibility", "appearance", "desktop-dock",
-                 "mission-control", "displays",
-                 "menu-bar", "wallpaper", "notifications", "sound", "focus",
-                 "lock-screen", "privacy", "users-groups", "keyboard", "mouse",
-                 "trackpad", "printers"]));
+                ["bluetooth", "network", "battery", "general", "storage",
+                 "appearance", "accessibility", "menu-bar", "privacy",
+                 "desktop-dock", "mission-control", "displays", "wallpaper",
+                 "notifications", "sound", "focus", "lock-screen",
+                 "users-groups", "printers", "keyboard", "mouse", "trackpad"]));
         }
 
         function test_search_keeps_the_current_pane() {
@@ -231,14 +230,14 @@ Item {
             var shell = make();
             shell.sidebar.forceActiveFocus();
             waitForRendering(stage);
-            // The default pane is Appearance, the seventh shipped row (Bluetooth,
-            // Network, Battery, Storage, General, and Accessibility come first
-            // in the reference catalog order).
-            compare(shell.sidebar.currentIndex, 6);
+            // The default pane is Appearance, the sixth shipped row (Bluetooth,
+            // Network, Battery, General, and Storage come first in the map
+            // catalog order).
+            compare(shell.sidebar.currentIndex, 5);
             keyClick(Qt.Key_Down);
-            compare(shell.sidebar.currentIndex, 7);
+            compare(shell.sidebar.currentIndex, 6);
             keyClick(Qt.Key_Return);
-            compare(shell.currentPaneId, "desktop-dock");
+            compare(shell.currentPaneId, "accessibility");
             verify(shell.canGoBack);
         }
 

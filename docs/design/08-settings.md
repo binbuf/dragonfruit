@@ -85,6 +85,30 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Printers & Scanners | CUPS + SANE |
 | Screen Time, AI | macOS-specific; **not planned** |
 
+## The executable map (T222)
+
+`docs/design/settings-business-logic-map.md` is the row-level source of truth;
+`apps/settings/SettingsMap.qml` is its runtime projection. The map owns every
+pane's id, label, icon, shipped flag, owner, deep link
+(`settings://pane/<id>`), absence kind, and row metadata
+(`{ id, section, label, control, owner, key, absence, state }`).
+`apps/settings/SettingsPanes.qml` remains the one ordered sidebar catalog and
+mirrors the map one-for-one; `apps/settings/tests/tst_settings_map.qml` fails on
+any drift, on a shipped pane without a body, or on a visible row without an
+owner/key/absence path. Omitted panes live only in `SettingsMap.omittedPanes`,
+so they cannot appear in the sidebar, and each carries its reason.
+
+The map has 29 top-level catalog entries and the same 22 shipped panes as
+before; the new `control-center` (Quick Settings), `search` (renamed from
+`spotlight`), `screen-saver`, `game-controllers`, and `online-accounts`
+(renamed from `internet-accounts`) entries are unshipped until T225–T229 land
+their bodies. `storage`, `mission-control`, and `menu-bar` keep their existing
+ids and top-level placement. The Help menu opens the in-app **Pane & Row
+Owners…** debug view (also `DF_SETTINGS_DEBUG=1`) and the **Business-Logic
+Map** document; the debug view shows the selected pane's owner/absence/deep
+link and every row's owner/key/absence/state. See ADR
+[0231](adr/0231-executable-settings-map.md).
+
 ## Category icons (T-19.1b)
 
 The Settings sidebar rows and the detail-pane header card draw their icons as
@@ -218,8 +242,10 @@ The headless half of the matrix is the CI gate:
   shipped pane has a body and every unshipped id does not, and that all four
   panes stay live and write in memory. The Wallpaper case asserts the portal
   row is the only disabled control and carries the explanatory description.
-- **`apps/settings/tests/tst_settings_shell.qml`** asserts the catalog subset
-  (four shipped panes) and the sidebar/search list.
+- **`apps/settings/tests/tst_settings_shell.qml`** asserts the shipped catalog
+  subset and the sidebar/search list. **`tst_settings_map.qml`** (T222) asserts
+  the catalog/map agreement, every visible row's owner, the omitted-pane set,
+  and the debug view.
 
 The live capture is
 `docs/captures/t09-settings-wave-1.{png,light,dark,reduced.png,mp4}` (plus the

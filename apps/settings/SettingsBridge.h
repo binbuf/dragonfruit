@@ -25,6 +25,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 #include <QVariant>
 #include <QVariantList>
 #include <QVariantMap>
@@ -205,6 +206,14 @@ class SettingsBridge : public QObject
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
+    // T222: the human business-logic map. `mapDocPath` is the repo-relative
+    // path (or `DF_SETTINGS_MAP_DOC`); `mapDocUrl` is a local file URL when the
+    // document resolves, so the Help menu/debug view can open it.
+    Q_PROPERTY(QString mapDocPath READ mapDocPath CONSTANT)
+    Q_PROPERTY(QUrl mapDocUrl READ mapDocUrl CONSTANT)
+    // T222: `DF_SETTINGS_DEBUG=1` opens the pane/row owner debug view on
+    // launch. The Help menu opens the same view interactively.
+    Q_PROPERTY(bool debugView READ debugView CONSTANT)
     // The glass rollout selected for this process (`legacy`/`replacement`),
     // read from the same `DRAGONFRUIT_GLASS_ROLLOUT` switch the shell and
     // compositor use. The Appearance preview resolves with this look, so it
@@ -256,6 +265,9 @@ public:
     int providerPreloadCount() const;
     bool wallpaperChooserAvailable() const;
     QString startPane() const;
+    QString mapDocPath() const;
+    QUrl mapDocUrl() const;
+    bool debugView() const;
     QString glassRollout() const;
     bool appChromeSupported() const;
     bool trace() const;

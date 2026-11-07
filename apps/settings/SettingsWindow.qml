@@ -64,6 +64,13 @@ Window {
                 win.visibility === Window.FullScreen
                         ? win.showNormal() : win.showFullScreen();
                 break;
+            case "help":
+            case "help.debug":
+                shell.showDebugView();
+                break;
+            case "help.map":
+                Qt.openUrlExternally(Settings.mapDocUrl);
+                break;
             default:
                 if (action.indexOf("pane.") === 0)
                     shell.selectPane(action.substring(5));
