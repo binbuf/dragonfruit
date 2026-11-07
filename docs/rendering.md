@@ -910,6 +910,16 @@ missed-deadline counts) are T192c.
   Mission Control teardown (null `Shadow.qml` overview material); the
   benchmark excludes the overview surface from the GPU rail and records the
   fallback plus the T193 follow-up.
+- The T207 acceptance (`make nested-acceptance-capture`,
+  `docs/captures/t207-nested-acceptance.md`) runs the same nested scenes twice
+  with `DRAGONFRUIT_GLASS_ROLLOUT=legacy` and `=replacement`, and publishes the
+  matched padded area, refresh-relative p50/p95 timing, material allocations,
+  blur-cache misses, transport/copies, idle frames/wakeups and the Dock
+  flat-band mean/p95/SSIM against the macOS `dock_interior` crop. The 1x
+  flat band passes mean <0.02, p95 <0.05 and SSIM >0.90 at 1x/1.5x/2x; the
+  1.5x/2x checker MTF remains the approved nested scene-texture adaptation.
+  The release rail stays `legacy` until T208; the switch is the rollback
+  path.
 
 ### R8.3 Docs
 

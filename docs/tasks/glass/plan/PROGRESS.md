@@ -16,6 +16,7 @@
 - **T204 — Notification Center mapping and action routing**: **Trusted overlay.** `ShellProtocol` creates a top-right; **One entry route.** `MenuBar.clockActivated` -> `onClockActivated` and the
 - **T205 — Notification banner, stack and lower-panel materials**: **Three optical presets.** `notificationBanner`, `notificationStack` and; banner Light 0.549/0.976 (measured), Dark 0.56/0.30 (adapted);
 - **T206 — Settings and Files app-local chrome**: **Presets** in `design-system/tokens/tokens.json` (17 total):; Settings Light 0.986/0.857 sidebar, 0.961/0.965 toolbar (measured).
+- **T207 — nested and fallback acceptance**: `tests/glass/t207-cases.json` — checked-in case matrix, flat-band mask and; `scripts/t207-nested-acceptance.py` — `plan`, `score` and `check`. The
 
 ## Task notes (maintained by symphony — do not edit)
 
@@ -32,6 +33,7 @@
 - [T204](progress/T204.md) — **Trusted overlay.** `ShellProtocol` creates a top-right
 - [T205](progress/T205.md) — **Three optical presets.** `notificationBanner`, `notificationStack` and
 - [T206](progress/T206.md) — **Presets** in `design-system/tokens/tokens.json` (17 total):
+- [T207](progress/T207.md) — `tests/glass/t207-cases.json` — checked-in case matrix, flat-band mask and
 <!-- symphony:digest:end -->
 
 Implementation notes go in `progress/TNN.md`. Record the actual test commands, evidence paths, measured deltas, and any open rows with their rerun steps.

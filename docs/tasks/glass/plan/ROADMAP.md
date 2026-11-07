@@ -28,15 +28,15 @@ Use the existing private shell surfaces and compositor material paths. Stage the
 
 ## Phase 4 — Acceptance and rollout
 
-- [ ] T207 — Verify the replacement in nested and fallback sessions → [207-glass-nested-acceptance.md](../207-glass-nested-acceptance.md)
+- [x] T207 — Verify the replacement in nested and fallback sessions → [207-glass-nested-acceptance.md](../207-glass-nested-acceptance.md)
 - [ ] T208 — Verify native DRM and enable the replacement by default → [208-glass-native-rollout.md](../208-glass-native-rollout.md)
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-11-07T04:20:31Z · 13/15 done
+**Pipeline status** — updated 2026-11-07T07:14:39Z · 14/15 done
 
-- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202, T203, T204, T205, T206
+- Completed: T194, T195, T196, T197, T198, T199, T200, T201, T202, T203, T204, T205, T206, T207
 - Blocked: none
 - Failed: none
-- Remaining: T207, T208
-- Last finished: T206 — done · Applied measured near-opaque Settings/Files sidebar and toolbar presets with opaque content, live app-local appearance/accessibility bindings, shadow-ring fix, and 22-case Light/Dark capture evidence; make gates passes.
+- Remaining: T208
+- Last finished: T207 — done · T207 nested legacy/replacement acceptance landed with 50 rows and 16/16 A/B pairs passing, flat-band/reference and per-surface scores, interaction/fallback evidence, ADR/docs, and green check-tokens/visual-test/gates; native DRM stays OPEN for T208.
 <!-- /symphony:status -->

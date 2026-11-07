@@ -1433,6 +1433,41 @@ fit from the controlled reference sweep (A 1.0676, R 125.1 pt, observed
 that host is unavailable the QML and compositor regressions are the executable
 evidence and the capture limitation is recorded.
 
+T207's nested and fallback acceptance is produced by
+`make nested-acceptance-capture` (`scripts/capture-t207-nested-acceptance.sh`)
+and gated by `make nested-acceptance-check`:
+
+- `tests/glass/t207-cases.json` is the checked-in case matrix, tolerance
+  contract and flat-band mask. It covers stationary and moving backdrops,
+  light/dark, slider 0/0.5255/1, Reduce Transparency, Increase Contrast,
+  Reduce Motion, 1x/1.5x/2x, Full/Reduced/Minimal, software/SHM/dmabuf,
+  menus, Control Center, Notification Center, Dock popover, Settings/Files,
+  lock/lock-exit, fullscreen/fullscreen-exit, live output change and idle
+  settle.
+- `docs/captures/t207-nested-acceptance-capture.json` is the raw manifest:
+  one row per rollout and case with the capture, query, stats and log path.
+  A/B rows run the same scene and settings twice with
+  `DRAGONFRUIT_GLASS_ROLLOUT=legacy` and `=replacement`.
+- `docs/captures/t207-nested-acceptance.json` / `.md` are the scored report.
+  It publishes the legacy/replacement padded area, refresh-relative p50/p95
+  timing, material allocations, blur-cache misses, transport/copies, idle
+  frames/wakeups, the Dock flat-band mean/p95/SSIM against the macOS
+  `dock_interior` crop (mean <0.02, p95 <0.05, SSIM >0.90), and the
+  per-surface T198/T200/T202/T203/T205/T206 scores.
+- `docs/captures/t207-<case>-<rollout>.png` are the compositor's own renders;
+  matching `.txt` files are the live `query scale`/`query material`/`query
+  lock`/`query scanout` dumps and `-stats.txt` files are the SIGUSR1
+  compositor/shell counter windows. Logs are under
+  `docs/captures/t207-logs/`.
+- `docs/captures/t207-nested-acceptance.open.txt` records the native DRM row
+  (T208) and the approved adaptations: 1.5x/2x Dock MTF on the nested
+  scene-texture path, the underconstrained Dark notification surfaces, the
+  adapted Dark Settings chrome, the Dark attached menu baseline, and the
+  dmabuf capture-row boundary (`make t21-gpu-rollout` is the transport
+  evidence; the dev demo shell is offscreen/SHM).
+- The release rail remains the default (`glass.rollout.defaultMode=legacy`)
+  until T208; `DRAGONFRUIT_GLASS_ROLLOUT` is the A/B and rollback switch.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
