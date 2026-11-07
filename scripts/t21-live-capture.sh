@@ -21,8 +21,8 @@ cd "$(dirname "$0")/.."
 
 STATE="${1:-motion}"
 case "$STATE" in
-    motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center|notification-center) ;;
-    *) echo "usage: $0 motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center|notification-center" >&2; exit 2 ;;
+    motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center|notification-center|settings-window|files-window) ;;
+    *) echo "usage: $0 motion|settled|menu|popover|lock|fullscreen|status|dock-context|desktop-context|files-context|control-center|notification-center|settings-window|files-window" >&2; exit 2 ;;
 esac
 
 SETTLE="${SETTLE:-2}"
@@ -63,6 +63,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+APP_SESSION=0
 case "$STATE" in
     motion)
         DELAY=12000
@@ -91,6 +92,19 @@ case "$STATE" in
     files-context)
         DELAY=8000
         EXTRA_ENV=(DF_STATUS_FIXTURE=1 DF_DEMO_QT_APP=build/apps/files/dragonfruit-files DF_FILES_START_MENU=background)
+        ;;
+    settings-window)
+        DELAY=10000
+        APP_SESSION=1
+        EXTRA_ENV=(DF_DEMO_QT_APP=build/apps/settings/dragonfruit-settings
+                   DF_SETTINGS_START_PANE="${SETTINGS_START_PANE:-appearance}")
+        ;;
+    files-window)
+        DELAY=10000
+        APP_SESSION=1
+        EXTRA_ENV=(DF_DEMO_QT_APP=build/apps/files/dragonfruit-files
+                   DF_FILES_START_VIEW="${FILES_START_VIEW:-list}"
+                   DF_FILES_START_URI="${FILES_START_URI:-}")
         ;;
     control-center)
         DELAY=9000
@@ -130,15 +144,11 @@ if [ "$SCALE" != "1" ]; then
 fi
 
 echo "t21-live: $STATE capture on $SOCKET (scale $SCALE)"
-if [ "$STATE" = "files-context" ]; then
-    # The Files-window context needs the demo's Qt client; `dev-full --shell`
-    # launches only chrome/services. Keep the demo app path and private bus.
-    DEMO_CMD=(make demo DEMO_ARGS="--socket-name $SOCKET --private-bus")
-elif [ "$FULL_SESSION" = "1" ] || [ "$SCALE" != "1" ]; then
-    # `make dev-full` owns settingsd on a private bus. Seed the display scale
-    # before the shell starts: the shell forwards settingsd's display.scale as
-    # `df_output.set_scale`, which would otherwise reset the compositor's
-    # DRAGONFRUIT_NESTED_SCALE back to 1.0.
+if [ "$FULL_SESSION" = "1" ] || [ "$APP_SESSION" = "1" ] || [ "$SCALE" != "1" ]; then
+    # Both rails seed settingsd before the shell starts. For a scaled session
+    # the display scale must be seeded too: the shell forwards settingsd's
+    # display.scale as `df_output.set_scale`, which would otherwise reset the
+    # compositor's DRAGONFRUIT_NESTED_SCALE back to 1.0.
     SESSION_DIR="$XDG_RUNTIME_DIR/$SOCKET.session"
     mkdir -p "$SESSION_DIR/config/dragonfruit"
     WALLPAPER_SOURCE="${WALLPAPER_SOURCE:-}" \
@@ -170,6 +180,16 @@ if transparency:
 with open(path, "w", encoding="utf-8") as handle:
     json.dump({"schema": 18, "keys": keys}, handle)
 PY
+fi
+if [ "$STATE" = "files-context" ]; then
+    # The Files-window context needs the demo's Qt client; `dev-full --shell`
+    # launches only chrome/services. Keep the demo app path and private bus.
+    DEMO_CMD=(make demo DEMO_ARGS="--socket-name $SOCKET --private-bus")
+elif [ "$APP_SESSION" = "1" ]; then
+    # T206 app-window rail: the demo launches the Qt app while the private bus
+    # owns settingsd, so the app's app-local Theme/Glass bind to live settings.
+    DEMO_CMD=(make demo DEMO_ARGS="--socket-name $SOCKET --private-bus --services full")
+elif [ "$FULL_SESSION" = "1" ] || [ "$SCALE" != "1" ]; then
     DEMO_CMD=(make dev-full DEV_FULL_ARGS="--socket-name $SOCKET")
 else
     DEMO_CMD=(make demo DEMO_ARGS="--socket-name $SOCKET --private-bus")
@@ -238,7 +258,7 @@ except FileNotFoundError:
 sock.bind(client)
 sock.settimeout(2.0)
 chunks = []
-for command in (b"query scale", b"query material"):
+for command in (b"query scale", b"query material", b"query decorations"):
     sock.sendto(command, synth)
     while True:
         try:
@@ -285,7 +305,14 @@ def send(c): s.sendto(c.encode(), synth)
 def motion(x, y): send(f"motion-abs {x / 1280:.6f} {y / 800:.6f}")
 def key(code):
     send(f"key {code} down"); send(f"key {code} up"); time.sleep(0.15)
-if state == "fullscreen":
+if state in ("settings-window", "files-window") and os.environ.get("UNFOCUS") == "1":
+    # Click the empty desktop outside the centred app window. The chrome
+    # material must not change; only the controls/text focus state does.
+    motion(60, 60)
+    send("button 0x110 down")
+    send("button 0x110 up")
+    time.sleep(1.0)
+elif state == "fullscreen":
     # Ask the compositor for a window and enter its dedicated fullscreen
     # Space. The persistent menu bar/Dock must disappear and the material
     # pass must stop; `query scanout` then reports the policy candidate.

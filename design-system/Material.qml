@@ -88,6 +88,50 @@ QtObject {
         return Theme.reducedMotion ? 1.0 : Theme.controls.contextMenu.closeScale;
     }
 
+    // T206: first-party app chrome (the Settings/Files sidebar and toolbar).
+    // These surfaces are client-drawn on a transparent window: the app's own
+    // alpha is composited by the compositor over the normal lower scene, so the
+    // measured near-opaque transmission needs no sampled compositor pass. When
+    // the client surface has no alpha/composition path, the app keeps its
+    // existing opaque scheme plate instead. Reduce Transparency resolves to
+    // the shared opaque accessibility plate through the one resolver.
+    function appChromeResolution(preset) {
+        if (Glass.rollout !== "replacement")
+            return null;
+        return Glass.resolve(preset, {
+            scheme: Theme.dark ? "dark" : "light",
+            rollout: "replacement",
+            slider: Glass.slider,
+            reduceTransparency: Glass.reduceTransparency,
+            increaseContrast: Glass.increaseContrast,
+            backend: Glass.software ? "software" : "gpu-sampled",
+            tier: Glass.tier
+        });
+    }
+
+    function appChromeFill(preset, fallback) {
+        if (!Glass.appChromeSupported)
+            return fallback;
+        var resolved = appChromeResolution(preset);
+        if (resolved === null)
+            return fallback;
+        return Qt.rgba(resolved.tint, resolved.tint, resolved.tint,
+                       resolved.alpha);
+    }
+
+    // Increase Contrast raises the separator/edge ink on the app chrome. The
+    // normal path keeps the design-system border token; focus itself remains a
+    // controls/text state and never changes the material.
+    function appChromeBorder(preset, fallback) {
+        if (!Glass.increaseContrast)
+            return fallback;
+        var resolved = appChromeResolution(preset);
+        if (resolved === null || resolved.edge <= 0)
+            return fallback;
+        var ink = resolved.tint > 0.5 ? 0.0 : 1.0;
+        return Qt.rgba(ink, ink, ink, Math.min(1, resolved.edge));
+    }
+
     // The Applications drawer's card keeps its own translucent surface tone on
     // the sampled path; without the pass it takes the same milky plate as the
     // popup family.

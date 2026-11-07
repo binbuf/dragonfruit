@@ -215,11 +215,14 @@ and names the recorded reason, so components do not each re-derive a fill.
 The top-level `glass` token group (T195, ADR
 [0214](adr/0214-glass-role-presets-and-resolution.md)) is the optical
 vocabulary layered above the existing `MaterialRole` wire values and
-`DegradeTier` ladder. It defines 13 named presets: `dock`, `menuBarVeil`,
+`DegradeTier` ladder. It defines 17 named presets: `dock`, `menuBarVeil`,
 `menuAttached`, `menuDetached`, `statusMenu`, `tooltip`,
 `controlCenterOuter`, `controlCenterModule`, `controlCenterExpanded`,
-`notificationBanner`, `notificationStack`, `notificationLowerPanel`, and
-`windowChrome`. Each preset has a light and a dark calibration with a
+`notificationBanner`, `notificationStack`, `notificationLowerPanel`,
+`windowChrome`, `settingsSidebar`, `settingsToolbar`, `filesSidebar`, and
+`filesToolbar`. The last four are app-local client-alpha presets consumed by
+QML only; the compositor never resolves them because it never draws an app's
+sidebar or toolbar. Each preset has a light and a dark calibration with a
 `neutralAlpha`/`neutralTint` fit, a separate perceptual fit and weight, blur,
 edge/foreground contrast, provenance, confidence, and sRGB colour space.
 Resolution mixes the neutral and perceptual fits once rather than applying both
@@ -353,6 +356,50 @@ Reduce Transparency, Increase Contrast and the software path over neutral/grid
 backdrops; `scripts/t205-notification-materials.py` reports independent banner,
 stack and lower-panel fit errors.
 
+### First-party app chrome (T206)
+
+Settings and Files draw their own window chrome. Their sidebars and toolbars
+use four app-local presets — `settingsSidebar`, `settingsToolbar`,
+`filesSidebar`, `filesToolbar` — while the main content sheet and the Files
+path bar stay opaque. The measured Light Settings sidebar/toolbar are
+0.986/0.857 and 0.961/0.965; the measured Light Files pair is 0.985/0.858 and
+0.994/0.922; the measured Dark Files pair is 0.935/0.218 and 0.900/0.247.
+Settings Dark has no independent fit and is an explicit adaptation from the
+Finder dark pair. The Files surfaces stay independent in both schemes.
+
+These are client-alpha presets, not compositor-sampled passes. The app window
+is a normal transparent Wayland surface, so the resolved tint/alpha is
+composited by the compositor against the normal lower scene.
+`Material.appChromeFill()`/`appChromeBorder()` are the one QML complement; the legacy
+rollout keeps the existing opaque `surfaceMuted`/`chrome` fills, and a
+non-composited/unsupported client surface (`DF_APP_CHROME_SOLID=1` in the
+capture rail) keeps the same opaque plate rather than painting a translucent
+slab over unfrosted content. Reduce Transparency resolves to the shared opaque
+accessibility plate. Increase Contrast raises the separator ink; focus stays a
+controls/text state (the titlebar/controls dim, the material does not).
+
+`AppWindow.chromeTransparent` removes the generic opaque frame/content
+backing, keeps an opaque titlebar backing, and the app shells paint an opaque
+detail sheet below the toolbar with the correct bottom-right radius. The new
+`ChromeSheet` component draws a single fill with independent corner radii so
+the sidebar (bottom-left), detail sheet (bottom-right), and path bar
+(bottom-right) round exactly one window corner without stacking translucent
+overlays. The compositor's window shadow is emitted as a ring outside the
+window's rounded body (`shadow_elements_outside`), so it cannot show through
+the translucent sidebar/toolbar and darken the measured material; the QML
+`Shadow` is hidden on this path because the compositor owns the real shadow.
+
+The preset transport stores a scalar neutral alpha/tint. The reference's small
+sidebar chroma pickup is therefore **not** carried: captures report the
+rendered channel spread separately, and the missing chroma channel is an
+explicit follow-up rather than a claimed colour match. ADR
+[0225](adr/0225-first-party-app-chrome-presets.md) records the preset,
+fallback, and chroma decision. `make first-party-chrome-check` is in
+`make gates`; `make first-party-chrome-capture` records Light/Dark focused,
+unfocused, Reduce Transparency, Increase Contrast and solid-fallback rows over
+neutral and saturated backdrops, with `scripts/t206-first-party-chrome.py`
+scoring the sidebar, toolbar, opaque detail sheet and path bar independently.
+
 ### Dock optics fit (T198)
 
 The Dock preset carries the measured optical fit beyond the flat band:
@@ -468,6 +515,12 @@ rules:
   unsupported paths, and the legacy rollout default. The Rust and QML
   resolvers pin the same cases in `compositor/tests/material_presets.rs` and
   the design-system QML tests.
+- First-party app chrome is checked by `make first-party-chrome-check` (also
+  part of `make gates`): the four measured/adapted presets, the scalar
+  fallback, both app-local Theme/Glass bindings, the transparent frame and
+  opaque detail/path-bar surfaces, and the shared `Material.appChromeFill`
+  helper. `make first-party-chrome-capture` scores the live Light/Dark,
+  focused/unfocused, Reduce Transparency, Increase Contrast and solid rows.
 - The T-17 premium gate signs off the **live** visual floor against the goldens
   with `scripts/capture-t17-visual-floor.sh` (`make t17-visual-floor-capture`):
   one nested session captures dark, light, and dark+reduced-motion chrome and

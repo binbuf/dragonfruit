@@ -142,7 +142,8 @@ pub use scanout::{covers_output, direct_scanout_candidate};
 pub use scene_transform::{SceneTransform, SceneTransformPass};
 #[allow(unused_imports)]
 pub use shadow::{
-    shadow_bounds, shadow_elements, shadow_layers, ShadowLayer, ShadowLevel, ShadowSpec,
+    shadow_bounds, shadow_elements, shadow_elements_outside, shadow_layers, ShadowLayer,
+    ShadowLevel, ShadowSpec,
 };
 pub use state::{WindowEvent, WindowState, WindowStateMachine, WindowTransition};
 

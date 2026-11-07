@@ -51,6 +51,7 @@ TestCase {
     Component { id: searchFieldComponent; SearchField { } }
     Component { id: sourceListComponent; SourceList { } }
     Component { id: sidebarComponent; Sidebar { } }
+    Component { id: chromeSheetComponent; ChromeSheet { width: 120; height: 80 } }
     Component { id: dialogComponent; Dialog { } }
     Component { id: sheetComponent; Sheet { } }
     Component { id: popoverComponent; Popover { } }
@@ -153,11 +154,12 @@ TestCase {
         Glass.increaseContrast = false;
         Glass.sampledBlur = true;
         Glass.software = false;
+        Glass.appChromeSupported = true;
         Glass.tier = "full";
     }
 
     function test_glass_presets_cover_the_required_surfaces() {
-        compare(Glass.presetNames.length, 13);
+        compare(Glass.presetNames.length, 17);
         for (var i = 0; i < Glass.presetNames.length; ++i) {
             var name = Glass.presetNames[i];
             verify(Theme.glass.presets[name] !== undefined, name + " preset exists");
@@ -315,6 +317,93 @@ TestCase {
         });
         verify(Math.abs(moving.alpha - still.alpha) < 1e-6);
         compare(moving.renderMode, still.renderMode);
+    }
+
+    function test_glass_first_party_app_chrome_presets() {
+        var savedDark = Theme.dark;
+        var savedRollout = Glass.rollout;
+        var savedReduce = Glass.reduceTransparency;
+        var savedContrast = Glass.increaseContrast;
+        var savedSupported = Glass.appChromeSupported;
+        try {
+            Theme.dark = false;
+            Glass.rollout = "replacement";
+            Glass.reduceTransparency = false;
+            Glass.increaseContrast = false;
+            Glass.appChromeSupported = true;
+            var targets = {
+                settingsSidebar: [0.986, 0.857],
+                settingsToolbar: [0.961, 0.965],
+                filesSidebar: [0.985, 0.858],
+                filesToolbar: [0.994, 0.922]
+            };
+            for (var name in targets) {
+                var resolved = Glass.resolve(name, {
+                    scheme: "light", rollout: "replacement"
+                });
+                fuzzyCompare(resolved.alpha, targets[name][0], 1e-6, name + " alpha");
+                fuzzyCompare(resolved.tint, targets[name][1], 1e-6, name + " tint");
+                compare(resolved.renderMode, "solid");
+                compare(resolved.blur, 0);
+            }
+            var fill = Material.appChromeFill("settingsSidebar", "#123456");
+            fuzzyCompare(fill.a, 0.986, 1e-4);
+            fuzzyCompare(fill.r, 0.857, 1e-4);
+            fuzzyCompare(fill.g, 0.857, 1e-4);
+            fuzzyCompare(fill.b, 0.857, 1e-4);
+
+            Theme.dark = true;
+            fill = Material.appChromeFill("filesToolbar", "#123456");
+            fuzzyCompare(fill.a, 0.900, 1e-4);
+            fuzzyCompare(fill.r, 0.247, 1e-4);
+
+            // Non-composited/unsupported client surfaces keep the opaque
+            // design-system plate, never a translucent slab over unfrosted
+            // content.
+            Glass.appChromeSupported = false;
+            var fallback = Qt.rgba(0.2, 0.3, 0.4, 1.0);
+            fill = Material.appChromeFill("filesToolbar", fallback);
+            fuzzyCompare(fill.a, 1.0, 1e-6);
+            fuzzyCompare(fill.r, 0.2, 1e-6);
+
+            // The legacy rollout is the same opaque plate.
+            Glass.appChromeSupported = true;
+            Glass.rollout = "legacy";
+            fill = Material.appChromeFill("settingsSidebar", fallback);
+            fuzzyCompare(fill.a, 1.0, 1e-6);
+
+            // Reduce Transparency resolves to the shared opaque plate.
+            Theme.dark = false;
+            Glass.rollout = "replacement";
+            Glass.reduceTransparency = true;
+            fill = Material.appChromeFill("settingsSidebar", "#123456");
+            fuzzyCompare(fill.a, 0.98, 1e-4);
+            fuzzyCompare(fill.r, 0.97, 1e-4);
+
+            // Increase Contrast raises the separator ink after the fill.
+            Glass.reduceTransparency = false;
+            Glass.increaseContrast = true;
+            var border = Material.appChromeBorder("settingsSidebar",
+                                                  Qt.rgba(0, 0, 0, 0));
+            verify(border.a > 0, "Increase Contrast must raise the app chrome edge");
+        } finally {
+            Theme.dark = savedDark;
+            Glass.rollout = savedRollout;
+            Glass.reduceTransparency = savedReduce;
+            Glass.increaseContrast = savedContrast;
+            Glass.appChromeSupported = savedSupported;
+        }
+    }
+
+    function test_chrome_sheet_keeps_one_fill_and_per_corner_radii() {
+        var sheet = make(chromeSheetComponent, {
+            color: "#ff0000", bottomRightRadius: 12
+        });
+        compare(sheet.bottomRightRadius, 12);
+        compare(sheet.topLeftRadius, 0);
+        compare(sheet.topRightRadius, 0);
+        compare(sheet.bottomLeftRadius, 0);
+        compare(String(sheet.color), "#ff0000");
     }
 
     function test_glass_persistent_floor_and_transient_fallback() {

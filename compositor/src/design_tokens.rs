@@ -1239,6 +1239,154 @@ pub mod glass {
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }
+        pub mod settings_sidebar {
+            pub const ROLE: &str = "chrome";
+            pub const RENDER: &str = "solid";
+            pub const SLIDER: &str = "none";
+            pub mod light {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light System Settings sidebar 0.986/0.857. The muted sidebar shows a small chroma pickup; the preset stores only a scalar neutral tint, so the chroma component stays an explicit transport gap (ADR 0225).";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.986_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.857_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.986_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.857_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "T206 Settings Dark is not independently measured; adapted from the measured Finder dark sidebar 0.935/0.218 (REFERENCE.md) because System Settings and Finder share the near-opaque source-list material.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.935_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.218_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.935_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.218_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
+        pub mod settings_toolbar {
+            pub const ROLE: &str = "chrome";
+            pub const RENDER: &str = "solid";
+            pub const SLIDER: &str = "none";
+            pub mod light {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light System Settings toolbar 0.961/0.965. Near-opaque, so the scalar tint carries the visible result; no chroma channel is stored.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.961_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.965_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.961_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.965_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "T206 Settings Dark is not independently measured; adapted from the measured Finder dark toolbar 0.900/0.247 (REFERENCE.md).";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.9_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.247_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.9_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.247_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
+        pub mod files_sidebar {
+            pub const ROLE: &str = "chrome";
+            pub const RENDER: &str = "solid";
+            pub const SLIDER: &str = "none";
+            pub mod light {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light Finder sidebar 0.985/0.858. The muted sidebar shows the measured small chroma pickup; the scalar preset cannot carry it (ADR 0225).";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.985_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.858_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.985_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.858_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md dark Finder sidebar 0.935/0.218.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.935_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.218_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.935_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.218_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
+        pub mod files_toolbar {
+            pub const ROLE: &str = "chrome";
+            pub const RENDER: &str = "solid";
+            pub const SLIDER: &str = "none";
+            pub mod light {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light Finder toolbar 0.994/0.922.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.994_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.922_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.994_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.922_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md dark Finder toolbar 0.900/0.247.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.9_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.247_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.9_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.247_f32;
+                }
+                pub const BLUR: f32 = 0.0_f32;
+                pub const EDGE: f32 = 0.08_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
     }
 }
 
