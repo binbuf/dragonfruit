@@ -577,11 +577,16 @@ void GpuChromeFrameProducer::releaseGpu()
     if (context && m_surface && context->isValid())
         context->makeCurrent(m_surface);
 
-    if (m_renderControl)
-        m_renderControl->invalidate();
+    // Destroy the slot render targets before invalidating the render control.
+    // `QQuickRenderControl::invalidate()` tears down the scene graph/render
+    // target state; calling `QQuickWindow::setRenderTarget()` afterwards
+    // dereferences freed state and segfaults during shell teardown (T192b's
+    // full-rail Mission Control finding, reproduced by a failed start).
     const QList<int> slotIds = m_slots.keys();
     for (int slot : slotIds)
         destroySlotResources(slot);
+    if (m_renderControl)
+        m_renderControl->invalidate();
     m_ring.reset();
     m_lastRenderedSlot = -1;
     m_exportReason.clear();
