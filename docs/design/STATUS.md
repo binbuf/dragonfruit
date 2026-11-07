@@ -87,7 +87,7 @@ report already uses that distinction; this file applies it consistently.
 | T-17 Premium gate | Partial / human-open | nested loop/navigation/Flatpak captures, visual floor, robustness, leak/lock, sign-off report | DRM full loop and baseline perf OPEN; human unfamiliar-user verdict batched |
 | T-18 Wallpaper content provider | Implemented | wallpaperd, shipped default, provider cache, pane collections/attribution, absence | — |
 | T-19 Desktop affordances | Implemented | Tabler line + Phosphor fill icon split, Settings category tiles, menu-bar/Dock/app icons, Applications drawer, desktop items | desktop process is not provisioned by the systemd session (G-09) |
-| T-20 Tahoe liquid-glass material | **Partial** | scene texture, Kawase blur, glass shader, all chrome roles, DRM sampled path, effective material event, software fallback, tolerance captures, native DP-1 diagnostics and visual sweep (T191a/T191b) | multi-GPU/rotation, quality floor, cursor/overlay-plane evidence, refresh scheduling (G-08, G-12, G-02) |
+| T-20 Tahoe liquid-glass material | **Partial** | scene texture, Kawase blur, glass shader, all chrome roles, DRM sampled path, effective material event, software fallback, tolerance captures, native DP-1 diagnostics and visual sweep (T191a/T191b), nested legacy/replacement acceptance (T207: `captures/t207-nested-acceptance.md`) | native DRM rollout/default (T208), multi-GPU/rotation, quality floor, cursor/overlay-plane evidence, refresh scheduling (G-08, G-12, G-02) |
 | T-21 Presentation foundation (v0.1.1) | **Proposed** | task set T183–T193: shell transport/HiDPI, per-output refresh scheduling, material cost/floor, native evidence | all rows; see [tasks/0.1.1](../tasks/0.1.1/README.md) |
 
 ## 4. System status by area
