@@ -3,12 +3,20 @@ Description=Dragonfruit xdg-desktop-portal backend
 Documentation=https://github.com/dragonfruit-desktop/dragonfruit
 # Stage 2: the portal backend registers with xdg-desktop-portal last, once
 # the compositor and the stage-1 services are up.
+#
+# The distro's xdg-desktop-portal.service has Requisite=graphical-session.target.
+# Dragonfruit starts its own session target directly, so the portal backend
+# pulls in the generic graphical target and the frontend itself. Flatpak apps
+# then get the Settings portal (including the window-control layout) instead
+# of the frontend failing with a dependency error.
+Wants=graphical-session.target xdg-desktop-portal.service
 After=dragonfruit-compositor.service
 After=dragonfruit-shell.service
 After=dragonfruit-settingsd.service
 After=dragonfruit-menu-broker.service
 After=dragonfruit-app-index.service
 After=dragonfruit-notifications.service
+After=graphical-session.target
 After=xdg-desktop-portal.service
 PartOf=dragonfruit-session.target
 

@@ -135,10 +135,35 @@ fn the_target_pulls_the_whole_composition() {
     ] {
         assert!(wants.contains(service), "{service} is wanted: {wants}");
     }
-    assert_eq!(
-        values(&target, "Install", "WantedBy"),
-        vec!["graphical-session.target"]
+    // The session entry starts this target directly; it must not also be
+    // WantedBy=graphical-session.target or the portal backend's pull-in of
+    // that target would form a dependency cycle.
+    assert!(
+        values(&target, "Install", "WantedBy").is_empty(),
+        "the session target is started by the entry, not graphical-session.target"
     );
+}
+
+#[test]
+fn the_portal_backend_pulls_in_the_portal_frontend() {
+    // The distro frontend requires graphical-session.target; Dragonfruit's
+    // entry starts its own target directly, so the backend must pull both in
+    // or Flatpak apps lose the Settings portal.
+    let portal = load("dragonfruit-portal.service");
+    let wants = values(&portal, "Unit", "Wants").join(" ");
+    for unit in ["graphical-session.target", "xdg-desktop-portal.service"] {
+        assert!(
+            wants.split_whitespace().any(|want| want == unit),
+            "the portal backend wants {unit}: {wants}"
+        );
+    }
+    let after = values(&portal, "Unit", "After").join(" ");
+    for unit in ["graphical-session.target", "xdg-desktop-portal.service"] {
+        assert!(
+            after.split_whitespace().any(|ordered| ordered == unit),
+            "the portal backend is ordered after {unit}: {after}"
+        );
+    }
 }
 
 #[test]

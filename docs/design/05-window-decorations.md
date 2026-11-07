@@ -53,6 +53,16 @@ can launch:
 GTK 4/libadwaita may ignore both `GTK_CSD` and the KDE protocol; the layout
 setting is the fallback.
 
+Sandboxed apps cannot read the host GTK files. Two bridges cover them:
+`--sync-toolkit` writes the same `gtk-decoration-layout`/`button-layout`
+keys into every existing `$HOME/.var/app/*/config` sandbox, and the Settings
+portal projects the layout as `org.gnome.desktop.wm.preferences`
+`button-layout`. The portal backend also starts the distro
+`xdg-desktop-portal` frontend (whose unit requires
+`graphical-session.target`). Electron/Chromium read GtkSettings (and GTK 4
+reads the portal), so Flatpak VS Code and other Electron apps get the same
+left-side buttons without a per-app build.
+
 This remains a best-effort bridge: an application that draws its own controls
 (Electron/Chromium, SDL, some toolkits, and apps with a hard-coded headerbar)
 keeps them where it draws them. We do not inject a second titlebar or fake
@@ -65,7 +75,7 @@ controls into client pixels (the tier-3 dignity rule above).
 | Qt 5/6 | Qt Wayland negotiates server-side decoration by default when the compositor offers `xdg-decoration`; Dragonfruit advertises it. Do not set `QT_WAYLAND_DISABLE_WINDOWDECORATION=1`. |
 | GTK 3 | Wayland: the compositor's KDE server-decoration default mode `Server` → compositor SSD. X11: `GTK_CSD=0` (session default). If the app forces CSD, `gtk-decoration-layout` moves its controls left. |
 | GTK 4/libadwaita | `gtk-decoration-layout` moves `GtkWindowControls`/`AdwHeaderBar` controls left; many apps still draw their own headerbar. |
-| Electron/Chromium | Prefer the platform titlebar: Chromium `--gtk-window-decorations` / `--enable-features=UseGtkThemeFrame`; VS Code `"window.titleBarStyle": "native"`. Apps without such an option keep their own frame. |
+| Electron/Chromium | Electron 43+ Window Controls Overlay reads the desktop's GTK/GNOME `button-layout` (GtkSettings, with GTK 4 using the Settings portal); the session writes that layout into Flatpak sandboxes too (VS Code: `"window.titleBarStyle": "custom"`, `"window.controlsStyle": "native"`). Chromium can also use the platform titlebar via `--gtk-window-decorations` / `--enable-features=UseGtkThemeFrame`; VS Code `"window.titleBarStyle": "native"` is the fallback. Apps without such an option keep their own frame. |
 | X11 (Xwayland) | The compositor draws the frame; X11 apps are Tier 2 without per-app cooperation. |
 
 ## Negotiation
@@ -248,7 +258,10 @@ menu is the main decoration gap (G-06). The GTK steering bridge now runs from
 the session entry (`dragonfruit-session --sync-toolkit`), the session exports
 `GTK_CSD=0` for X11 GTK 3, and the compositor advertises KDE's legacy
 server-decoration manager with default mode `Server` for Wayland GTK 3. The
+Settings portal projects the layout into the standard GNOME namespace for
+sandboxed apps, and the portal backend starts the distro frontend. The
 compositor also answers a decoration object created after the initial
 configure with the SSD mode, so a lazily negotiating client still gets the
 left-side titlebar. Electron/Chromium and other self-drawn frames remain the
-documented tier-3 boundary.
+documented tier-3 boundary; Electron 43+ can follow the portal layout in its
+Window Controls Overlay.

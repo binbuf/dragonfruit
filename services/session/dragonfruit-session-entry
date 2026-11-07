@@ -148,6 +148,10 @@ done
 #    next login starts from scratch. The compositor removes its own hand-off
 #    files on a clean exit; this is the safety net after a crash.
 "$systemctl" --user stop "$target" || true
+# The portal frontend is pulled in as a dependency of the portal backend but
+# is PartOf=graphical-session.target, which is not our target; stop it
+# explicitly so no portal process outlives the session.
+"$systemctl" --user stop xdg-desktop-portal.service >/dev/null 2>&1 || true
 "$systemctl" --user reset-failed "$target" || true
 
 rm -f \

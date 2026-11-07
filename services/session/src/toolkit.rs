@@ -22,6 +22,13 @@
 //! * the live dconf value through `gsettings`, when it is available, so a
 //!   Wayland GTK client sees the change without a new login.
 //!
+//! Flatpak apps are sandboxed away from the host GTK files. For every app
+//! that already has a config directory under `$HOME/.var/app/*/config`, the
+//! same three files are written inside that sandbox. Electron/Chromium read
+//! `gtk-decoration-layout` from GtkSettings (and GTK 4 reads
+//! `button-layout` through the Settings portal), so this is what makes the
+//! Window Controls Overlay follow the desktop's left-side layout.
+//!
 //! The INI/keyfile writers preserve every line and key they do not own and
 //! replace the file atomically. A missing `gsettings` is not an error: the
 //! file fallbacks still carry the layout for the next login.
@@ -39,8 +46,9 @@ const GSETTINGS_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The GTK window-control layout. The colon separates the left and right
 /// sides, so close/minimize/maximize sit on the left and the right side is
-/// empty.
-pub const BUTTON_LAYOUT: &str = "close,minimize,maximize:";
+/// empty. The shared constant also feeds the Settings portal's GNOME
+/// compatibility namespace, so host and sandboxed apps cannot drift.
+pub const BUTTON_LAYOUT: &str = df_ipc::WINDOW_BUTTON_LAYOUT;
 
 /// The GTK setting key (`gtk-decoration-layout`) in `settings.ini`.
 pub const GTK_SETTINGS_KEY: &str = "gtk-decoration-layout";
@@ -107,6 +115,48 @@ pub fn config_home() -> Option<PathBuf> {
         .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".config")))
 }
 
+/// Resolve `$HOME`. `None` when it is unset.
+pub fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+/// The config root of every Flatpak app that already has one
+/// (`$HOME/.var/app/<app-id>/config`). Apps that have never run have no
+/// config directory and are skipped, so the session never creates a sandbox
+/// tree for an app that is not installed/used.
+pub fn flatpak_config_roots(home: &Path) -> Vec<PathBuf> {
+    let root = home.join(".var").join("app");
+    let Ok(entries) = fs::read_dir(root) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+        .map(|entry| entry.path().join("config"))
+        .filter(|config| config.is_dir())
+        .collect()
+}
+
+/// Apply the left-side layout inside every existing Flatpak app sandbox.
+///
+/// Best-effort per app: one unreadable/read-only sandbox must not abort the
+/// session or the other apps' sync. Returns the files whose contents changed.
+pub fn sync_flatpak_window_controls(home: &Path) -> Vec<PathBuf> {
+    let mut written = Vec::new();
+    for config in flatpak_config_roots(home) {
+        match sync_window_controls(&config) {
+            Ok(files) => written.extend(files),
+            Err(error) => eprintln!(
+                "dragonfruit-session: cannot sync Flatpak toolkit settings under {}: {error}",
+                config.display()
+            ),
+        }
+    }
+    written
+}
+
 /// Apply the left-side layout to every GTK configuration source under
 /// `config_home`. Returns the files whose contents changed.
 pub fn sync_window_controls(config_home: &Path) -> io::Result<Vec<PathBuf>> {
@@ -137,13 +187,16 @@ pub fn sync_window_controls(config_home: &Path) -> io::Result<Vec<PathBuf>> {
 /// `gsettings` write. A missing config home is an error; a missing or failing
 /// `gsettings` is reported in the result, never fatal.
 pub fn sync_from_env() -> io::Result<SyncReport> {
-    let Some(home) = config_home() else {
+    let Some(config) = config_home() else {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
             "neither XDG_CONFIG_HOME nor HOME is set",
         ));
     };
-    let files = sync_window_controls(&home)?;
+    let mut files = sync_window_controls(&config)?;
+    if let Some(home) = home_dir() {
+        files.extend(sync_flatpak_window_controls(&home));
+    }
     Ok(SyncReport {
         files,
         gsettings: apply_gsettings(),
@@ -468,6 +521,43 @@ mod tests {
         for path in written {
             assert!(path.is_file(), "{} exists", path.display());
         }
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn flatpak_sandboxes_that_have_run_get_the_layout() {
+        let home = scratch("flatpak");
+        let app_config = home
+            .join(".var/app/com.example.Editor/config")
+            .join("gtk-3.0");
+        fs::create_dir_all(&app_config).expect("app config dir");
+        let settings = app_config.join("settings.ini");
+        fs::write(
+            &settings,
+            "[Settings]\ngtk-theme-name=Breeze\ngtk-decoration-layout=appmenu:close\n",
+        )
+        .expect("seed app settings");
+
+        // An app directory without a config tree (never run) is left alone.
+        let never_run = home.join(".var/app/com.example.NeverRun/data");
+        fs::create_dir_all(&never_run).expect("data dir");
+
+        let written = sync_flatpak_window_controls(&home);
+        assert!(written.contains(&settings), "the app settings were updated");
+        let text = fs::read_to_string(&settings).expect("read app settings");
+        assert!(text.contains("gtk-theme-name=Breeze"), "{text}");
+        assert!(
+            text.contains("gtk-decoration-layout=close,minimize,maximize:"),
+            "{text}"
+        );
+        assert!(
+            !home.join(".var/app/com.example.NeverRun/config").exists(),
+            "a sandbox that never ran is not created"
+        );
+
+        // A second pass has nothing left to write.
+        assert!(sync_flatpak_window_controls(&home).is_empty());
+
         fs::remove_dir_all(&home).ok();
     }
 }

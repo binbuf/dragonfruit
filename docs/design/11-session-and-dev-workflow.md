@@ -203,22 +203,25 @@ while developing a display server. **Do not uninstall GNOME during
 development.**
 
 The session package installs a Wayland-session descriptor plus user
-services; `systemd`'s `graphical-session.target` gives us a clean model for
-tying desktop services to session lifetime.
+services. `dragonfruit-session.target` is the session root (the entry starts
+it directly); the portal backend also pulls in the generic
+`graphical-session.target`, because the distro `xdg-desktop-portal.service`
+requires it and sandboxed apps need the portal's Settings interface.
 
 ## Session composition and supervision
 
 ```text
-graphical-session.target (systemd --user)
-  └── dragonfruit-session.target
-        ├── dragonfruit-compositor.service     # starts first, owns the seat
-        ├── dragonfruit-settingsd.service      # Type=dbus, Restart=on-failure
-        ├── dragonfruit-shell.service          # After=compositor + settingsd, Restart=always
-        ├── dragonfruit-menu-broker.service   # Restart=on-failure
-        ├── dragonfruit-app-index.service      # Restart=on-failure
-        ├── dragonfruit-notifications.service  # Restart=on-failure
-        ├── dragonfruit-wallpaperd.service     # Restart=on-failure
-        └── dragonfruit-portal.service         # Restart=on-failure
+dragonfruit-session.target (started directly by dragonfruit-session-entry)
+  ├── dragonfruit-compositor.service     # starts first, owns the seat
+  ├── dragonfruit-settingsd.service      # Type=dbus, Restart=on-failure
+  ├── dragonfruit-shell.service          # After=compositor + settingsd, Restart=always
+  ├── dragonfruit-menu-broker.service   # Restart=on-failure
+  ├── dragonfruit-app-index.service      # Restart=on-failure
+  ├── dragonfruit-notifications.service  # Restart=on-failure
+  ├── dragonfruit-wallpaperd.service     # Restart=on-failure
+  └── dragonfruit-portal.service         # Restart=on-failure
+        └── graphical-session.target      # dependency, not a parent
+              └── xdg-desktop-portal.service  # distro frontend (Requisite=)
 ```
 
 - **Startup order:** compositor first; the stage-1 services start once the
@@ -259,7 +262,7 @@ The production supervisor is the systemd user units in
 together by `dragonfruit-session.target`:
 
 ```text
-dragonfruit-session.target                 # WantedBy=graphical-session.target
+dragonfruit-session.target                 # started by the session entry
   ├── dragonfruit-compositor.service       # --backend drm, Restart=no (anchor)
   ├── dragonfruit-settingsd.service        # Type=dbus, Restart=on-failure
   ├── dragonfruit-shell.service            # After=settingsd, Restart=always
@@ -267,7 +270,7 @@ dragonfruit-session.target                 # WantedBy=graphical-session.target
   ├── dragonfruit-app-index.service
   ├── dragonfruit-notifications.service
   ├── dragonfruit-wallpaperd.service
-  └── dragonfruit-portal.service
+  └── dragonfruit-portal.service           # pulls graphical-session.target + xdg-desktop-portal
 ```
 
 Each service waits for the compositor's private socket with
@@ -319,8 +322,10 @@ GSettings keyfile, and (when `gsettings` is available) the live dconf value.
 On Wayland, GTK 3 reads the compositor's KDE server-decoration default mode
 (`Server`), so cooperative GTK 3 clients get the compositor titlebar, while
 GTK 4/libadwaita CSD apps move their controls left where the toolkit honours
-the setting. It is best-effort and never blocks the session; see
-[05-window-decorations.md](05-window-decorations.md).
+the setting. The same layout is written into existing Flatpak app sandboxes
+(`$HOME/.var/app/*/config`) and exposed through the Settings portal, because
+a sandbox cannot see the host GTK files. It is best-effort and never blocks
+the session; see [05-window-decorations.md](05-window-decorations.md).
 
 The compositor is the anchor: when it exits (a clean logout or a crash), the
 entry stops the target, clears its failed state, and removes the runtime
