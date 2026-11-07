@@ -48,7 +48,9 @@ Rectangle {
     property var wifiMenu: ({})
     property var volumeMenu: ({})
     property var batteryMenu: ({})
-    // Which status popover is open: "" | "wifi" | "volume" | "battery".
+    property var bluetoothMenu: ({})
+    // Which status popover is open: "" | "wifi" | "volume" | "battery" |
+    // "bluetooth".
     property string openStatusItem: ""
     // Keyboard navigation (T-07.5b): the status slot the arrow keys select.
     // -1 means no slot is selected.
@@ -59,6 +61,23 @@ Rectangle {
     // T-15.9b: `menu.showBackground`. When off the bar keeps its items and its
     // reserved zone but draws no chrome material, so the desktop shows through.
     property bool showBackground: true
+    // T201: `menu.autoHide`. The compositor owns the actual per-output reveal;
+    // this property is the bar's copy of the policy so the scene and its tests
+    // share the same semantics. `visibleIn()` is the pure rule.
+    property string autoHideMode: "full-screen"
+    // Test/introspection helpers for the policy rule.
+    readonly property bool autoHideAlways: autoHideMode === "always"
+    readonly property bool autoHideInFullscreen: autoHideMode === "full-screen"
+
+    // Whether the bar is visible for one output. `revealed` is the compositor's
+    // transient reveal and `active` is an open menu or menu-bar focus.
+    function visibleIn(fullscreen, revealed, active) {
+        if (autoHideMode === "never")
+            return true;
+        if (autoHideMode === "always")
+            return revealed || active;
+        return !fullscreen || revealed || active;
+    }
     // Effective chrome material from the compositor (P1). When the sampled
     // backdrop pass is not actually running (the current DRM rail, headless,
     // or a blur-off tier), the bar uses the near-opaque milky fallback rather
@@ -66,6 +85,11 @@ Rectangle {
     property bool materialBlurActive: true
     property int materialTier: 0
     property int materialFallback: 0
+    // T200: the accessibility overrides the compositor applies to the veil.
+    // They are pushed by the shell alongside the role material state so QML
+    // can choose the scheme-appropriate opaque fallback when the veil is off.
+    property bool reduceTransparency: false
+    property bool increaseContrast: false
     // T-21.2c: the transient Popup role state for every dropdown/popover in
     // the bar scene. The shell applies it through the same MaterialPolicy as
     // the persistent Chrome role above; QML never re-derives the tier.
@@ -110,7 +134,8 @@ Rectangle {
         if (openStatusItem !== "") {
             var statusPopup = openStatusItem === "wifi" ? wifiMenuPopup
                             : (openStatusItem === "volume" ? volumeMenuPopup
-                            : (openStatusItem === "battery" ? batteryMenuPopup : null));
+                            : (openStatusItem === "battery" ? batteryMenuPopup
+                            : (openStatusItem === "bluetooth" ? bluetoothMenuPopup : null)));
             if (statusPopup && statusPopup.popup.open) {
                 var statusOrigin = statusPopup.mapToItem(menuBar, statusPopup.popup.x,
                                                          statusPopup.popup.y);
@@ -144,6 +169,76 @@ Rectangle {
     readonly property real dropdownY: _dropdownRect.y
     readonly property real dropdownWidth: _dropdownRect.w
     readonly property real dropdownHeight: _dropdownRect.h
+    // T202: the preset for the open dropdown and the independently keyed
+    // material regions the shell declares on the popup overlay. Attached
+    // app menus keep square top corners; status menus and the tray context
+    // menu are detached/status cards.
+    readonly property string dropdownPreset: {
+        if (openStatusItem !== "")
+            return "statusMenu";
+        if (trayMenuOpen && trayContextMenu.open)
+            return "menuDetached";
+        return "menuAttached";
+    }
+    readonly property var dropdownRegions: {
+        var out = [];
+        if (openStatusItem !== "") {
+            var popup = openStatusItem === "wifi" ? wifiMenuPopup.popup
+                      : (openStatusItem === "volume" ? volumeMenuPopup.popup
+                      : (openStatusItem === "battery" ? batteryMenuPopup.popup
+                      : (openStatusItem === "bluetooth" ? bluetoothMenuPopup.popup : null)));
+            if (popup && popup.open) {
+                var owner = openStatusItem === "wifi" ? wifiMenuPopup
+                          : (openStatusItem === "volume" ? volumeMenuPopup
+                          : (openStatusItem === "battery" ? batteryMenuPopup
+                          : bluetoothMenuPopup));
+                var p = owner.mapToItem(menuBar, popup.x, popup.y);
+                var r = Theme.controls.contextMenu.radius;
+                out.push({ key: "menu", preset: "statusMenu",
+                           x: p.x, y: p.y, w: popup.width, h: popup.height,
+                           tl: r, tr: r, br: r, bl: r, overscan: 20 });
+            }
+            return out;
+        }
+        if (trayMenuOpen && trayContextMenu.open) {
+            var trayParent = trayContextMenu.parent;
+            var origin = trayParent
+                ? trayParent.mapToItem(menuBar, trayContextMenu.x, trayContextMenu.y)
+                : Qt.point(trayContextMenu.x, trayContextMenu.y);
+            var regions = trayContextMenu.regions;
+            for (var i = 0; i < regions.length; ++i) {
+                var region = regions[i];
+                out.push({ key: region.key, preset: region.preset,
+                           x: origin.x + region.x, y: origin.y + region.y,
+                           w: region.w, h: region.h,
+                           tl: region.tl, tr: region.tr,
+                           br: region.br, bl: region.bl,
+                           overscan: region.overscan });
+            }
+            return out;
+        }
+        if (openMenuIndex >= 0) {
+            var item = menuRepeater.itemAt(openMenuIndex);
+            if (item) {
+                var itemParent = item.parent;
+                var itemOrigin = itemParent
+                    ? itemParent.mapToItem(menuBar, item.x, item.y)
+                    : Qt.point(item.x, item.y);
+                var itemRegions = item.regions;
+                for (var j = 0; j < itemRegions.length; ++j) {
+                    var itemRegion = itemRegions[j];
+                    out.push({ key: itemRegion.key, preset: itemRegion.preset,
+                               x: itemOrigin.x + itemRegion.x,
+                               y: itemOrigin.y + itemRegion.y,
+                               w: itemRegion.w, h: itemRegion.h,
+                               tl: itemRegion.tl, tr: itemRegion.tr,
+                               br: itemRegion.br, bl: itemRegion.bl,
+                               overscan: itemRegion.overscan });
+                }
+            }
+        }
+        return out;
+    }
 
     signal appMenuTriggered(int menuIndex, int itemIndex, var item)
     signal appMenuOpened(int menuIndex)
@@ -158,6 +253,11 @@ Rectangle {
     signal wifiJoinRequested(string ssid, string secret)
     signal volumeSetRequested(double volume)
     signal muteToggleRequested()
+    // Bluetooth status menu (T202): the same action policy as the Control
+    // Center tile, routed through the existing bridge-host slots.
+    signal bluetoothPowerToggleRequested(bool enabled)
+    signal bluetoothDeviceToggled(string address, bool connected)
+    signal bluetoothSettingsRequested()
     signal statusMenuRefreshRequested(string itemId)
     signal statusMenuOpened()
     signal statusMenuClosed()
@@ -176,12 +276,53 @@ Rectangle {
     // the milky fallback keeps the same chrome geometry and text contrast.
     readonly property color chromeFill: Theme.color.chrome
     readonly property color chromeFallbackFill: Theme.color.chromeFallbackFill
-    color: !menuBar.showBackground ? "transparent"
-        : menuBar.materialBlurActive
-          ? Qt.rgba(menuBar.chromeFill.r, menuBar.chromeFill.g,
-                    menuBar.chromeFill.b, Theme.material.chromeOpacity)
-          : Qt.rgba(menuBar.chromeFallbackFill.r, menuBar.chromeFallbackFill.g,
-                    menuBar.chromeFallbackFill.b, Theme.material.chromeFallbackOpacity)
+    // T200: the replacement rail moves the menu-bar backdrop into the
+    // compositor. In that mode the QML surface paints no fill at all; the
+    // compositor's sharp veil sits below the foreground and the popups. When
+    // the veil cannot run (legacy rollout, Reduce Transparency, or no sampled
+    // scene texture) QML keeps the scheme-appropriate plate, so the bar never
+    // shows an unfiltered wallpaper strip.
+    readonly property int veilExtent: Theme.glass.presets.menuBarVeil.extent
+    readonly property int referenceStripHeight:
+        Theme.glass.presets.menuBarVeil.stripHeight
+    readonly property string materialBackend:
+        menuBar.materialBlurActive ? "gpu-sampled"
+        : (menuBar.materialFallback === 2 ? "software" : "gpu-no-sampled-blur")
+    readonly property string materialTierName:
+        menuBar.materialTier <= 0 ? "full"
+        : (menuBar.materialTier === 1 ? "reduced" : "minimal")
+    readonly property var veilResolution:
+        Glass.resolve("menuBarVeil", {
+            backend: menuBar.materialBackend,
+            tier: menuBar.materialTierName,
+            reduceTransparency: menuBar.reduceTransparency,
+            increaseContrast: menuBar.increaseContrast
+        })
+    readonly property bool veilActive:
+        menuBar.showBackground && menuBar.materialBlurActive
+        && menuBar.veilResolution.renderMode === "no-blur-veil"
+    // The region the shell commits to the compositor. The legacy sampled rail
+    // keeps the 28 pt bar panel; the veil declares its full 95 pt visual
+    // extent while the input region and reservation stay the strip.
+    readonly property bool compositorPanelActive:
+        menuBar.showBackground && menuBar.materialBlurActive
+        && (menuBar.veilResolution.renderMode === "no-blur-veil"
+            || menuBar.veilResolution.renderMode === "sampled-glass")
+    readonly property int compositorPanelHeight:
+        menuBar.veilActive ? menuBar.veilExtent : Theme.controls.menuBar.height
+    readonly property int compositorPanelRadius:
+        menuBar.veilActive ? 0 : Theme.controls.menuBar.radius
+    readonly property color glassFill: Qt.rgba(
+        menuBar.chromeFill.r, menuBar.chromeFill.g, menuBar.chromeFill.b,
+        Theme.material.chromeOpacity)
+    readonly property color fallbackFill: Qt.rgba(
+        menuBar.chromeFallbackFill.r, menuBar.chromeFallbackFill.g,
+        menuBar.chromeFallbackFill.b, Theme.material.chromeFallbackOpacity)
+    color: !menuBar.showBackground || menuBar.veilActive ? "transparent"
+        : (menuBar.materialBlurActive
+           && menuBar.veilResolution.renderMode === "sampled-glass")
+          ? menuBar.glassFill
+          : menuBar.fallbackFill
 
     function openMenu(index) {
         if (index < 0 || index >= menuRepeater.count || index === openMenuIndex)
@@ -277,13 +418,15 @@ Rectangle {
     // machine with no battery) has nothing to open, matching the graceful-
     // degradation rule.
     function openStatusMenu(id) {
-        if (id !== "wifi" && id !== "volume" && id !== "battery")
+        if (id !== "wifi" && id !== "volume" && id !== "battery"
+                && id !== "bluetooth")
             return;
         var data = id === "wifi" ? wifiMenu
-                 : (id === "volume" ? volumeMenu : batteryMenu);
+                 : (id === "volume" ? volumeMenu
+                 : (id === "battery" ? batteryMenu : bluetoothMenu));
         if (!data || data.state === "unavailable")
             return;
-        if (id === "battery" && data.present === false)
+        if ((id === "battery" || id === "bluetooth") && data.present === false)
             return;
         closeMenus();
         closeStatusMenu();
@@ -292,8 +435,10 @@ Rectangle {
             wifiMenuPopup.open = true;
         else if (id === "volume")
             volumeMenuPopup.open = true;
-        else
+        else if (id === "battery")
             batteryMenuPopup.open = true;
+        else
+            bluetoothMenuPopup.open = true;
         statusMenuRefreshRequested(id);
         statusMenuOpened();
     }
@@ -308,6 +453,7 @@ Rectangle {
         wifiMenuPopup.open = false;
         volumeMenuPopup.open = false;
         batteryMenuPopup.open = false;
+        bluetoothMenuPopup.open = false;
         statusMenuClosed();
         keyboardStatusIndex = -1;
         // Return keyboard focus to the bar so the arrow keys keep driving the
@@ -343,7 +489,8 @@ Rectangle {
         var item = statusRepeater.itemAt(keyboardStatusIndex);
         if (!item)
             return;
-        if (item.itemId === "wifi" || item.itemId === "volume" || item.itemId === "battery") {
+        if (item.itemId === "wifi" || item.itemId === "volume"
+                || item.itemId === "battery" || item.itemId === "bluetooth") {
             openStatusMenu(item.itemId);
         } else {
             closeMenus();
@@ -544,7 +691,8 @@ Rectangle {
                 backgroundColor: menuBar.color
 
                 onActivated: (id) => {
-                    if (id === "wifi" || id === "volume" || id === "battery") {
+                    if (id === "wifi" || id === "volume" || id === "battery"
+                            || id === "bluetooth") {
                         menuBar.openStatusMenu(id);
                         return;
                     }
@@ -595,6 +743,8 @@ Rectangle {
         objectName: "wifiMenu"
         model: menuBar.wifiMenu
         anchorItem: menuBar.statusItemFor("wifi")
+        materialPreset: "statusMenu"
+        materialBackdrop: "trusted"
         materialBlurActive: menuBar.popupMaterialBlurActive
         materialTier: menuBar.popupMaterialTier
         materialFallback: menuBar.popupMaterialFallback
@@ -608,6 +758,8 @@ Rectangle {
         objectName: "volumeMenu"
         model: menuBar.volumeMenu
         anchorItem: menuBar.statusItemFor("volume")
+        materialPreset: "statusMenu"
+        materialBackdrop: "trusted"
         materialBlurActive: menuBar.popupMaterialBlurActive
         materialTier: menuBar.popupMaterialTier
         materialFallback: menuBar.popupMaterialFallback
@@ -622,10 +774,29 @@ Rectangle {
         objectName: "batteryMenu"
         model: menuBar.batteryMenu
         anchorItem: menuBar.statusItemFor("battery")
+        materialPreset: "statusMenu"
+        materialBackdrop: "trusted"
         materialBlurActive: menuBar.popupMaterialBlurActive
         materialTier: menuBar.popupMaterialTier
         materialFallback: menuBar.popupMaterialFallback
         onRefreshRequested: menuBar.statusMenuRefreshRequested("battery")
+        onClosed: menuBar.closeStatusMenu()
+    }
+
+    BluetoothMenu {
+        id: bluetoothMenuPopup
+        objectName: "bluetoothMenu"
+        model: menuBar.bluetoothMenu
+        anchorItem: menuBar.statusItemFor("bluetooth")
+        materialPreset: "statusMenu"
+        materialBackdrop: "trusted"
+        materialBlurActive: menuBar.popupMaterialBlurActive
+        materialTier: menuBar.popupMaterialTier
+        materialFallback: menuBar.popupMaterialFallback
+        onPowerToggleRequested: (enabled) => menuBar.bluetoothPowerToggleRequested(enabled)
+        onDeviceToggled: (address, connected) => menuBar.bluetoothDeviceToggled(address, connected)
+        onSettingsRequested: menuBar.bluetoothSettingsRequested()
+        onRefreshRequested: menuBar.statusMenuRefreshRequested("bluetooth")
         onClosed: menuBar.closeStatusMenu()
     }
 
@@ -638,6 +809,8 @@ Rectangle {
         objectName: "trayContextMenu"
         model: menuBar.trayMenu
         accessibleName: qsTr("Tray menu")
+        materialPreset: "menuDetached"
+        materialBackdrop: "trusted"
         materialBlurActive: menuBar.popupMaterialBlurActive
         materialTier: menuBar.popupMaterialTier
         materialFallback: menuBar.popupMaterialFallback

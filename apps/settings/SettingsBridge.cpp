@@ -436,6 +436,11 @@ QString SettingsBridge::glassRollout() const
         ? QStringLiteral("replacement") : QStringLiteral("legacy");
 }
 
+bool SettingsBridge::appChromeSupported() const
+{
+    return !qEnvironmentVariableIsSet("DF_APP_CHROME_SOLID");
+}
+
 bool SettingsBridge::trace() const
 {
     return qEnvironmentVariableIsSet("DF_SETTINGS_TRACE");

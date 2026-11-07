@@ -134,6 +134,14 @@ constexpr int kBannerCardHeight = 96;
 constexpr int kBannerCardActionsHeight = 132;
 constexpr int kBannerTopGap = 8;
 
+// The Notification Center (T204): a fixed panel surface anchored to the
+// top-right corner below the menu bar. The QML panel fills the surface, so
+// its input region is the whole thing; the surface is clamped to the output
+// height on fractional scales like the Control Center.
+constexpr int kNotificationCenterWidth = 360;
+constexpr int kNotificationCenterHeight = 620;
+constexpr int kNotificationCenterTopGap = 8;
+
 // The Control Center panel (T-11.3a): a fixed panel surface anchored to the
 // top-right corner below the menu bar. The panel fills the surface, so its
 // input region is the whole thing.
@@ -373,6 +381,7 @@ ShellController::~ShellController()
     // The opt-in transport counters land on the clean-exit path too; SIGUSR1
     // remains the per-scenario trigger (T-21.1a).
     ChromeStats::instance().emitStats(QStringLiteral("exit"));
+    delete m_notificationCenterWindow;
     delete m_controlCenterWindow;
     delete m_osdWindow;
     delete m_bannerWindow;
@@ -619,6 +628,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     }
     m_item->setParentItem(m_window->contentItem());
     m_item->setProperty("showDate", true);
+    // T200: the QML token owns the veil extent; the layer surface is sized to
+    // it while the exclusive zone stays the bar strip. The surface itself
+    // still commits only the strip, so the area below it is visual-only.
+    m_menuBarVeilExtent = qMax(m_barHeight,
+        qRound(m_item->property("veilExtent").toReal()));
+    m_menuBarSurfaceHeight = m_menuBarVeilExtent;
+    m_item->setProperty("reduceTransparency", m_compositorPolicy.reduceTransparency);
+    m_item->setProperty("increaseContrast", m_compositorPolicy.increaseContrast);
     // T-21.2c: one role-keyed application policy for the persistent chrome.
     // The Dock and menu bar read the same decision; QML never re-derives it.
     const AppliedMaterial menuMaterial =
@@ -632,6 +649,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                           "popupMaterial");
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
+    // T204: the menu-bar clock is the primary Notification Center entry
+    // point. It toggles the same surface as the keyboard/hot-corner action.
+    connect(m_item, SIGNAL(clockActivated()), this, SLOT(onClockActivated()));
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
     connect(m_item, SIGNAL(statusItemActivated(QString)), this,
             SLOT(onStatusItemActivated(QString)));
@@ -770,6 +790,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onStatusMenuRefreshRequested(QString)));
     connect(m_item, SIGNAL(statusMenuOpened()), this, SLOT(onStatusMenuOpened()));
     connect(m_item, SIGNAL(statusMenuClosed()), this, SLOT(onStatusMenuClosed()));
+    // T202: the Bluetooth status menu shares the Control Center tile's one
+    // action policy and bridge-host slots.
+    connect(m_item, SIGNAL(bluetoothPowerToggleRequested(bool)), this,
+            SLOT(onBluetoothToggleRequested(bool)));
+    connect(m_item, SIGNAL(bluetoothDeviceToggled(QString,bool)), this,
+            SLOT(onBluetoothDeviceToggled(QString,bool)));
+    connect(m_item, SIGNAL(bluetoothSettingsRequested()), this,
+            SLOT(onBluetoothSettingsRequested()));
     applyStatusMenuData();
     // Hold the first menu-bar commit until the three visible first-party
     // status reads have landed. The host answers asynchronously; without this
@@ -919,6 +947,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     };
     setDockTrackingInterval();
     connect(m_protocol, &ShellProtocol::outputRefreshChanged, this, setDockTrackingInterval);
+    // T204: a detached output closes the per-output Center instead of leaving
+    // a stale panel anchored to a display that no longer exists.
+    connect(m_protocol, &ShellProtocol::outputRemoved, this, [this]() {
+        if (m_notificationCenterOpen)
+            hideNotificationCenter(QStringLiteral("output"));
+    });
     connect(m_dockTrackingTimer, &QChronoTimer::timeout, this, &ShellController::scheduleDockRender);
     connect(m_dockItem, SIGNAL(pointerTrackingActiveChanged()),
             this, SLOT(onDockPointerTrackingChanged()));
@@ -1084,6 +1118,26 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // (headless/capture only). A banner maps the top-right `notification`
     // overlay; an empty queue unmaps it.
     m_notificationModel = new NotificationModel(this);
+    // T204: the Center's own state validates active rows and owns the keyboard
+    // selection. The service remains the single owner of history, expiry,
+    // Focus/DND, banner replacement and urgency.
+    m_notificationCenter = new NotificationCenter(this);
+    connect(m_notificationCenter, &NotificationCenter::changed, this, [this]() {
+        if (m_notificationCenterOpen)
+            applyNotificationCenterData();
+    });
+    connect(m_notificationCenter, &NotificationCenter::closed, this,
+            &ShellController::onNotificationCenterStateClosed);
+    connect(m_notificationCenter, &NotificationCenter::invokeRequested, this,
+            [this](quint32 id, const QString &key) {
+                if (m_notificationClient)
+                    m_notificationClient->invoke(id, key);
+            });
+    connect(m_notificationCenter, &NotificationCenter::dismissRequested, this,
+            [this](quint32 id) {
+                if (m_notificationClient)
+                    m_notificationClient->dismiss(id);
+            });
     if (qEnvironmentVariableIsSet("DF_NOTIFY_FIXTURE")) {
         m_notificationClient = new MockNotificationClient(this);
         // Capture/demo seam (T-11.2b): start the fixture in a Focus/DND mode
@@ -1095,6 +1149,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     } else {
         m_notificationClient = new DbusNotificationClient(this);
     }
+    // A service that was already absent at startup does not emit a change;
+    // seed the Center's unavailable state from the client once.
+    m_notificationCenter->setAvailable(m_notificationClient->isAvailable());
     connect(m_notificationModel, &NotificationModel::changed, this, [this]() {
         if (m_notificationModel->hasBanner())
             showCurrentBanner();
@@ -1133,6 +1190,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(bannerObject, SIGNAL(actionInvoked(QString)), this,
             SLOT(onBannerActionInvoked(QString)));
     connect(bannerObject, SIGNAL(activated()), this, SLOT(onBannerActivated()));
+    // T205: the card region follows the action-row height, so re-render when
+    // the QML layout re-declares it.
+    connect(bannerObject, SIGNAL(materialRegionsChanged()), this,
+            SLOT(scheduleBannerRender()));
     bindChromePacing(m_producers.value(m_bannerWindow), QStringLiteral("banner"),
                      [this]() { renderBanner(); });
     connect(m_protocol, &ShellProtocol::bannerConfigured, this,
@@ -1147,6 +1208,75 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The Focus item exists now that the notification model is wired; the
     // first apply above ran before it.
     applyStatusItems();
+
+    // Notification Center (T204): a top-right offscreen scene rendered into
+    // its own `notification-center` overlay surface. It is a pure view of the
+    // normalized service history; actions and dismissal go back through the
+    // same `NotificationClient` the banner uses.
+    m_notificationCenterWindow = createChromeProducer()->window();
+    m_notificationCenterWindow->setColor(Qt::transparent);
+    QQmlComponent notificationCenterComponent(m_engine);
+    notificationCenterComponent.loadFromModule(QStringLiteral("Dragonfruit.Notifications"),
+                                               QStringLiteral("NotificationCenter"));
+    if (notificationCenterComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: NotificationCenter QML error: %s\n",
+                qPrintable(notificationCenterComponent.errorString()));
+        return false;
+    }
+    QObject *notificationCenterObject = notificationCenterComponent.create();
+    m_notificationCenterItem = qobject_cast<QQuickItem *>(notificationCenterObject);
+    if (!m_notificationCenterItem) {
+        fprintf(stderr, "dragonfruit-shell: NotificationCenter QML did not produce an item\n");
+        return false;
+    }
+    m_notificationCenterItem->setParentItem(m_notificationCenterWindow->contentItem());
+    setMaterialProperties(m_notificationCenterItem,
+                          m_materialPolicy.applied(MaterialPolicy::Popup));
+    connect(notificationCenterObject, SIGNAL(closed()), this,
+            SLOT(onNotificationCenterDismissRequested()));
+    connect(notificationCenterObject, SIGNAL(moveRequested(int)), this,
+            SLOT(onNotificationCenterMoveRequested(int)));
+    connect(notificationCenterObject, SIGNAL(selectRequested(int)), this,
+            SLOT(onNotificationCenterSelectRequested(int)));
+    connect(notificationCenterObject, SIGNAL(activateRequested()), this,
+            SLOT(onNotificationCenterActivateRequested()));
+    connect(notificationCenterObject, SIGNAL(dismissSelectedRequested()), this,
+            SLOT(onNotificationCenterDismissSelectedRequested()));
+    connect(notificationCenterObject, SIGNAL(actionInvoked(int,QString)), this,
+            SLOT(onNotificationCenterActionRequested(int,QString)));
+    connect(notificationCenterObject, SIGNAL(dismissEntryRequested(int)), this,
+            SLOT(onNotificationCenterEntryDismissRequested(int)));
+    // T205: the stack/lower regions follow the QML layout and the banner
+    // inset; re-render when the binding settles so the compositor never keeps
+    // the pre-layout region list.
+    connect(notificationCenterObject, SIGNAL(materialRegionsChanged()), this,
+            SLOT(scheduleNotificationCenterRender()));
+    bindChromePacing(m_producers.value(m_notificationCenterWindow),
+                     QStringLiteral("notification-center"),
+                     [this]() { renderNotificationCenter(); });
+    connect(m_protocol, &ShellProtocol::notificationCenterConfigured, this,
+            &ShellController::onNotificationCenterConfigured);
+    connect(m_protocol, &ShellProtocol::notificationCenterPointerMoved, this,
+            &ShellController::onNotificationCenterPointerMoved);
+    connect(m_protocol, &ShellProtocol::notificationCenterPointerButton, this,
+            &ShellController::onNotificationCenterPointerButton);
+    connect(m_protocol, &ShellProtocol::notificationCenterPointerLeft, this,
+            &ShellController::onNotificationCenterPointerLeft);
+    connect(m_protocol, &ShellProtocol::notificationCenterKeyboardFocused, this,
+            &ShellController::onNotificationCenterKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::notificationCenterKeyEvent, this,
+            &ShellController::onNotificationCenterKeyEvent);
+    connect(m_protocol, &ShellProtocol::notificationCenterSurfaceClosed, this,
+            &ShellController::onNotificationCenterSurfaceClosed);
+    m_notificationCenterWidth = kNotificationCenterWidth;
+    m_notificationCenterHeight = kNotificationCenterHeight;
+    applyNotificationCenterData();
+    // Capture/demo seam (T205): open the Center deterministically for the
+    // material captures without injecting the Control-Shift-N chord. Never
+    // set in a normal session.
+    if (qEnvironmentVariable("DF_NOTIFY_CENTER_FIXTURE") == QLatin1String("open")) {
+        QTimer::singleShot(0, this, [this]() { showNotificationCenter(); });
+    }
 
     // Control Center panel (T-11.3a): a top-right offscreen scene rendered
     // into its own overlay surface. It is a pure view; the taps/gestures it
@@ -1172,6 +1302,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     setMaterialProperties(m_controlCenterItem,
                           m_materialPolicy.applied(MaterialPolicy::Popup));
     connect(controlCenterObject, SIGNAL(closed()), this, SLOT(onControlCenterClosed()));
+    // T203: the module/list regions follow the QML layout and scroll state.
+    // Re-render when the binding settles so the compositor never keeps the
+    // pre-layout region list.
+    connect(controlCenterObject, SIGNAL(materialRegionsChanged()), this,
+            SLOT(scheduleControlCenterRender()));
     connect(controlCenterObject, SIGNAL(volumeSetRequested(double)), this,
             SLOT(onVolumeSetRequested(double)));
     connect(controlCenterObject, SIGNAL(muteToggleRequested()), this,
@@ -1548,7 +1683,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onLockAuthSucceeded);
     connect(m_lockAuth, &LockAuthenticator::failed, this, &ShellController::onLockAuthFailed);
 
-    if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
+    // T200: the surface is tall enough for the compositor veil (95 pt) while
+    // the exclusive zone remains the 28 pt bar strip. The shell commits only
+    // the strip buffer, so the extra area is visual-only and cannot take
+    // input or change the usable area.
+    if (!m_protocol->createMenuBarSurface(m_menuBarSurfaceHeight, barHeight))
         return false;
     // The dropdown rides a separate `overlay` chrome surface so transient
     // menus composite above fullscreen windows while the bar keeps its own
@@ -1578,6 +1717,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // a banner is active (T-11.1a).
     if (!m_protocol->createBannerSurface(kBannerWidth, kBannerSurfaceHeight,
                                          barHeight + kBannerTopGap))
+        return false;
+    // The Notification Center is a top-right `overlay` surface, unmapped until
+    // the clock, keyboard action or configured hot corner opens it (T204).
+    if (!m_protocol->createNotificationCenterSurface(
+            kNotificationCenterWidth, kNotificationCenterHeight,
+            barHeight + kNotificationCenterTopGap))
         return false;
     // The Control Center panel is a top-right `overlay` surface, unmapped until
     // the menu-bar item (or its shortcut) opens it (T-11.3a).
@@ -1633,6 +1778,17 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         });
     }
 
+    // Capture/demo seam (T202): open one status menu by id so the menu-family
+    // capture does not depend on the right-anchored row's pixel positions.
+    if (qEnvironmentVariableIsSet("DF_STATUS_MENU_FIXTURE")) {
+        const QString id = qEnvironmentVariable("DF_STATUS_MENU_FIXTURE");
+        QTimer::singleShot(1500, this, [this, id]() {
+            if (m_item)
+                QMetaObject::invokeMethod(m_item, "openStatusMenu",
+                                          Q_ARG(QVariant, id));
+        });
+    }
+
     // Capture/demo seam (T-21.4a): enter Mission Control once the chrome is up
     // so the native visual sweep can capture the live-surface grid without a
     // synthetic keyboard gesture. The compositor owns the overview; this only
@@ -1647,15 +1803,37 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // synthetic chord. Never set in a normal session.
     if (qEnvironmentVariableIsSet("DF_CONTROL_CENTER_FIXTURE")) {
         const QString fixture = qEnvironmentVariable("DF_CONTROL_CENTER_FIXTURE");
-        auto open = [this]() {
+        auto applyExpansion = [this, fixture]() {
+            if (!m_controlCenterItem)
+                return;
+            // T203 capture seam: `wifi`/`bluetooth` open one expanded list and
+            // `expanded` opens both. The QML owns the visible state; the shell
+            // only seeds it once the panel exists.
+            m_controlCenterItem->setProperty(
+                "wifiExpanded",
+                fixture == QLatin1String("wifi") || fixture == QLatin1String("expanded"));
+            m_controlCenterItem->setProperty(
+                "bluetoothExpanded",
+                fixture == QLatin1String("bluetooth")
+                    || fixture == QLatin1String("expanded"));
+        };
+        auto open = [this, applyExpansion]() {
             if (!m_controlCenterOpen)
                 showControlCenter();
+            applyExpansion();
+            // The QML layout settles on the next event-loop turn; re-render so
+            // the declared material regions include the expanded list.
+            QTimer::singleShot(120, this, [this]() {
+                if (m_controlCenterOpen)
+                    scheduleControlCenterRender();
+            });
         };
         QTimer::singleShot(1500, this, open);
-        // `hold` keeps the panel open while a capture script cycles the forced
-        // material tiers; a focus change may dismiss it between captures.
-        // Never set in a normal session.
-        if (fixture == QLatin1String("hold")) {
+        // `hold` (or `DF_CONTROL_CENTER_HOLD`) keeps the panel open while a
+        // capture script cycles the forced material tiers; a focus change may
+        // dismiss it between captures. Never set in a normal session.
+        if (fixture == QLatin1String("hold")
+                || qEnvironmentVariableIsSet("DF_CONTROL_CENTER_HOLD")) {
             auto *timer = new QTimer(this);
             timer->setInterval(500);
             connect(timer, &QTimer::timeout, this, open);
@@ -1892,6 +2070,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         });
     }
 
+    // Capture/demo seam (T202): open the first Dock entry's context menu.
+    if (qEnvironmentVariableIsSet("DF_DOCK_MENU_FIXTURE")) {
+        QTimer::singleShot(1500, this, [this]() {
+            if (m_dockItem)
+                QMetaObject::invokeMethod(m_dockItem, "openEntryMenuFixture");
+        });
+    }
+
     // Capture/demo seam (T-14.7m): open the window chooser for the first
     // multi-window app once it has mapped, with the first row's per-window
     // actions revealed, so the live visual check captures them without a
@@ -2013,14 +2199,28 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (qEnvironmentVariableIsSet("DF_LOCK_FIXTURE")) {
         const int lockDelay = qMax(1, qEnvironmentVariableIntValue("DF_LOCK_FIXTURE"));
         const int unlockDelay = qEnvironmentVariableIntValue("DF_LOCK_UNLOCK_MS");
+        qInfo() << "shell: lock fixture lock-ms=" << lockDelay
+                << "unlock-ms=" << unlockDelay;
         QTimer::singleShot(lockDelay, this, [this]() {
             if (m_protocol)
                 m_protocol->lockSession();
         });
         if (unlockDelay > 0) {
-            QTimer::singleShot(unlockDelay, this, [this]() {
-                if (m_protocol && m_protocol->isSessionLocked())
+            // The lock event can arrive after the requested unlock delay while
+            // the lock UI is still configuring (the nested host throttles the
+            // first commits). Retry until the protocol reports the locked
+            // state, then unlock once; the seam stays inert unless set.
+            auto *unlockTimer = new QTimer(this);
+            unlockTimer->setInterval(250);
+            connect(unlockTimer, &QTimer::timeout, this, [this, unlockTimer]() {
+                if (m_protocol && m_protocol->isSessionLocked()) {
+                    qInfo() << "shell: lock fixture unlocking";
                     m_protocol->unlockSession();
+                    unlockTimer->stop();
+                }
+            });
+            QTimer::singleShot(unlockDelay, this, [unlockTimer]() {
+                unlockTimer->start();
             });
         }
     }
@@ -2078,6 +2278,8 @@ void ShellController::applyStatusItems()
     const QVariantMap wifi = m_statusModel ? m_statusModel->wifi() : QVariantMap();
     const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
     const QVariantMap battery = m_statusModel ? m_statusModel->battery() : QVariantMap();
+    const QVariantMap bluetooth =
+        m_statusModel ? m_statusModel->bluetooth() : QVariantMap();
 
     // T-15.9b: the Menu Bar pane's per-control visibility keys gate the status
     // row. The key is additive with the live adapter availability: a control
@@ -2101,11 +2303,18 @@ void ShellController::applyStatusItems()
                             && controlEnabled("wifi"),
                         0.8, wifi.value(QStringLiteral("enabled")).toBool());
 
-    // Bluetooth and Accessibility are later tasks (T-15/T-11); they stay
-    // hidden until their adapters land. The Menu Bar keys are still honored so
-    // the gate is in place when they become live.
-    items << statusItem(QStringLiteral("bluetooth"), QStringLiteral("bluetooth"), QString(),
-                        tr("Bluetooth"), false && controlEnabled("bluetooth"));
+    // T202: Bluetooth is live through the same bridge host the Control Center
+    // tile uses. An absent daemon hides the slot; an error stays visible but
+    // inert; the Menu Bar pane's `menu.control.bluetooth` key remains additive.
+    QString bluetoothGlyph = bluetooth.value(QStringLiteral("glyph")).toString();
+    if (bluetoothGlyph.isEmpty())
+        bluetoothGlyph = bluetooth.value(QStringLiteral("powered")).toBool()
+            ? QStringLiteral("bluetooth") : QStringLiteral("bluetooth-disabled");
+    items << statusItem(QStringLiteral("bluetooth"), bluetoothGlyph, QString(),
+                        tr("Bluetooth"),
+                        bluetooth.value(QStringLiteral("visible")).toBool()
+                            && controlEnabled("bluetooth"),
+                        0.8, bluetooth.value(QStringLiteral("enabled")).toBool());
 
     QString audioGlyph = audio.value(QStringLiteral("glyph")).toString();
     if (audioGlyph.isEmpty())
@@ -2189,6 +2398,7 @@ void ShellController::applyStatusMenuData()
     m_item->setProperty("wifiMenu", m_statusModel->wifi());
     m_item->setProperty("volumeMenu", m_statusModel->audio());
     m_item->setProperty("batteryMenu", m_statusModel->battery());
+    m_item->setProperty("bluetoothMenu", m_statusModel->bluetooth());
     applyStatusItems();
     // A live Wi-Fi/volume change reaches an open Control Center too.
     if (m_controlCenterOpen)
@@ -2255,7 +2465,13 @@ void ShellController::onTrayMenuTriggered(const QString &service, int id)
 void ShellController::onTrayMenuClosed()
 {
     m_menuOpen = false;
-    QTimer::singleShot(140, this, [this]() {
+    // The logical menu is closed immediately: stop intercepting clicks and
+    // drop the decorative material while the visual exit plays.
+    if (m_protocol) {
+        m_protocol->setPopupInputActive(false);
+        m_protocol->clearPopupPanelRegions();
+    }
+    QTimer::singleShot(210, this, [this]() {
         if (!m_menuOpen)
             updatePopupGeometry();
     });
@@ -2270,9 +2486,13 @@ void ShellController::onStatusMenuOpened()
 void ShellController::onStatusMenuClosed()
 {
     m_menuOpen = false;
-    // Let the close animation (popupClose = 100 ms) play before unmapping the
-    // overlay surface, matching the app-menu dismissal.
-    QTimer::singleShot(140, this, [this]() {
+    if (m_protocol) {
+        m_protocol->setPopupInputActive(false);
+        m_protocol->clearPopupPanelRegions();
+    }
+    // The measured menu exit is 183 ms; keep the overlay mapped for the
+    // visual tail, but the logical interaction and input are already closed.
+    QTimer::singleShot(210, this, [this]() {
         if (!m_menuOpen)
             updatePopupGeometry();
     });
@@ -2288,6 +2508,8 @@ void ShellController::onStatusMenuRefreshRequested(const QString &itemId)
         m_statusClient->refreshAudio();
     else if (itemId == QLatin1String("battery"))
         m_statusClient->refreshBattery();
+    else if (itemId == QLatin1String("bluetooth"))
+        m_statusClient->refreshBluetooth();
 }
 
 void ShellController::onWifiJoinRequested(const QString &ssid, const QString &secret)
@@ -2461,9 +2683,10 @@ void ShellController::onConfigured(int width, int height, quint32)
 {
     // The compositor sends a pre-layout configure at the full output size
     // before applying the layer surface's anchor/size; skip it. The bar
-    // surface is always exactly one bar tall (the dropdown is a separate
-    // `overlay` surface).
-    if (height != m_barHeight) {
+    // surface is the veil extent tall (T200); the QML item and the committed
+    // buffer remain the bar strip, and the dropdown is a separate `overlay`
+    // surface.
+    if (height != m_menuBarSurfaceHeight) {
         fprintf(stderr, "dragonfruit-shell: ignoring pre-layout configure %dx%d\n", width,
                 height);
         return;
@@ -2498,6 +2721,301 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
     render();
 }
 
+// --- Notification Center (T204) --------------------------------------------
+
+void ShellController::onClockActivated()
+{
+    // The menu-bar clock is the pointer entry point. The compositor's
+    // `notification-center` input action reaches the same toggle from a
+    // keyboard shortcut or a configured hot corner (onInputAction).
+    toggleNotificationCenter();
+}
+
+void ShellController::toggleNotificationCenter()
+{
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("toggle"));
+    else
+        showNotificationCenter();
+}
+
+void ShellController::showNotificationCenter()
+{
+    if (!m_notificationCenterItem || !m_notificationCenter)
+        return;
+    // One ambient panel at a time: opening the Center retires an open menu,
+    // the Control Center, the Applications drawer and Mission Control rather
+    // than stacking transient overlays.
+    if (m_item) {
+        QMetaObject::invokeMethod(m_item, "closeMenus");
+        QMetaObject::invokeMethod(m_item, "closeStatusMenu");
+    }
+    if (m_controlCenterOpen)
+        hideControlCenter();
+    if (m_appsDrawerOpen)
+        hideAppsDrawer();
+    if (m_overviewActive && m_protocol)
+        m_protocol->exitMissionControl();
+
+    m_notificationCenterOpen = true;
+    m_notificationCenterPending = true;
+    const bool available = m_notificationClient && m_notificationClient->isAvailable();
+    m_notificationCenter->setAvailable(available);
+    if (m_notificationClient)
+        m_notificationClient->refresh();
+    m_notificationCenter->open();
+    updateNotificationCenterGeometry();
+    applyNotificationCenterData();
+    if (m_notificationCenterWidth > 0 && m_notificationCenterHeight > 0)
+        renderNotificationCenter();
+    // Take active focus so Escape and Up/Down/Return reach the list; the
+    // compositor hands the keyboard to the OnDemand layer surface.
+    m_notificationCenterItem->forceActiveFocus();
+    if (m_protocol) {
+        m_protocol->setNotificationCenterInputRegion(m_notificationCenterWidth,
+                                                     m_notificationCenterHeight);
+        m_protocol->setNotificationCenterKeyboardGrab(true);
+    }
+}
+
+void ShellController::hideNotificationCenter(const QString &reason)
+{
+    // `NotificationCenter::close` emits `closed`, which lands in
+    // `onNotificationCenterStateClosed` and owns the surface teardown. If the
+    // state was already closed (a compositor-driven surface close), run the
+    // teardown directly.
+    if (m_notificationCenter && m_notificationCenter->isOpen()) {
+        m_notificationCenter->close(reason);
+        return;
+    }
+    onNotificationCenterStateClosed(reason);
+}
+
+void ShellController::onNotificationCenterStateClosed(const QString &reason)
+{
+    m_notificationCenterOpen = false;
+    m_notificationCenterPending = false;
+    m_notificationCenterButtons = Qt::NoButton;
+    if (m_protocol) {
+        // Clear the input region and the material regions before unmapping so
+        // a stale clickable or frosted panel never survives the close, then
+        // hand focus back to the active window.
+        m_protocol->setNotificationCenterInputRegion(0, 0);
+        m_protocol->clearNotificationCenterPanelRegions();
+        m_protocol->setNotificationCenterKeyboardGrab(false);
+        m_protocol->hideNotificationCenter();
+        if (m_notificationCenterKeyboardFocused)
+            m_protocol->releaseKeyboardFocus();
+    }
+    m_notificationCenterKeyboardFocused = false;
+    if (!reason.isEmpty())
+        qInfo() << "shell: notification center closed:" << reason;
+}
+
+void ShellController::onNotificationCenterDismissRequested()
+{
+    hideNotificationCenter(QStringLiteral("escape"));
+}
+
+void ShellController::onNotificationCenterMoveRequested(int delta)
+{
+    if (m_notificationCenter)
+        m_notificationCenter->moveSelection(delta);
+}
+
+void ShellController::onNotificationCenterSelectRequested(int index)
+{
+    if (m_notificationCenter)
+        m_notificationCenter->selectIndex(index);
+}
+
+void ShellController::onNotificationCenterActivateRequested()
+{
+    if (m_notificationCenter)
+        m_notificationCenter->activateSelected();
+}
+
+void ShellController::onNotificationCenterDismissSelectedRequested()
+{
+    if (m_notificationCenter)
+        m_notificationCenter->dismissSelected();
+}
+
+void ShellController::onNotificationCenterActionRequested(int id, const QString &actionKey)
+{
+    if (m_notificationCenter)
+        m_notificationCenter->invoke(static_cast<quint32>(id), actionKey);
+}
+
+void ShellController::onNotificationCenterEntryDismissRequested(int id)
+{
+    if (m_notificationCenter)
+        m_notificationCenter->dismiss(static_cast<quint32>(id));
+}
+
+void ShellController::onNotificationCenterConfigured(int width, int height, quint32)
+{
+    // The compositor's pre-layout configure is the full output; the panel's
+    // own size follows (the same rule as the Control Center).
+    updateNotificationCenterGeometry();
+    if (width != kNotificationCenterWidth || height != m_notificationCenterHeight)
+        return;
+    m_notificationCenterWidth = width;
+    if (m_protocol)
+        m_protocol->setNotificationCenterInputRegion(m_notificationCenterWidth,
+                                                     m_notificationCenterHeight);
+    if (m_notificationCenterPending)
+        renderNotificationCenter();
+}
+
+void ShellController::onNotificationCenterPointerMoved(qreal x, qreal y)
+{
+    if (!m_notificationCenterWindow)
+        return;
+    sendChromePointer(m_notificationCenterWindow, QEvent::MouseMove, QPointF(x, y),
+                      Qt::NoButton, m_notificationCenterButtons);
+    scheduleNotificationCenterRender();
+}
+
+void ShellController::onNotificationCenterPointerButton(qreal x, qreal y, quint32 button,
+                                                        bool pressed)
+{
+    if (!m_notificationCenterWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_notificationCenterButtons |= qtButton;
+    else
+        m_notificationCenterButtons &= ~qtButton;
+    sendChromePointer(m_notificationCenterWindow,
+                      pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+                      QPointF(x, y), qtButton, m_notificationCenterButtons);
+    scheduleNotificationCenterRender();
+}
+
+void ShellController::onNotificationCenterPointerLeft()
+{
+    if (!m_notificationCenterWindow)
+        return;
+    sendChromePointer(m_notificationCenterWindow, QEvent::MouseMove, QPointF(-1, -1),
+                      Qt::NoButton, m_notificationCenterButtons);
+    scheduleNotificationCenterRender();
+}
+
+void ShellController::onNotificationCenterKeyboardFocused(bool focused)
+{
+    const bool wasFocused = m_notificationCenterKeyboardFocused;
+    m_notificationCenterKeyboardFocused = focused;
+    if (!focused && wasFocused && m_notificationCenterOpen) {
+        // Losing the keyboard is the click-away dismissal. A focus hand-off
+        // during the opening click arrives before the surface ever holds it,
+        // so only a real loss closes.
+        hideNotificationCenter(QStringLiteral("outside"));
+    } else if (focused && m_notificationCenterOpen && m_notificationCenterItem) {
+        m_notificationCenterItem->forceActiveFocus();
+    }
+}
+
+void ShellController::onNotificationCenterKeyEvent(quint32 key, bool pressed)
+{
+    if (!m_notificationCenterWindow || !m_notificationCenterOpen)
+        return;
+    sendChromeKeyEvent(m_notificationCenterWindow, key, pressed,
+                       m_protocol ? m_protocol->keyboardModifiers() : 0);
+    scheduleNotificationCenterRender();
+}
+
+void ShellController::onNotificationCenterSurfaceClosed()
+{
+    // The compositor closed the layer (output teardown). Drop the panel state
+    // without trying to unmap a surface that no longer exists.
+    if (m_notificationCenter)
+        m_notificationCenter->close(QStringLiteral("output"));
+    m_notificationCenterOpen = false;
+    m_notificationCenterPending = false;
+    m_notificationCenterButtons = Qt::NoButton;
+    m_notificationCenterKeyboardFocused = false;
+}
+
+void ShellController::applyNotificationCenterData()
+{
+    if (!m_notificationCenterItem || !m_notificationCenter)
+        return;
+    m_notificationCenterItem->setProperty("history", m_notificationCenter->history());
+    m_notificationCenterItem->setProperty("selectedIndex",
+                                          m_notificationCenter->selectedIndex());
+    m_notificationCenterItem->setProperty("available", m_notificationCenter->available());
+    // T205: a co-visible banner owns the top strip; inset the Center's stack
+    // below the card so the two trusted surfaces never overlap or sample one
+    // another. The inset follows the banner's action-row height.
+    const bool hasBanner = m_notificationModel && m_notificationModel->hasBanner();
+    int bannerCardHeight = 0;
+    if (hasBanner) {
+        const QVariantList actions =
+            m_notificationModel->banner().value(QStringLiteral("actions")).toList();
+        bannerCardHeight = actions.isEmpty() ? kBannerCardHeight
+                                             : kBannerCardActionsHeight;
+    }
+    m_notificationCenterItem->setProperty(
+        "bannerInset", hasBanner ? bannerCardHeight + kBannerTopGap : 0);
+    if (m_notificationCenterOpen)
+        scheduleNotificationCenterRender();
+}
+
+void ShellController::renderNotificationCenter()
+{
+    if (!m_notificationCenterOpen || !m_notificationCenterPending
+        || !m_notificationCenterWindow || !m_notificationCenterItem) {
+        return;
+    }
+    if (m_notificationCenterWidth <= 0 || m_notificationCenterHeight <= 0)
+        return;
+    prepareChromeScene(m_notificationCenterWindow, m_notificationCenterItem,
+                       QSize(m_notificationCenterWidth, m_notificationCenterHeight),
+                       QSize(m_notificationCenterWidth, m_notificationCenterHeight),
+                       m_chromeScale);
+    // T205: the stack and lower panel are disjoint, independently keyed
+    // regions; the list is commit-latched with the image below.
+    if (m_protocol) {
+        m_protocol->setNotificationCenterPanelRegions(
+            m_notificationCenterItem->property("materialRegions").toList());
+    }
+    const QSize logical(m_notificationCenterWidth, m_notificationCenterHeight);
+    commitChromeScene(m_notificationCenterWindow,
+                      {{QStringLiteral("notification-center"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitNotificationCenterImage(image, logical);
+                        }}});
+}
+
+void ShellController::scheduleNotificationCenterRender()
+{
+    if (m_notificationCenterRenderPending)
+        return;
+    m_notificationCenterRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_notificationCenterRenderPending = false;
+        renderNotificationCenter();
+    });
+}
+
+void ShellController::updateNotificationCenterGeometry()
+{
+    if (!m_protocol)
+        return;
+    const QSize output = m_protocol->outputLogicalSize();
+    if (output.isEmpty())
+        return;
+    const int available = output.height() - m_barHeight - kNotificationCenterTopGap;
+    const int target = qMin(kNotificationCenterHeight, available);
+    if (target <= 0 || target == m_notificationCenterHeight)
+        return;
+    m_notificationCenterHeight = target;
+    m_protocol->setNotificationCenterSize(kNotificationCenterWidth, target);
+}
+
 void ShellController::onControlCenterRequested()
 {
     toggleControlCenter();
@@ -2515,6 +3033,9 @@ void ShellController::showControlCenter()
 {
     if (!m_controlCenterItem)
         return;
+    // The two top-right ambient panels are mutually exclusive.
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_controlCenterOpen = true;
     m_controlCenterPending = true;
     updateControlCenterGeometry();
@@ -2534,6 +3055,7 @@ void ShellController::hideControlCenter()
     m_controlCenterPending = false;
     if (m_protocol) {
         m_protocol->setControlCenterInputRegion(0, 0);
+        m_protocol->clearControlCenterPanelRegions();
         m_protocol->hideControlCenter();
     }
 }
@@ -2601,18 +3123,44 @@ void ShellController::applyControlCenterData()
     // keys and the bar, so it projects the tile's summary locally (T-15.9b).
     const QVariantMap menuBar =
         m_settingsClient ? menuBarView(m_settingsClient->values()) : QVariantMap();
-    m_controlCenterItem->setProperty("wifi", wifi);
-    m_controlCenterItem->setProperty("audio", audio);
-    m_controlCenterItem->setProperty("bluetooth", bluetooth);
-    m_controlCenterItem->setProperty("storage", storage);
-    m_controlCenterItem->setProperty("input", input);
-    m_controlCenterItem->setProperty("battery", battery);
-    m_controlCenterItem->setProperty("updates", updates);
-    m_controlCenterItem->setProperty("accounts", accounts);
-    m_controlCenterItem->setProperty("printers", printers);
-    m_controlCenterItem->setProperty("privacy", privacy);
-    m_controlCenterItem->setProperty("accessibility", accessibility);
-    m_controlCenterItem->setProperty("vpn", vpn);
+    // Capture-only absence seam (T203): a deterministic list of adapter names
+    // whose views are replaced with `unavailable`, so the visual matrix can
+    // capture the absent-adapter state without stopping a real daemon. Never
+    // set in a normal session.
+    const QStringList absentAdapters = qEnvironmentVariable("DF_CONTROL_CENTER_ABSENT")
+        .split(QLatin1Char(','), Qt::SkipEmptyParts);
+    const auto absentView = [&absentAdapters](const QString &kind,
+                                              const QVariantMap &view) {
+        for (const QString &name : absentAdapters) {
+            if (name.trimmed().compare(kind, Qt::CaseInsensitive) == 0) {
+                return QVariantMap{{QStringLiteral("kind"), kind},
+                                   {QStringLiteral("state"),
+                                    QStringLiteral("unavailable")}};
+            }
+        }
+        return view;
+    };
+    m_controlCenterItem->setProperty("wifi", absentView(QStringLiteral("wifi"), wifi));
+    m_controlCenterItem->setProperty("audio", absentView(QStringLiteral("audio"), audio));
+    m_controlCenterItem->setProperty("bluetooth",
+                                     absentView(QStringLiteral("bluetooth"), bluetooth));
+    m_controlCenterItem->setProperty("storage",
+                                     absentView(QStringLiteral("storage"), storage));
+    m_controlCenterItem->setProperty("input", absentView(QStringLiteral("input"), input));
+    m_controlCenterItem->setProperty("battery",
+                                     absentView(QStringLiteral("battery"), battery));
+    m_controlCenterItem->setProperty("updates",
+                                     absentView(QStringLiteral("updates"), updates));
+    m_controlCenterItem->setProperty("accounts",
+                                     absentView(QStringLiteral("accounts"), accounts));
+    m_controlCenterItem->setProperty("printers",
+                                     absentView(QStringLiteral("printers"), printers));
+    m_controlCenterItem->setProperty("privacy",
+                                     absentView(QStringLiteral("privacy"), privacy));
+    m_controlCenterItem->setProperty("accessibility",
+                                     absentView(QStringLiteral("accessibility"),
+                                                accessibility));
+    m_controlCenterItem->setProperty("vpn", absentView(QStringLiteral("vpn"), vpn));
     m_controlCenterItem->setProperty("missionControl", missionControl);
     m_controlCenterItem->setProperty("lockPolicy", lockPolicy);
     m_controlCenterItem->setProperty("menuBar", menuBar);
@@ -2940,6 +3488,14 @@ void ShellController::renderControlCenter()
     prepareChromeScene(m_controlCenterWindow, m_controlCenterItem,
                        QSize(m_controlCenterWidth, m_controlCenterHeight),
                        QSize(m_controlCenterWidth, m_controlCenterHeight), m_chromeScale);
+    // T203: the panel declares its outer plate, module capsules and expanded
+    // lists as independently keyed material regions. Send them after the
+    // layout pass so the rects follow the current scroll/expansion state; the
+    // region list is commit-latched with the image below.
+    if (m_protocol) {
+        m_protocol->setControlCenterPanelRegions(
+            m_controlCenterItem->property("materialRegions").toList());
+    }
     const QSize logical(m_controlCenterWidth, m_controlCenterHeight);
     commitChromeScene(m_controlCenterWindow,
                       {{QStringLiteral("control-center"), logical, QRect(),
@@ -3112,6 +3668,8 @@ void ShellController::showChooser()
 {
     if (!m_chooserItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_chooserActive = true;
     m_chooserPending = true;
     applyChooserData();
@@ -3298,6 +3856,9 @@ void ShellController::startScreenshot(const QString &mode)
 {
     if (!m_screenshot)
         return;
+    // The selection overlay is modal; retire the ambient Center first.
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_screenshot->beginLocal(mode);
 }
 
@@ -3395,6 +3956,8 @@ void ShellController::showScreenshot()
 {
     if (!m_screenshotItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_screenshotActive = true;
     m_screenshotPending = true;
     applyScreenshotData();
@@ -3626,6 +4189,8 @@ void ShellController::showScreenCast()
 {
     if (!m_screencastItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_screencastActive = true;
     m_screencastPending = true;
     applyScreenCastData();
@@ -3826,6 +4391,8 @@ void ShellController::showPolkit()
 {
     if (!m_polkitItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_polkitActive = true;
     m_polkitPending = true;
     m_polkitResponse.clear();
@@ -3999,6 +4566,10 @@ void ShellController::onPolkitKeyEvent(quint32 key, bool pressed, bool shift)
 
 void ShellController::onSessionLocked()
 {
+    // Lock is a hard close for ambient panels: no notification history or
+    // input region may remain above the fail-secure lock surface.
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("lock"));
     // A lock clears the clipboard history by default; pinned entries survive
     // (T-13.5b, ADR 0082).
     if (m_clipboard && m_clipboard->clearOnLock())
@@ -4296,6 +4867,8 @@ void ShellController::onLockKeyEvent(quint32 key, bool pressed, bool shift)
 
 void ShellController::onMissionControlRequested()
 {
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_protocol->enterMissionControl();
 }
 
@@ -4328,9 +4901,14 @@ void ShellController::onAppMenuOpened(int)
 void ShellController::onAppMenuClosed()
 {
     m_menuOpen = false;
-    // Let the close animation (popupClose = 100 ms) play before unmapping the
-    // overlay surface; the scene-graph hook commits the frames it renders.
-    QTimer::singleShot(140, this, [this]() {
+    if (m_protocol) {
+        m_protocol->setPopupInputActive(false);
+        m_protocol->clearPopupPanelRegions();
+    }
+    // The measured menu exit is 183 ms. The logical menu and input close now;
+    // the overlay keeps rendering the visual tail so a reopen/retarget can
+    // take over before the timer expires.
+    QTimer::singleShot(210, this, [this]() {
         if (!m_menuOpen)
             updatePopupGeometry();
     });
@@ -4448,6 +5026,8 @@ void ShellController::updatePopupGeometry()
     if (!m_menuOpen) {
         m_popupWidth = 0;
         m_popupHeight = 0;
+        m_protocol->setPopupInputActive(false);
+        m_protocol->clearPopupPanelRegions();
         m_protocol->hidePopup();
         render();
         return;
@@ -4471,6 +5051,12 @@ void ShellController::updatePopupGeometry()
     m_popupWidth = width;
     m_popupHeight = height;
     m_protocol->setPopupGeometry(x, y, width, height);
+    // T202: declare the exact attached/detached/status regions for this open
+    // menu. The popup surface accepts input only while it is logically open;
+    // the close path clears both before the visual exit.
+    m_protocol->setPopupPanelRegions(
+        m_item->property("dropdownRegions").toList());
+    m_protocol->setPopupInputActive(true);
     render();
 }
 
@@ -4526,6 +5112,15 @@ void ShellController::onKeyboardFocused(bool focused)
                 hideControlCenter();
         });
     }
+    // Same click-away rule for the Notification Center. Its dedicated focus
+    // signal normally handles this; the bar's focus loss is the fallback for
+    // an open triggered by the clock while the bar held the keyboard.
+    if (!focused && m_notificationCenterOpen) {
+        QTimer::singleShot(0, this, [this]() {
+            if (m_notificationCenterOpen && !m_notificationCenterKeyboardFocused)
+                hideNotificationCenter(QStringLiteral("outside"));
+        });
+    }
 }
 
 void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface, qreal x,
@@ -4547,6 +5142,9 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
         break;
     case ShellProtocol::PointerSurface::Polkit:
         window = m_polkitWindow;
+        break;
+    case ShellProtocol::PointerSurface::NotificationCenter:
+        window = m_notificationCenterWindow;
         break;
     case ShellProtocol::PointerSurface::ControlCenter:
         window = m_controlCenterWindow;
@@ -4626,6 +5224,9 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
     case ShellProtocol::PointerSurface::Polkit:
         schedulePolkitRender();
         break;
+    case ShellProtocol::PointerSurface::NotificationCenter:
+        scheduleNotificationCenterRender();
+        break;
     case ShellProtocol::PointerSurface::ControlCenter:
         scheduleControlCenterRender();
         break;
@@ -4666,6 +5267,13 @@ void ShellController::onKeyEvent(quint32 key, bool pressed, quint32 modifiers)
     // chrome surface currently holds the keyboard.
     if (pressed && qtKey == Qt::Key_Escape && m_controlCenterOpen) {
         hideControlCenter();
+        return;
+    }
+    // T204: the Center's own scene owns traversal while it holds the keyboard
+    // (`notificationCenterKeyEvent`); this is the fallback for a Center opened
+    // from the bar before the compositor hands it focus.
+    if (pressed && qtKey == Qt::Key_Escape && m_notificationCenterOpen) {
+        hideNotificationCenter(QStringLiteral("escape"));
         return;
     }
     // An open Dock popover or Dock keyboard focus owns the keys (navigation,
@@ -4958,6 +5566,11 @@ void ShellController::onInputAction(const QString &action, const QString &)
     } else if (action == QLatin1String("control-center")) {
         // T-11.3a: the Control Center keyboard shortcut toggles the panel.
         toggleControlCenter();
+    } else if (action == QLatin1String("notification-center")) {
+        // T204: the same action comes from the declared keyboard shortcut and
+        // any configured hot corner. The shell owns the Center; the
+        // compositor only routes the trigger (and picks the invoking output).
+        toggleNotificationCenter();
     } else if (action == QLatin1String("show-apps")) {
         // T-19.2: the Applications drawer shortcut (F4) toggles the launcher.
         toggleAppsDrawer();
@@ -5030,6 +5643,8 @@ void ShellController::applyMaterialState()
     const bool dockPopupChanged = setMaterialProperties(m_dockItem, popup, "popupMaterial");
     const bool drawerChanged = setMaterialProperties(m_appsDrawerItem, drawer);
     const bool bannerChanged = setMaterialProperties(m_bannerItem, popup);
+    const bool notificationCenterChanged =
+        setMaterialProperties(m_notificationCenterItem, popup);
     const bool controlCenterChanged = setMaterialProperties(m_controlCenterItem, popup);
     const bool osdChanged = setMaterialProperties(m_osdItem, popup);
 
@@ -5044,6 +5659,8 @@ void ShellController::applyMaterialState()
         scheduleAppsDrawerRender();
     if (bannerChanged && m_bannerPending)
         scheduleBannerRender();
+    if (notificationCenterChanged && m_notificationCenterOpen)
+        scheduleNotificationCenterRender();
     if (controlCenterChanged && m_controlCenterOpen)
         scheduleControlCenterRender();
     if (osdChanged && m_osdActive)
@@ -5289,6 +5906,18 @@ void ShellController::applyCompositorPolicy()
     m_protocol->setInputPolicy(policy.repeatDelayMs, policy.repeatRateHz,
                                policy.gesturesEnabled, policy.gestureSpaceSwitch,
                                policy.gestureMissionControl);
+    // T200: the veil's accessibility variants are decided in the same policy
+    // snapshot. Push them to QML so Reduce Transparency draws the opaque
+    // scheme plate instead of leaving the compositor's skipped veil bare.
+    if (m_item) {
+        const bool changed =
+            m_item->property("reduceTransparency").toBool() != policy.reduceTransparency
+            || m_item->property("increaseContrast").toBool() != policy.increaseContrast;
+        m_item->setProperty("reduceTransparency", policy.reduceTransparency);
+        m_item->setProperty("increaseContrast", policy.increaseContrast);
+        if (changed && m_protocol)
+            render();
+    }
     fprintf(stderr,
             "dragonfruit-shell: compositor motion/input policy applied "
             "(scheme=%s reducedMotion=%d transparency=%.4f reduceTransparency=%d "
@@ -5339,6 +5968,10 @@ void ShellController::applyMenuBarPolicy()
         m_item->setProperty("showSeconds", showSeconds);
         m_item->setProperty("showBackground", showBackground);
         m_item->setProperty("autoHideMode", autoHide);
+        // T201: the compositor owns the per-output reveal. Forward the policy
+        // through the same Settings refresh path as the rest of the pane.
+        if (m_protocol)
+            m_protocol->setMenuBarAutoHide(autoHide);
         render();
         fprintf(stderr,
                 "dragonfruit-shell: menu bar policy applied "
@@ -6409,6 +7042,8 @@ void ShellController::onOverviewConfigured(int width, int height, quint32)
 void ShellController::onOverviewChanged(bool active)
 {
     m_overviewActive = active;
+    if (active && m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     if (!m_overviewItem)
         return;
     m_overviewItem->setProperty("active", active);
@@ -6564,6 +7199,9 @@ void ShellController::onAppSwitcherChanged(bool active, const QVariantList &entr
                                            const QString &selectedAppId, int direction)
 {
     m_switcherActive = active;
+    // The Cmd-Tab overlay is a competing transient surface.
+    if (active && m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     if (!m_switcherItem)
         return;
     // The compositor owns the recency order and the selection; the shell only
@@ -6608,6 +7246,10 @@ void ShellController::onNotificationAvailable(bool available)
 {
     if (!m_notificationModel)
         return;
+    // The Center stays mapped through a service restart: absence shows its
+    // accessible unavailable state and the next `History()` repopulates it.
+    if (m_notificationCenter)
+        m_notificationCenter->setAvailable(available);
     if (available) {
         m_notificationClient->refresh();
     } else {
@@ -6627,8 +7269,17 @@ void ShellController::onNotificationBanners(const QByteArray &json)
 
 void ShellController::onNotificationHistory(const QByteArray &json)
 {
-    if (m_notificationModel)
-        m_notificationModel->applyHistoryJson(json);
+    if (!m_notificationModel)
+        return;
+    m_notificationModel->applyHistoryJson(json);
+    // The Center's active rows are derived only from the service's history
+    // fields (`reason`/`closedAt`/`suppressed`), never from the banner view.
+    if (m_notificationCenter) {
+        const bool available = m_notificationClient && m_notificationClient->isAvailable();
+        m_notificationCenter->setAvailable(available);
+        if (available)
+            m_notificationCenter->setHistory(m_notificationModel->history());
+    }
 }
 
 void ShellController::onNotificationFocusPolicy(const QByteArray &json)
@@ -6666,6 +7317,9 @@ void ShellController::showCurrentBanner()
     m_bannerPending = true;
     if (m_bannerWidth > 0 && m_bannerHeight > 0)
         renderBanner();
+    // T205: a banner appearing while the Center is open moves the stack down.
+    if (m_notificationCenterOpen)
+        applyNotificationCenterData();
 }
 
 void ShellController::applyBannerInputRegion()
@@ -6690,8 +7344,12 @@ void ShellController::hideCurrentBanner()
     m_bannerId = 0;
     if (m_protocol) {
         m_protocol->setBannerInputRegion(0, 0);
+        m_protocol->clearBannerPanelRegions();
         m_protocol->hideBanner();
     }
+    // T205: the Center reclaims the top strip once the banner is gone.
+    if (m_notificationCenterOpen)
+        applyNotificationCenterData();
 }
 
 void ShellController::onBannerConfigured(int width, int height, quint32)
@@ -6797,6 +7455,12 @@ void ShellController::renderBanner()
         return;
     prepareChromeScene(m_bannerWindow, m_bannerItem, QSize(m_bannerWidth, m_bannerHeight),
                        QSize(m_bannerWidth, m_bannerHeight), m_chromeScale);
+    // T205: declare the visible card, not the transparent strip below a
+    // no-action banner, before the image commit latches the region list.
+    if (m_protocol) {
+        m_protocol->setBannerPanelRegions(
+            m_bannerItem->property("materialRegions").toList());
+    }
     const QSize logical(m_bannerWidth, m_bannerHeight);
     commitChromeScene(m_bannerWindow,
                       {{QStringLiteral("banner"), logical, QRect(),
@@ -6840,6 +7504,8 @@ void ShellController::showAppsDrawer()
 {
     if (!m_appsDrawerItem)
         return;
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
     m_appsDrawerOpen = true;
     m_appsDrawerPending = true;
     refreshAppsDrawer(true);
@@ -7937,6 +8603,7 @@ void ShellController::onChromeScaleChanged(qreal scale)
     if (qFuzzyCompare(m_chromeScale, safe))
         return;
     m_chromeScale = safe;
+    updateNotificationCenterGeometry();
     updateControlCenterGeometry();
     rerenderChrome();
 }
@@ -7955,6 +8622,8 @@ void ShellController::rerenderChrome()
         renderAppsDrawer();
     if (m_bannerPending)
         renderBanner();
+    if (m_notificationCenterPending)
+        renderNotificationCenter();
     if (m_controlCenterPending)
         renderControlCenter();
     if (m_osdActive)
@@ -8097,7 +8766,21 @@ void ShellController::renderDock()
         // capsule and tail and would expose glass in its transparent pixels.
         const QRect card = dockRectProperty("activePopoverRect").intersected(popover);
         const QRect backdrop = card.isEmpty() ? QRect() : card.translated(-popover.topLeft());
-        m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph, backdrop);
+        // T202: explicit detached-menu regions replace the legacy single
+        // panel rect. The material and input are live only while a popover is
+        // logically open; the close tail keeps rendering but passes clicks.
+        const bool popoverInputActive =
+            m_dockItem->property("popoverInputActive").toBool();
+        if (popoverInputActive && !backdrop.isEmpty()) {
+            m_protocol->setDockPopupPanelRegion(
+                m_dockItem->property("activePopoverPreset").toString(),
+                backdrop,
+                qRound(m_dockItem->property("activePopoverRadius").toReal()));
+        } else {
+            m_protocol->clearDockPopupPanelRegions();
+        }
+        m_protocol->setDockPopupInputActive(popoverInputActive);
+        m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph, QRect());
         const QRect popupRect(leftGutter + px, headroom + py, pw, ph);
         const QRect popupSource = chromeBufferRect(popupRect);
         targets.append({QStringLiteral("dock-popup"), QSize(pw, ph), popupSource,
@@ -8106,6 +8789,8 @@ void ShellController::renderDock()
                                 image, QSize(pw, ph), popupSource);
                         }});
     } else {
+        m_protocol->clearDockPopupPanelRegions();
+        m_protocol->setDockPopupInputActive(false);
         m_protocol->hideDockPopup();
     }
 
@@ -8125,10 +8810,25 @@ void ShellController::render()
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
     const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;
-    const int windowHeight =
-        popupShown ? qMax(m_barHeight, m_popupY + m_popupHeight) : m_barHeight;
+    // T200: the scene is tall enough for the veil (and any dropdown), but the
+    // menubar surface still commits only the bar strip. The compositor draws
+    // the veil from its own material region below the strip.
+    const int windowHeight = popupShown
+        ? qMax(m_menuBarSurfaceHeight, m_popupY + m_popupHeight)
+        : m_menuBarSurfaceHeight;
     prepareChromeScene(m_window, m_item, QSize(m_width, m_barHeight),
                        QSize(m_width, windowHeight), m_chromeScale);
+    // Declare the material panel with this frame's content commit. The QML
+    // resolution decides whether this is the 95 pt veil, the legacy 28 pt
+    // sampled panel, or an explicit empty set for the fallback.
+    const bool panelActive =
+        m_item->property("compositorPanelActive").toBool();
+    const int panelHeight = qMax(
+        m_barHeight, m_item->property("compositorPanelHeight").toInt());
+    const int panelRadius =
+        m_item->property("compositorPanelRadius").toInt();
+    m_protocol->setMenuBarFrameGeometry(panelActive, m_width, panelHeight,
+                                        panelRadius);
     const QRect barRect(0, 0, m_width, m_barHeight);
     const QRect barSource = chromeBufferRect(barRect);
     QList<ChromeSceneTarget> targets;

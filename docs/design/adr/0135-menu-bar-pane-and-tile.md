@@ -70,11 +70,12 @@ change, deferred).
 
 - The Control Center panel grows from 360×1120 to 360×1200 to fit the new tile;
   the fit test and the T-15.9b capture assert it.
-- `menu.autoHide` and `menu.recentItems` persist but do not yet change the bar:
-  the shell chrome surface stays pinned and no recent-items consumer exists.
-  A later task applies auto-hide (the compositor input-region/hover path) and
-  reads the count where recents are listed. The preference is the single source
-  of truth until then, as the Lock Screen display keys were.
+- `menu.autoHide` and `menu.recentItems` persisted but did not initially change
+  the bar: the shell chrome surface stayed pinned and no recent-items consumer
+  existed. T201 applies auto-hide through the compositor's per-output reveal
+  (ADR [0220](0220-menu-bar-auto-hide-visibility.md)); only the recent-items
+  count remains stored policy until a consumer lists recents. The preference
+  stays the single source of truth throughout.
 - The pane omits the Apple-only controls (`AirDrop`, `Screen Mirroring`,
   `Display`) and `Spotlight` (our deferred Search pane), the dead-end
   `Add Controls...` / `Battery Options...` buttons, and the per-control

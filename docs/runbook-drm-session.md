@@ -95,6 +95,20 @@ fails, the compositor disables the sampled path and reports the fallback state
 to the shell. Check `material stats`: `blur_passes>0`, `blur_draws>0`,
 `blur_panels>=1`; `path=gpu` alone is not proof.
 
+The liquid-glass replacement is staged behind one rollout switch. The shipped
+default stays `legacy` until the T208 native gate passes; the switch is also
+the rollback:
+
+```bash
+DRAGONFRUIT_GLASS_ROLLOUT=legacy make native-rebuild       # explicit rollback
+DRAGONFRUIT_GLASS_ROLLOUT=replacement make native-rebuild  # pre-rollout A/B
+```
+
+The value is persisted into `native.env` and both the compositor and shell
+unit drop-ins by `native-session.sh`, so it survives the rebuild. The T208
+native evidence, the missing free-seat rows and the exact rerun commands are in
+[`captures/t208-native-acceptance.md`](captures/t208-native-acceptance.md).
+
 The 4K damage/material path is CPU-bound enough that an unoptimized build can
 cap animated clients well below the panel's refresh rate. A profile switch
 needs `native-rebuild`/`native-reboot`; `native-restart` refuses a mismatch
@@ -160,6 +174,15 @@ WAYLAND_DISPLAY=<socket> grim - > docs/captures/t03-drm-loop-still.png
 ```
 
 Inspect the still: full desktop, no stray artifacts.
+
+The DRM backend does **not** implement `capture_screenshot` yet, so `grim` or
+a portal still is not the trusted native capture path on this rail. For
+native stills use the dev-only KMS readback
+[`scripts/t208-kms-readback.c`](../scripts/t208-kms-readback.c) (the T191b/T208
+`pidfd_getfd` + `drmModeGetFB2` + dma-buf/EGL method; primary plane only). The
+trusted fullscreen row uses
+[`scripts/t208-shell-fullscreen.c`](../scripts/t208-shell-fullscreen.c) after
+stopping the shell so the compositor reissues its launch token.
 
 ### The DRM session cycle
 

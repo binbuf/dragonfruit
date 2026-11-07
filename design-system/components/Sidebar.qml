@@ -13,6 +13,11 @@ FocusScope {
     property var sections: []
     property int currentIndex: -1
     property alias hoveredIndex: hoverTracker.index
+    // T206: the app-local material fill. The default is the existing opaque
+    // source-list surface; first-party apps pass the resolved glass tint/alpha
+    // and round the bottom-left window corner.
+    property color fillColor: Theme.color.surfaceMuted
+    property real bottomLeftRadius: 0
 
     signal activated(int index, var item)
 
@@ -90,9 +95,10 @@ FocusScope {
         root.activated(index, e);
     }
 
-    Rectangle {
+    ChromeSheet {
         anchors.fill: parent
-        color: Theme.color.surfaceMuted
+        color: root.fillColor
+        bottomLeftRadius: root.bottomLeftRadius
     }
     Rectangle {
         anchors.right: parent.right

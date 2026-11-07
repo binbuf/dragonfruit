@@ -23,8 +23,10 @@ QtObject {
     property string rollout: Theme.glass.rollout.defaultMode
     // The active scheme. Bound to the Theme unless a preview/test sets it.
     property string scheme: Theme.dark ? "dark" : "light"
-    // The Appearance transparency slider, 0..1. Only `menuAttached` in light
-    // follows it; every other preset is unchanged.
+    // The Appearance transparency slider, 0..1. Light `menuAttached` follows
+    // the measured File curve directly; light `menuDetached` and `statusMenu`
+    // follow the same curve as a relative adjustment that preserves their
+    // default fits. Every other preset is unchanged.
     property real slider: Theme.glass.slider.defaultPosition
     property bool reduceTransparency: false
     property bool increaseContrast: false
@@ -32,6 +34,11 @@ QtObject {
     // `sampledBlur` says whether the sampled pass exists.
     property bool sampledBlur: true
     property bool software: false
+    // T206: whether the app's own window surface is composited with an alpha
+    // channel. The first-party apps set this from their platform bridge; the
+    // offscreen/non-composited path uses the app's opaque solid plate instead
+    // of the measured near-opaque transmission.
+    property bool appChromeSupported: true
     // Degrade tier: "full" | "reduced" | "minimal".
     property string tier: "full"
     // Orthogonal to optics; accepted so callers do not fold motion policy in.
@@ -41,7 +48,8 @@ QtObject {
         "dock", "menuBarVeil", "menuAttached", "menuDetached", "statusMenu",
         "tooltip", "controlCenterOuter", "controlCenterModule",
         "controlCenterExpanded", "notificationBanner", "notificationStack",
-        "notificationLowerPanel", "windowChrome"
+        "notificationLowerPanel", "windowChrome", "settingsSidebar",
+        "settingsToolbar", "filesSidebar", "filesToolbar"
     ]
 
     function _sanitize01(value, fallback) {
@@ -223,6 +231,22 @@ QtObject {
                 alpha = fitted.alpha;
                 tint = fitted.tint;
                 sliderApplied = true;
+            } else if (preset.slider === "lightRelative" && scheme === "light") {
+                // The measured curve is the attached File response. Detached
+                // and status menus keep their own default fit and move
+                // relative to it: alpha scales by the attached ratio and tint
+                // takes the attached delta. At the default position the preset
+                // is unchanged.
+                var relativePosition = _sanitize01(
+                    options.slider !== undefined ? options.slider : glass.slider,
+                    Theme.glass.slider.defaultPosition);
+                var defaultPosition = Theme.glass.slider.defaultPosition;
+                var base = _interpolate(defaultPosition);
+                var current = _interpolate(relativePosition);
+                if (base.alpha > 0)
+                    alpha = _sanitize01(alpha * current.alpha / base.alpha, alpha);
+                tint = _sanitize01(tint + (current.tint - base.tint), tint);
+                sliderApplied = true;
             }
         }
 
@@ -309,6 +333,7 @@ QtObject {
             }
         }
 
+        var veil = (entry && entry.veil !== undefined) ? entry.veil : null;
         return {
             preset: presetName,
             scheme: scheme,
@@ -328,6 +353,11 @@ QtObject {
             sliderApplied: sliderApplied,
             confidence: confidence,
             fallbackReason: fallbackReason,
+            // T200: the depth LUT and extent travel with the resolved preset
+            // so the shell and fixtures never re-derive them.
+            veil: veil,
+            stripHeight: preset.stripHeight !== undefined ? preset.stripHeight : 0,
+            extent: preset.extent !== undefined ? preset.extent : 0,
             reduceMotion: options.reduceMotion !== undefined
                 ? !!options.reduceMotion : glass.reduceMotion
         };

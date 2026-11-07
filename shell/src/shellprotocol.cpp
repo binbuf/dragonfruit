@@ -98,6 +98,33 @@ constexpr uint32_t kAnchorRight = 8;
 // The banner card's inset from the output's right edge (T-11.1a).
 constexpr int kBannerMargin = 8;
 
+// Replace one layer surface's independently keyed material-region list
+// (T197/T203/T205). The caller commit-latches it with the next surface image.
+void applyPanelRegions(df_layer_surface *layer, const QVariantList &regions)
+{
+    if (!layer)
+        return;
+    df_layer_surface_clear_panel_regions(layer);
+    for (const QVariant &value : regions) {
+        const QVariantMap region = value.toMap();
+        const QString key = region.value(QStringLiteral("key")).toString();
+        const QString preset = region.value(QStringLiteral("preset")).toString();
+        const int width = qRound(region.value(QStringLiteral("w")).toReal());
+        const int height = qRound(region.value(QStringLiteral("h")).toReal());
+        if (key.isEmpty() || width <= 0 || height <= 0)
+            continue;
+        df_layer_surface_set_panel_region(
+            layer, key.toUtf8().constData(), preset.toUtf8().constData(),
+            qRound(region.value(QStringLiteral("x")).toReal()),
+            qRound(region.value(QStringLiteral("y")).toReal()), width, height,
+            qRound(region.value(QStringLiteral("tl")).toReal()),
+            qRound(region.value(QStringLiteral("tr")).toReal()),
+            qRound(region.value(QStringLiteral("br")).toReal()),
+            qRound(region.value(QStringLiteral("bl")).toReal()),
+            qRound(region.value(QStringLiteral("overscan")).toReal()));
+    }
+}
+
 // The Dock's surface anchor for a position (T-10 section 5). A bottom Dock
 // stretches the full width; a vertical Dock stretches the full height and
 // sits on the left or right edge.
@@ -290,11 +317,70 @@ bool ShellProtocol::createMenuBarSurface(int height, int exclusiveZone)
     df_layer_surface_set_exclusive_zone(m_layer, exclusiveZone);
     df_layer_surface_set_keyboard_interaction(
         m_layer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    // T201: the policy may have been applied from settings before the surface
+    // existed; send the latest value with the first commit.
+    df_layer_surface_set_auto_hide(m_layer, m_menuBarAutoHide);
     wl_surface_commit(m_surface);
 
     if (wl_display_roundtrip(m_display) < 0)
         return fail(QStringLiteral("menu-bar configure roundtrip failed"));
     return true;
+}
+
+void ShellProtocol::setMenuBarFrameGeometry(bool active, int width, int height,
+                                             int cornerRadius)
+{
+    if (!m_layer)
+        return;
+    if (!active) {
+        // An explicit empty set is the contract for "no material": it cannot
+        // fall back to a stale panel or the derived reserved strip (T197).
+        // Send it on the first inactive frame too, so a bar that starts
+        // hidden/fallback never exposes the compositor's derived panel.
+        if (!m_menuBarPanelInitialized || m_menuBarPanelActive) {
+            df_layer_surface_clear_panel_regions(m_layer);
+            m_menuBarPanelInitialized = true;
+            m_menuBarPanelDirty = true;
+            m_menuBarPanelActive = false;
+            m_menuBarPanelWidth = 0;
+            m_menuBarPanelHeight = 0;
+            m_menuBarPanelRadius = 0;
+        }
+        return;
+    }
+    const int panelWidth = qMax(1, width);
+    const int panelHeight = qMax(1, height);
+    const int radius = qMax(0, cornerRadius);
+    if (m_menuBarPanelActive && panelWidth == m_menuBarPanelWidth
+            && panelHeight == m_menuBarPanelHeight
+            && radius == m_menuBarPanelRadius)
+        return;
+    df_layer_surface_set_panel_region(m_layer, "veil", "menuBarVeil", 0, 0,
+                                      panelWidth, panelHeight, radius, radius,
+                                      radius, radius, 0);
+    m_menuBarPanelInitialized = true;
+    m_menuBarPanelDirty = true;
+    m_menuBarPanelActive = true;
+    m_menuBarPanelWidth = panelWidth;
+    m_menuBarPanelHeight = panelHeight;
+    m_menuBarPanelRadius = radius;
+}
+
+void ShellProtocol::setMenuBarAutoHide(const QString &mode)
+{
+    uint32_t wire = DF_LAYER_SURFACE_AUTO_HIDE_MODE_FULL_SCREEN;
+    if (mode == QLatin1String("never"))
+        wire = DF_LAYER_SURFACE_AUTO_HIDE_MODE_NEVER;
+    else if (mode == QLatin1String("always"))
+        wire = DF_LAYER_SURFACE_AUTO_HIDE_MODE_ALWAYS;
+    if (wire == m_menuBarAutoHide)
+        return;
+    m_menuBarAutoHide = wire;
+    if (!m_layer)
+        return;
+    df_layer_surface_set_auto_hide(m_layer, wire);
+    if (m_display)
+        wl_display_flush(m_display);
 }
 
 bool ShellProtocol::createPopupSurface()
@@ -340,6 +426,52 @@ bool ShellProtocol::setPopupGeometry(int x, int y, int width, int height)
     if (m_display)
         wl_display_flush(m_display);
     return true;
+}
+
+void ShellProtocol::setPopupPanelRegions(const QVariantList &regions)
+{
+    if (!m_popupLayer)
+        return;
+    df_layer_surface_clear_panel_regions(m_popupLayer);
+    for (const QVariant &value : regions) {
+        const QVariantMap region = value.toMap();
+        const QString key = region.value(QStringLiteral("key")).toString();
+        const QString preset = region.value(QStringLiteral("preset")).toString();
+        const int width = qRound(region.value(QStringLiteral("w")).toReal());
+        const int height = qRound(region.value(QStringLiteral("h")).toReal());
+        if (key.isEmpty() || width <= 0 || height <= 0)
+            continue;
+        df_layer_surface_set_panel_region(
+            m_popupLayer, key.toUtf8().constData(), preset.toUtf8().constData(),
+            qRound(region.value(QStringLiteral("x")).toReal()),
+            qRound(region.value(QStringLiteral("y")).toReal()), width, height,
+            qRound(region.value(QStringLiteral("tl")).toReal()),
+            qRound(region.value(QStringLiteral("tr")).toReal()),
+            qRound(region.value(QStringLiteral("br")).toReal()),
+            qRound(region.value(QStringLiteral("bl")).toReal()),
+            qRound(region.value(QStringLiteral("overscan")).toReal()));
+    }
+}
+
+void ShellProtocol::clearPopupPanelRegions()
+{
+    if (m_popupLayer)
+        df_layer_surface_clear_panel_regions(m_popupLayer);
+}
+
+void ShellProtocol::setPopupInputActive(bool active)
+{
+    if (!m_popupSurface || !m_compositor)
+        return;
+    if (active) {
+        wl_surface_set_input_region(m_popupSurface, nullptr);
+        return;
+    }
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return;
+    wl_surface_set_input_region(m_popupSurface, region);
+    wl_region_destroy(region);
 }
 
 bool ShellProtocol::commitPopupImage(const QImage &image, const QSize &logicalSize,
@@ -569,6 +701,138 @@ bool ShellProtocol::setBannerInputRegion(int width, int height)
     return true;
 }
 
+void ShellProtocol::setBannerPanelRegions(const QVariantList &regions)
+{
+    applyPanelRegions(m_bannerLayer, regions);
+}
+
+void ShellProtocol::clearBannerPanelRegions()
+{
+    if (m_bannerLayer)
+        df_layer_surface_clear_panel_regions(m_bannerLayer);
+}
+
+// --- Notification Center overlay (T204) ------------------------------------
+
+bool ShellProtocol::createNotificationCenterSurface(int width, int height, int topMargin)
+{
+    if (m_notificationCenterSurface || m_notificationCenterLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_notificationCenterSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_notificationCenterSurface);
+    m_notificationCenterLayer = df_shell_get_layer_surface(
+        m_shell, m_notificationCenterSurface, nullptr, DF_SHELL_LAYER_OVERLAY,
+        "notification-center");
+    if (!m_notificationCenterLayer)
+        return fail(QStringLiteral("compositor refused the notification-center layer surface"));
+    static const df_layer_surface_listener listener = { onNotificationCenterConfigure,
+                                                        onNotificationCenterLayerClosed };
+    df_layer_surface_add_listener(m_notificationCenterLayer, &listener, this);
+
+    // Top-right corner, below the menu bar. The overlay is per-output: with no
+    // explicit output the compositor places it on the output the invoking
+    // interaction happened on (the clock click's chrome focus, or the pointer
+    // output for a keyboard/hot-corner trigger). Reserve nothing and take the
+    // keyboard on demand so Escape, click-away and traversal work.
+    df_layer_surface_set_anchor(m_notificationCenterLayer, kAnchorRight | kAnchorTop);
+    df_layer_surface_set_margin(m_notificationCenterLayer, topMargin, kBannerMargin, 0, 0);
+    df_layer_surface_set_size(m_notificationCenterLayer, width, height);
+    df_layer_surface_set_exclusive_zone(m_notificationCenterLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_notificationCenterLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    // Everything passes through until the Center's own input region is applied
+    // with its first committed buffer.
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_notificationCenterSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_notificationCenterSurface, nullptr, 0, 0);
+    wl_surface_commit(m_notificationCenterSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the notification-center surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setNotificationCenterSize(int width, int height)
+{
+    if (!m_notificationCenterLayer || width <= 0 || height <= 0)
+        return false;
+    df_layer_surface_set_size(m_notificationCenterLayer, width, height);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::setNotificationCenterInputRegion(int width, int height)
+{
+    if (!m_notificationCenterSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    // Applied with the next buffer commit (`commitNotificationCenterImage`).
+    wl_surface_set_input_region(m_notificationCenterSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::setNotificationCenterKeyboardGrab(bool grab)
+{
+    if (!m_notificationCenterLayer)
+        return false;
+    df_layer_surface_set_keyboard_interaction(
+        m_notificationCenterLayer,
+        grab ? DF_LAYER_SURFACE_KEYBOARD_INTERACTION_EXCLUSIVE
+             : DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+void ShellProtocol::setNotificationCenterPanelRegions(const QVariantList &regions)
+{
+    applyPanelRegions(m_notificationCenterLayer, regions);
+}
+
+void ShellProtocol::clearNotificationCenterPanelRegions()
+{
+    if (m_notificationCenterLayer)
+        df_layer_surface_clear_panel_regions(m_notificationCenterLayer);
+}
+
+bool ShellProtocol::commitNotificationCenterImage(const QImage &image,
+                                                  const QSize &logicalSize)
+{
+    if (!m_notificationCenterSurface)
+        return false;
+    if (!commitTo(m_notificationCenterSurface, image, logicalSize))
+        return false;
+    m_notificationCenterMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideNotificationCenter()
+{
+    if (!m_notificationCenterSurface || !m_notificationCenterLayer)
+        return false;
+    if (!m_notificationCenterMapped)
+        return true;
+    cancelPendingFrame(QStringLiteral("notification-center"));
+    wl_surface_attach(m_notificationCenterSurface, nullptr, 0, 0);
+    wl_surface_commit(m_notificationCenterSurface);
+    resetSurfaceScale(m_notificationCenterSurface);
+    m_notificationCenterMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 // --- Control Center overlay (T-11.3a) --------------------------------------
 
 bool ShellProtocol::createControlCenterSurface(int width, int height, int topMargin)
@@ -633,6 +897,17 @@ bool ShellProtocol::setControlCenterInputRegion(int width, int height)
     wl_surface_set_input_region(m_controlCenterSurface, region);
     wl_region_destroy(region);
     return true;
+}
+
+void ShellProtocol::setControlCenterPanelRegions(const QVariantList &regions)
+{
+    applyPanelRegions(m_controlCenterLayer, regions);
+}
+
+void ShellProtocol::clearControlCenterPanelRegions()
+{
+    if (m_controlCenterLayer)
+        df_layer_surface_clear_panel_regions(m_controlCenterLayer);
 }
 
 bool ShellProtocol::commitControlCenterImage(const QImage &image, const QSize &logicalSize)
@@ -1632,6 +1907,8 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     applyDockSurfaceGeometry(surface);
     wl_surface_commit(surface);
     wl_display_flush(m_display);
+    if (surface == m_surface)
+        m_menuBarPanelDirty = false;
     buffer->lastImage = QImage();
     buffer->lastSourceRect = QRect();
     slot.busy = true;
@@ -1681,6 +1958,8 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufFor(
             m_switcherMapped = true;
         else if (surface == m_bannerSurface)
             m_bannerMapped = true;
+        else if (surface == m_notificationCenterSurface)
+            m_notificationCenterMapped = true;
         else if (surface == m_controlCenterSurface)
             m_controlCenterMapped = true;
         else if (surface == m_osdSurface)
@@ -1865,6 +2144,14 @@ void ShellProtocol::setDockFrameGeometry(const QRect &panel, const QList<QRect> 
     m_nextDockGeometry = DockFrameGeometry{panel, inputRects};
 }
 
+bool ShellProtocol::applyMenuBarSurfaceGeometry(wl_surface *surface)
+{
+    if (surface != m_surface || !m_menuBarPanelDirty)
+        return false;
+    m_menuBarPanelDirty = false;
+    return true;
+}
+
 bool ShellProtocol::applyDockSurfaceGeometry(wl_surface *surface)
 {
     if (surface == m_dockPopupSurface && m_nextDockPopupPanel
@@ -1942,6 +2229,39 @@ bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int lef
     if (m_display)
         wl_display_flush(m_display);
     return true;
+}
+
+void ShellProtocol::setDockPopupPanelRegion(const QString &preset, const QRect &rect,
+                                            int radius)
+{
+    if (!m_dockPopupLayer || rect.isEmpty())
+        return;
+    df_layer_surface_clear_panel_regions(m_dockPopupLayer);
+    const int r = qMax(0, radius);
+    df_layer_surface_set_panel_region(
+        m_dockPopupLayer, "menu", preset.toUtf8().constData(),
+        rect.x(), rect.y(), rect.width(), rect.height(), r, r, r, r, 20);
+}
+
+void ShellProtocol::clearDockPopupPanelRegions()
+{
+    if (m_dockPopupLayer)
+        df_layer_surface_clear_panel_regions(m_dockPopupLayer);
+}
+
+void ShellProtocol::setDockPopupInputActive(bool active)
+{
+    if (!m_dockPopupSurface || !m_compositor)
+        return;
+    if (active) {
+        wl_surface_set_input_region(m_dockPopupSurface, nullptr);
+        return;
+    }
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return;
+    wl_surface_set_input_region(m_dockPopupSurface, region);
+    wl_region_destroy(region);
 }
 
 bool ShellProtocol::commitDockPopupImage(const QImage &image, const QSize &logicalSize,
@@ -2088,6 +2408,8 @@ QString ShellProtocol::surfaceLabel(wl_surface *surface) const
         return QStringLiteral("switcher");
     if (surface == m_bannerSurface)
         return QStringLiteral("banner");
+    if (surface == m_notificationCenterSurface)
+        return QStringLiteral("notification-center");
     if (surface == m_controlCenterSurface)
         return QStringLiteral("control-center");
     if (surface == m_osdSurface)
@@ -2125,6 +2447,8 @@ wl_surface *ShellProtocol::surfaceForLabel(const QString &label) const
         return m_switcherSurface;
     if (label == QLatin1String("banner"))
         return m_bannerSurface;
+    if (label == QLatin1String("notification-center"))
+        return m_notificationCenterSurface;
     if (label == QLatin1String("control-center"))
         return m_controlCenterSurface;
     if (label == QLatin1String("osd"))
@@ -2321,7 +2645,8 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     if (damage.isEmpty() && !buffer->lastImage.isNull()) {
         // Reuse the attached buffer. Input or plate geometry can change even
         // when the pixels match, so commit that state on its own.
-        if (applyDockSurfaceGeometry(surface)) {
+        if (applyDockSurfaceGeometry(surface)
+                || applyMenuBarSurfaceGeometry(surface)) {
             wl_surface_commit(surface);
             wl_display_flush(m_display);
         }
@@ -2379,6 +2704,8 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     applyDockSurfaceGeometry(surface);
     wl_surface_commit(surface);
     wl_display_flush(m_display);
+    if (surface == m_surface)
+        m_menuBarPanelDirty = false;
     buffer->lastImage = frame;
     buffer->lastSourceRect = source;
     if (statsEnabled) {
@@ -2871,6 +3198,10 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_switcherLayer);
     if (m_switcherSurface)
         wl_surface_destroy(m_switcherSurface);
+    if (m_notificationCenterLayer)
+        df_layer_surface_destroy(m_notificationCenterLayer);
+    if (m_notificationCenterSurface)
+        wl_surface_destroy(m_notificationCenterSurface);
     if (m_controlCenterLayer)
         df_layer_surface_destroy(m_controlCenterLayer);
     if (m_controlCenterSurface)
@@ -2979,6 +3310,7 @@ void ShellProtocol::teardown()
     m_overviewMapped = false;
     m_pointerOnOverview = false;
     m_pointerOnBanner = false;
+    m_pointerOnNotificationCenter = false;
     m_pointerOnControlCenter = false;
     m_pointerOnChooser = false;
     m_pointerOnScreenshot = false;
@@ -2986,6 +3318,7 @@ void ShellProtocol::teardown()
     m_pointerOnPolkit = false;
     m_pointerOnAppsDrawer = false;
     m_keyboardOnOverview = false;
+    m_keyboardOnNotificationCenter = false;
     m_keyboardOnControlCenter = false;
     m_keyboardOnChooser = false;
     m_keyboardOnScreenshot = false;
@@ -3004,6 +3337,9 @@ void ShellProtocol::teardown()
     m_appsDrawerLayer = nullptr;
     m_appsDrawerSurface = nullptr;
     m_appsDrawerMapped = false;
+    m_notificationCenterLayer = nullptr;
+    m_notificationCenterSurface = nullptr;
+    m_notificationCenterMapped = false;
     m_controlCenterLayer = nullptr;
     m_controlCenterSurface = nullptr;
     m_controlCenterMapped = false;
@@ -3192,10 +3528,31 @@ void ShellProtocol::onBannerConfigure(void *data, df_layer_surface *, uint32_t s
     emit self->bannerConfigured(width, height, serial);
 }
 
+void ShellProtocol::onNotificationCenterConfigure(void *data, df_layer_surface *,
+                                                  uint32_t serial, int32_t width,
+                                                  int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_notificationCenterLayer)
+        df_layer_surface_ack_configure(self->m_notificationCenterLayer, serial);
+    emit self->notificationCenterConfigured(width, height, serial);
+}
+
 void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
     emit self->surfaceClosed();
+}
+
+void ShellProtocol::onNotificationCenterLayerClosed(void *data, df_layer_surface *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_notificationCenterLayer = nullptr;
+    self->m_notificationCenterSurface = nullptr;
+    self->m_notificationCenterMapped = false;
+    self->m_pointerOnNotificationCenter = false;
+    self->m_keyboardOnNotificationCenter = false;
+    emit self->notificationCenterSurfaceClosed();
 }
 
 void ShellProtocol::onControlCenterConfigure(void *data, df_layer_surface *, uint32_t serial,
@@ -3821,6 +4178,8 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_dockPopupSurface && surface == self->m_dockPopupSurface;
     self->m_pointerOnDock = self->m_dockSurface && surface == self->m_dockSurface;
     self->m_pointerOnBanner = self->m_bannerSurface && surface == self->m_bannerSurface;
+    self->m_pointerOnNotificationCenter =
+        self->m_notificationCenterSurface && surface == self->m_notificationCenterSurface;
     self->m_pointerOnControlCenter =
         self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
     self->m_pointerOnOverview =
@@ -3867,6 +4226,12 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         emit self->screencastPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
+    if (self->m_pointerOnNotificationCenter) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->notificationCenterPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnControlCenter) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -3905,6 +4270,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     auto *self = static_cast<ShellProtocol *>(data);
     const bool wasOverview = self->m_pointerOnOverview;
     const bool wasBanner = self->m_pointerOnBanner;
+    const bool wasNotificationCenter = self->m_pointerOnNotificationCenter;
     const bool wasControlCenter = self->m_pointerOnControlCenter;
     const bool wasChooser = self->m_pointerOnChooser;
     const bool wasScreenshot = self->m_pointerOnScreenshot;
@@ -3917,6 +4283,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnDockPopup = false;
     self->m_pointerOnDock = false;
     self->m_pointerOnBanner = false;
+    self->m_pointerOnNotificationCenter = false;
     self->m_pointerOnControlCenter = false;
     self->m_pointerOnOverview = false;
     self->m_pointerOnChooser = false;
@@ -3936,6 +4303,8 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
         emit self->appsDrawerPointerLeft();
     else if (wasOverview)
         emit self->overviewPointerLeft();
+    else if (wasNotificationCenter)
+        emit self->notificationCenterPointerLeft();
     else if (wasControlCenter)
         emit self->controlCenterPointerLeft();
     else if (wasBanner)
@@ -3982,6 +4351,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->screencastPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnNotificationCenter) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->notificationCenterPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnControlCenter) {
@@ -4046,6 +4421,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                                            state == WL_POINTER_BUTTON_STATE_PRESSED);
         return;
     }
+    if (self->m_pointerOnNotificationCenter) {
+        emit self->notificationCenterPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                                   state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     if (self->m_pointerOnControlCenter) {
         emit self->controlCenterPointerButton(self->m_pointerX, self->m_pointerY, button,
                                               state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -4087,6 +4467,8 @@ ShellProtocol::PointerSurface ShellProtocol::currentPointerSurface() const
         return PointerSurface::Screenshot;
     if (m_pointerOnScreenCast)
         return PointerSurface::ScreenCast;
+    if (m_pointerOnNotificationCenter)
+        return PointerSurface::NotificationCenter;
     if (m_pointerOnControlCenter)
         return PointerSurface::ControlCenter;
     if (m_pointerOnOverview)
@@ -4127,6 +4509,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
     self->m_keyboardOnDock = self->m_dockSurface && surface == self->m_dockSurface;
     self->m_keyboardOnOverview =
         self->m_overviewSurface && surface == self->m_overviewSurface;
+    self->m_keyboardOnNotificationCenter =
+        self->m_notificationCenterSurface && surface == self->m_notificationCenterSurface;
     self->m_keyboardOnControlCenter =
         self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
     self->m_keyboardOnChooser =
@@ -4145,6 +4529,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->dockKeyboardFocused(true);
     if (self->m_keyboardOnOverview)
         emit self->overviewKeyboardFocused(true);
+    if (self->m_keyboardOnNotificationCenter)
+        emit self->notificationCenterKeyboardFocused(true);
     if (self->m_keyboardOnControlCenter)
         emit self->controlCenterKeyboardFocused(true);
     if (self->m_keyboardOnChooser)
@@ -4166,6 +4552,9 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_dockSurface && surface == self->m_dockSurface);
     const bool wasOverview = self->m_keyboardOnOverview
             || (self->m_overviewSurface && surface == self->m_overviewSurface);
+    const bool wasNotificationCenter = self->m_keyboardOnNotificationCenter
+            || (self->m_notificationCenterSurface
+                && surface == self->m_notificationCenterSurface);
     const bool wasControlCenter = self->m_keyboardOnControlCenter
             || (self->m_controlCenterSurface && surface == self->m_controlCenterSurface);
     const bool wasChooser = self->m_keyboardOnChooser
@@ -4180,6 +4569,7 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_appsDrawerSurface && surface == self->m_appsDrawerSurface);
     self->m_keyboardOnDock = false;
     self->m_keyboardOnOverview = false;
+    self->m_keyboardOnNotificationCenter = false;
     self->m_keyboardOnControlCenter = false;
     self->m_keyboardOnChooser = false;
     self->m_keyboardOnScreenshot = false;
@@ -4192,6 +4582,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->dockKeyboardFocused(false);
     if (wasOverview)
         emit self->overviewKeyboardFocused(false);
+    if (wasNotificationCenter)
+        emit self->notificationCenterKeyboardFocused(false);
     if (wasControlCenter)
         emit self->controlCenterKeyboardFocused(false);
     if (wasChooser)
@@ -4224,6 +4616,11 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
     }
     if (self->m_keyboardOnAppsDrawer) {
         emit self->appsDrawerKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+        return;
+    }
+    if (self->m_keyboardOnNotificationCenter) {
+        emit self->notificationCenterKeyEvent(key,
+                                              state == WL_KEYBOARD_KEY_STATE_PRESSED);
         return;
     }
     if (self->m_keyboardOnChooser) {
@@ -4799,6 +5196,9 @@ void ShellProtocol::onOutputRemoved(void *data, df_output *output)
     self->m_outputInfo.remove(output);
     if (previous != self->outputRefreshMilliHz())
         emit self->outputRefreshChanged();
+    // Transient overlays are per-output; close them rather than leaving a
+    // stale configure anchored to a display that no longer exists.
+    emit self->outputRemoved();
 }
 void ShellProtocol::onWorkspaceName(void *data, df_workspace *workspace, const char *name)
 {

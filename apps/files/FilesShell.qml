@@ -61,6 +61,7 @@ Item {
 
     property alias browser: browser
     property alias sidebar: sidebar
+    property alias sidebarPane: sidebarPane
     property alias toolbar: toolbar
     property alias titleBar: titleBar
     property alias appWindow: appWindow
@@ -75,6 +76,7 @@ Item {
     property alias listView: listView
     property alias contextMenu: contextMenu
     property alias emptyTrashDialog: emptyTrashDialog
+    property alias detailSheet: detailSheet
     property alias resizeEdges: resizeEdges
 
     signal closeRequested()
@@ -98,6 +100,28 @@ Item {
     // Cmd is Super/Mod4 system-wide, but Qt desktop tests and muscle memory
     // both use Control; accept either as "command".
     readonly property int commandMask: Qt.ControlModifier | Qt.MetaModifier
+    // T206: the app-local Theme/Glass mirror of the shared settingsd keys,
+    // the same copyable pattern SettingsShell uses. Files is a separate
+    // process, so the shell's ThemeBinding cannot reach this engine.
+    readonly property string colorScheme: Settings.values["appearance.colorScheme"] || "auto"
+    readonly property bool hostDark: Application.styleHints.colorScheme === Qt.Dark
+    readonly property real transparency: {
+        var value = Number(Settings.values["appearance.transparency"]);
+        return isFinite(value) ? Math.max(0, Math.min(1, value))
+                               : Theme.glass.slider.defaultPosition;
+    }
+    readonly property bool reduceTransparency:
+        Settings.values["accessibility.reduceTransparency"] === true
+    readonly property bool increaseContrast:
+        Settings.values["accessibility.increaseContrast"] === true
+    // The app-local rollout/capability view. Production follows the process
+    // environment and platform bridge; tests and captures may override them
+    // without changing the shared singleton's binding.
+    property string glassRollout: Settings.glassRollout
+    property bool appChromeSupported: Settings.appChromeSupported
+    // Bound to the host Window's focus so the titlebar/controls show the
+    // focused state; the app-local chrome material itself is focus-invariant.
+    property bool windowActive: true
 
     // The sidebar sections the design doc names: Favorites (real XDG user
     // directories), then Locations (Computer, mounted volumes, Trash last).
@@ -539,6 +563,48 @@ Item {
         }
     }
 
+    Binding {
+        target: Theme
+        property: "dark"
+        value: root.colorScheme === "dark" ? true
+             : root.colorScheme === "light" ? false : root.hostDark
+    }
+    Binding {
+        target: Theme
+        property: "accentOverride"
+        value: Settings.values["appearance.accent"] || ""
+    }
+    Binding {
+        target: Theme
+        property: "reducedMotion"
+        value: Settings.values["accessibility.reduceMotion"] === true
+    }
+    Binding {
+        target: Glass
+        property: "rollout"
+        value: root.glassRollout
+    }
+    Binding {
+        target: Glass
+        property: "slider"
+        value: root.transparency
+    }
+    Binding {
+        target: Glass
+        property: "reduceTransparency"
+        value: root.reduceTransparency
+    }
+    Binding {
+        target: Glass
+        property: "increaseContrast"
+        value: root.increaseContrast
+    }
+    Binding {
+        target: Glass
+        property: "appChromeSupported"
+        value: root.appChromeSupported
+    }
+
     FilesBrowser {
         id: browser
         // `DF_FILES_START_VIEW` lets the capture harness open in either view;
@@ -558,12 +624,15 @@ Item {
         id: appWindow
         anchors.fill: parent
         title: root.locationTitle
-        active: true
+        active: root.windowActive
+        // T206: the sidebar/toolbar carry the measured app-local alpha; the
+        // content area and path bar stay opaque.
+        chromeTransparent: true
 
         titleBarData: TitleBar {
             id: titleBar
             title: root.locationTitle
-            active: true
+            active: root.windowActive
             onCloseRequested: root.closeRequested()
             onMinimizeRequested: root.minimizeRequested()
             onZoomRequested: root.zoomRequested()
@@ -576,17 +645,21 @@ Item {
             spacing: 0
 
             // Sidebar: the Favorites and Locations source lists.
-            Rectangle {
+            ChromeSheet {
                 id: sidebarPane
                 width: 240
                 height: parent.height
-                color: Theme.color.surfaceMuted
+                color: Material.appChromeFill("filesSidebar",
+                                             Theme.color.surfaceMuted)
+                bottomLeftRadius: Theme.controls.window.radius
 
                 Sidebar {
                     id: sidebar
                     anchors.fill: parent
                     anchors.margins: Theme.controls.sidebar.padding
                     sections: root.sidebarSections
+                    // The outer ChromeSheet owns the app-local material.
+                    fillColor: "transparent"
 
                     onActivated: (index, item) => {
                         var uri = root.uriForEntry(item);
@@ -607,7 +680,21 @@ Item {
             Rectangle {
                 width: parent.width - sidebarPane.width
                 height: parent.height
-                color: Theme.color.surface
+                color: "transparent"
+
+                // The toolbar is app-local glass; the listing behind it and the
+                // path bar below stay opaque. The sheet owns the bottom-right
+                // window corner.
+                ChromeSheet {
+                    id: detailSheet
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.topMargin: Theme.controls.toolbar.height
+                    anchors.bottom: parent.bottom
+                    color: Theme.color.surface
+                    bottomRightRadius: Theme.controls.window.radius
+                }
 
                 Column {
                     anchors.fill: parent
@@ -616,6 +703,10 @@ Item {
                     Toolbar {
                         id: toolbar
                         width: parent.width
+                        fillColor: Material.appChromeFill("filesToolbar",
+                                                          Theme.color.chrome)
+                        borderColor: Material.appChromeBorder("filesToolbar",
+                                                              Theme.color.border)
 
                         Button {
                             id: backButton
@@ -788,6 +879,7 @@ Item {
                         id: pathBar
                         width: parent.width
                         model: root.breadcrumb
+                        bottomRightRadius: Theme.controls.window.radius
                         onNavigated: (uri) => browser.navigate(uri)
                     }
                 }
