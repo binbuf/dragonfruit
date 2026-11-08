@@ -132,7 +132,7 @@ Boundaries declared up front, so scope debates later have an answer:
 | Left-side traffic lights in our apps | Excellent | Design system / apps |
 | Traffic lights in *every* Linux app | Impossible to guarantee | Toolkit/app dependent |
 | Global menu in our apps | Excellent | Our app API / menu broker |
-| Global menu in compatible Linux apps | **Partial today** — native tier shipped; DBusMenu shell consumption/clicks still open | DBusMenu/AppMenu bridge (G-05) |
+| Global menu in compatible Linux apps | **Shipped for DBusMenu exporters** — native tier plus DBusMenu focus/click and hide verbs; apps that export nothing get the fixed menus | DBusMenu/AppMenu bridge (G-05 resolved by T230) |
 | Global menu in *every* Linux app | Impossible to guarantee | Application cooperation required |
 | Wi-Fi/Bluetooth/audio/power UI | Excellent | Existing system daemons + our UI |
 | X11 applications | Good | Xwayland |
