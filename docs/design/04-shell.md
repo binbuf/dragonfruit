@@ -205,8 +205,16 @@ The system menu and application menu are **shell-owned chrome**, not part of
 the application's exported model: an app that exports nothing still gets a
 complete menu bar, and an app that exports menus gets them *after* the fixed
 two. The menu-broker synthesizes the fixed application menu with live
-enable/disable state (T-14.2a); the system menu stays with the session. Actual
-Hide/Hide Others/Show All execution is still a stub (G-05).
+enable/disable state (T-14.2a); the system menu stays with the session. T230
+completes the behaviour: focus maps to the native/DBusMenu registration and
+clears to Files on focus loss, Hide/Hide Others/Show All run as tracked
+compositor minimize/restore, Recent Items is fed by the live recency list, and
+a no-export app gets the dynamic Window menu. Services is present with an
+explicit disabled reason until a service registry exists. Menu rows are
+keyboard-navigable (arrows, Return, Escape, type-ahead, submenu direction) and
+carry a reason when disabled. See
+[06-global-menu.md](06-global-menu.md#services-recent-items-and-the-dynamic-window-menu-t230)
+and ADR [0240](adr/0240-menu-bar-focus-dbusmenu-and-hide-verbs.md).
 
 The dropdown rows follow the design-system
 [menu layout language](10-design-system.md#menu-layout-language): the shared

@@ -3,9 +3,11 @@
 #include <QDateTime>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QQuickWindow>
 #include <cstdio>
 
+#include "MenuPublisher.h"
 #include "systemfont.h"
 #include "i18n.h"
 
@@ -18,6 +20,11 @@ int main(int argc, char *argv[])
     Dragonfruit::installTranslations(app);
 
     QQmlApplicationEngine engine;
+    // T230: the app-side end of the native global-menu publication. The model
+    // stays in SettingsMenu.qml; this object only carries it to the broker.
+    MenuPublisher menuPublisher;
+    engine.rootContext()->setContextProperty(QStringLiteral("MenuPublisher"),
+                                             &menuPublisher);
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,

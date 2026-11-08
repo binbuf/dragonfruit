@@ -133,13 +133,14 @@ fn a_fixture_export_resolves_to_the_expected_menu_model() {
     assert_eq!(resolved["appName"], "Settings");
     assert_eq!(resolved["tier"], "native");
     let app_menu = resolved["applicationMenuItems"].as_array().unwrap();
-    assert_eq!(app_menu.len(), 8);
+    assert_eq!(app_menu.len(), 9);
     assert_eq!(app_menu[0]["label"], "About Settings");
-    assert_eq!(app_menu[3]["label"], "Hide Settings");
+    assert_eq!(app_menu[2]["label"], "Services");
+    assert_eq!(app_menu[4]["label"], "Hide Settings");
     // Focused + visible => Hide and Hide Others on, Show All off.
-    assert_eq!(app_menu[3]["enabled"], true);
-    assert_eq!(app_menu[4]["enabled"], false);
+    assert_eq!(app_menu[4]["enabled"], true);
     assert_eq!(app_menu[5]["enabled"], false);
+    assert_eq!(app_menu[6]["enabled"], false);
 
     let menus = resolved["menus"].as_array().unwrap();
     let titles: Vec<&str> = menus.iter().map(|m| m["title"].as_str().unwrap()).collect();
@@ -165,9 +166,9 @@ fn the_fixed_menu_flags_follow_the_live_window_state() {
 
     let policy = json(&call::<String>(&client, "Policy", ("a",)).unwrap());
     let app_menu = policy["applicationMenuItems"].as_array().unwrap();
-    assert_eq!(app_menu[3]["enabled"], true); // Hide a
-    assert_eq!(app_menu[4]["enabled"], true); // Hide Others
-    assert_eq!(app_menu[5]["enabled"], false); // Show All
+    assert_eq!(app_menu[4]["enabled"], true); // Hide a
+    assert_eq!(app_menu[5]["enabled"], true); // Hide Others
+    assert_eq!(app_menu[6]["enabled"], false); // Show All
 
     // Hide everything: only Show All stays meaningful.
     call::<bool>(
@@ -179,9 +180,9 @@ fn the_fixed_menu_flags_follow_the_live_window_state() {
     .unwrap();
     let policy = json(&call::<String>(&client, "Policy", ("a",)).unwrap());
     let app_menu = policy["applicationMenuItems"].as_array().unwrap();
-    assert_eq!(app_menu[3]["enabled"], false);
     assert_eq!(app_menu[4]["enabled"], false);
-    assert_eq!(app_menu[5]["enabled"], true);
+    assert_eq!(app_menu[5]["enabled"], false);
+    assert_eq!(app_menu[6]["enabled"], true);
 }
 
 #[test]
@@ -194,7 +195,7 @@ fn the_empty_desktop_resolves_to_the_files_fixed_menu() {
     assert_eq!(resolved["appName"], "Files");
     assert_eq!(resolved["tier"], "none");
     let app_menu = resolved["applicationMenuItems"].as_array().unwrap();
-    assert_eq!(app_menu[7]["label"], "Quit Files");
+    assert_eq!(app_menu[8]["label"], "Quit Files");
     assert!(resolved["menus"].as_array().unwrap().is_empty());
 }
 
@@ -272,10 +273,16 @@ fn a_dbusmenu_bridge_publish_resolves_at_the_dbusmenu_tier() {
     assert_eq!(resolved["menus"][0]["items"][0]["enabled"], true);
     assert_eq!(resolved["menus"][0]["items"][1]["enabled"], false);
 
-    // The bridge-born accelerator is focus-scoped like any other.
+    // The bridge-born accelerator is focus-scoped like any other, alongside
+    // the synthesized fixed menu's chords.
     let accelerators = json(&call::<String>(&client, "FocusedAccelerators", ()).unwrap());
-    assert_eq!(accelerators[0]["action"], "dbusmenu:1");
-    assert_eq!(accelerators[0]["chord"], "Control+N");
+    let bridge = accelerators
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["action"] == "dbusmenu:1")
+        .expect("the bridge accelerator is present");
+    assert_eq!(bridge["chord"], "Control+N");
     let dispatched = json(&call::<String>(&client, "Dispatch", ("Ctrl+N",)).unwrap());
     assert_eq!(dispatched["kind"], "application");
     assert_eq!(dispatched["action"], "dbusmenu:1");

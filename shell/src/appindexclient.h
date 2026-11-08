@@ -12,6 +12,27 @@
 
 #include <QList>
 #include <QString>
+#include <QVariantList>
+
+// One window registered with `com.canonical.AppMenu.Registrar`, as app-index's
+// `AppMenuWindows` view carries it (T-14.4/T230).
+struct AppMenuWindow {
+    quint32 windowId = 0;
+    QString appId;
+    QString owner;
+    QString menuPath;
+};
+
+// Decode the `AppMenuWindows` JSON array. Malformed rows are skipped so one
+// bad registration can never hide the rest.
+QList<AppMenuWindow> parseAppMenuWindows(const QString &json);
+
+// The registration for a focused app. Matches the raw compositor id, the
+// canonical `.desktop` id, and the two with the suffix normalized, in that
+// order. Returns nullptr when no registration names the app.
+const AppMenuWindow *findAppMenuWindow(const QList<AppMenuWindow> &windows,
+                                       const QString &rawAppId,
+                                       const QString &desktopId);
 
 class AppIndexClient
 {
@@ -46,7 +67,26 @@ public:
     // service's record size). Empty when no theme provides it.
     QString iconPath(const QString &name, int size = 128) const;
 
+    // T230: bind a focused window's DBusMenu registration to the compositor's
+    // app identity. app-index re-keys and re-publishes the bridge model so the
+    // menu-broker resolves it for the focused app. A miss is false.
+    bool focusWindow(const QString &windowId, const QString &appId) const;
+
+    // T230: the AppMenu.Registrar windows, as `{windowId, appId, owner,
+    // menuPath}` rows. Empty when the service is absent.
+    QList<AppMenuWindow> appMenuWindows() const;
+
+    // T230: the registered window's projected DBusMenu as the menu-broker's
+    // `[{title, items}]` list. Empty when the window has no registration.
+    QVariantList windowMenu(const QString &windowId) const;
+
+    // T230: forward a projected `dbusmenu:<id>` click to the owning app as
+    // `Event(id, "clicked")`. Returns whether the owner accepted it.
+    bool windowMenuEvent(const QString &windowId, int id) const;
+
 private:
     QString call(const QString &method, const QList<QVariant> &arguments) const;
+    bool callBool(const QString &method, const QList<QVariant> &arguments) const;
     static DesktopEntry parseRecord(const QString &json);
+    static QVariantList parseMenus(const QString &json);
 };

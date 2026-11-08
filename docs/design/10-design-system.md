@@ -125,6 +125,13 @@ context menus (`ContextMenu`) — use one row anatomy, implemented once in
   slot inside `component.menuBarMenu.barHeight` with 10 px side padding. The
   system menu is the brand mark, the application menu is bold, and app menus
   are medium.
+- **A disabled row carries `disabledReason`.** `MenuRow` exposes it as the
+  accessible description, and the bar never publishes an inert row without
+  one (T230). `MenuBarMenu` also owns keyboard navigation: arrows move the
+  highlight (skipping separators and disabled rows), Return/Space activates,
+  Escape closes the submenu then the menu, Left/Right open/close a submenu or
+  move to the sibling top-level menu, and printable keys drive a 700 ms
+  type-ahead buffer.
 
 ### Shortcut hints
 

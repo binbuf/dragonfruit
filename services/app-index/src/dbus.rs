@@ -612,6 +612,36 @@ impl AppIndex1 {
         was_running
     }
 
+    /// Bind the focused window's registration to the compositor's app
+    /// identity (T230). A standard `RegisterWindow` keys the bridge model by
+    /// the caller's unique bus name; focus is the moment the shell knows the
+    /// real desktop id, so the registration is re-keyed and re-published at
+    /// the `dbusmenu` tier under that id. Returns whether a registration
+    /// existed for `window_id`; an empty `app_id` is a no-op.
+    async fn focus_window(
+        &self,
+        window_id: u32,
+        app_id: &str,
+        #[zbus(connection)] connection: &Connection,
+    ) -> bool {
+        let app_id = app_id.trim();
+        let Some(registration) = lock_menus(&self.menus).get(window_id).cloned() else {
+            return false;
+        };
+        if app_id.is_empty() || registration.app_id == app_id {
+            return true;
+        }
+        let mut updated = registration.clone();
+        updated.app_id = app_id.to_owned();
+        lock_menus(&self.menus).register(updated.clone());
+        // Withdraw the old key only when no other window still uses it.
+        if !lock_menus(&self.menus).has_app(&registration.app_id) {
+            withdraw_from_broker(connection, &registration.app_id).await;
+        }
+        publish_to_broker(&self.index, connection, &updated).await;
+        true
+    }
+
     /// The running apps as a JSON array, ordered by key.
     fn running(&self) -> String {
         view::running_json(&lock_registry(&self.registry), &self.theme)

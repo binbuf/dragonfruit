@@ -107,6 +107,19 @@ QtObject {
         };
     }
 
+    // T230: publish the native model to the menu-broker under the canonical
+    // desktop id the shell resolves focus to. `MenuPublisher` is a context
+    // property in the app executable; the QML test has no broker and skips it.
+    Component.onCompleted: {
+        if (typeof MenuPublisher !== "undefined")
+            MenuPublisher.publish("org.dragonfruit.Settings.desktop",
+                                  JSON.stringify(root.publishedModel));
+    }
+    Component.onDestruction: {
+        if (typeof MenuPublisher !== "undefined")
+            MenuPublisher.withdraw("org.dragonfruit.Settings.desktop");
+    }
+
     // Raised when a published item is activated. The app wires its own window
     // actions to this (T-09.6a); the broker routes the same action back to the
     // app once it owns dispatch (T-14.2b).

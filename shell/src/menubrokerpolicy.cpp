@@ -10,8 +10,9 @@
 
 namespace {
 
-QVariantMap entry(const QString &label, const QString &shortcut,
-                  const QString &action, bool enabled)
+QVariantMap entryWithReason(const QString &label, const QString &shortcut,
+                            const QString &action, bool enabled,
+                            const QString &disabledReason)
 {
     QVariantMap map;
     map.insert(QStringLiteral("label"), label);
@@ -19,6 +20,23 @@ QVariantMap entry(const QString &label, const QString &shortcut,
         map.insert(QStringLiteral("shortcut"), shortcut);
     map.insert(QStringLiteral("action"), action);
     map.insert(QStringLiteral("enabled"), enabled);
+    if (!enabled && !disabledReason.isEmpty())
+        map.insert(QStringLiteral("disabledReason"), disabledReason);
+    return map;
+}
+
+QVariantMap entry(const QString &label, const QString &shortcut,
+                  const QString &action, bool enabled)
+{
+    return entryWithReason(label, shortcut, action, enabled, QString());
+}
+
+QVariantMap submenuEntry(const QString &label, const QVariantList &submenu)
+{
+    QVariantMap map;
+    map.insert(QStringLiteral("label"), label);
+    map.insert(QStringLiteral("type"), QStringLiteral("submenu"));
+    map.insert(QStringLiteral("submenu"), submenu);
     return map;
 }
 
@@ -27,6 +45,17 @@ QVariantMap separator()
     QVariantMap map;
     map.insert(QStringLiteral("type"), QStringLiteral("separator"));
     return map;
+}
+
+QVariantMap servicesMenu()
+{
+    return submenuEntry(
+        QCoreApplication::translate("ShellController", "Services"),
+        {entryWithReason(
+            QCoreApplication::translate("ShellController", "No Services Available"),
+            QString(), QStringLiteral("services.none"), false,
+            QCoreApplication::translate("ShellController",
+                                        "No application has registered a service."))});
 }
 
 // The live flag a row's action maps to, or -1 when the row is not a hide verb.
@@ -94,9 +123,93 @@ QString windowStatesJson(const QVariantList &entries)
                    row.value(QStringLiteral("windows")).toInt());
         app.insert(QStringLiteral("minimized"),
                    row.value(QStringLiteral("minimized")).toBool());
+        QJsonArray windowList;
+        for (const QVariant &windowValue : row.value(QStringLiteral("windowList")).toList()) {
+            const QVariantMap window = windowValue.toMap();
+            const QString windowId = window.value(QStringLiteral("windowId")).toString();
+            if (windowId.isEmpty())
+                continue;
+            QJsonObject entry;
+            entry.insert(QStringLiteral("windowId"), windowId);
+            entry.insert(QStringLiteral("title"),
+                         window.value(QStringLiteral("title")).toString());
+            entry.insert(QStringLiteral("focused"),
+                         window.value(QStringLiteral("focused")).toBool());
+            entry.insert(QStringLiteral("minimized"),
+                         window.value(QStringLiteral("minimized")).toBool());
+            windowList.append(entry);
+        }
+        app.insert(QStringLiteral("windowList"), windowList);
         apps.append(app);
     }
     return QString::fromUtf8(QJsonDocument(apps).toJson(QJsonDocument::Compact));
+}
+
+QStringList visibleWindowIds(const QVariantList &entries, const QString &appId,
+                             bool others)
+{
+    QStringList ids;
+    if (appId.isEmpty())
+        return ids;
+    for (const QVariant &value : entries) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        const QString rowApp = row.value(QStringLiteral("appId")).toString();
+        if (rowApp.isEmpty())
+            continue;
+        if (others ? rowApp == appId : rowApp != appId)
+            continue;
+        for (const QVariant &windowValue : row.value(QStringLiteral("windowList")).toList()) {
+            const QVariantMap window = windowValue.toMap();
+            const QString windowId = window.value(QStringLiteral("windowId")).toString();
+            if (!windowId.isEmpty() && !window.value(QStringLiteral("minimized")).toBool())
+                ids << windowId;
+        }
+    }
+    return ids;
+}
+
+QStringList minimizedWindowIds(const QVariantList &entries)
+{
+    QStringList ids;
+    for (const QVariant &value : entries) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        for (const QVariant &windowValue : row.value(QStringLiteral("windowList")).toList()) {
+            const QVariantMap window = windowValue.toMap();
+            const QString windowId = window.value(QStringLiteral("windowId")).toString();
+            if (!windowId.isEmpty() && window.value(QStringLiteral("minimized")).toBool()
+                && !ids.contains(windowId))
+                ids << windowId;
+        }
+    }
+    return ids;
+}
+
+QStringList retainWindowIds(const QVariantList &entries, const QSet<QString> &windowIds)
+{
+    QSet<QString> live;
+    for (const QVariant &value : entries) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        for (const QVariant &windowValue : row.value(QStringLiteral("windowList")).toList()) {
+            const QString windowId = windowValue.toMap()
+                                         .value(QStringLiteral("windowId"))
+                                         .toString();
+            if (!windowId.isEmpty())
+                live.insert(windowId);
+        }
+    }
+    QStringList retained;
+    for (const QString &windowId : windowIds) {
+        if (live.contains(windowId))
+            retained << windowId;
+    }
+    retained.sort();
+    return retained;
 }
 
 QVariantList fixedApplicationMenu(const QString &appName, const AppMenuLiveState &state)
@@ -106,18 +219,101 @@ QVariantList fixedApplicationMenu(const QString &appName, const AppMenuLiveState
                   QString(), QStringLiteral("about"), true);
     menu << entry(QCoreApplication::translate("ShellController", "Settings\u2026"),
                   QStringLiteral("Super+,"), QStringLiteral("settings"), true);
+    menu << servicesMenu();
     menu << separator();
-    menu << entry(QCoreApplication::translate("ShellController", "Hide %1").arg(appName),
-                  QStringLiteral("Super+H"), QStringLiteral("hide"), state.hide);
-    menu << entry(QCoreApplication::translate("ShellController", "Hide Others"),
-                  QStringLiteral("Super+Alt+H"), QStringLiteral("hide-others"),
-                  state.hideOthers);
-    menu << entry(QCoreApplication::translate("ShellController", "Show All"),
-                  QString(), QStringLiteral("show-all"), state.showAll);
+    menu << entryWithReason(
+        QCoreApplication::translate("ShellController", "Hide %1").arg(appName),
+        QStringLiteral("Super+H"), QStringLiteral("hide"), state.hide,
+        QCoreApplication::translate("ShellController", "The app has no visible window."));
+    menu << entryWithReason(
+        QCoreApplication::translate("ShellController", "Hide Others"),
+        QStringLiteral("Super+Alt+H"), QStringLiteral("hide-others"), state.hideOthers,
+        QCoreApplication::translate("ShellController", "No other app has a visible window."));
+    menu << entryWithReason(
+        QCoreApplication::translate("ShellController", "Show All"), QString(),
+        QStringLiteral("show-all"), state.showAll,
+        QCoreApplication::translate("ShellController", "No hidden app to show."));
     menu << separator();
     menu << entry(QCoreApplication::translate("ShellController", "Quit %1").arg(appName),
                   QStringLiteral("Super+Q"), QStringLiteral("quit"), true);
     return menu;
+}
+
+QVariantList windowMenu(const QVariantList &entries, const QString &appId,
+                        const QString &appName)
+{
+    if (appId.isEmpty())
+        return {};
+    QVariantMap app;
+    for (const QVariant &value : entries) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        if (row.value(QStringLiteral("appId")).toString() == appId) {
+            app = row;
+            break;
+        }
+    }
+    if (app.isEmpty())
+        return {};
+
+    const QVariantList windows = app.value(QStringLiteral("windowList")).toList();
+    bool hasVisible = false;
+    for (const QVariant &value : windows) {
+        if (!value.toMap().value(QStringLiteral("minimized")).toBool()) {
+            hasVisible = true;
+            break;
+        }
+    }
+
+    QVariantList menu;
+    menu << entryWithReason(
+        QCoreApplication::translate("ShellController", "Minimize"),
+        QStringLiteral("Super+M"), QStringLiteral("window.minimize"), hasVisible,
+        QCoreApplication::translate("ShellController",
+                                    "Every window is already minimized."));
+    menu << separator();
+    if (windows.isEmpty()) {
+        menu << entryWithReason(
+            QCoreApplication::translate("ShellController", "No Windows"), QString(),
+            QStringLiteral("window.none"), false,
+            QCoreApplication::translate("ShellController",
+                                        "This app has no open windows."));
+    } else {
+        for (const QVariant &value : windows) {
+            const QVariantMap window = value.toMap();
+            const QString windowId = window.value(QStringLiteral("windowId")).toString();
+            if (windowId.isEmpty())
+                continue;
+            QString label = window.value(QStringLiteral("title")).toString();
+            if (label.trimmed().isEmpty())
+                label = appName;
+            QVariantMap row = entry(label, QString(),
+                                    QStringLiteral("window.activate:%1").arg(windowId), true);
+            if (window.value(QStringLiteral("focused")).toBool()) {
+                row.insert(QStringLiteral("checked"), true);
+                row.insert(QStringLiteral("checkable"), true);
+            }
+            menu << row;
+        }
+    }
+    menu << separator();
+    menu << entryWithReason(
+        QCoreApplication::translate("ShellController", "Bring All to Front"), QString(),
+        QStringLiteral("window.bring-all-to-front"), !windows.isEmpty(),
+        QCoreApplication::translate("ShellController",
+                                    "This app has no open windows."));
+    return menu;
+}
+
+bool hasMenuTitle(const QVariantList &menus, const QString &title)
+{
+    for (const QVariant &value : menus) {
+        if (value.toMap().value(QStringLiteral("title")).toString().compare(
+                title, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
 }
 
 QVariantList applyAppMenuLiveState(const QVariantList &published, const AppMenuLiveState &state)

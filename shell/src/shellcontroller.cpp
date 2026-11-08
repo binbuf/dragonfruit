@@ -39,6 +39,7 @@
 #include <QUrl>
 
 #include <cstdio>
+#include <memory>
 
 #include "appindexclient.h"
 #include "apppicker.h"
@@ -431,6 +432,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         }
     }
     m_protocol = new ShellProtocol(this);
+    // T230: focus and window-state events are part of the initial scene
+    // replay the compositor sends during `connectToCompositor` (the first
+    // window is already focused before the shell binds). Connect them before
+    // the roundtrip so the menu bar starts on the real focused app instead of
+    // the empty desktop; the handlers tolerate the QML items not existing yet.
+    connect(m_protocol, &ShellProtocol::focusedAppChanged, this,
+            &ShellController::onFocusedAppChanged);
+    connect(m_protocol, &ShellProtocol::dockStateChanged, this,
+            &ShellController::onDockStateChanged);
     connect(m_protocol, &ShellProtocol::fatal, this, [this](const QString &message) {
         qWarning() << "shell:" << message;
         // A dead compositor connection is not recoverable in-process: every
@@ -690,8 +700,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onMaterialStateChanged);
     connect(m_protocol, &ShellProtocol::materialRoleStateChanged, this,
             &ShellController::onMaterialRoleStateChanged);
-    connect(m_protocol, &ShellProtocol::focusedAppChanged, this,
-            &ShellController::onFocusedAppChanged);
     connect(m_protocol, &ShellProtocol::appAccelerator, this,
             &ShellController::onAppAccelerator);
     connect(m_protocol, &ShellProtocol::pointerMoved, this, &ShellController::onPointerMoved);
@@ -705,8 +713,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onChromePointerAxis);
     connect(m_protocol, &ShellProtocol::dockConfigured, this,
             &ShellController::onDockConfigured);
-    connect(m_protocol, &ShellProtocol::dockStateChanged, this,
-            &ShellController::onDockStateChanged);
     connect(m_protocol, &ShellProtocol::dockPointerMoved, this,
             &ShellController::onDockPointerMoved);
     connect(m_protocol, &ShellProtocol::dockPointerButton, this,
@@ -841,14 +847,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 
     applyStatusItems();
     // The system menu (dragonfruit mark) is fixed for the session; the Log Out
-    // item is personalized with the account name, and the T-12.6b
-    // "Quit to <previous desktop>" row appears only for a harness-armed
-    // session (DRAGONFRUIT_DEV_RETURN set).
-    QString userName = qEnvironmentVariable("USER");
-    if (userName.isEmpty())
-        userName = QStringLiteral("user");
-    m_item->setProperty("systemMenuItems",
-                        ShellMenus::systemMenu(userName, ShellMenus::devReturnDesktop()));
+    // item is personalized with the account name, the T-12.6b "Quit to
+    // <previous desktop>" row appears only for a harness-armed session
+    // (DRAGONFRUIT_DEV_RETURN set), and Recent Items follows the live recency
+    // list (T230).
+    m_systemUserName = qEnvironmentVariable("USER");
+    if (m_systemUserName.isEmpty())
+        m_systemUserName = QStringLiteral("user");
+    m_devReturnDesktop = ShellMenus::devReturnDesktop();
+    refreshSystemMenu();
     applyFocusedApp();
     // T-14.2b: the global application-menu toggle from Settings. It is a
     // standalone key (not part of DockConfig), so it gets its own live view of
@@ -1790,13 +1797,84 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (qEnvironmentVariableIsSet("DF_MENUBAR_MENU_FIXTURE")) {
         bool ok = false;
         const int index = qEnvironmentVariable("DF_MENUBAR_MENU_FIXTURE").toInt(&ok);
-        QTimer::singleShot(1500, this, [this, ok, index]() {
+        // T230: a capture that must focus an app first can push the open later.
+        int delay = qEnvironmentVariableIntValue("DF_MENUBAR_MENU_FIXTURE_DELAY");
+        if (delay <= 0)
+            delay = 1500;
+        QTimer::singleShot(delay, this, [this, ok, index]() {
             if (m_item)
                 QMetaObject::invokeMethod(m_item, "openMenu",
                                           Q_ARG(QVariant, ok ? index : 0));
         });
     }
+    // T230 capture seam: activate one open menu row through the normal
+    // `appMenuTriggered` path, so a DBusMenu click and a Hide Others action can
+    // be exercised without a synthetic pointer landing on a pixel. The value
+    // is `menuIndex,itemIndex`. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_MENUBAR_ACTIVATE_FIXTURE")) {
+        const QStringList parts =
+            qEnvironmentVariable("DF_MENUBAR_ACTIVATE_FIXTURE").split(QLatin1Char(','));
+        bool menuOk = false;
+        bool itemOk = false;
+        const int menuIndex = parts.value(0).toInt(&menuOk);
+        const int itemIndex = parts.value(1).toInt(&itemOk);
+        int delay = qEnvironmentVariableIntValue("DF_MENUBAR_ACTIVATE_DELAY");
+        if (delay <= 0)
+            delay = 2200;
+        QTimer::singleShot(delay, this, [this, menuOk, itemOk, menuIndex, itemIndex]() {
+            if (m_item && menuOk && itemOk)
+                QMetaObject::invokeMethod(m_item, "activateMenuRow",
+                                          Q_ARG(QVariant, menuIndex),
+                                          Q_ARG(QVariant, itemIndex));
+        });
+    }
 
+    // T230 capture seam: focus a named app through the compositor's normal
+    // `activate_app` request so the live check exercises a real focus change
+    // (the first window is already focused before the shell connects, so a
+    // click on it produces no event). Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_FOCUS_APP_FIXTURE")) {
+        const QStringList appIds =
+            qEnvironmentVariable("DF_FOCUS_APP_FIXTURE").split(QLatin1Char(','));
+        int delay = qEnvironmentVariableIntValue("DF_FOCUS_APP_FIXTURE_DELAY");
+        if (delay <= 0)
+            delay = 2000;
+        // The app window can map several seconds after the shell; retry the
+        // activation until the compositor reports it found, then move to the
+        // next id. Two ids (an existing window, then the target) force a real
+        // focus change even when the target was already focused before the
+        // shell connected.
+        auto *timer = new QTimer(this);
+        timer->setInterval(1000);
+        auto index = std::make_shared<int>(0);
+        auto attempts = std::make_shared<int>(0);
+        QObject::connect(timer, &QTimer::timeout, this,
+                         [this, appIds, index, attempts, timer]() {
+                             if (*index >= appIds.size()) {
+                                 timer->stop();
+                                 return;
+                             }
+                             if (++*attempts > 20) {
+                                 *attempts = 0;
+                                 ++*index;
+                                 return;
+                             }
+                             if (m_protocol)
+                                 m_protocol->activateApp(appIds.at(*index));
+                         });
+        QObject::connect(
+            m_protocol, &ShellProtocol::activationResult, timer,
+            [appIds, index, attempts, timer](const QString &appId, bool found) {
+                if (!found || *index >= appIds.size()
+                    || appId != appIds.at(*index))
+                    return;
+                ++*index;
+                *attempts = 0;
+                if (*index >= appIds.size())
+                    timer->stop();
+            });
+        QTimer::singleShot(delay, timer, [timer]() { timer->start(); });
+    }
     // Capture/demo seam (T202): open one status menu by id so the menu-family
     // capture does not depend on the right-anchored row's pixel positions.
     if (qEnvironmentVariableIsSet("DF_STATUS_MENU_FIXTURE")) {
@@ -2643,10 +2721,34 @@ void ShellController::onStatusReport(const QByteArray &json)
     refreshStatusViews();
 }
 
+void ShellController::refreshSystemMenu()
+{
+    if (!m_item)
+        return;
+    QVariantList recent;
+    QSet<QString> seen;
+    const int limit = qBound(0, m_menuRecentItems, 50);
+    for (const QString &appId : std::as_const(m_recentAppIds)) {
+        if (recent.size() >= limit)
+            break;
+        const DesktopEntry entry = m_index.resolve(appId);
+        if (!entry.valid || entry.id.isEmpty() || seen.contains(entry.id))
+            continue;
+        seen.insert(entry.id);
+        recent.append(QVariantMap{{QStringLiteral("desktopId"), entry.id},
+                                  {QStringLiteral("name"), entry.name}});
+    }
+    m_item->setProperty(
+        "systemMenuItems",
+        ShellMenus::systemMenu(m_systemUserName, m_devReturnDesktop, recent));
+}
+
 void ShellController::applyFocusedApp()
 {
     if (!m_item)
         return;
+    if (m_protocol)
+        m_focusedWindowId = m_protocol->focusedWindowId();
     // The application menu is always present. With no focused window the
     // desktop is Files (the macOS "Finder owns the desktop" model, see
     // design/09-files.md), so the default application menu is Files.
@@ -2655,6 +2757,16 @@ void ShellController::applyFocusedApp()
         name = m_appTitle;
     if (name.isEmpty())
         name = QStringLiteral("Files");
+
+    const QString rawId = m_appId;
+    QString canonicalId = rawId;
+    if (!rawId.isEmpty()) {
+        const DesktopEntry entry = m_index.resolve(rawId);
+        if (entry.valid && !entry.id.isEmpty())
+            canonicalId = entry.id;
+    }
+    const QString brokerId = canonicalId.isEmpty() ? rawId : canonicalId;
+
     // The menu-broker owns global-menu resolution and the fixed application
     // menu's live Hide/Hide Others/Show All state (T-14.2a). The shell pushes
     // the focus and the running-window projection, then reads the resolved
@@ -2663,10 +2775,80 @@ void ShellController::applyFocusedApp()
     // fallback when the service is absent (T-14.7).
     QVariantList applicationMenu;
     QVariantList appMenu;
-    if (m_menuBroker.available()) {
-        m_menuBroker.setFocusedApp(m_appId);
+    QString tier;
+    quint32 dbusWindow = 0;
+
+    // T230: focus → app identity → AppMenu.Registrar registration. A
+    // registration can arrive under the app's bus name (the standard
+    // `RegisterWindow` call); focus is the first moment the shell knows the
+    // canonical desktop id, so it re-keys the bridge model to that identity
+    // before resolving it. The registration's own window id is kept for click
+    // routing.
+    if (m_appIndexClient.available()) {
+        const QList<AppMenuWindow> windows = m_appIndexClient.appMenuWindows();
+        const AppMenuWindow *registration = findAppMenuWindow(windows, rawId, canonicalId);
+        // A standard `RegisterWindow` keys the bridge by the caller's bus name,
+        // so the app-id lookup cannot see it. The compositor's focused window
+        // id is the second, authoritative match; `FocusWindow` then re-keys the
+        // registration under the canonical desktop id.
+        if (!registration && m_focusedWindowId != 0) {
+            for (const AppMenuWindow &window : windows) {
+                if (window.windowId == m_focusedWindowId) {
+                    registration = &window;
+                    break;
+                }
+            }
+        }
+        if (registration) {
+            dbusWindow = registration->windowId;
+            const QString key = canonicalId.isEmpty() ? registration->appId : canonicalId;
+            m_appIndexClient.focusWindow(QString::number(registration->windowId), key);
+            if (m_menuBroker.available()) {
+                m_menuBroker.setFocusedApp(key);
+                m_menuBroker.setWindowStates(windowStatesJson(m_runningEntries));
+                ResolvedMenu resolved = m_menuBroker.resolve(key);
+                if (!resolved.valid)
+                    resolved = m_menuBroker.resolveFocused();
+                if (resolved.valid) {
+                    if (!resolved.appName.isEmpty())
+                        name = resolved.appName;
+                    applicationMenu = resolved.applicationMenuItems;
+                    appMenu = resolved.menus;
+                    tier = resolved.tier;
+                }
+            }
+            // A fresh `WindowMenu` read runs `AboutToShow` first, so a dynamic
+            // menu (recent files, window lists) reflects the state at open
+            // time instead of the registration snapshot. A native publication
+            // still wins the tier priority (native → DBusMenu → none).
+            if (tier != QLatin1String("native")) {
+                const QVariantList fresh =
+                    m_appIndexClient.windowMenu(QString::number(registration->windowId));
+                if (!fresh.isEmpty()) {
+                    appMenu = fresh;
+                    tier = QStringLiteral("dbusmenu");
+                } else if (tier.isEmpty()) {
+                    tier = QStringLiteral("dbusmenu");
+                }
+            }
+            if (applicationMenu.isEmpty()) {
+                const AppMenuLiveState live = appMenuLiveState(rawId, m_runningEntries);
+                applicationMenu = fixedApplicationMenu(name, live);
+            }
+            if (!m_dbusMenuFallbackLogged) {
+                m_dbusMenuFallbackLogged = true;
+                qInfo() << "shell: DBusMenu registration" << registration->windowId
+                        << "resolved for" << key << "tier" << tier;
+            }
+        }
+    }
+
+    if (applicationMenu.isEmpty() && m_menuBroker.available()) {
+        m_menuBroker.setFocusedApp(brokerId);
         m_menuBroker.setWindowStates(windowStatesJson(m_runningEntries));
-        const ResolvedMenu resolved = m_menuBroker.resolveFocused();
+        ResolvedMenu resolved = m_menuBroker.resolve(brokerId);
+        if (!resolved.valid)
+            resolved = m_menuBroker.resolveFocused();
         if (resolved.valid) {
             if (!m_menuBrokerLogged) {
                 m_menuBrokerLogged = true;
@@ -2677,12 +2859,29 @@ void ShellController::applyFocusedApp()
                 name = resolved.appName;
             applicationMenu = resolved.applicationMenuItems;
             appMenu = resolved.menus;
+            tier = resolved.tier;
         }
     }
     if (applicationMenu.isEmpty()) {
-        const AppMenuLiveState live = appMenuLiveState(m_appId, m_runningEntries);
+        const AppMenuLiveState live = appMenuLiveState(rawId, m_runningEntries);
         applicationMenu = fixedApplicationMenu(name, live);
+        tier = QStringLiteral("none");
     }
+    // T230: no-export and DBusMenu apps get the dynamic Window menu from the
+    // live compositor projection. A published Window menu wins. The broker
+    // already appends its synthesized menu when it owns the model, so never
+    // duplicate it.
+    if (!rawId.isEmpty() && !hasMenuTitle(appMenu, QStringLiteral("Window"))) {
+        const QVariantList dynamicWindow = windowMenu(m_runningEntries, rawId, name);
+        if (!dynamicWindow.isEmpty()) {
+            QVariantMap menu;
+            menu.insert(QStringLiteral("title"), QStringLiteral("Window"));
+            menu.insert(QStringLiteral("items"), dynamicWindow);
+            appMenu.append(menu);
+        }
+    }
+    m_dbusMenuWindowId = dbusWindow;
+    m_item->setProperty("appId", m_appId);
     m_item->setProperty("appName", name);
     m_item->setProperty("applicationMenuItems", applicationMenu);
     m_item->setProperty("appMenuModel", appMenu);
@@ -2696,6 +2895,84 @@ void ShellController::applyFocusedApp()
             publishedAccelerators(applicationMenu, appMenu);
         m_protocol->setAppAccelerators(m_appId, acceleratorWireTable(accelerators));
     }
+    refreshSystemMenu();
+}
+
+void ShellController::hideAppWindows(const QString &appId)
+{
+    if (!m_protocol || appId.isEmpty())
+        return;
+    const QStringList windows = visibleWindowIds(m_runningEntries, appId);
+    for (const QString &windowId : windows) {
+        m_protocol->setToplevelMinimized(windowId, true);
+        m_hiddenWindowIds.insert(windowId);
+    }
+    qInfo() << "shell: Hide" << appId << "minimized" << windows.size() << "window(s)";
+    if (!windows.isEmpty())
+        applyFocusedApp();
+}
+
+void ShellController::hideOtherAppWindows(const QString &appId)
+{
+    if (!m_protocol || appId.isEmpty())
+        return;
+    const QStringList windows = visibleWindowIds(m_runningEntries, appId, true);
+    for (const QString &windowId : windows) {
+        m_protocol->setToplevelMinimized(windowId, true);
+        m_hiddenWindowIds.insert(windowId);
+    }
+    qInfo() << "shell: Hide Others minimized" << windows.size() << "window(s)";
+    // The focused app stays in front (macOS Hide Others raises it).
+    if (!windows.isEmpty()) {
+        m_protocol->activateApp(appId);
+        applyFocusedApp();
+    }
+}
+
+void ShellController::showHiddenWindows()
+{
+    if (!m_protocol)
+        return;
+    QStringList windows(m_hiddenWindowIds.begin(), m_hiddenWindowIds.end());
+    if (windows.isEmpty())
+        windows = minimizedWindowIds(m_runningEntries);
+    if (windows.isEmpty())
+        return;
+    for (const QString &windowId : windows)
+        m_protocol->setToplevelMinimized(windowId, false);
+    qInfo() << "shell: Show All restored" << windows.size() << "window(s)";
+    m_hiddenWindowIds.clear();
+    applyFocusedApp();
+}
+
+bool ShellController::routeDbusMenuAction(const QString &action)
+{
+    constexpr auto prefix = "dbusmenu:";
+    if (!action.startsWith(QLatin1String(prefix)))
+        return false;
+    bool ok = false;
+    const int id = action.mid(int(qstrlen(prefix))).toInt(&ok);
+    // Prefer the registration matched at menu-open time; fall back to the
+    // focused window id when the broker supplied the model directly.
+    const quint32 target = m_dbusMenuWindowId != 0
+                               ? m_dbusMenuWindowId
+                               : static_cast<quint32>(m_focusedWindowId);
+    if (!ok || target == 0) {
+        qWarning() << "shell: cannot route DBusMenu action" << action
+                   << "(registration" << target << ")";
+        return false;
+    }
+    const bool delivered = m_appIndexClient.windowMenuEvent(QString::number(target), id);
+    if (!delivered) {
+        qWarning() << "shell: DBusMenu click was not accepted for window"
+                   << target << "item" << id;
+        return false;
+    }
+    qInfo() << "shell: DBusMenu click" << id << "delivered to window" << target;
+    // A click can change the menu (checked rows, dynamic recent items), so
+    // re-read the focused model on the next event-loop turn.
+    QTimer::singleShot(0, this, &ShellController::applyFocusedApp);
+    return true;
 }
 
 void ShellController::onConfigured(int width, int height, quint32)
@@ -2723,11 +3000,17 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
 {
     m_appId = appId;
     m_appTitle = title;
+    qInfo() << "shell: focused app" << appId << title;
+    // T230: focus is the route from the compositor's app identity to the
+    // DBusMenu registration; `applyFocusedApp` resolves the registration and
+    // re-keys its bridge model under the canonical desktop id.
+    m_focusedWindowId = m_protocol ? m_protocol->focusedWindowId() : 0;
+    qInfo() << "shell: focus" << appId << title << "window" << m_focusedWindowId;
     // FR-4: attention stops when the app's window gains focus.
     clearAttention(appId);
     // Track recency for the suggested entries (`dock.showRecentApps`, T-10
-    // section 17). The list is kept even when the setting is off so toggling
-    // it on is immediate; a rebuild only happens when it is visible.
+    // section 17) and the system menu's Recent Items (T230). The list is kept
+    // even when a consumer is off so toggling it on is immediate.
     if (!appId.isEmpty()) {
         m_recentAppIds.removeAll(appId);
         m_recentAppIds.prepend(appId);
@@ -2736,6 +3019,7 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
         if (m_dockConfig.showRecentApps)
             rebuildDockEntries();
     }
+    refreshSystemMenu();
     applyFocusedApp();
     render();
 }
@@ -5023,7 +5307,52 @@ void ShellController::onAppMenuTriggered(int menuIndex, int itemIndex, const QVa
 void ShellController::dispatchAppAction(const QString &action, int menuIndex, int itemIndex,
                                         const QVariantMap &map)
 {
-    if (action == QLatin1String("quit")) {
+    if (action.startsWith(QLatin1String("dbusmenu:"))) {
+        // T230: a bridged third-party row routes back through the window's
+        // registered DBusMenu object (`Event(id, "clicked")`), never a shell
+        // guess at the app's internal action.
+        routeDbusMenuAction(action);
+    } else if (action.startsWith(QLatin1String("recent-app:"))) {
+        openApp(action.mid(int(qstrlen("recent-app:"))));
+    } else if (action.startsWith(QLatin1String("window.activate:"))) {
+        if (m_protocol)
+            m_protocol->selectToplevel(action.mid(int(qstrlen("window.activate:"))));
+    } else if (action == QLatin1String("window.minimize")
+               || action == QLatin1String("minimize")) {
+        if (m_protocol && m_focusedWindowId != 0)
+            m_protocol->setToplevelMinimized(QString::number(m_focusedWindowId), true);
+    } else if (action == QLatin1String("window.zoom") || action == QLatin1String("zoom")) {
+        if (m_protocol && m_focusedWindowId != 0) {
+            m_protocol->setToplevelZoomed(QString::number(m_focusedWindowId),
+                                          !m_protocol->focusedWindowZoomed());
+        }
+    } else if (action == QLatin1String("window.bring-all-to-front")
+               || action == QLatin1String("bring-all-to-front")) {
+        // macOS' Bring All to Front restores every window of the app and
+        // raises it; the compositor's activate_app picks the most recent.
+        if (m_protocol && !m_appId.isEmpty()) {
+            for (const QVariant &value : std::as_const(m_runningEntries)) {
+                const QVariantMap row = value.toMap();
+                if (row.value(QStringLiteral("kind")).toString()
+                    != QLatin1String("temporary"))
+                    continue;
+                if (row.value(QStringLiteral("appId")).toString() != m_appId)
+                    continue;
+                for (const QVariant &windowValue :
+                     row.value(QStringLiteral("windowList")).toList()) {
+                    const QString windowId = windowValue.toMap()
+                                                 .value(QStringLiteral("windowId"))
+                                                 .toString();
+                    if (!windowId.isEmpty())
+                        m_protocol->setToplevelMinimized(windowId, false);
+                }
+            }
+            m_protocol->activateApp(m_appId);
+        }
+    } else if (action == QLatin1String("close")) {
+        if (m_protocol && m_focusedWindowId != 0)
+            m_protocol->closeToplevel(QString::number(m_focusedWindowId));
+    } else if (action == QLatin1String("quit")) {
         // The application menu's Quit closes the focused app; on the desktop
         // (Files menu) there is no app to close yet.
         if (!m_appId.isEmpty())
@@ -5037,11 +5366,12 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
         // The About panel needs the General > About pane data (T-15.10);
         // until it lands the item is a logged stub.
         qInfo() << "shell: About requested (T-15.10)";
-    } else if (action == QLatin1String("hide") || action == QLatin1String("hide-others")
-               || action == QLatin1String("show-all")) {
-        // App visibility is a compositor window-state operation; the live
-        // macOS Hide/Hide Others/Show All semantics are T-14.2a (T103).
-        qInfo() << "shell: app visibility action (T-14.2a):" << action;
+    } else if (action == QLatin1String("hide")) {
+        hideAppWindows(m_appId);
+    } else if (action == QLatin1String("hide-others")) {
+        hideOtherAppWindows(m_appId);
+    } else if (action == QLatin1String("show-all")) {
+        showHiddenWindows();
     } else if (action == QLatin1String("sleep") || action == QLatin1String("restart")
                || action == QLatin1String("shut-down")) {
         // T229a: the lock screen's power row and the system menu share one
@@ -6063,6 +6393,14 @@ void ShellController::applyMenuBarPolicy()
         values.value(QStringLiteral("menu.showBackground"), true).toBool();
     const QString autoHide =
         values.value(QStringLiteral("menu.autoHide"), QStringLiteral("full-screen")).toString();
+    // T230: `menu.recentItems` now has a consumer: the system menu's Recent
+    // Items submenu. Clamp to the schema's 0..50 range.
+    const int recentItems =
+        qBound(0, values.value(QStringLiteral("menu.recentItems"), 10).toInt(), 50);
+    if (recentItems != m_menuRecentItems) {
+        m_menuRecentItems = recentItems;
+        refreshSystemMenu();
+    }
     const bool changed = !m_menuBarPolicySent || showDate != m_menuBarShowDate
         || showSeconds != m_menuBarShowSeconds
         || use24Hour != m_menuBarUse24Hour
@@ -6196,6 +6534,9 @@ void ShellController::syncAppIndex()
     } else {
         m_appIndexSubscribed = false;
     }
+    // T230: identity is now available, so resolve the recent app ids to names
+    // for the system menu's Recent Items submenu.
+    refreshSystemMenu();
     if (m_dockItem) {
         rebuildDockEntries();
         refreshAppPicker(false);
@@ -6375,6 +6716,15 @@ void ShellController::applyDisplayPolicy()
 void ShellController::onDockStateChanged(const QVariantList &entries)
 {
     m_runningEntries = entries;
+    // T230: a window that closed while hidden must not stay in the Show All
+    // set (the compositor handle is gone).
+    if (!m_hiddenWindowIds.isEmpty()) {
+        const QStringList retained = retainWindowIds(entries, m_hiddenWindowIds);
+        QSet<QString> pruned;
+        for (const QString &windowId : retained)
+            pruned.insert(windowId);
+        m_hiddenWindowIds = pruned;
+    }
     // The fixed application menu's Hide/Hide Others/Show All reflect the live
     // window state, so a minimize/restore/open/close re-publishes it (T-14.2a).
     applyFocusedApp();

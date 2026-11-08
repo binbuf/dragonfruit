@@ -60,14 +60,19 @@ DBusMenu data under Wayland (e.g., Xournal++ under KDE's global menu), so the
 feature cannot work automatically for them. This is an application-cooperation
 problem, not something we can force from the compositor side.
 
-**Current status (2026-11).** The **native** tier is shipped. The **DBusMenu**
-tier is projected by app-index and stored by the broker, but the shell does not
-consume it yet, so a `dbusmenu:<id>` row only logs instead of dispatching. The
-fixed application menu's Hide/Hide Others/Show All rows compute live enabled
-state, but the shell actions are stubs. The tray (StatusNotifier) tier is live
-and re-reads on a timer; live icon/attention signals are not subscribed. These
-are tracked in [STATUS.md](STATUS.md) G-05. Read "compatible Linux apps" in the
-table below as **partial**, not shipped.
+**Current status (2026-11).** All three tiers are wired. The **native** tier is
+published by first-party apps (Settings is the reference) and resolved by the
+broker. The **DBusMenu** tier is projected by app-index, stored by the broker,
+and consumed by the shell: focus maps to the focused window's registration,
+the registration is re-keyed to the canonical desktop id, a fresh `WindowMenu`
+read picks up dynamic rows, and a `dbusmenu:<id>` click is routed back through
+`WindowMenuEvent` as `Event(id, "clicked")`. The fixed application menu's
+Hide/Hide Others/Show All rows compute live enabled state and execute as
+tracked compositor minimize/restore operations. The tray (StatusNotifier) tier
+is live and re-reads on a timer; live icon/attention signals are not subscribed.
+Read "compatible Linux apps" in the table below as **shipped for apps that
+register a DBusMenu**, not universal: a toolkit that exports nothing still gets
+the fixed menus only.
 
 ## Interaction and shortcut dispatch
 
@@ -92,6 +97,23 @@ check gutter, an eliding label, a right-aligned `ShortcutHint` glyph sequence,
 and a reserved chevron gutter. The top bar's dropdowns and pointer context
 menus share the same `MenuRow`, so a chord such as `Super+Shift+Z` reads the
 same everywhere and never appears as raw `+`-separated text.
+
+### Services, Recent Items, and the dynamic Window menu (T230)
+
+- The fixed application menu always carries **Services**. Linux has no
+  macOS-style service registry, so the standard submenu is present with an
+  explicit disabled reason until an application registers a service; an app
+  that publishes its own fixed menu may replace the row.
+- The **system menu** carries **Recent Items**, fed by the shell's live
+  recency list and capped by `menu.recentItems` (0–50). With no history the
+  submenu holds one disabled row with its reason; a chosen row opens the app.
+- An app that exports no **Window** menu gets one synthesized from the live
+  compositor projection: Minimize, one checked row per open window, then Bring
+  All to Front. An exported Window menu wins; the broker and the shell's
+  fallback share the same rows and disabled reasons.
+- Every row has a command or is disabled with a reason. The reason is exposed
+  to accessibility and is available to the row renderer; the model never ships
+  an inert row without one.
 
 ## Hard rules
 
@@ -129,9 +151,10 @@ toolkit.
   `applicationMenuItems` + `appMenuModel` (ADR
   [0041](adr/0041-native-menu-model-publication-shape.md)).
 - Settings publishes its model from `apps/settings/SettingsMenu.qml` (T-09.6a):
-  the app's `App` / `File` / `Edit` / `View` / `Window` / `Help` menus. Until
-  T-14.2a resolves the focused app's model over the native channel, the shell
-  keeps the fixed application menu.
+  the app's `App` / `File` / `Edit` / `View` / `Window` / `Help` menus. T230
+  wires the app-side transport (`apps/settings/MenuPublisher.cpp`) to
+  `Publish("org.dragonfruit.Settings.desktop", model)`; the shell resolves the
+  focused raw `app_id` through app-index to that canonical desktop id.
 - DBusMenu bridges map third-party models into the same menu-broker
   representation.
 
@@ -150,8 +173,10 @@ visible window, Hide Others needs another visible app, and Show All needs at
 least one fully-hidden app. A publisher's own `applicationMenuItems` is used
 verbatim except for those three rows. The shell mirrors this rule in
 `shell/src/menubrokerpolicy` so the demo bar is live while the service is
-absent; the broker remains the model's owner. Actual hide/hide-others/show-all
-window operations are still stubs ([STATUS.md](STATUS.md) G-05).
+absent; the broker remains the model's owner. Hide/Hide Others/Show All execute
+through the compositor's per-window minimize/restore requests; the shell tracks
+the ids it hid so Show All never restores a window the user minimized itself
+(T230, ADR [0240](adr/0240-menu-bar-focus-dbusmenu-and-hide-verbs.md)).
 
 ## Implementation note (T-14.2b)
 
@@ -191,8 +216,8 @@ in ADR [0097](adr/0097-statusnotifier-tray-host-and-dbusmenu-projection.md).
 
 ## Implementation note (T-14.4)
 
-The DBusMenu/AppMenu **projection** is live in app-index/menu-broker; the
-shell's consumption and click routing are still open (G-05).
+The DBusMenu/AppMenu **projection** is live in app-index/menu-broker, and T230
+completed the shell half (focus → registration → model, click routing).
 `dragonfruit-app-index` also serves
 `com.canonical.AppMenu.Registrar` at `/com/canonical/AppMenu/Registrar` (name
 best-effort, like the tray watcher): `RegisterWindow(windowId, path)` maps a
@@ -207,9 +232,12 @@ the broker with the new additive `PublishDbusMenu(appId, model)`, which stores
 it at `Tier::DbusMenu`; `Withdraw` clears it again, and a disconnected owner is
 pruned via `NameOwnerChanged`. `org.dragonfruit.AppIndex1` additionally exposes
 `AppMenuWindows`/`WindowMenu`/`WindowMenuEvent` for local queries and clicks.
-The shell does not consume the bridge yet (mapping focus to a registration and
-routing `dbusmenu:<id>` back is the remaining wiring). Contract frozen in ADR
-[0098](adr/0098-dbusmenu-bridge-in-app-index.md).
+T230 wires the shell to that surface: `FocusWindow(windowId, appId)` re-keys a
+standard registration to the canonical desktop id and re-publishes it, the bar
+reads a fresh `WindowMenu` at open time, and a click calls `WindowMenuEvent`.
+Contract frozen in ADR [0098](adr/0098-dbusmenu-bridge-in-app-index.md); the
+completion decisions are in ADR
+[0240](adr/0240-menu-bar-focus-dbusmenu-and-hide-verbs.md).
 
 ## Implementation note (T-14.7)
 
@@ -220,9 +248,10 @@ focused app id (`SetFocusedApp`) and the running-window projection
 `ResolveFocused`; the reply supplies the fixed application menu (with live hide
 verbs) and the focused app's exported top-level menus, which the bar renders as
 `applicationMenuItems` + `appMenuModel`. When the service is absent the shell
-falls back to its own `fixedApplicationMenu` and no exported menus. Clicking a
-bridged `dbusmenu:<id>` row still only logs: routing it back through
-app-index's `WindowMenuEvent` is the T-14.4 follow-up.
+falls back to its own `fixedApplicationMenu` and no exported menus. T230 closed
+the T-14.4 follow-up: a bridged `dbusmenu:<id>` row routes back through
+app-index's `WindowMenuEvent`, and focus resolves the canonical desktop id
+before the broker read.
 
 The Dock's interim local `.desktop` scan/parse was deleted the same session;
 `org.dragonfruit.AppIndex1` is now the shell's only identity source (the

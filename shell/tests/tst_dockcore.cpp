@@ -3,6 +3,7 @@
 // `dock.pinned` persistence, and the pure pinned+running entry merge. The
 // interim `.desktop` resolver was retired in T-14.7 (app-index owns parsing).
 // Runs headless with no compositor, Wayland, or QML.
+#include "appindexclient.h"
 #include "apppicker.h"
 #include "appsdrawer.h"
 #include "chromestats.h"
@@ -2279,19 +2280,24 @@ private slots:
         const QVariantList menu = fixedApplicationMenu(
             QStringLiteral("Settings"),
             AppMenuLiveState{ false, false, false });
-        QCOMPARE(menu.size(), 8);
+        QCOMPARE(menu.size(), 9);
         QCOMPARE(menu[0].toMap().value(QStringLiteral("label")).toString(),
                  QStringLiteral("About Settings"));
+        QCOMPARE(menu[2].toMap().value(QStringLiteral("label")).toString(),
+                 QStringLiteral("Services"));
         QCOMPARE(menu[2].toMap().value(QStringLiteral("type")).toString(),
+                 QStringLiteral("submenu"));
+        QCOMPARE(menu[3].toMap().value(QStringLiteral("type")).toString(),
                  QStringLiteral("separator"));
-        QCOMPARE(menu[3].toMap().value(QStringLiteral("label")).toString(),
+        QCOMPARE(menu[4].toMap().value(QStringLiteral("label")).toString(),
                  QStringLiteral("Hide Settings"));
-        QCOMPARE(menu[3].toMap().value(QStringLiteral("shortcut")).toString(),
+        QCOMPARE(menu[4].toMap().value(QStringLiteral("shortcut")).toString(),
                  QStringLiteral("Super+H"));
-        QCOMPARE(menu[7].toMap().value(QStringLiteral("label")).toString(),
+        QCOMPARE(menu[8].toMap().value(QStringLiteral("label")).toString(),
                  QStringLiteral("Quit Settings"));
-        // A disabled verb is published explicitly so the bar dims it.
-        QCOMPARE(menu[3].toMap().value(QStringLiteral("enabled")).toBool(), false);
+        // A disabled verb is published explicitly with its reason.
+        QCOMPARE(menu[4].toMap().value(QStringLiteral("enabled")).toBool(), false);
+        QVERIFY(!menu[4].toMap().value(QStringLiteral("disabledReason")).toString().isEmpty());
         QCOMPARE(menu[0].toMap().value(QStringLiteral("enabled")).toBool(), true);
     }
 
@@ -2377,6 +2383,146 @@ private slots:
         QCOMPARE(array[1].toObject().value(QStringLiteral("appId")).toString(),
                  QStringLiteral("firefox"));
         QCOMPARE(array[1].toObject().value(QStringLiteral("minimized")).toBool(), true);
+    }
+
+    // T230: the window list travels with each app row so the broker and the
+    // shell's fallback can synthesize the dynamic Window menu.
+    void windowStatesJsonCarriesTheWindowList()
+    {
+        QVariantMap app = runningApp(QStringLiteral("a"), false);
+        app.insert(QStringLiteral("windowList"),
+                   QVariantList{QVariantMap{
+                       { QStringLiteral("windowId"), QStringLiteral("7") },
+                       { QStringLiteral("title"), QStringLiteral("Docs") },
+                       { QStringLiteral("focused"), true },
+                       { QStringLiteral("minimized"), false } }});
+        const QJsonArray array =
+            QJsonDocument::fromJson(windowStatesJson({app}).toUtf8()).array();
+        const QJsonArray windows =
+            array[0].toObject().value(QStringLiteral("windowList")).toArray();
+        QCOMPARE(windows.size(), 1);
+        QCOMPARE(windows[0].toObject().value(QStringLiteral("windowId")).toString(),
+                 QStringLiteral("7"));
+        QCOMPARE(windows[0].toObject().value(QStringLiteral("title")).toString(),
+                 QStringLiteral("Docs"));
+        QCOMPARE(windows[0].toObject().value(QStringLiteral("focused")).toBool(), true);
+    }
+
+    void theDynamicWindowMenuListsAndChecksWindows()
+    {
+        QVariantMap app = runningApp(QStringLiteral("a"), false);
+        app.insert(QStringLiteral("windowList"),
+                   QVariantList{
+                       QVariantMap{ { QStringLiteral("windowId"), QStringLiteral("7") },
+                                    { QStringLiteral("title"), QStringLiteral("Docs") },
+                                    { QStringLiteral("focused"), true } },
+                       QVariantMap{ { QStringLiteral("windowId"), QStringLiteral("8") },
+                                    { QStringLiteral("title"), QStringLiteral("News") },
+                                    { QStringLiteral("focused"), false } }});
+        const QVariantList menu =
+            windowMenu({app}, QStringLiteral("a"), QStringLiteral("App"));
+        QVERIFY(!menu.isEmpty());
+        QCOMPARE(menu[0].toMap().value(QStringLiteral("action")).toString(),
+                 QStringLiteral("window.minimize"));
+        QCOMPARE(menu[2].toMap().value(QStringLiteral("label")).toString(),
+                 QStringLiteral("Docs"));
+        QCOMPARE(menu[2].toMap().value(QStringLiteral("action")).toString(),
+                 QStringLiteral("window.activate:7"));
+        QCOMPARE(menu[2].toMap().value(QStringLiteral("checked")).toBool(), true);
+        QCOMPARE(menu[3].toMap().value(QStringLiteral("label")).toString(),
+                 QStringLiteral("News"));
+        QCOMPARE(menu[5].toMap().value(QStringLiteral("action")).toString(),
+                 QStringLiteral("window.bring-all-to-front"));
+
+        // Every window minimized: Minimize is disabled with a reason.
+        app.insert(QStringLiteral("minimized"), true);
+        app.insert(QStringLiteral("windowList"),
+                   QVariantList{QVariantMap{
+                       { QStringLiteral("windowId"), QStringLiteral("7") },
+                       { QStringLiteral("title"), QStringLiteral("Docs") },
+                       { QStringLiteral("minimized"), true } }});
+        const QVariantList disabled =
+            windowMenu({app}, QStringLiteral("a"), QStringLiteral("App"));
+        QCOMPARE(disabled[0].toMap().value(QStringLiteral("enabled")).toBool(), false);
+        QVERIFY(!disabled[0].toMap().value(QStringLiteral("disabledReason")).toString().isEmpty());
+    }
+
+    void visibleWindowIdsSelectsHideTargets()
+    {
+        const QVariantList entries{
+            QVariantMap{ { QStringLiteral("kind"), QStringLiteral("temporary") },
+                         { QStringLiteral("appId"), QStringLiteral("a") },
+                         { QStringLiteral("windowList"),
+                           QVariantList{
+                               QVariantMap{ { QStringLiteral("windowId"), QStringLiteral("1") },
+                                            { QStringLiteral("minimized"), false } },
+                               QVariantMap{ { QStringLiteral("windowId"), QStringLiteral("2") },
+                                            { QStringLiteral("minimized"), true } } } } },
+            QVariantMap{ { QStringLiteral("kind"), QStringLiteral("temporary") },
+                         { QStringLiteral("appId"), QStringLiteral("b") },
+                         { QStringLiteral("windowList"),
+                           QVariantList{QVariantMap{
+                               { QStringLiteral("windowId"), QStringLiteral("3") },
+                               { QStringLiteral("minimized"), false } }} } },
+        };
+        QCOMPARE(visibleWindowIds(entries, QStringLiteral("a")),
+                 QStringList{QStringLiteral("1")});
+        QCOMPARE(visibleWindowIds(entries, QStringLiteral("a"), true),
+                 QStringList{QStringLiteral("3")});
+        QVERIFY(visibleWindowIds(entries, QString()).isEmpty());
+
+        // Closed windows leave the Show All set.
+        QCOMPARE(retainWindowIds(entries,
+                                 QSet<QString>{QStringLiteral("1"),
+                                               QStringLiteral("99")}),
+                 QStringList{QStringLiteral("1")});
+    }
+
+    void recentItemsMenuRowsCarryTheirLaunchAction()
+    {
+        const QVariantList recent{
+            QVariantMap{ { QStringLiteral("desktopId"), QStringLiteral("a.desktop") },
+                         { QStringLiteral("name"), QStringLiteral("Alpha") } }};
+        const QVariantList menu = ShellMenus::recentItemsMenu(recent);
+        QCOMPARE(menu.size(), 1);
+        QCOMPARE(menu[0].toMap().value(QStringLiteral("type")).toString(),
+                 QStringLiteral("submenu"));
+        const QVariantList rows = menu[0].toMap().value(QStringLiteral("submenu")).toList();
+        QCOMPARE(rows[0].toMap().value(QStringLiteral("action")).toString(),
+                 QStringLiteral("recent-app:a.desktop"));
+
+        // Empty history is an explicit disabled row, never an empty submenu.
+        const QVariantList empty = ShellMenus::recentItemsMenu({});
+        const QVariantList emptyRows =
+            empty[0].toMap().value(QStringLiteral("submenu")).toList();
+        QCOMPARE(emptyRows[0].toMap().value(QStringLiteral("enabled")).toBool(), false);
+        QVERIFY(!emptyRows[0].toMap().value(QStringLiteral("disabledReason"))
+                     .toString().isEmpty());
+    }
+
+    void appMenuWindowsDecodeAndMatchTheFocusedApp()
+    {
+        const QList<AppMenuWindow> windows = parseAppMenuWindows(QStringLiteral(R"([
+            { "windowId": 7, "appId": "org.example.MockMenu",
+              "owner": ":1.5", "menuPath": "/MenuBar" },
+            { "windowId": 0, "appId": "bad" },
+            "junk"
+        ])"));
+        QCOMPARE(windows.size(), 1);
+        QCOMPARE(windows[0].windowId, 7u);
+        QCOMPARE(windows[0].appId, QStringLiteral("org.example.MockMenu"));
+
+        // Raw Wayland id, canonical desktop id, and the `.desktop` suffix all
+        // match; an empty or unknown identity is a miss.
+        QVERIFY(findAppMenuWindow(windows, QStringLiteral("org.example.MockMenu"),
+                                  QString()) != nullptr);
+        QVERIFY(findAppMenuWindow(windows, QStringLiteral("org.example.MockMenu.desktop"),
+                                  QString()) != nullptr);
+        QVERIFY(findAppMenuWindow(windows, QStringLiteral("org.example.MockMenu"),
+                                  QStringLiteral("org.example.MockMenu.desktop"))
+                != nullptr);
+        QVERIFY(findAppMenuWindow(windows, QStringLiteral("other"), QString()) == nullptr);
+        QVERIFY(findAppMenuWindow(windows, QString(), QString()) == nullptr);
     }
 
     // T-14.7: the broker's `ResolveFocused` reply decodes to the fixed menu

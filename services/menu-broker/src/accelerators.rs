@@ -221,9 +221,17 @@ fn push_rows(rows: &[Value], out: &mut Vec<Accelerator>) {
 /// submenus. Rows without both a `shortcut` and an `action` are skipped, so
 /// labels, separators, and submenu headers never register a binding.
 pub fn extract(model: &PublishedModel) -> Vec<Accelerator> {
+    extract_resolved(&model.application_menu_items, &model.menus)
+}
+
+/// Every actionable accelerator in an already-resolved menu view: the fixed
+/// application menu rows plus each exported menu's items. The broker uses this
+/// for the live view so a synthesized Window menu's `Super+M` is registered
+/// exactly like a published row (T230).
+pub fn extract_resolved(application_menu_items: &[Value], menus: &[Value]) -> Vec<Accelerator> {
     let mut out = Vec::new();
-    push_rows(&model.application_menu_items, &mut out);
-    for menu in &model.menus {
+    push_rows(application_menu_items, &mut out);
+    for menu in menus {
         if let Some(items) = menu.get("items").and_then(Value::as_array) {
             push_rows(items, &mut out);
         }

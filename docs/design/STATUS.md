@@ -31,8 +31,8 @@ The documentation is **mostly current but not uniformly trustworthy**:
 - Several docs still describe the pre-T-20 world (DRM feather material, flat
   chrome, desktop icons as "later").
 - Several docs describe target behavior as shipped (Files tabs/copy/undo,
-  global-menu DBusMenu clicks, VRR/night light/color management, system-menu
-  power actions, Control Center's original five tiles).
+  VRR/night light/color management, system-menu power actions, Control
+  Center's original five tiles).
 - Some recent decisions were made in code without a design record (DRM sampled
   material default and its fallback boundaries; Files thumbnails and
   default-handler opening; window activation restacking).
@@ -91,7 +91,7 @@ report already uses that distinction; this file applies it consistently.
 | T-11 Control Center + notifications | Implemented | notification service/policy/actions, Control Center, OSD, a11y | some Control Center links/actions remain follow-ups |
 | T-12 Session + lock + idle | **Partial** | session plan/supervisor/units/entry, lock protocol/PAM/kill-resistance, idle engine/inhibitors, suspend model, policy keys | no production idle service, no concrete logind suspend backend, power actions are stubs (G-10) |
 | T-13 Portals + capture + clipboard | **Partial** | portal backend, settings/globalshortcuts/filechooser/screenshot/screencast, clipboard history, polkit, Flatpak walkthrough | live PipeWire screencast producer is still the stills fallback; DRM screenshot capture absent (G-03) |
-| T-14 Global menu + app index + compat | **Partial** | app-index identity/events/subscriptions, menu-broker native tier, tray, DBusMenu projection, XDnD model, zoo | DBusMenu click routing and shell consumption, hide/hide-others/show-all, XDnD runtime half (G-05, G-07) |
+| T-14 Global menu + app index + compat | **Implemented** | app-index identity/events/subscriptions, menu-broker native tier, tray, DBusMenu focus/click consumption, hide/hide-others/show-all, dynamic Window menu, Services/Recent Items, XDnD model, zoo | XDnD runtime half (G-07) |
 | T-15 System services + Settings 2–3 | Implemented | 26 shipped panes, adapters, Control Center tiles, absence matrix | real-daemon/VM half is not automated |
 | T-16 Platform polish + packaging | **Partial** | per-output chrome/placement, hotplug, integer Xwayland, fractional chrome, a11y audit, magnifier, i18n, crash matrix, pointer timestamps | driver matrix, Fedora/Debian packaging, packaged perf, DRM full loop, baseline perf (G-11) |
 | T-17 Premium gate | Partial / human-open | nested loop/navigation/Flatpak captures, visual floor, robustness, leak/lock, sign-off report | DRM full loop and baseline perf OPEN; human unfamiliar-user verdict batched |
@@ -113,7 +113,7 @@ report already uses that distinction; this file applies it consistently.
 | Design system | Implemented | `design-system/`, gallery goldens, Tabler/Phosphor gates | system-wide Inter install is packaging-only and not wired |
 | Settings | Implemented | 28 panes (Online Accounts optional), settingsd, absence matrix, executable map/debug view (T222), local search/deep links/row anatomy (T223), one apply/validate/revert path, polkit admin auth, five absence kinds (T224), Wi-Fi/Network/VPN/firewall panes with the live NetworkManager + firewall adapters (T225), General group with live time/locale/autostart/sharing/backup/storage/startup adapters, native/PackageKit updates, and `Settings1.Reset` (T226), the T227 Appearance completion / Quick Settings customization / Search / Screen Saver / Desktop & Stage / Displays-advanced panes with the live Control Center module list, the T228 Privacy & Security mapping / Security status / Biometrics & Password / optional Online Accounts panes, and the T229 Sound/Keyboard/Mouse/Trackpad/Game Controllers/Users & Groups/Printers & Scanners/Battery breadth with the v10 pointer and keyboard-layout policy, and T229a Wallpaper/Notifications/Focus/Lock Screen completion (per-app notification prefs, Focus schedule, lock-scene observation) | Displays advanced rows (refresh, arrangement, night light, color profile, HDR, VRR) are disabled with OPEN reasons (G-13); per-display Control Center panels are T235; the Search service is T246; Stage Manager/click-wallpaper/widgets are T242/T245b; custom-chrome rows land on their section/pane; the full connection editor and nftables rule editing remain out of scope; backup engines are delegated and the update auto-policy is consumed by the running host, not a separate updater daemon |
 | Files | Partial | `files-core`, C ABI, browser/views, captures | feature gap vs the Finder design (G-04) |
-| Global menu | Partial | menu-broker native tier, tray, DBusMenu projection | DBusMenu click/shell consumption, hide verbs (G-05) |
+| Global menu | Implemented | menu-broker native tier, tray, DBusMenu focus/click consumption, hide verbs, dynamic Window menu, Services/Recent Items | Apps that export no DBusMenu still get fixed menus by design |
 | System services | Implemented (read/control paths) | adapters, bridge host, 23 panes, absence matrix | real daemons/VM half is manual |
 | Session / lock / idle | Partial | supervisor, units, entry, lock/PAM, idle engine | idle service and logind suspend backend absent (G-10) |
 | Portals / capture / clipboard | Partial | portal crate, shell presenter, Flatpak walkthrough | live screencast producer deferred; DRM capture absent (G-03; T208 confirmed the DRM backend returns "does not implement capture yet") |
@@ -139,7 +139,7 @@ Severity is about **product/architecture risk**, not implementation effort.
 | ID | Gap | Evidence | Why it matters | Proposed action |
 |---|---|---|---|---|
 | G-04 | **Files is a browser subset, not the documented Finder MVP.** No tabs, no New Window (menu row is disabled), no copy/move/paste, no undo, no per-item progress/conflicts, no Open With, no Files menu publication. The Rust ops exist but the UI does not expose them. | `apps/files/FilesShell.qml` `nodeMenu`/`backgroundMenu`; no tab model; `FilesDirectoryModel`; `services/files-core/src/ops.rs` | The Files design promises Finder semantics that are not there. A user will find the first missing operation immediately. | Cut a Files-completeness track: tabs/windows first, then copy/move/paste and undo, then progress/conflicts, then Open With and menu publication. |
-| G-05 | **Global-menu compatibility is incomplete.** The DBusMenu projection is stored by app-index/menu-broker, but the shell does not consume it; `dbusmenu:<id>` rows only log. Hide/Hide Others/Show All are enabled in the model but the shell actions are stubs. | `services/app-index/src/menubridge.rs`, `services/menu-broker/src/model.rs`, `shell/src/shellcontroller.cpp` action handler | The advertised "compatible Linux apps" tier is not real for the common DBusMenu case; the fixed app menu's live verbs are cosmetic. | Wire shell focus→registration→menu, route `dbusmenu:<id>` back through `WindowMenuEvent`, and implement the three visibility verbs as compositor window operations. |
+| G-05 | **Resolved by T230.** The shell now maps focus to the native/DBusMenu registration, reads a fresh `WindowMenu`, routes `dbusmenu:<id>` clicks through `WindowMenuEvent`, and executes Hide/Hide Others/Show All as tracked compositor minimize/restore. | `shell/src/shellcontroller.cpp`, `shell/src/appindexclient.cpp`, `services/app-index/src/dbus.rs`, `services/menu-broker/src/model.rs`; ADR [0240](adr/0240-menu-bar-focus-dbusmenu-and-hide-verbs.md) | The "compatible Linux apps" tier is real for apps that register a DBusMenu. | None. A toolkit that exports no DBusMenu still gets the fixed menus by design. |
 | G-06 | **The compositor window menu is label-less.** It draws token-colored rows with no text or icons; `window/menu.rs` says the visual pass is intentionally flat and label-less. T-04 never added the labels the design promised. | `compositor/src/window/menu.rs` header, `render_elements` | Right-clicking a titlebar opens an unlabeled menu. This is a first-day usability defect, not polish. | Add a text renderer or move the menu to a trusted shell surface; do not leave a menu that cannot be read. |
 | G-07 | **Cross-boundary XDnD is still a model + codec.** The X11 connection/runtime half is not implemented. | ADR 0099, `compositor/src/xdnd.rs`, T-17 waiver | Dragging a file from an X11 app to a Wayland app (and back) is a common workflow and a visible compatibility hole. | Implement the bridge window/atom/selection half on a dedicated X11 connection; keep the existing conformance codec tests. |
 | G-08 | **Sampled material is single-GPU, normal-transform only.** A multi-GPU seat disables the sampled path; a rotated output falls back to feather; the `route=copy` plan is not executed. The native single-GPU/normal-transform DP-1 4K/144 path is now confirmed active by T191a (`path=gpu`, `blur_draws=2243`, `backdrop_skipped=0`); the hybrid/rotated cases remain the gap. | `compositor/src/backend/drm.rs` device-count guard and transform guard; `multi_gpu::plan_scene_routes`; `docs/captures/t21-native-material.txt` | Hybrid laptops and rotated displays lose the signature material. | Keep the local route; add an explicit cross-GPU copy or a reported fallback, then transform-aware sampling. Never sample across GPUs. |
@@ -228,7 +228,7 @@ watching:
 | Windows/focus/stacking/Spaces/outputs → compositor | Clean | The shell projects, never owns; activation requests go through one compositor authority. |
 | App identity → app-index | Clean | The compositor publishes raw `app_id`/`WM_CLASS`; the shell is the forwarder; no `.desktop` scan in the compositor. |
 | Desktop settings → settingsd | Clean | Shell/apps observe `org.dragonfruit.Settings1`; compositor policy arrives through the shell bridge. |
-| Menu model ownership → menu-broker | Mostly clean | The native tier is owned; the DBusMenu projection is owned by app-index and stored by the broker. The shell's fixed-menu fallback duplicates the enable rules by design, but the actual hide verbs are not implemented. |
+| Menu model ownership → menu-broker | Clean | The native tier is owned; the DBusMenu projection is owned by app-index and stored by the broker; the shell consumes the resolved model and executes the hide verbs through compositor window operations. The shell's fixed-menu fallback mirrors the same rules for a broker-absent session by design. |
 | Notification queue/Focus → notification service | Clean | Control Center and menu bar share one policy source. |
 | Hardware state → host daemons | Clean | Adapters observe/request; absence is a first-class state. |
 | Desktop items → Files process | Clean on the layer boundary | The compositor grants a role-scoped background layer; Files owns the content. The session does not start the process yet. |
@@ -289,9 +289,9 @@ watching:
   the DRM pixels users will see.
 - **Files is behind its own design.** The browsing core is good; the user-facing
   Finder semantics are not there yet.
-- **Compatibility closure is incomplete.** DBusMenu clicks, hide verbs, XDnD,
-  and `_NET_FRAME_EXTENTS` are exactly the kind of gaps users interpret as
-  "Linux desktop jank".
+- **Compatibility closure is incomplete.** XDnD and `_NET_FRAME_EXTENTS` are
+  exactly the kind of gaps users interpret as "Linux desktop jank"; the global
+  menu's DBusMenu focus/click and hide verbs are now closed (T230).
 - **A few stubs are still presented as features.** System-menu power actions,
   About, and the label-less compositor window menu are the most visible.
 - **Accessibility and IME are incomplete at the desktop level.** Apps are on

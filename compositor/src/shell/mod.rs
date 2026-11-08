@@ -1222,6 +1222,23 @@ impl DfState {
                 session.toplevels.insert(id, resource);
             }
         }
+        // T230: replay the current focus with the initial toplevel snapshot.
+        // The shell binds after the first window has already been activated, so
+        // without this the menu bar stays on the desktop (Files) until the next
+        // focus change. `manager.focused` is the same event a live focus change
+        // sends.
+        let focused = self
+            .active_window
+            .as_ref()
+            .and_then(|window| self.windows.id(window))
+            .and_then(|id| {
+                self.shell
+                    .sessions
+                    .get(&client.id())
+                    .and_then(|session| session.toplevels.get(&id).cloned())
+            });
+        manager.focused(focused.as_ref());
+        manager.done();
     }
 
     fn window_state_flags(&self, id: WindowId, state: WindowState) -> df_toplevel::State {

@@ -78,6 +78,11 @@ ResolvedMenu MenuBrokerClient::resolveFocused() const
     return parseResolved(call(QStringLiteral("ResolveFocused"), {}));
 }
 
+ResolvedMenu MenuBrokerClient::resolve(const QString &appId) const
+{
+    return parseResolved(call(QStringLiteral("Resolve"), {appId}));
+}
+
 ResolvedMenu MenuBrokerClient::parseResolved(const QString &json)
 {
     static const ResolvedMenu invalid;

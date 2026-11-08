@@ -42,7 +42,38 @@ QString devBin()
     return qEnvironmentVariable("DRAGONFRUIT_DEV_BIN");
 }
 
-QVariantList systemMenu(const QString &userName, const QString &devReturn)
+QVariantList recentItemsMenu(const QVariantList &recentApps)
+{
+    QVariantList submenu;
+    for (const QVariant &value : recentApps) {
+        const QVariantMap app = value.toMap();
+        const QString desktopId = app.value(QStringLiteral("desktopId")).toString();
+        const QString name = app.value(QStringLiteral("name")).toString();
+        if (desktopId.isEmpty() || name.isEmpty())
+            continue;
+        submenu << entry(name, QString(),
+                         QStringLiteral("recent-app:%1").arg(desktopId));
+    }
+    if (submenu.isEmpty()) {
+        QVariantMap none;
+        none.insert(QStringLiteral("label"),
+                    QCoreApplication::translate("ShellMenus", "No Recent Items"));
+        none.insert(QStringLiteral("action"), QStringLiteral("recent.none"));
+        none.insert(QStringLiteral("enabled"), false);
+        none.insert(QStringLiteral("disabledReason"),
+                    QCoreApplication::translate(
+                        "ShellMenus", "No applications have been used yet."));
+        submenu << none;
+    }
+    QVariantMap row;
+    row.insert(QStringLiteral("label"), QCoreApplication::translate("ShellMenus", "Recent Items"));
+    row.insert(QStringLiteral("type"), QStringLiteral("submenu"));
+    row.insert(QStringLiteral("submenu"), submenu);
+    return {row};
+}
+
+QVariantList systemMenu(const QString &userName, const QString &devReturn,
+                        const QVariantList &recentApps)
 {
     QVariantList menu;
     menu << entry(QCoreApplication::translate("ShellMenus", "About This System"),
@@ -52,6 +83,9 @@ QVariantList systemMenu(const QString &userName, const QString &devReturn)
                   QString(), QStringLiteral("settings"));
     menu << entry(QCoreApplication::translate("ShellMenus", "Software Center"),
                   QString(), QStringLiteral("app-store"), false);
+    const QVariantList recent = recentItemsMenu(recentApps);
+    if (!recent.isEmpty())
+        menu << recent.first();
     menu << separator();
     menu << entry(QCoreApplication::translate("ShellMenus", "Sleep"), QString(),
                   QStringLiteral("sleep"));
