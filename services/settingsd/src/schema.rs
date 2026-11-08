@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 20;
+pub const SCHEMA_VERSION: u32 = 21;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,11 +76,15 @@ pub enum KeyGroup {
     Printers,
     Network,
     General,
+    QuickSettings,
+    Search,
+    ScreenSaver,
+    Desktop,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 17] = [
+    pub const ALL: [KeyGroup; 21] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -98,6 +102,10 @@ impl KeyGroup {
         KeyGroup::Printers,
         KeyGroup::Network,
         KeyGroup::General,
+        KeyGroup::QuickSettings,
+        KeyGroup::Search,
+        KeyGroup::ScreenSaver,
+        KeyGroup::Desktop,
     ];
 
     /// The group name used in docs and tests.
@@ -120,6 +128,10 @@ impl KeyGroup {
             KeyGroup::Printers => "printers",
             KeyGroup::Network => "network",
             KeyGroup::General => "general",
+            KeyGroup::QuickSettings => "quick-settings",
+            KeyGroup::Search => "search",
+            KeyGroup::ScreenSaver => "screen-saver",
+            KeyGroup::Desktop => "desktop",
         }
     }
 }
@@ -1606,6 +1618,238 @@ pub const KEYS: &[KeySpec] = &[
         since: 20,
         summary: "How often the selected backup backend runs.",
     },
+    // ── Appearance completion (T227) ─────────────────────────────────────
+    // The remaining Appearance rows are durable design-system preferences.
+    // Highlight is a text colour override (empty = the token selection);
+    // the sidebar size and scroll-bar policy are enumerated spellings the
+    // Sidebar and ScrollView components consume.
+    KeySpec {
+        key: "appearance.highlight",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system Theme, apps/settings Theme",
+        since: 21,
+        summary: "Selection/highlight colour override ('#rrggbb'); empty uses the token selection.",
+    },
+    KeySpec {
+        key: "appearance.sidebarIconSize",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("medium"),
+        allowed: &["small", "medium", "large"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Sidebar",
+        since: 21,
+        summary: "Sidebar icon size: small, medium, or large.",
+    },
+    KeySpec {
+        key: "appearance.wallpaperTint",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system Glass, apps/settings Glass",
+        since: 21,
+        summary: "Let glass surfaces take their tint from the wallpaper; off uses the neutral plate.",
+    },
+    KeySpec {
+        key: "appearance.scrollBars",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("automatic"),
+        allowed: &["automatic", "when-scrolling", "always"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system ScrollView, apps/settings ScrollView",
+        since: 21,
+        summary: "When scroll bars show: automatically, only while scrolling, or always.",
+    },
+    // ── Quick Settings customization (T227) ──────────────────────────────
+    // The ordered module ids the Control Center panel renders. An empty list
+    // means the built-in order. `menuBarOnly` names modules that stay in the
+    // menu bar but are removed from the panel.
+    KeySpec {
+        key: "quickSettings.modules",
+        group: KeyGroup::QuickSettings,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[
+            "wifi", "bluetooth", "storage", "focus", "volume", "brightness",
+            "dark", "keyboard", "mission-control", "battery", "lock-screen",
+            "menu-bar", "software-update", "users", "printers", "privacy",
+            "accessibility", "vpn",
+        ]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/control-center",
+        since: 21,
+        summary: "Ordered Control Center module ids; empty means the built-in order.",
+    },
+    KeySpec {
+        key: "quickSettings.menuBarOnly",
+        group: KeyGroup::QuickSettings,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/control-center, shell/MenuBar",
+        since: 21,
+        summary: "Module ids that stay in the menu bar and are hidden from the Control Center panel.",
+    },
+    // ── Search (T227) ────────────────────────────────────────────────────
+    // Durable Spotlight-equivalent preferences. T246 owns the search service
+    // that reads them; until then the pane reports the service as absent.
+    KeySpec {
+        key: "search.categories",
+        group: KeyGroup::Search,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[
+            "applications", "files", "folders", "actions", "calculations",
+            "definitions", "web",
+        ]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "search service (T246)",
+        since: 21,
+        summary: "Result categories the desktop search includes.",
+    },
+    KeySpec {
+        key: "search.indexLocations",
+        group: KeyGroup::Search,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&["home"]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "search service (T246)",
+        since: 21,
+        summary: "Folders the file index includes; `home` is the user's home directory.",
+    },
+    KeySpec {
+        key: "search.shortcut",
+        group: KeyGroup::Search,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("Super+Space"),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "search service (T246), shell shortcuts",
+        since: 21,
+        summary: "Global keyboard shortcut that opens Search.",
+    },
+    KeySpec {
+        key: "search.web",
+        group: KeyGroup::Search,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "search service (T246)",
+        since: 21,
+        summary: "Offer a web-search result for the query using the default browser.",
+    },
+    KeySpec {
+        key: "menu.control.search",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 21,
+        summary: "Show the Search control in the menu bar when the search service is present.",
+    },
+    // ── Screen Saver (T227) ──────────────────────────────────────────────
+    // The shell's lock screen is the shipped screen-saver surface. The style
+    // selects the clock presentation; the idle blank delay is `idle.blank`.
+    KeySpec {
+        key: "screenSaver.style",
+        group: KeyGroup::ScreenSaver,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("clock"),
+        allowed: &["clock", "none"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen",
+        since: 21,
+        summary: "Screen-saver style: the lock-screen clock, or no screen saver.",
+    },
+    KeySpec {
+        key: "screenSaver.clock",
+        group: KeyGroup::ScreenSaver,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen",
+        since: 21,
+        summary: "Show the clock on the screen-saver/lock surface.",
+    },
+    KeySpec {
+        key: "screenSaver.showDate",
+        group: KeyGroup::ScreenSaver,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen",
+        since: 21,
+        summary: "Show the date under the screen-saver clock.",
+    },
+    KeySpec {
+        key: "screenSaver.showSeconds",
+        group: KeyGroup::ScreenSaver,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen",
+        since: 21,
+        summary: "Show seconds in the screen-saver clock.",
+    },
+    // ── Desktop (T227) ───────────────────────────────────────────────────
+    KeySpec {
+        key: "desktop.showItems",
+        group: KeyGroup::Desktop,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("on-desktop"),
+        allowed: &["on-desktop", "in-stage"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/files desktop process",
+        since: 21,
+        summary: "Show desktop items on the desktop or leave them to Stage Manager.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -2345,6 +2589,56 @@ mod tests {
             .unwrap()
             .validate(&Value::Text("sometimes".into()))
             .is_err());
+    }
+
+    /// The T227 Appearance/Quick Settings/Search/Screen Saver/Desktop keys,
+    /// additive in revision 21.
+    #[test]
+    fn the_t227_keys_are_declared_in_revision_twenty_one() {
+        for (key, group, kind) in [
+            ("appearance.highlight", KeyGroup::Appearance, KeyType::Text),
+            ("appearance.sidebarIconSize", KeyGroup::Appearance, KeyType::Text),
+            ("appearance.wallpaperTint", KeyGroup::Appearance, KeyType::Bool),
+            ("appearance.scrollBars", KeyGroup::Appearance, KeyType::Text),
+            ("quickSettings.modules", KeyGroup::QuickSettings, KeyType::TextList),
+            ("quickSettings.menuBarOnly", KeyGroup::QuickSettings, KeyType::TextList),
+            ("search.categories", KeyGroup::Search, KeyType::TextList),
+            ("search.indexLocations", KeyGroup::Search, KeyType::TextList),
+            ("search.shortcut", KeyGroup::Search, KeyType::Text),
+            ("search.web", KeyGroup::Search, KeyType::Bool),
+            ("menu.control.search", KeyGroup::Menu, KeyType::Bool),
+            ("screenSaver.style", KeyGroup::ScreenSaver, KeyType::Text),
+            ("screenSaver.clock", KeyGroup::ScreenSaver, KeyType::Bool),
+            ("screenSaver.showDate", KeyGroup::ScreenSaver, KeyType::Bool),
+            ("screenSaver.showSeconds", KeyGroup::ScreenSaver, KeyType::Bool),
+            ("desktop.showItems", KeyGroup::Desktop, KeyType::Text),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, group, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.since, 21, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        assert!(spec("appearance.sidebarIconSize")
+            .unwrap()
+            .validate(&Value::Text("large".into()))
+            .is_ok());
+        assert!(spec("appearance.sidebarIconSize")
+            .unwrap()
+            .validate(&Value::Text("huge".into()))
+            .is_err());
+        assert!(spec("screenSaver.style")
+            .unwrap()
+            .validate(&Value::Text("none".into()))
+            .is_ok());
+        assert!(spec("desktop.showItems")
+            .unwrap()
+            .validate(&Value::Text("in-stage".into()))
+            .is_ok());
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

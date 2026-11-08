@@ -45,7 +45,7 @@ Item {
             compare(SettingsPanes.catalog[SettingsPanes.catalog.length - 1].id,
                     "game-controllers");
             // Only panes whose content has landed are advertised (no half panes).
-            compare(SettingsPanes.shippedPanes.length, 23);
+            compare(SettingsPanes.shippedPanes.length, 26);
         }
 
         // -- Category tiles (T-19.1b) -------------------------------------------
@@ -113,7 +113,7 @@ Item {
         function test_shell_opens_with_sidebar_and_search() {
             var shell = make();
             compare(shell.currentPaneId, "appearance");
-            compare(shell.visiblePanes.length, 23);
+            compare(shell.visiblePanes.length, 26);
             verify(shell.searchField !== null);
             verify(shell.sidebar !== null);
             verify(shell.titleBar !== null);
@@ -211,10 +211,11 @@ Item {
             shell.searchText = "";
             compare(ids(shell), JSON.stringify(
                 ["wifi", "bluetooth", "network", "battery", "general", "storage",
-                 "appearance", "accessibility", "menu-bar", "privacy",
-                 "desktop-dock", "mission-control", "displays", "wallpaper",
-                 "notifications", "sound", "focus", "lock-screen",
-                 "users-groups", "printers", "keyboard", "mouse", "trackpad"]));
+                 "appearance", "accessibility", "control-center", "menu-bar",
+                 "search", "privacy", "desktop-dock", "mission-control",
+                 "displays", "wallpaper", "screen-saver", "notifications",
+                 "sound", "focus", "lock-screen", "users-groups", "printers",
+                 "keyboard", "mouse", "trackpad"]));
         }
 
         function test_search_keeps_the_current_pane() {

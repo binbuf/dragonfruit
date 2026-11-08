@@ -30,6 +30,9 @@ QtObject {
     property real slider: Theme.glass.slider.defaultPosition
     property bool reduceTransparency: false
     property bool increaseContrast: false
+    // T227: `appearance.wallpaperTint`. Off takes the neutral scheme plate
+    // instead of sampling the wallpaper's colours; the veil is unaffected.
+    property bool wallpaperTint: true
     // Backend capability. `software` is headless/no-readback; otherwise
     // `sampledBlur` says whether the sampled pass exists.
     property bool sampledBlur: true
@@ -152,6 +155,8 @@ QtObject {
             ? !!options.reduceTransparency : glass.reduceTransparency;
         var increaseContrast = options.increaseContrast !== undefined
             ? !!options.increaseContrast : glass.increaseContrast;
+        var wallpaperTint = options.wallpaperTint !== undefined
+            ? !!options.wallpaperTint : glass.wallpaperTint;
 
         var preset = Theme.glass.presets[presetName];
         if (preset === undefined) {
@@ -252,6 +257,7 @@ QtObject {
 
         // Reduce Transparency is the explicit override: it wins over the
         // slider and any sampled path, in both rollout looks.
+        var neutralPlate = reduceTransparency;
         if (reduceTransparency) {
             var opaque = _opaqueValues(scheme);
             alpha = opaque.alpha;
@@ -259,6 +265,16 @@ QtObject {
             blur = 0;
             sliderApplied = false;
             fallbackReason = "reduce-transparency";
+        } else if (!wallpaperTint && preset.render !== "veil") {
+            // T227: no wallpaper tint means a neutral scheme plate, not a
+            // sampled wallpaper wash. The veil is a depth LUT, not a tint.
+            var neutral = _opaqueValues(scheme);
+            alpha = neutral.alpha;
+            tint = neutral.tint;
+            blur = 0;
+            sliderApplied = false;
+            neutralPlate = true;
+            fallbackReason = "wallpaper-tint-off";
         }
 
         // Increase Contrast applies after the fill decision so it still
@@ -271,7 +287,7 @@ QtObject {
         }
 
         var renderMode = "sampled-glass";
-        if (reduceTransparency) {
+        if (neutralPlate) {
             renderMode = "solid";
         } else if (requestedRollout === "legacy") {
             var legacyFallback = _legacyValues(role).fallback;
@@ -351,6 +367,7 @@ QtObject {
             cornerLensTail: cornerLensTail,
             foreground: foreground,
             sliderApplied: sliderApplied,
+            wallpaperTint: wallpaperTint,
             confidence: confidence,
             fallbackReason: fallbackReason,
             // T200: the depth LUT and extent travel with the resolved preset

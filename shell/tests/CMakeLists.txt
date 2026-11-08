@@ -329,6 +329,7 @@ qt_add_executable(tst_displayspolicy
 target_link_libraries(tst_displayspolicy PRIVATE
     Qt6::Core Qt6::Test
     dragonfruit-shell-dockcore
+    dragonfruit-settings-client
 )
 
 add_test(

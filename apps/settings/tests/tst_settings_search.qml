@@ -120,10 +120,19 @@ Item {
             compare(previews[0].deepLink,
                     "settings://pane/notifications/row/previews");
 
+            // T227 adds a Quick Settings row literally named "Dark mode"; an
+            // exact row label outranks the Appearance pane's synonym. The
+            // Appearance pane still owns the theme query.
             var dark = SettingsSearch.search("dark mode");
             verify(dark.length > 0);
-            compare(dark[0].kind, "pane");
-            compare(dark[0].paneId, "appearance");
+            compare(dark[0].kind, "row");
+            compare(dark[0].deepLink,
+                    "settings://pane/control-center/row/darkMode");
+
+            var theme = SettingsSearch.search("theme");
+            verify(theme.length > 0);
+            compare(theme[0].kind, "pane");
+            compare(theme[0].paneId, "appearance");
 
             var size = SettingsSearch.search("size");
             verify(size.length > 0);
@@ -281,7 +290,7 @@ Item {
         function test_deep_link_rejects_unknown_targets() {
             var shell = make();
             verify(!shell.deepLink("settings://pane/no-such-pane"));
-            verify(!shell.deepLink("settings://pane/control-center"));
+            verify(!shell.deepLink("settings://pane/biometrics"));
             verify(!shell.deepLink("settings://pane/appearance/row/no-such-row"));
             verify(!shell.deepLink("https://example.org/pane/appearance"));
             compare(shell.currentPaneId, "appearance");

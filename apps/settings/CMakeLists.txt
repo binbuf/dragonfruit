@@ -58,6 +58,9 @@ qt_add_qml_module(dragonfruit-settings-ui
         SettingsMenu.qml
         PaneHeader.qml
         AppearancePane.qml
+        QuickSettingsPane.qml
+        SearchPane.qml
+        ScreenSaverPane.qml
         WallpaperPane.qml
         DesktopDockPane.qml
         MissionControlPane.qml

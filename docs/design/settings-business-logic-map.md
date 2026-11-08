@@ -372,6 +372,12 @@ defaults; no error banner.
 | Show scroll bars | Scroll bars | Popup | `appearance.scrollBars` | Automatic/always/when scrolling |
 | — | Motion | Link | `accessibility.reduceMotion` | Deep link to Accessibility |
 
+**T227 status.** The pane ships every row. Highlight, sidebar icon size,
+wallpaper tinting, and scroll bars are settingsd keys consumed live by
+`Theme.highlightOverride`/`selection`, the design-system `Sidebar`,
+`Glass.wallpaperTint`, and `ScrollView`. Motion is a deep link to the existing
+Accessibility toggle, not a second key.
+
 <a id="pane-accessibility"></a>
 ### 5.7 Accessibility
 
@@ -438,6 +444,13 @@ Owner: `settingsd` + shell `ControlCenterPolicy` + adapters.
 | Other Modules | Other modules | List | `settingsd` | Accessibility shortcuts, etc. |
 | Add Controls… | Add controls… | Sheet | `settingsd` | Customization |
 
+**T227 status.** The pane ships the ordered module list and the menu-bar-only
+set. `quickSettings.modules` is the live Control Center order (removing an id
+hides that module immediately); `quickSettings.menuBarOnly` removes an item
+from the panel while its existing `menu.control.*` mark stays in the menu bar.
+The per-display row is disabled with a T235 reason (one Control Center surface
+today); "Other modules"/"Add controls…" remain T235.
+
 <a id="pane-menu-bar"></a>
 ### 5.9 Menu Bar
 
@@ -476,6 +489,11 @@ Owner: search service + `app-index` + `settingsd`. Siri is omitted.
 | Web search | Web search | Toggle | `search.web` | Uses default browser |
 | — | Indexing status | Info | search service | Progress/error/absent |
 | — | Rebuild index | Button | search service | Progress |
+
+**T227 status.** The pane ships categories, indexed locations, the shortcut
+recorder, web search, and the menu-bar visibility key as durable settingsd
+preferences. Indexing status and Rebuild are disabled with the T246 reason
+until the search service exists; the pane never draws a fake index.
 
 <a id="pane-privacy"></a>
 ### 5.11 Privacy & Security
@@ -548,6 +566,11 @@ Control and Hot Corners rows below; it keeps its id.
 | Windows | Windows | Disclosure | `tiling.*` | Tiling/split view |
 | Default web browser | Default browser | Popup | `defaults.browser` + portal | Opens default-apps |
 
+**T227 status.** Show items ships (`desktop.showItems`, consumed by the Files
+desktop process). Click wallpaper to reveal desktop, Stage Manager, recent apps
+in Stage, and Widgets are disabled with the task that owns their runtime
+(T245b/T242) or an explicit OPEN reason.
+
 <a id="pane-displays"></a>
 ### 5.13 Displays
 
@@ -569,6 +592,11 @@ controls live on defaults; output rows show `No display`/`Unavailable`.
 | Advanced… | Advanced… | Sheet | compositor/colord | HDR, VRR, rotation, overscan |
 | Arrangement | Arrangement | Canvas | compositor | Drag displays; primary |
 | Rotation | Rotation | Popup | existing: `display.rotation` | 0/90/180/270 |
+
+**T227 status.** Scale, rotation, and brightness are live. The Advanced sheet
+renders the shared capability table: refresh, arrangement, night light, color
+profile, HDR, and VRR are disabled with the exact missing compositor/colord
+half; the table is asserted by `shell/tests/tst_displayspolicy.cpp`.
 
 <a id="pane-wallpaper"></a>
 ### 5.14 Wallpaper
@@ -601,6 +629,11 @@ Owner: shell/compositor + `settingsd`.
 | Show with clock | Show with clock | Toggle | `screensaver.clock` | Lock screen |
 | Options… | Options… | Sheet | `settingsd` | Style-specific |
 | Hot Corners… | Hot corners… | Sheet | existing: `overview.hotCorner*` | Same policy |
+
+**T227 status.** The pane ships style, Start After (`idle.blank`), and the
+clock/date/seconds options the shell pushes to the first-party lock scene.
+Animated savers are not advertised; Hot Corners opens the existing Overview
+pane.
 
 <a id="pane-notifications"></a>
 ### 5.16 Notifications

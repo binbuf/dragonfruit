@@ -9,6 +9,9 @@
 //
 //   appearance.colorScheme     "light" | "dark" | "auto"  -> Theme.dark
 //   appearance.accent          "#rrggbb" | ""             -> Theme.accentOverride
+//   appearance.highlight       "#rrggbb" | ""             -> Theme.highlightOverride
+//   appearance.scrollBars      automatic/when-scrolling/always -> Theme.scrollBars
+//   appearance.wallpaperTint   boolean                    -> Glass.wallpaperTint
 //   appearance.transparency    double 0..1                -> Glass.slider
 //   accessibility.reduceMotion boolean                    -> Theme.reducedMotion
 //   accessibility.reduceTransparency boolean              -> Glass.reduceTransparency

@@ -1646,5 +1646,47 @@ lockPolicy: lockPolicyModel(600),
             }
             Theme.dark = false;
         }
+
+        // T227: the Quick Settings pane writes the ordered module list and
+        // the menu-bar-only set; the live panel filters and orders from them.
+        function test_quick_settings_customization_changes_the_live_panel() {
+            var panel = make({
+                wifi: wifiModel("available", true, "home"),
+                bluetooth: bluetoothModel("available", true, true, false),
+                audio: audioModel("available", 0.6, false),
+                dark: true
+            });
+            compare(panel.tiles.length, 18);
+
+            panel.quickSettingsModules = ["dark", "wifi", "bogus"];
+            panel.quickSettingsMenuBarOnly = [];
+            waitForRendering(stage);
+            compare(panel.tiles.length, 2);
+            compare(panel.tiles[0].id, "dark");
+            compare(panel.tiles[1].id, "wifi");
+
+            // The live scene hides a removed module and keeps the ordered one.
+            var wifiTile = findChild(panel, "wifiTile");
+            var darkTile = findChild(panel, "darkTile");
+            var volumeTile = findChild(panel, "volumeTile");
+            verify(wifiTile !== null && darkTile !== null && volumeTile !== null);
+            compare(wifiTile.visible, true);
+            compare(darkTile.visible, true);
+            compare(volumeTile.visible, false);
+
+            // A menu-bar-only module leaves the panel even when it is in the
+            // ordered list.
+            panel.quickSettingsMenuBarOnly = ["wifi"];
+            compare(panel.tiles.length, 1);
+            compare(panel.tiles[0].id, "dark");
+            compare(wifiTile.visible, false);
+
+            // Restoring the built-in order restores every module.
+            panel.quickSettingsModules = [];
+            panel.quickSettingsMenuBarOnly = [];
+            compare(panel.tiles.length, 18);
+            compare(panel.tiles[0].id, "wifi");
+            compare(panel.tiles[1].id, "bluetooth");
+        }
     }
 }

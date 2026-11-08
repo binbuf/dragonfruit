@@ -16,6 +16,11 @@ Item {
     // Live clock, driven by the shell controller each render.
     property string timeText: ""
     property string dateText: ""
+    // T227: the Screen Saver pane's clock options. The shell reads the
+    // `screenSaver.*` keys and pushes these; the lock scene stays a pure view.
+    property bool showClock: true
+    property bool showDate: true
+    property bool showSeconds: false
     // Authentication state (T-12.3b). Until then the field is present but
     // inert, so the layout is final.
     property bool authEnabled: false
@@ -57,6 +62,7 @@ Item {
     // The clock: large, high on the screen, the primary lock-screen anchor.
     Column {
         id: clock
+        visible: root.showClock
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: Math.max(Theme.primitive.spacing.xxxl,
@@ -73,6 +79,7 @@ Item {
         }
         Text {
             objectName: "lockDate"
+            visible: root.showDate
             anchors.horizontalCenter: parent.horizontalCenter
             text: root.dateText
             color: Theme.color.textSecondary

@@ -27,6 +27,7 @@ Item {
             Settings.set("dock.size", 0.5);
             Settings.set("dock.magnification", 0.5);
             Settings.set("dock.position", "bottom");
+            Settings.set("desktop.showItems", "on-desktop");
             Settings.set("dock.minimizedAnimation", "scale");
             Settings.set("dock.titlebarDoubleClick", "zoom");
             Settings.set("dock.minimizeIntoTileIcon", false);
@@ -228,6 +229,36 @@ Item {
                        + row.control.x + " row.width=" + row.width);
                 verify(row.control.width > 0, "row " + i + " control must have width");
             }
+        }
+
+        // -- T227: Desktop & Stage Manager --------------------------------------
+
+        function test_desktop_items_apply_live_and_converge() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.desktopItemsControl.currentIndex, 0);
+
+            pane.desktopItemsControl.activateIndex(1); // In Stage Manager
+            compare(Settings.values["desktop.showItems"], "in-stage");
+            pane.desktopItemsControl.activateIndex(0); // On Desktop
+            compare(Settings.values["desktop.showItems"], "on-desktop");
+
+            Settings.set("desktop.showItems", "in-stage");
+            tryVerify(function() {
+                return pane.desktopItemsControl.currentIndex === 1;
+            });
+        }
+
+        function test_stage_rows_are_disabled_with_reasons() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.clickWallpaperRow.enabled, false);
+            verify(pane.clickWallpaperRow.description.indexOf("T245b") >= 0);
+            compare(pane.stageToggle.enabled, false);
+            verify(pane.stageRow.description.indexOf("T242") >= 0);
+            compare(pane.stageRecentToggle.enabled, false);
+            compare(pane.widgetsRow.enabled, false);
+            verify(pane.widgetsRow.description.indexOf("OPEN") >= 0);
         }
     }
 }

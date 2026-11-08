@@ -27,6 +27,10 @@ Item {
             Settings.set("appearance.colorScheme", "auto");
             Settings.set("appearance.accent", "");
             Settings.set("appearance.transparency", 0.5255);
+            Settings.set("appearance.highlight", "");
+            Settings.set("appearance.sidebarIconSize", "medium");
+            Settings.set("appearance.wallpaperTint", true);
+            Settings.set("appearance.scrollBars", "automatic");
             Settings.set("accessibility.reduceMotion", false);
             Settings.set("accessibility.reduceTransparency", false);
             Settings.set("accessibility.increaseContrast", false);
@@ -254,6 +258,75 @@ Item {
                        "row must fit inside the window: right="
                        + (row.x + row.width) + " window=" + shell.width);
             }
+        }
+
+        // -- T227: the remaining Appearance rows --------------------------------
+
+        function test_highlight_applies_live_and_converges() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.highlightSelect.currentIndex, 0); // Default
+
+            pane.highlightSelect.activateIndex(1); // Violet
+            compare(Settings.values["appearance.highlight"], "#b3a1ff");
+            compare(Theme.highlightOverride, "#b3a1ff");
+            verify(Qt.colorEqual(Theme.color.selection, "#b3a1ff"));
+
+            Settings.set("appearance.highlight", "#7fd6a4");
+            tryVerify(function() { return pane.highlightSelect.currentIndex === 3; });
+            verify(Qt.colorEqual(Theme.color.selection, "#7fd6a4"));
+
+            Settings.set("appearance.highlight", "");
+            tryVerify(function() { return pane.highlightSelect.currentIndex === 0; });
+            compare(Theme.highlightOverride, "");
+        }
+
+        function test_sidebar_icon_size_applies_live() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(shell.sidebar.categoryIconSize, 20);
+
+            pane.sidebarIconSizeSelect.activateIndex(2); // large
+            compare(Settings.values["appearance.sidebarIconSize"], "large");
+            compare(shell.sidebar.categoryIconSize, 24);
+            compare(shell.sidebar.iconSize, 19);
+
+            pane.sidebarIconSizeSelect.activateIndex(0); // small
+            compare(shell.sidebar.categoryIconSize, 16);
+        }
+
+        function test_wallpaper_tint_toggle_changes_the_glass_resolver() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.previewRollout = "replacement";
+            compare(pane.previewResolved.wallpaperTint, true);
+
+            pane.wallpaperTintToggle.toggled(false);
+            compare(Settings.values["appearance.wallpaperTint"], false);
+            compare(Glass.wallpaperTint, false);
+            compare(pane.previewResolved.renderMode, "solid");
+            compare(pane.previewResolved.fallbackReason, "wallpaper-tint-off");
+
+            pane.wallpaperTintToggle.toggled(true);
+            compare(Settings.values["appearance.wallpaperTint"], true);
+            compare(Glass.wallpaperTint, true);
+        }
+
+        function test_scroll_bar_policy_applies_live() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(shell.detailScroll.scrollBars, "automatic");
+            pane.scrollBarsSelect.activateIndex(1); // when scrolling
+            compare(Settings.values["appearance.scrollBars"], "when-scrolling");
+            compare(Theme.scrollBars, "when-scrolling");
+            compare(shell.detailScroll.scrollBars, "when-scrolling");
+        }
+
+        function test_motion_link_opens_accessibility() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.motionButton.clicked();
+            compare(shell.currentPaneId, "accessibility");
         }
     }
 }

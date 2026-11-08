@@ -19,6 +19,11 @@ FocusScope {
     // `FilesArguments.filesDesktopDirectory()` (xdg-user-dirs).
     property string location: ""
 
+    // T227: `desktop.showItems`. "On Desktop" shows the Files icons;
+    // "In Stage Manager" hides them for the Stage Manager host (T242).
+    readonly property bool itemsVisible:
+        Settings.values["desktop.showItems"] !== "in-stage"
+
     // Selection is the Files shell's set of stable node ids (never paths).
     property real selectedId: 0
     property var selectedIds: []
@@ -222,6 +227,7 @@ FocusScope {
     FilesIconView {
         id: iconView
         anchors.fill: parent
+        visible: root.itemsVisible
         directory: directory
         selectedId: root.selectedId
         selectedIds: root.selectedIds

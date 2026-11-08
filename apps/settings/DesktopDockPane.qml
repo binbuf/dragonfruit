@@ -45,6 +45,15 @@ Item {
         { value: "minimize", label: qsTr("Minimize") },
         { value: "none", label: qsTr("None") }
     ]
+    // T227: Desktop & Stage Manager. `desktop.showItems` is consumed by the
+    // Files desktop process; Stage Manager itself is T242, so its rows are
+    // disabled with a reason rather than advertised as live toggles.
+    readonly property var desktopItemsOptions: [
+        { value: "on-desktop", label: qsTr("On Desktop") },
+        { value: "in-stage", label: qsTr("In Stage") }
+    ]
+    readonly property string desktopItemsValue:
+        Settings.values["desktop.showItems"] || "on-desktop"
 
     // Test surface (used by tst_settings_desktop_dock.qml).
     property alias sizeSlider: sizeSlider
@@ -62,6 +71,14 @@ Item {
     property alias dockGroup: dockGroup
     property alias globalMenuToggle: globalMenuToggle
     property alias menuGroup: menuGroup
+    property alias desktopItemsControl: desktopItemsControl
+    property alias desktopGroup: desktopGroup
+    property alias clickWallpaperRow: clickWallpaperRow
+    property alias stageRow: stageRow
+    property alias stageToggle: stageToggle
+    property alias stageRecentRow: stageRecentRow
+    property alias stageRecentToggle: stageRecentToggle
+    property alias widgetsRow: widgetsRow
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -279,6 +296,104 @@ Item {
             }
         }
 
+        // T227: Desktop & Stage Manager. Only "Show items" is live today; the
+        // Files desktop process consumes `desktop.showItems`. The remaining
+        // rows name the task that owns their runtime (T242/T245b).
+        SettingsGroup {
+            id: desktopGroup
+            width: parent.width
+            title: qsTr("Desktop & Stage")
+
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("Show items")
+                settingsId: "desktopItems"
+                owner: "settingsd -> apps/files desktop"
+                settingsKey: "desktop.showItems"
+                description: qsTr("On Desktop shows the Files desktop icons; In Stage "
+                                  + "leaves them to Stage (T242).")
+                controlData: SegmentedControl {
+                    id: desktopItemsControl
+                    model: root.desktopItemsOptions.map(function(option) {
+                        return option.label;
+                    })
+                    onActivated: (index) => Settings.set(
+                                    "desktop.showItems",
+                                    root.desktopItemsOptions[index].value)
+                }
+            }
+
+            SettingsRow {
+                id: clickWallpaperRow
+                width: parent.width
+                label: qsTr("Click wallpaper to reveal desktop")
+                description: qsTr("Background clicks belong to the desktop layer; "
+                                  + "reveal-on-click lands with T245b.")
+                settingsId: "clickWallpaper"
+                owner: "compositor"
+                settingsKey: "desktop.clickWallpaper"
+                enabled: false
+
+                controlData: Select {
+                    model: [qsTr("Always"), qsTr("Only in Stage"), qsTr("Never")]
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: stageRow
+                width: parent.width
+                label: qsTr("Stage")
+                description: qsTr("Stage lands with T242.")
+                settingsId: "stage"
+                owner: "compositor"
+                settingsKey: "stageManager.enabled"
+                enabled: false
+
+                controlData: Toggle {
+                    id: stageToggle
+                    text: ""
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: stageRecentRow
+                width: parent.width
+                label: qsTr("Recent apps in Stage")
+                description: qsTr("Lands with Stage (T242).")
+                settingsId: "stageRecent"
+                owner: "compositor"
+                settingsKey: "stageManager.showRecentApps"
+                enabled: false
+
+                controlData: Toggle {
+                    id: stageRecentToggle
+                    text: ""
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: widgetsRow
+                width: parent.width
+                label: qsTr("Widgets")
+                description: qsTr("No widget host is implemented; widgets remain "
+                                  + "an explicit OPEN row.")
+                settingsId: "widgets"
+                owner: "shell"
+                settingsKey: "widgets.*"
+                enabled: false
+                showSeparator: false
+
+                controlData: Text {
+                    text: qsTr("Unavailable")
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                }
+            }
+        }
+
         // T-14.2b: the global application-menu toggle. On macOS this lives
         // under "Menu Bar"; the dedicated pane is T-15.9b, so the one control
         // ships here in its own group until then.
@@ -370,5 +485,11 @@ Item {
         target: globalMenuToggle
         property: "checked"
         value: Settings.values["menu.global"] !== false
+    }
+    Binding {
+        target: desktopItemsControl
+        property: "currentIndex"
+        value: root.optionIndex(root.desktopItemsOptions,
+                                root.desktopItemsValue, 0)
     }
 }

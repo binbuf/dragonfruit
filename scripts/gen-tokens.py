@@ -107,6 +107,9 @@ def qml_object(body: list[str], indent: int) -> list[str]:
 # the single top-level `accentOverride`, deriving hover/muted/on-content from
 # it so a custom accent cannot leave a stale magenta hover or label.
 ACCENT_OVERRIDE_KEYS = {"accent", "accentHover", "accentMuted", "accentContent"}
+# T227: the selection/highlight colour is independently overridable
+# (`appearance.highlight`). It is the text-selection wash, not the accent.
+HIGHLIGHT_OVERRIDE_KEYS = {"selection"}
 
 
 def accent_qml(key: str, value, scheme: str, muted_surface: str) -> str:
@@ -156,6 +159,10 @@ def emit_qml_group(name: str, node: dict, root: dict, indent: int, kind: str,
                 lines.append(" " * (indent + 4)
                              + f"readonly property {prop} {key}: "
                              + accent_qml(key, value, scheme, muted_surface))
+            elif scheme is not None and key in HIGHLIGHT_OVERRIDE_KEYS:
+                lines.append(" " * (indent + 4)
+                             + f"readonly property {prop} {key}: "
+                             + f"tokens.hasHighlightOverride ? tokens.highlightOverrideColor : {qml_literal(value)}")
             else:
                 lines.append(" " * (indent + 4) + f"readonly property {prop} {key}: {qml_literal(value)}")
     lines.append(pad + "}")
@@ -210,6 +217,19 @@ def gen_qml(data: dict) -> str:
             "    property string accentOverride: \"\"",
             "    readonly property bool hasAccentOverride: tokens.accentOverride !== \"\"",
             "    readonly property color accentOverrideColor: tokens.hasAccentOverride ? tokens.accentOverride : \"transparent\"",
+            "    // Highlight override (T227, `appearance.highlight`): empty means the",
+            "    // active scheme's token selection colour. The selection wash",
+            "    // (search fields, pickers) follows it live.",
+            "    property string highlightOverride: \"\"",
+            "    readonly property bool hasHighlightOverride: tokens.highlightOverride !== \"\"",
+            "    readonly property color highlightOverrideColor: tokens.hasHighlightOverride ? tokens.highlightOverride : \"transparent\"",
+            "    // Scroll-bar policy (T227, `appearance.scrollBars`): automatic,",
+            "    // when-scrolling, or always. The ScrollView component consumes it.",
+            "    property string scrollBars: \"automatic\"",
+            "    // Wallpaper tinting (T227, `appearance.wallpaperTint`): off makes the",
+            "    // glass resolver take the neutral plate instead of sampling the",
+            "    // wallpaper's colours.",
+            "    property bool wallpaperTint: true",
             "    readonly property var color: tokens.dark ? tokens.darkScheme.color : tokens.lightScheme.color",
             "    readonly property var material: tokens.dark ? tokens.darkScheme.material : tokens.lightScheme.material",
             "",

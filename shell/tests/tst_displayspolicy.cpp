@@ -3,7 +3,9 @@
 // shell forwards over `df_output.set_scale` / `df_output.set_transform`
 // (`set_brightness` added in T-11.3a). No bus, Wayland, or QML.
 #include <QtTest>
+#include <QVariantMap>
 
+#include "displaycapabilities.h"
 #include "displayspolicy.h"
 
 class TestDisplaysPolicy : public QObject
@@ -16,6 +18,8 @@ private slots:
     void rotationNamesMapToTheWireEnum();
     void unknownRotationFallsBackToNormal();
     void liveFlipChangesTheSettings();
+    void advancedRowsOnlyAdvertiseSupportedControls();
+    void advancedRowsCarryAnOpenReason();
 };
 
 void TestDisplaysPolicy::defaultsMatchTheSchema()
@@ -69,6 +73,41 @@ void TestDisplaysPolicy::liveFlipChangesTheSettings()
     // Re-deriving an unchanged map is a no-op (`operator==`), so the shell
     // does not re-send the protocol request.
     QVERIFY(after == displaySettingsFromValues(values));
+}
+
+void TestDisplaysPolicy::advancedRowsOnlyAdvertiseSupportedControls()
+{
+    const QList<DisplayAdvancedRow> rows = displayAdvancedRows();
+    QCOMPARE(rows.size(), 8);
+    QCOMPARE(rows[0].id, QStringLiteral("brightness"));
+    QVERIFY(rows[0].supported);
+    QCOMPARE(rows[0].control, QStringLiteral("slider"));
+    QCOMPARE(rows[1].id, QStringLiteral("rotation"));
+    QVERIFY(rows[1].supported);
+    QCOMPARE(rows[1].control, QStringLiteral("popup"));
+
+    // No other row is advertised as a live control.
+    for (const DisplayAdvancedRow &row : rows) {
+        if (row.id == QLatin1String("brightness") || row.id == QLatin1String("rotation"))
+            continue;
+        QVERIFY2(!row.supported, qPrintable(row.id));
+        QCOMPARE(row.control, QStringLiteral("info"));
+    }
+}
+
+void TestDisplaysPolicy::advancedRowsCarryAnOpenReason()
+{
+    const QVariantList rows = displayAdvancedRowsVariant();
+    QCOMPARE(rows.size(), 8);
+    for (const QVariant &entry : rows) {
+        const QVariantMap row = entry.toMap();
+        if (row.value(QStringLiteral("supported")).toBool()) {
+            QVERIFY(row.value(QStringLiteral("reason")).toString().isEmpty());
+            continue;
+        }
+        QVERIFY2(!row.value(QStringLiteral("reason")).toString().isEmpty(),
+                 qPrintable(row.value(QStringLiteral("id")).toString()));
+    }
 }
 
 QTEST_MAIN(TestDisplaysPolicy)

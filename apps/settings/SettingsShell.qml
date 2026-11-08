@@ -81,6 +81,23 @@ Item {
         Settings.values["accessibility.reduceTransparency"] === true
     readonly property bool increaseContrast:
         Settings.values["accessibility.increaseContrast"] === true
+    // T227: the Appearance completion keys. Highlight is the selection wash,
+    // sidebar size is mapped onto the design-system Sidebar slots, scroll bars
+    // onto the ScrollView policy, and wallpaper tint onto the Glass resolver.
+    readonly property string highlight:
+        Settings.values["appearance.highlight"] || ""
+    readonly property string scrollBars:
+        Settings.values["appearance.scrollBars"] || "automatic"
+    readonly property bool wallpaperTint:
+        Settings.values["appearance.wallpaperTint"] !== false
+    readonly property string sidebarIconSize:
+        Settings.values["appearance.sidebarIconSize"] || "medium"
+    readonly property real sidebarIconPixels:
+        root.sidebarIconSize === "small" ? 13
+      : root.sidebarIconSize === "large" ? 19 : 16
+    readonly property real sidebarCategoryIconPixels:
+        root.sidebarIconSize === "small" ? 16
+      : root.sidebarIconSize === "large" ? 24 : 20
     // The app-local rollout/capability view. Production follows the process
     // environment and platform bridge; tests and captures may override them
     // without changing the shared singleton's binding.
@@ -397,6 +414,12 @@ Item {
             return wifiPaneComponent;
         case "network":
             return networkPaneComponent;
+        case "control-center":
+            return quickSettingsPaneComponent;
+        case "search":
+            return searchPaneComponent;
+        case "screen-saver":
+            return screenSaverPaneComponent;
         default:
             return null;
         }
@@ -478,8 +501,23 @@ Item {
     }
     Binding {
         target: Theme
+        property: "highlightOverride"
+        value: root.highlight
+    }
+    Binding {
+        target: Theme
+        property: "scrollBars"
+        value: root.scrollBars
+    }
+    Binding {
+        target: Theme
         property: "reducedMotion"
         value: Settings.values["accessibility.reduceMotion"] === true
+    }
+    Binding {
+        target: Glass
+        property: "wallpaperTint"
+        value: root.wallpaperTint
     }
     Binding {
         target: Glass
@@ -510,6 +548,21 @@ Item {
     Component {
         id: appearancePaneComponent
         AppearancePane { }
+    }
+
+    Component {
+        id: quickSettingsPaneComponent
+        QuickSettingsPane { }
+    }
+
+    Component {
+        id: searchPaneComponent
+        SearchPane { }
+    }
+
+    Component {
+        id: screenSaverPaneComponent
+        ScreenSaverPane { }
     }
 
     Component {
@@ -698,6 +751,9 @@ Item {
                             id: sidebar
                             anchors.fill: parent
                             visible: !root.searchActive
+                            // T227: the Appearance pane's sidebar icon size.
+                            iconSize: root.sidebarIconPixels
+                            categoryIconSize: root.sidebarCategoryIconPixels
                             // The outer ChromeSheet owns the app-local material.
                             fillColor: "transparent"
                             sections: [{
@@ -793,6 +849,7 @@ Item {
                         width: parent.width
                         height: Math.max(0, parent.height - toolbar.height)
                         scrollbarVisible: true
+                        scrollBars: root.scrollBars
 
                         Column {
                             id: detailContent
@@ -812,12 +869,27 @@ Item {
                                 pane: root.currentPane
                             }
 
+                            // Panes may ask the shell to open another pane (the
+                            // Appearance pane's Motion link, T227).
+                            Connections {
+                                target: paneBody.item
+                                ignoreUnknownSignals: true
+                                function onNavigationRequested(paneId) {
+                                    root.selectPane(paneId);
+                                }
+                            }
+
                             Loader {
                                 id: paneBody
                                 width: parent.width
                                 sourceComponent: root.paneComponent(root.currentPaneId)
                                 onLoaded: {
                                     root.loadedPaneId = root.currentPaneId;
+                                    // Panes with an in-pane popup get the shell
+                                    // root as its parent so the detail
+                                    // ScrollView's clip cannot cut it off.
+                                    if (paneBody.item.popupParent !== undefined)
+                                        paneBody.item.popupParent = root;
                                     root.trace("paneLoaded " + root.currentPaneId);
                                     if (root.pendingPaneId === root.currentPaneId)
                                         Qt.callLater(root.revealPending);
