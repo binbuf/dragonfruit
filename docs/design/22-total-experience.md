@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | target design |
-| **Date** | 2026-11-06 |
+| **Date** | 2026-11-08 |
 | **Release** | v0.2.0 |
 | **Scope** | every core shell surface, interaction, animation, HUD, menu-bar extra, and System Settings pane |
 | **Related** | [Track 22](tracks/22-total-experience-parity.md), [settings map](settings-business-logic-map.md), [distro contract](distro-compatibility.md), [naming/licensing](interface-naming-and-licensing.md), [motion/feedback](motion-and-feedback.md), [evidence/acceptance](evidence-and-acceptance.md), [experience schema](experience-schema.md) |
@@ -123,6 +123,7 @@ The detailed gap register is in [STATUS.md](STATUS.md).
 | Stage Manager | Design-only | Stage strip, recent apps, stage groups, drag, fullscreen |
 | Window tiling / Split View | Design-only | Halves, quarters, drag-to-edge, menu, keyboard |
 | Window lifecycle | Partial | Open/close/minimize/restore/zoom/fullscreen/genie, launch/quit, Force Quit; chrome style taxonomy (0/32/40/48/52/66/88 pt) still landing |
+| Files window | Partial | Finder anatomy: 52 pt toolbar, 198 pt sidebar, 28/30/28 pt content bars, four view modes, 328×1034 pt Get Info |
 | Quick Look | Design-only | Image/PDF/video/multi-item, navigation, actions, fullscreen |
 | Login / lock / first run | Partial | Lock, login, fast user switching, Setup Assistant, power actions |
 
@@ -460,6 +461,14 @@ The target is accepted when:
 - The structural surface review is reflected in the manifest and thresholds:
   window chrome styles, About, Spotlight Apps, Notification Center,
   Control Center, and Finder have measured geometry or explicit `OPEN` rows.
+  T230a added 64 structural rows across `N-WIN` (14 chrome/traffic-light/
+  accessory-bar/fullscreen/RTL states), `SET-GENERAL` (4 About states),
+  `Q-AD` (9 Spotlight Apps states), `S-NC` (11 ramp/widget/state/motion
+  states), `S-CC` (13 grid/catalogue/customization/motion states), and the new
+  `N-FILES` surface (13 Files window/view/Get Info states). The measured
+  thresholds are in `experience-thresholds.json`; the 14 review `OPEN` ids are
+  first-class rows with owner, rerun command, impact, and intended axes. The
+  live contract is 482 rows: 168 captured, 74 verified, 240 `OPEN`.
 - Every animation has a measured duration/curve and a reduced-motion path.
 - Every Settings row has an owner and an absent-provider state.
 - Every surface has a keyboard path and an accessible name.

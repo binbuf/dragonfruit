@@ -78,6 +78,13 @@ order:
   T230a extends the experience contract and reference inventory, T230b lands
   the chrome style system, T230c lands the two About surfaces, and T230d lands
   the Files chrome/Get Info geometry.
+- T230a landed the contract extension: 64 append-only rows across `N-WIN`,
+  `SET-GENERAL`, `Q-AD`, `S-NC`, `S-CC`, and the new `N-FILES` surface, plus
+  the measured geometry/material thresholds in
+  `docs/captures/experience-thresholds.json`. `N-FILES` is the Files window;
+  `N-PREV` remains Quick Look. The 14 review `OPEN` ids are first-class rows
+  with owner, rerun command, impact, and intended axes; no macOS screenshot is
+  copied into Dragonfruit.
 - T234, T235, T248 and T260 are rewritten to consume the measured structural
   values instead of their earlier generic descriptions.
 - The existing 40 pt titlebar token remains valid only as a legacy/compact
