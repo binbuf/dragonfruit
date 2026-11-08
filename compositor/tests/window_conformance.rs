@@ -1998,6 +1998,25 @@ fn titlebar_center(report: &DecorationReport) -> (i32, i32) {
     (tx + tw / 2, ty + th / 2)
 }
 
+/// The whole decorated frame (titlebar plus client area) of a report.
+fn frame_rect(report: &DecorationReport) -> (i32, i32, i32, i32) {
+    let (tx, ty, tw, th) = report.titlebar;
+    let (cx, cy, cw, ch) = report.content;
+    let x = tx.min(cx);
+    let y = ty.min(cy);
+    let right = (tx + tw).max(cx + cw);
+    let bottom = (ty + th).max(cy + ch);
+    (x, y, right - x, bottom - y)
+}
+
+/// Press at a global-space point, drag by a relative delta, and release.
+fn drag_from(input: &SyntheticInput, x: i32, y: i32, dx: i32, dy: i32) {
+    motion_to(input, x, y);
+    input.send("button 272 down");
+    input.send(&format!("motion {dx} {dy}"));
+    input.send("button 272 up");
+}
+
 /// One parsed `query window-menu` line (T-01.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MenuReport {
@@ -2397,6 +2416,99 @@ fn titlebar_drag_and_double_click_move_and_zoom() {
         !minimized.server_side && minimized.titlebar == (0, 0, 0, 0),
         "a configured minimize double-click hides the titlebar: {minimized:?}"
     );
+
+    surface.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// T-04/T-13 acceptance: an SSD window's compositor-drawn frame owns its
+/// resize borders. All four corners and all four edges must start the shared
+/// resize grab, even though the border strips overlay the client surface (the
+/// old path only knew the titlebar, so a Tier-2 app like Konsole could not be
+/// resized at all).
+#[test]
+fn ssd_frame_edges_and_corners_resize_the_window() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-resize-edges-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-resize-edges",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let window = reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("a mapped SSD toplevel")
+        .window;
+    let mut before = *reports
+        .iter()
+        .find(|report| report.window == window)
+        .unwrap();
+
+    // Each case drags a point inside the corner handle or edge strip and
+    // asserts the exact content geometry delta.
+    type ResizeCase = (&'static str, (i32, i32), (i32, i32));
+    let cases: [ResizeCase; 8] = [
+        // Corners.
+        ("top-left", (2, 2), (20, 10)),
+        ("top-right", (-3, 2), (-20, 10)),
+        ("bottom-left", (2, -3), (20, -10)),
+        ("bottom-right", (-3, -3), (-20, -10)),
+        // Edges (away from the larger corner handles).
+        ("left", (2, 0), (20, 0)),
+        ("right", (-3, 0), (-20, 0)),
+        ("top", (0, 2), (0, 10)),
+        ("bottom", (0, -3), (0, -10)),
+    ];
+
+    for (name, offset, delta) in cases {
+        let (fx, fy, fw, fh) = frame_rect(&before);
+        let x = match offset.0 {
+            o if o > 0 => fx + o,
+            o if o < 0 => fx + fw + o,
+            _ => fx + fw / 2,
+        };
+        let y = match offset.1 {
+            o if o > 0 => fy + o,
+            o if o < 0 => fy + fh + o,
+            _ => fy + fh / 2,
+        };
+        let (bx, by, bw, bh) = before.content;
+        // A left/top drag moves the origin; a right/bottom drag keeps it.
+        let expected = (
+            if delta.0 > 0 { bx + delta.0 } else { bx },
+            if delta.1 > 0 { by + delta.1 } else { by },
+            bw - delta.0.abs(),
+            bh - delta.1.abs(),
+        );
+        drag_from(&input, x, y, delta.0, delta.1);
+        before = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+            report.content == expected
+        });
+        assert_eq!(
+            before.content, expected,
+            "{name} edge must resize the window"
+        );
+    }
 
     surface.destroy();
     toplevel.destroy();

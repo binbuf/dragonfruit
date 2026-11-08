@@ -1045,6 +1045,8 @@ QtObject {
         readonly property var window: QtObject {
             readonly property int radius: 14
             readonly property int borderWidth: 1
+            readonly property int resizeBorder: 6
+            readonly property int resizeCorner: 12
             readonly property int shadowBlur: 40
         }
         readonly property var titlebar: QtObject {
