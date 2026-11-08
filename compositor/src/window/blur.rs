@@ -269,19 +269,38 @@ varying vec2 v_coords;
 uniform vec3 veil_color;
 uniform float veil_height;
 uniform float veil_strip;
-uniform float veil_light;
-uniform float veil_readability;
-uniform float veil_readability_fade;
 uniform vec2 veil_probe;
 uniform vec4 veil_depth_a;
 uniform vec4 veil_depth_b;
 uniform vec4 veil_alpha_a;
 uniform vec4 veil_alpha_b;
+uniform vec4 veil_adapt_luma_a;
+uniform float veil_adapt_luma_b;
+uniform vec4 veil_adapt_scale_a;
+uniform float veil_adapt_scale_b;
 uniform vec2 panel_uv_offset;
 uniform vec2 panel_uv_scale;
 
 float luminance(vec3 c) {
     return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+float adapt_scale(float lum) {
+    if (lum <= veil_adapt_luma_a.x)
+        return veil_adapt_scale_a.x;
+    if (lum <= veil_adapt_luma_a.y)
+        return mix(veil_adapt_scale_a.x, veil_adapt_scale_a.y,
+                   (lum - veil_adapt_luma_a.x) / max(veil_adapt_luma_a.y - veil_adapt_luma_a.x, 1e-4));
+    if (lum <= veil_adapt_luma_a.z)
+        return mix(veil_adapt_scale_a.y, veil_adapt_scale_a.z,
+                   (lum - veil_adapt_luma_a.y) / max(veil_adapt_luma_a.z - veil_adapt_luma_a.y, 1e-4));
+    if (lum <= veil_adapt_luma_a.w)
+        return mix(veil_adapt_scale_a.z, veil_adapt_scale_a.w,
+                   (lum - veil_adapt_luma_a.z) / max(veil_adapt_luma_a.w - veil_adapt_luma_a.z, 1e-4));
+    if (lum <= veil_adapt_luma_b)
+        return mix(veil_adapt_scale_a.w, veil_adapt_scale_b,
+                   (lum - veil_adapt_luma_a.w) / max(veil_adapt_luma_b - veil_adapt_luma_a.w, 1e-4));
+    return veil_adapt_scale_b;
 }
 
 float lut_alpha(float depth) {
@@ -343,7 +362,10 @@ void main() {
     float depth = panel_uv.y * veil_height;
     vec4 base = texture2D(tex, v_coords);
     float lum = local_luminance(v_coords);
-    float veil = adapted_alpha(lut_alpha(depth), depth, lum);
+    float veil_alpha = lut_alpha(depth);
+    if (veil_light > 0.5)
+        veil_alpha *= adapt_scale(lum);
+    float veil = adapted_alpha(veil_alpha, depth, lum);
     vec3 color = mix(base.rgb, veil_color, veil);
 
 #if defined(NO_ALPHA)

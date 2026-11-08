@@ -323,6 +323,12 @@ Item {
             compare(bar.referenceStripHeight, 39);
             fuzzyCompare(bar.veilResolution.tint, 1.0, 0.001,
                          "the Light veil is a white lift");
+            // The measured luminance adaptation must reach the shell so the
+            // Light veil can disappear over a white wallpaper.
+            fuzzyCompare(bar.veilResolution.veil.adaptScale[3], 0.48, 0.001,
+                         "the Light veil keeps the measured adaptation");
+            fuzzyCompare(bar.veilResolution.veil.adaptScale[4], 0.0, 0.001,
+                         "the Light veil is invisible over white");
 
             // Dark uses the documented black wash, still with no QML fill.
             Theme.dark = true;

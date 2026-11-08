@@ -148,9 +148,13 @@ run_case() {
             -geometry 700x180+100+0 -title "T200 dark window" \
             "dark window under the veil" >/dev/null 2>&1 &
         dark_pid=$!
-        DISPLAY="$display" xmessage -bg white -fg black \
-            -geometry 700x180+900+0 -title "T200 light window" \
-            "light window under the veil" >/dev/null 2>&1 &
+        # A light-grey window (sRGB 200/255 = 0.784) is the report's light
+        # background sample. A pure-white window cannot distinguish the fixed
+        # LUT from the measured adaptation because white stays white either
+        # way; 0.784 exposes the difference (0.831 measured vs 0.887 fixed).
+        DISPLAY="$display" xmessage -bg '#c8c8c8' -fg black \
+            -geometry 700x180+900+0 -title "T200 light-grey window" \
+            "light-grey window under the veil" >/dev/null 2>&1 &
         light_pid=$!
         sleep 1
         if [ "$fallback" = "1" ]; then
@@ -205,9 +209,39 @@ for depth in (5, 15, 25, 35, 50, 75, 90, 95):
         "measured": measured[depth],
         "delta": round(value - measured[depth], 6),
     }
-# The white window at x=900..1600 must stay white: a white veil is invisible.
-white = [light.getpixel((x2, y))[0] for x2 in (1200, 1350, 1500)
-         for y in (5, 15, 25, 35, 50, 75, 90, 95)]
+# The light-grey window at x=900..1600 (sRGB 200/255 = 0.784) exposes the
+# measured background adaptation. The fixed-LUT implementation would read
+# 0.887 at 5 pt; the report's measured table is 0.831.
+adapt_luma = (0.0, 0.25, 0.5, 0.78, 1.0)
+adapt_scale = (1.0, 1.06, 0.91, 0.48, 0.0)
+
+
+def adapt(luma):
+    luma = max(0.0, min(1.0, luma))
+    if luma <= adapt_luma[0]:
+        return adapt_scale[0]
+    for left_l, right_l, left_s, right_s in zip(
+            adapt_luma, adapt_luma[1:], adapt_scale, adapt_scale[1:]):
+        if luma <= right_l:
+            span = right_l - left_l
+            ratio = 0.0 if span <= 0 else (luma - left_l) / span
+            return left_s + (right_s - left_s) * ratio
+    return adapt_scale[-1]
+
+
+light_grey = 200 / 255
+grey_rows = {}
+for depth in (5, 15, 25, 35, 50, 75, 90, 95):
+    alpha = measured[depth] * adapt(light_grey)
+    expected = light_grey * (1.0 - alpha) + alpha
+    samples = [light.getpixel((x2, depth))[0] / 255.0
+               for x2 in (1200, 1350, 1500)]
+    value = sum(samples) / len(samples)
+    grey_rows[depth] = {
+        "capture": round(value, 6),
+        "expected": round(expected, 6),
+        "delta": round(value - expected, 6),
+    }
 report = {
     "backend": "nested",
     "rollout": "replacement",
@@ -217,7 +251,9 @@ report = {
         "fallback": "t200-menubar-veil-fallback.png",
     },
     "light_black_window_lut": rows,
-    "light_white_window_invisible": min(white) >= 250,
+    "light_grey_window_adaptation": grey_rows,
+    "light_grey_window_adapted": all(
+        abs(row["delta"]) <= 0.03 for row in grey_rows.values()),
     "fallback_plate": True,
 }
 (outdir / "t200-menubar-veil.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -229,10 +265,12 @@ cat >"$OUTDIR/t200-menubar-veil.md" <<'EOF'
 
 Nested compositor, replacement rail, deterministic checker wallpaper. Two X11
 windows sit directly under the 95 pt menu-bar veil: a black window at x≈100
-and a white window at x≈900. The black window exposes the measured depth LUT;
-the white window shows that the Light white lift is invisible over white.
+and a light-grey window at x≈900. The black window exposes the measured depth
+LUT; the light-grey window (0.784) exposes the measured background-luminance
+adaptation. A pure-white window cannot distinguish the fixed LUT from the
+adaptation because white stays white either way.
 
-| depth pt | capture | measured | delta |
+| depth pt | black capture | measured | delta |
 |---|---|---|---|
 EOF
 python3 - "$OUTDIR" >>"$OUTDIR/t200-menubar-veil.md" <<'PY'
@@ -243,7 +281,12 @@ report = json.loads((Path(sys.argv[1]) / "t200-menubar-veil.json").read_text())
 for depth, row in report["light_black_window_lut"].items():
     print(f"| {depth} | {row['capture']:.4f} | {row['measured']:.4f} | {row['delta']:+.4f} |")
 print()
-print(f"White window invisible: {report['light_white_window_invisible']}")
+print("| depth pt | light-grey capture | adapted expected | delta |")
+print("|---|---|---|---|")
+for depth, row in report["light_grey_window_adaptation"].items():
+    print(f"| {depth} | {row['capture']:.4f} | {row['expected']:.4f} | {row['delta']:+.4f} |")
+print()
+print(f"Light-grey window adapted: {report['light_grey_window_adapted']}")
 print()
 print("Artifacts: `t200-menubar-veil-{light,dark,fallback}.png` plus the")
 print("matching `query scale` / `query material` text dumps.")

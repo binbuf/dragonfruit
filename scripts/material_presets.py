@@ -118,6 +118,23 @@ def _number(node: dict, key: str, path: str, errors: list[str],
     return float(value)
 
 
+def _number_list(node: dict, key: str, path: str, errors: list[str],
+                 *, length: int, low: float, high: float) -> list[float] | None:
+    values = node.get(key)
+    if not isinstance(values, list) or len(values) != length:
+        errors.append(f"{path}.{key}: expected a {length}-element number list, got {values!r}")
+        return None
+    result: list[float] = []
+    for index, value in enumerate(values):
+        if not _finite(value):
+            errors.append(f"{path}.{key}[{index}]: expected a finite number, got {value!r}")
+            return None
+        if value < low or value > high:
+            errors.append(f"{path}.{key}[{index}]: {value} is outside [{low}, {high}]")
+        result.append(float(value))
+    return result
+
+
 def _string(node: dict, key: str, path: str, errors: list[str], *,
             allowed: tuple[str, ...] | None = None) -> str | None:
     value = node.get(key)
@@ -285,6 +302,36 @@ def validate(data: dict) -> list[str]:
                     _number(veil, "probe", f"{scheme_path}.veil", errors, low=0.0, high=64.0)
                     _number(veil, "readability", f"{scheme_path}.veil", errors,
                             low=0.0, high=1.0)
+                    # T200: the measured background-luminance response. The
+                    # Light curve is 1.0/1.06/0.91/0.48/0.0 at
+                    # L=0/0.25/0.5/0.78/1.0; Dark is the identity baseline.
+                    adapt_luma = _number_list(
+                        veil, "adaptLuma", f"{scheme_path}.veil", errors,
+                        length=5, low=0.0, high=1.0)
+                    adapt_scale = _number_list(
+                        veil, "adaptScale", f"{scheme_path}.veil", errors,
+                        length=5, low=0.0, high=1.5)
+                    if adapt_luma is not None:
+                        if abs(adapt_luma[0]) > 1e-9 or abs(adapt_luma[-1] - 1.0) > 1e-9:
+                            errors.append(
+                                f"{scheme_path}.veil.adaptLuma: must span 0..1")
+                        for left, right in zip(adapt_luma, adapt_luma[1:]):
+                            if right <= left:
+                                errors.append(
+                                    f"{scheme_path}.veil.adaptLuma: must be strictly "
+                                    f"increasing, got {adapt_luma}")
+                                break
+                    if adapt_scale is not None:
+                        if scheme == "light":
+                            if abs(adapt_scale[0] - 1.0) > 1e-9 \
+                                    or abs(adapt_scale[-1]) > 1e-9:
+                                errors.append(
+                                    f"{scheme_path}.veil.adaptScale: must start at "
+                                    f"1.0 and end at 0.0")
+                        elif any(abs(value - 1.0) > 1e-9 for value in adapt_scale):
+                            errors.append(
+                                f"{scheme_path}.veil.adaptScale: Dark adaptation is "
+                                f"not measured; keep the identity curve")
                     previous = 1.0
                     for depth in (5, 15, 25, 35, 50, 75, 90, 95):
                         key = f"alpha{depth}"

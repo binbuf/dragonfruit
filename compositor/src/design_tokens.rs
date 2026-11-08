@@ -767,6 +767,8 @@ pub mod glass {
                     pub const ALPHA_75: f32 = 0.05882353_f32;
                     pub const ALPHA_90: f32 = 0.00784314_f32;
                     pub const ALPHA_95: f32 = 0.0_f32;
+                    pub const ADAPT_LUMA: [f32; 5] = [0.0_f32, 0.25_f32, 0.5_f32, 0.78_f32, 1.0_f32];
+                    pub const ADAPT_SCALE: [f32; 5] = [1.0_f32, 1.06_f32, 0.91_f32, 0.48_f32, 0.0_f32];
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
@@ -795,6 +797,8 @@ pub mod glass {
                     pub const ALPHA_75: f32 = 0.0626_f32;
                     pub const ALPHA_90: f32 = 0.00835_f32;
                     pub const ALPHA_95: f32 = 0.0_f32;
+                    pub const ADAPT_LUMA: [f32; 5] = [0.0_f32, 0.25_f32, 0.5_f32, 0.78_f32, 1.0_f32];
+                    pub const ADAPT_SCALE: [f32; 5] = [1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32];
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;

@@ -24,14 +24,20 @@ menu bar is explicitly not supposed to do.
   sharp `RegionFilter::Sharp` path. It never allocates a Kawase chain and
   never increments `blur_draws`/`blur_passes`. The sharp element samples the
   compositor's live scene texture at the current pixel.
-- The Light veil is a white lift driven by the measured depth LUT. The Dark
-  baseline is a black wash with the same depth shape scaled to a 0.48 peak.
-  Both LUTs end at exactly zero by 95 pt.
-- The veil may adjust its alpha from a bounded local luminance probe inside
-  the 39 pt reference strip: Light raises a too-dark strip toward 0.35
-  post-veil luminance; Dark lowers a too-bright strip toward 0.20. The rule
-  only raises the LUT alpha, so the measured black-background samples do not
-  move. The displayed backdrop remains the sharp centre sample; the probe is
+- The Light veil is a white lift driven by the measured depth LUT **and the
+  measured background-luminance response**. The depth alpha scales by
+  `1.0/1.06/0.91/0.48/0.0` at `L=0/0.25/0.5/0.78/1.0`, so the top-of-bar
+  response is 0.451/0.477/0.409/0.218/0.0 over the report's five neutral
+  backgrounds and the veil is invisible over white. The Dark baseline is a
+  black wash with the same depth shape scaled to a 0.48 peak and an identity
+  adaptation because Dark was not measured. Both LUTs end at exactly zero by
+  95 pt.
+- After adaptation, the veil may adjust its alpha from a bounded local
+  luminance probe inside the 39 pt reference strip: Light raises a too-dark
+  strip toward 0.35 post-veil luminance; Dark lowers a too-bright strip toward
+  0.20. The rule only raises alpha, so the measured black-background samples
+  do not move and the measured light-background samples are already above the
+  target. The displayed backdrop remains the sharp centre sample; the probe is
   not a spatial filter.
 - The layer surface is configured to the 95 pt visual extent, but the
   exclusive zone, input buffer and committed strip remain Dragonfruit's 28 pt
@@ -53,6 +59,9 @@ menu bar is explicitly not supposed to do.
 
 - The menu bar no longer needs a blur pass or a QML wash on the replacement
   rail, and its checker response is frequency-independent by construction.
+- The Light veil now tracks the measured background luminance instead of
+  applying the black-background LUT everywhere. This fixes the visible white
+  band over light wallpapers that the fixed-LUT implementation produced.
 - The visual extent can exceed the surface's committed/input strip without
   changing reservation or hit testing.
 - Dark is a documented Dragonfruit baseline, not a measured macOS profile;
