@@ -467,6 +467,18 @@ private:
     // rebuild the status slots from them.
     void applyStatusMenuData();
     void applyFocusedApp();
+    // T230: rebuild the system menu with the Recent Items submenu from the
+    // current recency list and the `menu.recentItems` policy.
+    void refreshSystemMenu();
+    // T230: Hide / Hide Others / Show All as tracked compositor minimize and
+    // restore operations. The shell records the window ids it hid so Show All
+    // restores exactly those, never a window the user minimized themselves.
+    void hideAppWindows(const QString &appId);
+    void hideOtherAppWindows(const QString &appId);
+    void showHiddenWindows();
+    // T230: route a `dbusmenu:<id>` row back to the focused window's owning
+    // DBusMenu object through app-index.
+    bool routeDbusMenuAction(const QString &action);
     // The one dispatch seam for a resolved application-menu action: the popup
     // click and a compositor-delivered accelerator both route here (T-14.2b).
     void dispatchAppAction(const QString &action, int menuIndex = -1, int itemIndex = -1,
@@ -1273,4 +1285,18 @@ private:
     Qt::MouseButtons m_buttons = Qt::NoButton;
     QString m_appId;
     QString m_appTitle;
+    // T230: the focused window's compositor id (0 = desktop). Focus is the
+    // bridge from the compositor's app identity to the DBusMenu registration
+    // and the route for `dbusmenu:<id>` clicks.
+    quintptr m_focusedWindowId = 0;
+    // T230: the AppMenu.Registrar window id whose DBusMenu the bar is showing
+    // (0 = no DBusMenu tier). A click is forwarded to this registration.
+    quint32 m_dbusMenuWindowId = 0;
+    // Window ids Hide/Hide Others minimized; Show All restores exactly these.
+    QSet<QString> m_hiddenWindowIds;
+    // `menu.recentItems`: how many recency entries the system menu shows.
+    int m_menuRecentItems = 10;
+    QString m_systemUserName;
+    QString m_devReturnDesktop;
+    bool m_dbusMenuFallbackLogged = false;
 };

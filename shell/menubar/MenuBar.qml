@@ -432,10 +432,35 @@ Rectangle {
             openMenu(index);
     }
 
+    // Left/Right from an open dropdown's top level moves to the next sibling
+    // menu with rows, wrapping across the system/application/app menus (T230).
+    function moveMenuSelection(index, delta) {
+        var count = topLevelMenus.length;
+        if (count <= 0)
+            return;
+        var i = index;
+        for (var step = 0; step < count; ++step) {
+            i = ((i + delta) % count + count) % count;
+            var menu = topLevelMenus[i] || {};
+            if (menu.items && menu.items.length > 0) {
+                openMenu(i);
+                return;
+            }
+        }
+    }
+
     // Test/introspection hooks: the shell controller uses these to drive
     // the bar; the QML tests use them to assert without poking at the scene.
     function appMenuAt(index) {
         return menuRepeater.itemAt(index);
+    }
+
+    // T230 capture seam: activate one row through the same path a click uses.
+    // The shell's `DF_MENUBAR_ACTIVATE_FIXTURE` calls this after opening a menu.
+    function activateMenuRow(menuIndex, itemIndex) {
+        var item = menuRepeater.itemAt(menuIndex);
+        if (item)
+            item.activate(itemIndex);
     }
 
     function statusItemAt(index) {
@@ -706,6 +731,7 @@ Rectangle {
                 materialFallback: menuBar.popupMaterialFallback
 
                 onTriggered: (itemIndex, item) => menuBar.appMenuTriggered(index, itemIndex, item)
+                onMenuSwitchRequested: (delta) => menuBar.moveMenuSelection(index, delta)
                 onOpened: {
                     menuBar.openMenuIndex = index;
                     menuBar.appMenuOpened(index);

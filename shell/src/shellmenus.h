@@ -23,10 +23,18 @@ QString devReturnDesktop();
 // to `dragonfruit` on PATH).
 QString devBin();
 
+// The Recent Items submenu (T230): one row per recent application,
+// `recent-app:<desktopId>`, or one disabled row with its reason when there is
+// no history. `recentApps` rows are `{desktopId, name}` maps.
+QVariantList recentItemsMenu(const QVariantList &recentApps);
+
 // The fixed system menu (the brand mark), leftmost on the bar. Rows are
 // `{label, shortcut, action, enabled}` maps, or `{type: "separator"}`. When
 // `devReturn` is non-empty a `quit-to-return` row labeled
-// "Quit to <devReturn>" is inserted before Lock Screen.
-QVariantList systemMenu(const QString &userName, const QString &devReturn);
+// "Quit to <devReturn>" is inserted before Lock Screen. `recentApps` feeds
+// the Recent Items submenu; empty history still renders the submenu with an
+// explicit disabled reason.
+QVariantList systemMenu(const QString &userName, const QString &devReturn,
+                        const QVariantList &recentApps = {});
 
 } // namespace ShellMenus

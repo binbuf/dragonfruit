@@ -27,6 +27,8 @@ Item {
 
     readonly property bool isSeparator: root.entry.type === "separator"
     readonly property bool hasSubmenu: root.entry.type === "submenu"
+    readonly property bool disabled: root.entry.enabled === false
+    readonly property string disabledReason: root.entry.disabledReason || ""
 
     // The row contributes its natural width to the Column first, then
     // stretches to the resolved menu width so every highlight bar spans the
@@ -136,7 +138,11 @@ Item {
 
     Accessible.role: Accessible.MenuItem
     Accessible.name: root.entry.label || ""
-    Accessible.description: root.entry.shortcut || ""
+    // A disabled row's reason is the useful description; an enabled row keeps
+    // its chord hint. Checked state is exposed separately below.
+    Accessible.description: root.disabled && root.disabledReason.length > 0
+                            ? root.disabledReason
+                            : (root.entry.shortcut || "")
     Accessible.checkable: root.entry.checkable === true
     Accessible.checked: root.entry.checked === true
     Accessible.ignored: root.isSeparator

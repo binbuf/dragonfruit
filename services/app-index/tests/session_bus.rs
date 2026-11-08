@@ -1071,3 +1071,54 @@ fn a_standard_registration_keys_the_bridge_by_the_owner() {
     );
     assert_eq!(windows[0]["owner"], app_id);
 }
+
+// T230: focus is the point where the shell knows the compositor's app
+// identity for a window registered without one. app-index re-keys the
+// registration and re-publishes the bridge model under that id.
+#[test]
+fn focusing_a_window_rekeys_its_dbusmenu_registration() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("menubridge-focus");
+    fixture.seed();
+    let _service = serve_appmenu(&bus, &fixture);
+    let (_broker_service, broker) = serve_fake_broker(&bus);
+    let client = bus.connect();
+    let (app, _events) = mock_global_menu(&bus, "org.example.MockMenu");
+
+    let registered: bool = app
+        .call_method(
+            Some(APP_MENU_REGISTRAR_NAME),
+            APP_MENU_REGISTRAR_PATH,
+            Some(APP_MENU_REGISTRAR_INTERFACE),
+            "RegisterWindow",
+            &(3u32, ObjectPath::try_from("/MenuBar").unwrap()),
+        )
+        .expect("call RegisterWindow")
+        .body()
+        .deserialize()
+        .expect("registration reply");
+    assert!(registered);
+
+    let focused = call::<bool>(&client, "FocusWindow", (3u32, "org.example.MockMenu")).unwrap();
+    assert!(focused);
+    let windows = json(&call::<String>(&client, "AppMenuWindows", ()).unwrap());
+    assert_eq!(windows[0]["appId"], "org.example.MockMenu");
+
+    // The bridge re-published under the focused identity (and withdrew the
+    // old owner-keyed model).
+    let published = broker.published.lock().unwrap().clone();
+    assert_eq!(
+        published.last().map(|row| row.0.as_str()),
+        Some("org.example.MockMenu")
+    );
+    assert!(broker
+        .withdrawn
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|app_id| app_id.starts_with(':')));
+
+    // Repeating the same focus is a no-op, and an unknown window is a miss.
+    assert!(call::<bool>(&client, "FocusWindow", (3u32, "org.example.MockMenu")).unwrap());
+    assert!(!call::<bool>(&client, "FocusWindow", (99u32, "org.example.MockMenu")).unwrap());
+}

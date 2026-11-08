@@ -5002,6 +5002,33 @@ void ShellProtocol::emitDockState()
     emit overviewDataChanged();
 }
 
+quintptr ShellProtocol::focusedWindowId() const
+{
+    if (!m_focused)
+        return 0;
+    return m_toplevels.value(m_focused).windowId;
+}
+
+bool ShellProtocol::focusedWindowZoomed() const
+{
+    if (!m_focused)
+        return false;
+    return (m_toplevels.value(m_focused).state & 0x2u) != 0;
+}
+
+void ShellProtocol::setToplevelZoomed(const QString &windowId, bool zoomed)
+{
+    bool ok = false;
+    const quintptr id = windowId.toULongLong(&ok);
+    df_toplevel *toplevel = ok ? toplevelForId(id) : nullptr;
+    if (!toplevel)
+        return;
+    if (zoomed)
+        df_toplevel_zoom(toplevel);
+    else
+        df_toplevel_unzoom(toplevel);
+}
+
 df_toplevel *ShellProtocol::toplevelForId(quintptr windowId) const
 {
     return m_toplevelById.value(windowId, nullptr);

@@ -47,6 +47,10 @@ public:
     // absent or the reply does not parse.
     ResolvedMenu resolveFocused() const;
 
+    // Resolve one app id's menu (the shell asks with the canonical desktop id
+    // so a native publisher and the focus can agree, T230).
+    ResolvedMenu resolve(const QString &appId) const;
+
     // Pure decoder, exposed for headless tests.
     static ResolvedMenu parseResolved(const QString &json);
 

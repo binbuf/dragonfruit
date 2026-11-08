@@ -1233,6 +1233,13 @@ an explicit restart) the compositor mints a replacement one-time token and
 rewrites that role's hand-off file, so systemd can restart the shell without
 restarting the compositor/session.
 
+The `df_toplevel_manager` bind replays the current scene: outputs, workspaces,
+the toplevel snapshot, and the **current focused toplevel**. The focus replay
+is what lets a shell that starts after the first app window was already
+activated resolve the correct application menu instead of the empty desktop
+(T230). The synthetic `query focus` command exposes the same active window for
+headless tests: `focus <id> <app_id|-> <title>` or `focus none`.
+
 Chrome composites **above** the window space in both backends, and the
 above-window band is ordered `top` below `overlay`: the Applications drawer,
 menus, and other overlays render above the persistent menu bar and Dock.

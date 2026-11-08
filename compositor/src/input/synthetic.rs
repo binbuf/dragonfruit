@@ -33,6 +33,7 @@
 //! touch-up <slot> | touch-frame
 //! query decorations
 //! query identity
+//! query focus
 //! query window-menu
 //! query motion
 //! query events
@@ -688,6 +689,10 @@ pub enum SyntheticCommand {
     /// `end`. The zoo matrix records this before `app-index` resolves the
     /// desktop entry, so a Wayland app's identity is observable too.
     QueryIdentity,
+    /// Read-only keyboard-focus introspection (T230): the active window id,
+    /// raw app id, and title, followed by `end`. `none` when no client window
+    /// is active (the desktop or a chrome surface holds focus).
+    QueryFocus,
     /// Read-only window-menu introspection (T-01.4).
     QueryWindowMenu,
     /// Read-only lifecycle-motion introspection (T-02.1b/T-02.2). One line
@@ -967,6 +972,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("decorations") => SyntheticCommand::QueryDecorations,
             Some("scale") => SyntheticCommand::QueryScale,
             Some("identity") => SyntheticCommand::QueryIdentity,
+            Some("focus") => SyntheticCommand::QueryFocus,
             Some("window-menu") => SyntheticCommand::QueryWindowMenu,
             // `motion` is the T-02.2 name; `appear` is kept as an alias so
             // the T-02.1b tests and scripts keep working.
@@ -989,7 +995,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("magnifier") => SyntheticCommand::QueryMagnifier,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, scale, identity, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, menubar, lock, session, magnifier)"
+                    "query requires a known subject (decorations, scale, identity, focus, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, menubar, lock, session, magnifier)"
                         .into(),
                 );
             }
@@ -1258,6 +1264,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryIdentity => {
                 unreachable!("query identity is handled by apply_datagram")
             }
+            SyntheticCommand::QueryFocus => {
+                unreachable!("query focus is handled by apply_datagram")
+            }
             SyntheticCommand::QueryWindowMenu => {
                 unreachable!("query window-menu is handled by apply_datagram")
             }
@@ -1435,6 +1444,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryIdentity) => {
                 if let Some((socket, peer)) = &reply {
                     let report = identity_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryFocus) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = focus_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1935,6 +1953,27 @@ fn identity_report(state: &DfState) -> String {
     }
     out.push_str("end\n");
     out
+}
+
+/// The `query focus` report (T230): the active client window, if any.
+///
+/// `focus <id> <app_id|-> <title>` followed by `end`, or `focus none` when the
+/// desktop or a chrome surface holds keyboard focus. This is the same active
+/// window the shell's `df_toplevel_manager.focused` event names.
+fn focus_report(state: &DfState) -> String {
+    let Some(window) = state.active_window.as_ref() else {
+        return "focus none\nend\n".to_owned();
+    };
+    let Some(id) = state.windows.id(window) else {
+        return "focus none\nend\n".to_owned();
+    };
+    let app_id = state.windows.app_id(window).unwrap_or("-");
+    let title = state
+        .windows
+        .title(window)
+        .map(|title| title.replace('\n', " "))
+        .unwrap_or_default();
+    format!("focus {} {} {}\nend\n", id.0, app_id, title)
 }
 
 /// The `query window-menu` report (T-01.4).
@@ -2883,6 +2922,10 @@ mod tests {
         assert_eq!(
             parse_command("query identity").unwrap(),
             SyntheticCommand::QueryIdentity
+        );
+        assert_eq!(
+            parse_command("query focus").unwrap(),
+            SyntheticCommand::QueryFocus
         );
         assert_eq!(
             parse_command("query magnifier").unwrap(),

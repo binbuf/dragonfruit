@@ -52,6 +52,12 @@ pub const ACTION_HIDE: &str = "hide";
 pub const ACTION_HIDE_OTHERS: &str = "hide-others";
 pub const ACTION_SHOW_ALL: &str = "show-all";
 
+/// The shell-owned window menu actions (T230). The compositor performs them;
+/// the broker only carries the rows and their live state.
+pub const ACTION_WINDOW_MINIMIZE: &str = "window.minimize";
+pub const ACTION_WINDOW_ACTIVATE_PREFIX: &str = "window.activate:";
+pub const ACTION_WINDOW_BRING_ALL: &str = "window.bring-all-to-front";
+
 /// The resolution tier, in priority order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tier {
@@ -108,6 +114,19 @@ fn array_or_empty(value: Option<&Value>) -> Vec<Value> {
     value.and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
+/// One open window of an app, for the synthesized Window menu (T230).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WindowEntry {
+    /// The compositor-stable window id the shell addresses.
+    pub window_id: String,
+    /// The window title (the app name when the client publishes none).
+    pub title: String,
+    /// Whether this is the focused window.
+    pub focused: bool,
+    /// Whether this window is minimized.
+    pub minimized: bool,
+}
+
 /// One app's window state, as the shell's Dock projection carries it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowState {
@@ -117,6 +136,8 @@ pub struct WindowState {
     pub windows: u32,
     /// True only when *all* the app's windows are minimized (hidden).
     pub minimized: bool,
+    /// The app's windows, newest first (the shell's `windowList`).
+    pub window_list: Vec<WindowEntry>,
 }
 
 impl WindowState {
@@ -277,8 +298,19 @@ fn is_separator(value: &Value) -> bool {
     string_field(value, "type") == "separator"
 }
 
-/// A synthesized fixed-application-menu row.
+/// A synthesized menu row. A disabled row carries the reason the shell can
+/// show to the user; an enabled row never carries a stale reason.
 fn entry(label: &str, action: &str, shortcut: Option<&str>, enabled: bool) -> Value {
+    entry_with_reason(label, action, shortcut, enabled, None)
+}
+
+fn entry_with_reason(
+    label: &str,
+    action: &str,
+    shortcut: Option<&str>,
+    enabled: bool,
+    disabled_reason: Option<&str>,
+) -> Value {
     let mut object = serde_json::Map::new();
     object.insert("label".to_owned(), Value::String(label.to_owned()));
     if let Some(shortcut) = shortcut {
@@ -286,11 +318,100 @@ fn entry(label: &str, action: &str, shortcut: Option<&str>, enabled: bool) -> Va
     }
     object.insert("action".to_owned(), Value::String(action.to_owned()));
     object.insert("enabled".to_owned(), Value::Bool(enabled));
+    if !enabled {
+        if let Some(reason) = disabled_reason {
+            object.insert(
+                "disabledReason".to_owned(),
+                Value::String(reason.to_owned()),
+            );
+        }
+    }
     Value::Object(object)
+}
+
+fn submenu_entry(label: &str, items: Vec<Value>) -> Value {
+    json!({ "label": label, "type": "submenu", "submenu": items })
 }
 
 fn separator() -> Value {
     json!({ "type": "separator" })
+}
+
+/// The Services menu (T230). Linux has no macOS-style service registry, so the
+/// standard row is always present but explicitly disabled with its reason;
+/// an app that publishes its own fixed menu can replace it.
+fn services_menu() -> Value {
+    submenu_entry(
+        "Services",
+        vec![entry_with_reason(
+            "No Services Available",
+            "services.none",
+            None,
+            false,
+            Some("No application has registered a service."),
+        )],
+    )
+}
+
+/// Whether a menu list already carries a top-level menu with `title`.
+pub fn has_menu_title(menus: &[Value], title: &str) -> bool {
+    menus.iter().any(|menu| {
+        menu.get("title")
+            .and_then(Value::as_str)
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(title))
+    })
+}
+
+/// The synthesized dynamic Window menu (T230): Minimize, the app's open
+/// windows with the focused one checked, then Bring All to Front. Rows carry
+/// `disabledReason` when there is nothing to act on.
+pub fn synthesized_window_menu(app_name: &str, state: &WindowState) -> Vec<Value> {
+    let has_visible = state.window_list.iter().any(|window| !window.minimized);
+    let mut rows = vec![
+        entry_with_reason(
+            "Minimize",
+            ACTION_WINDOW_MINIMIZE,
+            Some("Super+M"),
+            has_visible,
+            Some("Every window is already minimized."),
+        ),
+        separator(),
+    ];
+    if state.window_list.is_empty() {
+        rows.push(entry_with_reason(
+            "No Windows",
+            "window.none",
+            None,
+            false,
+            Some("This app has no open windows."),
+        ));
+    } else {
+        for window in &state.window_list {
+            let label = if window.title.trim().is_empty() {
+                app_name
+            } else {
+                window.title.as_str()
+            };
+            let action = format!("{ACTION_WINDOW_ACTIVATE_PREFIX}{}", window.window_id);
+            let mut row = entry(label, &action, None, true);
+            if let Some(object) = row.as_object_mut() {
+                if window.focused {
+                    object.insert("checked".to_owned(), Value::Bool(true));
+                    object.insert("checkable".to_owned(), Value::Bool(true));
+                }
+            }
+            rows.push(row);
+        }
+    }
+    rows.push(separator());
+    rows.push(entry_with_reason(
+        "Bring All to Front",
+        ACTION_WINDOW_BRING_ALL,
+        None,
+        !state.window_list.is_empty(),
+        Some("This app has no open windows."),
+    ));
+    rows
 }
 
 /// The standard fixed application menu, synthesized from the app's name and
@@ -300,23 +421,56 @@ pub fn synthesized_application_menu(app_name: &str, verbs: HideVerbs) -> Vec<Val
     vec![
         entry(&format!("About {app_name}"), "about", None, true),
         entry("Settings\u{2026}", "settings", Some("Super+,"), true),
+        services_menu(),
         separator(),
-        entry(
+        entry_with_reason(
             &format!("Hide {app_name}"),
             ACTION_HIDE,
             Some("Super+H"),
             verbs.hide,
+            Some("The app has no visible window."),
         ),
-        entry(
+        entry_with_reason(
             "Hide Others",
             ACTION_HIDE_OTHERS,
             Some("Super+Alt+H"),
             verbs.hide_others,
+            Some("No other app has a visible window."),
         ),
-        entry("Show All", ACTION_SHOW_ALL, None, verbs.show_all),
+        entry_with_reason(
+            "Show All",
+            ACTION_SHOW_ALL,
+            None,
+            verbs.show_all,
+            Some("No hidden app to show."),
+        ),
         separator(),
         entry(&format!("Quit {app_name}"), "quit", Some("Super+Q"), true),
     ]
+}
+
+/// Insert the Services submenu into a published fixed menu when it carries
+/// none. It goes after the app's Settings row (or after the first row when
+/// there is no Settings row), matching the macOS app-menu order. Rows other
+/// than the inserted one stay byte-for-byte as the app published them.
+fn ensure_services_row(rows: Vec<Value>) -> Vec<Value> {
+    if rows.iter().any(|row| {
+        row.get("type").and_then(Value::as_str) == Some("submenu")
+            && row
+                .get("label")
+                .and_then(Value::as_str)
+                .is_some_and(|label| label.eq_ignore_ascii_case("Services"))
+    }) {
+        return rows;
+    }
+    let insert_at = rows
+        .iter()
+        .position(|row| row.get("action").and_then(Value::as_str) == Some("settings"))
+        .map(|index| index + 1)
+        .unwrap_or_else(|| rows.len().min(1));
+    let mut rows = rows;
+    rows.insert(insert_at, services_menu());
+    rows
 }
 
 /// The live enabled flag a row's action maps to, if it is one of the hide
@@ -354,7 +508,7 @@ pub fn fixed_application_menu(
     let Some(published) = published.filter(|rows| !rows.is_empty()) else {
         return synthesized_application_menu(app_name, verbs);
     };
-    published
+    let rows: Vec<Value> = published
         .iter()
         .map(|row| {
             if is_separator(row) {
@@ -364,12 +518,27 @@ pub fn fixed_application_menu(
                 Some(enabled) => {
                     let mut object = row.as_object().cloned().unwrap_or_default();
                     object.insert("enabled".to_owned(), Value::Bool(enabled));
+                    if enabled {
+                        object.remove("disabledReason");
+                    } else if !object.contains_key("disabledReason") {
+                        let reason = match string_field(row, "action").as_str() {
+                            ACTION_HIDE => "The app has no visible window.",
+                            ACTION_HIDE_OTHERS => "No other app has a visible window.",
+                            ACTION_SHOW_ALL => "No hidden app to show.",
+                            _ => "This action is unavailable.",
+                        };
+                        object.insert(
+                            "disabledReason".to_owned(),
+                            Value::String(reason.to_owned()),
+                        );
+                    }
                     Value::Object(object)
                 }
                 None => row.clone(),
             }
         })
-        .collect()
+        .collect();
+    ensure_services_row(rows)
 }
 
 /// The broker's resolution state: publishers by app id, the current focus and
@@ -513,12 +682,53 @@ impl Broker {
         self.accelerators.focused_accelerators()
     }
 
-    /// Resolve a chord spec against the focused app, system chords first.
+    /// The focused app's live accelerator list, including rows the broker
+    /// synthesizes (the dynamic Window menu). Empty with no focus.
+    pub fn resolved_accelerators_focused(&self) -> Vec<Accelerator> {
+        self.visibility
+            .focused()
+            .map(|app_id| self.resolved_accelerators_for(app_id))
+            .unwrap_or_default()
+    }
+
+    /// One app's live accelerator list from its resolved menu view.
+    pub fn resolved_accelerators_for(&self, app_id: &str) -> Vec<Accelerator> {
+        let resolved = self.resolve(app_id);
+        let application_menu_items = resolved
+            .get("applicationMenuItems")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let menus = resolved
+            .get("menus")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        accelerators::extract_resolved(&application_menu_items, &menus)
+    }
+
+    /// Resolve a chord spec against the focused app, system chords first. The
+    /// live resolved view wins over a stale published table, so a synthesized
+    /// Window menu's `Super+M` dispatches exactly like a published row.
     pub fn resolve_accelerator(&self, spec: &str) -> Dispatch {
-        match Chord::parse(spec) {
-            Some(chord) => self.accelerators.resolve(&chord),
-            None => Dispatch::None,
+        let Some(chord) = Chord::parse(spec) else {
+            return Dispatch::None;
+        };
+        match self.accelerators.resolve(&chord) {
+            Dispatch::None => {}
+            other => return other,
         }
+        let Some(app_id) = self.visibility.focused() else {
+            return Dispatch::None;
+        };
+        self.resolved_accelerators_for(app_id)
+            .into_iter()
+            .find(|accelerator| accelerator.chord == chord)
+            .map(|accelerator| Dispatch::Application {
+                app_id: app_id.to_owned(),
+                action: accelerator.action,
+            })
+            .unwrap_or(Dispatch::None)
     }
 
     /// Replace the app window-state list from a JSON array. Returns false on a
@@ -544,6 +754,41 @@ impl Broker {
             if app_id.is_empty() {
                 continue;
             }
+            let window_list = object
+                .get("windowList")
+                .and_then(Value::as_array)
+                .map(|rows| {
+                    rows.iter()
+                        .filter_map(|row| {
+                            let row = row.as_object()?;
+                            let window_id = row
+                                .get("windowId")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_owned();
+                            if window_id.is_empty() {
+                                return None;
+                            }
+                            Some(WindowEntry {
+                                window_id,
+                                title: row
+                                    .get("title")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                                    .to_owned(),
+                                focused: row
+                                    .get("focused")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false),
+                                minimized: row
+                                    .get("minimized")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             apps.push(WindowState {
                 app_id,
                 windows: object.get("windows").and_then(Value::as_u64).unwrap_or(1) as u32,
@@ -551,6 +796,7 @@ impl Broker {
                     .get("minimized")
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
+                window_list,
             });
         }
         let changed = self.visibility.set_apps(apps);
@@ -577,18 +823,30 @@ impl Broker {
             publisher.map(|model| model.application_menu_items.as_slice()),
             &self.visibility,
         );
-        let menus = publisher
+        let mut menus = publisher
             .map(|model| model.menus.clone())
             .unwrap_or_default();
+        // T230: an app that exports no Window menu still gets the dynamic
+        // window list from the live compositor projection. Apps that publish
+        // their own Window menu keep it verbatim.
+        if !app_id.is_empty() && !has_menu_title(&menus, "Window") {
+            if let Some(state) = self.visibility.state_for(app_id) {
+                menus.push(json!({
+                    "title": "Window",
+                    "items": synthesized_window_menu(&app_name, state),
+                }));
+            }
+        }
         let tier = self.tier(app_id);
         // T-14.2b: the focus-scoped accelerator table the shell registers with
-        // the compositor while this window is focused.
-        let accelerators: Vec<Value> = self
-            .accelerators
-            .for_app(app_id)
-            .iter()
-            .map(Accelerator::to_json)
-            .collect();
+        // the compositor while this window is focused. It is derived from the
+        // resolved view (not only the published payload) so a synthesized
+        // Window menu's chord is included (T230).
+        let accelerators: Vec<Value> =
+            accelerators::extract_resolved(&application_menu_items, &menus)
+                .iter()
+                .map(Accelerator::to_json)
+                .collect();
         json!({
             "appId": app_id,
             "appName": app_name,
@@ -659,6 +917,7 @@ mod tests {
                     app_id: (*app_id).to_owned(),
                     windows: *windows,
                     minimized: *minimized,
+                    window_list: Vec::new(),
                 })
                 .collect(),
         );
@@ -707,12 +966,13 @@ mod tests {
         assert_eq!(resolved["appName"], "Settings");
         assert_eq!(resolved["tier"], TIER_NATIVE);
         let app_menu = resolved["applicationMenuItems"].as_array().unwrap();
-        assert_eq!(app_menu.len(), 8);
+        assert_eq!(app_menu.len(), 9);
         assert_eq!(app_menu[0]["label"], "About Settings");
+        assert_eq!(app_menu[2]["label"], "Services");
         // Live: focused+visible => Hide and Hide Others on, Show All off.
-        assert_eq!(app_menu[3]["enabled"], true);
-        assert_eq!(app_menu[4]["enabled"], false);
+        assert_eq!(app_menu[4]["enabled"], true);
         assert_eq!(app_menu[5]["enabled"], false);
+        assert_eq!(app_menu[6]["enabled"], false);
         // The published own menus pass through.
         let menus = resolved["menus"].as_array().unwrap();
         assert_eq!(menus[0]["title"], "File");
@@ -729,10 +989,14 @@ mod tests {
         assert_eq!(resolved["appName"], "Firefox");
         assert_eq!(resolved["tier"], TIER_NONE);
         let app_menu = resolved["applicationMenuItems"].as_array().unwrap();
-        assert_eq!(app_menu.len(), 8);
-        assert_eq!(app_menu[3]["label"], "Hide Firefox");
-        assert_eq!(app_menu[6]["type"], "separator");
-        assert_eq!(app_menu[7]["label"], "Quit Firefox");
+        assert_eq!(app_menu.len(), 9);
+        assert_eq!(app_menu[4]["label"], "Hide Firefox");
+        assert_eq!(app_menu[7]["type"], "separator");
+        assert_eq!(app_menu[8]["label"], "Quit Firefox");
+        // No published model => a synthesized dynamic Window menu follows.
+        let menus = resolved["menus"].as_array().unwrap();
+        assert_eq!(menus.len(), 1);
+        assert_eq!(menus[0]["title"], "Window");
     }
 
     #[test]
@@ -747,9 +1011,9 @@ mod tests {
         );
         let menu = broker.resolve("a");
         let app_menu = menu["applicationMenuItems"].as_array().unwrap();
-        assert_eq!(app_menu[3]["enabled"], true); // Hide a
-        assert_eq!(app_menu[4]["enabled"], true); // Hide Others
-        assert_eq!(app_menu[5]["enabled"], false); // Show All
+        assert_eq!(app_menu[4]["enabled"], true); // Hide a
+        assert_eq!(app_menu[5]["enabled"], true); // Hide Others
+        assert_eq!(app_menu[6]["enabled"], false); // Show All
 
         // Focus an app whose windows are all minimized: nothing to hide, but
         // Show All lights up because an app is hidden.
@@ -760,9 +1024,9 @@ mod tests {
         );
         let menu = broker.resolve("b");
         let app_menu = menu["applicationMenuItems"].as_array().unwrap();
-        assert_eq!(app_menu[3]["enabled"], false); // b is hidden itself
-        assert_eq!(app_menu[4]["enabled"], true); // a still visible
-        assert_eq!(app_menu[5]["enabled"], true); // b is hidden
+        assert_eq!(app_menu[4]["enabled"], false); // b is hidden itself
+        assert_eq!(app_menu[5]["enabled"], true); // a still visible
+        assert_eq!(app_menu[6]["enabled"], true); // b is hidden
 
         // Hide every app: only Show All stays meaningful.
         broker.set_window_states(
@@ -771,9 +1035,9 @@ mod tests {
         );
         let menu = broker.resolve("a");
         let app_menu = menu["applicationMenuItems"].as_array().unwrap();
-        assert_eq!(app_menu[3]["enabled"], false);
         assert_eq!(app_menu[4]["enabled"], false);
-        assert_eq!(app_menu[5]["enabled"], true);
+        assert_eq!(app_menu[5]["enabled"], false);
+        assert_eq!(app_menu[6]["enabled"], true);
     }
 
     #[test]
@@ -786,13 +1050,18 @@ mod tests {
                 show_all: true,
             },
         );
-        assert_eq!(menu.len(), 8);
-        assert_eq!(menu[3]["action"], ACTION_HIDE);
-        assert_eq!(menu[3]["enabled"], true);
-        assert_eq!(menu[4]["action"], ACTION_HIDE_OTHERS);
-        assert_eq!(menu[4]["enabled"], false);
-        assert_eq!(menu[5]["action"], ACTION_SHOW_ALL);
-        assert_eq!(menu[5]["enabled"], true);
+        assert_eq!(menu.len(), 9);
+        assert_eq!(menu[2]["label"], "Services");
+        assert_eq!(menu[4]["action"], ACTION_HIDE);
+        assert_eq!(menu[4]["enabled"], true);
+        assert_eq!(menu[5]["action"], ACTION_HIDE_OTHERS);
+        assert_eq!(menu[5]["enabled"], false);
+        assert_eq!(
+            menu[5]["disabledReason"],
+            "No other app has a visible window."
+        );
+        assert_eq!(menu[6]["action"], ACTION_SHOW_ALL);
+        assert_eq!(menu[6]["enabled"], true);
     }
 
     #[test]
@@ -807,13 +1076,21 @@ mod tests {
             &[("org.dragonfruit.Settings", 1, false)],
         );
         let menu = fixed_application_menu("Settings", Some(&published), &visibility);
+        // The missing Services row is inserted after the first row; the
+        // published rows keep their order and fields.
         assert_eq!(menu[0]["label"], "Hide Settings");
         assert_eq!(menu[0]["shortcut"], "Super+H");
         assert_eq!(menu[0]["enabled"], true);
-        assert_eq!(menu[1]["enabled"], false);
+        assert_eq!(menu[1]["label"], "Services");
+        assert_eq!(menu[2]["label"], "Hide Others");
         assert_eq!(menu[2]["enabled"], false);
+        assert_eq!(
+            menu[2]["disabledReason"],
+            "No other app has a visible window."
+        );
+        assert_eq!(menu[3]["enabled"], false);
         // An unrelated field survives the rewrite.
-        assert_eq!(menu[2]["checked"], true);
+        assert_eq!(menu[3]["checked"], true);
     }
 
     #[test]
@@ -855,7 +1132,7 @@ mod tests {
         // The fixed application menu is still synthesized.
         assert_eq!(
             resolved["applicationMenuItems"].as_array().unwrap().len(),
-            8
+            9
         );
 
         // A native publication over the same id switches the tier back.
@@ -944,5 +1221,78 @@ mod tests {
         ));
         assert_eq!(broker.visibility().apps().len(), 2);
         assert!(!broker.set_window_states("{}"));
+    }
+
+    #[test]
+    fn the_dynamic_window_menu_lists_windows_and_checks_the_focused_one() {
+        let mut broker = Broker::new();
+        broker.set_focused("firefox");
+        broker.set_window_states(
+            r#"[ { "appId": "firefox", "windows": 2, "minimized": false,
+                  "windowList": [
+                    { "windowId": "11", "title": "Docs", "focused": true, "minimized": false },
+                    { "windowId": "12", "title": "News", "focused": false, "minimized": false }
+                  ] } ]"#,
+        );
+        let resolved = broker.resolve("firefox");
+        let menus = resolved["menus"].as_array().unwrap();
+        let window_menu = menus
+            .iter()
+            .find(|menu| menu["title"] == "Window")
+            .expect("a no-export app gets a Window menu");
+        let rows = window_menu["items"].as_array().unwrap();
+        assert_eq!(rows[0]["action"], ACTION_WINDOW_MINIMIZE);
+        assert_eq!(rows[0]["enabled"], true);
+        assert_eq!(rows[2]["label"], "Docs");
+        assert_eq!(rows[2]["action"], "window.activate:11");
+        assert_eq!(rows[2]["checked"], true);
+        assert_eq!(rows[3]["label"], "News");
+        assert_eq!(rows[3].get("checked"), None);
+        assert_eq!(rows[5]["action"], ACTION_WINDOW_BRING_ALL);
+        assert_eq!(rows[5]["enabled"], true);
+    }
+
+    #[test]
+    fn a_no_export_app_dispatches_its_synthesized_accelerators() {
+        let mut broker = Broker::new();
+        broker.set_focused("firefox");
+        broker.set_window_states(
+            r#"[ { "appId": "firefox", "windows": 1, "minimized": false,
+                  "windowList": [ { "windowId": "5", "title": "Docs", "focused": true } ] } ]"#,
+        );
+        // The fixed application menu and the synthesized Window menu both
+        // carry focus-scoped chords, even though the app published nothing.
+        assert!(matches!(
+            broker.resolve_accelerator("Super+Q"),
+            Dispatch::Application { ref action, .. } if action == "quit"
+        ));
+        assert!(matches!(
+            broker.resolve_accelerator("Super+M"),
+            Dispatch::Application { ref action, .. } if action == ACTION_WINDOW_MINIMIZE
+        ));
+        assert!(broker
+            .resolved_accelerators_focused()
+            .iter()
+            .any(|accelerator| {
+                accelerator.action == ACTION_WINDOW_MINIMIZE && accelerator.chord.key() == "M"
+            }));
+    }
+
+    #[test]
+    fn an_exported_window_menu_is_not_duplicated() {
+        let mut broker = Broker::new();
+        broker.publish("app", settings_fixture());
+        broker.set_focused("app");
+        broker.set_window_states(
+            r#"[ { "appId": "app", "windows": 1, "minimized": false,
+                  "windowList": [ { "windowId": "1", "title": "One", "focused": true } ] } ]"#,
+        );
+        let resolved = broker.resolve("app");
+        let menus = resolved["menus"].as_array().unwrap();
+        let count = menus
+            .iter()
+            .filter(|menu| menu["title"] == "Window")
+            .count();
+        assert_eq!(count, 1, "the app's own Window menu wins");
     }
 }

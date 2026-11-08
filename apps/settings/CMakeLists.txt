@@ -107,9 +107,11 @@ target_link_libraries(dragonfruit-settings-ui PUBLIC
 
 qt_add_executable(dragonfruit-settings
     main.cpp
+    MenuPublisher.cpp
+    MenuPublisher.h
 )
 target_link_libraries(dragonfruit-settings PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Quick
+    Qt6::Core Qt6::Gui Qt6::Quick Qt6::DBus
     dragonfruit-system-font
     dragonfruit-i18n
     dragonfruit-settings-uiplugin

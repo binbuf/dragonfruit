@@ -1522,7 +1522,7 @@ pub const KEYS: &[KeySpec] = &[
         min: Some(0.0),
         max: Some(50.0),
         owner: "apps/settings",
-        consumer: "apps/settings (recent-items consumer deferred)",
+        consumer: "apps/settings, shell/MenuBar system menu",
         since: 16,
         summary: "How many recent documents, applications, and servers to remember.",
     },

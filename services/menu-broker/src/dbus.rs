@@ -173,7 +173,7 @@ impl MenuBroker1 {
     fn accelerators(&self, app_id: &str) -> String {
         let broker = lock(&self.broker);
         let rows: Vec<serde_json::Value> = broker
-            .accelerators_for(app_id)
+            .resolved_accelerators_for(app_id)
             .iter()
             .map(crate::accelerators::Accelerator::to_json)
             .collect();
@@ -184,7 +184,7 @@ impl MenuBroker1 {
     fn focused_accelerators(&self) -> String {
         let broker = lock(&self.broker);
         let rows: Vec<serde_json::Value> = broker
-            .focused_accelerators()
+            .resolved_accelerators_focused()
             .iter()
             .map(crate::accelerators::Accelerator::to_json)
             .collect();

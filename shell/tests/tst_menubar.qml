@@ -1628,6 +1628,89 @@ Item {
             compare(triggeredSpy.signalArguments[0][2].action, "hide-others");
         }
 
+        // -- Keyboard navigation and dynamic rows (T230) --------------------
+
+        function test_keyboard_navigation_skips_disabled_and_honours_checked() {
+            var fixed = fixedMenus();
+            fixed.applicationMenuItems = [
+                { label: "About Test", action: "about" },
+                { type: "separator" },
+                { label: "Hide Test", action: "hide", enabled: false,
+                  disabledReason: "The app has no visible window." },
+                { label: "Hide Others", action: "hide-others", enabled: true },
+                { label: "Show All", action: "show-all", enabled: true, checked: true,
+                  checkable: true }
+            ];
+            var bar = make(menuBarComponent, {
+                appName: "Test",
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            triggeredSpy.target = bar;
+            triggeredSpy.clear();
+            var app = bar.appMenuAt(1);
+            bar.openMenu(1);
+            waitForRendering(stage);
+            // The first enabled row is highlighted; Down skips the disabled
+            // Hide row and lands on Hide Others.
+            compare(app.highlightedIndex, 0);
+            keyClick(Qt.Key_Down);
+            compare(app.highlightedIndex, 3);
+            compare(app.entries[2].enabled, false);
+            compare(app.entries[2].disabledReason,
+                    "The app has no visible window.");
+            compare(app.entries[4].checked, true);
+            compare(app.entries[4].checkable, true);
+            keyClick(Qt.Key_Return);
+            compare(triggeredSpy.count, 1);
+            compare(triggeredSpy.signalArguments[0][2].action, "hide-others");
+        }
+
+        function test_type_ahead_selects_a_row_by_prefix() {
+            var fixed = fixedMenus();
+            fixed.applicationMenuItems = [
+                { label: "About Test", action: "about" },
+                { label: "Settings", action: "settings" },
+                { label: "Show All", action: "show-all" }
+            ];
+            var bar = make(menuBarComponent, {
+                appName: "Test",
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            var app = bar.appMenuAt(1);
+            bar.openMenu(1);
+            waitForRendering(stage);
+            app.typeAhead("sh");
+            compare(app.highlightedIndex, 2);
+            app.typeAhead("se");
+            compare(app.highlightedIndex, 1);
+        }
+
+        function test_left_right_switch_top_level_menus() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            bar.openMenu(0);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, 0);
+            keyClick(Qt.Key_Right);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, 1);
+            keyClick(Qt.Key_Right);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, 2);
+            keyClick(Qt.Key_Left);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, 1);
+            keyClick(Qt.Key_Escape);
+            compare(bar.openMenuIndex, -1);
+        }
+
         // -- StatusNotifier tray items (T-14.3) -----------------------------
 
         // A third-party tray item renders in the same status row as the
@@ -1671,6 +1754,132 @@ Item {
             bar.closeTrayMenu();
             verify(!bar.trayMenuOpen);
             verify(!menu.open);
+        }
+
+        // -- T230: menu-bar business logic --------------------------------
+
+        // A disabled row carries its reason into the normalized entry and the
+        // re-emitted model; a checked row keeps its check state.
+        function test_disabled_reasons_and_checked_rows() {
+            var bar = make(menuBarComponent, {
+                appName: "Test",
+                applicationMenuItems: [
+                    { label: "Hide Test", action: "hide", enabled: false,
+                      disabledReason: "The app has no visible window." },
+                    { label: "Show All", action: "show-all", enabled: true }
+                ],
+                appMenuModel: [ { title: "View", items: [
+                    { label: "Sidebar", action: "view.sidebar",
+                      checked: true, checkable: true },
+                    { label: "Toolbar", action: "view.toolbar",
+                      checked: false, checkable: true }
+                ] } ]
+            });
+            var app = bar.appMenuAt(1);
+            compare(app.entries[0].disabledReason,
+                    "The app has no visible window.");
+            compare(app.entries[0].enabled, false);
+            compare(app.menuModel[0].disabledReason,
+                    "The app has no visible window.");
+
+            var view = bar.appMenuAt(2);
+            compare(view.entries[0].checked, true);
+            compare(view.entries[0].checkable, true);
+            compare(view.entries[1].checked, false);
+            compare(view.menuModel[0].checked, true);
+            compare(view.menuModel[0].checkable, true);
+
+            // A disabled row is inert; the checked row still activates.
+            triggeredSpy.target = bar;
+            triggeredSpy.clear();
+            app.activate(0);
+            compare(triggeredSpy.count, 0);
+            view.activate(0);
+            compare(triggeredSpy.count, 1);
+            compare(triggeredSpy.signalArguments[0][2].action, "view.sidebar");
+        }
+
+        // Type-ahead accumulates printable keys and moves the highlight to the
+        // next enabled row whose label starts with the buffer.
+        function test_type_ahead_moves_the_highlight() {
+            var bar = make(menuBarComponent, {
+                appName: "Test",
+                applicationMenuItems: [ { label: "Quit", action: "quit" } ],
+                appMenuModel: [ { title: "File", items: [
+                    { label: "New", action: "file.new" },
+                    { label: "Open", action: "file.open" },
+                    { label: "Save", action: "file.save" },
+                    { label: "Save As", action: "file.save-as" }
+                ] } ]
+            });
+            var file = bar.appMenuAt(2);
+            file.openMenu();
+            verify(file.open);
+
+            file.typeAhead("s");
+            compare(file.highlightedIndex, 2, "S selects Save");
+            file.typeAhead("a");
+            compare(file.highlightedIndex, 3, "SA narrows to Save As");
+            file.clearTypeAhead();
+            compare(file.typeAheadBuffer, "");
+
+            // A disabled row is skipped by type-ahead.
+            file.closeMenu();
+            bar.appMenuModel = [ { title: "Edit", items: [
+                { label: "Copy", action: "edit.copy", enabled: false },
+                { label: "Cut", action: "edit.cut" }
+            ] } ];
+            var edit = bar.appMenuAt(2);
+            edit.openMenu();
+            edit.typeAhead("c");
+            compare(edit.highlightedIndex, 1, "disabled Copy is skipped");
+            edit.closeMenu();
+        }
+
+        // Left/Right at the top level moves between sibling menus, wrapping
+        // and skipping an empty menu.
+        function test_left_right_switches_top_level_menus() {
+            var bar = make(menuBarComponent, {
+                appName: "Test",
+                systemMenuItems: [ { label: "About This System", action: "about-system" } ],
+                applicationMenuItems: [ { label: "Quit", action: "quit" } ],
+                appMenuModel: [
+                    { title: "File", items: [ { label: "New", action: "file.new" } ] },
+                    { title: "Edit", items: [ { label: "Cut", action: "edit.cut" } ] }
+                ]
+            });
+            bar.openMenu(1);
+            var app = bar.appMenuAt(1);
+            app.menuSwitchRequested(1);
+            compare(bar.openMenuIndex, 2, "right moves to File");
+            bar.appMenuAt(2).menuSwitchRequested(1);
+            compare(bar.openMenuIndex, 3, "right moves to Edit");
+            bar.appMenuAt(3).menuSwitchRequested(1);
+            compare(bar.openMenuIndex, 0, "right wraps to the system menu");
+            bar.closeMenus();
+        }
+
+        // A submenu near the right edge flips to the left; one with room
+        // opens to the right.
+        function test_submenu_direction_follows_the_window_edge() {
+            var bar = make(menuBarComponent, {
+                appName: "Test",
+                applicationMenuItems: [ { label: "Quit", action: "quit" } ],
+                appMenuModel: [ { title: "File", items: [
+                    { label: "Open With", type: "submenu", submenu: [
+                        { label: "Text Editor", action: "open.text" }
+                    ] }
+                ] } ]
+            });
+            var file = bar.appMenuAt(2);
+            file.openMenu();
+            file.openSubmenu(0);
+            verify(file.submenuEntries.length > 0);
+            file.popup.x = 0;
+            verify(!file.submenuFlips, "room on the right");
+            file.popup.x = stage.width - 20;
+            verify(file.submenuFlips, "near the right edge flips left");
+            file.closeMenu();
         }
     }
 }

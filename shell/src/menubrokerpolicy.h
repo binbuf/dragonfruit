@@ -9,7 +9,9 @@
 // QML, Wayland, or D-Bus.
 #pragma once
 
+#include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 
 // The live enabled state of the fixed application menu's hide verbs.
@@ -45,6 +47,32 @@ QVariantList fixedApplicationMenu(const QString &appName, const AppMenuLiveState
 // label. Used when the shell consumes a broker-resolved published menu.
 QVariantList applyAppMenuLiveState(const QVariantList &published,
                                    const AppMenuLiveState &state);
+
+// The synthesized dynamic Window menu (T230): Minimize, one row per open
+// window of `appId` with the focused one checked, then Bring All to Front.
+// Empty when `appId` is empty or has no app-level entry. Mirrors the broker's
+// `synthesized_window_menu`.
+QVariantList windowMenu(const QVariantList &entries, const QString &appId,
+                        const QString &appName);
+
+// Whether a top-level menu list already carries `title` (case-insensitive).
+// Used to avoid appending a second Window menu.
+bool hasMenuTitle(const QVariantList &menus, const QString &title);
+
+// T230: the compositor window ids Hide <App> should minimize: every visible
+// (non-minimized) window of `appId`, or every visible window of every *other*
+// app when `others` is true. Empty when there is nothing to hide.
+QStringList visibleWindowIds(const QVariantList &entries, const QString &appId,
+                             bool others = false);
+
+// Drop tracked ids whose windows no longer exist (closed while hidden), so
+// Show All never addresses a stale compositor handle.
+QStringList retainWindowIds(const QVariantList &entries, const QSet<QString> &windowIds);
+
+// T230: every currently minimized window id in the projection. Show All falls
+// back to this set when the shell has no tracked Hide/Hide Others ids, so the
+// enabled verb is never inert.
+QStringList minimizedWindowIds(const QVariantList &entries);
 
 // A publishable application accelerator (T-14.2b): the opaque action the owner
 // handles and the chord that triggers it. The chord keeps the published

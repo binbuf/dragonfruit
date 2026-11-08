@@ -50,6 +50,8 @@ Item {
     signal triggered(int index, var item)
     signal opened()
     signal closed()
+    // Left/Right at the top level asks the owner to move to a sibling menu.
+    signal menuSwitchRequested(int delta)
 
     implicitWidth: (showLogo ? logo.implicitWidth : barLabel.implicitWidth)
                    + 2 * Theme.controls.menuBarMenu.barPaddingH
@@ -71,6 +73,7 @@ Item {
                 checked: m.checked === true,
                 checkable: m.checkable === true || m.checked === true,
                 keepOpen: m.keepOpen === true,
+                disabledReason: m.disabledReason || "",
                 submenu: m.submenu || m.items || []
             });
         }
@@ -98,6 +101,7 @@ Item {
                 checked: m.checked === true,
                 checkable: m.checkable === true || m.checked === true,
                 keepOpen: m.keepOpen === true,
+                disabledReason: m.disabledReason || "",
                 submenu: m.submenu || m.items || []
             });
         }
@@ -118,6 +122,7 @@ Item {
                 checked: e.checked,
                 checkable: e.checkable,
                 keepOpen: e.keepOpen,
+                disabledReason: e.disabledReason,
                 hasSubmenu: e.type === "submenu"
             });
         }
@@ -263,6 +268,50 @@ Item {
             root.closeMenu();
     }
 
+    // Type-ahead: printable keys accumulate in a short-lived buffer and move
+    // the highlight to the next enabled row whose label starts with it. The
+    // active list is the open submenu when there is one, else the main menu.
+    property string typeAheadBuffer: ""
+    function typeAheadMatch(prefix, list, current) {
+        var count = list.length;
+        for (var step = 0; step < count; ++step) {
+            var i = (current + 1 + step) % count;
+            var e = list[i];
+            if (!e || e.type === "separator" || !e.enabled)
+                continue;
+            if (e.label.toLocaleLowerCase().indexOf(prefix) === 0)
+                return i;
+        }
+        return -1;
+    }
+    function typeAhead(text) {
+        if (!text || text.length === 0)
+            return;
+        var lower = text.toLocaleLowerCase();
+        typeAheadBuffer += lower;
+        typeAheadTimer.restart();
+        var list = root.openSubmenuIndex >= 0 ? root.submenuEntries : root.entries;
+        var current = root.openSubmenuIndex >= 0 ? root.submenuHighlightedIndex
+                                                 : root.highlightedIndex;
+        var match = root.typeAheadMatch(root.typeAheadBuffer, list, current);
+        // A buffer that no longer matches starts over at the newest key, so a
+        // second word ("sh" then "se") never dead-ends on the old prefix.
+        if (match < 0 && typeAheadBuffer.length > lower.length) {
+            typeAheadBuffer = lower;
+            match = root.typeAheadMatch(lower, list, current);
+        }
+        if (match < 0)
+            return;
+        if (root.openSubmenuIndex >= 0)
+            root.submenuHighlightedIndex = match;
+        else
+            root.highlightedIndex = match;
+    }
+    function clearTypeAhead() {
+        typeAheadTimer.stop();
+        typeAheadBuffer = "";
+    }
+
     // A hover on a main-menu row highlights it and, after the submenu delay,
     // opens its submenu; hovering a plain row closes any open submenu. Moving
     // the pointer from the row into the nested panel fires no main-row hover,
@@ -358,12 +407,14 @@ Item {
         onOpened: {
             root.highlightedIndex = -1;
             root.closeSubmenu();
+            root.clearTypeAhead();
             root.moveHighlight(1);
             root.opened();
         }
         onClosed: {
             root.highlightedIndex = -1;
             root.closeSubmenu();
+            root.clearTypeAhead();
             root.closed();
         }
         onEscapePressed: {
@@ -390,13 +441,23 @@ Item {
                 event.accepted = true;
                 break;
             case Qt.Key_Right:
-                if (root.openSubmenuIndex < 0)
-                    root.openSubmenu(root.highlightedIndex);
+                if (root.openSubmenuIndex >= 0) {
+                    // Nested submenus are not supported yet; keep the open
+                    // panel rather than moving the top-level selection.
+                } else {
+                    var row = root.entries[root.highlightedIndex];
+                    if (row && row.type === "submenu" && row.enabled)
+                        root.openSubmenu(root.highlightedIndex);
+                    else
+                        root.menuSwitchRequested(1);
+                }
                 event.accepted = true;
                 break;
             case Qt.Key_Left:
                 if (root.openSubmenuIndex >= 0)
                     root.closeSubmenu();
+                else
+                    root.menuSwitchRequested(-1);
                 event.accepted = true;
                 break;
             case Qt.Key_Home:
@@ -417,6 +478,15 @@ Item {
                 else
                     root.activate(root.highlightedIndex);
                 event.accepted = true;
+                break;
+            default:
+                if (event.text.length > 0
+                        && !(event.modifiers & (Qt.ControlModifier
+                                                | Qt.AltModifier
+                                                | Qt.MetaModifier))) {
+                    root.typeAhead(event.text);
+                    event.accepted = true;
+                }
                 break;
             }
         }
@@ -445,6 +515,13 @@ Item {
         interval: Theme.controls.contextMenu.submenuDelay
         repeat: false
         onTriggered: root.openSubmenu(root.highlightedIndex)
+    }
+
+    Timer {
+        id: typeAheadTimer
+        interval: 700
+        repeat: false
+        onTriggered: root.typeAheadBuffer = ""
     }
 
     // The nested panel for the open submenu, beside its row. It is a sibling

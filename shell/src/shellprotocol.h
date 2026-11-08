@@ -705,6 +705,19 @@ public:
     // event the Dock projection consumes.
     void setToplevelMinimized(const QString &windowId, bool minimized);
 
+    // T230: the compositor-stable id of the focused window, or 0 when no
+    // window is focused. The shell uses it to map focus onto the DBusMenu
+    // registration and to route `dbusmenu:<id>` clicks back to the owner.
+    quintptr focusedWindowId() const;
+
+    // T230: whether the focused window is zoomed (`df_toplevel.state` bit 2).
+    bool focusedWindowZoomed() const;
+
+    // T230: zoom or unzoom one window (the Window menu's Zoom row). The
+    // compositor owns the geometry motion; this is the same `df_toplevel.zoom`
+    // request the titlebar double-click uses.
+    void setToplevelZoomed(const QString &windowId, bool zoomed);
+
     // Close every window of `appId` (the interim `Quit` action, T-10 section
     // 13). The compositor does not expose an app-level quit.
     void closeApp(const QString &appId);
