@@ -379,11 +379,6 @@ mod tests {
         VeilSpec::for_resolved(&resolved(scheme)).expect("veil resolves")
     }
 
-    fn contrast(a: f32, b: f32) -> f32 {
-        let (light, dark) = if a > b { (a, b) } else { (b, a) };
-        (light + 0.05) / (dark + 0.05)
-    }
-
     #[test]
     fn light_lut_matches_the_measured_black_samples_and_ends_at_95() {
         let veil = spec(Scheme::Light);
@@ -450,19 +445,40 @@ mod tests {
                 veil.adaptation(luma)
             );
         }
-        // The Dark baseline was not measured, so it must not inherit the
-        // Light luminance response.
+        // The Dark curve is the best guess fitted to the coverage captures:
+        // much subtler than Light, peaking near mid-grey and zero over white.
         let dark = spec(Scheme::Dark);
+        assert!((dark.adaptation(0.5) - 0.26026).abs() < 1e-6);
+        assert_eq!(dark.adaptation(1.0), 0.0);
         for luma in [0.0, 0.25, 0.5, 0.78, 1.0] {
-            assert_eq!(dark.adaptation(luma), 1.0);
+            assert!(dark.adaptation(luma) < 0.31);
         }
     }
 
     #[test]
-    fn light_veil_is_invisible_over_white_at_every_depth() {
-        let veil = spec(Scheme::Light);
-        for depth in [5.0, 15.0, 25.0, 35.0, 50.0, 75.0, 90.0, 95.0] {
-            assert_eq!(veil.adapted_alpha(depth, 1.0), 0.0);
+    fn dark_veil_matches_the_coverage_capture_table() {
+        // The coverage campaign captured the Dark menu bar over neutral
+        // black/mid/white. The mid background is the useful sample: 0.502 in,
+        // 0.439 out at the top of the bar (alpha ~0.125). White must stay
+        // white, not turn grey.
+        let veil = spec(Scheme::Dark);
+        let mid_alpha = veil.adapted_alpha(5.0, 0.502);
+        assert!(
+            (mid_alpha - 0.125).abs() <= 0.01,
+            "Dark mid alpha {mid_alpha} != coverage capture ~0.125"
+        );
+        assert!((veil.output_luminance(5.0, 0.502) - 0.439).abs() <= 0.01);
+        assert_eq!(veil.adapted_alpha(5.0, 1.0), 0.0);
+        assert_eq!(veil.output_luminance(5.0, 1.0), 1.0);
+    }
+
+    #[test]
+    fn both_veils_are_invisible_over_white_at_every_depth() {
+        for scheme in [Scheme::Light, Scheme::Dark] {
+            let veil = spec(scheme);
+            for depth in [5.0, 15.0, 25.0, 35.0, 50.0, 75.0, 90.0, 95.0] {
+                assert_eq!(veil.adapted_alpha(depth, 1.0), 0.0);
+            }
         }
     }
 
@@ -491,58 +507,14 @@ mod tests {
     }
 
     #[test]
-    fn adaptation_keeps_light_and_dark_foregrounds_readable() {
+    fn adapted_alpha_over_black_keeps_the_measured_depth_lut() {
         let light = spec(Scheme::Light);
-        // Light: dark text (0.05) over a dark moving window.
-        let dark_window = light.output_luminance(25.0, 0.02);
-        assert!(
-            contrast(dark_window, 0.05) >= 4.5,
-            "Light veil over a dark window: {dark_window}"
-        );
-        // Light over a bright window: still high contrast for dark text.
-        let bright_window = light.output_luminance(25.0, 0.98);
-        assert!(contrast(bright_window, 0.05) >= 4.5);
-
-        let dark = spec(Scheme::Dark);
-        // Dark: light text (0.95) over a bright moving window. The unadapted
-        // 0.48 baseline is not enough; the readability rule must deepen it.
-        let bright = dark.output_luminance(25.0, 0.98);
-        assert!(
-            contrast(bright, 0.95) >= 4.0,
-            "Dark veil over a bright window: {bright}"
-        );
-        // Dark over a dark window: the black wash is invisible and the light
-        // text stays readable.
-        let dark_window = dark.output_luminance(25.0, 0.02);
-        assert!(contrast(dark_window, 0.95) >= 4.5);
-    }
-
-    #[test]
-    fn measured_samples_are_not_moved_by_the_readability_rule() {
-        // The rule only raises alpha inside the strip. Over black the measured
-        // Light LUT is already above the 0.35 target at every reference sample.
-        let veil = spec(Scheme::Light);
-        for depth in [5.0, 15.0, 25.0, 35.0] {
+        for depth in [5.0, 15.0, 25.0, 35.0, 50.0, 75.0, 90.0, 95.0] {
             assert!(
-                (veil.adapted_alpha(depth, 0.0) - veil.alpha_at(depth)).abs() < 1e-9,
+                (light.adapted_alpha(depth, 0.0) - light.alpha_at(depth)).abs() < 1e-9,
                 "depth {depth} must keep the measured alpha"
             );
         }
-        // Outside the strip the LUT is untouched even over black.
-        assert!((veil.adapted_alpha(50.0, 0.0) - veil.alpha_at(50.0)).abs() < 1e-9);
-    }
-
-    #[test]
-    fn the_readability_correction_fades_out_past_the_strip() {
-        let dark = spec(Scheme::Dark);
-        let at_edge = dark.adapted_alpha(39.0, 0.98);
-        let just_past = dark.adapted_alpha(39.0 + 0.01, 0.98);
-        assert!((at_edge - just_past).abs() < 1e-3, "no hard step at 39 pt");
-        let faded = dark.adapted_alpha(39.0 + VEIL_READABILITY_FADE, 0.98);
-        assert!((faded - dark.alpha_at(39.0 + VEIL_READABILITY_FADE)).abs() < 1e-6);
-        // The Light measured samples still do not move over black.
-        let light = spec(Scheme::Light);
-        assert!((light.adapted_alpha(35.0, 0.0) - light.alpha_at(35.0)).abs() < 1e-9);
     }
 
     #[test]

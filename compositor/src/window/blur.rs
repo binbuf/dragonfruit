@@ -243,8 +243,9 @@ void main() {
 ///
 /// The veil samples the **sharp** live scene at the current pixel and blends
 /// it toward the scheme's veil colour with a depth-dependent alpha LUT. A
-/// bounded 5-tap luminance probe only selects the readability correction; it
-/// never filters the displayed backdrop. The LUT is supplied as four `vec4`
+/// bounded 5-tap luminance probe selects the measured background-luminance
+/// adaptation; it never filters the displayed backdrop. The LUT is supplied as
+/// four `vec4`
 /// uniforms (eight depths and eight alphas), so the shader holds no measured
 /// literal. `panel_uv_offset/scale` reconstruct the panel-normalized depth
 /// even when the drawn span is a slice of the padded material region.
@@ -339,33 +340,12 @@ float local_luminance(vec2 uv) {
     return luminance(color);
 }
 
-float adapted_alpha(float base, float depth, float lum) {
-    if (depth >= veil_strip + veil_readability_fade)
-        return base;
-    float need = 0.0;
-    if (veil_light > 0.5) {
-        if (lum < veil_readability)
-            need = (veil_readability - lum) / max(1.0 - lum, 1e-4);
-    } else {
-        if (lum > veil_readability)
-            need = (lum - veil_readability) / max(lum, 1e-4);
-    }
-    // Fade the correction out past the reference strip; a hard 39 pt step is
-    // visible over a bright Dark window.
-    float t = clamp((depth - veil_strip) / max(veil_readability_fade, 1e-4), 0.0, 1.0);
-    float weight = 1.0 - t * t * (3.0 - 2.0 * t);
-    return base + max(need - base, 0.0) * weight;
-}
-
 void main() {
     vec2 panel_uv = panel_uv_offset + v_coords * panel_uv_scale;
     float depth = panel_uv.y * veil_height;
     vec4 base = texture2D(tex, v_coords);
     float lum = local_luminance(v_coords);
-    float veil_alpha = lut_alpha(depth);
-    if (veil_light > 0.5)
-        veil_alpha *= adapt_scale(lum);
-    float veil = adapted_alpha(veil_alpha, depth, lum);
+    float veil = lut_alpha(depth) * adapt_scale(lum);
     vec3 color = mix(base.rgb, veil_color, veil);
 
 #if defined(NO_ALPHA)
@@ -1293,10 +1273,11 @@ mod tests {
             crate::window::menubar_veil::VEIL_COLOR_UNIFORM,
             crate::window::menubar_veil::VEIL_HEIGHT_UNIFORM,
             crate::window::menubar_veil::VEIL_STRIP_UNIFORM,
-            crate::window::menubar_veil::VEIL_LIGHT_UNIFORM,
-            crate::window::menubar_veil::VEIL_READABILITY_UNIFORM,
-            crate::window::menubar_veil::VEIL_READABILITY_FADE_UNIFORM,
             crate::window::menubar_veil::VEIL_PROBE_UNIFORM,
+            crate::window::menubar_veil::VEIL_ADAPT_LUMA_A_UNIFORM,
+            crate::window::menubar_veil::VEIL_ADAPT_LUMA_B_UNIFORM,
+            crate::window::menubar_veil::VEIL_ADAPT_SCALE_A_UNIFORM,
+            crate::window::menubar_veil::VEIL_ADAPT_SCALE_B_UNIFORM,
             crate::window::menubar_veil::VEIL_DEPTH_A_UNIFORM,
             crate::window::menubar_veil::VEIL_DEPTH_B_UNIFORM,
             crate::window::menubar_veil::VEIL_ALPHA_A_UNIFORM,
@@ -1310,7 +1291,7 @@ mod tests {
         // displayed backdrop is never spatially filtered.
         assert!(VEIL_SHADER.contains("vec4 base = texture2D(tex, v_coords);"));
         assert!(VEIL_SHADER.contains("local_luminance"));
-        assert!(VEIL_SHADER.contains("adapted_alpha"));
+        assert!(VEIL_SHADER.contains("adapt_scale"));
         assert!(VEIL_SHADER.contains("gl_FragColor"));
     }
 

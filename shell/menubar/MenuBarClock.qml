@@ -16,6 +16,9 @@ Item {
     // T226: force 24-hour time instead of the locale's own format. The
     // default follows the locale, so an untouched profile is unchanged.
     property bool use24Hour: false
+    // T200: wallpaper-adaptive menu-bar foreground, injected by MenuBar.
+    property color foreground: Theme.color.textPrimary
+    property color secondaryForeground: Theme.color.textSecondary
 
     signal activated()
 
@@ -68,14 +71,14 @@ Item {
         Text {
             visible: root.showDate
             text: root.dateText
-            color: Theme.color.textSecondary
+            color: root.secondaryForeground
             font.pixelSize: Theme.controls.menuBar.fontSize
             anchors.verticalCenter: parent.verticalCenter
         }
 
         Text {
             text: root.timeText
-            color: Theme.color.textPrimary
+            color: root.foreground
             font.pixelSize: Theme.controls.menuBar.fontSize
             anchors.verticalCenter: parent.verticalCenter
         }

@@ -3133,6 +3133,20 @@ void ShellProtocol::applyWallpaper()
     wl_display_flush(m_display);
 }
 
+QString ShellProtocol::activeWallpaperSource() const
+{
+    if (!m_activeWorkspace)
+        return QString();
+    return m_workspaces.value(m_activeWorkspace).wallpaperSource;
+}
+
+QColor ShellProtocol::activeWallpaperColor() const
+{
+    if (!m_activeWorkspace)
+        return QColor();
+    return m_workspaces.value(m_activeWorkspace).wallpaperColor;
+}
+
 void ShellProtocol::setDisplayPolicy(double scale, uint32_t transform, double brightness)
 {
     // T-09.5/T-11.3a: remember the selection and push it to the announced
@@ -5261,6 +5275,8 @@ void ShellProtocol::onWorkspaceActivated(void *data, df_workspace *workspace, ui
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_activeWorkspace = workspace;
     self->m_workspaces[workspace].active = active != 0;
+    if (active != 0)
+        emit self->activeWallpaperChanged();
     emit self->overviewDataChanged();
 }
 void ShellProtocol::onWorkspaceFullscreen(void *data, df_workspace *workspace, uint32_t fullscreen)
@@ -5271,7 +5287,17 @@ void ShellProtocol::onWorkspaceFullscreen(void *data, df_workspace *workspace, u
     self->m_workspaces[workspace].fullscreen = fullscreen != 0;
     emit self->overviewDataChanged();
 }
-void ShellProtocol::onWorkspaceWallpaper(void *, df_workspace *, const char *, uint32_t, uint32_t) {}
+void ShellProtocol::onWorkspaceWallpaper(void *data, df_workspace *workspace,
+                                         const char *source, uint32_t fit, uint32_t color)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    auto &info = self->m_workspaces[workspace];
+    info.wallpaperSource = QString::fromUtf8(source ? source : "");
+    info.wallpaperFit = fit;
+    info.wallpaperColor = QColor::fromRgba(color);
+    if (self->m_activeWorkspace == workspace)
+        emit self->activeWallpaperChanged();
+}
 void ShellProtocol::onWorkspaceRemoved(void *data, df_workspace *workspace)
 {
     auto *self = static_cast<ShellProtocol *>(data);

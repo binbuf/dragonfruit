@@ -631,6 +631,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     }
     m_item->setParentItem(m_window->contentItem());
     m_item->setProperty("showDate", true);
+    updateMenuBarLuminance();
     // T200: the QML token owns the veil extent; the layer surface is sized to
     // it while the exclusive zone stays the bar strip. The surface itself
     // still commits only the strip, so the area below it is visual-only.
@@ -1035,6 +1036,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onOverviewProgress);
     connect(m_protocol, &ShellProtocol::overviewDataChanged, this,
             &ShellController::onOverviewDataChanged);
+    connect(m_protocol, &ShellProtocol::activeWallpaperChanged, this,
+            &ShellController::updateMenuBarLuminance);
     connect(m_protocol, &ShellProtocol::overviewPointerMoved, this,
             &ShellController::onOverviewPointerMoved);
     connect(m_protocol, &ShellProtocol::overviewPointerButton, this,
@@ -6132,6 +6135,23 @@ void ShellController::applyWallpaperPolicy()
             "dragonfruit-shell: wallpaper applied (fit=%s allSpaces=%d source=%s)\n",
             qPrintable(settings.fit), settings.showOnAllSpaces ? 1 : 0,
             effective.isEmpty() ? "(solid)" : qPrintable(effective));
+    updateMenuBarLuminance();
+}
+
+void ShellController::updateMenuBarLuminance()
+{
+    if (!m_item || !m_protocol)
+        return;
+    QString source = m_protocol->activeWallpaperSource();
+    QColor color = m_protocol->activeWallpaperColor();
+    if (source.isEmpty() && !color.isValid())
+        source = m_wallpaperSettings.effectiveSource();
+    const QString key = source + QLatin1Char('|')
+            + (color.isValid() ? color.name(QColor::HexArgb) : QString());
+    auto cached = m_menuBarLumaCache.constFind(key);
+    if (cached == m_menuBarLumaCache.constEnd())
+        cached = m_menuBarLumaCache.insert(key, wallpaperTopBandLuminance(source, color));
+    m_item->setProperty("backgroundLuma", cached.value());
 }
 
 void ShellController::connectAppIndex()

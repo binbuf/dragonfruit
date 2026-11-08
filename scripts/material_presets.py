@@ -300,8 +300,6 @@ def validate(data: dict) -> list[str]:
                 veil = _expect_object(entry.get("veil"), f"{scheme_path}.veil", errors)
                 if veil is not None:
                     _number(veil, "probe", f"{scheme_path}.veil", errors, low=0.0, high=64.0)
-                    _number(veil, "readability", f"{scheme_path}.veil", errors,
-                            low=0.0, high=1.0)
                     # T200: the measured background-luminance response. The
                     # Light curve is 1.0/1.06/0.91/0.48/0.0 at
                     # L=0/0.25/0.5/0.78/1.0; Dark is the identity baseline.
@@ -328,10 +326,14 @@ def validate(data: dict) -> list[str]:
                                 errors.append(
                                     f"{scheme_path}.veil.adaptScale: must start at "
                                     f"1.0 and end at 0.0")
-                        elif any(abs(value - 1.0) > 1e-9 for value in adapt_scale):
+                        elif adapt_scale[0] <= 0.0 or abs(adapt_scale[-1]) > 1e-9:
                             errors.append(
-                                f"{scheme_path}.veil.adaptScale: Dark adaptation is "
-                                f"not measured; keep the identity curve")
+                                f"{scheme_path}.veil.adaptScale: Dark adaptation "
+                                f"must start above zero and end at zero")
+                        elif abs(adapt_scale[2] - 0.26026) > 0.01:
+                            errors.append(
+                                f"{scheme_path}.veil.adaptScale: Dark mid-grey "
+                                f"scale must match the coverage capture (0.26026)")
                     previous = 1.0
                     for depth in (5, 15, 25, 35, 50, 75, 90, 95):
                         key = f"alpha{depth}"

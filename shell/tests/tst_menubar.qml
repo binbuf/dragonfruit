@@ -342,6 +342,40 @@ Item {
             Theme.dark = false;
         }
 
+        function test_menu_bar_foreground_follows_the_wallpaper() {
+            // The reference flips the text/glyphs to black when the rendered
+            // bar is light. In Light the white veil keeps it light over black;
+            // in Dark the black wash stays dark over mid-grey and disappears
+            // over white.
+            Glass.rollout = "replacement";
+            Theme.dark = false;
+            var bar = make(menuBarComponent, {
+                width: 600,
+                materialBlurActive: true
+            });
+            bar.backgroundLuma = 0.0;
+            compare(bar.foreground.toString(),
+                    Theme.controls.menuBar.foregroundOnLight.toString(),
+                    "Light over black stays dark text");
+            bar.backgroundLuma = 1.0;
+            compare(bar.foreground.toString(),
+                    Theme.controls.menuBar.foregroundOnLight.toString(),
+                    "Light over white stays dark text");
+
+            Theme.dark = true;
+            bar.backgroundLuma = 0.5;
+            compare(bar.foreground.toString(),
+                    Theme.controls.menuBar.foregroundOnDark.toString(),
+                    "Dark over mid-grey uses light text");
+            bar.backgroundLuma = 1.0;
+            compare(bar.foreground.toString(),
+                    Theme.controls.menuBar.foregroundOnLight.toString(),
+                    "Dark over white flips to dark text");
+            bar.destroy();
+            Glass.rollout = "legacy";
+            Theme.dark = false;
+        }
+
         function test_veil_fallback_and_accessibility_stay_scheme_appropriate() {
             Glass.rollout = "replacement";
             // No sampled scene texture: the compositor cannot draw the veil,

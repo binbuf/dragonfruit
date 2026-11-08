@@ -213,7 +213,6 @@ QtObject {
                     }
                     readonly property var veil: QtObject {
                         readonly property real probe: 8.0
-                        readonly property real readability: 0.35
                         readonly property real alpha5: 0.45098037
                         readonly property real alpha15: 0.43921566
                         readonly property real alpha25: 0.40784317
@@ -232,7 +231,7 @@ QtObject {
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "baseline"
-                    readonly property string provenance: "No standalone dark veil was measured; named Dragonfruit baseline: the measured light depth profile scaled to a 0.48 peak over black, with a 0.20 post-veil readability ceiling"
+                    readonly property string provenance: "No standalone dark veil was measured in the first campaign; the coverage dark captures over neutral black/mid/white give a top alpha of ~0.125 over mid-grey and zero over white. Dragonfruit uses the measured light depth shape at a 0.48 peak, scaled by 0.286 of the light luminance response to match the mid-grey capture."
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.48
@@ -243,7 +242,6 @@ QtObject {
                     }
                     readonly property var veil: QtObject {
                         readonly property real probe: 8.0
-                        readonly property real readability: 0.2
                         readonly property real alpha5: 0.48
                         readonly property real alpha15: 0.4674
                         readonly property real alpha25: 0.434
@@ -253,7 +251,7 @@ QtObject {
                         readonly property real alpha90: 0.00835
                         readonly property real alpha95: 0.0
                         readonly property var adaptLuma: [0.0, 0.25, 0.5, 0.78, 1.0]
-                        readonly property var adaptScale: [1.0, 1.0, 1.0, 1.0, 1.0]
+                        readonly property var adaptScale: [0.286, 0.30316, 0.26026, 0.13728, 0.0]
                     }
                     readonly property real blur: 0.0
                     readonly property real edge: 0.0
@@ -1109,6 +1107,12 @@ QtObject {
             readonly property int clockGap: 8
             readonly property int radius: 10
             readonly property int hoverRadius: 6
+            readonly property color foregroundOnLight: "#111111"
+            readonly property color foregroundOnDark: "#f8f6fa"
+            readonly property color foregroundSecondaryOnLight: "#5b4e66"
+            readonly property color foregroundSecondaryOnDark: "#c3b8cc"
+            readonly property real foregroundFlipThresholdLight: 0.3
+            readonly property real foregroundFlipThresholdDark: 0.65
         }
         readonly property var dock: QtObject {
             readonly property int iconSize: 48

@@ -245,11 +245,12 @@ The menu-bar `no-blur-veil` preset (T200, ADR 0219) is a depth LUT over the
 sharp live scene, not a blur. Light is a white lift measured at 0.451 at 5 pt
 and zero by 95 pt, scaled by the measured background-luminance response
 (`1.0/1.06/0.91/0.48/0.0` at `L=0/0.25/0.5/0.78/1.0`) so it disappears over
-white; Dark is the documented black baseline with the same depth shape and an
-identity adaptation. A bounded local luminance probe supplies the adaptation
-and may raise alpha inside the 39 pt reference strip for foreground
-readability, but the displayed backdrop is always the sharp centre sample.
-The QML surface paints no fill on the
+white; Dark is the same depth shape at a 0.48 peak with a best-guess coverage
+curve (0.286 of the Light response), giving a subtler black wash that also
+disappears over white. A bounded local luminance probe supplies the adaptation,
+but the displayed backdrop is always the sharp centre sample. The shell injects
+the wallpaper's top-band luma so the bar's text and glyphs flip between black
+and white on the rendered bar. The QML surface paints no fill on the
 replacement rail; the compositor veil sits below the foreground and popups.
 When the veil cannot run, QML keeps the scheme-appropriate milky fallback.
 

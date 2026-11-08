@@ -314,6 +314,73 @@ Rectangle {
         menuBar.veilActive ? menuBar.veilExtent : Theme.controls.menuBar.height
     readonly property int compositorPanelRadius:
         menuBar.veilActive ? 0 : Theme.controls.menuBar.radius
+
+    // T200: the shell injects the wallpaper's top-band sRGB luma. Text and
+    // glyphs follow the *rendered* bar (post-veil), not the scheme alone: the
+    // Light white lift keeps dark text readable over any wallpaper, while the
+    // Dark wash flips to black when it disappears over a light one.
+    property real backgroundLuma: 0.5
+
+    function veilAlphaAt(depth) {
+        if (!menuBar.veilActive)
+            return 0;
+        var v = menuBar.veilResolution.veil;
+        if (!v)
+            return 0;
+        var depths = [5, 15, 25, 35, 50, 75, 90, 95];
+        var alphas = [v.alpha5, v.alpha15, v.alpha25, v.alpha35,
+                      v.alpha50, v.alpha75, v.alpha90, v.alpha95];
+        var base = 0;
+        if (depth <= depths[0]) {
+            base = alphas[0];
+        } else {
+            for (var i = 1; i < depths.length; ++i) {
+                if (depth <= depths[i]) {
+                    var span = depths[i] - depths[i - 1];
+                    var t = span <= 0 ? 0 : (depth - depths[i - 1]) / span;
+                    base = alphas[i - 1] + (alphas[i] - alphas[i - 1]) * t;
+                    break;
+                }
+            }
+        }
+        var luma = Math.max(0, Math.min(1, menuBar.backgroundLuma));
+        var adaptLuma = v.adaptLuma;
+        var adaptScale = v.adaptScale;
+        var scale = adaptScale[adaptScale.length - 1];
+        if (luma <= adaptLuma[0]) {
+            scale = adaptScale[0];
+        } else {
+            for (var j = 1; j < adaptLuma.length; ++j) {
+                if (luma <= adaptLuma[j]) {
+                    var adaptSpan = adaptLuma[j] - adaptLuma[j - 1];
+                    var u = adaptSpan <= 0 ? 0 : (luma - adaptLuma[j - 1]) / adaptSpan;
+                    scale = adaptScale[j - 1] + (adaptScale[j] - adaptScale[j - 1]) * u;
+                    break;
+                }
+            }
+        }
+        return base * scale;
+    }
+
+    readonly property real barVeilAlpha:
+        menuBar.veilAlphaAt(Theme.controls.menuBar.height * 0.5)
+    readonly property real renderedLuma: {
+        var alpha = menuBar.barVeilAlpha;
+        var veilLuma = menuBar.veilResolution.tint;
+        return menuBar.backgroundLuma * (1 - alpha) + veilLuma * alpha;
+    }
+    readonly property real foregroundFlipThreshold:
+        Theme.dark ? Theme.controls.menuBar.foregroundFlipThresholdDark
+                   : Theme.controls.menuBar.foregroundFlipThresholdLight
+    readonly property color foreground:
+        menuBar.renderedLuma < menuBar.foregroundFlipThreshold
+            ? Theme.controls.menuBar.foregroundOnDark
+            : Theme.controls.menuBar.foregroundOnLight
+    readonly property color secondaryForeground:
+        menuBar.renderedLuma < menuBar.foregroundFlipThreshold
+            ? Theme.controls.menuBar.foregroundSecondaryOnDark
+            : Theme.controls.menuBar.foregroundSecondaryOnLight
+
     readonly property color glassFill: Qt.rgba(
         menuBar.chromeFill.r, menuBar.chromeFill.g, menuBar.chromeFill.b,
         Theme.material.chromeOpacity)
@@ -631,6 +698,7 @@ Rectangle {
 
                 showLogo: modelData.kind === "system"
                 emphasized: modelData.kind === "app"
+                foreground: menuBar.foreground
                 title: modelData.title !== undefined ? modelData.title : ""
                 model: modelData.items !== undefined ? modelData.items : []
                 materialBlurActive: menuBar.popupMaterialBlurActive
@@ -689,7 +757,7 @@ Rectangle {
                 enabled: modelData.enabled !== false
                 selected: modelData.selected === true
                 level: modelData.level !== undefined ? modelData.level : 0.8
-                tint: modelData.tint !== undefined ? modelData.tint : Theme.color.textPrimary
+                tint: modelData.tint !== undefined ? modelData.tint : menuBar.foreground
                 backgroundColor: menuBar.color
 
                 onActivated: (id) => {
@@ -710,6 +778,8 @@ Rectangle {
             showDate: menuBar.showDate
             showSeconds: menuBar.showSeconds
             use24Hour: menuBar.use24Hour
+            foreground: menuBar.foreground
+            secondaryForeground: menuBar.secondaryForeground
             onActivated: menuBar.clockActivated()
         }
 
@@ -717,6 +787,7 @@ Rectangle {
             itemId: "control-center"
             icon: "control-center"
             accessibleName: qsTr("Quick Settings")
+            tint: menuBar.foreground
             backgroundColor: menuBar.color
             onActivated: {
                 menuBar.closeMenus();
@@ -729,6 +800,7 @@ Rectangle {
             itemId: "mission-control"
             icon: "mission-control"
             accessibleName: qsTr("Overview")
+            tint: menuBar.foreground
             backgroundColor: menuBar.color
             onActivated: {
                 menuBar.closeMenus();

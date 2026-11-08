@@ -330,6 +330,12 @@ pub mod component {
         pub const CLOCK_GAP: f32 = 8.0_f32;
         pub const RADIUS: f32 = 10.0_f32;
         pub const HOVER_RADIUS: f32 = 6.0_f32;
+        pub const FOREGROUND_ON_LIGHT: [u8; 4] = [0x11, 0x11, 0x11, 0xff];
+        pub const FOREGROUND_ON_DARK: [u8; 4] = [0xf8, 0xf6, 0xfa, 0xff];
+        pub const FOREGROUND_SECONDARY_ON_LIGHT: [u8; 4] = [0x5b, 0x4e, 0x66, 0xff];
+        pub const FOREGROUND_SECONDARY_ON_DARK: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
+        pub const FOREGROUND_FLIP_THRESHOLD_LIGHT: f32 = 0.3_f32;
+        pub const FOREGROUND_FLIP_THRESHOLD_DARK: f32 = 0.65_f32;
     }
     pub mod dock {
         pub const ICON_SIZE: f32 = 48.0_f32;
@@ -758,7 +764,6 @@ pub mod glass {
                 }
                 pub mod veil {
                     pub const PROBE: f32 = 8.0_f32;
-                    pub const READABILITY: f32 = 0.35_f32;
                     pub const ALPHA_5: f32 = 0.45098037_f32;
                     pub const ALPHA_15: f32 = 0.43921566_f32;
                     pub const ALPHA_25: f32 = 0.40784317_f32;
@@ -777,7 +782,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "No standalone dark veil was measured; named Dragonfruit baseline: the measured light depth profile scaled to a 0.48 peak over black, with a 0.20 post-veil readability ceiling";
+                pub const PROVENANCE: &str = "No standalone dark veil was measured in the first campaign; the coverage dark captures over neutral black/mid/white give a top alpha of ~0.125 over mid-grey and zero over white. Dragonfruit uses the measured light depth shape at a 0.48 peak, scaled by 0.286 of the light luminance response to match the mid-grey capture.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.48_f32;
@@ -788,7 +793,6 @@ pub mod glass {
                 }
                 pub mod veil {
                     pub const PROBE: f32 = 8.0_f32;
-                    pub const READABILITY: f32 = 0.2_f32;
                     pub const ALPHA_5: f32 = 0.48_f32;
                     pub const ALPHA_15: f32 = 0.4674_f32;
                     pub const ALPHA_25: f32 = 0.434_f32;
@@ -798,7 +802,7 @@ pub mod glass {
                     pub const ALPHA_90: f32 = 0.00835_f32;
                     pub const ALPHA_95: f32 = 0.0_f32;
                     pub const ADAPT_LUMA: [f32; 5] = [0.0_f32, 0.25_f32, 0.5_f32, 0.78_f32, 1.0_f32];
-                    pub const ADAPT_SCALE: [f32; 5] = [1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32];
+                    pub const ADAPT_SCALE: [f32; 5] = [0.286_f32, 0.30316_f32, 0.26026_f32, 0.13728_f32, 0.0_f32];
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;

@@ -7,6 +7,8 @@
 #pragma once
 
 #include <cstdint>
+#include <QColor>
+#include <QImage>
 #include <QString>
 #include <QVariantMap>
 
@@ -49,3 +51,12 @@ QString effectiveWallpaperSource(const QString &user, const QString &builtin,
 // The `df_workspace.wallpaper_fit` wire value for a schema spelling. An unknown
 // spelling is `fill` (the schema default).
 uint32_t wallpaperFitFromName(const QString &name);
+
+// T200: the sRGB luma (0..1) of the image's top band, used to choose the
+// menu-bar text/glyph colour. The menu bar sits at the top, so a whole-image
+// average would be wrong for a gradient or a photo with a bright sky.
+double wallpaperTopBandLuminance(const QImage &image, const QColor &fallback);
+
+// Load `source` and return its top-band luma. An empty/undecodable source
+// falls back to `fallback`'s sRGB luma.
+double wallpaperTopBandLuminance(const QString &source, const QColor &fallback);

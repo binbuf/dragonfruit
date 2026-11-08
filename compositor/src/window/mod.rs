@@ -123,8 +123,7 @@ pub use material_region::{full_output_material_forced, MaterialRegion, ENV_MATER
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 #[allow(unused_imports)]
 pub use menubar_veil::{
-    veil_uniform_names, VeilSpec, VEIL_EXTENT, VEIL_FILTER, VEIL_LUT_DEPTHS, VEIL_READABILITY_FADE,
-    VEIL_STRIP_HEIGHT,
+    veil_uniform_names, VeilSpec, VEIL_EXTENT, VEIL_FILTER, VEIL_LUT_DEPTHS, VEIL_STRIP_HEIGHT,
 };
 pub use motion::{MinimizedAnimation, MotionFrame, WindowMotion, WindowMotionKind};
 #[allow(unused_imports)]

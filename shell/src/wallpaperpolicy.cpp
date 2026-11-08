@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "wallpaperpolicy.h"
 
+#include <QImageReader>
+
 namespace {
 
 QVariant readValue(const QVariantMap &values, const QString &key, const QVariant &fallback)
@@ -59,4 +61,40 @@ uint32_t wallpaperFitFromName(const QString &name)
     if (name == QLatin1String("center"))
         return 3;
     return 0;
+}
+
+double wallpaperTopBandLuminance(const QImage &image, const QColor &fallback)
+{
+    if (!image.isNull() && image.width() > 0 && image.height() > 0) {
+        const QImage rgb = image.format() == QImage::Format_RGB32
+                ? image
+                : image.convertToFormat(QImage::Format_RGB32);
+        const int rows = qMax(1, rgb.height() / 10);
+        quint64 sum = 0;
+        quint64 count = 0;
+        for (int y = 0; y < rows; ++y) {
+            const auto *line = reinterpret_cast<const QRgb *>(rgb.constScanLine(y));
+            for (int x = 0; x < rgb.width(); ++x) {
+                const QRgb pixel = line[x];
+                sum += 299 * qRed(pixel) + 587 * qGreen(pixel) + 114 * qBlue(pixel);
+                ++count;
+            }
+        }
+        if (count > 0)
+            return static_cast<double>(sum) / static_cast<double>(count) / 1000.0 / 255.0;
+    }
+    const QColor color = fallback.isValid() ? fallback : QColor(128, 128, 128);
+    return 0.299 * color.redF() + 0.587 * color.greenF() + 0.114 * color.blueF();
+}
+
+double wallpaperTopBandLuminance(const QString &source, const QColor &fallback)
+{
+    if (!source.isEmpty()) {
+        QImageReader reader(source);
+        reader.setAutoTransform(true);
+        const QImage image = reader.read();
+        if (!image.isNull())
+            return wallpaperTopBandLuminance(image, fallback);
+    }
+    return wallpaperTopBandLuminance(QImage(), fallback);
 }
