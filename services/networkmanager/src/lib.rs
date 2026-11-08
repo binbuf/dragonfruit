@@ -63,14 +63,19 @@ mod model;
 mod source;
 mod vpn;
 
-pub use adapter::{JoinRequest, JoinResult, NetworkManagerAdapter, WifiAccess};
+pub use adapter::{JoinRequest, JoinResult, NetworkManagerAdapter, NetworkResult, WifiAccess};
 pub use dbus::{DbusNetworkManager, DbusVpn, NM_SERVICE, VPN_SETTINGS_PATH};
-pub use model::{AccessPoint, Band, Connectivity, Security, WifiSnapshot, WifiState};
+pub use model::{
+    AccessPoint, Band, Connectivity, KnownNetwork, NetworkService, Security, ServiceKind,
+    ServiceState, WifiSnapshot, WifiState,
+};
 pub use source::{
-    AccessPointData, ActivateOutcome, ActivateRequest, MockNetworkManager, NetworkManagerData,
-    NetworkManagerSource, WifiDeviceData,
+    AccessPointData, ActivateOutcome, ActivateRequest, ActiveConnectionData, AddConnectionSpec,
+    AddKind, ConnectionData, ConnectionProperty, MockNetworkManager, NetworkManagerData,
+    NetworkManagerSource, ServiceData, WifiDeviceData, WriteOutcome,
 };
 pub use vpn::{
     ActiveVpnData, MockVpn, VpnAccess, VpnAdapter, VpnConnection, VpnConnectionData, VpnData,
-    VpnKind, VpnOutcome, VpnRequest, VpnResult, VpnSnapshot, VpnSource, VpnState,
+    VpnKind, VpnOutcome, VpnPlugin, VpnPluginData, VpnRequest, VpnResult, VpnSnapshot, VpnSource,
+    VpnState,
 };

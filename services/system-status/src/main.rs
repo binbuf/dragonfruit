@@ -31,6 +31,7 @@ use dragonfruit_accessibility_adapter::HostAccessibility;
 use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
+use dragonfruit_firewall::CommandFirewall;
 use dragonfruit_input::CommandLibinput;
 use dragonfruit_networkmanager::{DbusNetworkManager, DbusVpn};
 use dragonfruit_notify_adapter::DbusNotifications;
@@ -42,6 +43,7 @@ use dragonfruit_system_status::dbus;
 use dragonfruit_system_status::AccessibilityHost;
 use dragonfruit_system_status::AccountsHost;
 use dragonfruit_system_status::BluetoothHost;
+use dragonfruit_system_status::FirewallHost;
 use dragonfruit_system_status::InputHost;
 use dragonfruit_system_status::NotificationsHost;
 use dragonfruit_system_status::PrintersHost;
@@ -66,6 +68,7 @@ fn main() -> ExitCode {
     let mut print_privacy = false;
     let mut print_accessibility = false;
     let mut print_vpn = false;
+    let mut print_firewall = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -81,6 +84,7 @@ fn main() -> ExitCode {
             "--print-privacy" => print_privacy = true,
             "--print-accessibility" => print_accessibility = true,
             "--print-vpn" => print_vpn = true,
+            "--print-firewall" => print_firewall = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -122,7 +126,15 @@ fn main() -> ExitCode {
     // NetworkManager's VPN connections over the system bus; no daemon is a
     // normal hidden state (ADR 0146).
     let mut vpn = VpnHost::new(DbusVpn::new());
+    // The firewall manager is detected on every read; no manager is a normal
+    // "No firewall detected" state (T225).
+    let mut firewall = FirewallHost::new(CommandFirewall::new());
 
+    if print_firewall {
+        firewall.refresh();
+        println!("{}", firewall.state());
+        return ExitCode::SUCCESS;
+    }
     if print_vpn {
         vpn.refresh();
         println!("{}", vpn.state());
@@ -200,6 +212,7 @@ fn main() -> ExitCode {
     privacy.refresh();
     accessibility.refresh();
     vpn.refresh();
+    firewall.refresh();
     match dbus::run(
         host,
         bluetooth,
@@ -212,6 +225,7 @@ fn main() -> ExitCode {
         privacy,
         accessibility,
         vpn,
+        firewall,
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -244,6 +258,7 @@ fn print_help() {
            --print-privacy  refresh the portal PermissionStore and print the Privacy JSON view\n\
            --print-accessibility refresh the AT-SPI bus and print the Accessibility JSON view\n\
            --print-vpn      refresh NetworkManager and print the Network advanced (VPN) JSON view\n\
+           --print-firewall detect the firewall manager and print its JSON view\n\
            -h, --help       show this help"
     );
 }

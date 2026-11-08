@@ -5,8 +5,11 @@ use dragonfruit_system_adapters::{
     Adapter, AdapterError, AdapterEvent, AdapterId, AdapterState, ConnectionState, Subscription,
 };
 
-use crate::model::WifiSnapshot;
-use crate::source::{ActivateOutcome, ActivateRequest, NetworkManagerSource};
+use crate::model::{NetworkService, WifiSnapshot};
+use crate::source::{
+    ActivateOutcome, ActivateRequest, AddConnectionSpec, ConnectionProperty, NetworkManagerSource,
+    WriteOutcome,
+};
 
 /// A request from the menu bar to join a network.
 ///
@@ -76,6 +79,27 @@ impl WifiAccess {
             WifiAccess::ReadOnly { note } => Some(note),
         }
     }
+}
+
+/// What happened to one non-join Network write (radio, forget, service order,
+/// add, autoconnect, activate/deactivate).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NetworkResult {
+    /// NetworkManager accepted the write; the daemon pushes the resulting
+    /// state and the host re-reads.
+    Applied,
+    /// polkit refused the write. The adapter is now read-only and records the
+    /// note; reads still work.
+    Denied {
+        /// The recorded denial note.
+        note: String,
+    },
+    /// The daemon is absent; there is nothing to write.
+    Absent,
+    /// The request failed for a reason other than authorization.
+    Failed(AdapterError),
+    /// The source does not implement the write (a fixture or an old daemon).
+    Unsupported,
 }
 
 /// What happened to a [`NetworkManagerAdapter::join`] request.
@@ -181,6 +205,7 @@ impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
             ssid: request.ssid.clone(),
             secret: request.secret.clone(),
             access_point: None,
+            hidden: false,
         });
 
         match outcome {
@@ -195,6 +220,133 @@ impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
                 JoinResult::Absent
             }
             ActivateOutcome::Failed(error) => JoinResult::Failed(error),
+        }
+    }
+
+    /// Join a hidden network (the SSID is not advertised). One explicit
+    /// write; shares the join access degradation.
+    pub fn join_hidden(&mut self, request: &JoinRequest) -> JoinResult {
+        if let WifiAccess::ReadOnly { note } = &self.access {
+            return JoinResult::Denied { note: note.clone() };
+        }
+        let outcome = self.source.activate(&ActivateRequest {
+            ssid: request.ssid.clone(),
+            secret: request.secret.clone(),
+            access_point: None,
+            hidden: true,
+        });
+        self.join_outcome(outcome)
+    }
+
+    fn join_outcome(&mut self, outcome: ActivateOutcome) -> JoinResult {
+        match outcome {
+            ActivateOutcome::Accepted => JoinResult::Accepted,
+            ActivateOutcome::Denied(note) => {
+                self.access = WifiAccess::read_only(note.clone());
+                JoinResult::Denied { note }
+            }
+            ActivateOutcome::Absent => {
+                self.state = AdapterState::Unavailable;
+                self.subscription.absent();
+                JoinResult::Absent
+            }
+            ActivateOutcome::Failed(error) => JoinResult::Failed(error),
+        }
+    }
+
+    /// Enable or disable the Wi-Fi radio. One explicit write.
+    pub fn set_wifi_enabled(&mut self, enabled: bool) -> NetworkResult {
+        self.write(|source| source.set_wireless_enabled(enabled))
+    }
+
+    /// Forget (delete) the saved connection with `uuid`. One explicit write.
+    pub fn forget(&mut self, uuid: &str) -> NetworkResult {
+        self.write(|source| source.forget_connection(uuid))
+    }
+
+    /// Activate the saved service with `uuid`. One explicit write.
+    pub fn activate_service(&mut self, uuid: &str) -> NetworkResult {
+        self.write(|source| source.activate_connection(uuid))
+    }
+
+    /// Deactivate the active service with `uuid`. One explicit write.
+    pub fn deactivate_service(&mut self, uuid: &str) -> NetworkResult {
+        self.write(|source| source.deactivate_connection(uuid))
+    }
+
+    /// Change whether the saved connection comes up automatically. One
+    /// explicit write.
+    pub fn set_autoconnect(&mut self, uuid: &str, enabled: bool) -> NetworkResult {
+        self.write(|source| source.update_connection(uuid, ConnectionProperty::Autoconnect(enabled)))
+    }
+
+    /// Move a service one position up (`delta < 0`) or down (`delta > 0`) in
+    /// the service order.
+    ///
+    /// NetworkManager has no ordered service list; its `autoconnect-priority`
+    /// is the equivalent preference (higher wins). Moving a service swaps it
+    /// with its neighbour by setting a priority just past that neighbour, and
+    /// the daemon's next read re-sorts the list.
+    pub fn move_service(&mut self, uuid: &str, delta: i32) -> NetworkResult {
+        if let WifiAccess::ReadOnly { note } = &self.access {
+            return NetworkResult::Denied { note: note.clone() };
+        }
+        let Some(snapshot) = self.state.snapshot() else {
+            return NetworkResult::Absent;
+        };
+        let services = &snapshot.services;
+        let Some(index) = services.iter().position(|service| service.uuid == uuid) else {
+            return NetworkResult::Failed(AdapterError::new(format!(
+                "NetworkManager: unknown service '{uuid}'"
+            )));
+        };
+        let target = (index as i32 + delta).clamp(0, services.len() as i32 - 1) as usize;
+        if target == index {
+            return NetworkResult::Applied;
+        }
+        let neighbour = &services[target];
+        let priority = if delta < 0 {
+            neighbour.priority.saturating_add(1)
+        } else {
+            neighbour.priority.saturating_sub(1)
+        };
+        self.write(|source| {
+            source.update_connection(uuid, ConnectionProperty::Priority(priority))
+        })
+    }
+
+    /// Create a saved service or VPN connection. One explicit write.
+    pub fn add_connection(&mut self, spec: &AddConnectionSpec) -> NetworkResult {
+        self.write(|source| source.add_connection(spec))
+    }
+
+    /// The saved services in service order, when the daemon answered.
+    pub fn services(&self) -> &[NetworkService] {
+        self.state
+            .snapshot()
+            .map(|snapshot| snapshot.services.as_slice())
+            .unwrap_or_default()
+    }
+
+    /// The shared non-join write path: refuse early when read-only, degrade on
+    /// a denial, and hide on absence.
+    fn write(&mut self, write: impl FnOnce(&mut S) -> WriteOutcome) -> NetworkResult {
+        if let WifiAccess::ReadOnly { note } = &self.access {
+            return NetworkResult::Denied { note: note.clone() };
+        }
+        match write(&mut self.source) {
+            WriteOutcome::Applied => NetworkResult::Applied,
+            WriteOutcome::Denied(note) => {
+                self.access = WifiAccess::read_only(note.clone());
+                NetworkResult::Denied { note }
+            }
+            WriteOutcome::Absent => {
+                self.state = AdapterState::Unavailable;
+                self.subscription.absent();
+                NetworkResult::Absent
+            }
+            WriteOutcome::Failed(error) => NetworkResult::Failed(error),
+            WriteOutcome::Unsupported => NetworkResult::Unsupported,
         }
     }
 

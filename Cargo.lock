@@ -620,6 +620,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-firewall"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-distro-adapters",
+ "dragonfruit-system-adapters",
+]
+
+[[package]]
 name = "dragonfruit-input"
 version = "0.1.0"
 dependencies = [
@@ -767,6 +775,8 @@ dependencies = [
  "dragonfruit-account-adapter",
  "dragonfruit-audio",
  "dragonfruit-bluetooth",
+ "dragonfruit-distro-adapters",
+ "dragonfruit-firewall",
  "dragonfruit-input",
  "dragonfruit-networkmanager",
  "dragonfruit-notify-adapter",

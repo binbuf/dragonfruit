@@ -7,7 +7,7 @@
 //! connections first. Nothing here reimplements a VPN stack; the raw strings
 //! and numbers come straight from the daemon ([`crate::VpnData`]).
 
-use crate::vpn::source::{ActiveVpnData, VpnConnectionData, VpnData};
+use crate::vpn::source::{ActiveVpnData, VpnConnectionData, VpnData, VpnPluginData};
 
 /// The kind of VPN tunnel a connection is, decoded from its NetworkManager
 /// `connection.type` and `vpn.service-type`.
@@ -199,12 +199,32 @@ impl VpnConnection {
     }
 }
 
+/// One installed NetworkManager VPN plugin the Add sheet offers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VpnPlugin {
+    /// The NetworkManager service type.
+    pub service_type: String,
+    /// The human label (`OpenVPN`).
+    pub label: String,
+    /// Whether NetworkManager carries the plugin itself (WireGuard).
+    pub builtin: bool,
+}
+
+impl VpnPlugin {
+    /// The stable id the pane sends back (the service type).
+    pub fn id(&self) -> &str {
+        &self.service_type
+    }
+}
+
 /// The VPN snapshot a pane or tile renders: every configured VPN connection
-/// with its live state.
+/// with its live state, plus the installed plugins.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct VpnSnapshot {
     /// One entry per configured VPN, connected first then by name.
     pub connections: Vec<VpnConnection>,
+    /// Every installed VPN plugin, by label.
+    pub plugins: Vec<VpnPlugin>,
 }
 
 impl VpnSnapshot {
@@ -215,6 +235,12 @@ impl VpnSnapshot {
     /// no match means disconnected. The list is ordered connected-first, then
     /// by name, then UUID for determinism.
     pub fn from_data(data: &VpnData) -> Self {
+        Self::from_data_with_plugins(data, &[])
+    }
+
+    /// Build the snapshot from one raw read plus the host's installed plugin
+    /// list (a separate read outside NetworkManager's settings store).
+    pub fn from_data_with_plugins(data: &VpnData, plugin_data: &[VpnPluginData]) -> Self {
         let mut connections: Vec<VpnConnection> = data
             .connections
             .iter()
@@ -239,7 +265,29 @@ impl VpnSnapshot {
                 .then_with(|| left.uuid.cmp(&right.uuid))
         });
 
-        VpnSnapshot { connections }
+        let mut plugins: Vec<VpnPlugin> = plugin_data.iter().map(plugin_from_data).collect();
+        plugins.sort_by(|left, right| {
+            left.label
+                .cmp(&right.label)
+                .then_with(|| left.service_type.cmp(&right.service_type))
+        });
+
+        VpnSnapshot {
+            connections,
+            plugins,
+        }
+    }
+
+    /// Whether at least one VPN plugin is installed. A host with no plugin can
+    /// still list saved connections (WireGuard is built in), but the Add
+    /// sheet has nothing to offer.
+    pub fn plugins_present(&self) -> bool {
+        !self.plugins.is_empty()
+    }
+
+    /// The number of installed plugins.
+    pub fn plugin_count(&self) -> usize {
+        self.plugins.len()
     }
 
     /// Whether any VPN is configured. A consumer that shows only an active
@@ -299,6 +347,24 @@ impl VpnSnapshot {
                 .unwrap_or_else(|| "Connected".to_owned()),
             count => format!("{count} Connected"),
         }
+    }
+}
+
+/// Decode one plugin record; the label falls back to the service-type suffix.
+fn plugin_from_data(data: &VpnPluginData) -> VpnPlugin {
+    let label = if data.label.is_empty() {
+        data.service_type
+            .rsplit('.')
+            .next()
+            .unwrap_or(&data.service_type)
+            .to_owned()
+    } else {
+        data.label.clone()
+    };
+    VpnPlugin {
+        service_type: data.service_type.clone(),
+        label,
+        builtin: data.builtin,
     }
 }
 

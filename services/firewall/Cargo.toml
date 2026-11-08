@@ -1,0 +1,16 @@
+[package]
+name = "dragonfruit-firewall"
+description = "The firewall adapter: firewalld/ufw/nftables detection, status, and the two explicit writes (T225)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters" }
+dragonfruit-distro-adapters = { path = "../distro-adapters" }
+
+[lib]
+name = "dragonfruit_firewall"
+path = "src/lib.rs"

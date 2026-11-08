@@ -7,7 +7,9 @@
 //! marks the active network. T-07.5 renders [`WifiSnapshot::glyph`] /
 //! [`WifiSnapshot::label`] and the [`WifiSnapshot::access_points`] list.
 
-use crate::source::{NetworkManagerData, WifiDeviceData};
+use crate::source::{
+    ActiveConnectionData, ConnectionData, NetworkManagerData, ServiceData, WifiDeviceData,
+};
 
 /// The aggregate Wi-Fi state, mapped from `NMDeviceState`.
 ///
@@ -246,8 +248,186 @@ impl Band {
     }
 }
 
-/// The Wi-Fi snapshot a menu bar renders: the manager state, the active
-/// network, and the visible network list.
+/// The kind of a saved network service, decoded from `connection.type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ServiceKind {
+    /// `802-3-ethernet`.
+    Ethernet,
+    /// `802-11-wireless`.
+    Wifi,
+    /// `bridge`.
+    Bridge,
+    /// `bond`.
+    Bond,
+    /// `vlan`.
+    Vlan,
+    /// Any other connection type.
+    #[default]
+    Other,
+}
+
+impl ServiceKind {
+    /// Decode a NetworkManager `connection.type`.
+    pub fn from_connection_type(kind: &str) -> Self {
+        match kind {
+            "802-3-ethernet" => ServiceKind::Ethernet,
+            "802-11-wireless" => ServiceKind::Wifi,
+            "bridge" => ServiceKind::Bridge,
+            "bond" => ServiceKind::Bond,
+            "vlan" => ServiceKind::Vlan,
+            _ => ServiceKind::Other,
+        }
+    }
+
+    /// The stable id for the wire view.
+    pub const fn id(self) -> &'static str {
+        match self {
+            ServiceKind::Ethernet => "ethernet",
+            ServiceKind::Wifi => "wifi",
+            ServiceKind::Bridge => "bridge",
+            ServiceKind::Bond => "bond",
+            ServiceKind::Vlan => "vlan",
+            ServiceKind::Other => "other",
+        }
+    }
+
+    /// The human label the Network pane draws.
+    pub const fn label(self) -> &'static str {
+        match self {
+            ServiceKind::Ethernet => "Ethernet",
+            ServiceKind::Wifi => "Wi-Fi",
+            ServiceKind::Bridge => "Bridge",
+            ServiceKind::Bond => "Bond",
+            ServiceKind::Vlan => "VLAN",
+            ServiceKind::Other => "Other",
+        }
+    }
+}
+
+/// The live state of one saved network service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ServiceState {
+    /// No active connection.
+    #[default]
+    Disconnected,
+    /// `NM_ACTIVE_CONNECTION_STATE_ACTIVATING`.
+    Connecting,
+    /// `NM_ACTIVE_CONNECTION_STATE_ACTIVATED`.
+    Connected,
+    /// `NM_ACTIVE_CONNECTION_STATE_DEACTIVATING`.
+    Disconnecting,
+    /// Any other active-connection state.
+    Unknown,
+}
+
+impl ServiceState {
+    /// Map the optional active-connection state.
+    pub const fn from_active(state: Option<u32>) -> Self {
+        match state {
+            None | Some(0) | Some(4) => ServiceState::Disconnected,
+            Some(1) => ServiceState::Connecting,
+            Some(2) => ServiceState::Connected,
+            Some(3) => ServiceState::Disconnecting,
+            Some(_) => ServiceState::Unknown,
+        }
+    }
+
+    /// Whether the service is up.
+    pub const fn is_connected(self) -> bool {
+        matches!(self, ServiceState::Connected)
+    }
+
+    /// The stable id for the wire view.
+    pub const fn id(self) -> &'static str {
+        match self {
+            ServiceState::Disconnected => "disconnected",
+            ServiceState::Connecting => "connecting",
+            ServiceState::Connected => "connected",
+            ServiceState::Disconnecting => "disconnecting",
+            ServiceState::Unknown => "unknown",
+        }
+    }
+
+    /// The human label the Network pane draws.
+    pub const fn label(self) -> &'static str {
+        match self {
+            ServiceState::Disconnected => "Not connected",
+            ServiceState::Connecting => "Connecting…",
+            ServiceState::Connected => "Connected",
+            ServiceState::Disconnecting => "Disconnecting…",
+            ServiceState::Unknown => "Unknown",
+        }
+    }
+
+    const fn rank(self) -> u8 {
+        match self {
+            ServiceState::Connected => 4,
+            ServiceState::Connecting | ServiceState::Disconnecting => 3,
+            ServiceState::Unknown => 2,
+            ServiceState::Disconnected => 1,
+        }
+    }
+}
+
+/// One saved network service the Network pane lists and orders.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetworkService {
+    /// `connection.id`.
+    pub id: String,
+    /// `connection.uuid`.
+    pub uuid: String,
+    /// The decoded service kind.
+    pub kind: ServiceKind,
+    /// The live state.
+    pub state: ServiceState,
+    /// Whether NetworkManager is configured to bring it up automatically.
+    pub autoconnect: bool,
+    /// `connection.autoconnect-priority`; higher wins.
+    pub priority: i32,
+    /// The service's position in the ordered list (0 is first).
+    pub order: usize,
+    /// `connection.interface-name`, when pinned.
+    pub interface_name: Option<String>,
+    /// The kernel interface, when a device is attached.
+    pub interface: Option<String>,
+    /// The hardware address, when a device is attached.
+    pub hardware: Option<String>,
+    /// The first IPv4 address, when connected.
+    pub address: Option<String>,
+}
+
+impl NetworkService {
+    /// Whether the service is up.
+    pub const fn is_connected(&self) -> bool {
+        self.state.is_connected()
+    }
+
+    /// A short secondary label, e.g. `Ethernet · Connected`.
+    pub fn label(&self) -> String {
+        format!("{} · {}", self.kind.label(), self.state.label())
+    }
+}
+
+/// One saved Wi-Fi network the Wi-Fi pane lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KnownNetwork {
+    /// The saved SSID.
+    pub ssid: String,
+    /// `connection.uuid`.
+    pub uuid: String,
+    /// Whether NetworkManager brings it up automatically.
+    pub autoconnect: bool,
+    /// The last successful activation, in seconds since the epoch.
+    pub last_used: u64,
+    /// Whether it is currently the active network.
+    pub connected: bool,
+    /// The security advertised by a visible AP, when one is in range.
+    pub security: Option<Security>,
+}
+
+/// The Wi-Fi snapshot a menu bar and the Settings pane render: the manager
+/// state, the active network, the visible network list, the saved services,
+/// and the known Wi-Fi networks.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WifiSnapshot {
     /// Whether the radio is enabled.
@@ -260,6 +440,12 @@ pub struct WifiSnapshot {
     pub access_points: Vec<AccessPoint>,
     /// The SSID the device is connected to, when connected.
     pub active_ssid: Option<String>,
+    /// Every saved non-VPN network service, in service order.
+    pub services: Vec<NetworkService>,
+    /// Every saved Wi-Fi network, connected first.
+    pub known_networks: Vec<KnownNetwork>,
+    /// The active Wi-Fi connection's first IPv4 address, when connected.
+    pub active_address: Option<String>,
 }
 
 impl WifiSnapshot {
@@ -328,12 +514,19 @@ impl WifiSnapshot {
             })
             .flatten();
 
+        let services = build_services(data);
+        let known_networks = build_known_networks(data, &access_points);
+        let active_address = active_wifi_address(data, active_ssid.as_deref());
+
         WifiSnapshot {
             enabled: data.wireless_enabled,
             connectivity: Connectivity::from_u32(data.connectivity),
             state,
             access_points,
             active_ssid,
+            services,
+            known_networks,
+            active_address,
         }
     }
 
@@ -395,6 +588,125 @@ impl WifiSnapshot {
     }
 }
 
+/// The active entry for a saved connection UUID.
+fn active_for<'a>(data: &'a NetworkManagerData, uuid: &str) -> Option<&'a ActiveConnectionData> {
+    data.active.iter().find(|active| active.uuid == uuid)
+}
+
+/// The device carrying an active connection (or the connection's pinned
+/// interface when it is idle).
+fn device_for<'a>(
+    data: &'a NetworkManagerData,
+    connection: &ConnectionData,
+    active: Option<&ActiveConnectionData>,
+) -> Option<&'a ServiceData> {
+    if let Some(active) = active {
+        if let Some(device) = data.services.iter().find(|device| {
+            active.devices.iter().any(|path| *path == device.path)
+                || device.active_connection.as_deref() == Some(active.path.as_str())
+        }) {
+            return Some(device);
+        }
+    }
+    let interface = connection.interface_name.as_deref()?;
+    data.services
+        .iter()
+        .find(|device| device.interface == interface)
+}
+
+/// Build the ordered non-VPN service list.
+fn build_services(data: &NetworkManagerData) -> Vec<NetworkService> {
+    let mut services: Vec<NetworkService> = data
+        .connections
+        .iter()
+        .filter(|connection| connection.kind != "vpn" && connection.kind != "wireguard")
+        .map(|connection| {
+            let active = active_for(data, &connection.uuid);
+            let state = ServiceState::from_active(active.map(|active| active.state));
+            let device = device_for(data, connection, active);
+            NetworkService {
+                id: connection.id.clone(),
+                uuid: connection.uuid.clone(),
+                kind: ServiceKind::from_connection_type(&connection.kind),
+                state,
+                autoconnect: connection.autoconnect,
+                priority: connection.priority,
+                order: 0,
+                interface_name: connection.interface_name.clone(),
+                interface: device.map(|device| device.interface.clone()).filter(|s| !s.is_empty()),
+                hardware: device.and_then(|device| device.hw_address.clone()),
+                address: device.and_then(|device| device.ip4_address.clone()),
+            }
+        })
+        .collect();
+
+    // Service order is NetworkManager's autoconnect priority, highest first;
+    // a connected service breaks ties so the default order is useful, and the
+    // id/UUID keep it deterministic.
+    services.sort_by(|left, right| {
+        right
+            .priority
+            .cmp(&left.priority)
+            .then_with(|| right.state.rank().cmp(&left.state.rank()))
+            .then_with(|| left.id.cmp(&right.id))
+            .then_with(|| left.uuid.cmp(&right.uuid))
+    });
+    for (index, service) in services.iter_mut().enumerate() {
+        service.order = index;
+    }
+    services
+}
+
+/// Build the saved Wi-Fi network list, joined to the visible APs for security.
+fn build_known_networks(
+    data: &NetworkManagerData,
+    access_points: &[AccessPoint],
+) -> Vec<KnownNetwork> {
+    let mut known: Vec<KnownNetwork> = data
+        .connections
+        .iter()
+        .filter(|connection| connection.kind == "802-11-wireless")
+        .filter_map(|connection| {
+            let ssid = connection.ssid.clone()?;
+            let active = active_for(data, &connection.uuid);
+            let connected = ServiceState::from_active(active.map(|active| active.state))
+                .is_connected();
+            let security = access_points
+                .iter()
+                .find(|ap| ap.ssid == ssid)
+                .map(|ap| ap.security);
+            Some(KnownNetwork {
+                ssid,
+                uuid: connection.uuid.clone(),
+                autoconnect: connection.autoconnect,
+                last_used: connection.timestamp,
+                connected,
+                security,
+            })
+        })
+        .collect();
+
+    known.sort_by(|left, right| {
+        right
+            .connected
+            .cmp(&left.connected)
+            .then_with(|| left.ssid.cmp(&right.ssid))
+            .then_with(|| left.uuid.cmp(&right.uuid))
+    });
+    known
+}
+
+/// The active Wi-Fi connection's IPv4 address.
+fn active_wifi_address(data: &NetworkManagerData, active_ssid: Option<&str>) -> Option<String> {
+    let ssid = active_ssid?;
+    let connection = data
+        .connections
+        .iter()
+        .find(|connection| connection.ssid.as_deref() == Some(ssid))?;
+    let active = active_for(data, &connection.uuid)?;
+    device_for(data, connection, Some(active)).and_then(|device| device.ip4_address.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,6 +734,9 @@ mod tests {
                 active_ap: active.map(str::to_owned),
                 access_points: aps,
             }],
+            connections: Vec::new(),
+            active: Vec::new(),
+            services: Vec::new(),
         }
     }
 

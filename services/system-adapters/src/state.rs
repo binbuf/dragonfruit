@@ -44,6 +44,10 @@ impl AdapterId {
     pub const ACCESSIBILITY: AdapterId = AdapterId("accessibility");
     /// Network advanced / VPN (NetworkManager VPN connections).
     pub const VPN: AdapterId = AdapterId("vpn");
+    /// The Network pane's saved services (NetworkManager settings).
+    pub const NETWORK: AdapterId = AdapterId("network");
+    /// The firewall (firewalld/ufw/nftables).
+    pub const FIREWALL: AdapterId = AdapterId("firewall");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {

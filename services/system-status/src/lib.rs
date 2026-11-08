@@ -41,7 +41,8 @@
 
 use dragonfruit_audio::{AudioAdapter, AudioSource, SetOutcome};
 use dragonfruit_networkmanager::{
-    JoinRequest, JoinResult, NetworkManagerAdapter, NetworkManagerSource, WifiAccess,
+    AddConnectionSpec, AddKind, JoinRequest, JoinResult, NetworkManagerAdapter,
+    NetworkManagerSource, WifiAccess,
 };
 use dragonfruit_power::{PowerAdapter, PowerProfile, PowerSource, ProfileOutcome};
 use dragonfruit_system_adapters::Adapter;
@@ -51,7 +52,9 @@ pub mod accessibility;
 pub mod accounts;
 pub mod bluetooth;
 pub mod dbus;
+pub mod firewall;
 pub mod input;
+pub mod network;
 pub mod notifications;
 pub mod printers;
 pub mod privacy;
@@ -60,6 +63,8 @@ pub mod updates;
 pub mod vpn;
 
 pub use accessibility::{accessibility_snapshot_view, accessibility_view, AccessibilityHost};
+pub use firewall::{firewall_report, firewall_snapshot_view, firewall_view, FirewallHost};
+pub use network::{network_report, network_view};
 pub use accounts::{
     account_report, account_type_label, accounts_snapshot_view, accounts_view, AccountsHost,
 };
@@ -104,6 +109,10 @@ pub const PRIVACY_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Privacy";
 pub const ACCESSIBILITY_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Accessibility";
 /// The Network advanced (VPN) interface name under [`DBUS_NAME`] (T-15.15b).
 pub const VPN_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Vpn";
+/// The combined Network pane interface name under [`DBUS_NAME`] (T225).
+pub const NETWORK_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Network";
+/// The firewall interface name under [`DBUS_NAME`] (T225).
+pub const FIREWALL_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Firewall";
 
 /// The host owns the three menu-bar adapters and exposes their snapshots and
 /// actions. Generic over the transport seams so CI drives it with the mocks.
@@ -182,6 +191,65 @@ impl<N: NetworkManagerSource, A: AudioSource, P: PowerSource> StatusHost<N, A, P
             .wifi
             .join(&JoinRequest::new(ssid, secret.map(str::to_owned)));
         join_report(&result)
+    }
+
+    /// Join a hidden network. One explicit write; the report is JSON.
+    pub fn join_hidden(&mut self, ssid: &str, secret: Option<&str>) -> Value {
+        let result = self
+            .wifi
+            .join_hidden(&JoinRequest::new(ssid, secret.map(str::to_owned)));
+        join_report(&result)
+    }
+
+    /// Enable or disable the Wi-Fi radio. One explicit write.
+    pub fn set_wifi_enabled(&mut self, enabled: bool) -> Value {
+        network_report(&self.wifi.set_wifi_enabled(enabled))
+    }
+
+    /// Forget the saved Wi-Fi connection with `uuid`. One explicit write.
+    pub fn forget_wifi(&mut self, uuid: &str) -> Value {
+        network_report(&self.wifi.forget(uuid))
+    }
+
+    /// Change whether the saved connection comes up automatically.
+    pub fn set_wifi_autoconnect(&mut self, uuid: &str, enabled: bool) -> Value {
+        network_report(&self.wifi.set_autoconnect(uuid, enabled))
+    }
+
+    /// Activate a saved network service. One explicit write.
+    pub fn activate_service(&mut self, uuid: &str) -> Value {
+        network_report(&self.wifi.activate_service(uuid))
+    }
+
+    /// Deactivate a saved network service. One explicit write.
+    pub fn deactivate_service(&mut self, uuid: &str) -> Value {
+        network_report(&self.wifi.deactivate_service(uuid))
+    }
+
+    /// Move a service one position in the service order.
+    pub fn move_service(&mut self, uuid: &str, delta: i32) -> Value {
+        network_report(&self.wifi.move_service(uuid, delta))
+    }
+
+    /// Create a saved service or VPN connection. One explicit write.
+    pub fn add_service(&mut self, name: &str, kind: &str, plugin: &str, gateway: &str) -> Value {
+        let spec = AddConnectionSpec {
+            name: name.to_owned(),
+            kind: AddKind::from_id(kind),
+            plugin: (!plugin.is_empty()).then(|| plugin.to_owned()),
+            gateway: (!gateway.is_empty()).then(|| gateway.to_owned()),
+            secret: None,
+        };
+        network_report(&self.wifi.add_connection(&spec))
+    }
+
+    /// The combined Network pane view: the Wi-Fi/service snapshot plus the
+    /// firewall sub-view.
+    pub fn network_view<F: dragonfruit_firewall::FirewallSource>(
+        &self,
+        firewall: &dragonfruit_firewall::FirewallAdapter<F>,
+    ) -> Value {
+        network_view(&self.wifi, firewall)
     }
 
     /// Set the default sink's linear volume (0..=1). One explicit write.
@@ -299,6 +367,44 @@ pub fn wifi_view<N: NetworkManagerSource>(adapter: &NetworkManagerAdapter<N>) ->
                 "secured": ap.security.is_secured(),
                 "active": ap.active,
                 "band": ap.band().label(),
+                "frequency": ap.frequency_mhz,
+            })
+        })
+        .collect();
+    let known_networks: Vec<Value> = snapshot
+        .known_networks
+        .iter()
+        .map(|known| {
+            json!({
+                "ssid": known.ssid,
+                "uuid": known.uuid,
+                "autoconnect": known.autoconnect,
+                "lastUsed": known.last_used,
+                "connected": known.connected,
+                "security": known.security.map(|security| security.label()).unwrap_or_default(),
+                "secured": known.security.map(|security| security.is_secured()).unwrap_or(false),
+            })
+        })
+        .collect();
+    let services: Vec<Value> = snapshot
+        .services
+        .iter()
+        .map(|service| {
+            json!({
+                "id": service.id,
+                "uuid": service.uuid,
+                "kind": service.kind.id(),
+                "kindLabel": service.kind.label(),
+                "state": service.state.id(),
+                "stateLabel": service.state.label(),
+                "connected": service.is_connected(),
+                "autoconnect": service.autoconnect,
+                "priority": service.priority,
+                "order": service.order,
+                "interface": service.interface.clone().unwrap_or_default(),
+                "hardware": service.hardware.clone().unwrap_or_default(),
+                "address": service.address.clone().unwrap_or_default(),
+                "label": service.label(),
             })
         })
         .collect();
@@ -313,8 +419,13 @@ pub fn wifi_view<N: NetworkManagerSource>(adapter: &NetworkManagerAdapter<N>) ->
         "activeSsid": snapshot.active_ssid,
         "readOnly": read_only,
         "note": note,
+        "activeAddress": snapshot.active_address.clone().unwrap_or_default(),
         "networkCount": snapshot.network_count(),
         "networks": networks,
+        "knownNetworkCount": known_networks.len(),
+        "knownNetworks": known_networks,
+        "serviceCount": services.len(),
+        "services": services,
     })
 }
 
@@ -537,6 +648,9 @@ mod tests {
                     },
                 ],
             }],
+            connections: Vec::new(),
+            active: Vec::new(),
+            services: Vec::new(),
         }
     }
 
