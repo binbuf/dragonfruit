@@ -43,8 +43,8 @@ separate layouts; the window geometry does not change when the view mode
 changes.
 
 T230d owns the measured chrome, status bar, toolbar-hidden mode and Get Info
-inspector. Tabs, column/gallery rendering, search results, tags, customization
-and motion remain explicit `OPEN` rows. See
+inspector; T244a owns the column and gallery views. Tabs, search results, tags,
+customization and motion remain explicit `OPEN` rows. See
 [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
 and [ADR 0241](adr/0241-macos-structural-surface-review.md).
 
