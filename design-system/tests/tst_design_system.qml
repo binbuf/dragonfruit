@@ -598,6 +598,34 @@ TestCase {
         compare(triggeredSpy.signalArguments[0][0], 1);
     }
 
+    function test_menu_type_ahead_skips_disabled_rows() {
+        var m = make(menuComponent, {
+            title: "File",
+            model: [
+                { label: "Open" },
+                { label: "Save", enabled: false,
+                  disabledReason: "The document is read-only." },
+                { label: "Settings" }
+            ]
+        });
+        m.openMenu();
+        waitForRendering(stage);
+        m.typeAhead("s");
+        // Save matches the prefix but is disabled, so Settings is selected.
+        compare(m.highlightedIndex, 2);
+        compare(m.entries[1].enabled, false);
+        compare(m.entries[1].disabledReason, "The document is read-only.");
+    }
+
+    function test_disabled_menu_row_exposes_its_reason() {
+        var row = make(menuRowComponent, {
+            entry: { index: 0, label: "Save", enabled: false,
+                     disabledReason: "The document is read-only." }
+        });
+        compare(row.disabled, true);
+        compare(row.Accessible.description, "The document is read-only.");
+    }
+
     // -- TitleBar intent ----------------------------------------------------
 
     function test_titlebar_emits_intent() {

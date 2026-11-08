@@ -938,9 +938,9 @@ like Mission Control (T-15.5b) and the Lock Screen (T-15.8b; ADR
 - `menu.autoHide` is **applied live** since T201: the shell forwards it and
   the compositor reveals/conceals the bar per output, with `never`,
   `always`, and `full-screen` semantics documented in
-  [adr/0220](adr/0220-menu-bar-auto-hide-visibility.md). Only
-  `menu.recentItems` remains stored policy with no consumer yet; the rows are
-  the capture's controls and are not dead.
+  [adr/0220](adr/0220-menu-bar-auto-hide-visibility.md). `menu.recentItems`
+  is consumed by the system menu's Recent Items submenu (T230); the rows are
+  live controls, not dead policy.
 
 ## The General, About, and Updates path (T-15.10a)
 
