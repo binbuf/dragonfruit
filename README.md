@@ -99,7 +99,7 @@ docs/              in-repo policy docs (licensing, IPC versioning, …)
 |---|---|---|
 | Rust | 1.98.1 (MSRV 1.80.1) | `rust-toolchain.toml`, `Cargo.toml` |
 | Smithay | =0.7.0 | root `Cargo.toml` (exact pin; upgrades are deliberate events) |
-| Qt | 6.11 | root `CMakeLists.txt` (`find_package(Qt6 6.11 ...)`) |
+| Qt | 6.8 (floor) | root `CMakeLists.txt` (`find_package(Qt6 6.8 ...)`) |
 | CMake | ≥ 3.24 | root `CMakeLists.txt` |
 
 Fedora 44 native packages:
@@ -122,10 +122,16 @@ without the DRM `-devel` packages, a user-space sysroot at
 ### Install a release build
 
 Tagged releases publish a portable `tar.gz`, a Fedora RPM, a Debian binary
-package, and a source tarball. They install alongside your current desktop:
-they do **not** remove it, preselect a display-manager session, arm autologin,
-or change default applications. Log out and choose **Dragonfruit** at the
-login screen.
+package, an Arch binary package, and a source tarball. Each package is built
+natively on the oldest supported release of its family (Debian 13, Fedora 43,
+Arch) against that release's own Qt; nothing system-level is bundled inside a
+distro package. They install alongside your current desktop: they do **not**
+remove it, preselect a display-manager session, arm autologin, or change
+default applications. Log out and choose **Dragonfruit** at the login screen.
+
+The binary assets target current stable releases with Qt 6.8 or newer. Older
+LTS releases (Ubuntu 24.04, Debian 12) and non-packaged distributions can use
+the portable bundle; official source packaging for every distro is T164/T165.
 
 Fedora 44 (primary reference platform):
 
@@ -133,13 +139,19 @@ Fedora 44 (primary reference platform):
 sudo dnf install ./dragonfruit-desktop-*.rpm
 ```
 
-Debian/Ubuntu with Qt 6.11 available:
+Debian 13 / Ubuntu 25.04+ (Qt 6.8 or newer):
 
 ```bash
 sudo apt install ./dragonfruit-desktop_*.deb
 ```
 
-Portable bundle (the host must already provide Qt 6.11 and the runtime stack):
+Arch (Qt 6.8 or newer):
+
+```bash
+sudo pacman -U dragonfruit-desktop-*.pkg.tar.zst
+```
+
+Portable bundle (the host must already provide Qt 6.8 and the runtime stack):
 
 ```bash
 tar -xzf dragonfruit-*-linux-*.tar.gz

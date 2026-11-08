@@ -18,8 +18,11 @@ make dist FORMATS=rpm
 T164 still owns the source RPM, vendored crates, Fedora review, and COPR.
 
 The Fedora package will carry the pinned toolchain expectations from
-the repository root: Rust per `rust-toolchain.toml`, Qt 6.11 per the
-top-level `CMakeLists.txt`, Smithay `=0.7.0` per the root `Cargo.toml`.
+the repository root: Rust per `rust-toolchain.toml`, Qt 6.8 (floor) per the
+top-level `CMakeLists.txt`, Smithay `=0.7.0` per the root `Cargo.toml`. The
+release RPM is built on Fedora 43 against that release's Qt; the dependency
+floor is derived from the build host, so the package never claims a Qt the
+build release does not ship.
 
 ## Optional dependency markers (T220)
 

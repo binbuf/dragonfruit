@@ -11,13 +11,18 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.11 REQUIRED COMPONENTS Core Gui Quick QuickTest Test DBus)
+# 6.8 is the real floor, not a preference: QChronoTimer (shellcontroller.cpp)
+# arrived in Qt 6.8 and QtQuick.VectorImage (shell/dock/DockGlyph.qml) in 6.6.
+# Keeping the floor at the oldest supported distribution lets Debian 13,
+# Ubuntu 25.04+, Fedora 43+, and Arch build the same source. Raise it only with
+# a packaging decision (see docs/design/12-packaging.md).
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Quick QuickTest Test DBus)
 
 # `REQUIRES` also opts in to every Qt policy introduced up to that version
 # (QTP0001, QTP0004, ...). Without it the policies stay unset and every
 # `qt_add_qml_module` emits a developer warning. The version matches the
-# `find_package(Qt6 6.11 ...)` above.
-qt_standard_project_setup(REQUIRES 6.11)
+# `find_package(Qt6 6.8 ...)` above.
+qt_standard_project_setup(REQUIRES 6.8)
 
 enable_testing()
 

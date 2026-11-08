@@ -40,8 +40,8 @@ files this bundle installed. It keeps user settings under
 
 The bundle is dynamically linked. It needs:
 
-- Qt 6.11 (Core, Gui, Quick, DBus, Network, the Wayland platform plugin, and
-  the QtQuick QML modules)
+- Qt 6.8 or newer (Core, Gui, Quick, DBus, Network, the Wayland platform
+  plugin, and the QtQuick / Shapes / VectorImage QML modules)
 - Wayland, libxkbcommon, DRM/GBM, libinput, libseat, udev/systemd, D-Bus
 - a systemd user manager and a Wayland-capable display manager
 - Xwayland for X11 applications (optional, but expected on a desktop)

@@ -407,13 +407,17 @@ Rules:
 | Job | Distro | What it proves |
 |---|---|---|
 | Build | Fedora 44 | Rust + Qt + CMake; `make gates` |
-| Build | Ubuntu 24.04 | Rust + Qt + CMake; `make gates`; the probe records the Ubuntu host |
-| Build | Debian 13 | Rust + Qt + CMake; `make gates` |
-| Build | Arch | Rust + Qt + CMake; `make gates` |
+| Build | Ubuntu 25.04+ | Rust + Qt 6.8+ + CMake; `make gates`; the probe records the Ubuntu host |
+| Build | Debian 13 | Rust + Qt 6.8+ + CMake; `make gates` |
+| Build | Arch | Rust + Qt 6.8+ + CMake; `make gates` |
 | Install | Fedora 44 VM | package install, session entry, first login |
-| Install | Ubuntu 24.04 VM | package install, session entry, first login |
+| Install | Ubuntu 25.04+ VM | package install, session entry, first login |
 | Install | Debian 13 VM | package install, session entry, first login |
 | Install | Arch VM | package install, session entry, first login |
+
+Ubuntu 24.04 and Debian 12 ship Qt 6.4 and are below the current floor; they
+use the portable bundle until the floor is lowered (see
+[12-packaging.md](12-packaging.md#release-binary-assets)).
 | Feature smoke | each | shell, Dock, menu bar, Settings, Files, network, audio |
 | Absence | each | stop optional services; panes degrade |
 | Adapter contract | all four | `cargo test -p dragonfruit-distro-adapters`; probe output per host |

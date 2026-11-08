@@ -11,6 +11,7 @@
 %global debug_package %{nil}
 %global df_version %{?df_version}%{!?df_version:0.0.0}
 %global df_release %{?df_release}%{!?df_release:1}
+%global df_qt_min %{?df_qt_min}%{!?df_qt_min:6.8}
 %global df_stage %{?df_stage}%{!?df_stage:/nonexistent}
 %global df_date %{?df_date}%{!?df_date:Thu Jan 01 2026}
 
@@ -26,9 +27,9 @@ BuildArch:      %{_arch}
 # desktop must start and work with this set only (docs/design/12-packaging.md).
 Requires:       glibc
 Requires:       libstdc++
-Requires:       qt6-qtbase >= 6.11
-Requires:       qt6-qtdeclarative >= 6.11
-Requires:       qt6-qtwayland >= 6.11
+Requires:       qt6-qtbase >= %{df_qt_min}
+Requires:       qt6-qtdeclarative >= %{df_qt_min}
+Requires:       qt6-qtwayland >= %{df_qt_min}
 Requires:       systemd
 Requires:       dbus-daemon
 Requires:       xdg-desktop-portal
