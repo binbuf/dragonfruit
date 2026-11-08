@@ -14,7 +14,7 @@ Before T219 each task described its own state, axes, and tolerance, so a
 capture could be called "done" without a reproducible trigger, a hash, or a
 falsifiable metric. T260 cannot build a comparison harness on that.
 
-The reference campaign lives in an optional `macos-liquid-glass-review`
+The reference campaign lives in an optional `macos-design-review`
 checkout. The local inventory
 (`docs/reference/desktop-experience-inventory.md`) is the Dragonfruit-facing
 id source; the checkout supplies reference measurements when present. Neither

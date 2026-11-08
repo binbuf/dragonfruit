@@ -62,7 +62,7 @@ The full state list is in the manifest. The inventory source is
 [`docs/reference/desktop-experience-inventory.md`](../reference/desktop-experience-inventory.md);
 the reference campaign's `S-*`, `N-*`, `Q-*`, `H-*`, `SET-*`, and `A-*`
 prefixes are preserved. The optional macOS reference checkout
-(`macos-liquid-glass-review`) was not present in this tree when T219 landed;
+(`macos-design-review`) was not present in this tree when T219 landed;
 the local inventory is the id source and the reference checkout remains
 optional evidence, not a build dependency.
 
@@ -183,6 +183,33 @@ concrete where the profile is not enough:
 - `SET-*`: 44 pt row height, 24 pt hit target, 13 pt type.
 - `A-*`: motion/latency/performance only; material, geometry, typography, and
   contrast are measured on the owning surface.
+- `N-WIN` / structural surfaces (T230a): chrome height 0/32/40/48/52/66/88 pt
+  ±1 pt; traffic lights 16×16 pt ±1 pt; 8/18 pt insets ±1 pt; 23 pt spacing
+  ±1 pt; About panel 280×503 pt ±1 pt; drawer 7 columns/115×92 pt cell/77 pt
+  icon; Notification Center 344 pt width and three material bands; Control
+  Center 64 pt cells/12 pt gaps/292 pt field; Finder 52/198/28/30/28 pt bars
+  and Get Info 328×1034 pt.
+
+### 7.3 Structural surface states (2026-11-08 review)
+
+T230a extends the manifest with the structural review states. The new rows
+cover:
+
+| Family | New states |
+|---|---|
+| `N-WIN` | chrome styles 0/32/40/48/52/66/88, traffic-light geometry, accessory bars, fullscreen hidden/revealed, long title/RTL |
+| `SET-GENERAL` / About | compact 280×503 pt panel, full 740×820 pt page, More Info transition, long/localized names |
+| `Q-AD` | Spotlight Apps grid, list, search, category filter, suggestions, empty/no-results, launch |
+| `S-NC` | 344 pt panel, banner stack, widget stack, gallery, empty/actions/Focus, motion |
+| `S-CC` | 4-column grid, module spans, expanded sheets, Edit Controls catalogue, pages/resize/pinning, motion |
+| `N-PREV` / Files | Finder chrome, four view modes, Get Info inspector, toolbar-hidden mode |
+
+The reference geometry is in
+`macos-design-review/docs/experience_measurements.json`. A row without a
+Dragonfruit capture/test stays `OPEN`; the reference value goes in the row's
+summary/threshold, not in a fake `captured` status. The OPEN ids are listed in
+[23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
+§9.
 
 ### 7.2 Threshold dimensions
 
@@ -272,6 +299,8 @@ profiles. A T260 tolerance change is a change to this contract.
 - [Evidence and acceptance](evidence-and-acceptance.md)
 - [Total desktop experience](22-total-experience.md)
 - [Motion, HUDs, sound, and feedback](motion-and-feedback.md)
+- [macOS structural surface review](23-macos-structural-surface-review.md)
 - [Desktop experience inventory](../reference/desktop-experience-inventory.md)
 - [T260 acceptance harness](../tasks/0.2.0/260-t-22.8-acceptance-harness.md)
 - [ADR 0228](adr/0228-experience-schema-and-thresholds.md)
+- [ADR 0241](adr/0241-macos-structural-surface-review.md)

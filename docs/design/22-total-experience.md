@@ -110,9 +110,9 @@ The detailed gap register is in [STATUS.md](STATUS.md).
 | Menu bar | Implemented | Full app/global menu, system menu, status items, extras, clock/date, overflow/notch, auto-hide, per-display |
 | Dock | Implemented | Full click tree, launch/quit, bounce, minimize/genie, magnification, auto-hide, stacks, Trash, badges, chooser, drag/drop, keyboard, multi-display |
 | Desktop | Implemented | Icons, selection, context menus, Quick Look, stacks, widgets, Trash |
-| Control Center | Implemented | Full module set, expanded sheets, customization, live service state |
-| Notification Center | Partial | Banners, history, stack, lower panel, widgets, Focus, actions, per-display |
-| Applications drawer | Implemented | Search, categories, folders, paging, keyboard, launch feedback |
+| Control Center | Partial | Measured 4-column grid, full module set, expanded sheets, Edit Controls catalogue, customization, live service state |
+| Notification Center | Partial | 344 pt right-edge ramp, banners, history, stack, lower panel, widgets/gallery, Focus, actions, per-display |
+| Applications drawer | Partial | Spotlight Apps: search-first, 7-column grid/list, categories, keyboard, launch feedback; no pages or folders |
 
 ### 4.2 Navigation and window management
 
@@ -122,7 +122,7 @@ The detailed gap register is in [STATUS.md](STATUS.md).
 | App switcher | Implemented | App/window modes, cycling, previews, cancel, Cmd+`, multi-display |
 | Stage Manager | Design-only | Stage strip, recent apps, stage groups, drag, fullscreen |
 | Window tiling / Split View | Design-only | Halves, quarters, drag-to-edge, menu, keyboard |
-| Window lifecycle | Implemented | Open/close/minimize/restore/zoom/fullscreen/genie, launch/quit, Force Quit |
+| Window lifecycle | Partial | Open/close/minimize/restore/zoom/fullscreen/genie, launch/quit, Force Quit; chrome style taxonomy (0/32/40/48/52/66/88 pt) still landing |
 | Quick Look | Design-only | Image/PDF/video/multi-item, navigation, actions, fullscreen |
 | Login / lock / first run | Partial | Lock, login, fast user switching, Setup Assistant, power actions |
 
@@ -131,14 +131,14 @@ The detailed gap register is in [STATUS.md](STATUS.md).
 | Surface | Current | Target |
 |---|---|---|
 | Search | Design-only (app-index exists) | Invocation, query states, categories, results, previews, actions, keyboard, privacy, indexing |
-| Applications drawer | Implemented | Full parity and launch feedback |
+| Applications drawer | Partial | Spotlight Apps grid/list parity and launch feedback |
 | Add Application picker | Implemented | Full parity |
 
 ### 4.4 Settings
 
 | Area | Current | Target |
 |---|---|---|
-| Pane catalog | 23 shipped | Full catalog, with explicit omit/adapt/delegate decisions |
+| Pane catalog | 28 shipped | Full catalog, with explicit omit/adapt/delegate decisions |
 | Search/deep links | Partial | Every pane/row searchable; deep links from shell and apps |
 | Live apply | Implemented | Validation, admin auth, absence, per-row ownership |
 | Row-level mapping | Partial | Every row mapped in [settings-business-logic-map.md](settings-business-logic-map.md) |
@@ -274,24 +274,49 @@ Divider
 ### 5.6 Applications drawer
 
 - Opens as a full-output overlay on the active display; Escape/launch closes.
-- Every launchable app appears once, alphabetically by default, with its
-  themed icon and localized name.
-- Search filters by name/id; category pills filter by freedesktop categories;
-  the default is All.
-- The grid is bounded by columns/rows and scrolls/pages without clipping; a
-  narrow output drops columns.
-- Folders group apps and open in place; a folder never hides apps from search.
-- Keyboard: arrows, Return, Escape, type-to-search; focus is visible.
+- The drawer is **Spotlight Apps**, not a page-based Launchpad: a search-first,
+  category-filtered, scrollable collection with no pages, user folders, page
+  dots, or drag-to-rearrange grid.
+- The search field is present and focused on open; suggestions come first,
+  then All apps alphabetically.
+- Every launchable app appears once, with its themed icon and localized name.
+  The reference grid is 7 columns of 115×92 pt cells (77 pt icon, 18 pt label);
+  columns derive from width, not a hard-coded 7.
+- Category chips filter the collection; they do not create pages. The default
+  is All.
+- List mode is a real alternate view: full-height surface with a centred
+  640 pt column and 636×56 pt rows. Grid/List is a view preference, not a
+  different information architecture.
+- Keyboard: arrows, Return, Escape, type-to-search, category focus; focus is
+  visible.
 - Launch uses the same path as the Dock and shows the same failure notice.
+  Launching closes the overlay and activates the app; there is no page
+  transition.
+- The drawer's search filters the app corpus only; system Search is separate.
 
 ### 5.7 Control Center and notifications
 
 - Control Center is a panel of modules with live state; each module opens an
-  expanded sheet where the reference does.
+  expanded sheet where the reference does. The reference grid is 4 columns of
+  64 pt cells with 12 pt gaps; modules span 1×1, 2×1, 2×2 and 4×1, and the
+  outer panel, module capsules, and expanded list are separate materials.
+- The Edit Controls catalogue is part of the surface: a 736×900 pt window with
+  a 245 pt category sidebar and 22 categories. The default panel is only a
+  subset of the catalogue.
+- Expanded modules grow the outer panel; they are not detached popovers.
+  Multiple pages, control resizing, and menu-bar pinning are real capabilities,
+  not a second panel model.
 - A module with an absent service hides or shows an explicit unavailable
   state; it never shows a fake toggle.
 - Notification banners enter/exit with the measured motion, stack, and timeout;
   actions are reachable by keyboard.
+- Notification Center is a right-edge 344 pt overlay with a banner stack, a
+  widget stack, and a lower panel. The three bands are separate materials
+  (banner 0.549/0.976, stack 0.551/0.706, lower panel 0.407/0.852); do not
+  flatten them into one glass sheet.
+- The widget gallery is a separate 1027×552 pt window with a 240 pt category
+  sidebar and 19 categories; live widget sizes come from the panel, not the
+  gallery thumbnail.
 - Notification Center shows history, grouped stacks, the lower panel/widgets,
   and a clear-all action; clicking the clock toggles it.
 - Focus/DND is one policy shared by the menu bar, Control Center, Notification
@@ -303,6 +328,11 @@ Divider
 
 - Window open/close/minimize/restore/zoom/fullscreen use the shared animation
   clock and motion tokens; each has a reduced-motion path.
+- Window chrome is a style variant, not a per-app constant: `borderless`,
+  `titlebar`, `unifiedCompact`, `expanded`, `unified`, `preference` with the
+  measured 0/32/40/48/52/66/88 pt baselines. Traffic lights are 16×16 pt with
+  8 pt insets in a 32 pt bar, 18 pt insets in a 52 pt bar, and 23 pt spacing.
+  Tab/path/status/format bars are content, not chrome.
 - Minimize target follows `dock.minimizeIntoTileIcon` and
   `dock.minimizedAnimation`; the Dock icon reacts if enabled.
 - App quit closes its windows with the same lifecycle; the last window close
@@ -427,6 +457,9 @@ The target is accepted when:
 
 - Every `S-*`, `N-*`, `Q-*`, `M-*`, `H-*`, and `SET-*` row in the capture
   inventory has a still/motion/AX artifact or an `OPEN` row.
+- The structural surface review is reflected in the manifest and thresholds:
+  window chrome styles, About, Spotlight Apps, Notification Center,
+  Control Center, and Finder have measured geometry or explicit `OPEN` rows.
 - Every animation has a measured duration/curve and a reduced-motion path.
 - Every Settings row has an owner and an absent-provider state.
 - Every surface has a keyboard path and an accessible name.
@@ -470,6 +503,10 @@ inventory id:
 | Screen saver runtime | Core idle/lock surface; the Settings pane already exists | T245a |
 | Login, lock, first run | Core session experience; lock/session machinery exists | T245 |
 | Notification widgets | Part of the reference Notification Center | T234 |
+| Window chrome style system | The reference chrome is 0/32/40/48/52/66/88 pt, not one height | T230b |
+| Two About surfaces | Compact utility panel plus canonical Settings page | T230c |
+| Finder chrome and Get Info | Measured 52/198/28/30/28 pt anatomy and inspector | T230d |
+| Files column and gallery views | The reference has four real view modes, not one grid | T244a |
 | HUDs, sound, cursor | Core feedback language; the ask explicitly named volume/brightness HUDs | T249–T251 |
 | Accessibility and IME | Core usability; existing gaps G-19/G-20 | T252/T253 |
 
@@ -503,6 +540,7 @@ third-party substitutions are listed in
 - [Motion and feedback](motion-and-feedback.md)
 - [Evidence and acceptance](evidence-and-acceptance.md)
 - [Experience schema and thresholds](experience-schema.md)
+- [macOS structural surface review](23-macos-structural-surface-review.md)
 - [macOS surface inventory](../reference/desktop-experience-inventory.md)
 - [Existing shell design](04-shell.md)
 - [Existing workspaces design](03-workspaces.md)
@@ -511,3 +549,4 @@ third-party substitutions are listed in
 - [ADR 0219](adr/0219-total-experience-scope-and-parity-bar.md) — scope and parity bar
 - [ADR 0220](adr/0220-generic-naming-and-third-party-substitution.md) — naming/licensing
 - [ADR 0221](adr/0221-cross-distro-host-service-contract.md) — host-service contract
+- [ADR 0241](adr/0241-macos-structural-surface-review.md) — structural surface review adoption

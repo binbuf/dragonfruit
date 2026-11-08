@@ -114,11 +114,17 @@ link and every row's owner/key/absence/state. See ADR
 ## The General group sub-panes (T226)
 
 The General group is one sidebar pane with an in-place sub-pane stack. About
-and Software Update stay dialogs (the reference anatomy); Storage is the
-existing top-level pane; Login Items, Language & Region, Date & Time, Sharing,
-Backup, Startup Disk, and Reset open in place with a `‹ General` back control.
-Every row is a live summary of the same bridge-host view the sub-pane renders,
-so the list never advertises a state the sub-pane contradicts.
+has two surfaces after the 2026-11-08 structural review: a compact 280×503 pt
+utility panel with a blank 32 pt title bar, and the canonical 740×820 pt
+Settings page with 52 pt chrome and a scrolling 768 pt content area. Software
+Update stays a dialog. T230c replaces the current single About dialog with the
+measured two-surface anatomy; the panel is a summary that links to the page.
+Storage is the existing top-level pane; Login Items, Language & Region,
+Date & Time, Sharing, Backup, Startup Disk, and Reset open in place with a
+`‹ General` back control. Every row is a live summary of the same bridge-host
+view the sub-pane renders, so the list never advertises a state the sub-pane
+contradicts. See
+[23-macos-structural-surface-review.md](23-macos-structural-surface-review.md).
 
 The host half is `services/general-adapter` + `services/system-status/src/general.rs`
 behind `org.dragonfruit.SystemStatus1.General`; the Settings client is
