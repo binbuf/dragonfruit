@@ -31,6 +31,7 @@
 #include "desktopentry.h"
 #include "displayspolicy.h"
 #include "dockmodel.h"
+#include "focusschedule.h"
 #include "folderstacks.h"
 #include "lockauth.h"
 #include "materialpolicy.h"
@@ -199,6 +200,8 @@ private slots:
     // surface was configured to a full-output size, and the lock object
     // finished.
     void onSessionLocked();
+    // T229a: the lock scene's power row.
+    void onLockPowerAction(const QString &action);
     void onSessionFinished();
     void onLockSurfaceConfigured(quintptr lockSurfaceId, int width, int height, quint32 serial);
     // T-12.3b: submit the typed password to the PAM helper. Input capture
@@ -648,6 +651,9 @@ private:
     // Lock the session now (T-12.3a): the Cmd+Ctrl+Q shortcut and the system
     // menu's Lock Screen both route here; the shell owns the lock UI.
     void lockScreen();
+    // T229a: perform a logind session action (`sleep`/`restart`/`shut-down`)
+    // from the lock screen's power row. The session menu uses the same path.
+    void performSessionAction(const QString &action);
     // Run the real-session harness's return (T-12.6b): the system menu's
     // "Quit to <previous desktop>" row. It restores the host desktop and logs
     // out; only shown when DRAGONFRUIT_DEV_RETURN is set.
@@ -870,6 +876,8 @@ private:
     // the service's decoded `Banners()`/`History()` views.
     NotificationModel *m_notificationModel = nullptr;
     NotificationClient *m_notificationClient = nullptr;
+    // T229a: the Focus schedule's one consumer.
+    FocusSchedule *m_focusSchedule = nullptr;
     QQuickWindow *m_bannerWindow = nullptr;
     QQuickItem *m_bannerItem = nullptr;
     int m_bannerWidth = 0;

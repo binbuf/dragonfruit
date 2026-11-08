@@ -719,15 +719,17 @@ a **projection over our own service**, never a second queue or a second policy:
 [adr/0130](adr/0130-notifications-focus-adapter.md).
 
 - **The read** is the service's three shell-facing JSON views — `FocusPolicy()`
-  (`mode`, `allowList`, `batchedCount`), `Banners()`, and `History()` — decoded
-  into `NotificationsData` and folded into `NotificationsSnapshot`: the
-  `FocusSnapshot` (mode, allow list, suppressed batch), the active banners, the
-  recorded history, and the derived per-app list (`AppNotifications`, the rows
-  the Notifications pane will draw).
+  (`mode`, `allowList`, `batchedCount`, and `appPreferences`), `Banners()`, and
+  `History()` — decoded into `NotificationsData` and folded into
+  `NotificationsSnapshot`: the `FocusSnapshot` (mode, allow list, suppressed
+  batch), the active banners, the recorded history, and the derived per-app
+  list (`AppNotifications`, the rows the Notifications pane draws).
 - **The writes** are the two Focus setters the service already exposes:
   `set_focus_mode` (`off`/`focus`/`dnd`, reusing the service's own `FocusMode`
-  vocabulary) and `set_focus_allow_list`. A successful write invents no
-  snapshot; the service pushes `Changed` and the host re-reads.
+  vocabulary) and `set_focus_allow_list`. T229a adds
+  `SetAppPreference(app, style, sound, badge, allowed)` for the per-app sheet.
+  A successful write invents no snapshot; the service pushes `Changed` and the
+  host re-reads.
 - **Events** are the shared subscription lifecycle (`AdapterEvent`) plus a pure
   `NotificationsSnapshot::changes` diff (mode, allow list, batch, banner and
   history counts) that the adapter queues in `drain_changes`.
@@ -753,24 +755,28 @@ The pane and tile ship as one functional unit over the T-15.7a adapter. The
 bridge host's `Notifications` interface mirrors Bluetooth/storage/battery:
 
 - `org.dragonfruit.SystemStatus1.Notifications` — `State()`/`Refresh()` and the
-  two Focus writes `SetFocusMode(mode)` (`off`/`focus`/`dnd`) and
-  `SetFocusAllowList(apps)`.
+  three writes `SetFocusMode(mode)` (`off`/`focus`/`dnd`),
+  `SetFocusAllowList(apps)`, and `SetAppPreference(app, style, sound, badge,
+  allowed)` (T229a).
 - `notifications_view` carries the Focus mode/label, the suppressed batch, the
-  allow list, the banner/history counts, and the observed per-app list; the
-  settingsd preferences are not on this view.
+  allow list, the banner/history counts, and the observed per-app list
+  (`allowed`, `notificationsAllowed`, `style`, `styleLabel`, `sound`, `badge`,
+  `status`); the settingsd preferences are not on this view.
 - The Settings app talks to the interface through a dedicated
   `NotificationsClient` seam (`apps/settings/NotificationsClient.{h,cpp}`,
   `DF_NOTIFICATIONS_FIXTURE` for tests) and the `Settings` singleton's
   `notifications`/`notificationsAvailable`/`refreshNotifications`/
-  `setFocusMode`/`setFocusApp`.
+  `setFocusMode`/`setFocusApp`/`setNotificationAppPreference`.
 - The **Notifications pane** (`apps/settings/NotificationsPane.qml`) owns the
   four global preferences (`notifications.showPreviews`,
   `notifications.showWhenSleeping`, `notifications.showWhenLocked`,
-  `notifications.showWhenMirroring`, settingsd revision 14) and the read-only
-  per-app inventory. The **Focus pane** (`apps/settings/FocusPane.qml`) owns the
-  mode selector and the per-app allow list, sharing the same adapter view. The
-  Control Center **Focus tile** (T-11.3b) reflects the same service policy and
-  remains the tile for this unit.
+  `notifications.showWhenMirroring`, settingsd revision 14) and the per-app
+  inventory with its live Allow/Style/Sound/Badge sheet. The **Focus pane**
+  (`apps/settings/FocusPane.qml`) owns the mode selector, the per-app allow
+  list, the Allowed People note, the `focus.schedule.*` schedule, and the
+  `focus.shortcut` recorder, sharing the same adapter view. The Control Center
+  **Focus tile** (T-11.3b) reflects the same service policy and remains the
+  tile for this unit.
 - **Absence is layered.** The bridge host absent, or a foreign notification
   daemon that does not serve the shell interface, hides the per-app inventory
   and shows a one-line note; the settingsd preference rows stay live on the
@@ -848,12 +854,16 @@ Mission Control (T-15.5b; ADR [0127](adr/0127-mission-control-pane-and-tile.md))
 - **Absence is a missing settings daemon.** With no daemon the pane's rows stay
   live on the schema defaults and it shows a one-line note; the tile is always
   present while the shell runs.
-- The four `lock.*` display keys are **stored policy**: settingsd holds them
-  live and the pane reflects them, but the lock-screen renderer does not yet
-  read them to hide the name/photo, hints, message, or power buttons. Wiring
-  that is a follow-up (see
-  [adr/0133](adr/0133-lock-screen-pane-and-tile.md)); the rows are the capture's
-  controls and are not dead.
+- The `lock.*` display keys are **observed** as of T229a: the shell reads them
+  in `ShellController::applyLockData` and pushes them onto the first-party
+  `Dragonfruit.Lock/LockScreen` scene (identity, hint, message, power row), so
+  a toggle changes the next lock presentation. The pane still never touches
+  the compositor's lock hot path; the power row calls logind
+  (`Suspend`/`Reboot`/`PowerOff`) through one shell path shared with the system
+  menu. `login.windowStyle` and `lock.passwordHint` join the schema in
+  revision 23; the login-window row stays disabled because the display manager
+  does not expose the style on the host (ADR
+  [0133](adr/0133-lock-screen-pane-and-tile.md)).
 
 ## The Menu Bar configuration path (T-15.9a)
 

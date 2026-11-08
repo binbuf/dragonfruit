@@ -37,7 +37,7 @@ use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedValue;
 
 use crate::model::{now_ms, Action, CloseReason, NotifyRequest, Queue, Urgency};
-use crate::policy::FocusMode;
+use crate::policy::{AppPreference, FocusMode, NotificationStyle};
 use crate::view;
 
 /// The standard freedesktop well-known name on the user session bus.
@@ -315,6 +315,34 @@ impl ShellNotifications {
     ) {
         lock(&self.queue).set_focus_allow_list(apps);
         emit_shell_changed(&emitter).await;
+    }
+
+    /// Set one app's durable notification preference (T229a): whether the app
+    /// may notify, its banner style, sound, and badge. Unknown style names are
+    /// rejected and the previous preference is kept.
+    async fn set_app_preference(
+        &self,
+        app: &str,
+        style: &str,
+        sound: bool,
+        badge: bool,
+        allowed: bool,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> bool {
+        let Some(style) = NotificationStyle::parse(style) else {
+            return false;
+        };
+        lock(&self.queue).set_app_preference(
+            app,
+            AppPreference {
+                allowed,
+                style,
+                sound,
+                badge,
+            },
+        );
+        emit_shell_changed(&emitter).await;
+        true
     }
 
     /// Whether Do Not Disturb (mode `dnd`) is on. The T-11.1a compat

@@ -451,6 +451,21 @@ impl NotificationsInterface {
             .set_focus_allow_list(apps)
             .to_string()
     }
+
+    /// Set one app's durable notification preference (T229a). Returns the
+    /// JSON report.
+    fn set_app_preference(
+        &self,
+        app: &str,
+        style: &str,
+        sound: bool,
+        badge: bool,
+        allowed: bool,
+    ) -> String {
+        lock_notifications(&self.host)
+            .set_app_preference(app, style, sound, badge, allowed)
+            .to_string()
+    }
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Updates")]

@@ -45,10 +45,23 @@ pub fn history_json(queue: &Queue) -> String {
 /// The Focus/DND policy state, frozen for the menu bar, the Control Center,
 /// and Settings (T-11.2a).
 pub fn focus_policy_json(policy: &FocusPolicy) -> String {
+    let app_preferences: Vec<Value> = policy
+        .app_preferences()
+        .map(|entry| {
+            json!({
+                "name": entry.name,
+                "allowed": entry.preference.allowed,
+                "style": entry.preference.style.name(),
+                "sound": entry.preference.sound,
+                "badge": entry.preference.badge,
+            })
+        })
+        .collect();
     json!({
         "mode": policy.mode().name(),
         "allowList": policy.allow_list(),
         "batchedCount": policy.batched_count(),
+        "appPreferences": app_preferences,
     })
     .to_string()
 }
@@ -127,16 +140,33 @@ mod tests {
         let mut policy = FocusPolicy::new();
         assert_eq!(
             serde_json::from_str::<Value>(&focus_policy_json(&policy)).unwrap(),
-            serde_json::json!({ "mode": "off", "allowList": [], "batchedCount": 0 })
+            serde_json::json!({
+                "mode": "off",
+                "allowList": [],
+                "batchedCount": 0,
+                "appPreferences": [],
+            })
         );
 
         policy.set_mode(crate::policy::FocusMode::Focus);
         policy.set_allow_list(vec!["Chat".to_owned()]);
+        policy.set_app_preference(
+            "Mail",
+            crate::policy::AppPreference {
+                style: crate::policy::NotificationStyle::Alert,
+                sound: false,
+                ..crate::policy::AppPreference::DEFAULT
+            },
+        );
         policy.note_batched(4);
         let value: Value = serde_json::from_str(&focus_policy_json(&policy)).unwrap();
         assert_eq!(value["mode"], "focus");
         assert_eq!(value["allowList"][0], "Chat");
         assert_eq!(value["batchedCount"], 1);
+        assert_eq!(value["appPreferences"][0]["name"], "Mail");
+        assert_eq!(value["appPreferences"][0]["style"], "alert");
+        assert_eq!(value["appPreferences"][0]["sound"], false);
+        assert_eq!(value["appPreferences"][0]["allowed"], true);
     }
 
     #[test]

@@ -578,7 +578,9 @@ Item {
 
     Component {
         id: wallpaperPaneComponent
-        WallpaperPane { }
+        WallpaperPane {
+            onNavigateRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     Component {
@@ -641,7 +643,9 @@ Item {
 
     Component {
         id: notificationsPaneComponent
-        NotificationsPane { }
+        NotificationsPane {
+            onNavigateRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     Component {
@@ -651,7 +655,9 @@ Item {
 
     Component {
         id: lockScreenPaneComponent
-        LockScreenPane { }
+        LockScreenPane {
+            onNavigateRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     Component {

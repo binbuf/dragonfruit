@@ -65,6 +65,42 @@ Item {
     property alias appList: appList
     property alias absenceNote: absenceNote
     property alias noAppsNote: noAppsNote
+    property alias focusRow: focusRow
+    property alias focusButton: focusButton
+    property alias focusGroup: focusGroup
+    property alias appDialog: appDialog
+    property alias appDialogTitle: appDialogTitle
+    property alias appAllowToggle: appAllowToggle
+    property alias appStyleSelect: appStyleSelect
+    property alias appSoundToggle: appSoundToggle
+    property alias appBadgeToggle: appBadgeToggle
+
+    // The app whose detail sheet is open ("" when closed).
+    property string selectedAppName: ""
+    // The draft the sheet edits; a write updates the service and the next
+    // `notificationsChanged` re-seeds these from the authoritative view.
+    property bool draftAllowed: true
+    property string draftStyle: "banner"
+    property bool draftSound: true
+    property bool draftBadge: true
+
+    readonly property var appStyleOptions: [
+        { value: "banner", label: qsTr("Banners") },
+        { value: "alert", label: qsTr("Alerts") },
+        { value: "none", label: qsTr("None") }
+    ]
+
+    signal navigateRequested(string paneId)
+
+    readonly property string absenceText: {
+        if (root.view.state === "error" && root.view.error !== undefined)
+            return qsTr("The notification service could not be read: %1. "
+                        + "The preferences below are still applied.")
+                .arg(String(root.view.error));
+        return qsTr("The system status service or the notification service is "
+                    + "not running, so per-app notification settings are not "
+                    + "available. The preferences below are still applied.");
+    }
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -79,7 +115,63 @@ Item {
         return 1;
     }
 
+    function styleIndex(value) {
+        for (var i = 0; i < root.appStyleOptions.length; ++i) {
+            if (root.appStyleOptions[i].value === value)
+                return i;
+        }
+        return 0;
+    }
+
+    function appByName(name) {
+        for (var i = 0; i < root.apps.length; ++i) {
+            if (String(root.apps[i].name).toLowerCase()
+                    === String(name).toLowerCase())
+                return root.apps[i];
+        }
+        return null;
+    }
+
+    function openAppDetail(app) {
+        if (!app)
+            return;
+        root.selectedAppName = String(app.name);
+        root.draftAllowed = app.notificationsAllowed !== false;
+        root.draftStyle = String(app.style || "banner");
+        root.draftSound = app.sound !== false;
+        root.draftBadge = app.badge !== false;
+        appDialog.show();
+    }
+
+    function seedDraft() {
+        var app = root.appByName(root.selectedAppName);
+        if (!app)
+            return;
+        root.draftAllowed = app.notificationsAllowed !== false;
+        root.draftStyle = String(app.style || "banner");
+        root.draftSound = app.sound !== false;
+        root.draftBadge = app.badge !== false;
+    }
+
+    function applyAppPreference() {
+        if (root.selectedAppName.length === 0)
+            return;
+        Settings.setNotificationAppPreference(root.selectedAppName,
+                                              root.draftStyle,
+                                              root.draftSound,
+                                              root.draftBadge,
+                                              root.draftAllowed);
+    }
+
     Component.onCompleted: Settings.refreshNotifications()
+
+    Connections {
+        target: Settings
+        function onNotificationsChanged() {
+            if (appDialog.open)
+                root.seedDraft();
+        }
+    }
 
     Column {
         id: content
@@ -95,10 +187,7 @@ Item {
                 id: absenceNote
                 objectName: "notificationsAbsenceNote"
                 width: parent.width
-                text: qsTr("The system status service or the notification "
-                           + "service is not running, so per-app notification "
-                           + "settings are not available. The preferences below "
-                           + "are still applied.")
+                text: root.absenceText
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
@@ -206,89 +295,40 @@ Item {
                 id: appList
                 objectName: "notificationsAppList"
                 model: root.apps
-                delegate: Item {
+                delegate: SettingsRow {
                     id: appRow
                     required property var modelData
                     required property int index
                     width: parent.width
-                    height: Math.max(44, appName.implicitHeight + appStatus.implicitHeight
-                                         + 2 * Theme.primitive.spacing.xs)
-
-                    Rectangle {
-                        id: appTile
-                        width: 28
-                        height: 28
-                        radius: 8
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: appRow.modelData.allowed === true
-                            ? Theme.color.accentMuted : Theme.color.controlFill
-
-                        Icon {
-                            anchors.centerIn: parent
-                            name: "bell"
-                            size: 15
-                            color: appRow.modelData.allowed === true
-                                ? Theme.color.accent : Theme.color.textSecondary
+                    label: appRow.modelData.name
+                    showSeparator: appRow.index < appList.count - 1
+                    disclosure: true
+                    description: {
+                        var count = Number(appRow.modelData.notifications || 0);
+                        var state = String(appRow.modelData.status || "Default");
+                        var style = String(appRow.modelData.styleLabel || "Banners");
+                        var parts = [state, style];
+                        if (appRow.modelData.sound === false)
+                            parts.push(qsTr("No sound"));
+                        if (appRow.modelData.badge === false)
+                            parts.push(qsTr("No badge"));
+                        if (count > 0) {
+                            parts.push(count === 1
+                                ? qsTr("1 notification")
+                                : qsTr("%1 notifications").arg(count));
                         }
+                        return parts.join(" \u00b7 ");
                     }
+                    onDisclosureClicked: root.openAppDetail(appRow.modelData)
 
-                    Column {
-                        anchors.left: appTile.right
-                        anchors.leftMargin: Theme.primitive.spacing.md
-                        anchors.right: appStatusText.left
-                        anchors.rightMargin: Theme.primitive.spacing.md
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: Theme.primitive.spacing.xxs
-
-                        Text {
-                            id: appName
-                            objectName: "notificationsAppName"
-                            width: parent.width
-                            text: appRow.modelData.name
-                            color: Theme.color.textPrimary
-                            font.pixelSize: Theme.controls.button.fontSize
-                            elide: Text.ElideRight
-                        }
-
-                        Text {
-                            id: appStatus
-                            objectName: "notificationsAppState"
-                            width: parent.width
-                            text: {
-                                var count = Number(appRow.modelData.notifications || 0);
-                                var state = String(appRow.modelData.status || "Default");
-                                if (count <= 0)
-                                    return state;
-                                var countText = count === 1
-                                    ? qsTr("1 notification")
-                                    : qsTr("%1 notifications").arg(count);
-                                return state + " \u00b7 " + countText;
-                            }
-                            color: Theme.color.textSecondary
-                            font.pixelSize: Theme.primitive.font.sizeSm
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    Text {
-                        id: appStatusText
+                    controlData: Text {
                         objectName: "notificationsAppBadge"
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: appRow.modelData.allowed === true ? qsTr("Allowed")
-                                                                : qsTr("Default")
-                        color: appRow.modelData.allowed === true
+                        text: appRow.modelData.status === "Allowed" ? qsTr("Allowed")
+                              : (appRow.modelData.status === "Off" ? qsTr("Off")
+                                                                   : qsTr("Default"))
+                        color: appRow.modelData.status === "Allowed"
                             ? Theme.color.accent : Theme.color.textSecondary
                         font.pixelSize: Theme.primitive.font.sizeSm
-                    }
-
-                    Rectangle {
-                        width: parent.width
-                        height: Theme.controls.window.borderWidth
-                        anchors.bottom: parent.bottom
-                        visible: appRow.index < appList.count - 1
-                        color: Theme.color.separator
                     }
                 }
             }
@@ -305,6 +345,152 @@ Item {
                 topPadding: Theme.primitive.spacing.xs
             }
         }
+
+        // ── Focus ─────────────────────────────────────────────────────────
+        SettingsGroup {
+            id: focusGroup
+            width: parent.width
+            title: qsTr("Focus")
+            visible: root.ready
+
+            SettingsRow {
+                id: focusRow
+                width: parent.width
+                label: qsTr("Focus")
+                description: qsTr("Current mode: %1. Allowed apps and the "
+                                  + "schedule are managed in the Focus pane.")
+                    .arg(root.focusLabel)
+                settingsId: "focus"
+                owner: "settingsd"
+                settingsKey: "notifications.focus"
+                showSeparator: false
+                controlData: Button {
+                    id: focusButton
+                    text: qsTr("Open Focus\u2026")
+                    accessibleName: qsTr("Open Focus settings")
+                    onClicked: root.navigateRequested("focus")
+                }
+            }
+        }
+    }
+
+    // The per-app detail sheet (T229a): the macOS disclosure rows collapsed
+    // into one live sheet. Every control writes immediately; the service
+    // re-emits and the sheet re-seeds from the authoritative view.
+    Dialog {
+        id: appDialog
+        objectName: "notificationsAppDialog"
+        title: qsTr("Notifications for %1").arg(root.selectedAppName)
+        message: qsTr("Choose how this application's notifications appear.")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                id: appDialogTitle
+                objectName: "notificationsAppDialogTitle"
+                width: parent.width
+                text: root.selectedAppName
+                color: Theme.color.textPrimary
+                elide: Text.ElideRight
+                font.pixelSize: Theme.controls.button.fontSize
+                font.weight: Theme.primitive.font.weightMedium
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Allow notifications")
+                showSeparator: false
+                controlData: Toggle {
+                    id: appAllowToggle
+                    accessibleName: qsTr("Allow notifications for %1")
+                                    .arg(root.selectedAppName)
+                    onToggled: (checked) => {
+                        root.draftAllowed = checked;
+                        root.applyAppPreference();
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Style")
+                controlData: Select {
+                    id: appStyleSelect
+                    accessibleName: qsTr("Notification style for %1")
+                                    .arg(root.selectedAppName)
+                    model: root.appStyleOptions
+                    onActivated: (index) => {
+                        root.draftStyle = root.appStyleOptions[index].value;
+                        root.applyAppPreference();
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Play sound")
+                controlData: Toggle {
+                    id: appSoundToggle
+                    accessibleName: qsTr("Play a sound for %1")
+                                    .arg(root.selectedAppName)
+                    onToggled: (checked) => {
+                        root.draftSound = checked;
+                        root.applyAppPreference();
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show in Dock badge")
+                showSeparator: false
+                controlData: Toggle {
+                    id: appBadgeToggle
+                    accessibleName: qsTr("Show a Dock badge for %1")
+                                    .arg(root.selectedAppName)
+                    onToggled: (checked) => {
+                        root.draftBadge = checked;
+                        root.applyAppPreference();
+                    }
+                }
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                text: qsTr("Done")
+                variant: "primary"
+                onClicked: appDialog.accept()
+            }
+        }
+
+        onOpened: root.seedDraft()
+    }
+
+    Binding {
+        target: appAllowToggle
+        property: "checked"
+        value: root.draftAllowed
+    }
+    Binding {
+        target: appStyleSelect
+        property: "currentIndex"
+        value: root.styleIndex(root.draftStyle)
+    }
+    Binding {
+        target: appSoundToggle
+        property: "checked"
+        value: root.draftSound
+    }
+    Binding {
+        target: appBadgeToggle
+        property: "checked"
+        value: root.draftBadge
     }
 
     // Keep the popup in step with an external settingsd change.

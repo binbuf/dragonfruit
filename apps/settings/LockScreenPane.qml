@@ -29,9 +29,10 @@ import Dragonfruit.Settings
 //     inactive` row, the Linux adaptation ADR 0132 fixed (one blank stage);
 //   * the warning row is shown for any long display-off delay, not only on
 //     battery;
-//   * `Login window shows` is omitted (no login-window provider yet) and the
-//     `Accessibility Options...` button is omitted (the Accessibility pane is
-//     not shipped; linking it would be a dead control);
+//   * `Login window shows` is present but disabled with the reason: the
+//     display manager does not expose a style setting on the host;
+//   * `Accessibility Options...` opens the Accessibility pane instead of
+//     duplicating its controls;
 //   * the Apple Account/sidebar row and the trailing `?` help are omitted
 //     project-wide.
 Item {
@@ -58,6 +59,12 @@ Item {
             ? String(Settings.values["lock.message"]) : ""
     readonly property bool showPowerButtons:
         Settings.values["lock.showPowerButtons"] !== false
+    readonly property string passwordHint:
+        Settings.values["lock.passwordHint"] !== undefined
+            ? String(Settings.values["lock.passwordHint"]) : ""
+    readonly property string loginWindowStyle:
+        Settings.values["login.windowStyle"] !== undefined
+            ? String(Settings.values["login.windowStyle"]) : "list"
 
     // The display-off popup choices, in ascending order with `Never` last.
     readonly property var displayOffOptions: [
@@ -99,6 +106,26 @@ Item {
     property alias messageInput: messageInput
     property alias powerButtonsToggle: powerButtonsToggle
     property alias absenceNote: absenceNote
+    property alias setHintButton: setHintButton
+    property alias hintDialog: hintDialog
+    property alias hintInput: hintInput
+    property alias loginWindowSelect: loginWindowSelect
+    property alias accessibilityButton: accessibilityButton
+
+    signal navigateRequested(string paneId)
+
+    readonly property var loginWindowOptions: [
+        { value: "list", label: qsTr("List of users") },
+        { value: "name-and-password", label: qsTr("Name and password") }
+    ]
+
+    function loginWindowIndex(value) {
+        for (var i = 0; i < root.loginWindowOptions.length; ++i) {
+            if (root.loginWindowOptions[i].value === value)
+                return i;
+        }
+        return 0;
+    }
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -236,11 +263,28 @@ Item {
             SettingsRow {
                 width: parent.width
                 label: qsTr("Show password hints")
-                controlData: Toggle {
-                    id: passwordHintsToggle
-                    accessibleName: qsTr("Show password hints")
-                    onToggled: (checked) => Settings.set(
-                        "lock.showPasswordHints", checked)
+                settingsId: "passwordHints"
+                owner: "settingsd"
+                settingsKey: "lock.showPasswordHints/lock.passwordHint"
+                controlData: Row {
+                    spacing: Theme.primitive.spacing.md
+
+                    Toggle {
+                        id: passwordHintsToggle
+                        accessibleName: qsTr("Show password hints")
+                        anchors.verticalCenter: parent.verticalCenter
+                        onToggled: (checked) => Settings.set(
+                            "lock.showPasswordHints", checked)
+                    }
+
+                    Button {
+                        id: setHintButton
+                        objectName: "lockScreenSetHintButton"
+                        text: qsTr("Set\u2026")
+                        enabled: root.showPasswordHints
+                        anchors.verticalCenter: parent.verticalCenter
+                        onClicked: hintDialog.show()
+                    }
                 }
             }
 
@@ -278,6 +322,50 @@ Item {
                     accessibleName: qsTr("Show the Sleep, Restart, and Shut Down buttons")
                     onToggled: (checked) => Settings.set(
                         "lock.showPowerButtons", checked)
+                }
+            }
+        }
+
+        // ── Login window ──────────────────────────────────────────────────
+        SettingsGroup {
+            id: loginGroup
+            width: parent.width
+            title: qsTr("Login Window")
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Login window shows")
+                description: qsTr("The display manager owns the login window; "
+                                  + "it does not expose a style setting on this "
+                                  + "host, so the choice is disabled.")
+                settingsId: "loginWindow"
+                owner: "settingsd"
+                settingsKey: "login.windowStyle"
+                controlData: Select {
+                    id: loginWindowSelect
+                    accessibleName: qsTr("Login window shows")
+                    enabled: false
+                    model: root.loginWindowOptions
+                    onActivated: (index) => Settings.set(
+                        "login.windowStyle",
+                        root.loginWindowOptions[index].value)
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Accessibility options\u2026")
+                description: qsTr("Open the Accessibility pane for the lock "
+                                  + "screen's keyboard and visual options.")
+                settingsId: "accessibility"
+                owner: "settingsd"
+                settingsKey: "a11y.lockOptions"
+                showSeparator: false
+                controlData: Button {
+                    id: accessibilityButton
+                    text: qsTr("Open\u2026")
+                    accessibleName: qsTr("Open Accessibility settings")
+                    onClicked: root.navigateRequested("accessibility")
                 }
             }
         }
@@ -367,6 +455,68 @@ Item {
         onOpened: messageInput.forceActiveFocus()
     }
 
+    // The password-hint editor (T229a). The hint is shown under the lock
+    // screen's password field when `lock.showPasswordHints` is on.
+    Dialog {
+        id: hintDialog
+        objectName: "lockScreenHintDialog"
+        title: qsTr("Password Hint")
+        message: qsTr("This hint appears under the password field when "
+                      + "password hints are on.")
+        dismissible: true
+
+        contentData: Rectangle {
+            width: parent.width
+            height: 34
+            radius: Theme.primitive.radius.md
+            color: Theme.color.controlFill
+            border.width: Theme.controls.window.borderWidth
+            border.color: Theme.color.border
+
+            TextInput {
+                id: hintInput
+                objectName: "lockScreenHintInput"
+                anchors.fill: parent
+                anchors.leftMargin: Theme.primitive.spacing.md
+                anchors.rightMargin: Theme.primitive.spacing.md
+                verticalAlignment: TextInput.AlignVCenter
+                color: Theme.color.textPrimary
+                selectionColor: Theme.color.selection
+                selectedTextColor: Theme.color.textPrimary
+                selectByMouse: true
+                clip: true
+                font.pixelSize: Theme.controls.button.fontSize
+                onAccepted: hintDialog.accept()
+            }
+
+            Text {
+                anchors.fill: hintInput
+                visible: hintInput.text.length === 0
+                text: qsTr("Hint")
+                color: Theme.color.textTertiary
+                verticalAlignment: Text.AlignVCenter
+                font.pixelSize: Theme.controls.button.fontSize
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                text: qsTr("Cancel")
+                onClicked: hintDialog.reject()
+            }
+            Button {
+                text: qsTr("Set")
+                variant: "primary"
+                onClicked: hintDialog.accept()
+            }
+        }
+
+        onAccepted: Settings.set("lock.passwordHint", hintInput.text)
+        onOpened: hintInput.forceActiveFocus()
+    }
+
     // Keep the controls in step with external changes.
     Binding {
         target: displayOffSelect
@@ -403,5 +553,15 @@ Item {
         target: messageInput
         property: "text"
         value: root.lockMessage
+    }
+    Binding {
+        target: hintInput
+        property: "text"
+        value: root.passwordHint
+    }
+    Binding {
+        target: loginWindowSelect
+        property: "currentIndex"
+        value: root.loginWindowIndex(root.loginWindowStyle)
     }
 }

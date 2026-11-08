@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 22;
+pub const SCHEMA_VERSION: u32 = 23;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +72,7 @@ pub enum KeyGroup {
     Sound,
     Overview,
     Notifications,
+    Focus,
     Lock,
     Printers,
     Network,
@@ -84,7 +85,7 @@ pub enum KeyGroup {
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 21] = [
+    pub const ALL: [KeyGroup; 22] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -98,6 +99,7 @@ impl KeyGroup {
         KeyGroup::Sound,
         KeyGroup::Overview,
         KeyGroup::Notifications,
+        KeyGroup::Focus,
         KeyGroup::Lock,
         KeyGroup::Printers,
         KeyGroup::Network,
@@ -124,6 +126,7 @@ impl KeyGroup {
             KeyGroup::Sound => "sound",
             KeyGroup::Overview => "overview",
             KeyGroup::Notifications => "notifications",
+            KeyGroup::Focus => "focus",
             KeyGroup::Lock => "lock",
             KeyGroup::Printers => "printers",
             KeyGroup::Network => "network",
@@ -1305,6 +1308,78 @@ pub const KEYS: &[KeySpec] = &[
         since: 14,
         summary: "Show notification banners while mirroring or sharing the display.",
     },
+    // ── Focus schedule and shortcut (T229a) ─────────────────────────────
+    // The Focus *mode* and the per-app allow list stay on the notification
+    // service (ADR 0058/0130). These keys are the durable schedule and
+    // shortcut the shell's focus scheduler reads; the pane writes them and
+    // the shell applies the mode at the window boundary (ADR 0239).
+    KeySpec {
+        key: "focus.schedule.enabled",
+        group: KeyGroup::Focus,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/FocusSchedule",
+        since: 23,
+        summary: "Enable the daily Focus schedule.",
+    },
+    KeySpec {
+        key: "focus.schedule.start",
+        group: KeyGroup::Focus,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("22:00"),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/FocusSchedule",
+        since: 23,
+        summary: "Focus schedule start time (24-hour HH:MM).",
+    },
+    KeySpec {
+        key: "focus.schedule.end",
+        group: KeyGroup::Focus,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("07:00"),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/FocusSchedule",
+        since: 23,
+        summary: "Focus schedule end time (24-hour HH:MM); an earlier end crosses midnight.",
+    },
+    KeySpec {
+        key: "focus.schedule.days",
+        group: KeyGroup::Focus,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[
+            "mon", "tue", "wed", "thu", "fri", "sat", "sun",
+        ]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/FocusSchedule",
+        since: 23,
+        summary: "Weekdays the Focus schedule runs (mon…sun); empty means every day.",
+    },
+    KeySpec {
+        key: "focus.shortcut",
+        group: KeyGroup::Focus,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell shortcuts (registration deferred)",
+        since: 23,
+        summary: "Global shortcut that toggles Focus; empty disables it.",
+    },
     // ── Lock Screen display policy (T-15.8b) ────────────────────────────
     // The idle/lock *timing* keys already live in the `Session` group
     // (`idle.blank`, `idle.lock`; revision 5, ADR 0070) and the session idle
@@ -1376,6 +1451,32 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/LockScreen (stored policy)",
         since: 15,
         summary: "Show the Sleep, Restart, and Shut Down buttons on the lock screen.",
+    },
+    KeySpec {
+        key: "lock.passwordHint",
+        group: KeyGroup::Lock,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen",
+        since: 23,
+        summary: "The hint shown under the password field when password hints are on.",
+    },
+    KeySpec {
+        key: "login.windowStyle",
+        group: KeyGroup::Lock,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("list"),
+        allowed: &["list", "name-and-password"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "display manager adapter (not exposed; row disabled)",
+        since: 23,
+        summary: "Login-window style: a user list or name-and-password fields.",
     },
     // ── Menu Bar configuration (T-15.9b) ────────────────────────────────
     // The menu bar is shell-native: the shell's `MenuBar` owns the chrome, the
@@ -2816,6 +2917,80 @@ mod tests {
         assert!(spec("input.lookUp")
             .unwrap()
             .validate(&Value::Text("off".into()))
+            .is_ok());
+    }
+
+    /// The T229a Focus schedule/shortcut and Lock Screen hint/login keys,
+    /// additive in revision 23.
+    #[test]
+    fn the_t229a_focus_and_lock_keys_are_declared_in_revision_twenty_three() {
+        for (key, group, kind, default) in [
+            (
+                "focus.schedule.enabled",
+                KeyGroup::Focus,
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "focus.schedule.start",
+                KeyGroup::Focus,
+                KeyType::Text,
+                KeyDefault::Text("22:00"),
+            ),
+            (
+                "focus.schedule.end",
+                KeyGroup::Focus,
+                KeyType::Text,
+                KeyDefault::Text("07:00"),
+            ),
+            (
+                "focus.schedule.days",
+                KeyGroup::Focus,
+                KeyType::TextList,
+                KeyDefault::List(&["mon", "tue", "wed", "thu", "fri", "sat", "sun"]),
+            ),
+            (
+                "focus.shortcut",
+                KeyGroup::Focus,
+                KeyType::Text,
+                KeyDefault::Text(""),
+            ),
+            (
+                "lock.passwordHint",
+                KeyGroup::Lock,
+                KeyType::Text,
+                KeyDefault::Text(""),
+            ),
+            (
+                "login.windowStyle",
+                KeyGroup::Lock,
+                KeyType::Text,
+                KeyDefault::Text("list"),
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, group, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 23, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        assert!(spec("login.windowStyle")
+            .unwrap()
+            .validate(&Value::Text("name-and-password".into()))
+            .is_ok());
+        assert!(spec("login.windowStyle")
+            .unwrap()
+            .validate(&Value::Text("cards".into()))
+            .is_err());
+        assert!(spec("focus.schedule.start")
+            .unwrap()
+            .validate(&Value::Text("23:59".into()))
             .is_ok());
     }
 

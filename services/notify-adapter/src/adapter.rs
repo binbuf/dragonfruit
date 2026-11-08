@@ -100,6 +100,17 @@ impl<S: NotificationsSource> NotificationsAdapter<S> {
         self.after_write(outcome)
     }
 
+    /// Set one app's durable notification preference (T229a). One explicit
+    /// write; the caller refreshes on success.
+    pub fn set_app_preference(
+        &mut self,
+        app: &str,
+        preference: dragonfruit_notifications::AppPreference,
+    ) -> FocusOutcome {
+        let outcome = self.source.set_app_preference(app, preference);
+        self.after_write(outcome)
+    }
+
     /// A write against an absent service is absence at the state level too:
     /// the item hides and the subscription drops, never an error. It re-reads
     /// so the snapshot stays truthful.
@@ -178,6 +189,7 @@ mod tests {
                 ..NotificationRecord::default()
             }],
             history: vec![],
+            app_preferences: vec![],
         }
     }
 

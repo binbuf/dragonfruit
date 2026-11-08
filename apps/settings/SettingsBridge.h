@@ -467,6 +467,12 @@ public:
     Q_INVOKABLE void refreshNotifications();
     Q_INVOKABLE void setFocusMode(const QString &mode);
     Q_INVOKABLE void setFocusApp(const QString &app, bool allowed);
+    // T229a: one per-app preference write (allow/style/sound/badge). The host
+    // re-reads and pushes the new view back through `notificationsChanged`.
+    Q_INVOKABLE void setNotificationAppPreference(const QString &app,
+                                                  const QString &style,
+                                                  bool sound, bool badge,
+                                                  bool allowed);
 
     // T-15.10b: the General/About/Updates pane's one seam. `refreshUpdates`
     // re-reads the bridge host on pane open; the three writes each call the

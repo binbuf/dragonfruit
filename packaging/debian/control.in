@@ -1,0 +1,20 @@
+Package: dragonfruit-desktop
+Version: @VERSION@
+Section: x11
+Priority: optional
+Architecture: @ARCH@
+Maintainer: Dragonfruit Developers <dragonfruit@users.noreply.github.com>
+Homepage: https://github.com/dragonfruit-desktop/dragonfruit
+Installed-Size: @SIZE@
+Depends: @DEPENDS@
+Recommends: @RECOMMENDS@
+Suggests: @SUGGESTS@
+Description: Modern Wayland desktop environment
+ Dragonfruit is a Wayland desktop environment built with Rust and Qt Quick.
+ .
+ This package installs the compositor, shell, session services, Settings,
+ Files, and the XDG desktop portal backend. It installs alongside another
+ desktop; choose Dragonfruit at the login screen.
+ .
+ This is an early binary release asset. Official Debian packaging and policy
+ review are tracked separately (T165).

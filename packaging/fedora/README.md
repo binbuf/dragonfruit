@@ -1,8 +1,21 @@
 # Fedora packaging
 
 Lands in T164 (Fedora packaging and CI; still OPEN). Until then this
-directory only anchors the monorepo layout from
+directory anchors the monorepo layout from
 [docs/design/01-architecture.md](../../docs/design/01-architecture.md).
+
+## Release asset
+
+[`dragonfruit.spec`](dragonfruit.spec) is the **binary** RPM spec used by
+`.github/workflows/release.yml`. It packages the staged install tree produced
+by `scripts/stage-install.sh`; it is not the Fedora review/COPR source spec.
+Build it locally with:
+
+```bash
+make dist FORMATS=rpm
+```
+
+T164 still owns the source RPM, vendored crates, Fedora review, and COPR.
 
 The Fedora package will carry the pinned toolchain expectations from
 the repository root: Rust per `rust-toolchain.toml`, Qt 6.11 per the

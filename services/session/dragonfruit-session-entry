@@ -91,6 +91,11 @@ fi
     XDG_SESSION_ID XDG_SESSION_DESKTOP XDG_SESSION_CLASS XDG_SESSION_PATH \
     XDG_VTNR XDG_SEAT QML_IMPORT_PATH QML2_IMPORT_PATH
 
+# A package upgrade (or a dev install) can add or replace user units while the
+# user manager is already running. Reload before starting the target so the
+# next login runs the installed units, not a stale cached copy.
+"$systemctl" --user daemon-reload >/dev/null 2>&1 || true
+
 runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 # Remove hand-off files a previous, crashed login may have left. Doing this

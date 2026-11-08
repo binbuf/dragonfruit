@@ -18,6 +18,14 @@ FIXTURES ?=
 IDLE_TRACE_SECS ?= 60
 DESTDIR ?=
 PREFIX ?= /usr
+DIST_DIR ?= dist
+# Build the formats the host can actually produce; override with FORMATS=...
+FORMATS ?= $(shell \
+    if command -v dpkg-deb >/dev/null 2>&1 && command -v rpmbuild >/dev/null 2>&1; then echo tar,deb,rpm; \
+    elif command -v dpkg-deb >/dev/null 2>&1; then echo tar,deb; \
+    elif command -v rpmbuild >/dev/null 2>&1; then echo tar,rpm; \
+    else echo tar; fi)
+VERSION ?=
 DF_TOOLCHAIN ?= $(HOME)/.local/df-toolchain/usr
 DF_DEVROOT ?= $(HOME)/.local/df-devroot/lib64
 export DF_TOOLCHAIN DF_DEVROOT
@@ -52,10 +60,10 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
-        t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
+        t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
-        t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
+        t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update stage dist package \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
 
 help:
@@ -89,6 +97,7 @@ help:
 	@echo "  make t227-settings-panes-capture — T227 Appearance/Quick Settings/Search/Screen Saver/Desktop/Displays stills"
 	@echo "  make t228-privacy-accounts-capture — T228 Privacy/Security/Biometrics/Online Accounts stills"
 	@echo "  make t229-input-users-printers-capture — T229 Input/Users/Printers/Controllers/Battery stills"
+	@echo "  make t229a-settings-panes-capture — T229a Wallpaper/Notifications/Focus/Lock Screen stills"
 	@echo "  make t18-wallpaper-capture — T-18.2 Wallpaper pane stills (fetching skeleton + filled)"
 	@echo "  make t18-absence-matrix — T-18.3 headless absence/state matrix transcript"
 	@echo "  make t15-absence-matrix — T-15.16 headless absent-daemon masking matrix transcript"
@@ -146,6 +155,8 @@ help:
 	@echo "  make native-perf — capture plus a live client frame-rate probe (vkcube/glxgears)"
 	@echo "  make native-logs — follow a native unit's journal (NATIVE_UNITS=shell)"
 	@echo "  make install  — lay out session units + shipped wallpaper under DESTDIR/PREFIX"
+	@echo "  make stage    — stage the full install tree under $(DIST_DIR)/stage"
+	@echo "  make dist     — build release assets under $(DIST_DIR) (tar.gz + available deb/rpm)"
 	@echo "  make soak     — teardown hygiene: N clean cycles (default 100)"
 	@echo "  make clean    — remove build artifacts (keeps cargo cache)"
 
@@ -487,6 +498,9 @@ t228-privacy-accounts-capture: build
 
 t229-input-users-printers-capture: build
 	bash scripts/capture-t229-input-users-printers.sh
+
+t229a-settings-panes-capture: build
+	bash scripts/capture-t229a-settings-panes.sh
 
 # T-18.2: the Wallpaper-pane capture. Needs a host Wayland session, `spectacle`,
 # Pillow, `gdbus`, the built tree and `cargo build -p dragonfruit-wallpaperd`;
@@ -1080,6 +1094,20 @@ soak: cargo-build
 # $(DESTDIR)$(PREFIX). T-32 packaging calls this.
 install: cargo-build
 	$(CARGO) run -p dragonfruit-session -- --install-session $(DESTDIR)$(PREFIX)
+
+# Release assets (T-32/T164/T165): one staging root, then the portable tar.gz,
+# DEB, and binary RPM. `make dist` builds the full tree; `make stage` stops
+# after staging for inspection. FORMATS=tar,deb,rpm selects outputs and
+# VERSION=0.2.0 overrides the git-derived package version.
+stage:
+	rm -rf "$(DIST_DIR)/stage"
+	scripts/stage-install.sh --destdir "$(DIST_DIR)/stage" --prefix "$(PREFIX)"
+
+dist:
+	scripts/package.sh --output "$(DIST_DIR)" --formats "$(FORMATS)" \
+	    $(if $(VERSION),--version "$(VERSION)")
+
+package: dist
 
 clean:
 	rm -rf $(BUILD_DIR)

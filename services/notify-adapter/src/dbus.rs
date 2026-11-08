@@ -17,7 +17,7 @@
 //! the interface but returns an error or malformed JSON is reported to the
 //! adapter, which shows the item visible and inert.
 
-use dragonfruit_notifications::{FocusMode, Urgency};
+use dragonfruit_notifications::{AppPreference, AppPreferenceEntry, FocusMode, NotificationStyle, Urgency};
 use dragonfruit_system_adapters::AdapterError;
 use zbus::blocking::Connection;
 
@@ -48,6 +48,15 @@ trait ShellNotifications {
     fn set_focus_mode(&self, mode: &str) -> zbus::Result<bool>;
     /// Replace the per-app Focus allow list.
     fn set_focus_allow_list(&self, apps: &[String]) -> zbus::Result<()>;
+    /// Set one app's durable notification preference (T229a).
+    fn set_app_preference(
+        &self,
+        app: &str,
+        style: &str,
+        sound: bool,
+        badge: bool,
+        allowed: bool,
+    ) -> zbus::Result<bool>;
 }
 
 /// The real notification-service transport.
@@ -156,6 +165,37 @@ impl NotificationsSource for DbusNotifications {
             Err(error) => FocusOutcome::Failed(failed(error)),
         }
     }
+
+    fn set_app_preference(&mut self, app: &str, preference: AppPreference) -> FocusOutcome {
+        let Some(connection) = self.connect() else {
+            return FocusOutcome::Absent;
+        };
+        let has_owner = match name_has_owner(&connection, NOTIFICATIONS_SERVICE) {
+            Ok(has_owner) => has_owner,
+            Err(error) => return FocusOutcome::Failed(failed(error)),
+        };
+        if !has_owner {
+            return FocusOutcome::Absent;
+        }
+        let proxy = match ShellNotificationsProxyBlocking::new(&connection) {
+            Ok(proxy) => proxy,
+            Err(error) => return FocusOutcome::Failed(failed(error)),
+        };
+        match proxy.set_app_preference(
+            app,
+            preference.style.name(),
+            preference.sound,
+            preference.badge,
+            preference.allowed,
+        ) {
+            Ok(true) => FocusOutcome::Applied,
+            Ok(false) => FocusOutcome::Failed(AdapterError::new(
+                "notification service rejected the app preference",
+            )),
+            Err(error) if is_absent(&error) => FocusOutcome::Absent,
+            Err(error) => FocusOutcome::Failed(failed(error)),
+        }
+    }
 }
 
 /// Decode the three shell-facing JSON views into the raw [`NotificationsData`].
@@ -180,6 +220,11 @@ fn parse_data(
         .and_then(|value| value.as_u64())
         .unwrap_or(0)
         .min(u64::from(u32::MAX)) as u32;
+    let app_preferences = focus
+        .get("appPreferences")
+        .and_then(|value| value.as_array())
+        .map(|values| parse_app_preferences(values))
+        .unwrap_or_default();
 
     let active = parse_records(parse_json(banners_json, "Banners")?);
     let history = parse_records(parse_json(history_json, "History")?);
@@ -190,7 +235,51 @@ fn parse_data(
         batched_count,
         active,
         history,
+        app_preferences,
     })
+}
+
+/// Decode the service's `appPreferences` array into the durable per-app
+/// entries, dropping malformed names and unknown styles.
+fn parse_app_preferences(values: &[serde_json::Value]) -> Vec<AppPreferenceEntry> {
+    let mut out: Vec<AppPreferenceEntry> = Vec::new();
+    for value in values {
+        let name = string_of(value.get("name"));
+        if name.trim().is_empty() {
+            continue;
+        }
+        let style = value
+            .get("style")
+            .and_then(|style| style.as_str())
+            .and_then(NotificationStyle::parse)
+            .unwrap_or_default();
+        let entry = AppPreferenceEntry {
+            name: name.trim().to_owned(),
+            preference: AppPreference {
+                allowed: value
+                    .get("allowed")
+                    .and_then(|allowed| allowed.as_bool())
+                    .unwrap_or(true),
+                style,
+                sound: value
+                    .get("sound")
+                    .and_then(|sound| sound.as_bool())
+                    .unwrap_or(true),
+                badge: value
+                    .get("badge")
+                    .and_then(|badge| badge.as_bool())
+                    .unwrap_or(true),
+            },
+        };
+        if entry.preference.is_default() {
+            continue;
+        }
+        let key = entry.name.to_ascii_lowercase();
+        out.retain(|existing| existing.name.to_ascii_lowercase() != key);
+        out.push(entry);
+    }
+    out.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    out
 }
 
 /// Parse one JSON view; a malformed payload is an error (the service owned the

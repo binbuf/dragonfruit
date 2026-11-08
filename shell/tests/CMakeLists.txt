@@ -477,6 +477,25 @@ set_tests_properties(tst_notificationmodel PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# The Focus schedule's pure window logic (T229a): 24-hour parsing, same-day
+# and overnight windows, weekday gating, and the empty-days/all-day cases.
+qt_add_executable(tst_focusschedule
+    tst_focusschedule.cpp
+)
+target_link_libraries(tst_focusschedule PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_focusschedule
+    COMMAND tst_focusschedule
+)
+set_tests_properties(tst_focusschedule PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Notification Center state tests (T204): stable-keyed history normalization,
 # active-only actions, keyboard selection, DND-suppressed rows, reconnect and
 # close reasons. No bus, Wayland, or QML.

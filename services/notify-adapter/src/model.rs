@@ -11,7 +11,9 @@
 //!
 //! [ADR 0058]: ../../../docs/design/adr/0058-focus-dnd-policy-semantics.md
 
-use dragonfruit_notifications::FocusMode;
+use dragonfruit_notifications::{
+    AppPreference, AppPreferenceEntry, FocusMode, NotificationStyle,
+};
 
 use crate::source::{NotificationRecord, NotificationsData};
 
@@ -84,14 +86,24 @@ pub struct AppNotifications {
     pub name: String,
     /// Whether the app is on the Focus allow list.
     pub allowed: bool,
+    /// Whether the app may raise notifications at all (the per-app mute).
+    pub notifications_allowed: bool,
     /// How many recorded notifications name this app.
     pub notifications: usize,
+    /// The per-app banner style.
+    pub style: NotificationStyle,
+    /// Whether the app's banners play a sound.
+    pub sound: bool,
+    /// Whether the app contributes a Dock badge.
+    pub badge: bool,
 }
 
 impl AppNotifications {
     /// The pane's state subtext.
     pub fn status_label(&self) -> &'static str {
-        if self.allowed {
+        if !self.notifications_allowed {
+            "Off"
+        } else if self.allowed {
             "Allowed"
         } else {
             "Default"
@@ -108,6 +120,8 @@ pub struct NotificationsSnapshot {
     pub active: Vec<NotificationRecord>,
     /// The recorded history, most recent first.
     pub history: Vec<NotificationRecord>,
+    /// The durable per-app preferences (T229a), sorted by normalized name.
+    pub app_preferences: Vec<AppPreferenceEntry>,
 }
 
 impl NotificationsSnapshot {
@@ -121,7 +135,18 @@ impl NotificationsSnapshot {
             },
             active: data.active.clone(),
             history: data.history.clone(),
+            app_preferences: data.app_preferences.clone(),
         }
+    }
+
+    /// The stored preference for `app`, or the default.
+    pub fn app_preference(&self, app: &str) -> AppPreference {
+        let key = app.trim().to_ascii_lowercase();
+        self.app_preferences
+            .iter()
+            .find(|entry| entry.name.to_ascii_lowercase() == key)
+            .map(|entry| entry.preference)
+            .unwrap_or(AppPreference::DEFAULT)
     }
 
     /// How many banners are on screen.
@@ -156,26 +181,40 @@ impl NotificationsSnapshot {
     /// allow-list state comes from the Focus policy, so one read fills both
     /// the policy control and the per-app list.
     pub fn apps(&self) -> Vec<AppNotifications> {
-        let mut names: Vec<&str> = self
+        let mut names: Vec<String> = self
             .active
             .iter()
             .chain(self.history.iter())
-            .map(|entry| entry.app_name.as_str())
+            .map(|entry| entry.app_name.clone())
             .filter(|name| !name.trim().is_empty())
             .collect();
+        // A configured app stays listed even when its notifications have aged
+        // out of the bounded history, so its preference is always reachable.
+        names.extend(
+            self.app_preferences
+                .iter()
+                .map(|entry| entry.name.clone()),
+        );
         names.sort_by_key(|name| name.to_ascii_lowercase());
         names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
 
         names
             .into_iter()
-            .map(|name| AppNotifications {
-                name: name.to_owned(),
-                allowed: self.focus.allows(name),
-                notifications: self
-                    .history
-                    .iter()
-                    .filter(|entry| entry.app_name.eq_ignore_ascii_case(name))
-                    .count(),
+            .map(|name| {
+                let preference = self.app_preference(&name);
+                AppNotifications {
+                    allowed: self.focus.allows(&name),
+                    notifications_allowed: preference.allowed,
+                    notifications: self
+                        .history
+                        .iter()
+                        .filter(|entry| entry.app_name.eq_ignore_ascii_case(&name))
+                        .count(),
+                    style: preference.style,
+                    sound: preference.sound,
+                    badge: preference.badge,
+                    name,
+                }
             })
             .collect()
     }
@@ -288,6 +327,7 @@ mod tests {
             batched_count: 0,
             active: vec![record(1, "Mail", "New message", false)],
             history: vec![record(2, "Pager", "on-call", true)],
+            app_preferences: vec![],
         }
     }
 
@@ -350,6 +390,46 @@ mod tests {
         assert_eq!(mail.status_label(), "Default");
         // Mail has one active banner but no history entry.
         assert_eq!(mail.notifications, 0);
+        assert_eq!(mail.style, NotificationStyle::Banner);
+        assert!(mail.notifications_allowed);
+        assert!(mail.sound);
+        assert!(mail.badge);
+    }
+
+    #[test]
+    fn app_preferences_project_into_the_observed_app_rows() {
+        let mut raw = data(FocusMode::Off);
+        raw.app_preferences = vec![AppPreferenceEntry {
+            name: "Mail".to_owned(),
+            preference: AppPreference {
+                allowed: false,
+                style: NotificationStyle::Alert,
+                sound: false,
+                badge: false,
+            },
+        }];
+        let snapshot = NotificationsSnapshot::from_data(&raw);
+        let apps = snapshot.apps();
+        let mail = apps.iter().find(|app| app.name == "Mail").unwrap();
+        assert!(!mail.notifications_allowed);
+        assert_eq!(mail.status_label(), "Off");
+        assert_eq!(mail.style, NotificationStyle::Alert);
+        assert!(!mail.sound);
+        assert!(!mail.badge);
+
+        // A preference for an app with no notifications still lists it, so
+        // the row remains reachable after the bounded history ages out.
+        raw.app_preferences.push(AppPreferenceEntry {
+            name: "Calendar".to_owned(),
+            preference: AppPreference {
+                allowed: true,
+                style: NotificationStyle::None,
+                sound: true,
+                badge: true,
+            },
+        });
+        let snapshot = NotificationsSnapshot::from_data(&raw);
+        assert!(snapshot.apps().iter().any(|app| app.name == "Calendar"));
     }
 
     #[test]

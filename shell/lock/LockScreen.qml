@@ -21,6 +21,16 @@ Item {
     property bool showClock: true
     property bool showDate: true
     property bool showSeconds: false
+    // T229a: the Lock Screen pane's display policy. The shell reads the
+    // `lock.*` keys and pushes these; the scene never enforces the lock.
+    property bool showUserNameAndPhoto: true
+    property bool showPasswordHints: false
+    property string passwordHint: ""
+    property bool showLockMessage: false
+    property string lockMessageText: ""
+    property bool showPowerButtons: true
+
+    signal powerActionRequested(string action)
     // Authentication state (T-12.3b). Until then the field is present but
     // inert, so the layout is final.
     property bool authEnabled: false
@@ -119,6 +129,7 @@ Item {
             Rectangle {
                 id: avatar
                 objectName: "lockAvatar"
+                visible: root.showUserNameAndPhoto
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 72
                 height: 72
@@ -136,6 +147,7 @@ Item {
 
             Text {
                 objectName: "lockUserName"
+                visible: root.showUserNameAndPhoto
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: root.userName
                 color: Theme.color.textPrimary
@@ -184,12 +196,36 @@ Item {
             }
 
             Text {
+                objectName: "lockPasswordHint"
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: root.showPasswordHints && root.passwordHint.length > 0
+                text: root.passwordHint
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                width: parent.width
+            }
+
+            Text {
                 objectName: "lockMessage"
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: root.message.length > 0
                 text: root.message
                 color: Theme.color.danger
                 font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            Text {
+                objectName: "lockScreenMessage"
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: root.showLockMessage && root.lockMessageText.length > 0
+                text: root.lockMessageText
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                width: parent.width
             }
         }
     }
@@ -233,6 +269,38 @@ Item {
                 radius: width / 2
                 color: Theme.color.surfaceElevated
             }
+        }
+    }
+
+    // T229a: the reference power row. The shell performs the action through
+    // logind; the scene only reports intent.
+    Row {
+        id: powerRow
+        objectName: "lockPowerRow"
+        visible: root.showPowerButtons
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: Math.max(Theme.primitive.spacing.xl,
+                                       Math.round(parent.height * 0.06))
+        spacing: Theme.primitive.spacing.md
+
+        Button {
+            objectName: "lockSleepButton"
+            text: qsTr("Sleep")
+            accessibleName: qsTr("Sleep")
+            onClicked: root.powerActionRequested("sleep")
+        }
+        Button {
+            objectName: "lockRestartButton"
+            text: qsTr("Restart")
+            accessibleName: qsTr("Restart")
+            onClicked: root.powerActionRequested("restart")
+        }
+        Button {
+            objectName: "lockShutDownButton"
+            text: qsTr("Shut Down")
+            accessibleName: qsTr("Shut Down")
+            onClicked: root.powerActionRequested("shut-down")
         }
     }
 }

@@ -1,0 +1,183 @@
+# SPDX-License-Identifier: MIT
+#
+# Release assets: one staged install tree, published as a portable tar.gz,
+# a Debian binary package, a Fedora binary RPM, and a source tarball.
+#
+# Triggered by a `v*` tag (or a manual dispatch for a dry run). The publish
+# job only runs for tags; manual runs leave the artifacts on the workflow run.
+#
+# These are early-testing binary assets, not official distro packages. T164
+# and T165 still own Fedora review/COPR and Debian policy/source packaging.
+
+name: Release assets
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (without the leading v)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  tar-deb:
+    name: Portable tar.gz + DEB
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "Building Dragonfruit $version"
+
+      - name: Install native deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config cmake ninja-build \
+            libxkbcommon-dev libwayland-dev libdrm-dev libgbm-dev \
+            libinput-dev libseat-dev libudev-dev libsystemd-dev \
+            libdbus-1-dev libegl-dev libgl-dev \
+            xwayland x11-utils dpkg-dev fakeroot binutils
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.1"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Qt 6.11
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.11.*"
+          cache: true
+
+      - name: Build release assets
+        run: |
+          scripts/package.sh \
+            --version "${{ steps.version.outputs.value }}" \
+            --output dist \
+            --formats tar,deb
+
+      - name: Source tarball
+        run: |
+          mkdir -p dist
+          git archive \
+            --format=tar.gz \
+            --prefix="dragonfruit-${{ steps.version.outputs.value }}/" \
+            -o "dist/dragonfruit-${{ steps.version.outputs.value }}-source.tar.gz" \
+            HEAD
+
+      - name: Refresh checksums
+        run: |
+          cd dist
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' \
+            | LC_ALL=C sort \
+            | xargs -r sha256sum > SHA256SUMS
+
+      - name: Upload tar/deb artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-tar-deb
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+  rpm:
+    name: Fedora 44 binary RPM
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    steps:
+      - name: Install git for checkout
+        run: dnf install -y git tar gzip
+
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "Building Dragonfruit $version"
+
+      - name: Install build deps
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config \
+            qt6-qtbase-devel qt6-qtdeclarative-devel \
+            wayland-devel libxkbcommon-devel libdrm-devel \
+            mesa-libgbm-devel mesa-libEGL-devel libglvnd-devel \
+            libinput-devel libseat-devel systemd-devel dbus-devel \
+            rpm-build binutils curl tar gzip findutils
+
+      - name: Install pinned Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain 1.98.1
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Build RPM
+        run: |
+          scripts/package.sh \
+            --version "${{ steps.version.outputs.value }}" \
+            --output dist \
+            --formats rpm
+
+      - name: Upload RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-rpm
+          path: |
+            dist/*.rpm
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [tar-deb, rpm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download assets
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' \
+            | LC_ALL=C sort \
+            | xargs -r sha256sum > SHA256SUMS
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

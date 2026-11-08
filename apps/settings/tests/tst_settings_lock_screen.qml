@@ -32,6 +32,8 @@ Item {
             Settings.set("lock.showMessageWhenLocked", false);
             Settings.set("lock.message", "");
             Settings.set("lock.showPowerButtons", true);
+            Settings.set("lock.passwordHint", "");
+            Settings.set("login.windowStyle", "list");
         }
 
         function make() {
@@ -163,6 +165,45 @@ Item {
             var pane = paneOf(shell);
             compare(Settings.available, true);
             compare(pane.absenceNote.visible, false);
+        }
+
+        // -- T229a: hints, login window, accessibility ------------------------
+
+        function test_password_hint_editor_round_trips_and_gates_on_the_toggle() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.setHintButton.enabled, false);
+            pane.passwordHintsToggle.toggle();
+            compare(Settings.values["lock.showPasswordHints"], true);
+            compare(pane.setHintButton.enabled, true);
+
+            pane.hintDialog.show();
+            waitForRendering(stage);
+            compare(pane.hintDialog.open, true);
+            pane.hintInput.text = "The one with the cat";
+            pane.hintDialog.accept();
+            compare(Settings.values["lock.passwordHint"], "The one with the cat");
+
+            pane.hintDialog.show();
+            waitForRendering(stage);
+            compare(pane.hintInput.text, "The one with the cat");
+            pane.hintDialog.reject();
+        }
+
+        function test_login_window_row_is_disabled_with_a_reason() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.loginWindowSelect.enabled, false);
+            compare(pane.loginWindowSelect.currentIndex, 0);
+            verify(pane.loginWindowSelect.Accessible.name.length > 0);
+        }
+
+        function test_accessibility_button_opens_the_accessibility_pane() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.accessibilityButton.clicked();
+            tryCompare(shell, "currentPaneId", "accessibility");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
         }
     }
 }

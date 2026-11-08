@@ -19,7 +19,10 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDBusConnection>
+#include <QDBusInterface>
 #include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
 #include <QDBusVariant>
 #include <QDir>
@@ -1168,6 +1171,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onNotificationAvailable);
     connect(m_notificationClient, &NotificationClient::focusPolicyChanged, this,
             &ShellController::onNotificationFocusPolicy);
+    // T229a: the schedule applies the notification service's Focus mode at a
+    // window boundary. It never enforces the lock or writes the service's
+    // queue; it is a small consumer of the settingsd keys.
+    m_focusSchedule = new FocusSchedule(m_settingsClient, m_notificationClient, this);
+    m_focusSchedule->start();
 
     m_bannerWindow = createChromeProducer()->window();
     m_bannerWindow->setColor(Qt::transparent);
@@ -1662,6 +1670,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_lockItem->setParentItem(m_lockWindow->contentItem());
+    connect(lockObject, SIGNAL(powerActionRequested(QString)), this,
+            SLOT(onLockPowerAction(QString)));
     bindChromePacing(m_producers.value(m_lockWindow), QStringLiteral("lock"),
                      [this]() { repaintLockSurfaces(); });
     connect(m_protocol, &ShellProtocol::sessionLocked, this, &ShellController::onSessionLocked);
@@ -4695,8 +4705,46 @@ void ShellController::lockScreen()
         m_protocol->lockSession();
 }
 
-void ShellController::requestDevReturn()
+void ShellController::performSessionAction(const QString &action)
 {
+    QString method;
+    if (action == QLatin1String("sleep"))
+        method = QStringLiteral("Suspend");
+    else if (action == QLatin1String("restart"))
+        method = QStringLiteral("Reboot");
+    else if (action == QLatin1String("shut-down"))
+        method = QStringLiteral("PowerOff");
+    else
+        return;
+
+    QDBusInterface login1(QStringLiteral("org.freedesktop.login1"),
+                          QStringLiteral("/org/freedesktop/login1"),
+                          QStringLiteral("org.freedesktop.login1.Manager"),
+                          QDBusConnection::systemBus(), this);
+    if (!login1.isValid()) {
+        qWarning() << "shell: logind is not reachable; cannot" << action;
+        return;
+    }
+    // logind's power methods take `interactive`; true lets polkit prompt when
+    // the session is allowed to ask.
+    auto *watcher = new QDBusPendingCallWatcher(login1.asyncCall(method, true), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [method](QDBusPendingCallWatcher *call) {
+                const QDBusPendingReply<> reply = *call;
+                if (reply.isError()) {
+                    qWarning() << "shell: logind" << method << "failed:"
+                               << reply.error().message();
+                }
+                call->deleteLater();
+            });
+}
+
+void ShellController::onLockPowerAction(const QString &action)
+{
+    performSessionAction(action);
+}
+
+void ShellController::requestDevReturn(){
     // T-12.6b: the "Quit to <previous desktop>" row runs the dev harness's
     // return, which restores the previous default session, disarms autologin,
     // and asks the session manager to log out. Prefer the absolute dev-tool
@@ -4747,10 +4795,27 @@ void ShellController::applyLockData()
         values.value(QStringLiteral("screenSaver.showDate"), true).toBool();
     const bool showSeconds =
         values.value(QStringLiteral("screenSaver.showSeconds"), false).toBool();
+    const bool showUserName =
+        values.value(QStringLiteral("lock.showUserNameAndPhoto"), true).toBool();
+    const bool showPasswordHints =
+        values.value(QStringLiteral("lock.showPasswordHints"), false).toBool();
+    const QString passwordHint =
+        values.value(QStringLiteral("lock.passwordHint")).toString();
+    const bool showLockMessage =
+        values.value(QStringLiteral("lock.showMessageWhenLocked"), false).toBool();
+    const QString lockMessage = values.value(QStringLiteral("lock.message")).toString();
+    const bool showPowerButtons =
+        values.value(QStringLiteral("lock.showPowerButtons"), true).toBool();
     const QDateTime now = QDateTime::currentDateTime();
     m_lockItem->setProperty("showClock", showClock);
     m_lockItem->setProperty("showDate", showDate);
     m_lockItem->setProperty("showSeconds", showSeconds);
+    m_lockItem->setProperty("showUserNameAndPhoto", showUserName);
+    m_lockItem->setProperty("showPasswordHints", showPasswordHints);
+    m_lockItem->setProperty("passwordHint", passwordHint);
+    m_lockItem->setProperty("showLockMessage", showLockMessage);
+    m_lockItem->setProperty("lockMessageText", lockMessage);
+    m_lockItem->setProperty("showPowerButtons", showPowerButtons);
     m_lockItem->setProperty(
         "timeText",
         now.toString(showSeconds ? QStringLiteral("HH:mm:ss") : QStringLiteral("HH:mm")));
@@ -4975,9 +5040,13 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
         // macOS Hide/Hide Others/Show All semantics are T-14.2a (T103).
         qInfo() << "shell: app visibility action (T-14.2a):" << action;
     } else if (action == QLatin1String("sleep") || action == QLatin1String("restart")
-               || action == QLatin1String("shut-down") || action == QLatin1String("log-out")) {
-        // The logind power/session actions have no shell implementation yet;
-        // they land with the real-session work (T-12.6, T-16.4).
+               || action == QLatin1String("shut-down")) {
+        // T229a: the lock screen's power row and the system menu share one
+        // logind path.
+        performSessionAction(action);
+    } else if (action == QLatin1String("log-out")) {
+        // The logind session action has no shell implementation yet; it lands
+        // with the real-session work (T-12.6, T-16.4).
         qInfo() << "shell: session action requested (T-12.6):" << action;
     } else if (action == QLatin1String("quit-to-return")) {
         // T-12.6b: the dev harness's return. It restores the previous default

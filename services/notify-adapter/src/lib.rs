@@ -72,7 +72,9 @@ pub use source::{
     FocusOutcome, MockNotifications, NotificationRecord, NotificationsData, NotificationsSource,
 };
 // Re-export the reused policy vocabulary so a consumer binds to one import.
-pub use dragonfruit_notifications::FocusMode;
+pub use dragonfruit_notifications::{
+    AppPreference, AppPreferenceEntry, FocusMode, NotificationStyle,
+};
 
 #[cfg(test)]
 mod tests {

@@ -291,5 +291,38 @@ Item {
             verify(pane.photoNotice.text.length > 0);
             verify(!pane.hasAttribution, "a user photo carries no attribution");
         }
+
+        // -- T229a: screen saver / clock appearance links ----------------------
+
+        function test_screen_saver_and_clock_links_open_the_screen_saver() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(shell.currentPaneId, "wallpaper");
+            verify(pane.screenSaverRow.visible);
+            verify(pane.clockAppearanceRow.visible);
+
+            pane.screenSaverButton.clicked();
+            tryCompare(shell, "currentPaneId", "screen-saver");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+
+            // Going back and using the clock link lands on the same pane.
+            shell.selectPane("wallpaper");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            pane = paneOf(shell);
+            pane.clockAppearanceButton.clicked();
+            tryCompare(shell, "currentPaneId", "screen-saver");
+        }
+
+        function test_long_wallpaper_names_elide_without_widening_the_row() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.set("wallpaper.source",
+                         "/tmp/a-very-long-wallpaper-name-that-keeps-going-and-going.png");
+            compare(pane.currentName,
+                    "a-very-long-wallpaper-name-that-keeps-going-and-going.png");
+            verify(pane.currentUrl.length > 0);
+            verify(pane.width <= stage.width,
+                   "the pane must not grow past its host for a long name");
+        }
     }
 }

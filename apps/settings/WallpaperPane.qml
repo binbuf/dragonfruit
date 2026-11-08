@@ -160,6 +160,12 @@ Item {
     property alias attributionArtist: attributionArtist
     property alias attributionLicense: attributionLicense
     property alias attributionPage: attributionPage
+    property alias screenSaverRow: screenSaverRow
+    property alias screenSaverButton: screenSaverButton
+    property alias clockAppearanceRow: clockAppearanceRow
+    property alias clockAppearanceButton: clockAppearanceButton
+
+    signal navigateRequested(string paneId)
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -357,13 +363,45 @@ Item {
                 id: fitRow
                 width: parent.width
                 label: qsTr("Fit")
-                showSeparator: false
-
                 controlData: SegmentedControl {
                     id: fitControl
                     model: root.fitOptions.map(function(option) { return option.label; })
                     onActivated: (index) => Settings.set("wallpaper.fit",
                                                         root.fitOptions[index].value)
+                }
+            }
+
+            SettingsRow {
+                id: screenSaverRow
+                width: parent.width
+                label: qsTr("Screen Saver\u2026")
+                description: qsTr("Choose the lock-screen style and timing.")
+                settingsId: "screenSaver"
+                owner: "settingsd"
+                settingsKey: "screenSaver.style"
+                controlData: Button {
+                    id: screenSaverButton
+                    text: qsTr("Open\u2026")
+                    accessibleName: qsTr("Open Screen Saver settings")
+                    onClicked: root.navigateRequested("screen-saver")
+                }
+            }
+
+            SettingsRow {
+                id: clockAppearanceRow
+                width: parent.width
+                label: qsTr("Clock Appearance\u2026")
+                description: qsTr("Show the clock, date, and seconds on the "
+                                  + "lock screen.")
+                settingsId: "clock"
+                owner: "settingsd"
+                settingsKey: "lock.clock"
+                showSeparator: false
+                controlData: Button {
+                    id: clockAppearanceButton
+                    text: qsTr("Open\u2026")
+                    accessibleName: qsTr("Open clock appearance settings")
+                    onClicked: root.navigateRequested("screen-saver")
                 }
             }
         }

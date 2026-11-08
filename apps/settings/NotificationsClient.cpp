@@ -79,6 +79,16 @@ void DbusNotificationsClient::setFocusAllowList(const QStringList &apps)
     call(QStringLiteral("SetFocusAllowList"), { apps });
 }
 
+void DbusNotificationsClient::setAppPreference(const QString &app,
+                                               const QString &style, bool sound,
+                                               bool badge, bool allowed)
+{
+    if (app.trimmed().isEmpty() || style.isEmpty())
+        return;
+    call(QStringLiteral("SetAppPreference"),
+         { app.trimmed(), style, sound, badge, allowed });
+}
+
 void DbusNotificationsClient::call(const QString &method, const QVariantList &arguments)
 {
     auto *iface = new QDBusInterface(m_service, m_path, m_interface,
@@ -150,6 +160,30 @@ void MockNotificationsClient::setFocusAllowList(const QStringList &apps)
     rebuild();
 }
 
+void MockNotificationsClient::setAppPreference(const QString &app,
+                                               const QString &style, bool sound,
+                                               bool badge, bool allowed)
+{
+    const QString name = app.trimmed();
+    if (name.isEmpty())
+        return;
+    const QString key = name.toLower();
+    const QVariantMap preference{
+        { QStringLiteral("name"), name },
+        { QStringLiteral("style"), style },
+        { QStringLiteral("sound"), sound },
+        { QStringLiteral("badge"), badge },
+        { QStringLiteral("allowed"), allowed },
+    };
+    const bool isDefault = style == QStringLiteral("banner") && sound && badge
+                           && allowed;
+    if (isDefault)
+        m_appPreferences.remove(key);
+    else
+        m_appPreferences.insert(key, preference);
+    rebuild();
+}
+
 void MockNotificationsClient::rebuild()
 {
     const auto modeLabel = [this]() {
@@ -175,12 +209,31 @@ void MockNotificationsClient::rebuild()
     for (const auto &entry : source) {
         const QString name = QString::fromLatin1(entry.name);
         const bool allowed = m_allowList.contains(name, Qt::CaseInsensitive);
+        const QVariantMap stored =
+            m_appPreferences.value(name.toLower());
+        const QString style = stored.value(QStringLiteral("style"),
+                                           QStringLiteral("banner")).toString();
+        const bool notificationsAllowed =
+            stored.value(QStringLiteral("allowed"), true).toBool();
+        const bool sound = stored.value(QStringLiteral("sound"), true).toBool();
+        const bool badge = stored.value(QStringLiteral("badge"), true).toBool();
+        const QString styleLabel = style == QStringLiteral("alert")
+            ? QStringLiteral("Alerts")
+            : (style == QStringLiteral("none") ? QStringLiteral("None")
+                                               : QStringLiteral("Banners"));
+        const QString status = !notificationsAllowed
+            ? QStringLiteral("Off")
+            : (allowed ? QStringLiteral("Allowed") : QStringLiteral("Default"));
         QVariantMap app;
         app.insert(QStringLiteral("name"), name);
         app.insert(QStringLiteral("allowed"), allowed);
+        app.insert(QStringLiteral("notificationsAllowed"), notificationsAllowed);
         app.insert(QStringLiteral("notifications"), entry.notifications);
-        app.insert(QStringLiteral("status"),
-                   allowed ? QStringLiteral("Allowed") : QStringLiteral("Default"));
+        app.insert(QStringLiteral("status"), status);
+        app.insert(QStringLiteral("style"), style);
+        app.insert(QStringLiteral("styleLabel"), styleLabel);
+        app.insert(QStringLiteral("sound"), sound);
+        app.insert(QStringLiteral("badge"), badge);
         apps.append(app);
     }
 

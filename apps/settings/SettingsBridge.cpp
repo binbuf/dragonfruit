@@ -1131,8 +1131,17 @@ void SettingsBridge::setFocusApp(const QString &app, bool allowed)
     m_notifications->setFocusAllowList(list);
 }
 
-void SettingsBridge::refreshUpdates()
+void SettingsBridge::setNotificationAppPreference(const QString &app,
+                                                  const QString &style,
+                                                  bool sound, bool badge,
+                                                  bool allowed)
 {
+    if (m_notifications && !app.trimmed().isEmpty() && !style.isEmpty())
+        m_notifications->setAppPreference(app.trimmed(), style, sound, badge,
+                                          allowed);
+}
+
+void SettingsBridge::refreshUpdates(){
     if (m_updates)
         m_updates->refresh();
 }

@@ -462,6 +462,19 @@ Item {
             // A mode write is a safe no-op with no host.
             Settings.setFocusMode("dnd");
             compare(Settings.notificationsAvailable, false);
+
+            // T229a: the schedule and shortcut are settingsd-owned, so they
+            // stay live while the service is away; the people row explains
+            // the Linux limitation instead of drawing a dead list.
+            verify(pane.scheduleGroup.visible);
+            verify(pane.shortcutGroup.visible);
+            compare(pane.peopleGroup.visible, false,
+                    "the people row is service policy and hides with the service");
+            Settings.set("focus.schedule.enabled", true);
+            compare(pane.scheduleToggle.checked, true);
+            pane.shortcutDraft = "Ctrl+Alt+F";
+            pane.shortcutApplyButton.clicked();
+            compare(Settings.values["focus.shortcut"], "Ctrl+Alt+F");
         }
 
         // Lock policy is session/compositor-native: the pane's rows are
@@ -485,6 +498,13 @@ Item {
             compare(Settings.values["lock.showMessageWhenLocked"], true);
             pane.powerButtonsToggle.toggle();
             compare(Settings.values["lock.showPowerButtons"], false);
+
+            // T229a: the hint editor is live and the login-window row is
+            // visibly disabled with its reason (the display manager owns it).
+            pane.passwordHintsToggle.toggle();
+            compare(Settings.values["lock.showPasswordHints"], true);
+            compare(pane.setHintButton.enabled, true);
+            compare(pane.loginWindowSelect.enabled, false);
         }
 
         // The menu bar is shell-native: the pane's rows are settingsd keys, so
