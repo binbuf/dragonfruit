@@ -17,6 +17,7 @@
 #include "NetworkClient.h"
 #include "VpnClient.h"
 #include "WifiClient.h"
+#include "displaycapabilities.h"
 #include "settingsclient.h"
 
 #include <QColor>
@@ -609,6 +610,11 @@ bool SettingsBridge::set(const QString &key, const QVariant &value)
     return apply(key, value);
 }
 
+bool SettingsBridge::setList(const QString &key, const QStringList &value)
+{
+    return apply(key, value);
+}
+
 QString SettingsBridge::validationError(const QString &key, const QVariant &value) const
 {
     return m_client->validate(key, value);
@@ -629,6 +635,11 @@ QVariantMap SettingsBridge::schemaFor(const QString &key) const
     // One schema table, shared with the validator: a row can size a slider or
     // an enum popup from the same bounds the owner enforces.
     return settingsSchemaInfo(key);
+}
+
+QVariantList SettingsBridge::displayAdvancedRows() const
+{
+    return displayAdvancedRowsVariant();
 }
 
 void SettingsBridge::failNextWrite(const QString &key, const QString &message)

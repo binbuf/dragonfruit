@@ -576,8 +576,23 @@ Item {
     }
     Binding {
         target: Theme
+        property: "highlightOverride"
+        value: Settings.values["appearance.highlight"] || ""
+    }
+    Binding {
+        target: Theme
+        property: "scrollBars"
+        value: Settings.values["appearance.scrollBars"] || "automatic"
+    }
+    Binding {
+        target: Theme
         property: "reducedMotion"
         value: Settings.values["accessibility.reduceMotion"] === true
+    }
+    Binding {
+        target: Glass
+        property: "wallpaperTint"
+        value: Settings.values["appearance.wallpaperTint"] !== false
     }
     Binding {
         target: Glass

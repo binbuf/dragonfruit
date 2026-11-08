@@ -115,6 +115,87 @@ set_tests_properties(tst_settings_displays PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# T227 headless capture (not a ctest): the six panes plus the live Control
+# Center panel with a customized module list. Run through
+# `scripts/capture-t227-settings-panes.sh`.
+qt_add_executable(tst_settings_panes_capture
+    tst_settings_panes_capture.cpp
+)
+target_link_libraries(tst_settings_panes_capture PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+    dragonfruit-shell-control-center
+)
+qt_import_qml_plugins(tst_settings_panes_capture)
+
+# Quick Settings-pane tests (T227): the module list, menu-bar-only set,
+# reorder, and per-display absence. The panel side is in
+# `shell/tests/tst_controlcenter.qml`.
+qt_add_executable(tst_settings_quick_settings
+    tst_settings_quick_settings.cpp
+)
+target_link_libraries(tst_settings_quick_settings PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_quick_settings)
+
+add_test(
+    NAME tst_settings_quick_settings
+    COMMAND tst_settings_quick_settings
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_quick_settings.qml
+)
+set_tests_properties(tst_settings_quick_settings PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Search-pane tests (T227): categories, indexed locations, shortcut, web, and
+# the disabled indexing status/rebuild rows.
+qt_add_executable(tst_settings_search_pane
+    tst_settings_search_pane.cpp
+)
+target_link_libraries(tst_settings_search_pane PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_search_pane)
+
+add_test(
+    NAME tst_settings_search_pane
+    COMMAND tst_settings_search_pane
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_search_pane.qml
+)
+set_tests_properties(tst_settings_search_pane PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Screen Saver-pane tests (T227): style, start-after (`idle.blank`), and the
+# clock/date/seconds options the lock scene consumes.
+qt_add_executable(tst_settings_screen_saver
+    tst_settings_screen_saver.cpp
+)
+target_link_libraries(tst_settings_screen_saver PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_screen_saver)
+
+add_test(
+    NAME tst_settings_screen_saver
+    COMMAND tst_settings_screen_saver
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_screen_saver.qml
+)
+set_tests_properties(tst_settings_screen_saver PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Bluetooth-pane tests (T-15.1b): the toggle, the discoverable caption, the
 # known-device connect round-trip, and the Nearby Devices searching state. The
 # `DF_BLUETOOTH_FIXTURE` client is deterministic and in-process, so the cases

@@ -43,6 +43,23 @@ Item {
             verify(findChild(lock, "lockGlyph") !== null);
         }
 
+        // T227: the Screen Saver pane's clock options drive the lock scene.
+        function test_screen_saver_clock_options_hide_the_clock_and_date() {
+            var lock = make({ timeText: "09:41", dateText: "Monday 1 January",
+                              showClock: true, showDate: true });
+            var clock = findChild(lock, "lockClock");
+            var date = findChild(lock, "lockDate");
+            verify(clock.parent.visible);
+            verify(date.visible);
+
+            lock.showDate = false;
+            verify(clock.parent.visible);
+            verify(!date.visible);
+
+            lock.showClock = false;
+            verify(!clock.parent.visible);
+        }
+
         function test_password_placeholder_reflects_auth_state() {
             var lock = make({ authEnabled: false, authBusy: false });
             compare(findChild(lock, "lockPasswordPlaceholder").text,

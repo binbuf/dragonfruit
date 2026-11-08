@@ -13,6 +13,17 @@ FocusScope {
     property alias flickable: flick
     property alias interactive: flick.interactive
     property bool scrollbarVisible: true
+    // T227: `appearance.scrollBars`. "automatic" shows a bar whenever the
+    // content overflows; "when-scrolling" only while the view is moving or a
+    // thumb is dragged; "always" keeps the bar for overflowing content.
+    property string scrollBars: Theme.scrollBars
+    readonly property bool showBars: {
+        if (!root.scrollbarVisible)
+            return false;
+        if (root.scrollBars === "when-scrolling")
+            return flick.moving || vThumbArea.pressed || hThumbArea.pressed;
+        return true;
+    }
 
     readonly property real maxY: Math.max(0, flick.contentHeight - flick.height)
     readonly property real maxX: Math.max(0, flick.contentWidth - flick.width)
@@ -44,7 +55,7 @@ FocusScope {
 
     Rectangle {
         id: vTrack
-        visible: root.scrollbarVisible && root.maxY > 0
+        visible: root.showBars && root.maxY > 0
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
@@ -88,7 +99,7 @@ FocusScope {
 
     Rectangle {
         id: hTrack
-        visible: root.scrollbarVisible && root.maxX > 0
+        visible: root.showBars && root.maxX > 0
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

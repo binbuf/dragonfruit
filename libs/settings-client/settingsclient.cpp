@@ -129,7 +129,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 19). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 21). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -240,6 +240,40 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("backup.backend"), QStringLiteral("auto"));
     values.insert(QStringLiteral("backup.destination"), QString());
     values.insert(QStringLiteral("backup.schedule"), QStringLiteral("off"));
+    // Revision 21 (T227): Appearance completion, Quick Settings, Search,
+    // Screen Saver, and Desktop.
+    values.insert(QStringLiteral("appearance.highlight"), QString());
+    values.insert(QStringLiteral("appearance.sidebarIconSize"), QStringLiteral("medium"));
+    values.insert(QStringLiteral("appearance.wallpaperTint"), true);
+    values.insert(QStringLiteral("appearance.scrollBars"), QStringLiteral("automatic"));
+    values.insert(QStringLiteral("quickSettings.modules"), QStringList({
+        QStringLiteral("wifi"), QStringLiteral("bluetooth"),
+        QStringLiteral("storage"), QStringLiteral("focus"),
+        QStringLiteral("volume"), QStringLiteral("brightness"),
+        QStringLiteral("dark"), QStringLiteral("keyboard"),
+        QStringLiteral("mission-control"), QStringLiteral("battery"),
+        QStringLiteral("lock-screen"), QStringLiteral("menu-bar"),
+        QStringLiteral("software-update"), QStringLiteral("users"),
+        QStringLiteral("printers"), QStringLiteral("privacy"),
+        QStringLiteral("accessibility"), QStringLiteral("vpn")
+    }));
+    values.insert(QStringLiteral("quickSettings.menuBarOnly"), QStringList());
+    values.insert(QStringLiteral("search.categories"), QStringList({
+        QStringLiteral("applications"), QStringLiteral("files"),
+        QStringLiteral("folders"), QStringLiteral("actions"),
+        QStringLiteral("calculations"), QStringLiteral("definitions"),
+        QStringLiteral("web")
+    }));
+    values.insert(QStringLiteral("search.indexLocations"),
+                  QStringList({QStringLiteral("home")}));
+    values.insert(QStringLiteral("search.shortcut"), QStringLiteral("Super+Space"));
+    values.insert(QStringLiteral("search.web"), true);
+    values.insert(QStringLiteral("menu.control.search"), true);
+    values.insert(QStringLiteral("screenSaver.style"), QStringLiteral("clock"));
+    values.insert(QStringLiteral("screenSaver.clock"), true);
+    values.insert(QStringLiteral("screenSaver.showDate"), true);
+    values.insert(QStringLiteral("screenSaver.showSeconds"), false);
+    values.insert(QStringLiteral("desktop.showItems"), QStringLiteral("on-desktop"));
     return values;
 }
 
@@ -284,6 +318,10 @@ const char *const kLocaleNumberFormat[] = { "locale", "decimal", "comma" };
 const char *const kLocaleFirstDay[] = { "locale", "sunday", "monday", "saturday" };
 const char *const kBackupBackend[] = { "auto", "restic", "pika", "timeshift" };
 const char *const kBackupSchedule[] = { "off", "hourly", "daily", "weekly", "monthly" };
+const char *const kSidebarIconSize[] = { "small", "medium", "large" };
+const char *const kScrollBars[] = { "automatic", "when-scrolling", "always" };
+const char *const kScreenSaverStyle[] = { "clock", "none" };
+const char *const kDesktopItems[] = { "on-desktop", "in-stage" };
 
 const Constraint kConstraints[] = {
     { "dock.size", nullptr, 0, true, 0.0, true, 1.0 },
@@ -332,6 +370,10 @@ const Constraint kConstraints[] = {
     { "locale.firstDay", kLocaleFirstDay, 4, false, 0, false, 0 },
     { "backup.backend", kBackupBackend, 4, false, 0, false, 0 },
     { "backup.schedule", kBackupSchedule, 5, false, 0, false, 0 },
+    { "appearance.sidebarIconSize", kSidebarIconSize, 3, false, 0, false, 0 },
+    { "appearance.scrollBars", kScrollBars, 3, false, 0, false, 0 },
+    { "screenSaver.style", kScreenSaverStyle, 2, false, 0, false, 0 },
+    { "desktop.showItems", kDesktopItems, 2, false, 0, false, 0 },
 };
 
 const Constraint *constraintFor(const QString &key)

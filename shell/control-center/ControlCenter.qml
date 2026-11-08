@@ -99,6 +99,56 @@ Item {
     // is a read-only summary; the Settings link opens the pane where the
     // connect/deactivate writes live.
     property var vpn: ({})
+    // T227: the Quick Settings pane's customization. `quickSettingsModules`
+    // is the ordered panel module list; `quickSettingsMenuBarOnly` names
+    // modules kept in the menu bar and removed from the panel. Empty means the
+    // built-in order (the standalone/test case).
+    property var quickSettingsModules: []
+    property var quickSettingsMenuBarOnly: []
+    readonly property var defaultModuleOrder: [
+        "wifi", "bluetooth", "storage", "focus", "volume", "brightness",
+        "dark", "keyboard", "mission-control", "battery", "lock-screen",
+        "menu-bar", "software-update", "users", "printers", "privacy",
+        "accessibility", "vpn"
+    ]
+    readonly property var moduleOrder: {
+        var list = root.quickSettingsModules;
+        if (!list || list.length === 0)
+            return root.defaultModuleOrder;
+        return Array.from(list);
+    }
+    function moduleVisible(id) {
+        if (root.quickSettingsMenuBarOnly.indexOf(id) >= 0)
+            return false;
+        if (!root.quickSettingsModules || root.quickSettingsModules.length === 0)
+            return true;
+        return root.moduleOrder.indexOf(id) >= 0;
+    }
+    function moduleFor(id) {
+        for (var i = 0; i < root.allTiles.length; ++i) {
+            if (root.allTiles[i].id === id)
+                return root.allTiles[i];
+        }
+        return null;
+    }
+    readonly property var tiles: {
+        var out = [];
+        var seen = {};
+        for (var i = 0; i < root.moduleOrder.length; ++i) {
+            var id = root.moduleOrder[i];
+            if (seen[id] === true || !root.moduleVisible(id))
+                continue;
+            var tile = root.moduleFor(id);
+            if (tile !== null) {
+                out.push(tile);
+                seen[id] = true;
+            }
+        }
+        return out;
+    }
+    // The module list filters the live panel immediately. The static Column
+    // keeps the built-in scene order; the ordered `tiles` model is the
+    // contract the T235 expanded-module layout consumes.
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -571,9 +621,9 @@ Item {
     signal clipboardPinToggled(int index, bool pinned)
     signal clipboardClearRequested()
 
-    // The normalized tile model, in panel order. A headless test asserts this
-    // without instantiating the controls below.
-    readonly property var tiles: [
+    // The normalized tile model, in built-in panel order. `tiles` above is
+    // this list filtered/ordered by the Quick Settings customization.
+    readonly property var allTiles: [
         {
             id: "wifi",
             kind: "toggle",
@@ -1034,6 +1084,7 @@ Item {
                 id: wifiTile
                 objectName: "wifiTile"
                 width: parent.width
+                visible: root.moduleVisible("wifi")
                 implicitHeight: wifiColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -1198,7 +1249,7 @@ Item {
                 id: bluetoothTile
                 objectName: "bluetoothTile"
                 width: parent.width
-                visible: root.bluetoothVisible
+                visible: root.moduleVisible("bluetooth") && root.bluetoothVisible
                 implicitHeight: bluetoothColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -1370,7 +1421,7 @@ Item {
                 id: storageTile
                 objectName: "storageTile"
                 width: parent.width
-                visible: root.storageVisible
+                visible: root.moduleVisible("storage") && root.storageVisible
                 implicitHeight: storageColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -1506,6 +1557,7 @@ Item {
                 id: focusTile
                 objectName: "focusTile"
                 width: parent.width
+                visible: root.moduleVisible("focus")
                 implicitHeight: focusColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -1579,6 +1631,7 @@ Item {
                 id: volumeTile
                 objectName: "volumeTile"
                 width: parent.width
+                visible: root.moduleVisible("volume")
                 implicitHeight: volumeColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -1680,6 +1733,7 @@ Item {
                 id: brightnessTile
                 objectName: "brightnessTile"
                 width: parent.width
+                visible: root.moduleVisible("brightness")
                 implicitHeight: brightnessColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -1734,6 +1788,7 @@ Item {
                 id: darkTile
                 objectName: "darkTile"
                 width: parent.width
+                visible: root.moduleVisible("dark")
                 implicitHeight: darkColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -1807,7 +1862,7 @@ Item {
                 id: keyboardTile
                 objectName: "keyboardTile"
                 width: parent.width
-                visible: root.inputVisible
+                visible: root.moduleVisible("keyboard") && root.inputVisible
                 implicitHeight: keyboardColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -1872,7 +1927,7 @@ Item {
                 id: missionControlTile
                 objectName: "missionControlTile"
                 width: parent.width
-                visible: root.missionControlVisible
+                visible: root.moduleVisible("mission-control") && root.missionControlVisible
                 implicitHeight: missionControlColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -1937,7 +1992,7 @@ Item {
                 id: batteryTile
                 objectName: "batteryTile"
                 width: parent.width
-                visible: root.batteryVisible
+                visible: root.moduleVisible("battery") && root.batteryVisible
                 implicitHeight: batteryColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -2002,7 +2057,7 @@ Item {
                 id: lockScreenTile
                 objectName: "lockScreenTile"
                 width: parent.width
-                visible: root.lockScreenVisible
+                visible: root.moduleVisible("lock-screen") && root.lockScreenVisible
                 implicitHeight: lockScreenColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -2068,7 +2123,7 @@ Item {
                 id: menuBarTile
                 objectName: "menuBarTile"
                 width: parent.width
-                visible: root.menuBarVisible
+                visible: root.moduleVisible("menu-bar") && root.menuBarVisible
                 implicitHeight: menuBarColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -2134,7 +2189,7 @@ Item {
                 id: updatesTile
                 objectName: "updatesTile"
                 width: parent.width
-                visible: root.updatesAvailable
+                visible: root.moduleVisible("software-update") && root.updatesAvailable
                 implicitHeight: updatesColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -2214,7 +2269,7 @@ Item {
                 id: usersTile
                 objectName: "usersTile"
                 width: parent.width
-                visible: root.accountsAvailable
+                visible: root.moduleVisible("users") && root.accountsAvailable
                 implicitHeight: usersColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -2279,7 +2334,7 @@ Item {
                 id: printersTile
                 objectName: "printersTile"
                 width: parent.width
-                visible: root.printersVisible
+                visible: root.moduleVisible("printers") && root.printersVisible
                 implicitHeight: printersColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -2346,7 +2401,7 @@ Item {
                 id: privacyTile
                 objectName: "privacyTile"
                 width: parent.width
-                visible: root.privacyVisible
+                visible: root.moduleVisible("privacy") && root.privacyVisible
                 implicitHeight: privacyColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -2416,7 +2471,7 @@ Item {
                 id: accessibilityTile
                 objectName: "accessibilityTile"
                 width: parent.width
-                visible: root.accessibilityVisible
+                visible: root.moduleVisible("accessibility") && root.accessibilityVisible
                 implicitHeight: accessibilityColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
@@ -2482,7 +2537,7 @@ Item {
                 id: vpnTile
                 objectName: "vpnTile"
                 width: parent.width
-                visible: root.vpnVisible
+                visible: root.moduleVisible("vpn") && root.vpnVisible
                 implicitHeight: vpnColumn.implicitHeight
                                 + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md

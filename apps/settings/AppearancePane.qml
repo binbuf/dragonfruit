@@ -36,6 +36,43 @@ Item {
     ]
 
     readonly property string currentAccent: Settings.values["appearance.accent"] || ""
+    readonly property string currentHighlight:
+        Settings.values["appearance.highlight"] || ""
+    readonly property string currentSidebarIconSize:
+        Settings.values["appearance.sidebarIconSize"] || "medium"
+    readonly property string currentScrollBars:
+        Settings.values["appearance.scrollBars"] || "automatic"
+
+    // T227: highlight is the selection wash (search fields, pickers), kept
+    // separate from the accent. Empty is the scheme's token selection.
+    readonly property var highlightPalette: [
+        { value: "", label: qsTr("Default") },
+        { value: "#b3a1ff", label: qsTr("Violet") },
+        { value: "#7fb2ff", label: qsTr("Blue") },
+        { value: "#7fd6a4", label: qsTr("Green") },
+        { value: "#f0c46a", label: qsTr("Gold") },
+        { value: "#ff8fa3", label: qsTr("Coral") }
+    ]
+    readonly property var sidebarIconSizeOptions: [
+        { value: "small", label: qsTr("Small") },
+        { value: "medium", label: qsTr("Medium") },
+        { value: "large", label: qsTr("Large") }
+    ]
+    readonly property var scrollBarOptions: [
+        { value: "automatic", label: qsTr("Automatically") },
+        { value: "when-scrolling", label: qsTr("When scrolling") },
+        { value: "always", label: qsTr("Always") }
+    ]
+
+    signal navigationRequested(string paneId)
+
+    function optionIndex(options, value, fallback) {
+        for (var i = 0; i < options.length; ++i) {
+            if (options[i].value === value)
+                return i;
+        }
+        return fallback;
+    }
 
     property string customAccentText: root.currentAccent
 
@@ -111,6 +148,13 @@ Item {
     property alias transparencyGroup: transparencyGroup
     property alias previewPlate: previewPlate
     property alias previewGroup: previewGroup
+    property alias highlightSelect: highlightSelect
+    property alias highlightRow: highlightRow
+    property alias sidebarIconSizeSelect: sidebarIconSizeSelect
+    property alias wallpaperTintToggle: wallpaperTintToggle
+    property alias scrollBarsSelect: scrollBarsSelect
+    property alias motionRow: motionRow
+    property alias motionButton: motionButton
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -191,6 +235,110 @@ Item {
                         accessibleName: qsTr("Custom accent color")
                         onClicked: accentPopup.open ? accentPopup.hide() : accentPopup.show()
                     }
+                }
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: qsTr("Highlight color")
+
+            SettingsKeyRow {
+                id: highlightRow
+                width: parent.width
+                label: qsTr("Highlight color")
+                settingsId: "highlight"
+                owner: "settingsd + shell"
+                settingsKey: "appearance.highlight"
+                description: qsTr("The selection wash in search fields and pickers. "
+                                  + "Default follows the active color scheme.")
+                showSeparator: false
+
+                controlData: Select {
+                    id: highlightSelect
+                    accessibleName: qsTr("Highlight color")
+                    model: root.highlightPalette
+                    onActivated: (index) => Settings.set(
+                                    "appearance.highlight",
+                                    root.highlightPalette[index].value)
+                }
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: qsTr("Sidebar")
+
+            SettingsKeyRow {
+                id: sidebarIconSizeRow
+                width: parent.width
+                label: qsTr("Sidebar icon size")
+                settingsId: "sidebarIconSize"
+                owner: "settingsd + apps/settings"
+                settingsKey: "appearance.sidebarIconSize"
+                showSeparator: false
+
+                controlData: Select {
+                    id: sidebarIconSizeSelect
+                    accessibleName: qsTr("Sidebar icon size")
+                    model: root.sidebarIconSizeOptions
+                    onActivated: (index) => Settings.set(
+                                    "appearance.sidebarIconSize",
+                                    root.sidebarIconSizeOptions[index].value)
+                }
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: qsTr("Windows and scroll bars")
+
+            SettingsKeyRow {
+                id: wallpaperTintRow
+                width: parent.width
+                label: qsTr("Allow wallpaper tinting")
+                settingsId: "wallpaperTint"
+                owner: "settingsd + shell"
+                settingsKey: "appearance.wallpaperTint"
+                description: qsTr("Off uses the neutral glass plate instead of "
+                                  + "sampling the wallpaper's colors.")
+                controlData: Toggle {
+                    id: wallpaperTintToggle
+                    text: ""
+                    onToggled: (checked) => Settings.set("appearance.wallpaperTint", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                id: scrollBarsRow
+                width: parent.width
+                label: qsTr("Show scroll bars")
+                settingsId: "scrollBars"
+                owner: "settingsd + shell"
+                settingsKey: "appearance.scrollBars"
+                controlData: Select {
+                    id: scrollBarsSelect
+                    accessibleName: qsTr("Show scroll bars")
+                    model: root.scrollBarOptions
+                    onActivated: (index) => Settings.set(
+                                    "appearance.scrollBars",
+                                    root.scrollBarOptions[index].value)
+                }
+            }
+
+            SettingsRow {
+                id: motionRow
+                width: parent.width
+                label: qsTr("Motion")
+                description: qsTr("Reduced motion is the Accessibility preference; "
+                                  + "it disables window and control animation.")
+                showSeparator: false
+
+                controlData: Button {
+                    id: motionButton
+                    text: qsTr("Open Accessibility")
+                    accessibleName: qsTr("Open Accessibility motion settings")
+                    onClicked: root.navigationRequested("accessibility")
                 }
             }
         }
@@ -321,6 +469,27 @@ Item {
         property: "value"
         value: root.transparency
         when: !transparencySlider.dragging && !root.transparencyWritePending
+    }
+    Binding {
+        target: highlightSelect
+        property: "currentIndex"
+        value: root.optionIndex(root.highlightPalette, root.currentHighlight, 0)
+    }
+    Binding {
+        target: sidebarIconSizeSelect
+        property: "currentIndex"
+        value: root.optionIndex(root.sidebarIconSizeOptions,
+                                root.currentSidebarIconSize, 1)
+    }
+    Binding {
+        target: wallpaperTintToggle
+        property: "checked"
+        value: Settings.values["appearance.wallpaperTint"] !== false
+    }
+    Binding {
+        target: scrollBarsSelect
+        property: "currentIndex"
+        value: root.optionIndex(root.scrollBarOptions, root.currentScrollBars, 0)
     }
 
     // A hex-entry color picker: our own, so it consumes the design-system

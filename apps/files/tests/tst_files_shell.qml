@@ -916,6 +916,23 @@ Item {
 
         // -- Files-owned desktop (T-19.3) ---------------------------------------
 
+        // T227: the Desktop & Stage Manager pane's `desktop.showItems` key
+        // hides the Files-owned desktop icons without stopping the process.
+        function test_desktop_items_visibility_follows_settings() {
+            var saved = Settings.values["desktop.showItems"];
+            var surface = makeDesktop();
+            compare(surface.itemsVisible, true);
+            compare(surface.iconView.visible, true);
+
+            Settings.set("desktop.showItems", "in-stage");
+            tryVerify(function() { return surface.itemsVisible === false; });
+            compare(surface.iconView.visible, false);
+
+            Settings.set("desktop.showItems", "on-desktop");
+            tryVerify(function() { return surface.iconView.visible === true; });
+            Settings.set("desktop.showItems", saved);
+        }
+
         function test_desktop_lists_the_fixture() {
             var surface = makeDesktop();
             compare(surface.location, Files.viewFixtureUri);

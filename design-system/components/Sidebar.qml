@@ -18,6 +18,10 @@ FocusScope {
     // and round the bottom-left window corner.
     property color fillColor: Theme.color.surfaceMuted
     property real bottomLeftRadius: 0
+    // T227: `appearance.sidebarIconSize` (small/medium/large) is mapped by the
+    // app owner onto these two slots; the row height stays the design token.
+    property real iconSize: Theme.controls.sidebar.iconSize
+    property real categoryIconSize: Theme.controls.sidebar.categoryIconSize
 
     signal activated(int index, var item)
 
@@ -180,13 +184,13 @@ FocusScope {
         readonly property bool hasGlyph: !row.isHeader
                 && (row.category !== null || entry.icon.length > 0)
         readonly property real glyphSize: row.category !== null
-                ? Theme.controls.sidebar.categoryIconSize
-                : Theme.controls.sidebar.iconSize
+                ? root.categoryIconSize
+                : root.iconSize
         // The space reserved in front of the label. A mixed list (a category
         // tile beside a plain fallback glyph) keeps one label column.
         readonly property real glyphSlot: row.category !== null || root.hasCategoryItems
-                ? Theme.controls.sidebar.categoryIconSize
-                : Theme.controls.sidebar.iconSize
+                ? root.categoryIconSize
+                : root.iconSize
 
         width: parent ? parent.width : 0
         height: isHeader ? headerText.implicitHeight + Theme.controls.sidebar.sectionGap

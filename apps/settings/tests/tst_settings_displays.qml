@@ -26,6 +26,7 @@ Item {
         function init() {
             Settings.set("display.scale", 1.0);
             Settings.set("display.rotation", "normal");
+            Settings.set("display.brightness", 1.0);
         }
 
         function make() {
@@ -108,6 +109,46 @@ Item {
             verify(row.control.x > row.width * 0.55,
                    "rotation control must sit at the right, x=" + row.control.x
                    + " row.width=" + row.width);
+        }
+
+        // -- T227: brightness and the advanced capability sheet ----------------
+
+        function test_brightness_applies_live_and_converges() {
+            var shell = make();
+            var pane = paneOf(shell);
+            fuzzyCompare(pane.brightnessSlider.value, 1.0, 0.0001);
+
+            pane.brightnessSlider.setValue(0.4);
+            pane.brightnessSlider.commit();
+            fuzzyCompare(Settings.values["display.brightness"], 0.4, 0.0001);
+
+            Settings.set("display.brightness", 0.75);
+            tryVerify(function() {
+                return Math.abs(pane.brightnessSlider.value - 0.75) < 0.0001;
+            });
+        }
+
+        function test_advanced_sheet_lists_supported_and_open_rows() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.advancedRows.length, 8);
+
+            var byId = {};
+            for (var i = 0; i < pane.advancedRows.length; ++i)
+                byId[pane.advancedRows[i].id] = pane.advancedRows[i];
+            compare(byId["brightness"].supported, true);
+            compare(byId["rotation"].supported, true);
+            for (var id of ["refreshRate", "arrangement", "nightLight",
+                            "colorProfile", "hdr", "vrr"]) {
+                compare(byId[id].supported, false, id + " must be OPEN");
+                verify(byId[id].reason.length > 0,
+                       id + " must carry its OPEN reason");
+            }
+
+            pane.advancedButton.clicked();
+            tryCompare(pane.advancedPopup, "open", true);
+            verify(pane.advancedList.children.length >= 8);
+            pane.advancedPopup.hide();
         }
     }
 }

@@ -865,7 +865,7 @@ QtObject {
             readonly property color controlHover: "#ded6e5"
             readonly property color controlActive: "#c3b8cc"
             readonly property color focusRing: "#7c5cff"
-            readonly property color selection: "#b3a1ff"
+            readonly property color selection: tokens.hasHighlightOverride ? tokens.highlightOverrideColor : "#b3a1ff"
             readonly property color marqueeFill: "#40ededed"
             readonly property color marqueeBorder: "#8cc4c4c4"
             readonly property color danger: "#e8556d"
@@ -946,7 +946,7 @@ QtObject {
             readonly property color controlHover: "#44394d"
             readonly property color controlActive: "#5b4e66"
             readonly property color focusRing: "#927dff"
-            readonly property color selection: "#5538c2"
+            readonly property color selection: tokens.hasHighlightOverride ? tokens.highlightOverrideColor : "#5538c2"
             readonly property color marqueeFill: "#33e6e6e6"
             readonly property color marqueeBorder: "#8cd8d8d8"
             readonly property color danger: "#f2697d"
@@ -1023,6 +1023,19 @@ QtObject {
     property string accentOverride: ""
     readonly property bool hasAccentOverride: tokens.accentOverride !== ""
     readonly property color accentOverrideColor: tokens.hasAccentOverride ? tokens.accentOverride : "transparent"
+    // Highlight override (T227, `appearance.highlight`): empty means the
+    // active scheme's token selection colour. The selection wash
+    // (search fields, pickers) follows it live.
+    property string highlightOverride: ""
+    readonly property bool hasHighlightOverride: tokens.highlightOverride !== ""
+    readonly property color highlightOverrideColor: tokens.hasHighlightOverride ? tokens.highlightOverride : "transparent"
+    // Scroll-bar policy (T227, `appearance.scrollBars`): automatic,
+    // when-scrolling, or always. The ScrollView component consumes it.
+    property string scrollBars: "automatic"
+    // Wallpaper tinting (T227, `appearance.wallpaperTint`): off makes the
+    // glass resolver take the neutral plate instead of sampling the
+    // wallpaper's colours.
+    property bool wallpaperTint: true
     readonly property var color: tokens.dark ? tokens.darkScheme.color : tokens.lightScheme.color
     readonly property var material: tokens.dark ? tokens.darkScheme.material : tokens.lightScheme.material
 

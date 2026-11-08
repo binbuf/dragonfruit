@@ -328,6 +328,9 @@ public:
     // used since T-09; it now routes through the same path.
     Q_INVOKABLE bool apply(const QString &key, const QVariant &value);
     Q_INVOKABLE bool set(const QString &key, const QVariant &value);
+    // QML passes a JS array as a string list through this typed slot; the
+    // generic `set` sees a single string for a list key (T227).
+    Q_INVOKABLE bool setList(const QString &key, const QStringList &value);
     // The schema validation message for a proposed value (empty when valid).
     Q_INVOKABLE QString validationError(const QString &key,
                                         const QVariant &value) const;
@@ -336,6 +339,9 @@ public:
     Q_INVOKABLE QString errorFor(const QString &key) const;
     Q_INVOKABLE QString stateFor(const QString &key) const;
     Q_INVOKABLE QVariantMap schemaFor(const QString &key) const;
+    // T227: the Displays advanced capability table. Supported rows write the
+    // real `display.*` keys; unsupported rows carry the OPEN reason.
+    Q_INVOKABLE QVariantList displayAdvancedRows() const;
     // Test/capture seam (`DF_SETTINGS_FIXTURE` only): make the next write of
     // `key` apply optimistically and then fail. A no-op on the live client.
     Q_INVOKABLE void failNextWrite(const QString &key, const QString &message);

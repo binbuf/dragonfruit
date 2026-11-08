@@ -67,13 +67,14 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Bluetooth | BlueZ |
 | Battery | UPower + power-profiles-daemon where present |
 | General | `settingsd` + host/distro adapters (About, native/PackageKit Updates, Storage usage, Login Items, Language & Region, Date & Time, Sharing, Backup, Startup Disk, Reset) ([adr/0235](adr/0235-general-group-host-adapters.md)) |
-| Appearance | `settingsd` (design-system themes, dark/light, accent, attached-menu transparency) |
+| Appearance | `settingsd` (design-system themes, dark/light, accent, highlight, sidebar icon size, wallpaper tint, scroll bars, attached-menu transparency, motion link) ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md)) |
 | Accessibility | live AT-SPI read + `settingsd` (`accessibility.reduceMotion`, `reduceTransparency`, `increaseContrast`) ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0215](adr/0215-glass-live-settings-and-appearance-policy.md)) |
-| Desktop & Dock | `settingsd` → shell + compositor |
-| Displays | Compositor output API — **shipped:** scale and rotation; **design-only:** mode enumeration, brightness (Control Center owns the current slider), color management/HDR, night light, VRR ([STATUS.md](STATUS.md) G-13) |
+| Desktop & Dock | `settingsd` → shell + compositor; the Desktop & Stage Manager group writes `desktop.showItems` for the Files desktop, with T242/T245b rows disabled by reason |
+| Displays | Compositor output API — **shipped:** scale, rotation, and brightness; **capability-gated:** refresh, arrangement, night light, color profile, HDR, and VRR are disabled with an OPEN reason until the compositor/colord half exists ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md)) |
 | Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures |
 | Menu Bar | `settingsd` → shell |
-| Search | `settingsd` → app-index (Spotlight-equivalent; roadmap "later") |
+| Search | `settingsd` durable preferences → the T246 search service; the pane ships categories, indexed locations, shortcut, web search, and menu-bar visibility, while indexing status/rebuild are disabled with the service absent |
+| Screen Saver | `settingsd` + shell/LockScreen — style and clock options reuse the first-party lock scene; Start After is the session idle engine's `idle.blank` |
 | Notifications, Focus | Notification service |
 | Lock Screen | `settingsd` + compositor lock/idle policy |
 | Privacy & Security | Portals (`xdg-desktop-portal` PermissionStore); no `settingsd` key — the store is the state (Secret Service/polkit later) |
@@ -98,10 +99,11 @@ any drift, on a shipped pane without a body, or on a visible row without an
 owner/key/absence path. Omitted panes live only in `SettingsMap.omittedPanes`,
 so they cannot appear in the sidebar, and each carries its reason.
 
-The map has 29 top-level catalog entries and 23 shipped panes after T225; the
-new `control-center` (Quick Settings), `search` (renamed from `spotlight`),
-`screen-saver`, `game-controllers`, and `online-accounts` (renamed from
-`internet-accounts`) entries are unshipped until T226–T229 land their bodies.
+The map has 29 top-level catalog entries and 26 shipped panes after T227; the
+new `control-center` (Quick Settings), `search` (renamed from `spotlight`), and
+`screen-saver` entries ship with T227. `game-controllers` and
+`online-accounts` (renamed from `internet-accounts`) remain unshipped until
+T228–T229 land their bodies.
 `storage`, `mission-control`, and `menu-bar` keep their existing ids and
 top-level placement. The Help menu opens the in-app **Pane & Row
 Owners…** debug view (also `DF_SETTINGS_DEBUG=1`) and the **Business-Logic
@@ -128,6 +130,51 @@ provider is attached to the `Updates` interface; the pane's automatic-update
 toggles write `updates.auto`/`updates.autoInstall` and forward them to the
 running provider. Both default off, so a fresh profile never silently enables
 automatic updates (ADR [0235](adr/0235-general-group-host-adapters.md)).
+
+## The T227 panes (Appearance, Quick Settings, Search, Screen Saver, Desktop & Stage, Displays advanced)
+
+T227 completes the shell-owned settings panes. The new sidebar panes are
+`control-center` (Quick Settings), `search`, and `screen-saver`; Appearance,
+Desktop & Dock, and Displays gain their remaining groups. The executable map
+and the sidebar catalog both mark 26 shipped panes after T227.
+
+- **Appearance** adds highlight color (`appearance.highlight`), sidebar icon
+  size (`appearance.sidebarIconSize`), wallpaper tinting
+  (`appearance.wallpaperTint`), scroll-bar policy (`appearance.scrollBars`),
+  and a Motion deep link. `shell/src/themebinding.*` maps the first three onto
+  `Theme.highlightOverride`, the design-system `Sidebar` slots, and
+  `Glass.wallpaperTint`; `ScrollView` consumes `Theme.scrollBars`. The Settings
+  app mirrors the same bindings in `SettingsShell.qml`, so the pane and the
+  live shell restyle on the same `Changed` signal.
+- **Quick Settings** is a customization surface, not a second panel. It writes
+  the ordered `quickSettings.modules` list and the `quickSettings.menuBarOnly`
+  set. `ControlCenter.qml` filters and orders its live tile model from the same
+  keys; removing a module hides it immediately, and a menu-bar-only item leaves
+  the panel while its existing `menu.control.*` mark stays live. Per-display
+  panels are disabled with a T235 reason (one Control Center surface today).
+- **Search** writes the durable T246 contract (`search.categories`,
+  `search.indexLocations`, `search.shortcut`, `search.web`, and
+  `menu.control.search`). The indexing status and Rebuild rows are disabled
+  with the T246 reason; the pane never shows a fake index.
+- **Screen Saver** reuses the first-party lock scene. `screenSaver.style`
+  selects the clock or none, `idle.blank` is Start After, and
+  `screenSaver.clock`/`showDate`/`showSeconds` are pushed to `LockScreen` while
+  locked. Animated savers are not advertised.
+- **Desktop & Stage Manager** ships `desktop.showItems`, consumed by the Files
+  desktop process. Click-wallpaper, Stage Manager, recent apps, and widgets are
+  disabled with their owning task or an explicit OPEN reason.
+- **Displays advanced** is the shared capability table in
+  `libs/settings-client/displaycapabilities.*`. Brightness and rotation are
+  live; refresh, arrangement, night light, color profile, HDR, and VRR are
+  disabled with the exact missing compositor/colord half. The shell's
+  `tst_displayspolicy` asserts the table.
+
+The live evidence is `make t227-settings-panes-capture`:
+`docs/captures/t227-{appearance,quick-settings,quick-settings-live,search,screen-saver,desktop-stage,displays-advanced,search-absence,displays-absence,quick-settings-absence}.png`.
+The capture script runs the real shell offscreen with the deterministic
+settings fixture, then the live `ControlCenter` panel with the customized
+module list, then a second no-settingsd pass for the absence stills. See ADR
+[0236](adr/0236-settings-appearance-quick-settings-search-displays.md).
 
 ## Search, deep links, and row anatomy (T223)
 
@@ -327,7 +374,7 @@ reduced-motion stills.
 ## The absent-daemon masking matrix (T-15.16)
 
 T-15 landed the Wave-2/3 panes and their Control Center tiles, and T225 added
-Wi-Fi, taking the catalog to **23 shipped panes**
+Wi-Fi, taking the catalog to **26 shipped panes**
 (`SettingsPanes.shippedPanes`). Each pane routes
 to exactly one subsystem; masking that subsystem is a supported session state,
 not an incident. The matrix below is the contract every shipped pane satisfies
@@ -353,6 +400,9 @@ Two absence families appear, and a pane can mix them:
 | Shipped pane | Routed to | Pane with the provider absent | Control Center tile |
 |---|---|---|---|
 | Appearance | settingsd | live on schema defaults | — (none) |
+| Quick Settings | settingsd → shell/ControlCenter | live on defaults; the panel keeps the built-in module order and hides only absent modules | — (none) |
+| Search | settingsd (the T246 service is a separate provider) | live on defaults; categories/locations/shortcut/web stay live, indexing status/rebuild disabled with the T246 reason | — (none) |
+| Screen Saver | settingsd + shell/LockScreen | live on defaults; style/clock options stay live, the lock scene renders the schema defaults | — (none) |
 | Desktop & Dock | settingsd → shell/compositor | live on defaults; no shell applier, but no error | — (none) |
 | Mission Control | settingsd + compositor | settingsd keys live on defaults; the note says the daemon is gone | **hides** (no compositor bridge) |
 | Displays | compositor output API + settingsd | live on defaults; shell applies the policy when an output appears | — (none) |
@@ -381,7 +431,7 @@ The headless half is the CI gate:
 
 - **`apps/settings/tests/tst_settings_absence.qml`** runs under a private
   `dbus-run-session` with no settingsd, no portal, and no bridge host. It
-  asserts both providers are absent, that all 23 shipped panes have a body and
+  asserts both providers are absent, that all 26 shipped panes have a body and
   no unshipped id does, that **every shipped pane mounts and stays interactive**
   (the routing sweep, `test_every_shipped_pane_routes_and_stays_live_with_providers_absent`),
   and carries one case per pane (including the shared Mouse section) that

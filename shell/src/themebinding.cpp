@@ -54,6 +54,9 @@ void ThemeBinding::onSettingsChanged(const QString &key, const QVariant &)
     // Only the theme/glass keys matter here; the Dock handles the rest.
     if (key == QLatin1String("appearance.colorScheme")
         || key == QLatin1String("appearance.accent")
+        || key == QLatin1String("appearance.highlight")
+        || key == QLatin1String("appearance.scrollBars")
+        || key == QLatin1String("appearance.wallpaperTint")
         || key == QLatin1String("appearance.transparency")
         || key == QLatin1String("accessibility.reduceMotion")
         || key == QLatin1String("accessibility.reduceTransparency")
@@ -77,6 +80,12 @@ void ThemeBinding::apply()
     const bool dark = darkForScheme(scheme, hostDark());
     const bool reduced = m_settings->boolean(QStringLiteral("accessibility.reduceMotion"), false);
     const QString accent = m_settings->string(QStringLiteral("appearance.accent"), QString());
+    const QString highlight =
+        m_settings->string(QStringLiteral("appearance.highlight"), QString());
+    const QString scrollBars =
+        m_settings->string(QStringLiteral("appearance.scrollBars"), QStringLiteral("automatic"));
+    const bool wallpaperTint =
+        m_settings->boolean(QStringLiteral("appearance.wallpaperTint"), true);
 
     if (m_theme->property("dark").toBool() != dark)
         m_theme->setProperty("dark", dark);
@@ -84,6 +93,10 @@ void ThemeBinding::apply()
         m_theme->setProperty("reducedMotion", reduced);
     if (m_theme->property("accentOverride").toString() != accent)
         m_theme->setProperty("accentOverride", accent);
+    if (m_theme->property("highlightOverride").toString() != highlight)
+        m_theme->setProperty("highlightOverride", highlight);
+    if (m_theme->property("scrollBars").toString() != scrollBars)
+        m_theme->setProperty("scrollBars", scrollBars);
 
     // T196: the optical preferences are one resolver input, not a second
     // slider curve. The Glass singleton is optional in a QML-less test engine.
@@ -105,4 +118,6 @@ void ThemeBinding::apply()
         m_glass->setProperty("reduceTransparency", reduceTransparency);
     if (m_glass->property("increaseContrast").toBool() != increaseContrast)
         m_glass->setProperty("increaseContrast", increaseContrast);
+    if (m_glass->property("wallpaperTint").toBool() != wallpaperTint)
+        m_glass->setProperty("wallpaperTint", wallpaperTint);
 }

@@ -94,7 +94,11 @@ Item {
 
     width: Math.max(preferredWidth, contentColumn.implicitWidth + 2 * horizontalPadding)
     height: contentColumn.implicitHeight + 2 * verticalPadding
-    x: anchorPoint.x
+    // Keep the surface inside the owner's width; a control near the right
+    // edge (the Displays advanced button) must not open half off-screen.
+    x: root.parent
+       ? Math.max(0, Math.min(root.parent.width - width, anchorPoint.x))
+       : anchorPoint.x
     y: anchorPoint.y
     scale: open ? 1.0 : closeScale
     transformOrigin: Item.TopLeft

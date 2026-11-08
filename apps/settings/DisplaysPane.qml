@@ -26,6 +26,13 @@ Item {
     }
     readonly property string rotationValue:
         Settings.values["display.rotation"] || "normal"
+    readonly property real brightnessValue: {
+        var v = Settings.values["display.brightness"];
+        return v === undefined ? 1.0 : Number(v);
+    }
+    // T227: the one advanced capability table. Supported rows write the real
+    // display keys; unsupported rows render disabled with their OPEN reason.
+    readonly property var advancedRows: Settings.displayAdvancedRows()
 
     // The scaled-resolution tiles, matching the reference pane's
     // `Larger Text`…`Default`…`More Space` list. A larger scale is a larger
@@ -46,6 +53,9 @@ Item {
 
     // Every instantiated resolution tile, in declaration order, for tests.
     property var tileItems: []
+    // The shell sets this to its root item so the advanced popup is not
+    // clipped by the detail ScrollView. Standalone tests keep the pane.
+    property Item popupParent: null
 
     // Test surface (used by tst_settings_displays.qml).
     property alias displayGroup: displayGroup
@@ -56,6 +66,11 @@ Item {
     property alias tileRow: tileRow
     property alias footer: footer
     property alias rotationSelect: rotationSelect
+    property alias brightnessSlider: brightnessSlider
+    property alias brightnessGroup: brightnessGroup
+    property alias advancedButton: advancedButton
+    property alias advancedPopup: advancedPopup
+    property alias advancedList: advancedList
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -148,6 +163,34 @@ Item {
         }
 
         SettingsGroup {
+            id: brightnessGroup
+            width: parent.width
+            title: qsTr("Brightness")
+
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("Brightness")
+                settingsId: "brightness"
+                owner: "settingsd -> compositor"
+                settingsKey: "display.brightness"
+                description: qsTr("The compositor owns the output level and reports "
+                                  + "the applied value back.")
+                showSeparator: false
+
+                controlData: Slider {
+                    id: brightnessSlider
+                    width: 220
+                    from: 0.0
+                    to: 1.0
+                    minLabel: qsTr("Dim")
+                    maxLabel: qsTr("Bright")
+                    accessibleName: qsTr("Display brightness")
+                    onMoved: (value) => Settings.set("display.brightness", value)
+                }
+            }
+        }
+
+        SettingsGroup {
             id: rotationGroup
             width: parent.width
             title: qsTr("Rotation")
@@ -193,6 +236,119 @@ Item {
                 font.pixelSize: Theme.primitive.font.sizeSm
             }
         }
+
+        SettingsGroup {
+            width: parent.width
+            title: qsTr("Advanced")
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Advanced display settings")
+                settingsId: "advanced"
+                owner: "compositor/colord"
+                settingsKey: "display.advanced"
+                description: qsTr("Rotation, refresh, arrangement, night light, "
+                                  + "color, HDR, VRR, and brightness. Unsupported "
+                                  + "rows name the OPEN compositor/colord half.")
+                showSeparator: false
+
+                controlData: Button {
+                    id: advancedButton
+                    text: qsTr("Advanced\u2026")
+                    accessibleName: qsTr("Open advanced display settings")
+                    onClicked: advancedPopup.show()
+                }
+            }
+        }
+    }
+
+    // The advanced sheet. Supported rows are live controls; unsupported rows
+    // are disabled and carry the reason from the capability table.
+    Popup {
+        id: advancedPopup
+        parent: root.popupParent ? root.popupParent : root
+        anchorItem: advancedButton
+        // Open above the button: the advanced row is at the bottom of the
+        // pane, so a downward popup would fall past the window edge.
+        anchorOffset: -advancedPopup.height - 8
+        preferredWidth: 340
+        accessibleName: qsTr("Advanced display settings")
+
+        Text {
+            width: parent.width
+            text: qsTr("Advanced display settings")
+            color: Theme.color.textPrimary
+            font.pixelSize: Theme.controls.button.fontSize
+            font.weight: Theme.primitive.font.weightSemibold
+        }
+
+        Column {
+            id: advancedList
+            width: parent.width
+            spacing: Theme.primitive.spacing.xs
+
+            Repeater {
+                model: root.advancedRows
+                delegate: SettingsRow {
+                    required property var modelData
+                    width: advancedList.width
+                    label: modelData.label
+                    settingsId: modelData.id
+                    owner: "compositor/colord"
+                    settingsKey: modelData.key
+                    description: modelData.supported ? "" : modelData.reason
+                    showSeparator: true
+
+                    controlData: Loader {
+                        sourceComponent: modelData.id === "brightness"
+                                         ? advancedBrightness
+                                       : modelData.id === "rotation"
+                                         ? advancedRotation : advancedUnavailable
+                    }
+                }
+            }
+        }
+
+        Text {
+            width: parent.width
+            text: qsTr("A disabled row is not advertised as a capability.")
+            color: Theme.color.textSecondary
+            wrapMode: Text.WordWrap
+            font.pixelSize: Theme.primitive.font.sizeSm
+        }
+    }
+
+    Component {
+        id: advancedBrightness
+        Slider {
+            width: 160
+            from: 0.0
+            to: 1.0
+            accessibleName: qsTr("Display brightness")
+            value: root.brightnessValue
+            onMoved: (value) => Settings.set("display.brightness", value)
+        }
+    }
+
+    Component {
+        id: advancedRotation
+        Select {
+            accessibleName: qsTr("Display rotation")
+            model: root.rotationOptions
+            currentIndex: root.rotationIndex()
+            onActivated: (index) => Settings.set(
+                            "display.rotation",
+                            root.rotationOptions[index].value)
+        }
+    }
+
+    Component {
+        id: advancedUnavailable
+        Text {
+            text: qsTr("Unavailable")
+            color: Theme.color.textTertiary
+            font.pixelSize: Theme.primitive.font.sizeSm
+        }
     }
 
     // Two-way bindings: the controls write on interaction; these keep them in
@@ -202,6 +358,11 @@ Item {
         target: rotationSelect
         property: "currentIndex"
         value: root.rotationIndex()
+    }
+    Binding {
+        target: brightnessSlider
+        property: "value"
+        value: root.brightnessValue
     }
 
     // One scaled-resolution choice. A tile is a radio choice: selecting it

@@ -1392,10 +1392,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_settingsClient, &SettingsClient::changed, this, [this]() {
         if (m_controlCenterOpen)
             applyControlCenterData();
+        if (m_lockActive)
+            applyLockData();
     });
     connect(m_settingsClient, &SettingsClient::refreshed, this, [this]() {
         if (m_controlCenterOpen)
             applyControlCenterData();
+        if (m_lockActive)
+            applyLockData();
     });
 
     // OSD overlay (T-11.4a): a centered offscreen scene rendered into its own
@@ -3068,8 +3072,10 @@ void ShellController::applyControlCenterData()
         return;
     const QVariantMap wifi = m_statusModel ? m_statusModel->wifi() : QVariantMap();
     const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
+    const QVariantMap settingsValues =
+        m_settingsClient ? m_settingsClient->values() : QVariantMap();
     const double brightness = m_settingsClient
-        ? displaySettingsFromValues(m_settingsClient->values()).brightness
+        ? displaySettingsFromValues(settingsValues).brightness
         : 1.0;
     // The Focus/DND policy is owned by the notification service; the model
     // holds the latest decoded view (T-11.2b).
@@ -3164,6 +3170,15 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("brightness", brightness);
     m_controlCenterItem->setProperty("focusPolicy", focus);
     m_controlCenterItem->setProperty("dark", dark);
+    // T227: the Quick Settings pane's ordered module list and the
+    // menu-bar-only set. The panel filters/orders its live modules from these
+    // two settingsd keys; an empty list keeps the built-in order.
+    m_controlCenterItem->setProperty(
+        "quickSettingsModules",
+        settingsValues.value(QStringLiteral("quickSettings.modules")));
+    m_controlCenterItem->setProperty(
+        "quickSettingsMenuBarOnly",
+        settingsValues.value(QStringLiteral("quickSettings.menuBarOnly")));
     // The clipboard history list (T-13.5b); the panel gates it on
     // `clipboardAvailable`.
     m_controlCenterItem->setProperty("clipboardEntries",
@@ -4718,8 +4733,22 @@ void ShellController::applyLockData()
 {
     if (!m_lockItem)
         return;
+    const QVariantMap values = m_settingsClient ? m_settingsClient->values() : QVariantMap();
+    const QString style =
+        values.value(QStringLiteral("screenSaver.style"), QStringLiteral("clock")).toString();
+    const bool showClock = style != QLatin1String("none")
+        && values.value(QStringLiteral("screenSaver.clock"), true).toBool();
+    const bool showDate =
+        values.value(QStringLiteral("screenSaver.showDate"), true).toBool();
+    const bool showSeconds =
+        values.value(QStringLiteral("screenSaver.showSeconds"), false).toBool();
     const QDateTime now = QDateTime::currentDateTime();
-    m_lockItem->setProperty("timeText", now.toString(QStringLiteral("HH:mm")));
+    m_lockItem->setProperty("showClock", showClock);
+    m_lockItem->setProperty("showDate", showDate);
+    m_lockItem->setProperty("showSeconds", showSeconds);
+    m_lockItem->setProperty(
+        "timeText",
+        now.toString(showSeconds ? QStringLiteral("HH:mm:ss") : QStringLiteral("HH:mm")));
     m_lockItem->setProperty("dateText", now.toString(QStringLiteral("dddd d MMMM")));
 }
 

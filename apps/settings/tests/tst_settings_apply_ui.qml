@@ -151,9 +151,13 @@ Item {
         function collectKeyRows(item, out) {
             if (!item)
                 return out;
+            // Only rows on the common write path are collected. A disabled
+            // row names the task that owns its runtime and never writes a
+            // key, so it is not a fake control (T227).
             if (item.settingsKey !== undefined
                     && String(item.settingsKey).length > 0
-                    && item.errorText !== undefined)
+                    && item.errorText !== undefined
+                    && item.enabled !== false)
                 out.push(item);
             var kids = item.children || [];
             for (var i = 0; i < kids.length; ++i)
