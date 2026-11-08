@@ -20,7 +20,8 @@ Two menus are always present, before any application-exported model:
   application itself owns these; here the shell synthesizes them from app
   metadata, and the **menu-broker owns the model** (T-14.2a) so enable/disable
   and per-app state are live. On the empty desktop the application menu is
-  **Files**. Hide/Hide Others/Show All are still shell stubs (G-05).
+  **Files**. Hide/Hide Others/Show All execute as tracked compositor
+  minimize/restore operations (T230).
 
 An application's exported menus (File, Edit, View, …) render *after* these
 two. This is what makes an app that exports nothing still feel macOS-like: it
