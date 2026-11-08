@@ -34,6 +34,9 @@ Item {
     readonly property var networks: model.networks !== undefined ? model.networks : []
     readonly property bool readOnly: model.readOnly === true
     readonly property bool available: model.state === "available"
+    readonly property bool radioEnabled: model.radioEnabled === true
+    readonly property var knownNetworks: model.knownNetworks !== undefined
+        ? model.knownNetworks : []
 
     // The menu model: one row per network, each carrying the one action the
     // menu exposes. Disabled when the host reported a polkit read-only
@@ -62,6 +65,7 @@ Item {
     property int highlightIndex: -1
 
     signal joinRequested(string ssid, string secret)
+    signal toggleRequested(bool enabled)
     signal refreshRequested()
     // Raised when the popup closes for any reason (Escape, click-away), so
     // the bar can clear its open-status state (T-07.5b keyboard a11y).
@@ -184,7 +188,18 @@ Item {
                     elide: Text.ElideRight
                     width: parent.width - Theme.controls.menuBar.iconSize - 2
                             - Theme.primitive.spacing.sm
+                            - wifiToggle.width - Theme.primitive.spacing.sm
                     anchors.verticalCenter: parent.verticalCenter
+                }
+                Toggle {
+                    id: wifiToggle
+                    objectName: "wifiMenuToggle"
+                    text: ""
+                    accessibleName: qsTr("Wi-Fi")
+                    checked: root.radioEnabled
+                    enabled: root.available && !root.readOnly
+                    anchors.verticalCenter: parent.verticalCenter
+                    onToggled: (checked) => root.toggleRequested(checked)
                 }
             }
 

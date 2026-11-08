@@ -480,7 +480,31 @@ add_test(
         -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_network.qml
 )
 set_tests_properties(tst_settings_network PROPERTIES
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_VPN_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_VPN_FIXTURE=1;DF_NETWORK_FIXTURE=1;DF_WIFI_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Wi-Fi-pane tests (T225): the live model, radio toggle, open/secured/hidden
+# joins, forget, details, the settingsd prompt policy, and the absence state.
+# `DF_WIFI_FIXTURE` is the deterministic in-process NetworkManager client.
+qt_add_executable(tst_settings_wifi
+    tst_settings_wifi.cpp
+)
+target_link_libraries(tst_settings_wifi PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+    dragonfruit-shell-menubarplugin
+)
+qt_import_qml_plugins(tst_settings_wifi)
+
+add_test(
+    NAME tst_settings_wifi
+    COMMAND tst_settings_wifi
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_wifi.qml
+)
+set_tests_properties(tst_settings_wifi PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_WIFI_FIXTURE=1;DF_NETWORK_FIXTURE=1;DF_VPN_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

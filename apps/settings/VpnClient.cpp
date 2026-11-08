@@ -65,7 +65,9 @@ bool DbusVpnClient::available() const
 
 void DbusVpnClient::refresh()
 {
-    call(QStringLiteral("State"), {});
+    // `Refresh` re-reads NetworkManager before returning the view; `State`
+    // would only replay the host's startup snapshot.
+    call(QStringLiteral("Refresh"), {});
 }
 
 void DbusVpnClient::connectVpn(const QString &uuid)
@@ -76,6 +78,17 @@ void DbusVpnClient::connectVpn(const QString &uuid)
 void DbusVpnClient::disconnectVpn(const QString &uuid)
 {
     call(QStringLiteral("Deactivate"), {uuid});
+}
+
+void DbusVpnClient::addVpn(const QString &plugin, const QString &name,
+                           const QString &gateway)
+{
+    call(QStringLiteral("Add"), {plugin, name, gateway});
+}
+
+void DbusVpnClient::setAutoconnect(const QString &uuid, bool enabled)
+{
+    call(QStringLiteral("SetAutoconnect"), {uuid, enabled});
 }
 
 void DbusVpnClient::call(const QString &method, const QVariantList &arguments)
@@ -90,17 +103,18 @@ void DbusVpnClient::call(const QString &method, const QVariantList &arguments)
         }
         return;
     }
-    const bool isState = method == QStringLiteral("State");
+    const bool isRead = method == QStringLiteral("State")
+        || method == QStringLiteral("Refresh");
     auto *watcher = new QDBusPendingCallWatcher(
         iface->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, isState, iface, watcher]() {
+            [this, isRead, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;
                 iface->deleteLater();
                 watcher->deleteLater();
                 if (!reply.isValid())
                     return;
-                if (isState)
+                if (isRead)
                     applyReply(reply.value().toUtf8());
                 else
                     // The write reply is the outcome report; the new state is
@@ -130,6 +144,15 @@ MockVpnClient::MockVpnClient(QObject *parent)
     resetForTest();
 }
 
+void MockVpnClient::setFixture(const QString &mode)
+{
+    resetForTest();
+    if (mode == QLatin1String("no-plugin")) {
+        m_plugins.clear();
+        rebuild();
+    }
+}
+
 void MockVpnClient::resetForTest()
 {
     m_connections = {
@@ -138,6 +161,51 @@ void MockVpnClient::resetForTest()
         { QStringLiteral("Home"), QStringLiteral("22222222-2222-2222-2222-222222222222"),
           QStringLiteral("wireguard"), QStringLiteral("WireGuard"), false, false },
     };
+    // `DF_VPN_FIXTURE=no-plugin` models a host with no VPN plugin installed:
+    // the saved connections still read, but the Add sheet has nothing to
+    // offer. The default fixture has OpenVPN and WireGuard.
+    if (qEnvironmentVariable("DF_VPN_FIXTURE") == QLatin1String("no-plugin"))
+        m_plugins.clear();
+    else
+        m_plugins = {
+            { QStringLiteral("org.freedesktop.NetworkManager.openvpn"),
+              QStringLiteral("OpenVPN"), false },
+            { QStringLiteral("org.freedesktop.NetworkManager.wireguard"),
+              QStringLiteral("WireGuard"), true },
+        };
+    rebuild();
+}
+
+void MockVpnClient::addVpn(const QString &plugin, const QString &name,
+                           const QString &)
+{
+    if (plugin.isEmpty() || name.isEmpty())
+        return;
+    const QString kind = plugin.endsWith(QLatin1String("wireguard"))
+        ? QStringLiteral("wireguard") : QStringLiteral("vpn");
+    const QString kindLabel = plugin.endsWith(QLatin1String("openvpn"))
+        ? QStringLiteral("OpenVPN")
+        : (plugin.endsWith(QLatin1String("wireguard"))
+               ? QStringLiteral("WireGuard") : QStringLiteral("VPN"));
+    m_connections.append({
+        name,
+        QStringLiteral("mock-vpn-%1").arg(m_connections.size() + 1),
+        kind,
+        kindLabel,
+        false,
+        true,
+    });
+    rebuild();
+}
+
+void MockVpnClient::setAutoconnect(const QString &uuid, bool enabled)
+{
+    for (Connection &connection : m_connections) {
+        if (connection.uuid == uuid) {
+            connection.autoconnect = enabled;
+            break;
+        }
+    }
     rebuild();
 }
 
@@ -229,6 +297,20 @@ void MockVpnClient::rebuild()
     view.insert(QStringLiteral("readOnly"), false);
     view.insert(QStringLiteral("note"), QString());
     view.insert(QStringLiteral("connections"), connections.toVariantList());
+
+    QVariantList plugins;
+    for (const Plugin &plugin : m_plugins) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("id"), plugin.serviceType);
+        entry.insert(QStringLiteral("serviceType"), plugin.serviceType);
+        entry.insert(QStringLiteral("label"), plugin.label);
+        entry.insert(QStringLiteral("builtin"), plugin.builtin);
+        plugins.append(entry);
+    }
+    view.insert(QStringLiteral("plugins"), plugins);
+    view.insert(QStringLiteral("pluginCount"), plugins.size());
+    view.insert(QStringLiteral("pluginsPresent"), !plugins.isEmpty());
+
     m_view = view;
     emit changed(m_view);
 }

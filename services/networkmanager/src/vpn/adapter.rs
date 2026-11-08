@@ -115,9 +115,8 @@ impl<S: VpnSource> VpnAdapter<S> {
             Ok(Some(data)) => {
                 self.subscription.subscribed();
                 let plugins = self.source.plugins();
-                self.state = AdapterState::available(VpnSnapshot::from_data_with_plugins(
-                    &data, &plugins,
-                ));
+                self.state =
+                    AdapterState::available(VpnSnapshot::from_data_with_plugins(&data, &plugins));
                 self.subscription.changed();
             }
             Ok(None) => {
@@ -441,6 +440,34 @@ mod tests {
         assert!(adapter.state().is_available());
         assert!(adapter.state().is_visible());
         assert!(adapter.state().is_enabled());
+    }
+
+    #[test]
+    fn add_and_autoconnect_apply_once() {
+        let mut adapter = VpnAdapter::new(MockVpn::present(data()));
+        adapter.refresh();
+        assert_eq!(
+            adapter.add(
+                "org.freedesktop.NetworkManager.openvpn",
+                "Lab",
+                Some("vpn.example")
+            ),
+            VpnResult::Accepted
+        );
+        adapter.refresh();
+        assert_eq!(adapter.snapshot().unwrap().connection_count(), 2);
+        assert_eq!(adapter.set_autoconnect("aaa", true), VpnResult::Accepted);
+        adapter.refresh();
+        assert!(
+            adapter
+                .snapshot()
+                .unwrap()
+                .connections
+                .iter()
+                .find(|connection| connection.uuid == "aaa")
+                .unwrap()
+                .autoconnect
+        );
     }
 
     #[test]

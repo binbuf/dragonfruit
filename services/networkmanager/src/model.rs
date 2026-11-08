@@ -633,7 +633,9 @@ fn build_services(data: &NetworkManagerData) -> Vec<NetworkService> {
                 priority: connection.priority,
                 order: 0,
                 interface_name: connection.interface_name.clone(),
-                interface: device.map(|device| device.interface.clone()).filter(|s| !s.is_empty()),
+                interface: device
+                    .map(|device| device.interface.clone())
+                    .filter(|s| !s.is_empty()),
                 hardware: device.and_then(|device| device.hw_address.clone()),
                 address: device.and_then(|device| device.ip4_address.clone()),
             }
@@ -669,8 +671,8 @@ fn build_known_networks(
         .filter_map(|connection| {
             let ssid = connection.ssid.clone()?;
             let active = active_for(data, &connection.uuid);
-            let connected = ServiceState::from_active(active.map(|active| active.state))
-                .is_connected();
+            let connected =
+                ServiceState::from_active(active.map(|active| active.state)).is_connected();
             let security = access_points
                 .iter()
                 .find(|ap| ap.ssid == ssid)
@@ -835,6 +837,112 @@ mod tests {
         assert_eq!(snapshot.glyph(), "wifi-secure");
         assert_eq!(snapshot.label(), "dragonfruit · 82%");
         assert_eq!(snapshot.active_security(), Some(Security::Wpa2));
+    }
+
+    #[test]
+    fn services_keep_priority_order_and_known_networks_join_live_state() {
+        use crate::source::{ActiveConnectionData, ConnectionData, ServiceData};
+        let data = NetworkManagerData {
+            wireless_enabled: true,
+            connectivity: 4,
+            devices: vec![WifiDeviceData {
+                managed: true,
+                state: 100,
+                active_ap: Some("p1".to_owned()),
+                access_points: vec![ap("p1", "home", 82, 0x108, 0x1)],
+            }],
+            connections: vec![
+                ConnectionData {
+                    path: "/conn/wired".to_owned(),
+                    id: "Wired".to_owned(),
+                    uuid: "wired".to_owned(),
+                    kind: "802-3-ethernet".to_owned(),
+                    priority: 10,
+                    autoconnect: true,
+                    ..ConnectionData::default()
+                },
+                ConnectionData {
+                    path: "/conn/home".to_owned(),
+                    id: "Home".to_owned(),
+                    uuid: "home".to_owned(),
+                    kind: "802-11-wireless".to_owned(),
+                    priority: 5,
+                    autoconnect: true,
+                    timestamp: 1762000000,
+                    ssid: Some("home".to_owned()),
+                    ..ConnectionData::default()
+                },
+                ConnectionData {
+                    path: "/conn/bridge".to_owned(),
+                    id: "Bridge".to_owned(),
+                    uuid: "bridge".to_owned(),
+                    kind: "bridge".to_owned(),
+                    priority: 0,
+                    ..ConnectionData::default()
+                },
+            ],
+            active: vec![
+                ActiveConnectionData {
+                    path: "/active/wired".to_owned(),
+                    connection: "/conn/wired".to_owned(),
+                    uuid: "wired".to_owned(),
+                    id: "Wired".to_owned(),
+                    state: 2,
+                    devices: vec!["/dev/eth".to_owned()],
+                    ..ActiveConnectionData::default()
+                },
+                ActiveConnectionData {
+                    path: "/active/home".to_owned(),
+                    connection: "/conn/home".to_owned(),
+                    uuid: "home".to_owned(),
+                    id: "Home".to_owned(),
+                    state: 2,
+                    devices: vec!["/dev/wlan".to_owned()],
+                    ..ActiveConnectionData::default()
+                },
+            ],
+            services: vec![
+                ServiceData {
+                    path: "/dev/eth".to_owned(),
+                    kind: 1,
+                    interface: "enp1s0".to_owned(),
+                    state: 100,
+                    managed: true,
+                    hw_address: Some("aa:bb:cc:dd:ee:02".to_owned()),
+                    ip4_address: Some("192.168.1.20".to_owned()),
+                    ..ServiceData::default()
+                },
+                ServiceData {
+                    path: "/dev/wlan".to_owned(),
+                    kind: 2,
+                    interface: "wlan0".to_owned(),
+                    state: 100,
+                    managed: true,
+                    hw_address: Some("aa:bb:cc:dd:ee:01".to_owned()),
+                    ip4_address: Some("192.168.1.42".to_owned()),
+                    ..ServiceData::default()
+                },
+            ],
+        };
+        let snapshot = WifiSnapshot::from_data(&data);
+        assert_eq!(snapshot.services.len(), 3);
+        assert_eq!(snapshot.services[0].id, "Wired");
+        assert_eq!(snapshot.services[0].order, 0);
+        assert_eq!(
+            snapshot.services[0].address.as_deref(),
+            Some("192.168.1.20")
+        );
+        assert_eq!(snapshot.services[1].id, "Home");
+        assert_eq!(snapshot.services[1].order, 1);
+        assert_eq!(snapshot.services[1].interface.as_deref(), Some("wlan0"));
+        assert_eq!(snapshot.services[2].id, "Bridge");
+        assert!(!snapshot.services[2].is_connected());
+
+        assert_eq!(snapshot.known_networks.len(), 1);
+        assert_eq!(snapshot.known_networks[0].ssid, "home");
+        assert!(snapshot.known_networks[0].connected);
+        assert_eq!(snapshot.known_networks[0].security, Some(Security::Wpa2));
+        assert_eq!(snapshot.active_address.as_deref(), Some("192.168.1.42"));
     }
 
     #[test]

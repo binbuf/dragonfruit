@@ -281,7 +281,7 @@ Item {
         function test_deep_link_rejects_unknown_targets() {
             var shell = make();
             verify(!shell.deepLink("settings://pane/no-such-pane"));
-            verify(!shell.deepLink("settings://pane/wifi"));
+            verify(!shell.deepLink("settings://pane/control-center"));
             verify(!shell.deepLink("settings://pane/appearance/row/no-such-row"));
             verify(!shell.deepLink("https://example.org/pane/appearance"));
             compare(shell.currentPaneId, "appearance");

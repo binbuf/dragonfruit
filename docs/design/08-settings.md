@@ -63,7 +63,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 
 | Pane | Routed to |
 |---|---|
-| Wi-Fi, Network | NetworkManager (Wi-Fi + the VPN connections, [adr/0146](adr/0146-network-advanced-vpn-adapter.md), [adr/0147](adr/0147-network-advanced-vpn-pane-and-tile.md)) |
+| Wi-Fi, Network | NetworkManager (Wi-Fi, services, VPN connections) + the firewall adapter (firewalld/ufw/nftables) ([adr/0146](adr/0146-network-advanced-vpn-adapter.md), [adr/0147](adr/0147-network-advanced-vpn-pane-and-tile.md), [adr/0234](adr/0234-network-panes-model-order-firewall.md)) |
 | Bluetooth | BlueZ |
 | Battery | UPower + power-profiles-daemon where present |
 | General | `settingsd` + distro provider (about, updates, defaults) |
@@ -98,12 +98,12 @@ any drift, on a shipped pane without a body, or on a visible row without an
 owner/key/absence path. Omitted panes live only in `SettingsMap.omittedPanes`,
 so they cannot appear in the sidebar, and each carries its reason.
 
-The map has 29 top-level catalog entries and the same 22 shipped panes as
-before; the new `control-center` (Quick Settings), `search` (renamed from
-`spotlight`), `screen-saver`, `game-controllers`, and `online-accounts`
-(renamed from `internet-accounts`) entries are unshipped until T225–T229 land
-their bodies. `storage`, `mission-control`, and `menu-bar` keep their existing
-ids and top-level placement. The Help menu opens the in-app **Pane & Row
+The map has 29 top-level catalog entries and 23 shipped panes after T225; the
+new `control-center` (Quick Settings), `search` (renamed from `spotlight`),
+`screen-saver`, `game-controllers`, and `online-accounts` (renamed from
+`internet-accounts`) entries are unshipped until T226–T229 land their bodies.
+`storage`, `mission-control`, and `menu-bar` keep their existing ids and
+top-level placement. The Help menu opens the in-app **Pane & Row
 Owners…** debug view (also `DF_SETTINGS_DEBUG=1`) and the **Business-Logic
 Map** document; the debug view shows the selected pane's owner/absence/deep
 link and every row's owner/key/absence/state. See ADR
@@ -306,8 +306,9 @@ reduced-motion stills.
 
 ## The absent-daemon masking matrix (T-15.16)
 
-T-15 landed the Wave-2/3 panes and their Control Center tiles, taking the
-catalog to **22 shipped panes** (`SettingsPanes.shippedPanes`). Each pane routes
+T-15 landed the Wave-2/3 panes and their Control Center tiles, and T225 added
+Wi-Fi, taking the catalog to **23 shipped panes**
+(`SettingsPanes.shippedPanes`). Each pane routes
 to exactly one subsystem; masking that subsystem is a supported session state,
 not an incident. The matrix below is the contract every shipped pane satisfies
 and the wave-2/3 companion to the T-09.6b table above.
@@ -336,8 +337,10 @@ Two absence families appear, and a pane can mix them:
 | Mission Control | settingsd + compositor | settingsd keys live on defaults; the note says the daemon is gone | **hides** (no compositor bridge) |
 | Displays | compositor output API + settingsd | live on defaults; shell applies the policy when an output appears | — (none) |
 | Wallpaper | settingsd + `wallpaperd` + FileChooser portal | built-in/toggle/fit live; Featured empty (never an error); the "Add Photo…" portal row **disabled** with its explanation | — (none) |
+| Wi-Fi | NetworkManager (bridge host) + settingsd prompt policy | note; radio/join/forget disabled; the two `network.wifi.*` policy rows stay live on defaults | **hides** |
+| Network | NetworkManager + firewall adapter (bridge host) | note; service/VPN writes disabled; firewall "No firewall detected" or Unavailable (never a fake Off); settingsd policy rows stay live | **hides** |
 | Bluetooth | BlueZ (bridge host) | note; toggle disabled; no write | **hides** |
-| Network (VPN) | NetworkManager (bridge host) | note; connection list empty; `Connect`/`Deactivate` are no-ops | **hides** |
+| Network (VPN) | NetworkManager (bridge host) | note; connection list empty; `Connect`/`Deactivate` are no-ops; no plugin hides Add | **hides** |
 | Battery | UPower + power-profiles-daemon (bridge host) | note; no profile write | **hides** |
 | Storage | UDisks2/GIO (bridge host) | note; no mount/eject | **hides** |
 | General | settingsd + update adapter (bridge host) | About reads locally; the update half shows its note | **hides** |
@@ -358,7 +361,7 @@ The headless half is the CI gate:
 
 - **`apps/settings/tests/tst_settings_absence.qml`** runs under a private
   `dbus-run-session` with no settingsd, no portal, and no bridge host. It
-  asserts both providers are absent, that all 22 shipped panes have a body and
+  asserts both providers are absent, that all 23 shipped panes have a body and
   no unshipped id does, that **every shipped pane mounts and stays interactive**
   (the routing sweep, `test_every_shipped_pane_routes_and_stays_live_with_providers_absent`),
   and carries one case per pane (including the shared Mouse section) that

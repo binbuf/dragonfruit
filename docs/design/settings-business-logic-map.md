@@ -208,6 +208,15 @@ Owner: NetworkManager + firewall adapter. Absence: per-service rows show
 | — | Firewall options | Sheet | firewall adapter | Open ports, services, zones/rules |
 | — | Add service… | Sheet | NM | Connection editor (limited first pass) |
 
+**T225 status.** The Wi-Fi and Network panes are shipped. Wi-Fi writes the
+radio, joins (visible/hidden), forgets, autoconnect, and the two
+`network.wifi.*` prompt keys; Network writes service order through NM
+`autoconnect-priority`, activates/deactivates services, adds an
+Ethernet/Wi-Fi/VPN service, and connects/adds VPNs from the discovered plugin
+list. The firewall adapter detects firewalld/ufw/nftables; nftables is
+Unavailable, never a fake Off. `Profiles` remains planned (a future
+location/profile editor).
+
 <a id="pane-battery"></a>
 ### 5.4 Battery
 

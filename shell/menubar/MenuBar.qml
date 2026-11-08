@@ -251,6 +251,7 @@ Rectangle {
     // Wi-Fi and volume popovers (T-07.5a). The bar raises the user's action;
     // the shell controller forwards it to the bridge host.
     signal wifiJoinRequested(string ssid, string secret)
+    signal wifiToggleRequested(bool enabled)
     signal volumeSetRequested(double volume)
     signal muteToggleRequested()
     // Bluetooth status menu (T202): the same action policy as the Control
@@ -749,6 +750,7 @@ Rectangle {
         materialTier: menuBar.popupMaterialTier
         materialFallback: menuBar.popupMaterialFallback
         onJoinRequested: (ssid, secret) => menuBar.wifiJoinRequested(ssid, secret)
+        onToggleRequested: (enabled) => menuBar.wifiToggleRequested(enabled)
         onRefreshRequested: menuBar.statusMenuRefreshRequested("wifi")
         onClosed: menuBar.closeStatusMenu()
     }

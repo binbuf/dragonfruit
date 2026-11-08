@@ -53,7 +53,9 @@ impl<S: FirewallSource> FirewallHost<S> {
     pub fn open_port(&mut self, port: u16, protocol: &str) -> Value {
         match protocol_from_id(protocol) {
             Some(protocol) => firewall_report(&self.adapter.open_port(Port::new(port, protocol))),
-            None => json!({ "outcome": "failed", "error": format!("unknown protocol: {protocol}") }),
+            None => {
+                json!({ "outcome": "failed", "error": format!("unknown protocol: {protocol}") })
+            }
         }
     }
 
@@ -61,7 +63,9 @@ impl<S: FirewallSource> FirewallHost<S> {
     pub fn close_port(&mut self, port: u16, protocol: &str) -> Value {
         match protocol_from_id(protocol) {
             Some(protocol) => firewall_report(&self.adapter.close_port(Port::new(port, protocol))),
-            None => json!({ "outcome": "failed", "error": format!("unknown protocol: {protocol}") }),
+            None => {
+                json!({ "outcome": "failed", "error": format!("unknown protocol: {protocol}") })
+            }
         }
     }
 
@@ -111,10 +115,24 @@ pub fn firewall_view<S: FirewallSource>(adapter: &FirewallAdapter<S>) -> Value {
         });
     }
     if let Some(error) = state.error() {
+        // A manager that answered but could not be read stays visible and
+        // inert: `detected` is true, the status is unknown (never a fake Off),
+        // and the pane disables the toggle and the rule sheet.
         return json!({
             "kind": KIND_FIREWALL,
             "state": "error",
             "detected": true,
+            "backend": "unknown",
+            "backendLabel": "Firewall",
+            "statusKnown": false,
+            "enabled": Value::Null,
+            "label": "Unavailable",
+            "defaultZone": "",
+            "portCount": 0,
+            "serviceCount": 0,
+            "ports": [],
+            "services": [],
+            "note": error.message(),
             "error": error.message(),
             "readOnly": read_only,
             "readOnlyNote": read_only_note,
@@ -241,6 +259,19 @@ mod tests {
     }
 
     #[test]
+    fn an_unreadable_manager_is_unavailable_not_off() {
+        let mut host = FirewallHost::new(MockFirewall::failing("firewall-cmd: not authorized"));
+        host.refresh();
+        let view = host.view();
+        assert_eq!(view["state"], "error");
+        assert_eq!(view["detected"], true);
+        assert_eq!(view["statusKnown"], false);
+        assert_eq!(view["enabled"], Value::Null);
+        assert_eq!(view["label"], "Unavailable");
+        assert_eq!(view["note"], "firewall-cmd: not authorized");
+    }
+
+    #[test]
     fn the_view_carries_the_rules_and_state() {
         let mut host = FirewallHost::new(MockFirewall::present());
         host.refresh();
@@ -272,7 +303,9 @@ mod tests {
     fn a_denied_write_degrades_to_read_only() {
         let mut host = FirewallHost::new(MockFirewall::present());
         host.refresh();
-        host.adapter_mut().source_mut().deny_writes("not authorized");
+        host.adapter_mut()
+            .source_mut()
+            .deny_writes("not authorized");
         assert_eq!(host.set_enabled(true)["outcome"], "denied");
         let view = host.view();
         assert_eq!(view["readOnly"], true);

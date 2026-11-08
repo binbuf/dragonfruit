@@ -138,7 +138,7 @@ The detailed gap register is in [STATUS.md](STATUS.md).
 
 | Area | Current | Target |
 |---|---|---|
-| Pane catalog | 22 shipped | Full catalog, with explicit omit/adapt/delegate decisions |
+| Pane catalog | 23 shipped | Full catalog, with explicit omit/adapt/delegate decisions |
 | Search/deep links | Partial | Every pane/row searchable; deep links from shell and apps |
 | Live apply | Implemented | Validation, admin auth, absence, per-row ownership |
 | Row-level mapping | Partial | Every row mapped in [settings-business-logic-map.md](settings-business-logic-map.md) |

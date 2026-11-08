@@ -393,6 +393,8 @@ Item {
             return privacyPaneComponent;
         case "accessibility":
             return accessibilityPaneComponent;
+        case "wifi":
+            return wifiPaneComponent;
         case "network":
             return networkPaneComponent;
         default:
@@ -611,8 +613,15 @@ Item {
     }
 
     Component {
+        id: wifiPaneComponent
+        WifiPane { }
+    }
+
+    Component {
         id: networkPaneComponent
-        NetworkPane { }
+        NetworkPane {
+            onPaneRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     AppWindow {

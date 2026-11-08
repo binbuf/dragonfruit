@@ -69,6 +69,7 @@ fn main() -> ExitCode {
     let mut print_accessibility = false;
     let mut print_vpn = false;
     let mut print_firewall = false;
+    let mut print_network = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -85,6 +86,7 @@ fn main() -> ExitCode {
             "--print-accessibility" => print_accessibility = true,
             "--print-vpn" => print_vpn = true,
             "--print-firewall" => print_firewall = true,
+            "--print-network" => print_network = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -130,6 +132,12 @@ fn main() -> ExitCode {
     // "No firewall detected" state (T225).
     let mut firewall = FirewallHost::new(CommandFirewall::new());
 
+    if print_network {
+        host.refresh_wifi();
+        firewall.refresh();
+        println!("{}", host.network_view(firewall.adapter()));
+        return ExitCode::SUCCESS;
+    }
     if print_firewall {
         firewall.refresh();
         println!("{}", firewall.state());
@@ -259,6 +267,7 @@ fn print_help() {
            --print-accessibility refresh the AT-SPI bus and print the Accessibility JSON view\n\
            --print-vpn      refresh NetworkManager and print the Network advanced (VPN) JSON view\n\
            --print-firewall detect the firewall manager and print its JSON view\n\
+           --print-network  print the combined Wi-Fi/service/firewall view\n\
            -h, --help       show this help"
     );
 }

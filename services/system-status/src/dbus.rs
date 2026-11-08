@@ -16,8 +16,8 @@ use dragonfruit_accessibility_adapter::HostAccessibility;
 use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
-use dragonfruit_input::CommandLibinput;
 use dragonfruit_firewall::CommandFirewall;
+use dragonfruit_input::CommandLibinput;
 use dragonfruit_networkmanager::{DbusNetworkManager, DbusVpn};
 use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
@@ -723,15 +723,31 @@ impl FirewallInterface {
         lock_firewall(&self.host).set_enabled(enabled).to_string()
     }
 
-    /// Open a port (`tcp`/`udp`). Returns the JSON report.
-    fn open_port(&self, port: u16, protocol: &str) -> String {
+    /// Open a port (`tcp`/`udp`). The D-Bus type is `i`, matching the Qt
+    /// client's `int`; the adapter validates the range. Returns the JSON
+    /// report.
+    fn open_port(&self, port: i32, protocol: &str) -> String {
+        let Ok(port) = u16::try_from(port) else {
+            return serde_json::json!({
+                "outcome": "failed",
+                "error": format!("invalid port: {port}"),
+            })
+            .to_string();
+        };
         lock_firewall(&self.host)
             .open_port(port, protocol)
             .to_string()
     }
 
     /// Close a port (`tcp`/`udp`). Returns the JSON report.
-    fn close_port(&self, port: u16, protocol: &str) -> String {
+    fn close_port(&self, port: i32, protocol: &str) -> String {
+        let Ok(port) = u16::try_from(port) else {
+            return serde_json::json!({
+                "outcome": "failed",
+                "error": format!("invalid port: {port}"),
+            })
+            .to_string();
+        };
         lock_firewall(&self.host)
             .close_port(port, protocol)
             .to_string()
@@ -781,9 +797,7 @@ impl VpnInterface {
 
     /// Add a saved VPN connection for `plugin`. Returns the JSON report.
     fn add(&self, plugin: &str, name: &str, gateway: &str) -> String {
-        lock_vpn(&self.host)
-            .add(plugin, name, gateway)
-            .to_string()
+        lock_vpn(&self.host).add(plugin, name, gateway).to_string()
     }
 
     /// Change whether the saved VPN comes up automatically. Returns the JSON
@@ -859,9 +873,7 @@ fn lock_vpn(host: &Arc<Mutex<LiveVpn>>) -> std::sync::MutexGuard<'_, LiveVpn> {
 }
 
 /// Lock the shared firewall host, recovering from a poisoned mutex.
-fn lock_firewall(
-    host: &Arc<Mutex<LiveFirewall>>,
-) -> std::sync::MutexGuard<'_, LiveFirewall> {
+fn lock_firewall(host: &Arc<Mutex<LiveFirewall>>) -> std::sync::MutexGuard<'_, LiveFirewall> {
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 

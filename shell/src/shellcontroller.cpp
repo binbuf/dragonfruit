@@ -778,6 +778,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             });
     connect(m_item, SIGNAL(wifiJoinRequested(QString,QString)), this,
             SLOT(onWifiJoinRequested(QString,QString)));
+    connect(m_item, SIGNAL(wifiToggleRequested(bool)), this,
+            SLOT(onWifiToggleRequested(bool)));
     connect(m_item, SIGNAL(volumeSetRequested(double)), this,
             SLOT(onVolumeSetRequested(double)));
     connect(m_item, SIGNAL(muteToggleRequested()), this, SLOT(onMuteToggleRequested()));
@@ -3166,10 +3168,9 @@ void ShellController::applyControlCenterData()
     // `clipboardAvailable`.
     m_controlCenterItem->setProperty("clipboardEntries",
                                      m_clipboard ? m_clipboard->entries() : QVariantList());
-    // Wi-Fi radio writes are not exposed by the bridge host yet (T-15); the
-    // toggle reflects state and is inert until then. Bluetooth writes *are*
-    // exposed (T-15.1b), so its tile is live.
-    m_controlCenterItem->setProperty("wifiWritable", false);
+    // T225: the Wi-Fi radio write is live through the bridge host. Bluetooth
+    // writes are live too (T-15.1b).
+    m_controlCenterItem->setProperty("wifiWritable", true);
     m_controlCenterItem->setProperty("bluetoothWritable", true);
     // Storage writes (mount/unmount/eject) are live through the T-15.2b bridge
     // host, so its tile is live.
@@ -3267,12 +3268,12 @@ void ShellController::onBrightnessSetRequested(double level)
     showOsd(OsdModel::Kind::Brightness, clamped, false);
 }
 
-void ShellController::onWifiToggleRequested(bool)
+void ShellController::onWifiToggleRequested(bool enabled)
 {
-    // The T-07 NetworkManager adapter exposes join but not a radio write; the
-    // tile is inert until T-15 adds it. The bridge host's refresh is the only
-    // source of truth, so no local state is kept.
-    qInfo() << "shell: Wi-Fi radio toggle requested (write path is T-15)";
+    // T225: the bridge host exposes the radio write; the host re-reads and
+    // pushes the new view, so the shell keeps no local state.
+    if (m_statusClient)
+        m_statusClient->setWifiEnabled(enabled);
 }
 
 void ShellController::onWifiSettingsRequested()

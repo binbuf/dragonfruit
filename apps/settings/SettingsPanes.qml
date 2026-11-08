@@ -86,7 +86,7 @@ QtObject {
     // the map names, with the T220 generic user-facing titles.
     readonly property var catalog: [
         { id: "wifi", title: qsTr("Wi-Fi"), icon: "wifi",
-          description: "", shipped: false,
+          description: "", shipped: true,
           owner: "NetworkManager", deepLink: "settings://pane/wifi",
           absence: "disabled-with-reason" },
         { id: "bluetooth", title: qsTr("Bluetooth"), icon: "bluetooth",

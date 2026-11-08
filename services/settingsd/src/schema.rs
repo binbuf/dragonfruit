@@ -2097,12 +2097,12 @@ mod tests {
             (
                 "network.wifi.askToJoin",
                 KeyDefault::Text("notify"),
-                &["off", "notify", "ask", "new"],
+                &["off", "notify", "ask", "new"][..],
             ),
             (
                 "network.wifi.askToJoinHotspots",
                 KeyDefault::Text("ask"),
-                &["off", "ask", "automatic"],
+                &["off", "ask", "automatic"][..],
             ),
         ] {
             let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));

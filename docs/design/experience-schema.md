@@ -55,7 +55,7 @@ and has a row id `<surface>-NN` (for example `S-DOCK-13`).
 | Search and launching | `Q-SP`, `Q-AD`, `Q-AP` | 30 |
 | Menus and popovers | `S-MENU`, `S-POP`, `S-SHEET`, `S-DLG` | 24 |
 | HUDs and transients | `H-VOL` … `H-PRIV` (14 HUDs) | 42 |
-| System Settings | 23 pane surfaces (22 shipped + hidden Wi-Fi), 13 adapted/omitted panes, `SET-OMIT`, `SET-SEARCH`, `SET-AUTH` | 99 |
+| System Settings | 23 shipped pane surfaces, 13 adapted/omitted panes, `SET-OMIT`, `SET-SEARCH`, `SET-AUTH` | 99 |
 | Motion | `A-MENU` … `A-DRAWER` (14 transition groups) | 45 |
 
 The full state list is in the manifest. The inventory source is

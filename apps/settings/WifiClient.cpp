@@ -70,7 +70,10 @@ bool DbusWifiClient::available() const
 
 void DbusWifiClient::refresh()
 {
-    call(QStringLiteral("State"), {});
+    // `Refresh` re-reads NetworkManager before returning the view; `State`
+    // would only replay the host's startup snapshot. The pane calls this on
+    // open, and every write re-reads through it.
+    call(QStringLiteral("Refresh"), {});
 }
 
 void DbusWifiClient::setEnabled(bool enabled)
@@ -110,17 +113,18 @@ void DbusWifiClient::call(const QString &method, const QVariantList &arguments)
         }
         return;
     }
-    const bool isState = method == QStringLiteral("State");
+    const bool isRead = method == QStringLiteral("State")
+        || method == QStringLiteral("Refresh");
     auto *watcher = new QDBusPendingCallWatcher(
         iface->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, isState, iface, watcher]() {
+            [this, isRead, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;
                 iface->deleteLater();
                 watcher->deleteLater();
                 if (!reply.isValid())
                     return;
-                if (isState)
+                if (isRead)
                     applyReply(reply.value().toUtf8());
                 else
                     // The write reply is the outcome report; the new state is
@@ -158,6 +162,22 @@ MockWifiClient::MockWifiClient(QObject *parent)
         setEnabled(false);
 }
 
+void MockWifiClient::setFixture(const QString &mode)
+{
+    if (mode == QLatin1String("absent")) {
+        m_available = false;
+        m_view.clear();
+        emit availableChanged(false);
+        emit changed(m_view);
+        return;
+    }
+    m_available = true;
+    resetForTest();
+    if (mode == QLatin1String("off"))
+        setEnabled(false);
+    emit availableChanged(true);
+}
+
 void MockWifiClient::resetForTest()
 {
     m_available = true;
@@ -166,6 +186,7 @@ void MockWifiClient::resetForTest()
         { QStringLiteral("dragonfruit"), 82, QStringLiteral("WPA2"), true, true, 5180 },
         { QStringLiteral("cafe-guest"), 58, QStringLiteral("Open"), false, false, 2412 },
         { QStringLiteral("home-office"), 44, QStringLiteral("WPA3"), true, false, 5745 },
+        { QStringLiteral("neighbor-secure"), 36, QStringLiteral("WPA2"), true, false, 2412 },
         { QStringLiteral("printer-setup"), 22, QStringLiteral("Open"), false, false, 2412 },
     };
     m_known = {
@@ -192,6 +213,10 @@ void MockWifiClient::setEnabled(bool enabled)
         m_activeSsid.clear();
     else if (m_activeSsid.isEmpty())
         m_activeSsid = QStringLiteral("dragonfruit");
+    for (Network &network : m_networks)
+        network.active = m_enabled && network.ssid == m_activeSsid;
+    for (Known &known : m_known)
+        known.connected = m_enabled && known.ssid == m_activeSsid;
     rebuild();
 }
 
@@ -200,12 +225,23 @@ void MockWifiClient::join(const QString &ssid, const QString &)
     if (!m_enabled)
         return;
     m_activeSsid = ssid;
+    bool found = false;
+    for (Network &network : m_networks) {
+        network.active = network.ssid == ssid;
+        if (network.active)
+            found = true;
+    }
+    if (!found) {
+        m_networks.append({ ssid, 70, QStringLiteral("WPA2"), true, true, 2412 });
+    }
     for (Known &known : m_known) {
-        if (known.ssid == ssid) {
-            known.connected = true;
+        known.connected = known.ssid == ssid;
+        if (known.connected)
             known.autoconnect = true;
+    }
+    for (const Known &known : m_known) {
+        if (known.ssid == ssid)
             return rebuild();
-        }
     }
     m_known.append({ ssid, uuidForSsid(ssid), true, true, 1762000001,
                      QStringLiteral("WPA2"), true });
@@ -252,8 +288,11 @@ void MockWifiClient::forget(const QString &uuid)
         m_known.removeAt(i);
         break;
     }
-    if (!forgottenSsid.isEmpty() && forgottenSsid == m_activeSsid)
+    if (!forgottenSsid.isEmpty() && forgottenSsid == m_activeSsid) {
         m_activeSsid.clear();
+        for (Network &network : m_networks)
+            network.active = false;
+    }
     rebuild();
 }
 

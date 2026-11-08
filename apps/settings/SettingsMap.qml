@@ -43,7 +43,7 @@ QtObject {
     // top-level placement (T222 design note). New panes use the map names;
     // user-facing titles follow the T220 generic naming map.
     readonly property var panes: [
-        { id: "wifi", title: qsTr("Wi-Fi"), icon: "wifi", shipped: false,
+        { id: "wifi", title: qsTr("Wi-Fi"), icon: "wifi", shipped: true,
           owner: "NetworkManager", disposition: "ship",
           deepLink: "settings://pane/wifi",
           absence: "disabled-with-reason",
@@ -224,23 +224,23 @@ QtObject {
         return ({
             "wifi": [
                 root.row("power", qsTr("Wi-Fi"), qsTr("Wi-Fi"), "toggle",
-                         "NetworkManager", "WirelessEnabled", "disabled-with-reason"),
+                         "NetworkManager", "WirelessEnabled", "disabled-with-reason", "shipped"),
                 root.row("current", qsTr("Wi-Fi"), qsTr("Current network"), "info+details",
-                         "NetworkManager", "ActiveConnection", "disabled-with-reason"),
+                         "NetworkManager", "ActiveConnection", "disabled-with-reason", "shipped"),
                 root.row("saved", qsTr("Wi-Fi"), qsTr("Saved networks"), "list",
-                         "NetworkManager", "Settings.Connection", "disabled-with-reason"),
+                         "NetworkManager", "Settings.Connection", "disabled-with-reason", "shipped"),
                 root.row("available", qsTr("Wi-Fi"), qsTr("Available networks"), "list",
-                         "NetworkManager", "AccessPoint", "disabled-with-reason"),
+                         "NetworkManager", "AccessPoint", "disabled-with-reason", "shipped"),
                 root.row("hidden", qsTr("Wi-Fi"), qsTr("Join hidden network..."), "dialog",
-                         "NetworkManager", "AddAndActivateConnection", "disabled-with-reason"),
+                         "NetworkManager", "AddAndActivateConnection", "disabled-with-reason", "shipped"),
                 root.row("ask", qsTr("Wi-Fi"), qsTr("Ask to join networks"), "popup",
-                         "settingsd", "network.wifi.askToJoin", "live-on-defaults"),
+                         "settingsd", "network.wifi.askToJoin", "live-on-defaults", "shipped"),
                 root.row("askHotspots", qsTr("Wi-Fi"), qsTr("Ask to join hotspots"), "popup",
-                         "settingsd", "network.wifi.askToJoinHotspots", "live-on-defaults"),
+                         "settingsd", "network.wifi.askToJoinHotspots", "live-on-defaults", "shipped"),
                 root.row("advanced", qsTr("Wi-Fi"), qsTr("Advanced..."), "sheet",
-                         "NetworkManager + settingsd", "nm.connection", "disabled-with-reason"),
+                         "NetworkManager + settingsd", "nm.connection", "disabled-with-reason", "shipped"),
                 root.row("quick", qsTr("Wi-Fi"), qsTr("Quick sheet"), "panel",
-                         "shell", "quickSettings.wifi", "live-on-defaults")
+                         "shell", "quickSettings.wifi", "live-on-defaults", "shipped")
             ],
             "bluetooth": [
                 root.row("power", qsTr("Bluetooth"), qsTr("Bluetooth"), "toggle",
@@ -258,23 +258,23 @@ QtObject {
             ],
             "network": [
                 root.row("wifi", qsTr("Network"), qsTr("Wi-Fi"), "disclosure",
-                         "NetworkManager", "WirelessEnabled", "disabled-with-reason"),
+                         "NetworkManager", "WirelessEnabled", "disabled-with-reason", "shipped"),
                 root.row("firewall", qsTr("Network"), qsTr("Firewall"), "disclosure",
-                         "firewall adapter", "firewall.status", "disabled-with-reason"),
+                         "firewall adapter", "firewall.status", "disabled-with-reason", "shipped"),
                 root.row("services", qsTr("Network"), qsTr("Other services"), "list",
-                         "NetworkManager", "Devices", "disabled-with-reason"),
+                         "NetworkManager", "Devices", "disabled-with-reason", "shipped"),
                 root.row("vpn", qsTr("Network"), qsTr("VPN"), "disclosure",
                          "NetworkManager", "Settings.Connection", "disabled-with-reason", "shipped"),
                 root.row("actions", qsTr("Network"), qsTr("Service actions"), "menu",
-                         "NetworkManager", "ActivateConnection", "disabled-with-reason"),
+                         "NetworkManager", "ActivateConnection", "disabled-with-reason", "shipped"),
                 root.row("advanced", qsTr("Network"), qsTr("Advanced..."), "sheet",
-                         "NetworkManager", "nm.connection", "disabled-with-reason"),
+                         "NetworkManager", "nm.connection", "disabled-with-reason", "shipped"),
                 root.row("profiles", qsTr("Network"), qsTr("Profiles"), "popup",
                          "NetworkManager", "Settings.Connection", "disabled-with-reason"),
                 root.row("firewallOptions", qsTr("Network"), qsTr("Firewall options"), "sheet",
-                         "firewall adapter", "firewall.rules", "disabled-with-reason"),
+                         "firewall adapter", "firewall.rules", "disabled-with-reason", "shipped"),
                 root.row("addService", qsTr("Network"), qsTr("Add service..."), "sheet",
-                         "NetworkManager", "AddConnection", "disabled-with-reason")
+                         "NetworkManager", "AddConnection", "disabled-with-reason", "shipped")
             ],
             "battery": [
                 root.row("profile", qsTr("Battery"), qsTr("Power mode"), "popup",

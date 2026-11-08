@@ -39,6 +39,9 @@ fn wifi_data() -> NetworkManagerData {
                 },
             ],
         }],
+        connections: Vec::new(),
+        active: Vec::new(),
+        services: Vec::new(),
     }
 }
 
