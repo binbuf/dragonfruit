@@ -57,7 +57,7 @@ pub fn build_query(category: Category, continuation: Option<&str>) -> String {
 }
 
 /// Percent-encode one query value (unreserved `A-Za-z0-9-_.~` untouched).
-fn encode_component(value: &str) -> String {
+pub(crate) fn encode_component(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {
@@ -153,8 +153,17 @@ pub struct ParsedItem {
     pub height: u32,
     /// The MIME type.
     pub mime: String,
-    /// The normalized thumbnail URL to download.
+    /// The normalized thumbnail URL the grid uses.
     pub source_url: String,
+    /// The full-resolution URL applied on demand. Wikimedia downloads the
+    /// 3840-px thumbnail during the catalogue fetch, so this equals
+    /// `source_url` and `defer_full` is false.
+    pub full_url: String,
+    /// The provider spelling (`wikimedia` / `nasa`).
+    pub provider: String,
+    /// Whether the catalogue fetch should download only the thumbnail and
+    /// leave the full-resolution image for an explicit `FetchItem`.
+    pub defer_full: bool,
 }
 
 /// A parser failure (malformed JSON, or no usable item).
@@ -223,7 +232,10 @@ pub fn parse_response(
                 width: info.width,
                 height: info.height,
                 mime: info.mime,
+                full_url: source_url.clone(),
                 source_url,
+                provider: "wikimedia".to_owned(),
+                defer_full: false,
             });
         }
     }
@@ -370,6 +382,9 @@ mod tests {
         assert!(first.source_url.contains("3840px-"));
         assert_eq!(first.width, 4116);
         assert_eq!(first.height, 1886);
+        assert_eq!(first.full_url, first.source_url);
+        assert_eq!(first.provider, "wikimedia");
+        assert!(!first.defer_full);
     }
 
     #[test]

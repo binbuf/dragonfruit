@@ -82,11 +82,13 @@ class SettingsBridge : public QObject
     // "Add Photo…" button disables when it is not (absent provider).
     Q_PROPERTY(bool wallpaperChooserAvailable READ wallpaperChooserAvailable NOTIFY
                    wallpaperChooserAvailableChanged)
-    // The online provider catalogue (T-18.1b): one entry per cached Featured
+    // The online provider catalogue (T-18.1b / ADR 0240): one entry per cached
     // picture, mirroring `wallpaperPresets`. Empty when the provider is absent
     // or its cache is cold; never an error. Each entry carries the attribution
-    // (`artist`, `licenseShortName`, `licenseUrl`, `pageUrl`, `description`)
-    // plus `source` (an absolute local path) and `url` (a `file://` preview).
+    // (`provider`, `artist`, `licenseShortName`, `licenseUrl`, `pageUrl`,
+    // `description`) plus `source` (the full-resolution local path, empty for a
+    // deferred item), `thumbUrl` (the grid image), `previewUrl` (the full image
+    // when local, else the thumb), `pageid`, and `category`.
     Q_PROPERTY(QVariantList providerItems READ providerItems NOTIFY providerChanged)
     // The provider lifecycle (`idle`/`fetching`/`ready`/`offline`), empty when
     // the provider is absent. Panes must treat absence as a normal state.
@@ -414,6 +416,15 @@ public:
     // the catalogue arrives through `providerChanged`.
     Q_INVOKABLE void preloadWallpapers();
 
+    // ADR 0240: force a catalogue retry (the pane's "Try Again"). The provider
+    // refreshes even when its cache is fresh; a no-op when it is absent.
+    Q_INVOKABLE void refreshWallpapers();
+
+    // ADR 0240: download one deferred item's full-resolution image. The reply
+    // is announced through `wallpaperFetchFinished`; a successful fetch also
+    // updates `providerItems` through `providerChanged`.
+    Q_INVOKABLE void fetchWallpaperItem(int pageid);
+
     // T-15.1b: the Bluetooth pane's one seam. `refreshBluetooth` re-reads the
     // bridge host on pane open; the four writes each call the adapter once and
     // the host pushes the new view back through `bluetoothChanged`. A no-op
@@ -642,11 +653,11 @@ public:
     Q_INVOKABLE void resetNetworkFixture();
     Q_INVOKABLE void setNetworkFixture(const QString &mode);
 
-    // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
-    // lifecycle to `status` (`ready` loads the deterministic fixture
-    // catalogue; any other status leaves it empty) so the pane's fetching /
-    // ready / offline / error states are assertable with no bus. Without the
-    // environment variable this is a no-op, so production behavior is
+    // T-18.2 / ADR 0240 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the
+    // provider lifecycle. `ready`/`categories`/`many`/`deferred`/
+    // `deferred-fail` load deterministic catalogues with generated local
+    // images; `fetching`/`offline`/`error` leave the catalogue empty. Without
+    // the environment variable this is a no-op, so production behavior is
     // unchanged.
     Q_INVOKABLE void setWallpaperFixture(const QString &status);
 
@@ -677,6 +688,9 @@ signals:
     // Any provider property (catalogue, status, defaults) changed. Panes bind
     // the `provider*` properties and re-read on this.
     void providerChanged();
+    // ADR 0240: one deferred full-resolution fetch finished. `ok` false carries
+    // the provider/bus error; the pane keeps the previous wallpaper.
+    void wallpaperFetchFinished(int pageid, bool ok, const QString &message);
     // The Bluetooth view or availability changed (T-15.1b).
     void bluetoothChanged();
     // The storage view or availability changed (T-15.2b).
@@ -732,6 +746,12 @@ private:
     void applyProviderStatus(const QString &status);
     void applyProviderDefault(const QString &path);
     void applyProviderBuiltin(const QString &path);
+    // ADR 0240: the deterministic fixture catalogue and its generated local
+    // images, so the pane's rows and apply/download states are testable with
+    // no bus and no network.
+    void buildWallpaperFixtureImages();
+    QString wallpaperFixtureJson(const QString &mode) const;
+    QString wallpaperFixturePath(int pageid, bool thumb) const;
 
 private slots:
     void onPortalResponse(uint response, const QVariantMap &results);
@@ -761,6 +781,8 @@ private:
     // T-18.2: true when `DF_WALLPAPER_FIXTURE` selected the in-process
     // catalogue, so `Preload` and fixture seeding stay deterministic.
     bool m_wallpaperFixture = false;
+    QString m_wallpaperFixtureMode;
+    QString m_wallpaperFixtureDir;
     QDBusServiceWatcher *m_providerWatcher = nullptr;
     // T-15.1b: the Bluetooth seam (`DF_BLUETOOTH_FIXTURE` selects the mock).
     BluetoothClient *m_bluetooth = nullptr;

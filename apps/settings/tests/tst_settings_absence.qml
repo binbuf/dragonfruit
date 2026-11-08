@@ -171,12 +171,13 @@ Item {
             // The portal-backed control is the only disabled one.
             compare(pane.photoButton.enabled, false,
                     "Add Photo… must be disabled when the FileChooser portal is absent");
-            compare(pane.photoRow.description, "No file chooser is available.");
+            compare(pane.photoDescription, "No file chooser is available.");
             verify(pane.showOnAllToggle.enabled);
             verify(pane.fitControl.enabled);
 
-            // No provider: Featured is empty (with the available-soon note) but
-            // the shipped default keeps the Built-in row populated (T-18.2).
+            // No provider: the online catalogue is empty (with the
+            // available-soon note) but the shipped default keeps the Built-in
+            // row populated (T-18.2 / ADR 0240).
             compare(pane.providerItems.length, 0);
             verify(pane.featuredEmpty);
             verify(pane.featuredMessageItem.visible,
@@ -186,8 +187,10 @@ Item {
             compare(pane.builtinTiles[0].modelData.name, "Default");
             compare(pane.builtinTiles[0].modelData.source, pane.builtinDefault);
 
-            // The settingsd-backed controls still write in memory.
+            // The settingsd-backed controls still write in memory. Applying a
+            // built-in tile goes through the async apply state.
             pane.builtinTiles[1].choose();
+            tryVerify(function() { return pane.pending === false; }, 5000);
             compare(Settings.values["wallpaper.source"], pane.presets[0].source);
             pane.showOnAllToggle.toggle();
             compare(Settings.values["wallpaper.showOnAllSpaces"], false);

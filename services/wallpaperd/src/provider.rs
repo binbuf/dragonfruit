@@ -25,6 +25,8 @@ pub enum WarmReason {
     Empty,
     /// The cache exists but the last fetch is at least a week old.
     Stale,
+    /// An explicit user retry forced a refresh even though the cache is fresh.
+    Forced,
 }
 
 /// What a warm should do next.
@@ -83,19 +85,42 @@ pub fn fetch<C: ContentSource + ?Sized>(source: &C, cache: &CacheLayout, now: u6
         for parsed in parsed {
             match source.download(&parsed) {
                 Ok(bytes) => {
-                    match cache.write_image(
-                        category,
-                        parsed.pageid,
-                        &parsed.mime,
-                        &parsed.source_url,
-                        &bytes,
-                    ) {
-                        Ok(path) => items.push(item_from(parsed, path, now)),
-                        Err(error) => failed.push(format!(
-                            "{} page {}: cache write: {error}",
-                            category.slug(),
-                            parsed.pageid
-                        )),
+                    if parsed.defer_full {
+                        // Deferred sources (NASA) cache only the grid image;
+                        // the full-resolution original is fetched on demand.
+                        match cache.write_thumb(
+                            category,
+                            parsed.pageid,
+                            &parsed.mime,
+                            &parsed.source_url,
+                            &bytes,
+                        ) {
+                            Ok(thumb_path) => {
+                                items.push(item_from(parsed, None, Some(thumb_path), now))
+                            }
+                            Err(error) => failed.push(format!(
+                                "{} page {}: thumb cache write: {error}",
+                                category.slug(),
+                                parsed.pageid
+                            )),
+                        }
+                    } else {
+                        match cache.write_image(
+                            category,
+                            parsed.pageid,
+                            &parsed.mime,
+                            &parsed.source_url,
+                            &bytes,
+                        ) {
+                            Ok(path) => {
+                                items.push(item_from(parsed, Some(path.clone()), Some(path), now))
+                            }
+                            Err(error) => failed.push(format!(
+                                "{} page {}: cache write: {error}",
+                                category.slug(),
+                                parsed.pageid
+                            )),
+                        }
                     }
                 }
                 Err(error) => failed.push(format!(
@@ -106,6 +131,7 @@ pub fn fetch<C: ContentSource + ?Sized>(source: &C, cache: &CacheLayout, now: u6
             }
         }
     }
+    ensure_default_full(source, cache, &mut items, &mut failed);
     FetchResult {
         items,
         fetched_at: now,
@@ -113,10 +139,58 @@ pub fn fetch<C: ContentSource + ?Sized>(source: &C, cache: &CacheLayout, now: u6
     }
 }
 
+/// The Featured default/fallback must always have a full-resolution local
+/// file. Wikimedia already downloads it during the catalogue fetch; a future
+/// deferred source that owns Nature would need one explicit full download.
+fn ensure_default_full<C: ContentSource + ?Sized>(
+    source: &C,
+    cache: &CacheLayout,
+    items: &mut [WallpaperItem],
+    failed: &mut Vec<String>,
+) {
+    let Some(index) = items
+        .iter()
+        .position(|item| item.category == Category::Nature)
+    else {
+        return;
+    };
+    if items[index].local_path.is_some() {
+        return;
+    }
+    let item = items[index].clone();
+    match source.download_full(&item) {
+        Ok(bytes) => match cache.write_image(
+            item.category,
+            item.pageid,
+            &item.mime,
+            &item.full_url,
+            &bytes,
+        ) {
+            Ok(path) => items[index].local_path = Some(path),
+            Err(error) => failed.push(format!(
+                "{} page {}: default cache write: {error}",
+                item.category.slug(),
+                item.pageid
+            )),
+        },
+        Err(error) => failed.push(format!(
+            "{} page {}: default download: {error}",
+            item.category.slug(),
+            item.pageid
+        )),
+    }
+}
+
 /// Turn a parsed item into a cached catalogue item.
-fn item_from(parsed: ParsedItem, local_path: PathBuf, fetched_at: u64) -> WallpaperItem {
+fn item_from(
+    parsed: ParsedItem,
+    local_path: Option<PathBuf>,
+    thumb_path: Option<PathBuf>,
+    fetched_at: u64,
+) -> WallpaperItem {
     WallpaperItem {
         pageid: parsed.pageid,
+        provider: parsed.provider,
         title: parsed.title,
         artist: parsed.artist,
         license_short_name: parsed.license_short_name,
@@ -128,7 +202,9 @@ fn item_from(parsed: ParsedItem, local_path: PathBuf, fetched_at: u64) -> Wallpa
         height: parsed.height,
         mime: parsed.mime,
         source_url: parsed.source_url,
-        local_path: Some(local_path),
+        full_url: parsed.full_url,
+        thumb_path,
+        local_path,
         fetched_at,
     }
 }
@@ -244,8 +320,30 @@ impl Provider {
     /// Install a completed fetch. Non-empty content becomes `Ready`; an empty
     /// result keeps the cache and becomes `Offline`. The index is persisted
     /// either way so `lastFetch` survives a restart.
-    pub fn apply_fetch(&mut self, result: FetchResult) {
+    ///
+    /// Full-resolution files downloaded on demand survive a weekly refresh:
+    /// when a refreshed item still has the same id and the file is present,
+    /// its `local_path` is carried over instead of forcing a re-download.
+    pub fn apply_fetch(&mut self, mut result: FetchResult) {
         if result.has_items() {
+            let old_full: std::collections::HashMap<u64, PathBuf> = self
+                .catalogue
+                .items
+                .iter()
+                .filter_map(|item| {
+                    item.local_path
+                        .as_ref()
+                        .filter(|path| path.is_file())
+                        .map(|path| (item.pageid, path.clone()))
+                })
+                .collect();
+            for item in &mut result.items {
+                if item.local_path.is_none() {
+                    if let Some(path) = old_full.get(&item.pageid) {
+                        item.local_path = Some(path.clone());
+                    }
+                }
+            }
             self.catalogue = Catalogue {
                 items: result.items,
             };
@@ -254,6 +352,26 @@ impl Provider {
         } else {
             self.status = Status::Offline;
         }
+        self.save_index();
+    }
+
+    /// Replace one item's full-resolution path after an on-demand download.
+    pub fn set_item_local_path(&mut self, pageid: u64, path: PathBuf) -> bool {
+        if let Some(item) = self
+            .catalogue
+            .items
+            .iter_mut()
+            .find(|item| item.pageid == pageid)
+        {
+            item.local_path = Some(path);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Persist the current catalogue index.
+    pub fn save_index(&self) {
         let _ = self.cache.save_index(&Index {
             last_fetch: self.last_fetch,
             items: self.catalogue.items.clone(),
@@ -326,9 +444,21 @@ impl ServiceState {
     /// it released, so a concurrent `Status`/`Items` read never blocks on the
     /// fetch.
     pub fn refresh_if_needed(&self, now: u64) -> RefreshReport {
+        self.refresh(false, now)
+    }
+
+    /// Refresh the catalogue. `force` is the explicit user retry: it fetches
+    /// even when the cache is fresh, while `Preload` and the launch warm keep
+    /// the empty/stale rule.
+    pub fn refresh(&self, force: bool, now: u64) -> RefreshReport {
         let (decision, cache) = {
             let provider = lock(&self.provider);
-            (provider.warm_decision(now), provider.cache().clone())
+            let decision = if force && provider.status() != Status::Fetching {
+                WarmDecision::Fetch(WarmReason::Forced)
+            } else {
+                provider.warm_decision(now)
+            };
+            (decision, provider.cache().clone())
         };
         if !decision.should_fetch() {
             let status = lock(&self.provider).status();
@@ -353,6 +483,66 @@ impl ServiceState {
             status: provider.status(),
             items_changed: !had_items && has_items,
             status_changed: true,
+        }
+    }
+
+    /// Download one deferred item's full-resolution image and persist the new
+    /// local path. Returns the cached path.
+    ///
+    /// The network runs with the provider lock released. A missing item and a
+    /// failed download are ordinary errors returned to the caller; the
+    /// catalogue status stays `ready`.
+    pub fn fetch_item(&self, pageid: u64) -> Result<PathBuf, String> {
+        let (item, cache) = {
+            let provider = lock(&self.provider);
+            let item = provider
+                .items()
+                .iter()
+                .find(|item| item.pageid == pageid)
+                .cloned()
+                .ok_or_else(|| format!("wallpaper {pageid} not found"))?;
+            if let Some(path) = &item.local_path {
+                if path.is_file() {
+                    return Ok(path.clone());
+                }
+            }
+            (item, provider.cache().clone())
+        };
+        let bytes = self.source.download_full(&item)?;
+        let path = cache
+            .write_image(
+                item.category,
+                item.pageid,
+                &item.mime,
+                &item.full_url,
+                &bytes,
+            )
+            .map_err(|error| format!("cache write: {error}"))?;
+        {
+            let mut provider = lock(&self.provider);
+            if !provider.set_item_local_path(pageid, path.clone()) {
+                return Err(format!("wallpaper {pageid} disappeared during download"));
+            }
+            provider.save_index();
+        }
+        Ok(path)
+    }
+
+    /// The `FetchItem` method reply: a small JSON object the bridge can parse.
+    pub fn fetch_item_json(&self, pageid: u64) -> String {
+        match self.fetch_item(pageid) {
+            Ok(path) => serde_json::json!({
+                "ok": true,
+                "pageid": pageid,
+                "source": path_string(Some(path)),
+            })
+            .to_string(),
+            Err(error) => serde_json::json!({
+                "ok": false,
+                "pageid": pageid,
+                "error": error,
+            })
+            .to_string(),
         }
     }
 
@@ -557,9 +747,120 @@ mod tests {
         assert_eq!(again.status, Status::Ready);
     }
 
+    #[test]
+    fn an_explicit_refresh_forces_a_fresh_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CacheLayout::new(dir.path());
+        let source = Arc::new(MockSource::online());
+        source.with_items(
+            Category::Nature,
+            vec![MockSource::parsed_item(Category::Nature, 11)],
+        );
+        source.with_download("https://upload.wikimedia.org/11.jpg", b"pic");
+        let state = ServiceState::new(source.clone(), provider(&cache));
+
+        assert!(state.refresh_if_needed(1000).fetched);
+        let calls = source.catalogue_calls().len();
+        assert!(!state.refresh_if_needed(1000 + 10).fetched);
+        assert!(state.refresh(true, 1000 + 20).fetched);
+        assert_eq!(source.catalogue_calls().len(), calls * 2);
+    }
+
+    #[test]
+    fn a_deferred_item_fetches_its_full_image_on_demand() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CacheLayout::new(dir.path());
+        let source = Arc::new(MockSource::online());
+        let deferred = MockSource::parsed_deferred_item(
+            Category::Space,
+            21,
+            "https://images-assets.nasa.gov/21-thumb.jpg",
+            "https://images-assets.nasa.gov/21-orig.jpg",
+        );
+        source.with_items(Category::Space, vec![deferred]);
+        source.with_download("https://images-assets.nasa.gov/21-thumb.jpg", b"thumb");
+        source.with_download("https://images-assets.nasa.gov/21-orig.jpg", b"full");
+        let state = ServiceState::new(source.clone(), provider(&cache));
+
+        assert!(state.refresh_if_needed(1000).fetched);
+        {
+            let provider = state.provider().lock().unwrap();
+            let item = provider
+                .items()
+                .iter()
+                .find(|item| item.pageid == 21)
+                .unwrap();
+            assert!(item.thumb_path.is_some());
+            assert!(item.local_path.is_none(), "full image is deferred");
+        }
+
+        let path = state.fetch_item(21).expect("full download");
+        assert_eq!(std::fs::read(&path).unwrap(), b"full");
+        {
+            let provider = state.provider().lock().unwrap();
+            let item = provider
+                .items()
+                .iter()
+                .find(|item| item.pageid == 21)
+                .unwrap();
+            assert_eq!(item.local_path.as_deref(), Some(path.as_path()));
+        }
+
+        // A restart reads the persisted full path from the index.
+        let reloaded = Provider::load(cache, None);
+        let item = reloaded
+            .items()
+            .iter()
+            .find(|item| item.pageid == 21)
+            .unwrap();
+        assert_eq!(item.local_path.as_deref(), Some(path.as_path()));
+    }
+
+    #[test]
+    fn a_refresh_keeps_an_on_demand_full_image_for_the_same_item() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CacheLayout::new(dir.path());
+        let full = cache
+            .write_image(
+                Category::Space,
+                21,
+                "image/jpeg",
+                "https://u/21.jpg",
+                b"full",
+            )
+            .unwrap();
+        let mut provider = Provider::from_index(
+            cache,
+            None,
+            Index {
+                last_fetch: 1000,
+                items: vec![WallpaperItem {
+                    category: Category::Space,
+                    local_path: Some(full.clone()),
+                    ..item(21)
+                }],
+            },
+        );
+        provider.apply_fetch(FetchResult {
+            items: vec![WallpaperItem {
+                category: Category::Space,
+                ..item(21)
+            }],
+            fetched_at: 2000,
+            failed: Vec::new(),
+        });
+        let item = provider
+            .items()
+            .iter()
+            .find(|item| item.pageid == 21)
+            .unwrap();
+        assert_eq!(item.local_path.as_deref(), Some(full.as_path()));
+    }
+
     fn item(pageid: u64) -> WallpaperItem {
         WallpaperItem {
             pageid,
+            provider: "wikimedia".to_owned(),
             title: String::new(),
             artist: String::new(),
             license_short_name: String::new(),
@@ -571,6 +872,8 @@ mod tests {
             height: 1,
             mime: "image/jpeg".to_owned(),
             source_url: "https://u/x.jpg".to_owned(),
+            full_url: "https://u/x.jpg".to_owned(),
+            thumb_path: None,
             local_path: None,
             fetched_at: 0,
         }

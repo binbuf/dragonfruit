@@ -63,6 +63,7 @@ qt_add_qml_module(dragonfruit-design-system
         components/Popover.qml
         components/Tooltip.qml
         components/Skeleton.qml
+        components/Spinner.qml
         components/ScrollView.qml
         components/WindowResizeGrips.qml
 )
@@ -155,6 +156,7 @@ df_qml_lint(design-system
     components/Popover.qml
     components/Tooltip.qml
     components/Skeleton.qml
+    components/Spinner.qml
     components/ScrollView.qml
     components/WindowResizeGrips.qml
 )
