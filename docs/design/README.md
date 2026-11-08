@@ -24,6 +24,7 @@ numbered records.
 | [11-session-and-dev-workflow.md](11-session-and-dev-workflow.md) | Session model, nested/native workflows, testing ladder |
 | [12-packaging.md](12-packaging.md) | Fedora/Debian packaging and distribution |
 | [22-total-experience.md](22-total-experience.md) | The whole-desktop target: shell, navigation, Settings, motion, HUDs, ownership |
+| [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md) | Measured window chrome, About, Spotlight Apps, Notification Center, Control Center and Finder anatomy |
 | [settings-business-logic-map.md](settings-business-logic-map.md) | Every Settings pane/row to its owner and absence path |
 | [distro-compatibility.md](distro-compatibility.md) | Fedora/Ubuntu/Debian/Arch host-service and packaging contract |
 | [distro-adapter-contract.md](distro-adapter-contract.md) | Cross-distro adapter traits, command matrix, dependency sets, mock, and probe (T221) |

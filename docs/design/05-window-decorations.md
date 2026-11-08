@@ -14,6 +14,41 @@ title bar and window controls. Modern Wayland applications can draw their
 application's pixels without creating ugly overlapping controls or breaking
 application interaction.
 
+## Window chrome is a style system
+
+The 2026-11-08 macOS structural review measured the AppKit toolbar-style
+matrix. Chrome height is a property of the window style, not one universal
+height:
+
+| Style | Chrome | Dragonfruit id | Notes |
+|---|---:|---|---|
+| Borderless / panel | 0 pt | `borderless` | HUDs, Quick Look-style panels, overlays |
+| Titled, no toolbar | 32 pt | `titlebar` | Minimum real chrome; content underlaps with `.fullSizeContentView` |
+| `.unifiedCompact` | 40 pt | `unifiedCompact` | Shorter toolbar row |
+| `.expanded` | 48 pt | `expanded` | Title above the toolbar row |
+| `.unified` | 52 pt | `unified` | Default modern toolbar |
+| `.unified` + icon-and-label | 66 pt | `unified` + labelled row | Disk Utility; not a separate style |
+| `.preference` | 88 pt | `preference` | Title row plus centred preference toolbar |
+
+Real apps confirm the variants: TextEdit, Finder Get Info and About use 32 pt;
+Finder, Safari, System Settings, Photos, Activity Monitor and Calculator use
+52 pt; Disk Utility uses 66 pt; Pages' template chooser is 38–43 pt; a Pages
+document is 70 pt (28 pt title row + 42 pt toolbar); Safari Settings is 88 pt
+(32 pt title row + 56 pt toolbar).
+
+Traffic lights are 16×16 pt with an 8 pt inset in a 32 pt bar and an 18 pt
+inset in a 52 pt bar; spacing is 23 pt. Tab, path, status and format bars are
+content, not chrome: Finder adds a 28 pt tab bar, a 30 pt path bar and a 28 pt
+status bar inside the content area. Hiding the toolbar is a mode change that
+also hides the Finder sidebar and moves the status bar.
+
+Do not hard-code 52 pt for utility windows, and do not derive a window's style
+from its size: Calculator is compact but uses a 52 pt unified toolbar. T230b
+owns the design-system/compositor migration; fullscreen hidden/revealed chrome,
+long titles and RTL mirroring remain `OPEN`. See
+[23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
+and [ADR 0241](adr/0241-macos-structural-surface-review.md).
+
 ## Three quality tiers
 
 | Tier | Applications | Quality |
@@ -110,6 +145,13 @@ Our decorations, wherever they appear, behave identically:
 
 - Traffic-light glyphs reveal on hover of the button cluster; colorless
   otherwise.
+- Dragging any edge or corner of a Tier-2 (SSD) window starts an interactive
+  resize on the shared `ResizeGrab` math. The compositor owns a 6 logical-pixel
+  edge strip and 12-pixel corner handles — the same geometry as the first-party
+  `WindowResizeGrips` — and shows the matching resize cursor. Client popups,
+  the menu bar, the Dock, and other chrome keep priority over the strip; a CSD
+  window keeps its own edges and asks for `xdg_toplevel.resize` when it wants
+  the compositor to resize it.
 - Dragging the titlebar starts an interactive move.
 - Double-click on the titlebar dispatches the `dock.titlebarDoubleClick`
   action (`zoom` by default, or `minimize`/`none`); right-click opens the
@@ -252,9 +294,11 @@ following T-04 material tasks, on the same element and the same geometry.
 **Current status (2026-11).** T-04.1a/1b landed the shadow and rounded-corner
 geometry; T-20's sampled material is a chrome-panel pass and deliberately does
 not turn the SSD titlebar into glass, so the titlebar fill remains the
-token-opaque surface described above. `_NET_FRAME_EXTENTS` is still not
-published to X11 clients ([STATUS.md](STATUS.md) G-16). The label-less window
-menu is the main decoration gap (G-06). The GTK steering bridge now runs from
+token-opaque surface described above. The current design-system
+`component.titlebar.height` is still a single 40 pt token; T230b replaces it
+with the measured style taxonomy. `_NET_FRAME_EXTENTS` is still not published
+to X11 clients ([STATUS.md](STATUS.md) G-16). The label-less window menu is the
+main decoration gap (G-06). The GTK steering bridge now runs from
 the session entry (`dragonfruit-session --sync-toolkit`), the session exports
 `GTK_CSD=0` for X11 GTK 3, and the compositor advertises KDE's legacy
 server-decoration manager with default mode `Server` for Wayland GTK 3. The
@@ -265,3 +309,11 @@ configure with the SSD mode, so a lazily negotiating client still gets the
 left-side titlebar. Electron/Chromium and other self-drawn frames remain the
 documented tier-3 boundary; Electron 43+ can follow the portal layout in its
 Window Controls Overlay.
+
+SSD edge resizing uses the same `resize_geometry`/`ResizeGrab` path as a
+client's `xdg_toplevel.resize`: the compositor hit-tests the 6 px edge strips
+and 12 px corner handles before client input and clamps through the client's
+min/max hints. The conformance test
+`window_conformance::ssd_frame_edges_and_corners_resize_the_window` drives all
+eight directions over the protocol, and the same path covers X11 Tier-2
+windows.

@@ -28,6 +28,7 @@ organized by topic:
 | [11-session-and-dev-workflow.md](11-session-and-dev-workflow.md) | Session model, nested development, and the testing ladder |
 | [12-packaging.md](12-packaging.md) | Fedora packaging, COPR, Spins, and portability |
 | [22-total-experience.md](22-total-experience.md) | **The whole-desktop target**: shell surfaces, behaviour, motion, HUDs, Settings, ownership |
+| [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md) | Measured window chrome, About, Spotlight Apps, Notification Center, Control Center and Finder anatomy |
 | [settings-business-logic-map.md](settings-business-logic-map.md) | Every Settings pane/row mapped to its owner and absence path |
 | [distro-compatibility.md](distro-compatibility.md) | Fedora/Ubuntu/Debian/Arch host-service and packaging contract |
 | [interface-naming-and-licensing.md](interface-naming-and-licensing.md) | Generic names, original assets, third-party substitutions |

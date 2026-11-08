@@ -17,6 +17,37 @@ The window chrome, sidebar, and view register is the Finder reference in
 [macos-ui-inventory.md](../reference/macos-ui-inventory.md#finder-files)
 (distilled from local-only macOS screenshots that never ship).
 
+## Measured Finder anatomy (2026-11-08)
+
+The structural review measured the Finder window at 900×600 pt:
+
+| Element | Geometry |
+|---|---|
+| Toolbar | 900×52 pt |
+| Sidebar | 198 pt wide, starting at the toolbar bottom |
+| Tab bar | 702×28 pt below the toolbar when tabs are shown |
+| Path bar | 688×30 pt at the bottom of the content region |
+| Status bar | 702×28 pt at the bottom edge |
+| Content scroll | 702×484 pt with sidebar and tab bar visible |
+| Get Info | 328×1034 pt, 32 pt title bar, single scrolling column |
+| Toolbar hidden | Content starts 64 pt below the frame; sidebar is hidden too |
+
+The sidebar is near-opaque vibrancy (Light α=0.985/tint=0.858; Dark
+α=0.935/tint=0.218); the toolbar is nearly opaque (Light α=0.994/tint=0.922;
+Dark α=0.900/tint=0.247). Do not apply the 0.55 popover alpha to Files chrome.
+
+The toolbar groups are back/forward (81×52 pt), view modes (164×52 pt, four
+40×36 pt segments), Group (47×52 pt), Share (36×52 pt), Edit Tags (38×52 pt),
+Action (37×52 pt) and Search (40×52 pt). The four view modes are real,
+separate layouts; the window geometry does not change when the view mode
+changes.
+
+T230d owns the measured chrome, status bar, toolbar-hidden mode and Get Info
+inspector. Tabs, column/gallery rendering, search results, tags, customization
+and motion remain explicit `OPEN` rows. See
+[23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
+and [ADR 0241](adr/0241-macos-structural-surface-review.md).
+
 ## Architecture
 
 ### One browsing implementation, three consumers
@@ -319,6 +350,9 @@ the full Finder design:
   Compress, Open With, undo/redo, per-item progress, conflict policy, batch
   operations, column/gallery views, Quick Look, preview pane, tags, saved
   searches, batch rename, Connect to Server, and the Files menu model.
+  T230d lands the measured 52/198/30/28 pt chrome, the status bar, the
+  toolbar-hidden mode and the Get Info inspector; T244a lands the column and
+  gallery views. Tabs remain open.
 - **Partially implemented:** thumbnails (local images; PDF/video only when a
   host helper exists; no archives/remote), search (current-location name
   filter, not the app-index Spotlight), and the folder watcher (the

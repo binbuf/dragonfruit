@@ -5,7 +5,7 @@
 | **Status** | target design |
 | **Date** | 2026-11-06 |
 | **Scope** | every transition, HUD/OSD, sound, and pointer feedback in the shell |
-| **Related** | [22-total-experience.md](22-total-experience.md), [evidence/acceptance](evidence-and-acceptance.md), `macos-liquid-glass-review/docs/CAPTURE-PLAN.md`, [ADR 0218](adr/0218-dock-motion-raised-cosine-and-tooltip.md) |
+| **Related** | [22-total-experience.md](22-total-experience.md), [evidence/acceptance](evidence-and-acceptance.md), `macos-design-review/docs/CAPTURE-PLAN.md`, [ADR 0218](adr/0218-dock-motion-raised-cosine-and-tooltip.md) |
 
 ## 1. Why a motion language
 
@@ -62,6 +62,15 @@ These values are already measured and must be preserved:
 The expanded campaign must fill the missing rows (menu open, HUDs, Stage
 Manager, Quick Look, Search, drawer, lock/unlock, tiling) before those
 transitions are tuned.
+
+The 2026-11-08 structural review did **not** measure motion for the Spotlight
+Apps drawer, Notification Center, Control Center, or fullscreen title-bar
+reveal. Those transitions remain `OPEN` in
+[23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
+§9; do not invent a duration or curve for them. The review did confirm the
+structural geometry that motion must preserve: the drawer is a Spotlight Apps
+grid/list, Notification Center is a right-edge ramp, Control Center modules
+grow the outer panel, and Finder accessory bars are content.
 
 ## 4. Motion tokens
 
@@ -355,7 +364,8 @@ The reduced-motion path is tested for every animation, not just the big ones.
 ## 14. References
 
 - [ADR 0218 — Dock motion](adr/0218-dock-motion-raised-cosine-and-tooltip.md)
+- [macOS structural surface review](23-macos-structural-surface-review.md)
 - [Design system — motion](10-design-system.md)
-- `macos-liquid-glass-review/docs/CAPTURE-PLAN.md` — motion protocol
+- `macos-design-review/docs/CAPTURE-PLAN.md` — motion protocol
 - [Evidence and acceptance](evidence-and-acceptance.md)
 - [Total experience design](22-total-experience.md)
