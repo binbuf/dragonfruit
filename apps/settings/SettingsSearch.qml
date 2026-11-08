@@ -109,8 +109,18 @@ QtObject {
         "users-groups/users": ["user accounts", "accounts"]
     })
 
-    // Built once: the map and catalog are static for the process lifetime.
-    readonly property var entries: root.buildIndex()
+    // Built from the map/catalog and rebuilt when the optional Online Accounts
+    // pane appears or disappears (T228); everything else is static.
+    property var entries: []
+
+    Component.onCompleted: root.entries = root.buildIndex()
+
+    property Connections onlineAccountsConnection: Connections {
+        target: Settings
+        function onOnlineAccountsChanged() {
+            root.entries = root.buildIndex();
+        }
+    }
 
     function keySynonyms(key) {
         if (!key || key === "omit")
@@ -176,6 +186,10 @@ QtObject {
         for (var i = 0; i < SettingsMap.panes.length; ++i) {
             var pane = SettingsMap.panes[i];
             if (!pane.shipped)
+                continue;
+            // An optional pane whose host is absent is not in the sidebar, so
+            // it must not be a search result either (T228).
+            if (SettingsPanes.indexOf(pane.id) < 0)
                 continue;
             var catalog = SettingsPanes.paneById(pane.id);
             var paneHelp = [pane.owner, pane.absenceNote].join(" ");

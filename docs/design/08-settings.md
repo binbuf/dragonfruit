@@ -77,10 +77,10 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Screen Saver | `settingsd` + shell/LockScreen — style and clock options reuse the first-party lock scene; Start After is the session idle engine's `idle.blank` |
 | Notifications, Focus | Notification service |
 | Lock Screen | `settingsd` + compositor lock/idle policy |
-| Privacy & Security | Portals (`xdg-desktop-portal` PermissionStore); no `settingsd` key — the store is the state (Secret Service/polkit later) |
-| Biometrics & Password | host services (fprintd, Secret Service) where present |
+| Privacy & Security | Portals (`xdg-desktop-portal` PermissionStore) mapped to the macOS categories; Security reads the distro/Flatpak sources, LUKS, SELinux/AppArmor, portal extensions, and the Advanced inventory ([adr/0237](adr/0237-security-biometrics-online-accounts.md)) |
+| Biometrics & Password | fprintd + PAM + AccountsService where present; PAM and LUKS status are read-only ([adr/0237](adr/0237-security-biometrics-online-accounts.md)) |
 | Users & Groups | accountsservice + distro provider |
-| Internet Accounts | host services (GOA) — deferred, not core |
+| Online Accounts | optional GNOME Online Accounts; the pane is hidden when GOA is absent ([adr/0237](adr/0237-security-biometrics-online-accounts.md)) |
 | Keyboard, Mouse, Trackpad | Compositor input API + xkbcommon |
 | Sound | PipeWire / WirePlumber |
 | Printers & Scanners | CUPS + SANE |
@@ -99,11 +99,11 @@ any drift, on a shipped pane without a body, or on a visible row without an
 owner/key/absence path. Omitted panes live only in `SettingsMap.omittedPanes`,
 so they cannot appear in the sidebar, and each carries its reason.
 
-The map has 29 top-level catalog entries and 26 shipped panes after T227; the
+The map has 29 top-level catalog entries and 27 shipped panes after T228; the
 new `control-center` (Quick Settings), `search` (renamed from `spotlight`), and
-`screen-saver` entries ship with T227. `game-controllers` and
-`online-accounts` (renamed from `internet-accounts`) remain unshipped until
-T228–T229 land their bodies.
+`screen-saver` entries ship with T227, and T228 ships `biometrics` plus the
+optional `online-accounts` entry. `game-controllers` remains unshipped until
+T229 lands its body.
 `storage`, `mission-control`, and `menu-bar` keep their existing ids and
 top-level placement. The Help menu opens the in-app **Pane & Row
 Owners…** debug view (also `DF_SETTINGS_DEBUG=1`) and the **Business-Logic
@@ -136,7 +136,8 @@ automatic updates (ADR [0235](adr/0235-general-group-host-adapters.md)).
 T227 completes the shell-owned settings panes. The new sidebar panes are
 `control-center` (Quick Settings), `search`, and `screen-saver`; Appearance,
 Desktop & Dock, and Displays gain their remaining groups. The executable map
-and the sidebar catalog both mark 26 shipped panes after T227.
+and the sidebar catalog both mark 27 shipped panes after T228 (Online Accounts
+is optional and appears only while GOA answers).
 
 - **Appearance** adds highlight color (`appearance.highlight`), sidebar icon
   size (`appearance.sidebarIconSize`), wallpaper tinting
@@ -175,6 +176,44 @@ The capture script runs the real shell offscreen with the deterministic
 settings fixture, then the live `ControlCenter` panel with the customized
 module list, then a second no-settingsd pass for the absence stills. See ADR
 [0236](adr/0236-settings-appearance-quick-settings-search-displays.md).
+
+## The T228 panes (Privacy & Security, Biometrics & Password, Online Accounts)
+
+T228 completes the three host-service panes. The catalog now has **27 shipped
+panes**; `online-accounts` is shipped with `optional: true`, so it appears only
+while `org.gnome.OnlineAccounts` answers. The executable map carries the same
+optional flag.
+
+- **Privacy & Security** renders the fifteen macOS privacy rows mapped to the
+  closest Linux portal permission (`Location`, `Camera`, `Microphone`,
+  `Files and folders`, `Screen recording`, …). Each row states its Linux
+  difference; delegated rows (Contacts, Calendars, Reminders, Speech,
+  Accessibility, Full disk access, Automation, App management, Developer
+  tools) name the host owner and never draw a fake TCC toggle. The remaining
+  real portal tables (Notifications, USB, Remote Desktop, …) are listed under
+  **Other portal permissions**. The Security group adds Software sources
+  (Flatpak remotes writable, distribution repositories read-only), read-only
+  Disk encryption (LUKS via `lsblk`), read-only Hardening (SELinux/AppArmor and
+  Secure Boot), installed portal Extensions, and an Advanced sheet.
+- **Biometrics & Password** shows the fprintd reader and enrolled fingers,
+  enrolls/deletes through fprintd, and changes the password through
+  AccountsService after polkit authorization. The PAM unlock/authentication
+  rows are read-only status rows and are hidden when `pam_fprintd.so` is not
+  configured.
+- **Online Accounts** lists the GOA providers and accounts, writes Add/Remove
+  and the per-capability sync toggles, and is hidden when GOA is absent. It
+  never implements OAuth.
+
+The host half is `services/privacy-adapter` (`SecuritySource`) and
+`services/account-adapter` (`BiometricsSource`, `OnlineAccountsSource`),
+projected through the existing `Privacy` and `Accounts` bridge interfaces; the
+Settings clients are `PrivacyClient` and `AccountsClient`, and the QML files
+are `PrivacyPane.qml`, `BiometricsPane.qml`, and `OnlineAccountsPane.qml`. The
+live evidence is `make t228-privacy-accounts-capture`
+(`docs/captures/t228-privacy-list.png`, `t228-privacy-detail.png`,
+`t228-security.png`, `t228-security-sources.png`, `t228-biometrics.png`,
+`t228-online-accounts.png`, and the three absence stills). See ADR
+[0237](adr/0237-security-biometrics-online-accounts.md).
 
 ## Search, deep links, and row anatomy (T223)
 
@@ -373,9 +412,9 @@ reduced-motion stills.
 
 ## The absent-daemon masking matrix (T-15.16)
 
-T-15 landed the Wave-2/3 panes and their Control Center tiles, and T225 added
-Wi-Fi, taking the catalog to **26 shipped panes**
-(`SettingsPanes.shippedPanes`). Each pane routes
+T-15 landed the Wave-2/3 panes and their Control Center tiles; T225–T228 added
+the later panes, taking the catalog to **27 shipped panes**
+(`SettingsPanes.shippedPanes`; Online Accounts is optional). Each pane routes
 to exactly one subsystem; masking that subsystem is a supported session state,
 not an incident. The matrix below is the contract every shipped pane satisfies
 and the wave-2/3 companion to the T-09.6b table above.
@@ -431,7 +470,7 @@ The headless half is the CI gate:
 
 - **`apps/settings/tests/tst_settings_absence.qml`** runs under a private
   `dbus-run-session` with no settingsd, no portal, and no bridge host. It
-  asserts both providers are absent, that all 26 shipped panes have a body and
+  asserts both providers are absent, that all 27 shipped panes have a body and
   no unshipped id does, that **every shipped pane mounts and stays interactive**
   (the routing sweep, `test_every_shipped_pane_routes_and_stays_live_with_providers_absent`),
   and carries one case per pane (including the shared Mouse section) that

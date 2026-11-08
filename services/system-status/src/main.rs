@@ -69,6 +69,9 @@ fn main() -> ExitCode {
     let mut print_accounts = false;
     let mut print_printers = false;
     let mut print_privacy = false;
+    let mut print_security = false;
+    let mut print_biometrics = false;
+    let mut print_online_accounts = false;
     let mut print_accessibility = false;
     let mut print_vpn = false;
     let mut print_firewall = false;
@@ -93,6 +96,9 @@ fn main() -> ExitCode {
             "--print-accounts" => print_accounts = true,
             "--print-printers" => print_printers = true,
             "--print-privacy" => print_privacy = true,
+            "--print-security" => print_security = true,
+            "--print-biometrics" => print_biometrics = true,
+            "--print-online-accounts" => print_online_accounts = true,
             "--print-accessibility" => print_accessibility = true,
             "--print-vpn" => print_vpn = true,
             "--print-firewall" => print_firewall = true,
@@ -200,6 +206,21 @@ fn main() -> ExitCode {
     if print_privacy {
         privacy.refresh();
         println!("{}", privacy.state());
+        return ExitCode::SUCCESS;
+    }
+    if print_security {
+        privacy.refresh_security();
+        println!("{}", privacy.security_state());
+        return ExitCode::SUCCESS;
+    }
+    if print_biometrics {
+        accounts.refresh_biometrics();
+        println!("{}", accounts.biometrics_state());
+        return ExitCode::SUCCESS;
+    }
+    if print_online_accounts {
+        accounts.refresh_online_accounts();
+        println!("{}", accounts.online_accounts_state());
         return ExitCode::SUCCESS;
     }
     if print_printers {
@@ -327,6 +348,9 @@ fn print_help() {
                             Users and Groups JSON view\n\
            --print-printers refresh CUPS/SANE and print the Printers and Scanners JSON view\n\
            --print-privacy  refresh the portal PermissionStore and print the Privacy JSON view\n\
+           --print-security refresh the security host stack and print the Security JSON view\n\
+           --print-biometrics refresh fprintd/PAM/AccountsService and print the Biometrics view\n\
+           --print-online-accounts refresh Online Accounts and print its JSON view\n\
            --print-accessibility refresh the AT-SPI bus and print the Accessibility JSON view\n\
            --print-vpn      refresh NetworkManager and print the Network advanced (VPN) JSON view\n\
            --print-firewall detect the firewall manager and print its JSON view\n\

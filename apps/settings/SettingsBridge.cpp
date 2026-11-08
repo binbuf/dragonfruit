@@ -240,8 +240,11 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_general, &GeneralClient::availableChanged, this,
             [this](bool) { emit generalChanged(); });
 
-    // T-15.11b: the Users & Groups seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_ACCOUNTS_FIXTURE"))
+    // T-15.11b: the Users & Groups seam, selected the same way. T228's
+    // biometrics/online-accounts fixtures use the same mock client.
+    if (qEnvironmentVariableIsSet("DF_ACCOUNTS_FIXTURE")
+        || qEnvironmentVariableIsSet("DF_BIOMETRICS_FIXTURE")
+        || qEnvironmentVariableIsSet("DF_ONLINE_ACCOUNTS_FIXTURE"))
         m_accounts = new MockAccountsClient(this);
     else
         m_accounts = new DbusAccountsClient(this);
@@ -249,6 +252,10 @@ SettingsBridge::SettingsBridge(QObject *parent)
             [this](const QVariantMap &) { emit accountsChanged(); });
     connect(m_accounts, &AccountsClient::availableChanged, this,
             [this](bool) { emit accountsChanged(); });
+    connect(m_accounts, &AccountsClient::biometricsChanged, this,
+            [this](const QVariantMap &) { emit biometricsChanged(); });
+    connect(m_accounts, &AccountsClient::onlineAccountsChanged, this,
+            [this](const QVariantMap &) { emit onlineAccountsChanged(); });
 
     // T-15.12b: the Printers & Scanners seam, selected the same way.
     if (qEnvironmentVariableIsSet("DF_PRINTERS_FIXTURE"))
@@ -267,6 +274,8 @@ SettingsBridge::SettingsBridge(QObject *parent)
         m_privacy = new DbusPrivacyClient(this);
     connect(m_privacy, &PrivacyClient::changed, this,
             [this](const QVariantMap &) { emit privacyChanged(); });
+    connect(m_privacy, &PrivacyClient::securityChanged, this,
+            [this](const QVariantMap &) { emit securityChanged(); });
     connect(m_privacy, &PrivacyClient::availableChanged, this,
             [this](bool) { emit privacyChanged(); });
 
@@ -451,6 +460,42 @@ QVariantMap SettingsBridge::privacy() const
 bool SettingsBridge::privacyAvailable() const
 {
     return m_privacy && m_privacy->available();
+}
+
+QVariantMap SettingsBridge::security() const
+{
+    return m_privacy ? m_privacy->securityView() : QVariantMap();
+}
+
+bool SettingsBridge::securityAvailable() const
+{
+    if (!m_privacy)
+        return false;
+    const QVariantMap view = m_privacy->securityView();
+    if (view.isEmpty())
+        return false;
+    return view.value(QStringLiteral("state")).toString()
+        != QStringLiteral("unavailable");
+}
+
+QVariantMap SettingsBridge::biometrics() const
+{
+    return m_accounts ? m_accounts->biometricsView() : QVariantMap();
+}
+
+bool SettingsBridge::biometricsAvailable() const
+{
+    return m_accounts && m_accounts->biometricsAvailable();
+}
+
+QVariantMap SettingsBridge::onlineAccounts() const
+{
+    return m_accounts ? m_accounts->onlineAccountsView() : QVariantMap();
+}
+
+bool SettingsBridge::onlineAccountsAvailable() const
+{
+    return m_accounts && m_accounts->onlineAccountsAvailable();
 }
 
 QVariantMap SettingsBridge::accessibility() const
@@ -1310,6 +1355,91 @@ void SettingsBridge::resetPrivacyFixture()
 {
     if (m_privacy)
         m_privacy->resetForTest();
+}
+
+void SettingsBridge::refreshSecurity()
+{
+    if (m_privacy)
+        m_privacy->refreshSecurity();
+}
+
+void SettingsBridge::setSecuritySourceEnabled(const QString &id, bool enabled)
+{
+    if (m_privacy && !id.isEmpty())
+        m_privacy->setSecuritySourceEnabled(id, enabled);
+}
+
+void SettingsBridge::setPrivacyAvailableFixture(bool available)
+{
+    if (m_privacy)
+        m_privacy->setPrivacyAvailableFixture(available);
+}
+
+void SettingsBridge::refreshBiometrics()
+{
+    if (m_accounts)
+        m_accounts->refreshBiometrics();
+}
+
+void SettingsBridge::startFingerprintEnrollment(const QString &finger)
+{
+    if (m_accounts && !finger.isEmpty())
+        m_accounts->startFingerprintEnrollment(finger);
+}
+
+void SettingsBridge::cancelFingerprintEnrollment()
+{
+    if (m_accounts)
+        m_accounts->cancelFingerprintEnrollment();
+}
+
+void SettingsBridge::deleteFingerprint(const QString &finger)
+{
+    if (m_accounts && !finger.isEmpty())
+        m_accounts->deleteFingerprint(finger);
+}
+
+void SettingsBridge::changePassword(const QString &password)
+{
+    if (m_accounts && !password.isEmpty())
+        m_accounts->changePassword(password);
+}
+
+void SettingsBridge::resetBiometricsFixture()
+{
+    if (m_accounts)
+        m_accounts->resetForTest();
+}
+
+void SettingsBridge::refreshOnlineAccounts()
+{
+    if (m_accounts)
+        m_accounts->refreshOnlineAccounts();
+}
+
+void SettingsBridge::addOnlineAccount(const QString &provider, const QString &identity)
+{
+    if (m_accounts && !provider.isEmpty() && !identity.isEmpty())
+        m_accounts->addOnlineAccount(provider, identity);
+}
+
+void SettingsBridge::removeOnlineAccount(const QString &id)
+{
+    if (m_accounts && !id.isEmpty())
+        m_accounts->removeOnlineAccount(id);
+}
+
+void SettingsBridge::setOnlineAccountSync(const QString &id, const QString &capability,
+                                          bool enabled)
+{
+    if (m_accounts && !id.isEmpty() && !capability.isEmpty())
+        m_accounts->setOnlineAccountSync(id, capability, enabled);
+}
+
+void SettingsBridge::resetOnlineAccountsFixture()
+{
+    if (m_accounts)
+        m_accounts->resetForTest();
 }
 
 void SettingsBridge::refreshAccessibility()

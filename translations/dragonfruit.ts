@@ -82,6 +82,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Allow wallpaper tinting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Always</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Appearance</source>
         <translation type="unfinished"></translation>
     </message>
@@ -99,6 +107,10 @@
     </message>
     <message>
         <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatically</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -146,6 +158,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Highlight color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Large</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Light</source>
         <translation type="unfinished"></translation>
     </message>
@@ -154,11 +174,55 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Medium</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Motion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off uses the neutral glass plate instead of sampling the wallpaper's colors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Opaque</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Accessibility motion settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reduced motion is the Accessibility preference; it disables window and control animation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show scroll bars</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sidebar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sidebar icon size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Small</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The selection wash in search fields and pickers. Default follows the active color scheme.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -167,6 +231,14 @@
     </message>
     <message>
         <source>Violet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When scrolling</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows and scroll bars</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -218,6 +290,133 @@
     </message>
     <message>
         <source>Utilities</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>BackupPane</name>
+    <message>
+        <source>A path or device the backend can write to.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back Up Now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back up automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backend reports %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup backend</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup is unavailable because no backup backend is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Daily</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Destination</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dragonfruit delegates the backup itself to restic, Pika Backup, or Timeshift. Choose a backend and the policy here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hourly</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Monthly</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No backup backend is installed. Install restic, Pika Backup, or Timeshift to use this pane.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None detected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off by default; the backend only runs on this schedule when you turn it on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Progress</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ready</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Running…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Weekly</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not installed</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -436,6 +635,169 @@
     </message>
     <message>
         <source>last 24 hours</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>BiometricsPane</name>
+    <message>
+        <source>%1 enrolled fingerprint(s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Fingerprint</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Fingerprint…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Biometrics and password are unavailable because their host services are not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change Password</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change password…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose the finger to enroll, then touch the sensor.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Configured by PAM; change /etc/pam.d to alter.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete Fingerprint</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete the enrolled fingerprint? You can add it again later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enrolling %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Finger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fingerprint authentication</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fingerprint authentication is not configured in PAM, so the unlock and authentication rows are hidden.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fingerprint reader</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fingerprints</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left index finger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left little finger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left middle finger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left ring finger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left thumb</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No fingerprint reader is connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Password</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Right index finger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Right little finger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Right middle finger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Right ring finger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Right thumb</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The account service is not running, so the password cannot be changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The fingerprint service is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The new password is handed to the account service; the app does not store it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The password must not be empty.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The passwords do not match.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Touch the fingerprint sensor to finish enrolling %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use fingerprint for authentication</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use fingerprint to unlock</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1001,7 +1363,70 @@
     </message>
 </context>
 <context>
+    <name>DateTimePane</name>
+    <message>
+        <source>24-hour time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock Format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date &amp; Time is unavailable because timedatectl is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date and time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manual time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requires administrator authentication.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set the system clock, time zone, and the format the menu-bar clock uses.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set time and date automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show date</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The default follows the system locale.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Time zone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Using network time</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DesktopDockPane</name>
+    <message>
+        <source>Always</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Animate opening applications</source>
         <translation type="unfinished"></translation>
@@ -1011,11 +1436,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Background clicks belong to the desktop layer; reveal-on-click lands with T245b.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bottom</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Bounce app icons when windows minimize</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Click wallpaper to reveal desktop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop &amp; Stage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1036,6 +1473,14 @@
     </message>
     <message>
         <source>Genie Effect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>In Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lands with Stage (T242).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1067,6 +1512,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No widget host is implemented; widgets remain an explicit OPEN row.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>None</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1075,7 +1528,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>On Desktop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On Desktop shows the Files desktop icons; In Stage leaves them to Stage (T242).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Only in Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open a window chooser by hovering</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recent apps in Stage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1095,6 +1564,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show suggested and recent apps in Dock</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1104,6 +1577,22 @@
     </message>
     <message>
         <source>Small</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stage lands with T242.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widgets</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1153,7 +1642,31 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>A disabled row is not advertised as a capability.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Aa</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced display settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bright</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Brightness</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1162,6 +1675,14 @@
     </message>
     <message>
         <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dim</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display brightness</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1185,6 +1706,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open advanced display settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Resolution</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1193,7 +1718,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Rotation, refresh, arrangement, night light, color, HDR, VRR, and brightness. Unsupported rows name the OPEN compositor/colord half.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Standard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor owns the output level and reports the applied value back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1918,7 +2455,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Architecture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic Updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Check for Updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for updates automatically</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1926,7 +2479,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Computer name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date &amp; Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disk</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPU</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1934,11 +2503,43 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Install automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install updates automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kernel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Kernel %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Language &amp; Region</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Login Items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Memory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Model</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More Info…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Never enabled unless you turn it on here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1950,7 +2551,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>OS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Processor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requires automatic checks.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Dragonfruit settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1962,7 +2583,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Software Update</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup Disk</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Storage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System Info</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1979,6 +2616,14 @@
     </message>
     <message>
         <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Working…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>‹ General</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2182,6 +2827,133 @@
     </message>
 </context>
 <context>
+    <name>LanguageRegionPane</name>
+    <message>
+        <source>%1 · %2 · %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Buddhist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calendar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Celsius (°C)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose the system language and the formats the desktop uses.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decimal comma (1.234,5)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decimal point (1,234.5)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fahrenheit (°F)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>First day of week</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gregorian</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ISO 8601</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Imperial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Japanese</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Language &amp; Region is unavailable because localectl is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Long</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Medium</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Metric</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Monday</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Number format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Region</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saturday</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Short</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Some apps may need to be restarted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sunday</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Temperature</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The locale's region and formatting.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use locale</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>LockScreen</name>
     <message>
         <source>Authenticating…</source>
@@ -2340,6 +3112,57 @@
     </message>
     <message>
         <source>When Switching User</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LoginItemsPane</name>
+    <message>
+        <source>Background Services</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose which apps open at login and which background services run with your session.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extensions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extensions are managed by the desktop portal and installed apps.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Login Items are unavailable because the session services are not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No apps open at login.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No systemd user services are installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open %1 at login</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start at Login</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2567,7 +3390,87 @@
 <context>
     <name>NetworkPane</name>
     <message>
+        <source>%1 open ports, %2 services</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 plugin(s) installed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 · %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 · %2 · %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 · Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 — %2 · %3 · %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Service</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Service…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add VPN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add VPN…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a VPN below to connect.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-connect %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Connect %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected to %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2579,15 +3482,131 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Create an Ethernet, Wi-Fi, or VPN service.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Credentials are edited in the full connection editor.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DNS, proxies, and MAC randomization are edited in the full connection editor; this first pass shows the live service state.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ethernet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firewall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firewall Options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firewall Options…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Network Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No NetworkManager VPN plugin is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No VPN connection is configured.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The network service (NetworkManager) is not running, so VPN connections are unavailable.</source>
+        <source>No address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No firewall detected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No interface</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Service</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open ports</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open services</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other Services</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Status unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TCP/IP, hardware, and the active service.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The network service (NetworkManager) is not running, so services and VPN connections are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This firewall cannot report status.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Up</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>VPN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2730,6 +3749,93 @@
     </message>
     <message>
         <source>When screen is locked</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>OnlineAccountsPane</name>
+    <message>
+        <source>%1 online account(s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Account…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add an account to sync mail, calendar, contacts, and files.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a provider.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter the account identity.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Online Accounts providers are installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No online accounts are configured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Online accounts are not installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Provider</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove Account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove this account from Online Accounts? Its local sync state is removed; the remote account is unchanged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signed in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sync %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sync this service for the account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The provider owns the sign-in; this pane only asks Online Accounts to create the account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This account needs attention; sign in again.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2967,7 +4073,27 @@
 <context>
     <name>PrivacyPane</name>
     <message>
+        <source> interface(s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 portal extension(s) installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Allowed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applications can be installed from %1.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2975,11 +4101,43 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Authorization, firewall, Secure Boot, and the host stack.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Denied</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Disk encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Distribution repositories are system policy. Flatpak remotes can be enabled or disabled here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extensions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardening mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Linux owner: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manage…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2991,7 +4149,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No portal extensions are installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Not Set</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other portal permissions</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3003,7 +4177,225 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Portal permission table: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security status is unavailable because the host tools did not answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Software sources</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The permission service is not running, so app permissions are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The security host stack is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This category is delegated; the portal store keeps no per-app record.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>View…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>QuickSettingsPane</name>
+    <message>
+        <source>Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active display only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dark Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Displays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep %1 in the menu bar only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep these items in the menu bar and remove them from the Quick Settings panel.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu Bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu Bar Only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu bar only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move %1 down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move %1 up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Printers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Privacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore the default Quick Settings modules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore the default modules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show %1 in Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show on all displays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Software Update</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Storage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The shell exposes one Quick Settings surface today; per-display panels land with T235.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Users</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ResetPane</name>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dragonfruit settings were reset to their defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Personal files and installed apps are not touched.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset All Settings?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Dragonfruit's appearance, Dock, menu bar, and other desktop preferences to their defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all Dragonfruit settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This resets every Dragonfruit setting to its default. Personal files, installed apps, and host configuration are not touched.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3043,6 +4435,105 @@
     </message>
 </context>
 <context>
+    <name>ScreenSaverPane</name>
+    <message>
+        <source>After 1 hour</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>After 1 minute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>After 10 minutes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>After 20 minutes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>After 30 minutes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>After 5 minutes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hot Corners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hot corners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen Saver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen saver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show date</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show with clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start After</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start after</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start the screen saver after</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The clock style reuses the first-party lock surface. Animated savers are not shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The four corner assignments are shared with Overview.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The session idle engine blanks the display after this much inactivity.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>ScrollView</name>
     <message>
         <source>Horizontal scroll bar</source>
@@ -3061,6 +4552,149 @@
     <name>SearchField</name>
     <message>
         <source>Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SearchPane</name>
+    <message>
+        <source>Actions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add the folder to the index</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Available when the search service is present.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calculations</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose the categories the desktop search includes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Definitions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Folder to index</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Folders</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Folders the file index includes. The home folder is indexed by default; add any other absolute path.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Home</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Include %1 in Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Indexing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Indexing status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu Bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Offer a web result for the query in the default browser.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rebuild</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rebuild index</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search Privacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search Results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search keyboard shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Search in menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop indexing %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The desktop search service is not running; indexing lands with T246.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The global shortcut the search service registers when it is present.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Web</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Web Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Web search</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3099,6 +4733,13 @@
     </message>
     <message>
         <source>Screenshot · Window</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SettingsAbsenceNotice</name>
+    <message>
+        <source>Open…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3316,6 +4957,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Automatic update policy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Automatic updates</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3444,10 +5089,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Choose destination...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Cityscapes</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3537,6 +5178,10 @@
     </message>
     <message>
         <source>Desktop items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Destination</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3701,6 +5346,10 @@
     </message>
     <message>
         <source>Hearing devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High dynamic range</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3885,6 +5534,10 @@
     </message>
     <message>
         <source>Modules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More Info...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4092,7 +5745,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Processor, memory, serial, OS</source>
+        <source>Processor, memory, GPU, disk, serial, OS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4312,6 +5965,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show on all displays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show on all workspaces</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4424,10 +6081,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>System Info...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>TV mode</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4513,6 +6166,10 @@
     </message>
     <message>
         <source>VPN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Variable refresh rate</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4954,6 +6611,33 @@
     </message>
 </context>
 <context>
+    <name>SharingPane</name>
+    <message>
+        <source>No sharing services are installed on this system.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requires authentication</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share this computer's files, screen, printers, and remote login with other devices.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sharing is unavailable because systemd is not reachable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>ShellController</name>
     <message>
         <source>%1 (%2 notifications silenced)</source>
@@ -5191,13 +6875,60 @@
     </message>
 </context>
 <context>
+    <name>StartupDiskPane</name>
+    <message>
+        <source>Changing the startup disk is not supported here. Use the firmware boot menu at power-on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filesystem</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Secure Boot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup Disk information is unavailable on this system.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup disk</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>StoragePane</name>
     <message>
         <source>%1 %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 of %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>(not mounted)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delegated</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5209,7 +6940,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Filesystem usage is unavailable because df did not answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Formatting and partitioning are delegated to the Files app and the disk utility.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manage storage…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Mount</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No filesystem usage is reported.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5229,7 +6976,30 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Usage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Volumes</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>StringMap</name>
+    <message>
+        <source>Authentication failed: the password was incorrect.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication was cancelled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication was denied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The system authentication service is not available.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5510,6 +7280,45 @@
     </message>
 </context>
 <context>
+    <name>WallpaperPreset</name>
+    <message>
+        <source>Authentication is required to change a user account type.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to change a user account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to change automatic login.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to change group membership.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to create a group.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to create a user account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to delete a group.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to delete a user account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication was denied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>WifiMenu</name>
     <message>
         <source>Hidden network</source>
@@ -5529,6 +7338,265 @@
     </message>
     <message>
         <source>Wi-Fi unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>WifiPane</name>
+    <message>
+        <source>%1 · %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 · %2 · %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1% signal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Address: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask to Join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask to join hotspots</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask to join networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-join %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-join off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-join on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-join: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a network below to connect.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect to a hidden network by name.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DNS, proxies, and MAC randomization are edited in the full connection editor; this first pass shows the live TCP/IP and hardware state.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter the network name. Leave the password empty for an open network.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter the network password.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forget</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardware address: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Interface: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Join Other Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Join Other Network…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Join “%1”</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Join…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Known Networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last used: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NetworkManager is not running, so Wi-Fi settings are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NetworkManager is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Networks can be viewed but not changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Networks can be viewed but not changed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Networks you join are saved here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New Networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No IP address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No saved networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notify</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other Networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Prompt before joining a captive-portal hotspot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Prompt before joining a nearby network. NetworkManager's own auto-join still applies.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signal: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TCP/IP, hardware, and the saved connection.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TCP/IP: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi Advanced</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

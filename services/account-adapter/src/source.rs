@@ -30,6 +30,11 @@
 use dragonfruit_system_adapters::AdapterError;
 use serde::Deserialize;
 
+use crate::biometrics::{BiometricsData, BiometricsOutcome, BiometricsSource, MockBiometrics};
+use crate::online::{
+    MockOnlineAccounts, OnlineAccountsData, OnlineAccountsOutcome, OnlineAccountsSource,
+};
+
 /// The role a user account carries.
 ///
 /// AccountsService's own vocabulary (`AccountType` `i`), narrowed to the two
@@ -408,6 +413,8 @@ pub struct MockAccounts {
     behavior: WriteBehavior,
     reads: u32,
     writes: WriteCounts,
+    biometrics: MockBiometrics,
+    online: MockOnlineAccounts,
 }
 
 impl MockAccounts {
@@ -420,6 +427,8 @@ impl MockAccounts {
             behavior: WriteBehavior::Accept,
             reads: 0,
             writes: WriteCounts::default(),
+            biometrics: MockBiometrics::absent(),
+            online: MockOnlineAccounts::absent(),
         }
     }
 
@@ -432,6 +441,8 @@ impl MockAccounts {
             behavior: WriteBehavior::Accept,
             reads: 0,
             writes: WriteCounts::default(),
+            biometrics: MockBiometrics::absent(),
+            online: MockOnlineAccounts::absent(),
         }
     }
 
@@ -444,6 +455,8 @@ impl MockAccounts {
             behavior: WriteBehavior::Accept,
             reads: 0,
             writes: WriteCounts::default(),
+            biometrics: MockBiometrics::absent(),
+            online: MockOnlineAccounts::absent(),
         }
     }
 
@@ -457,6 +470,50 @@ impl MockAccounts {
     pub fn deny_writes(mut self, note: impl Into<String>) -> Self {
         self.behavior = WriteBehavior::Deny(note.into());
         self
+    }
+
+    /// Attach the deterministic biometrics fixture (T228).
+    pub fn with_biometrics(mut self) -> Self {
+        self.biometrics = MockBiometrics::present();
+        self
+    }
+
+    /// Attach the deterministic online-accounts fixture (T228).
+    pub fn with_online_accounts(mut self) -> Self {
+        self.online = MockOnlineAccounts::present();
+        self
+    }
+
+    /// Attach a specific biometrics source (T228).
+    pub fn with_biometrics_source(mut self, biometrics: MockBiometrics) -> Self {
+        self.biometrics = biometrics;
+        self
+    }
+
+    /// Attach a specific online-accounts source (T228).
+    pub fn with_online_accounts_source(mut self, online: MockOnlineAccounts) -> Self {
+        self.online = online;
+        self
+    }
+
+    /// The biometrics half, for tests and captures.
+    pub fn biometrics(&self) -> &MockBiometrics {
+        &self.biometrics
+    }
+
+    /// The online-accounts half, for tests and captures.
+    pub fn online(&self) -> &MockOnlineAccounts {
+        &self.online
+    }
+
+    /// Replace the biometrics half.
+    pub fn set_biometrics(&mut self, biometrics: MockBiometrics) {
+        self.biometrics = biometrics;
+    }
+
+    /// Replace the online-accounts half.
+    pub fn set_online(&mut self, online: MockOnlineAccounts) {
+        self.online = online;
     }
 
     /// The host stack publishes fresh state.
@@ -702,6 +759,51 @@ impl AccountSource for MockAccounts {
             });
         }
         outcome
+    }
+}
+
+impl BiometricsSource for MockAccounts {
+    fn read_biometrics(&mut self) -> Result<Option<BiometricsData>, AdapterError> {
+        self.biometrics.read_biometrics()
+    }
+
+    fn start_enrollment(&mut self, finger: &str) -> BiometricsOutcome {
+        self.biometrics.start_enrollment(finger)
+    }
+
+    fn cancel_enrollment(&mut self) -> BiometricsOutcome {
+        self.biometrics.cancel_enrollment()
+    }
+
+    fn delete_finger(&mut self, finger: &str) -> BiometricsOutcome {
+        self.biometrics.delete_finger(finger)
+    }
+
+    fn change_password(&mut self, password: &str) -> BiometricsOutcome {
+        self.biometrics.change_password(password)
+    }
+}
+
+impl OnlineAccountsSource for MockAccounts {
+    fn read_online_accounts(&mut self) -> Result<Option<OnlineAccountsData>, AdapterError> {
+        self.online.read_online_accounts()
+    }
+
+    fn add_online_account(&mut self, provider: &str, identity: &str) -> OnlineAccountsOutcome {
+        self.online.add_online_account(provider, identity)
+    }
+
+    fn remove_online_account(&mut self, id: &str) -> OnlineAccountsOutcome {
+        self.online.remove_online_account(id)
+    }
+
+    fn set_online_account_sync(
+        &mut self,
+        id: &str,
+        capability: &str,
+        enabled: bool,
+    ) -> OnlineAccountsOutcome {
+        self.online.set_online_account_sync(id, capability, enabled)
     }
 }
 

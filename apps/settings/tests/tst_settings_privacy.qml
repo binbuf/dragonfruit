@@ -25,6 +25,7 @@ Item {
         // starts on the known four-category / five-permission store.
         function init() {
             Settings.resetPrivacyFixture();
+            Settings.setPrivacyAvailableFixture(true);
         }
 
         function make() {
@@ -50,27 +51,30 @@ Item {
             compare(shell.currentPaneId, "privacy");
             var pane = paneOf(shell);
             compare(pane.ready, true);
-            compare(pane.categories.length, 14);
+            compare(pane.mappedCategories.length, 15);
             compare(pane.appCount, 5);
 
-            // The first row is Camera with its two-app count.
+            // The macOS rows are the pane's order: Location first, Camera at
+            // index 5 with its two-app count.
             compare(findChild(pane.categoryRepeater.itemAt(0), "privacyCategoryLabel").text,
-                    "Camera");
+                    "Location");
             compare(findChild(pane.categoryRepeater.itemAt(0), "privacyCategorySummary").text,
+                    "1 app");
+            compare(findChild(pane.categoryRepeater.itemAt(5), "privacyCategoryLabel").text,
+                    "Camera");
+            compare(findChild(pane.categoryRepeater.itemAt(5), "privacyCategorySummary").text,
                     "2 apps");
+            // A delegated category says so instead of inventing a count.
             compare(findChild(pane.categoryRepeater.itemAt(1), "privacyCategorySummary").text,
-                    "1 app");
-            // A category with no entry is still a row and says `None`.
-            compare(findChild(pane.categoryRepeater.itemAt(2), "privacyCategorySummary").text,
-                    "1 app");
-            compare(findChild(pane.categoryRepeater.itemAt(4), "privacyCategorySummary").text,
-                    "None");
+                    "Delegated");
+            // The real portal tables that have no macOS row remain listed.
+            compare(pane.otherCategories.length > 0, true);
         }
 
         function test_category_dialog_round_trips_a_permission() {
             var shell = make();
             var pane = paneOf(shell);
-            pane.openCategory("devices");
+            pane.openCategory("camera");
             compare(pane.permissionDialog.open, true);
             compare(pane.selectedApps.length, 2);
 
@@ -81,8 +85,8 @@ Item {
             var select = findChild(first, "privacyPermissionSelect");
             select.activateIndex(0); // Allowed
             tryVerify(function() {
-                var category = pane.findCategory("devices");
-                return category.resources[0].apps[0].state === "allowed";
+                var category = pane.findCategory("camera");
+                return category.apps[0].state === "allowed";
             });
         }
 
@@ -112,7 +116,7 @@ Item {
             Settings.deletePrivacyPermission("screencast", "screencast",
                                              "com.obsproject.Studio");
             tryVerify(function() { return pane.appCount === 0; });
-            compare(pane.categories.length, 14);
+            compare(pane.mappedCategories.length, 15);
             compare(pane.emptyNote.visible, true);
             compare(findChild(pane.categoryRepeater.itemAt(0), "privacyCategorySummary").text,
                     "None");
@@ -124,6 +128,83 @@ Item {
             compare(pane.ready, true);
             compare(pane.absenceNote.visible, false);
             compare(pane.emptyNote.visible, false);
+        }
+
+        function test_macos_rows_state_the_linux_mapping() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.mappedCategories.length, 15);
+            var location = pane.findCategory("location");
+            compare(location.label, "Location");
+            verify(location.difference.length > 0);
+            compare(location.delegated, false);
+            var contacts = pane.findCategory("contacts");
+            compare(contacts.delegated, true);
+            compare(contacts.summary, "Delegated");
+            verify(contacts.linuxOwner.length > 0);
+            var camera = pane.findCategory("camera");
+            compare(camera.summary, "2 apps");
+            // The real portal tables without a macOS row stay visible.
+            var hasNotifications = false;
+            for (var i = 0; i < pane.otherCategories.length; ++i)
+                if (pane.otherCategories[i].id === "notifications")
+                    hasNotifications = true;
+            compare(hasNotifications, true);
+        }
+
+        function test_security_rows_and_sources_dialog() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.securityReady, true);
+            compare(pane.encryption.label, "Encrypted (LUKS)");
+            compare(pane.hardening.label, "Enforcing");
+            compare(pane.extensions.length, 1);
+            compare(pane.securitySources.length, 2);
+            compare(pane.sourceSummary(), "Fedora repositories, Flathub (system)");
+
+            pane.sourcesButton.clicked();
+            compare(pane.sourcesDialog.open, true);
+            compare(pane.sourceRepeater.count, 2);
+            var toggle = findChild(pane.sourceRepeater.itemAt(1), "privacySourceToggle");
+            verify(toggle);
+            compare(toggle.checked, true);
+            toggle.toggled(false);
+            tryVerify(function() { return pane.enabledSourceCount === 1; });
+            pane.sourcesDialog.accept();
+        }
+
+        function test_an_external_permission_change_reflects_in_the_pane() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.findCategory("camera").summary, "2 apps");
+
+            // An app (or another portal client) changes the store; the pane is
+            // open and must converge without a reload.
+            Settings.deletePrivacyPermission("devices", "camera",
+                                             "org.mozilla.firefox");
+            tryVerify(function() {
+                return pane.findCategory("camera").summary === "1 app";
+            });
+            Settings.setPrivacyPermission("devices", "camera",
+                                          "org.gimp.GIMP", "ask");
+            tryVerify(function() {
+                return pane.findCategory("camera").summary === "2 apps";
+            });
+            var camera = pane.findCategory("camera");
+            compare(camera.apps[1].app, "org.gimp.GIMP");
+            compare(camera.apps[1].state, "ask");
+        }
+
+        function test_portal_absent_keeps_the_security_half_live() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setPrivacyAvailableFixture(false);
+            tryVerify(function() { return pane.ready === false; });
+            compare(pane.absenceNote.visible, true);
+            compare(pane.securityReady, true);
+            compare(pane.securityGroup.visible, true);
+            compare(pane.sourcesButton.enabled, true);
+            compare(pane.encryption.label, "Encrypted (LUKS)");
         }
     }
 }

@@ -59,13 +59,16 @@ pub mod network;
 pub mod notifications;
 pub mod printers;
 pub mod privacy;
+mod shared;
 pub mod storage;
 pub mod updates;
 pub mod vpn;
 
 pub use accessibility::{accessibility_snapshot_view, accessibility_view, AccessibilityHost};
 pub use accounts::{
-    account_report, account_type_label, accounts_snapshot_view, accounts_view, AccountsHost,
+    account_report, account_type_label, accounts_snapshot_view, accounts_view, biometrics_report,
+    biometrics_snapshot_view, biometrics_view, online_accounts_report,
+    online_accounts_snapshot_view, online_accounts_view, AccountsHost,
 };
 pub use bluetooth::{bluetooth_report, bluetooth_snapshot_view, bluetooth_view, BluetoothHost};
 pub use firewall::{firewall_report, firewall_snapshot_view, firewall_view, FirewallHost};
@@ -76,7 +79,11 @@ pub use notifications::{
     focus_report, notifications_snapshot_view, notifications_view, NotificationsHost,
 };
 pub use printers::{printers_report, printers_snapshot_view, printers_view, PrintersHost};
-pub use privacy::{privacy_report, privacy_snapshot_view, privacy_view, PrivacyHost};
+pub use privacy::{
+    privacy_report, privacy_snapshot_view, privacy_view, security_report, security_snapshot_view,
+    security_view, PrivacyHost,
+};
+pub use shared::SharedSource;
 pub use storage::{storage_report, storage_snapshot_view, storage_view, StorageHost};
 pub use updates::{update_report, updates_snapshot_view, updates_view, UpdatesHost};
 pub use vpn::{vpn_report, vpn_snapshot_view, vpn_view, VpnHost};

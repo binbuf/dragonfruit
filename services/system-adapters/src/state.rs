@@ -40,6 +40,13 @@ impl AdapterId {
     pub const PRINTER: AdapterId = AdapterId("printer");
     /// Privacy and Security (the portal PermissionStore).
     pub const PRIVACY: AdapterId = AdapterId("privacy");
+    /// Security posture (software sources, disk encryption, hardening,
+    /// extensions, advanced host rows; T228).
+    pub const SECURITY: AdapterId = AdapterId("security");
+    /// Biometrics and password (fprintd, PAM, AccountsService; T228).
+    pub const BIOMETRICS: AdapterId = AdapterId("biometrics");
+    /// Online accounts (the optional host service; T228).
+    pub const ONLINE_ACCOUNTS: AdapterId = AdapterId("online-accounts");
     /// Accessibility (the AT-SPI accessibility bus status).
     pub const ACCESSIBILITY: AdapterId = AdapterId("accessibility");
     /// Network advanced / VPN (NetworkManager VPN connections).

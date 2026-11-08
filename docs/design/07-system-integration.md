@@ -1301,6 +1301,58 @@ the reference also names are not part of this adapter.
   the tiles' internal gap compacted from `sm` to `xs` (the content gap stays
   `xxs`); the fixed 360×1160 surface still holds every tile.
 
+## The security, biometrics, and online-accounts path (T228)
+
+The three Settings panes that have no single desktop daemon reuse the existing
+host-stack adapters and add only the missing projections:
+
+- **Security** is the second view of `dragonfruit-privacy-adapter`
+  (`SecuritySource`/`SecuritySnapshot`). It reads the distribution package
+  manager and Flatpak remotes (`flatpak remotes --show-disabled`), `lsblk -J`
+  for LUKS/crypt devices, `getenforce`/`aa-status`/`mokutil --sb-state` for
+  hardening, the installed `xdg-desktop-portal` `.portal` descriptors as the
+  closest "extensions" row, and a compact Advanced inventory (polkit,
+  firewall, package manager, portal, online accounts). Flatpak remotes are the
+  one writable source (`flatpak remote-modify --enable/--disable`); the
+  distribution repositories are system policy. Disk encryption, hardening,
+  extensions, and Advanced are **read-only** — unlocking/recovery belongs to
+  cryptsetup, PAM/SELinux/Secure Boot to the host, and portal backend selection
+  to system policy. There is no fake Lockdown Mode toggle.
+- **Biometrics & Password** extends `dragonfruit-account-adapter`
+  (`BiometricsSource`). fprintd is read over the system bus
+  (`GetDefaultDevice`, the device's `name`/`scan-type`, `ListEnrolledFingers`),
+  enrollment is `Claim` + `EnrollStart` with the pane re-reading while the
+  enrollment is in flight, and deletion is `Claim` + `DeleteEnrolledFinger` +
+  `Release`. PAM is read from `/etc/pam.d/*`: the unlock/authentication rows
+  state whether `pam_fprintd.so` is configured and are read-only, because
+  editing PAM is system policy. The password write is AccountsService's
+  `SetPassword` after polkit authorization; the app never stores or logs the
+  password.
+- **Online Accounts** extends the same account adapter
+  (`OnlineAccountsSource`). GNOME Online Accounts is optional: no
+  `org.gnome.OnlineAccounts` owner is `Unavailable`, the pane is hidden from
+  the sidebar, and a deep link is rejected. When present, providers come from
+  the installed `.provider` descriptors, accounts and sync capabilities from
+  `org.freedesktop.DBus.ObjectManager.GetManagedObjects`, and the writes are
+  the manager's `AddAccount`, the account's `Remove`, and the standard
+  `Properties.Set` on the `*Disabled` capabilities. No OAuth is
+  reimplemented; GOA owns the account and its credentials.
+
+The bridge host exposes the three views on the existing interfaces:
+`org.dragonfruit.SystemStatus1.Privacy` gains `SecurityState()`,
+`RefreshSecurity()`, and `SetSecuritySourceEnabled(id, enabled)`;
+`org.dragonfruit.SystemStatus1.Accounts` gains `BiometricsState()`,
+`RefreshBiometrics()`, `StartFingerprintEnrollment(finger)`,
+`CancelFingerprintEnrollment()`, `DeleteFingerprint(finger)`,
+`ChangePassword(password)`, `OnlineAccountsState()`,
+`RefreshOnlineAccounts()`, `AddOnlineAccount(provider, identity)`,
+`RemoveOnlineAccount(id)`, and `SetOnlineAccountSync(id, capability, enabled)`.
+`SharedSource` lets the privacy and security adapters (and the account,
+biometrics, and online-accounts adapters) share one live source without moving
+it twice. Absence is per owner: a missing portal keeps the Security group
+live, a missing fprintd keeps PAM/password live, and a missing GOA hides only
+Online Accounts.
+
 ## The accessibility path (T-15.14a)
 
 The accessibility adapter, `dragonfruit-accessibility-adapter`
@@ -1401,7 +1453,12 @@ NetworkManager, audio, and power adapters and serves
 - `org.dragonfruit.SystemStatus1.Accounts` (T-15.11b) — `State()`/`Refresh()`
   plus `CreateUser`, `DeleteUser`, `SetAccountType`, `SetLocked`,
   `SetAutomaticLogin`, `CreateGroup`, `DeleteGroup`, and `SetGroupMembers`
-  (the Users & Groups pane's writes over the host-stack adapter).
+  (the Users & Groups pane's writes over the host-stack adapter). T228 adds
+  `BiometricsState()`/`RefreshBiometrics()`, `StartFingerprintEnrollment(finger)`,
+  `CancelFingerprintEnrollment()`, `DeleteFingerprint(finger)`,
+  `ChangePassword(password)`, `OnlineAccountsState()`/`RefreshOnlineAccounts()`,
+  `AddOnlineAccount(provider, identity)`, `RemoveOnlineAccount(id)`, and
+  `SetOnlineAccountSync(id, capability, enabled)`.
 - `org.dragonfruit.SystemStatus1.Printers` (T-15.12b) — `State()`/`Refresh()`
   plus `SetDefaultPrinter(name)`, `SetPrinterAcceptingJobs(name, accepting)`,
   and `CancelJob(id)` (the Printers & Scanners pane's writes over the CUPS/SANE
@@ -1409,7 +1466,9 @@ NetworkManager, audio, and power adapters and serves
 - `org.dragonfruit.SystemStatus1.Privacy` (T-15.13b) — `State()`/`Refresh()`
   plus `SetPermission(table, id, app, permission)` and
   `DeletePermission(table, id, app)` (the Privacy & Security pane's writes over
-  the portal PermissionStore adapter).
+  the portal PermissionStore adapter). T228 adds
+  `SecurityState()`/`RefreshSecurity()` and
+  `SetSecuritySourceEnabled(id, enabled)` for the Security group.
 - `org.dragonfruit.SystemStatus1.Accessibility` (T-15.14b) — `State()`/
   `Refresh()` only (the Accessibility pane and tile read the bridge host's
   live AT-SPI projection; the adapter has no setter, and the pane's

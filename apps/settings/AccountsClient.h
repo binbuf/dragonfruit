@@ -31,8 +31,17 @@ public:
     // adminCount, lockedCount, groupsAvailable, automaticLogin, users, groups,
     // ...}`); empty when absent.
     virtual QVariantMap view() const = 0;
+    // The decoded `biometrics` view (T228); empty when absent.
+    virtual QVariantMap biometricsView() const = 0;
+    // The decoded `online-accounts` view (T228); empty when GOA is absent.
+    virtual QVariantMap onlineAccountsView() const = 0;
+    // Whether the biometrics/online-accounts halves are live.
+    virtual bool biometricsAvailable() const = 0;
+    virtual bool onlineAccountsAvailable() const = 0;
     // Re-read the host stack once (the pane calls this on open).
     virtual void refresh() = 0;
+    virtual void refreshBiometrics() = 0;
+    virtual void refreshOnlineAccounts() = 0;
     // The eight explicit writes; the host re-reads and pushes the new view.
     virtual void createUser(const QString &userName, const QString &realName,
                             const QString &accountType) = 0;
@@ -43,12 +52,25 @@ public:
     virtual void createGroup(const QString &name) = 0;
     virtual void deleteGroup(const QString &name) = 0;
     virtual void setGroupMembers(const QString &name, const QStringList &members) = 0;
+    // T228 biometrics writes. The password is handed straight to the host and
+    // is never stored or logged.
+    virtual void startFingerprintEnrollment(const QString &finger) = 0;
+    virtual void cancelFingerprintEnrollment() = 0;
+    virtual void deleteFingerprint(const QString &finger) = 0;
+    virtual void changePassword(const QString &password) = 0;
+    // T228 online-accounts writes.
+    virtual void addOnlineAccount(const QString &provider, const QString &identity) = 0;
+    virtual void removeOnlineAccount(const QString &id) = 0;
+    virtual void setOnlineAccountSync(const QString &id, const QString &capability,
+                                      bool enabled) = 0;
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
 
 signals:
     void changed(const QVariantMap &view);
+    void biometricsChanged(const QVariantMap &view);
+    void onlineAccountsChanged(const QVariantMap &view);
     void availableChanged(bool available);
 };
 
@@ -63,7 +85,13 @@ public:
 
     bool available() const override;
     QVariantMap view() const override { return m_view; }
+    QVariantMap biometricsView() const override { return m_biometricsView; }
+    QVariantMap onlineAccountsView() const override { return m_onlineView; }
+    bool biometricsAvailable() const override;
+    bool onlineAccountsAvailable() const override;
     void refresh() override;
+    void refreshBiometrics() override;
+    void refreshOnlineAccounts() override;
     void createUser(const QString &userName, const QString &realName,
                     const QString &accountType) override;
     void deleteUser(int uid) override;
@@ -73,14 +101,26 @@ public:
     void createGroup(const QString &name) override;
     void deleteGroup(const QString &name) override;
     void setGroupMembers(const QString &name, const QStringList &members) override;
+    void startFingerprintEnrollment(const QString &finger) override;
+    void cancelFingerprintEnrollment() override;
+    void deleteFingerprint(const QString &finger) override;
+    void changePassword(const QString &password) override;
+    void addOnlineAccount(const QString &provider, const QString &identity) override;
+    void removeOnlineAccount(const QString &id) override;
+    void setOnlineAccountSync(const QString &id, const QString &capability,
+                              bool enabled) override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
     void applyReply(const QByteArray &json);
+    void applyBiometricsReply(const QByteArray &json);
+    void applyOnlineReply(const QByteArray &json);
     QString m_service;
     QString m_path;
     QString m_interface;
     QVariantMap m_view;
+    QVariantMap m_biometricsView;
+    QVariantMap m_onlineView;
     bool m_available = false;
     QDBusServiceWatcher *m_watcher = nullptr;
 };
@@ -98,7 +138,13 @@ public:
 
     bool available() const override { return true; }
     QVariantMap view() const override { return m_view; }
+    QVariantMap biometricsView() const override { return m_biometricsView; }
+    QVariantMap onlineAccountsView() const override { return m_onlineView; }
+    bool biometricsAvailable() const override { return m_biometricsPresent; }
+    bool onlineAccountsAvailable() const override { return m_onlinePresent; }
     void refresh() override;
+    void refreshBiometrics() override;
+    void refreshOnlineAccounts() override;
     void createUser(const QString &userName, const QString &realName,
                     const QString &accountType) override;
     void deleteUser(int uid) override;
@@ -108,10 +154,20 @@ public:
     void createGroup(const QString &name) override;
     void deleteGroup(const QString &name) override;
     void setGroupMembers(const QString &name, const QStringList &members) override;
+    void startFingerprintEnrollment(const QString &finger) override;
+    void cancelFingerprintEnrollment() override;
+    void deleteFingerprint(const QString &finger) override;
+    void changePassword(const QString &password) override;
+    void addOnlineAccount(const QString &provider, const QString &identity) override;
+    void removeOnlineAccount(const QString &id) override;
+    void setOnlineAccountSync(const QString &id, const QString &capability,
+                              bool enabled) override;
     void resetForTest() override;
 
 private:
     void rebuild();
+    void rebuildBiometrics();
+    void rebuildOnlineAccounts();
     // The simulated stack: the T-15.11a `AccountsData` shape as Qt values.
     struct User {
         int uid = 0;
@@ -133,4 +189,23 @@ private:
     bool m_groupsAvailable = true;
     int m_nextUid = 1002;
     QVariantMap m_view;
+    // T228 biometrics fixture.
+    bool m_biometricsPresent = false;
+    QStringList m_fingers;
+    bool m_pamAvailable = true;
+    bool m_pamUnlock = true;
+    bool m_pamAuth = true;
+    bool m_passwordAvailable = true;
+    QVariantMap m_biometricsView;
+    // T228 online-accounts fixture.
+    bool m_onlinePresent = false;
+    struct OnlineAccount {
+        QString id;
+        QString provider;
+        QString providerName;
+        QString identity;
+        QList<QPair<QString, bool>> capabilities;
+    };
+    QList<OnlineAccount> m_onlineAccounts;
+    QVariantMap m_onlineView;
 };

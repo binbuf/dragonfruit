@@ -38,6 +38,15 @@ use dragonfruit_system_adapters::AdapterError;
 use zbus::blocking::Connection;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 
+use crate::biometrics::{
+    cancel_host_enrollment, change_host_password, delete_host_finger, read_host_biometrics,
+    start_host_enrollment, BiometricsData, BiometricsHostState, BiometricsOutcome,
+    BiometricsSource,
+};
+use crate::online::{
+    add_host_online_account, read_host_online_accounts, remove_host_online_account,
+    set_host_online_account_sync, OnlineAccountsData, OnlineAccountsOutcome, OnlineAccountsSource,
+};
 use crate::source::{
     AccountData, AccountOutcome, AccountSource, AccountType, AccountsData, GroupData, PasswordMode,
 };
@@ -88,6 +97,7 @@ pub trait GroupProvider: Send {
 /// The live host-stack source.
 pub struct HostAccounts {
     provider: Option<Box<dyn GroupProvider>>,
+    biometrics: BiometricsHostState,
 }
 
 impl Default for HostAccounts {
@@ -99,7 +109,10 @@ impl Default for HostAccounts {
 impl HostAccounts {
     /// A source reading AccountsService with no group provider attached.
     pub fn new() -> Self {
-        HostAccounts { provider: None }
+        HostAccounts {
+            provider: None,
+            biometrics: BiometricsHostState::default(),
+        }
     }
 
     /// Attach the distribution group provider.
@@ -208,6 +221,51 @@ impl AccountSource for HostAccounts {
     }
 }
 
+impl BiometricsSource for HostAccounts {
+    fn read_biometrics(&mut self) -> Result<Option<BiometricsData>, AdapterError> {
+        read_host_biometrics(&mut self.biometrics)
+    }
+
+    fn start_enrollment(&mut self, finger: &str) -> BiometricsOutcome {
+        start_host_enrollment(&mut self.biometrics, finger)
+    }
+
+    fn cancel_enrollment(&mut self) -> BiometricsOutcome {
+        cancel_host_enrollment(&mut self.biometrics)
+    }
+
+    fn delete_finger(&mut self, finger: &str) -> BiometricsOutcome {
+        delete_host_finger(finger)
+    }
+
+    fn change_password(&mut self, password: &str) -> BiometricsOutcome {
+        change_host_password(password)
+    }
+}
+
+impl OnlineAccountsSource for HostAccounts {
+    fn read_online_accounts(&mut self) -> Result<Option<OnlineAccountsData>, AdapterError> {
+        read_host_online_accounts()
+    }
+
+    fn add_online_account(&mut self, provider: &str, identity: &str) -> OnlineAccountsOutcome {
+        add_host_online_account(provider, identity)
+    }
+
+    fn remove_online_account(&mut self, id: &str) -> OnlineAccountsOutcome {
+        remove_host_online_account(id)
+    }
+
+    fn set_online_account_sync(
+        &mut self,
+        id: &str,
+        capability: &str,
+        enabled: bool,
+    ) -> OnlineAccountsOutcome {
+        set_host_online_account_sync(id, capability, enabled)
+    }
+}
+
 /// The AccountsService user path for `uid`.
 pub fn user_path(uid: u64) -> String {
     format!("{ACCOUNTS_ROOT}/User{uid}")
@@ -215,7 +273,7 @@ pub fn user_path(uid: u64) -> String {
 
 /// Read every cached user AccountsService reports. `Ok(None)` means the
 /// daemon is absent.
-fn read_users() -> Result<Option<Vec<AccountData>>, AdapterError> {
+pub(crate) fn read_users() -> Result<Option<Vec<AccountData>>, AdapterError> {
     // No system bus means no AccountsService can be reached: absence, not an
     // error, and never a startup blocker.
     let connection = match Connection::system() {
@@ -315,7 +373,7 @@ where
 ///
 /// No bus, or a bus with no `org.freedesktop.Accounts` owner, is absence —
 /// never an error.
-fn daemon_connection() -> Result<Connection, AccountOutcome> {
+pub(crate) fn daemon_connection() -> Result<Connection, AccountOutcome> {
     let connection = Connection::system().map_err(|_| AccountOutcome::Absent)?;
     match name_has_owner(&connection, ACCOUNTS_SERVICE) {
         Ok(true) => Ok(connection),
@@ -324,7 +382,7 @@ fn daemon_connection() -> Result<Connection, AccountOutcome> {
 }
 
 /// Whether `service` currently owns its name.
-fn name_has_owner(connection: &Connection, service: &str) -> zbus::Result<bool> {
+pub(crate) fn name_has_owner(connection: &Connection, service: &str) -> zbus::Result<bool> {
     let reply = connection.call_method(
         Some("org.freedesktop.DBus"),
         "/org/freedesktop/DBus",
@@ -339,7 +397,7 @@ fn name_has_owner(connection: &Connection, service: &str) -> zbus::Result<bool> 
 ///
 /// A polkit refusal is a denial the pane surfaces; everything else is a plain
 /// failure.
-fn classify(error: zbus::Error) -> AccountOutcome {
+pub(crate) fn classify(error: zbus::Error) -> AccountOutcome {
     let name = match &error {
         zbus::Error::MethodError(name, ..) => name.as_str(),
         _ => "",

@@ -203,6 +203,20 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Privacy &
     // Security surface at all; the pane shows the absence note.
     Q_PROPERTY(bool privacyAvailable READ privacyAvailable NOTIFY privacyChanged)
+    // The Security view from the bridge host (T228): `{ state, glyph, label,
+    // softwareSources, encryption, hardening, extensions, advanced }`. Empty
+    // when the security owners are absent; the pane keeps the privacy list
+    // live and marks only the security rows absent.
+    Q_PROPERTY(QVariantMap security READ security NOTIFY securityChanged)
+    Q_PROPERTY(bool securityAvailable READ securityAvailable NOTIFY securityChanged)
+    // The Biometrics and Password view from the bridge host (T228).
+    Q_PROPERTY(QVariantMap biometrics READ biometrics NOTIFY biometricsChanged)
+    Q_PROPERTY(bool biometricsAvailable READ biometricsAvailable NOTIFY biometricsChanged)
+    // The Online Accounts view from the bridge host (T228). The pane is hidden
+    // when this is false; GOA is optional.
+    Q_PROPERTY(QVariantMap onlineAccounts READ onlineAccounts NOTIFY onlineAccountsChanged)
+    Q_PROPERTY(bool onlineAccountsAvailable READ onlineAccountsAvailable NOTIFY
+                   onlineAccountsChanged)
     // The Accessibility view from the bridge host (T-15.14b): `{ state, glyph,
     // label, present, enabled, enabledLabel, screenReader, screenReaderLabel }`.
     // Empty when the host (or the AT-SPI bus) is absent; the pane renders the
@@ -299,6 +313,12 @@ public:
     bool printersAvailable() const;
     QVariantMap privacy() const;
     bool privacyAvailable() const;
+    QVariantMap security() const;
+    bool securityAvailable() const;
+    QVariantMap biometrics() const;
+    bool biometricsAvailable() const;
+    QVariantMap onlineAccounts() const;
+    bool onlineAccountsAvailable() const;
     QVariantMap accessibility() const;
     bool accessibilityAvailable() const;
     QVariantMap vpn() const;
@@ -518,6 +538,30 @@ public:
     // initial store. A no-op on the live client.
     Q_INVOKABLE void resetPrivacyFixture();
 
+    // T228: the Security half of the Privacy & Security pane.
+    Q_INVOKABLE void refreshSecurity();
+    Q_INVOKABLE void setSecuritySourceEnabled(const QString &id, bool enabled);
+    // Test seam (`DF_PRIVACY_FIXTURE` only): hide the portal store while the
+    // security host stays live.
+    Q_INVOKABLE void setPrivacyAvailableFixture(bool available);
+
+    // T228: the Biometrics & Password pane. The password is handed straight to
+    // the host; it is never stored or logged by the app.
+    Q_INVOKABLE void refreshBiometrics();
+    Q_INVOKABLE void startFingerprintEnrollment(const QString &finger);
+    Q_INVOKABLE void cancelFingerprintEnrollment();
+    Q_INVOKABLE void deleteFingerprint(const QString &finger);
+    Q_INVOKABLE void changePassword(const QString &password);
+    Q_INVOKABLE void resetBiometricsFixture();
+
+    // T228: the Online Accounts pane.
+    Q_INVOKABLE void refreshOnlineAccounts();
+    Q_INVOKABLE void addOnlineAccount(const QString &provider, const QString &identity);
+    Q_INVOKABLE void removeOnlineAccount(const QString &id);
+    Q_INVOKABLE void setOnlineAccountSync(const QString &id, const QString &capability,
+                                          bool enabled);
+    Q_INVOKABLE void resetOnlineAccountsFixture();
+
     // T-15.14b: the Accessibility pane's one seam. `refreshAccessibility`
     // re-reads the bridge host on pane open; the adapter is read-only, so there
     // is no write here (the pane's `accessibility.reduceMotion` toggle goes
@@ -631,6 +675,9 @@ signals:
     void printersChanged();
     // The Privacy and Security view or availability changed (T-15.13b).
     void privacyChanged();
+    void securityChanged();
+    void biometricsChanged();
+    void onlineAccountsChanged();
     // The Accessibility view or availability changed (T-15.14b).
     void accessibilityChanged();
     // The Network advanced (VPN) view or availability changed (T-15.15b).

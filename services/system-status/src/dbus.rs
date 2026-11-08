@@ -623,6 +623,77 @@ impl AccountsInterface {
             .set_group_members(name, members)
             .to_string()
     }
+
+    /// The current Biometrics and Password view as JSON.
+    fn biometrics_state(&self) -> String {
+        lock_accounts(&self.host).biometrics_state()
+    }
+
+    /// Re-read fprintd, PAM, and AccountsService once.
+    fn refresh_biometrics(&self) -> String {
+        let mut host = lock_accounts(&self.host);
+        host.refresh_biometrics();
+        host.biometrics_state()
+    }
+
+    /// Start enrolling a finger. Returns the JSON report.
+    fn start_fingerprint_enrollment(&self, finger: &str) -> String {
+        lock_accounts(&self.host)
+            .start_enrollment(finger)
+            .to_string()
+    }
+
+    /// Stop the in-flight fingerprint enrollment. Returns the JSON report.
+    fn cancel_fingerprint_enrollment(&self) -> String {
+        lock_accounts(&self.host).cancel_enrollment().to_string()
+    }
+
+    /// Delete one enrolled finger. Returns the JSON report.
+    fn delete_fingerprint(&self, finger: &str) -> String {
+        lock_accounts(&self.host).delete_finger(finger).to_string()
+    }
+
+    /// Change the current user's password through AccountsService. Returns the
+    /// JSON report. The password is never logged or stored.
+    fn change_password(&self, password: &str) -> String {
+        lock_accounts(&self.host)
+            .change_password(password)
+            .to_string()
+    }
+
+    /// The current Online Accounts view as JSON.
+    fn online_accounts_state(&self) -> String {
+        lock_accounts(&self.host).online_accounts_state()
+    }
+
+    /// Re-read the GOA manager once.
+    fn refresh_online_accounts(&self) -> String {
+        let mut host = lock_accounts(&self.host);
+        host.refresh_online_accounts();
+        host.online_accounts_state()
+    }
+
+    /// Add an online account. Returns the JSON report.
+    fn add_online_account(&self, provider: &str, identity: &str) -> String {
+        lock_accounts(&self.host)
+            .add_online_account(provider, identity)
+            .to_string()
+    }
+
+    /// Remove an online account. Returns the JSON report.
+    fn remove_online_account(&self, id: &str) -> String {
+        lock_accounts(&self.host)
+            .remove_online_account(id)
+            .to_string()
+    }
+
+    /// Enable or disable one online-account sync capability. Returns the JSON
+    /// report.
+    fn set_online_account_sync(&self, id: &str, capability: &str, enabled: bool) -> String {
+        lock_accounts(&self.host)
+            .set_online_account_sync(id, capability, enabled)
+            .to_string()
+    }
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Printers")]
@@ -681,6 +752,25 @@ impl PrivacyInterface {
         let mut host = lock_privacy(&self.host);
         host.refresh();
         host.state()
+    }
+
+    /// The current Security view as JSON.
+    fn security_state(&self) -> String {
+        lock_privacy(&self.host).security_state()
+    }
+
+    /// Re-read the security host stack once and return the new view.
+    fn refresh_security(&self) -> String {
+        let mut host = lock_privacy(&self.host);
+        host.refresh_security();
+        host.security_state()
+    }
+
+    /// Enable or disable one writable software source. Returns the JSON report.
+    fn set_security_source_enabled(&self, id: &str, enabled: bool) -> String {
+        lock_privacy(&self.host)
+            .set_source_enabled(id, enabled)
+            .to_string()
     }
 
     /// Store the permission for `app` on the resource `id` in `table`. The

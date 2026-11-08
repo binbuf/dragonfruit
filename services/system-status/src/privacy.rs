@@ -21,43 +21,72 @@
 
 use dragonfruit_privacy_adapter::{
     PermissionState, PrivacyAdapter, PrivacyOutcome, PrivacySnapshot, PrivacySource,
+    SecurityAdapter, SecurityOutcome, SecuritySnapshot, SecuritySource,
 };
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
+use crate::shared::SharedSource;
+
 /// The `kind` discriminator the view carries, so one decode path can reject a
 /// payload from an unexpected interface.
 const KIND_PRIVACY: &str = "privacy";
+const KIND_SECURITY: &str = "security";
 
 /// The bridge host for the Privacy and Security adapter: one state path and
-/// the two explicit permission writes the Settings pane offers.
+/// the explicit writes the Settings pane offers. The two adapters share one
+/// host-stack source (T228), so a mock push is visible to both views.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrivacyHost<S> {
-    adapter: PrivacyAdapter<S>,
+    privacy: PrivacyAdapter<SharedSource<S>>,
+    security: SecurityAdapter<SharedSource<S>>,
 }
 
-impl<S: PrivacySource> PrivacyHost<S> {
+impl<S: PrivacySource + SecuritySource + Send> PrivacyHost<S> {
     /// A host over a host-stack source.
     pub fn new(source: S) -> Self {
+        let shared = SharedSource::new(source);
         PrivacyHost {
-            adapter: PrivacyAdapter::new(source),
+            privacy: PrivacyAdapter::new(shared.clone()),
+            security: SecurityAdapter::new(shared),
         }
     }
 
-    /// Re-read the permission store once. Called on startup and after an
-    /// explicit action; never a poll.
+    /// Re-read the permission store and the security host once. Called on
+    /// startup and after an explicit action; never a poll.
     pub fn refresh(&mut self) {
-        self.adapter.refresh();
+        self.privacy.refresh();
+        self.security.refresh();
+    }
+
+    /// Re-read only the permission store.
+    pub fn refresh_privacy(&mut self) {
+        self.privacy.refresh();
+    }
+
+    /// Re-read only the security host.
+    pub fn refresh_security(&mut self) {
+        self.security.refresh();
     }
 
     /// The Privacy and Security view the pane and tile render.
     pub fn view(&self) -> Value {
-        privacy_view(&self.adapter)
+        privacy_view(&self.privacy)
+    }
+
+    /// The Security view the pane renders.
+    pub fn security_view(&self) -> Value {
+        security_view(&self.security)
     }
 
     /// The view as a JSON string (the D-Bus `State()` payload).
     pub fn state(&self) -> String {
         self.view().to_string()
+    }
+
+    /// The Security view as a JSON string (the D-Bus `SecurityState()` payload).
+    pub fn security_state(&self) -> String {
+        self.security_view().to_string()
     }
 
     /// Store the permission for `app` on the resource `id` in `table`. The
@@ -70,23 +99,39 @@ impl<S: PrivacySource> PrivacyHost<S> {
             .iter()
             .map(|s| (*s).to_owned())
             .collect();
-        privacy_report(self.adapter.set_permission(table, id, app, &permissions))
+        privacy_report(self.privacy.set_permission(table, id, app, &permissions))
     }
 
     /// Remove the stored permission for `app` on the resource `id` in `table`.
     /// One explicit write.
     pub fn delete_permission(&mut self, table: &str, id: &str, app: &str) -> Value {
-        privacy_report(self.adapter.delete_permission(table, id, app))
+        privacy_report(self.privacy.delete_permission(table, id, app))
     }
 
-    /// The adapter (read-only), for tests and introspection.
-    pub fn adapter(&self) -> &PrivacyAdapter<S> {
-        &self.adapter
+    /// Enable or disable one writable software source. One explicit write.
+    pub fn set_source_enabled(&mut self, id: &str, enabled: bool) -> Value {
+        security_report(self.security.set_source_enabled(id, enabled))
     }
 
-    /// The adapter, mutably (mostly for tests that drive a mock source).
-    pub fn adapter_mut(&mut self) -> &mut PrivacyAdapter<S> {
-        &mut self.adapter
+    /// The privacy adapter (read-only), for tests and introspection.
+    pub fn adapter(&self) -> &PrivacyAdapter<SharedSource<S>> {
+        &self.privacy
+    }
+
+    /// The privacy adapter, mutably (mostly for tests that drive a mock
+    /// source).
+    pub fn adapter_mut(&mut self) -> &mut PrivacyAdapter<SharedSource<S>> {
+        &mut self.privacy
+    }
+
+    /// The security adapter (read-only), for tests and introspection.
+    pub fn security_adapter(&self) -> &SecurityAdapter<SharedSource<S>> {
+        &self.security
+    }
+
+    /// The security adapter, mutably.
+    pub fn security_adapter_mut(&mut self) -> &mut SecurityAdapter<SharedSource<S>> {
+        &mut self.security
     }
 }
 
@@ -117,6 +162,16 @@ pub fn privacy_view<S: PrivacySource>(adapter: &PrivacyAdapter<S>) -> Value {
 /// projection is unit-testable without an adapter lifecycle).
 pub fn privacy_snapshot_view(snapshot: &PrivacySnapshot) -> Value {
     let categories: Vec<Value> = snapshot.categories().iter().map(category_json).collect();
+    let mac_categories: Vec<Value> = snapshot
+        .mapped_categories()
+        .iter()
+        .map(mapped_category_json)
+        .collect();
+    let other_categories: Vec<Value> = snapshot
+        .other_categories()
+        .iter()
+        .map(|category| category_json(category))
+        .collect();
     json!({
         "kind": KIND_PRIVACY,
         "state": "available",
@@ -130,6 +185,39 @@ pub fn privacy_snapshot_view(snapshot: &PrivacySnapshot) -> Value {
         "deniedCount": snapshot.denied_count(),
         "categoryCount": snapshot.categories().len(),
         "categories": categories,
+        // T228: the macOS rows mapped to their closest Linux permission, and
+        // the remaining real portal tables.
+        "macCategories": mac_categories,
+        "otherCategories": other_categories,
+    })
+}
+
+/// One mapped macOS category's flat JSON row.
+fn mapped_category_json(category: &dragonfruit_privacy_adapter::MappedCategory) -> Value {
+    let apps: Vec<Value> = category
+        .apps
+        .iter()
+        .map(|app| {
+            json!({
+                "app": app.app,
+                "table": app.table,
+                "resourceId": app.resource_id,
+                "state": app.state.id(),
+                "stateLabel": app.state_label,
+                "permissions": app.permissions,
+            })
+        })
+        .collect();
+    json!({
+        "id": category.id,
+        "label": category.label,
+        "linuxOwner": category.linux_owner,
+        "difference": category.difference,
+        "delegated": category.delegated,
+        "summary": category.summary(),
+        "appCount": category.app_count(),
+        "grantedCount": category.granted_count(),
+        "apps": apps,
     })
 }
 
@@ -176,6 +264,123 @@ pub fn privacy_report(outcome: PrivacyOutcome) -> Value {
         PrivacyOutcome::Denied(note) => json!({ "outcome": "denied", "note": note }),
         PrivacyOutcome::Absent => json!({ "outcome": "absent" }),
         PrivacyOutcome::Failed(error) => {
+            json!({ "outcome": "failed", "error": error.message() })
+        }
+    }
+}
+
+/// Build the Security view from an adapter.
+pub fn security_view<S: SecuritySource>(adapter: &SecurityAdapter<S>) -> Value {
+    let state = adapter.state();
+    if state.is_unavailable() {
+        return json!({ "kind": KIND_SECURITY, "state": "unavailable" });
+    }
+    if let Some(error) = state.error() {
+        return json!({
+            "kind": KIND_SECURITY,
+            "state": "error",
+            "error": error.message(),
+        });
+    }
+    let Some(snapshot) = state.snapshot() else {
+        return json!({ "kind": KIND_SECURITY, "state": "unavailable" });
+    };
+    security_snapshot_view(snapshot)
+}
+
+/// Build the Security view from an already-decoded snapshot.
+pub fn security_snapshot_view(snapshot: &SecuritySnapshot) -> Value {
+    let sources: Vec<Value> = snapshot
+        .software_sources()
+        .sources
+        .iter()
+        .map(|source| {
+            json!({
+                "id": source.id,
+                "name": source.name,
+                "kind": source.kind,
+                "enabled": source.enabled,
+                "writable": source.writable,
+                "note": source.note,
+            })
+        })
+        .collect();
+    let devices: Vec<Value> = snapshot
+        .encryption()
+        .devices
+        .iter()
+        .map(|device| {
+            json!({
+                "name": device.name,
+                "kind": device.kind,
+                "fstype": device.fstype,
+                "mountpoints": device.mountpoints,
+            })
+        })
+        .collect();
+    let extensions: Vec<Value> = snapshot
+        .extensions()
+        .iter()
+        .map(|extension| {
+            json!({
+                "id": extension.id,
+                "name": extension.name,
+                "dbusName": extension.dbus_name,
+                "interfaces": extension.interfaces,
+                "useIn": extension.use_in,
+                "path": extension.path,
+            })
+        })
+        .collect();
+    let advanced: Vec<Value> = snapshot
+        .advanced()
+        .iter()
+        .map(|row| {
+            json!({
+                "id": row.id,
+                "label": row.label,
+                "value": row.value,
+                "detail": row.detail,
+                "state": row.state,
+            })
+        })
+        .collect();
+    json!({
+        "kind": KIND_SECURITY,
+        "state": "available",
+        "glyph": snapshot.glyph(),
+        "label": snapshot.label(),
+        "enabledSourceCount": snapshot.enabled_source_count(),
+        "softwareSources": {
+            "available": snapshot.software_sources().available,
+            "manager": snapshot.software_sources().manager,
+            "sources": sources,
+        },
+        "encryption": {
+            "available": snapshot.encryption().available,
+            "encrypted": snapshot.encryption().encrypted,
+            "label": snapshot.encryption().label,
+            "note": snapshot.encryption().note,
+            "devices": devices,
+        },
+        "hardening": {
+            "available": snapshot.hardening().available,
+            "mode": snapshot.hardening().mode,
+            "label": snapshot.hardening().label,
+            "detail": snapshot.hardening().detail,
+        },
+        "extensions": extensions,
+        "advanced": advanced,
+    })
+}
+
+/// The JSON report for a security write.
+pub fn security_report(outcome: SecurityOutcome) -> Value {
+    match outcome {
+        SecurityOutcome::Applied => json!({ "outcome": "applied" }),
+        SecurityOutcome::Denied(note) => json!({ "outcome": "denied", "note": note }),
+        SecurityOutcome::Absent => json!({ "outcome": "absent" }),
+        SecurityOutcome::Failed(error) => {
             json!({ "outcome": "failed", "error": error.message() })
         }
     }
@@ -242,7 +447,7 @@ mod tests {
         assert_eq!(view["appCount"], 3);
         assert_eq!(view["grantedCount"], 1);
         assert_eq!(view["deniedCount"], 1);
-        assert_eq!(view["categoryCount"], 14);
+        assert_eq!(view["categoryCount"], 15);
         // Every known table is a category; the curated order starts at Camera.
         assert_eq!(view["categories"][0]["id"], "devices");
         assert_eq!(view["categories"][0]["label"], "Camera");
@@ -283,7 +488,7 @@ mod tests {
         assert_eq!(view["state"], "available");
         assert_eq!(view["present"], false);
         assert_eq!(view["label"], "No App Permissions");
-        assert_eq!(view["categories"].as_array().unwrap().len(), 14);
+        assert_eq!(view["categories"].as_array().unwrap().len(), 15);
         assert_eq!(view["categories"][0]["summary"], "None");
     }
 
@@ -309,8 +514,8 @@ mod tests {
                 ["outcome"],
             "applied"
         );
-        assert_eq!(host.adapter().source().permission_sets(), 1);
-        assert_eq!(host.adapter().source().permission_deletes(), 1);
+        assert_eq!(host.adapter().source().lock().permission_sets(), 1);
+        assert_eq!(host.adapter().source().lock().permission_deletes(), 1);
         // The host re-reads after a write, so the view converges.
         host.refresh();
         let view = host.view();
@@ -331,7 +536,7 @@ mod tests {
             host.set_permission("devices", "camera", "org.mozilla.firefox", "unset")["outcome"],
             "applied"
         );
-        assert_eq!(host.adapter().source().permission_sets(), 1);
+        assert_eq!(host.adapter().source().lock().permission_sets(), 1);
     }
 
     #[test]
@@ -343,6 +548,89 @@ mod tests {
         assert_eq!(report["outcome"], "denied");
         assert_eq!(report["note"], "portal: not authorized");
         assert_eq!(host.view()["state"], "available");
+    }
+
+    #[test]
+    fn the_security_view_carries_the_host_stack() {
+        let mut host = PrivacyHost::new(MockPrivacy::present(data()));
+        host.refresh();
+        let view = host.security_view();
+        assert_eq!(view["kind"], "security");
+        assert_eq!(view["state"], "available");
+        assert_eq!(view["softwareSources"]["manager"], "dnf");
+        assert_eq!(view["encryption"]["label"], "Encrypted (LUKS)");
+        assert_eq!(view["hardening"]["mode"], "enforcing");
+        assert_eq!(view["extensions"].as_array().unwrap().len(), 2);
+        assert_eq!(view["advanced"].as_array().unwrap().len(), 3);
+        assert_eq!(view["enabledSourceCount"], 2);
+    }
+
+    #[test]
+    fn a_security_write_applies_once_and_reports_denials() {
+        let mut host = PrivacyHost::new(MockPrivacy::present(data()));
+        host.refresh();
+        assert_eq!(
+            host.set_source_enabled("flatpak:flathub:system", false)["outcome"],
+            "applied"
+        );
+        host.refresh_security();
+        assert_eq!(host.security_view()["enabledSourceCount"], 1);
+        assert_eq!(
+            host.set_source_enabled("distro:dnf", false)["outcome"],
+            "denied"
+        );
+    }
+
+    #[test]
+    fn an_absent_security_host_keeps_the_privacy_half_live() {
+        let mut host = PrivacyHost::new(MockPrivacy::present_privacy_only(data()));
+        host.refresh();
+        assert_eq!(host.view()["state"], "available");
+        assert_eq!(host.security_view()["state"], "unavailable");
+        assert_eq!(
+            host.set_source_enabled("flatpak:flathub:system", false)["outcome"],
+            "absent"
+        );
+    }
+
+    #[test]
+    fn absent_luks_and_polkit_are_honest_rows() {
+        let mut data = dragonfruit_privacy_adapter::security_fixture();
+        data.encryption.available = false;
+        data.encryption.encrypted = false;
+        data.encryption.label = "Unknown".to_owned();
+        data.encryption.note = "lsblk did not answer.".to_owned();
+        data.encryption.devices.clear();
+        data.advanced = vec![dragonfruit_privacy_adapter::AdvancedRowData {
+            id: "polkit".to_owned(),
+            label: "Authorization".to_owned(),
+            value: "Unavailable".to_owned(),
+            detail: "polkit is not installed.".to_owned(),
+            state: "absent".to_owned(),
+        }];
+        let mut mock = MockPrivacy::present_security_only();
+        mock.push_security(data);
+        let mut host = PrivacyHost::new(mock);
+        host.refresh();
+        let view = host.security_view();
+        assert_eq!(view["state"], "available");
+        assert_eq!(view["encryption"]["available"], false);
+        assert_eq!(view["encryption"]["encrypted"], false);
+        assert_eq!(view["encryption"]["label"], "Unknown");
+        assert_eq!(view["advanced"][0]["id"], "polkit");
+        assert_eq!(view["advanced"][0]["state"], "absent");
+    }
+
+    #[test]
+    fn a_privacy_store_absence_keeps_the_security_half_live() {
+        let mut host = PrivacyHost::new(MockPrivacy::present_security_only());
+        host.refresh();
+        assert_eq!(host.view()["state"], "unavailable");
+        assert_eq!(host.security_view()["state"], "available");
+        assert_eq!(
+            host.security_view()["encryption"]["label"],
+            "Encrypted (LUKS)"
+        );
     }
 
     #[test]

@@ -517,6 +517,49 @@ set_tests_properties(tst_settings_privacy PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# T228: the Biometrics & Password pane, the Online Accounts pane, and their
+# absence cases. The privacy runner is reused because every case is a QML
+# TestCase over the same Settings UI module.
+add_test(
+    NAME tst_settings_biometrics
+    COMMAND tst_settings_privacy
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_biometrics.qml
+)
+set_tests_properties(tst_settings_biometrics PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_BIOMETRICS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+add_test(
+    NAME tst_settings_biometrics_absence
+    COMMAND tst_settings_privacy
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_biometrics_absence.qml
+)
+set_tests_properties(tst_settings_biometrics_absence PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+add_test(
+    NAME tst_settings_online_accounts
+    COMMAND tst_settings_privacy
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_online_accounts.qml
+)
+set_tests_properties(tst_settings_online_accounts PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_ONLINE_ACCOUNTS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+add_test(
+    NAME tst_settings_online_accounts_absence
+    COMMAND tst_settings_privacy
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_online_accounts_absence.qml
+)
+set_tests_properties(tst_settings_online_accounts_absence PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Accessibility pane tests (T-15.14b): the live AT-SPI status rows and the one
 # settingsd preference (`accessibility.reduceMotion`) round-tripping live.
 # `DF_ACCESSIBILITY_FIXTURE` is the deterministic in-process host-stack client,

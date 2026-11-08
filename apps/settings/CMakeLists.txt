@@ -88,6 +88,8 @@ qt_add_qml_module(dragonfruit-settings-ui
         UsersGroupsPane.qml
         PrintersScannersPane.qml
         PrivacyPane.qml
+        BiometricsPane.qml
+        OnlineAccountsPane.qml
         AccessibilityPane.qml
         WifiPane.qml
         NetworkPane.qml

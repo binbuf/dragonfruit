@@ -39,7 +39,7 @@ pub struct KnownTable {
 }
 
 /// The portal permission tables the adapter projects, in the pane's order.
-pub const KNOWN_TABLES: [KnownTable; 14] = [
+pub const KNOWN_TABLES: [KnownTable; 15] = [
     KnownTable {
         table: "devices",
         label: "Camera",
@@ -96,6 +96,10 @@ pub const KNOWN_TABLES: [KnownTable; 14] = [
         table: "desktop-used-apps",
         label: "Default Apps",
     },
+    KnownTable {
+        table: "documents",
+        label: "Files and Folders",
+    },
 ];
 
 /// The label for a table, falling back to the table name when the adapter does
@@ -115,6 +119,231 @@ pub fn table_rank(table: &str) -> usize {
         .iter()
         .position(|known| known.table == table)
         .unwrap_or(KNOWN_TABLES.len())
+}
+
+/// One PermissionStore table (and optionally a resource subset) a macOS
+/// privacy category maps to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrivacyBinding {
+    /// The portal table name.
+    pub table: &'static str,
+    /// The resource ids to read; an empty slice means every resource.
+    pub resources: &'static [&'static str],
+}
+
+/// One macOS privacy category and its honest Linux mapping (T228).
+///
+/// The macOS pane has no exact Linux equivalent for every row. The mapping
+/// names the closest portal table/resource, or an explicit delegated owner
+/// when the portal store holds no per-app record. `difference` is the
+/// one-line explanation the pane shows so the row never implies a permission
+/// the host does not keep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MacPrivacyCategory {
+    /// The stable category id (`location`, `camera`, …).
+    pub id: &'static str,
+    /// The macOS label the pane draws.
+    pub label: &'static str,
+    /// The closest Linux owner/API.
+    pub linux_owner: &'static str,
+    /// The Linux difference from the macOS category.
+    pub difference: &'static str,
+    /// The portal tables/resources carrying per-app state.
+    pub bindings: &'static [PrivacyBinding],
+}
+
+const NO_BINDINGS: [PrivacyBinding; 0] = [];
+const LOCATION_BINDINGS: [PrivacyBinding; 1] = [PrivacyBinding {
+    table: "location",
+    resources: &[],
+}];
+const CAMERA_BINDINGS: [PrivacyBinding; 1] = [PrivacyBinding {
+    table: "devices",
+    resources: &["camera"],
+}];
+const MICROPHONE_BINDINGS: [PrivacyBinding; 1] = [PrivacyBinding {
+    table: "devices",
+    resources: &["microphone"],
+}];
+const FILES_BINDINGS: [PrivacyBinding; 1] = [PrivacyBinding {
+    table: "documents",
+    resources: &[],
+}];
+const SCREEN_RECORDING_BINDINGS: [PrivacyBinding; 1] = [PrivacyBinding {
+    table: "screencast",
+    resources: &[],
+}];
+
+/// The fifteen macOS privacy rows, in the reference order, mapped to the
+/// closest portal permission (T228). A row with no binding is delegated: the
+/// pane states the Linux owner and never invents a TCC-style permission.
+pub const MAC_PRIVACY_CATEGORIES: [MacPrivacyCategory; 15] = [
+    MacPrivacyCategory {
+        id: "location",
+        label: "Location",
+        linux_owner: "Portal Location/Geoclue",
+        difference: "Apps ask the Location portal per request; the portal store keeps the answer.",
+        bindings: &LOCATION_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "contacts",
+        label: "Contacts",
+        linux_owner: "Address-book service (EDS)",
+        difference: "Contacts access is owned by the address-book service; no portal table records it per app.",
+        bindings: &NO_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "calendars",
+        label: "Calendars",
+        linux_owner: "Calendar service (EDS)",
+        difference: "Calendar access is owned by the calendar service; no portal table records it per app.",
+        bindings: &NO_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "reminders",
+        label: "Reminders",
+        linux_owner: "Task service (EDS)",
+        difference: "Reminders are a task-service capability; Linux has no TCC-style reminders permission.",
+        bindings: &NO_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "photos",
+        label: "Photos",
+        linux_owner: "Document portal",
+        difference: "The document portal records file access; there is no separate Photos permission.",
+        bindings: &FILES_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "camera",
+        label: "Camera",
+        linux_owner: "xdg-desktop-portal Device",
+        difference: "Camera and microphone share the portal devices table; the camera resource is shown here.",
+        bindings: &CAMERA_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "microphone",
+        label: "Microphone",
+        linux_owner: "xdg-desktop-portal Device",
+        difference: "Microphone is the portal devices table's microphone resource, not a separate TCC service.",
+        bindings: &MICROPHONE_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "speech",
+        label: "Speech recognition",
+        linux_owner: "No dedicated portal",
+        difference: "Apps use the microphone permission and their own speech service; there is no speech-recognition permission.",
+        bindings: &NO_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "accessibility",
+        label: "Accessibility",
+        linux_owner: "AT-SPI accessibility bus",
+        difference: "Accessibility is a bus-wide setting, not a per-app permission the portal store can revoke.",
+        bindings: &NO_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "fullDisk",
+        label: "Full disk access",
+        linux_owner: "polkit",
+        difference: "There is no full-disk-access switch; privileged file access is authorized by polkit per action.",
+        bindings: &NO_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "files",
+        label: "Files and folders",
+        linux_owner: "Document portal",
+        difference: "The document portal records per-app file access; it has no folder-level permission.",
+        bindings: &FILES_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "screenRecording",
+        label: "Screen recording",
+        linux_owner: "Portal ScreenCast",
+        difference: "Screen recording is the ScreenCast portal permission; screenshots use a separate table.",
+        bindings: &SCREEN_RECORDING_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "automation",
+        label: "Automation",
+        linux_owner: "D-Bus policy + polkit",
+        difference: "There is no automation permission; D-Bus policy and polkit govern app-to-app calls.",
+        bindings: &NO_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "appManagement",
+        label: "App management",
+        linux_owner: "Package manager + polkit",
+        difference: "Installing or removing apps is authorized by polkit; the portal store keeps no app-management record.",
+        bindings: &NO_BINDINGS,
+    },
+    MacPrivacyCategory {
+        id: "developerTools",
+        label: "Developer tools",
+        linux_owner: "Portal + polkit",
+        difference: "There is no developer-tools permission; debug interfaces are governed by the portal and polkit.",
+        bindings: &NO_BINDINGS,
+    },
+];
+
+/// One application permission in a mapped macOS category.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MappedApp {
+    /// The application id.
+    pub app: String,
+    /// The portal table the record lives in.
+    pub table: String,
+    /// The portal resource id.
+    pub resource_id: String,
+    /// The derived tristate.
+    pub state: PermissionState,
+    /// The short state label.
+    pub state_label: String,
+    /// The stored permission strings, verbatim.
+    pub permissions: Vec<String>,
+}
+
+/// One macOS privacy category with its live per-app state.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MappedCategory {
+    /// The stable category id.
+    pub id: String,
+    /// The macOS label.
+    pub label: String,
+    /// The closest Linux owner/API.
+    pub linux_owner: String,
+    /// The Linux difference from the macOS category.
+    pub difference: String,
+    /// True when no portal table carries per-app state.
+    pub delegated: bool,
+    /// The applications with a stored permission.
+    pub apps: Vec<MappedApp>,
+}
+
+impl MappedCategory {
+    /// How many applications the category lists.
+    pub fn app_count(&self) -> usize {
+        self.apps.len()
+    }
+
+    /// How many applications the category grants.
+    pub fn granted_count(&self) -> usize {
+        self.apps
+            .iter()
+            .filter(|app| app.state == PermissionState::Allowed)
+            .count()
+    }
+
+    /// The secondary text the pane draws.
+    pub fn summary(&self) -> String {
+        if self.delegated {
+            return "Delegated".to_owned();
+        }
+        match self.apps.len() {
+            0 => "None".to_owned(),
+            1 => "1 app".to_owned(),
+            count => format!("{count} apps"),
+        }
+    }
 }
 
 /// The portal permission tristate, derived from the stored permission strings.
@@ -441,6 +670,69 @@ impl PrivacySnapshot {
         self.categories
             .iter()
             .filter(|category| category.app_count() > 0)
+            .collect()
+    }
+
+    /// The macOS privacy rows mapped to their closest portal permission
+    /// (T228). Every row is present; a delegated row carries no applications.
+    pub fn mapped_categories(&self) -> Vec<MappedCategory> {
+        MAC_PRIVACY_CATEGORIES
+            .iter()
+            .map(|mac| {
+                let mut apps = Vec::new();
+                for binding in mac.bindings {
+                    let Some(category) = self.category(binding.table) else {
+                        continue;
+                    };
+                    for resource in category.resources() {
+                        if !binding.resources.is_empty()
+                            && !binding.resources.contains(&resource.id.as_str())
+                        {
+                            continue;
+                        }
+                        for app in resource.apps() {
+                            apps.push(MappedApp {
+                                app: app.app.clone(),
+                                table: category.table.clone(),
+                                resource_id: resource.id.clone(),
+                                state: app.state,
+                                state_label: app.state.label().to_owned(),
+                                permissions: app.permissions.clone(),
+                            });
+                        }
+                    }
+                }
+                apps.sort_by(|left, right| {
+                    left.app
+                        .cmp(&right.app)
+                        .then_with(|| left.table.cmp(&right.table))
+                        .then_with(|| left.resource_id.cmp(&right.resource_id))
+                });
+                MappedCategory {
+                    id: mac.id.to_owned(),
+                    label: mac.label.to_owned(),
+                    linux_owner: mac.linux_owner.to_owned(),
+                    difference: mac.difference.to_owned(),
+                    delegated: mac.bindings.is_empty(),
+                    apps,
+                }
+            })
+            .collect()
+    }
+
+    /// The portal categories no macOS row binds (Notifications, Remote
+    /// Desktop, Screenshot, USB, …). They are still real host state, so the
+    /// pane lists them after the mapped rows instead of hiding them.
+    pub fn other_categories(&self) -> Vec<&PermissionCategory> {
+        self.categories
+            .iter()
+            .filter(|category| {
+                !MAC_PRIVACY_CATEGORIES.iter().any(|mac| {
+                    mac.bindings
+                        .iter()
+                        .any(|binding| binding.table == category.table)
+                })
+            })
             .collect()
     }
 
