@@ -198,6 +198,31 @@ pub fn surface_under(
     desktop_under(state, point)
 }
 
+/// Refresh the compositor-owned resize cursor for a pointer position.
+///
+/// The forced edge cursor only applies when a window edge is the topmost
+/// pointer target: chrome (the menu bar, Dock, overlays), a compositor menu,
+/// the app switcher, or Mission Control wins instead. An active grab keeps
+/// whatever cursor started the interaction.
+fn refresh_resize_cursor(
+    state: &mut DfState,
+    pointer: &smithay::input::pointer::PointerHandle<DfState>,
+    location: Point<f64, Logical>,
+) {
+    if pointer.is_grabbed() {
+        return;
+    }
+    let chrome_owns_pointer = state.app_switcher.is_active()
+        || state.window_menu_open()
+        || state.overview_input_owner() == InputOwner::Overview
+        || chrome_under(state, location).is_some();
+    if chrome_owns_pointer {
+        state.clear_resize_cursor();
+    } else {
+        state.update_resize_cursor(location);
+    }
+}
+
 /// Route one input event from any backend.
 #[allow(clippy::too_many_lines)]
 pub fn process_input_event<B: InputBackend>(state: &mut DfState, event: InputEvent<B>)
@@ -447,6 +472,7 @@ where
             if state.update_titlebar_hover(location) {
                 state.needs_redraw = true;
             }
+            refresh_resize_cursor(state, &pointer, location);
             if state.window_menu_open() {
                 state.window_menu_hover(location);
             }
@@ -503,6 +529,7 @@ where
             if state.update_titlebar_hover(location) {
                 state.needs_redraw = true;
             }
+            refresh_resize_cursor(state, &pointer, location);
             if state.window_menu_open() {
                 state.window_menu_hover(location);
             }
@@ -570,17 +597,30 @@ where
                             return;
                         }
                     }
-                    // Right-click or Control-click on the titlebar opens the
-                    // window menu (T-01.4). `titlebar_window_at` already
-                    // resolves the window stack, so a titlebar covered by a
-                    // higher window is not opened and one drawn above a lower
-                    // window still is.
+                    // An SSD window's frame edge is compositor chrome. A
+                    // left press there starts the shared resize grab before
+                    // the client or titlebar sees it. Control-click keeps its
+                    // titlebar menu meaning, so it is excluded.
                     let is_right = button_event.button == 0x111; /* BTN_RIGHT */
                     let ctrl = state
                         .seat
                         .get_keyboard()
                         .map(|keyboard| keyboard.modifier_state().ctrl)
                         .unwrap_or(false);
+                    if is_left && !ctrl && !pointer.is_grabbed() {
+                        if let Some((window, edge)) = state.resize_edge_at(location) {
+                            state.activate_window(&window, serial);
+                            state.begin_resize(&window, edge, serial);
+                            state.needs_redraw = true;
+                            state.notify_activity();
+                            return;
+                        }
+                    }
+                    // Right-click or Control-click on the titlebar opens the
+                    // window menu (T-01.4). `titlebar_window_at` already
+                    // resolves the window stack, so a titlebar covered by a
+                    // higher window is not opened and one drawn above a lower
+                    // window still is.
                     if is_right || (is_left && ctrl) {
                         if let Some(window) = state.titlebar_window_at(location) {
                             state.activate_window(&window, serial);
@@ -659,6 +699,11 @@ where
             state.needs_redraw = true;
             pointer.button(state, &button_event);
             pointer.frame(state);
+            // A grab release leaves the pointer where it was, possibly off
+            // the border; refresh the forced resize cursor immediately
+            // instead of waiting for the next motion.
+            let location = pointer.current_location();
+            refresh_resize_cursor(state, &pointer, location);
             state.notify_activity();
         }
         InputEvent::PointerAxis { event } => {

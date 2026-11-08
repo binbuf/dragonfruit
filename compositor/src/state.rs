@@ -120,7 +120,7 @@ use crate::wallpaper::{slide_offset, slide_slots, WallpaperCache, WallpaperSlot}
 use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::motion::motion_token;
 use crate::window::popup::constrained_popup_geometry;
-use crate::window::resize::SizeConstraints;
+use crate::window::resize::{ResizeEdge, SizeConstraints};
 use crate::window::{
     cascaded_geometry, centered_on, fullscreen_reveal_rect, BackdropPass, ColorScheme,
     DecorationTier, DegradeController, DegradeTier, DoubleClickTracker, EffectiveMaterial,
@@ -757,6 +757,13 @@ pub struct DfState {
     /// Surfaces currently inhibiting idle.
     pub idle_inhibitors: Vec<WlSurface>,
     pub cursor_image: smithay::input::pointer::CursorImageStatus,
+    /// Cursor icon forced while the pointer is over an SSD resize border.
+    /// The client's own cursor is kept aside in `client_cursor_image` so it
+    /// can be restored when the pointer leaves the border.
+    pub resize_cursor: Option<smithay::input::pointer::CursorIcon>,
+    /// The last cursor image the focused client asked for. Ignored while
+    /// `resize_cursor` overrides it.
+    client_cursor_image: smithay::input::pointer::CursorImageStatus,
 
     // --- window model (T-04) ------------------------------------------------
     /// Compositor-owned window metadata: states, restore geometry,
@@ -1093,6 +1100,8 @@ impl DfState {
             pending_activation: Vec::new(),
             idle_inhibitors: Vec::new(),
             cursor_image: smithay::input::pointer::CursorImageStatus::default_named(),
+            resize_cursor: None,
+            client_cursor_image: smithay::input::pointer::CursorImageStatus::default_named(),
             windows: WindowModel::new(),
             window_dispatch: WindowDispatch::new(),
             reserved_zones: ReservedZones::default(),
@@ -2308,6 +2317,104 @@ impl DfState {
         titlebar.then_some(window)
     }
 
+    /// Whether one of `window`'s own client popups covers a global-space
+    /// point. Popups always outrank their parent's frame edges.
+    fn window_popup_under(&self, window: &Window, point: Point<i32, Logical>) -> bool {
+        let Some(location) = self.space.element_location(window) else {
+            return false;
+        };
+        let render_location = location - window.geometry().loc;
+        window
+            .surface_under(
+                point.to_f64() - render_location.to_f64(),
+                WindowSurfaceType::POPUP,
+            )
+            .is_some()
+    }
+
+    /// The topmost server-decorated floating window whose resize border
+    /// contains a global-space point, with the edge under the pointer.
+    ///
+    /// This is the SSD counterpart of the client-driven
+    /// `xdg_toplevel.resize` path: a Tier-2 window's frame is compositor
+    /// chrome, so the compositor must own its edge hit region. Client popups
+    /// keep priority, and a CSD window's content is never claimed by an
+    /// invisible border (the tier-3 dignity rule).
+    pub fn resize_edge_at(&self, location: Point<f64, Logical>) -> Option<(Window, ResizeEdge)> {
+        let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
+        for window in self.space.elements().rev() {
+            let Some(state) = self.windows.state(window) else {
+                continue;
+            };
+            if state == WindowState::Minimized {
+                continue;
+            }
+            if self.window_popup_under(window, point) {
+                return None;
+            }
+            let Some(content) = self.windows.geometry(window) else {
+                continue;
+            };
+            let tier = self.windows.decorations(window);
+            let frame = self.insets_for(window).outset(content);
+            let titlebar_hit = self
+                .titlebar_element(window)
+                .is_some_and(|element| element.hit(point));
+            let client_hit = self.window_client_under(window, point);
+            if !titlebar_hit && !client_hit {
+                // A server-decorated frame owns its border strips even when
+                // the client has not committed a buffer across the whole
+                // configured size. A CSD window has no such frame, so a hole
+                // in its input region still lets a lower window be hit.
+                if tier == DecorationTier::ServerSide && frame.contains(point) {
+                    if state != WindowState::Floating {
+                        return None;
+                    }
+                    return crate::window::resize_edge_at(frame, point)
+                        .map(|edge| (window.clone(), edge));
+                }
+                continue;
+            }
+            // The topmost window at this point is this one. Only a floating
+            // SSD window's edge starts a resize; its interior (and any
+            // zoomed/fullscreen/CSD window) consumes the press normally.
+            if state == WindowState::Floating && tier == DecorationTier::ServerSide {
+                if let Some(edge) = crate::window::resize_edge_at(frame, point) {
+                    return Some((window.clone(), edge));
+                }
+            }
+            return None;
+        }
+        None
+    }
+
+    /// Update the forced resize cursor for the pointer position, returning
+    /// whether the cursor changed. The client's own cursor is preserved and
+    /// restored when the pointer leaves the border.
+    pub fn update_resize_cursor(&mut self, location: Point<f64, Logical>) -> bool {
+        let icon = self
+            .resize_edge_at(location)
+            .map(|(_, edge)| edge.cursor_icon());
+        if icon == self.resize_cursor {
+            return false;
+        }
+        self.resize_cursor = icon;
+        self.cursor_image = match icon {
+            Some(icon) => smithay::input::pointer::CursorImageStatus::Named(icon),
+            None => self.client_cursor_image.clone(),
+        };
+        true
+    }
+
+    /// Drop any forced resize cursor and restore the client's own cursor.
+    /// Used when chrome, a menu, or an overlay owns the pointer instead of a
+    /// window edge.
+    pub fn clear_resize_cursor(&mut self) {
+        if self.resize_cursor.take().is_some() {
+            self.cursor_image = self.client_cursor_image.clone();
+        }
+    }
+
     /// Perform a traffic-light action (T-01.2). These are the same
     /// state-machine primitives the shell protocol and window menu call, so
     /// the compositor keeps a single owner of window state.
@@ -2384,6 +2491,35 @@ impl DfState {
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, Some(surface), serial);
         }
+    }
+
+    /// Start the interactive resize grab from an SSD edge press. The grab is
+    /// the same [`ResizeGrab`] the CSD `xdg_toplevel.resize` path uses, so
+    /// both decoration tiers share the constraint and output-clamp math.
+    /// Only floating windows resize (zoomed/fullscreen stay put).
+    pub fn begin_resize(&mut self, window: &Window, edge: ResizeEdge, serial: Serial) {
+        if self.windows.state(window) != Some(WindowState::Floating) {
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
+        let Some(initial_geometry) = self.windows.geometry(window) else {
+            return;
+        };
+        let start_data = GrabStartData {
+            // An edge press has no client surface under it, so there is no
+            // focus to restore on grab release.
+            focus: None,
+            button: 0x110,
+            location: pointer.current_location(),
+        };
+        pointer.set_grab(
+            self,
+            ResizeGrab::new(start_data, window.clone(), edge, initial_geometry),
+            serial,
+            PointerFocus::Clear,
+        );
     }
 
     /// Start the interactive move grab from a titlebar press (T-01.3). The
@@ -3188,6 +3324,9 @@ impl DfState {
         if self.hovered_titlebar == Some(id) {
             self.hovered_titlebar = None;
         }
+        // A resize cursor must not outlive the window whose edge it
+        // advertised; the next motion recomputes it.
+        self.clear_resize_cursor();
         if self
             .window_menu
             .as_ref()
@@ -5337,6 +5476,11 @@ impl XdgShellHandler for DfState {
         let Some(window) = self.window_for_surface(surface.wl_surface()) else {
             return;
         };
+        // Zoomed and fullscreen windows are not interactively moved (the
+        // grab module's contract); a CSD client must not bypass it.
+        if self.windows.state(&window) != Some(WindowState::Floating) {
+            return;
+        }
         let Some(pointer) = self.seat.get_pointer() else {
             return;
         };
@@ -5367,6 +5511,11 @@ impl XdgShellHandler for DfState {
         let Some(window) = self.window_for_surface(surface.wl_surface()) else {
             return;
         };
+        // Zoomed and fullscreen windows are not interactively resized; the
+        // SSD edge path and the CSD request path share this rule.
+        if self.windows.state(&window) != Some(WindowState::Floating) {
+            return;
+        }
         let Some(pointer) = self.seat.get_pointer() else {
             return;
         };
@@ -5676,7 +5825,13 @@ impl SeatHandler for DfState {
         _seat: &smithay::input::Seat<DfState>,
         image: smithay::input::pointer::CursorImageStatus,
     ) {
-        self.cursor_image = image;
+        // Keep the client's request so the compositor can restore it when the
+        // pointer leaves an SSD resize border; while over the border the
+        // compositor-owned resize cursor wins.
+        self.client_cursor_image = image.clone();
+        if self.resize_cursor.is_none() {
+            self.cursor_image = image;
+        }
     }
 }
 

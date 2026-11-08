@@ -6,8 +6,19 @@
 //! `xdg_toplevel` resize requests. Client min/max-size hints clamp the
 //! result, and a resized window never leaves its output.
 
+use smithay::input::pointer::CursorIcon;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Point, Rectangle, Size};
+
+/// Width of the interactive resize border around an SSD window, in logical
+/// pixels. Matches the shared first-party `WindowResizeGrips` thickness so a
+/// compositor-drawn frame and a client-drawn frame feel the same.
+pub const RESIZE_BORDER: i32 = crate::design_tokens::component::window::RESIZE_BORDER as i32;
+
+/// Side length of a corner resize handle. Corners are deliberately larger
+/// than the edge strip so a diagonal drag is easy to start; the shared QML
+/// grips use the same 12 px square.
+pub const RESIZE_CORNER: i32 = crate::design_tokens::component::window::RESIZE_CORNER as i32;
 
 /// One of the eight resize edges (the four corners are combinations).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -85,6 +96,80 @@ impl ResizeEdge {
             self,
             ResizeEdge::Bottom | ResizeEdge::BottomLeft | ResizeEdge::BottomRight
         )
+    }
+
+    /// The pointer cursor that advertises this resize direction.
+    pub const fn cursor_icon(self) -> CursorIcon {
+        match self {
+            ResizeEdge::Top => CursorIcon::NResize,
+            ResizeEdge::Bottom => CursorIcon::SResize,
+            ResizeEdge::Left => CursorIcon::WResize,
+            ResizeEdge::Right => CursorIcon::EResize,
+            ResizeEdge::TopLeft => CursorIcon::NwResize,
+            ResizeEdge::TopRight => CursorIcon::NeResize,
+            ResizeEdge::BottomLeft => CursorIcon::SwResize,
+            ResizeEdge::BottomRight => CursorIcon::SeResize,
+        }
+    }
+}
+
+/// Which resize edge (if any) a point falls on inside a decorated window's
+/// `frame` (the titlebar and the client area together).
+///
+/// The edge strip is [`RESIZE_BORDER`] wide and the corner handles are
+/// [`RESIZE_CORNER`] square, matching `WindowResizeGrips.qml`. A point in the
+/// middle of the frame is not a resize target. Very small windows are handled
+/// by choosing the nearest side, so a narrow window still has a left/right
+/// half rather than a contradictory both-sides edge.
+pub fn resize_edge_at(
+    frame: Rectangle<i32, Logical>,
+    point: Point<i32, Logical>,
+) -> Option<ResizeEdge> {
+    if !frame.contains(point) {
+        return None;
+    }
+    let left = point.x - frame.loc.x;
+    let right = frame.loc.x + frame.size.w - 1 - point.x;
+    let top = point.y - frame.loc.y;
+    let bottom = frame.loc.y + frame.size.h - 1 - point.y;
+
+    // Corners are larger than edges; pick the nearest horizontal/vertical
+    // side so a tiny window cannot report both left and right.
+    let horizontal = if left <= right {
+        (left < RESIZE_CORNER).then_some(true)
+    } else {
+        (right < RESIZE_CORNER).then_some(false)
+    };
+    let vertical = if top <= bottom {
+        (top < RESIZE_CORNER).then_some(true)
+    } else {
+        (bottom < RESIZE_CORNER).then_some(false)
+    };
+    if let (Some(left_side), Some(top_side)) = (horizontal, vertical) {
+        return Some(match (left_side, top_side) {
+            (true, true) => ResizeEdge::TopLeft,
+            (true, false) => ResizeEdge::BottomLeft,
+            (false, true) => ResizeEdge::TopRight,
+            (false, false) => ResizeEdge::BottomRight,
+        });
+    }
+
+    let horizontal = if left <= right {
+        (left < RESIZE_BORDER).then_some(true)
+    } else {
+        (right < RESIZE_BORDER).then_some(false)
+    };
+    let vertical = if top <= bottom {
+        (top < RESIZE_BORDER).then_some(true)
+    } else {
+        (bottom < RESIZE_BORDER).then_some(false)
+    };
+    match (horizontal, vertical) {
+        (Some(true), _) => Some(ResizeEdge::Left),
+        (Some(false), _) => Some(ResizeEdge::Right),
+        (None, Some(true)) => Some(ResizeEdge::Top),
+        (None, Some(false)) => Some(ResizeEdge::Bottom),
+        (None, None) => None,
     }
 }
 
@@ -236,6 +321,85 @@ mod tests {
 
     fn no_constraints() -> SizeConstraints {
         SizeConstraints::default()
+    }
+
+    #[test]
+    fn resize_edge_at_maps_edges_and_corners() {
+        let frame = rect(100, 100, 400, 300);
+        // Edge strips.
+        assert_eq!(
+            resize_edge_at(frame, Point::from((300, 102))),
+            Some(ResizeEdge::Top)
+        );
+        assert_eq!(
+            resize_edge_at(frame, Point::from((300, 397))),
+            Some(ResizeEdge::Bottom)
+        );
+        assert_eq!(
+            resize_edge_at(frame, Point::from((102, 250))),
+            Some(ResizeEdge::Left)
+        );
+        assert_eq!(
+            resize_edge_at(frame, Point::from((497, 250))),
+            Some(ResizeEdge::Right)
+        );
+        // Corner handles are larger than the edge strips.
+        assert_eq!(
+            resize_edge_at(frame, Point::from((105, 105))),
+            Some(ResizeEdge::TopLeft)
+        );
+        assert_eq!(
+            resize_edge_at(frame, Point::from((495, 105))),
+            Some(ResizeEdge::TopRight)
+        );
+        assert_eq!(
+            resize_edge_at(frame, Point::from((105, 395))),
+            Some(ResizeEdge::BottomLeft)
+        );
+        assert_eq!(
+            resize_edge_at(frame, Point::from((495, 395))),
+            Some(ResizeEdge::BottomRight)
+        );
+        // The middle of the frame is content, not a resize target.
+        assert_eq!(resize_edge_at(frame, Point::from((300, 250))), None);
+        // Outside the frame.
+        assert_eq!(resize_edge_at(frame, Point::from((99, 250))), None);
+        assert_eq!(resize_edge_at(frame, Point::from((300, 400))), None);
+    }
+
+    #[test]
+    fn resize_edge_at_handles_windows_narrower_than_the_corner() {
+        let frame = rect(0, 0, 10, 10);
+        // Every point is within a corner; the nearest half wins instead of
+        // producing an impossible left+right combination.
+        assert_eq!(
+            resize_edge_at(frame, Point::from((1, 1))),
+            Some(ResizeEdge::TopLeft)
+        );
+        assert_eq!(
+            resize_edge_at(frame, Point::from((8, 1))),
+            Some(ResizeEdge::TopRight)
+        );
+        assert_eq!(
+            resize_edge_at(frame, Point::from((1, 8))),
+            Some(ResizeEdge::BottomLeft)
+        );
+        assert_eq!(
+            resize_edge_at(frame, Point::from((8, 8))),
+            Some(ResizeEdge::BottomRight)
+        );
+    }
+
+    #[test]
+    fn resize_cursors_match_the_edge_direction() {
+        assert_eq!(ResizeEdge::Top.cursor_icon(), CursorIcon::NResize);
+        assert_eq!(ResizeEdge::Bottom.cursor_icon(), CursorIcon::SResize);
+        assert_eq!(ResizeEdge::Left.cursor_icon(), CursorIcon::WResize);
+        assert_eq!(ResizeEdge::Right.cursor_icon(), CursorIcon::EResize);
+        assert_eq!(ResizeEdge::TopLeft.cursor_icon(), CursorIcon::NwResize);
+        assert_eq!(ResizeEdge::TopRight.cursor_icon(), CursorIcon::NeResize);
+        assert_eq!(ResizeEdge::BottomLeft.cursor_icon(), CursorIcon::SwResize);
+        assert_eq!(ResizeEdge::BottomRight.cursor_icon(), CursorIcon::SeResize);
     }
 
     #[test]

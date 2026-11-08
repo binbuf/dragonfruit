@@ -268,6 +268,8 @@ pub mod component {
     pub mod window {
         pub const RADIUS: f32 = 14.0_f32;
         pub const BORDER_WIDTH: f32 = 1.0_f32;
+        pub const RESIZE_BORDER: f32 = 6.0_f32;
+        pub const RESIZE_CORNER: f32 = 12.0_f32;
         pub const SHADOW_BLUR: f32 = 40.0_f32;
     }
     pub mod titlebar {

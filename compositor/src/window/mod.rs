@@ -134,7 +134,8 @@ pub use placement::{
 };
 #[allow(unused_imports)]
 pub use resize::{
-    apply_aspect, clamp_move, clamp_within_output, resize_geometry, ResizeEdge, SizeConstraints,
+    apply_aspect, clamp_move, clamp_within_output, resize_edge_at, resize_geometry, ResizeEdge,
+    SizeConstraints, RESIZE_BORDER, RESIZE_CORNER,
 };
 pub use scanout::{covers_output, direct_scanout_candidate};
 #[allow(unused_imports)]

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
+import Dragonfruit
 
 // Edge and corner input for a frameless, client-decorated window.
 //
@@ -14,8 +15,8 @@ import QtQuick
 Item {
     id: root
 
-    property int thickness: 6
-    property int corner: 12
+    property int thickness: Theme.controls.window.resizeBorder
+    property int corner: Theme.controls.window.resizeCorner
     signal resizeRequested(int edges)
 
     z: 1000
