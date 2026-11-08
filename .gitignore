@@ -25,9 +25,13 @@ screenshot.png
 # Local art-direction reference screenshots (not original project assets;
 # must never ship — see docs/design/14-risks.md).
 /docs/reference/macos/
+/docs/v*/
+/docs/tasks/
+/docs/ROADMAP.md
 
 # symphony harness (local tool, not tracked)
 .symphony/
 .stop
 
 build-release/
+.gitignore
