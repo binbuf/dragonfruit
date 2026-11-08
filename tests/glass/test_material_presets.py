@@ -203,6 +203,12 @@ def main() -> int:
     checks.near(dark_veil["tint"], 0.0, "Dark veil is a black wash")
     checks.check(dark_veil["veil"]["alpha95"] == 0.0,
                  "Dark LUT ends at zero by 95 pt")
+    # The coverage captures give a much subtler Dark wash than the original
+    # 0.48 baseline; the curve must keep the mid-grey fit and disappear over
+    # white.
+    for expected, actual in zip((0.286, 0.30316, 0.26026, 0.13728, 0.0),
+                                dark_veil["veil"]["adaptScale"]):
+        checks.near(actual, expected, "Dark adaptation scale")
 
     # T206: first-party app chrome. The measured Light Settings/Files fits and
     # the measured Dark Files fits are exact; Settings Dark is an adaptation

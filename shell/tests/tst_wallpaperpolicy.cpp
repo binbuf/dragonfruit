@@ -23,6 +23,7 @@ private slots:
     void fitNamesMapToTheWireEnum();
     void unknownFitFallsBackToFill();
     void liveFlipChangesTheSettings();
+    void topBandLuminanceFollowsTheImageAndFallback();
 };
 
 void TestWallpaperPolicy::defaultsMatchTheSchema()
@@ -153,6 +154,25 @@ void TestWallpaperPolicy::liveFlipChangesTheSettings()
     const WallpaperSettings withProvider = wallpaperSettingsFromValues(values);
     QVERIFY(after != withProvider);
     QCOMPARE(withProvider.effectiveSource(), QStringLiteral("/tmp/b.png"));
+}
+
+void TestWallpaperPolicy::topBandLuminanceFollowsTheImageAndFallback()
+{
+    // The menu bar reads the top 10% of the image, not the whole average.
+    QImage image(100, 100, QImage::Format_RGB32);
+    image.fill(Qt::black);
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 0; x < 100; ++x)
+            image.setPixel(x, y, qRgb(255, 255, 255));
+    }
+    QCOMPARE(qRound(wallpaperTopBandLuminance(image, Qt::black) * 1000), 1000);
+
+    // No decodable source: the solid fallback colour decides.
+    QCOMPARE(qRound(wallpaperTopBandLuminance(QImage(), QColor(255, 255, 255)) * 1000),
+             1000);
+    QCOMPARE(qRound(wallpaperTopBandLuminance(QImage(), QColor(0, 0, 0)) * 1000), 0);
+    QVERIFY(qAbs(wallpaperTopBandLuminance(QImage(), QColor(128, 128, 128)) - 0.502)
+            < 0.01);
 }
 
 QTEST_MAIN(TestWallpaperPolicy)

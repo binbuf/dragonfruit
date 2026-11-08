@@ -16,6 +16,9 @@ Item {
     // The application menu's title is bold, the app's own top-level menus are
     // not (the macOS convention).
     property bool emphasized: false
+    // T200: the menu-bar foreground chosen from the wallpaper behind the bar.
+    // The default keeps the scheme colour for standalone/gallery use.
+    property color foreground: Theme.color.textPrimary
     property alias popup: popup
     property alias open: popup.open
     property int highlightedIndex: -1
@@ -300,7 +303,7 @@ Item {
         visible: root.showLogo
         anchors.centerIn: parent
         size: Theme.controls.menuBar.iconSize
-        color: root.open ? Theme.color.accentContent : Theme.color.textPrimary
+        color: root.open ? Theme.color.accentContent : root.foreground
     }
 
     Text {
@@ -308,7 +311,7 @@ Item {
         visible: !root.showLogo
         anchors.centerIn: parent
         text: root.title
-        color: root.open ? Theme.color.accentContent : Theme.color.textPrimary
+        color: root.open ? Theme.color.accentContent : root.foreground
         font.pixelSize: Theme.controls.titlebar.fontSize
         font.weight: root.emphasized ? Theme.primitive.font.weightBold
                                      : Theme.primitive.font.weightMedium

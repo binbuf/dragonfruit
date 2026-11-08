@@ -730,6 +730,10 @@ private:
     // (`df_workspace.set_wallpaper`). Runs on every `changed`/`refreshed`, on a
     // provider property change, and once after the protocol connects.
     void applyWallpaperPolicy();
+    // T200: recompute the menu-bar background luma from the active Space's
+    // wallpaper (source image top band, or its solid fallback colour) and
+    // inject it into the MenuBar QML item so the text/glyphs can flip.
+    void updateMenuBarLuminance();
     // T-09.5: re-read the settingsd display keys and forward them to the
     // compositor (`df_output.set_scale` / `df_output.set_transform`). Runs on
     // every `changed`/`refreshed` and once after the protocol connects.
@@ -1083,6 +1087,9 @@ private:
     // value does not re-send the protocol requests.
     WallpaperSettings m_wallpaperSettings;
     bool m_wallpaperSent = false;
+    // T200: top-band luma per wallpaper source/colour, so a Space switch does
+    // not re-decode a 4K image just to colour the menu-bar text.
+    QHash<QString, double> m_menuBarLumaCache;
     // T-18.1b: the provider's live `DefaultSource` / `BuiltinDefaultSource`
     // (empty when the provider is absent or has not resolved them). Kept
     // across a provider restart so the desktop is not visibly reset.

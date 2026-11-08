@@ -11,12 +11,13 @@ hardware-independent acceptance fixture:
 * the Light background-luminance adaptation matches the measured
   0.451/0.477/0.409/0.218/0.0 table over L=0/0.251/0.502/0.784/1.0, so the
   veil is invisible over white;
-* the LUT is monotone and the Dark baseline is a black wash with the same
-  depth shape and an identity adaptation (Dark was not measured);
+* the LUT is monotone and the Dark baseline matches the coverage captures:
+  ~0.125 alpha over mid-grey and invisible over white;
 * the checker transmission at a fixed depth is independent of checker size
   (the veil has no spatial kernel);
-* a moving dark/bright window remains readable under Light/Dark and the
-  fallback plate stays scheme-appropriate;
+* the text/glyph foreground flips to black over a light rendered bar and
+  stays light over the dark/mid Dark backgrounds;
+* the fallback plate stays scheme-appropriate;
 * the veil resolves to the explicit no-blur mode with zero blur.
 
 ``--check`` is part of ``make gates``; ``--write`` records the evidence JSON.
@@ -47,7 +48,6 @@ MEASURED_LIGHT = {
 }
 PERIODS = (2, 4, 8, 16, 32, 64)
 TOLERANCE = 0.03
-READABILITY_FADE = 8.0
 
 
 def alpha_at(samples: dict[int, float], depth: float) -> float:
@@ -78,32 +78,14 @@ def adaptation(lum: float, adapt_luma: list[float],
     return adapt_scale[-1]
 
 
-def adapted_alpha(light: bool, base: float, depth: float, lum: float,
-                  strip: float, target: float, adapt_luma: list[float],
+def adapted_alpha(base: float, lum: float, adapt_luma: list[float],
                   adapt_scale: list[float]) -> float:
-    """The same measured adaptation + bounded readability rule the shader uses."""
-    base = max(0.0, min(1.0, base * adaptation(lum, adapt_luma, adapt_scale)))
-    if depth >= strip + READABILITY_FADE:
-        return base
-    lum = max(0.0, min(1.0, lum))
-    need = 0.0
-    if light:
-        if lum < target:
-            need = (target - lum) / max(1.0 - lum, 1e-4)
-    elif lum > target:
-        need = (lum - target) / max(lum, 1e-4)
-    t = max(0.0, min(1.0, (depth - strip) / READABILITY_FADE))
-    weight = 1.0 - t * t * (3.0 - 2.0 * t)
-    return max(0.0, min(1.0, base + max(need - base, 0.0) * weight))
+    """The same measured adaptation the shader uses."""
+    return max(0.0, min(1.0, base * adaptation(lum, adapt_luma, adapt_scale)))
 
 
 def output_luminance(bg: float, alpha: float, veil_luma: float) -> float:
     return bg * (1.0 - alpha) + veil_luma * alpha
-
-
-def contrast(a: float, b: float) -> float:
-    light, dark = (a, b) if a > b else (b, a)
-    return (light + 0.05) / (dark + 0.05)
 
 
 def samples(entry: dict) -> dict[int, float]:
@@ -167,10 +149,9 @@ def evaluate(data: dict) -> tuple[list[str], dict]:
     backgrounds = {}
     for bg, expected in ((0.0, 0.451), (0.251, 0.477), (0.502, 0.409),
                          (0.784, 0.218), (1.0, 0.0)):
-        alpha = adapted_alpha(
-            True, alpha_at(light_lut, 5), 5, bg,
-            light["stripHeight"], light["veil"]["readability"],
-            light["veil"]["adaptLuma"], light["veil"]["adaptScale"])
+        alpha = adapted_alpha(alpha_at(light_lut, 5), bg,
+                              light["veil"]["adaptLuma"],
+                              light["veil"]["adaptScale"])
         backgrounds[str(bg)] = {
             "alpha": round(alpha, 6),
             "measured": expected,
@@ -184,36 +165,53 @@ def evaluate(data: dict) -> tuple[list[str], dict]:
           "Light adaptation ends at 0.0 over white")
     report["background_adaptation"] = backgrounds
 
-    # Live-window readability: a dark and a bright window move under the bar.
-    # Light text is 0.05 on Light; Dark text is 0.95 on Dark.
-    live = {}
-    for label, entry, light_mode, text in (
-        ("light-dark-window", light, True, 0.05),
-        ("light-bright-window", light, True, 0.05),
-        ("dark-bright-window", dark, False, 0.95),
-        ("dark-dark-window", dark, False, 0.95),
-    ):
-        bg = 0.02 if "dark-window" in label else 0.98
-        lut = light_lut if light_mode else dark_lut
-        veil_luma = 1.0 if light_mode else 0.0
-        depth = 25
-        alpha = adapted_alpha(light_mode, alpha_at(lut, depth), depth, bg,
-                              entry["stripHeight"], entry["veil"]["readability"],
-                              entry["veil"]["adaptLuma"],
-                              entry["veil"]["adaptScale"])
-        out = output_luminance(bg, alpha, veil_luma)
-        ratio = contrast(out, text)
-        live[label] = {
-            "background": bg,
-            "depth_pt": depth,
+    # Dark-mode coverage: over mid-grey the top alpha is ~0.125; over white
+    # the veil is invisible (the old fixed 0.48 baseline turned white grey).
+    dark_backgrounds = {}
+    for bg, expected in ((0.0, 0.0), (0.502, 0.439), (1.0, 1.0)):
+        alpha = adapted_alpha(alpha_at(dark_lut, 5), bg,
+                              dark["veil"]["adaptLuma"],
+                              dark["veil"]["adaptScale"])
+        out = output_luminance(bg, alpha, 0.0)
+        dark_backgrounds[str(bg)] = {
             "alpha": round(alpha, 6),
-            "output_luminance": round(out, 6),
-            "contrast": round(ratio, 3),
+            "output": round(out, 6),
+            "measured": expected,
+            "delta": round(out - expected, 6),
         }
-        minimum = 4.0 if label == "dark-bright-window" else 4.5
-        check(ratio >= minimum,
-              f"{label}: contrast {ratio:.2f} is below {minimum}")
-    report["live_window"] = live
+        check(abs(out - expected) <= 0.02,
+              f"Dark background {bg}: output {out} is outside 0.02 of {expected}")
+    check(abs(dark["veil"]["adaptScale"][2] - 0.26026) <= 1e-6,
+          "Dark adaptation keeps the coverage mid-grey fit")
+    check(dark["veil"]["adaptScale"][-1] == 0.0,
+          "Dark adaptation ends at 0.0 over white")
+    report["dark_background_adaptation"] = dark_backgrounds
+
+    # Text/glyph colour: the reference flips to black when the rendered menu
+    # bar is light enough, and uses white on the dark/mid Dark backgrounds.
+    menu_bar = data["component"]["menuBar"]
+    foreground = {}
+    for label, scheme, entry, bg, veil_luma, expected in (
+        ("light-black", "light", light, 0.0, 1.0, "dark"),
+        ("light-white", "light", light, 1.0, 1.0, "dark"),
+        ("dark-mid", "dark", dark, 0.502, 0.0, "light"),
+        ("dark-white", "dark", dark, 1.0, 0.0, "dark"),
+    ):
+        alpha = adapted_alpha(alpha_at(light_lut if scheme == "light" else dark_lut, 5),
+                              bg, entry["veil"]["adaptLuma"],
+                              entry["veil"]["adaptScale"])
+        rendered = output_luminance(bg, alpha, veil_luma)
+        threshold = menu_bar["foregroundFlipThresholdLight" if scheme == "light"
+                             else "foregroundFlipThresholdDark"]
+        chosen = "light" if rendered < threshold else "dark"
+        foreground[label] = {
+            "rendered_luma": round(rendered, 6),
+            "threshold": threshold,
+            "foreground": chosen,
+        }
+        check(chosen == expected,
+              f"{label}: foreground {chosen} != reference {expected}")
+    report["foreground"] = foreground
 
     # Fallback colours are scheme-appropriate and opaque enough to read.
     fallback = {}
@@ -275,7 +273,7 @@ def main() -> int:
             print(f"FAIL  {error}", file=sys.stderr)
         print(f"{len(errors)} failed")
         return 1
-    print("T200 menu-bar veil: LUT, checker, live-window and fallback checks pass")
+    print("T200 menu-bar veil: LUT, adaptation, foreground and fallback checks pass")
     return 0
 
 

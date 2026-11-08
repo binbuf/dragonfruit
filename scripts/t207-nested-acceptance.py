@@ -858,15 +858,17 @@ def _surface_rows() -> list[dict]:
         rows.append({
             "id": "surface-t200-menubar-veil",
             "surface": "menubar",
-            "requirement": "menu-bar veil depth LUT and readability",
+            "requirement": "menu-bar veil depth LUT and luminance adaptation",
             "evidence": str(t200.relative_to(REPO)),
             "command": "make menubar-veil-capture",
-            "verdict": "pass" if data.get("light_white_window_invisible") and max(
+            "verdict": "pass" if data.get("light_grey_window_adapted") and max(
                 deltas or [0]
             ) <= 0.01 else "fail",
-            "reason": "measured depth LUT and white-window readability",
+            "reason": "measured depth LUT and light-grey adaptation",
             "scores": f"max LUT delta {max(deltas or [0]):.4f}",
             "metrics": {"max_lut_delta": max(deltas or [0]),
+                        "light_grey_window_adapted":
+                            data.get("light_grey_window_adapted"),
                         "fallback_plate": data.get("fallback_plate")},
         })
     t202 = CAPTURES / "t202-menu-families.json"

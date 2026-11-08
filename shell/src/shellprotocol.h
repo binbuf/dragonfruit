@@ -607,6 +607,13 @@ public:
     // is remembered and re-sent once the manager has announced its Spaces.
     void setWallpaper(const QString &source, uint32_t fit, bool showOnAllSpaces);
 
+    // The active Space's wallpaper, as last announced by the compositor
+    // (`df_workspace.wallpaper`). The shell uses the source/colour to choose
+    // the menu-bar foreground (T200). Empty source + invalid colour means no
+    // announcement has arrived yet.
+    QString activeWallpaperSource() const;
+    QColor activeWallpaperColor() const;
+
     // Forward the settingsd display selection to the compositor (T-09.5,
     // `df_output.set_scale` / `df_output.set_transform`; `set_brightness`
     // added in T-11.3a): `scale` is the scaled-resolution factor
@@ -909,6 +916,9 @@ signals:
     void overviewChanged(bool active);
     void overviewProgress(qreal progress, const QString &action);
     void overviewDataChanged();
+    // T200: the active Space's wallpaper (source/colour) was announced or the
+    // active Space changed; the menu-bar foreground may need to follow it.
+    void activeWallpaperChanged();
     // App-switcher overlay state (T-06.2a): the compositor-owned machine's
     // projection. `entries` is one map per app in recency order (keys
     // `appId`, `window`), `selectedAppId` is the current selection (`""` when
@@ -978,6 +988,10 @@ private:
         bool fullscreen = false;
         // Whether this is the active Space on its output.
         bool active = false;
+        // T200: the wallpaper this Space announced (`df_workspace.wallpaper`).
+        QString wallpaperSource;
+        QColor wallpaperColor;
+        uint32_t wallpaperFit = 0;
     };
 
     void bindTrustedGlobals();

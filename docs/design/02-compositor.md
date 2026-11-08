@@ -680,11 +680,13 @@ T200 turns the menu bar into the explicit no-blur veil
 path and `VEIL_SHADER` samples the live scene directly; the measured Light
 depth LUT (0.451 at 5 pt, zero by 95 pt) is a white lift scaled by the measured
 background-luminance response (`1.0/1.06/0.91/0.48/0.0` at
-`L=0/0.25/0.5/0.78/1.0`, so it is invisible over white), and Dark uses the
-documented black baseline with the same depth shape and an identity adaptation.
-A bounded local luminance probe supplies both the adaptation and a readability
-floor; the floor may only raise alpha inside the 39 pt reference strip. The
-displayed scene is never spatially filtered. The
+`L=0/0.25/0.5/0.78/1.0`, so it is invisible over white). Dark uses the same
+depth shape at a 0.48 peak with a best-guess coverage curve (0.286 of the Light
+response), giving a much subtler black wash that also disappears over white. A
+bounded local luminance probe supplies the adaptation; there is no separate
+readability floor. The displayed scene is never spatially filtered. The shell
+injects the wallpaper's top-band luma so `MenuBar.qml` can flip the text and
+glyphs between black and white on the rendered bar. The
 menu-bar layer surface is configured to the 95 pt visual extent while its
 exclusive zone and committed input strip remain the 28 pt bar, so the lower
 veil is visual-only. The shell commits a `veil` panel region with the full
