@@ -151,7 +151,10 @@ impl NetworkManagerSource for DbusNetworkManager {
             let managed = device.managed().map_err(failed)?;
             let state = device.state().map_err(failed)?;
             let interface = device.interface().unwrap_or_default();
-            let hw_address = device.hw_address().ok().filter(|address| !address.is_empty());
+            let hw_address = device
+                .hw_address()
+                .ok()
+                .filter(|address| !address.is_empty());
             let active_connection = device
                 .active_connection()
                 .ok()
@@ -222,8 +225,8 @@ impl NetworkManagerSource for DbusNetworkManager {
 
         let mut active = Vec::new();
         for path in manager.active_connections().map_err(failed)? {
-            let proxy = ActiveConnectionProxyBlocking::new(&connection, path.as_str())
-                .map_err(failed)?;
+            let proxy =
+                ActiveConnectionProxyBlocking::new(&connection, path.as_str()).map_err(failed)?;
             active.push(ActiveConnectionData {
                 path: path.as_str().to_owned(),
                 connection: proxy
@@ -512,10 +515,7 @@ pub fn connection_from_settings(
             .get("autoconnect-priority")
             .and_then(value_i32)
             .unwrap_or(0),
-        timestamp: connection
-            .get("timestamp")
-            .and_then(value_u64)
-            .unwrap_or(0),
+        timestamp: connection.get("timestamp").and_then(value_u64).unwrap_or(0),
         interface_name: connection.get("interface-name").and_then(value_string),
         ssid: settings
             .get("802-11-wireless")
@@ -1001,7 +1001,10 @@ fn add_plugin_file(plugins: &mut Vec<VpnPluginData>, path: &std::path::Path) {
         return;
     };
     let service_type = format!("org.freedesktop.NetworkManager.{name}");
-    if plugins.iter().any(|plugin| plugin.service_type == service_type) {
+    if plugins
+        .iter()
+        .any(|plugin| plugin.service_type == service_type)
+    {
         return;
     }
     plugins.push(VpnPluginData {
@@ -1360,6 +1363,54 @@ mod tests {
         assert_eq!(
             vpn_connection_from_settings("/org/freedesktop/NetworkManager/Settings/4", &settings),
             None
+        );
+    }
+
+    #[test]
+    fn a_wifi_settings_map_decodes_its_ssid_and_priority() {
+        let mut connection: HashMap<String, OwnedValue> = HashMap::new();
+        connection.insert("type".to_owned(), owned(Value::from("802-11-wireless")));
+        connection.insert("id".to_owned(), owned(Value::from("Home")));
+        connection.insert("uuid".to_owned(), owned(Value::from("uuid-home")));
+        connection.insert("autoconnect".to_owned(), owned(Value::from(true)));
+        connection.insert("autoconnect-priority".to_owned(), owned(Value::from(7i32)));
+        let mut wireless: HashMap<String, OwnedValue> = HashMap::new();
+        wireless.insert("ssid".to_owned(), owned(Value::from(b"home".to_vec())));
+        let mut settings: HashMap<String, HashMap<String, OwnedValue>> = HashMap::new();
+        settings.insert("connection".to_owned(), connection);
+        settings.insert("802-11-wireless".to_owned(), wireless);
+
+        let decoded =
+            connection_from_settings("/org/freedesktop/NetworkManager/Settings/1", &settings)
+                .expect("a connection");
+        assert_eq!(decoded.id, "Home");
+        assert_eq!(decoded.kind, "802-11-wireless");
+        assert_eq!(decoded.ssid.as_deref(), Some("home"));
+        assert_eq!(decoded.priority, 7);
+    }
+
+    #[test]
+    fn the_add_settings_map_carries_the_kind_and_vpn_fields() {
+        let wifi = add_connection_settings(&AddConnectionSpec {
+            name: "Home".to_owned(),
+            kind: AddKind::Wifi,
+            secret: Some("hunter2".to_owned()),
+            ..AddConnectionSpec::default()
+        });
+        assert_eq!(wifi["connection"]["type"], Value::from("802-11-wireless"));
+        assert!(wifi.contains_key("802-11-wireless-security"));
+
+        let vpn = add_connection_settings(&AddConnectionSpec {
+            name: "Work".to_owned(),
+            kind: AddKind::Vpn,
+            plugin: Some("org.freedesktop.NetworkManager.openvpn".to_owned()),
+            gateway: Some("vpn.example".to_owned()),
+            ..AddConnectionSpec::default()
+        });
+        assert_eq!(vpn["connection"]["type"], Value::from("vpn"));
+        assert_eq!(
+            vpn["vpn"]["service-type"],
+            Value::from("org.freedesktop.NetworkManager.openvpn")
         );
     }
 

@@ -524,6 +524,32 @@ mod tests {
         let snapshot = VpnSnapshot::from_data(&VpnData::default());
         assert!(!snapshot.present());
         assert_eq!(snapshot.label(), "No VPN");
+        assert!(!snapshot.plugins_present());
+    }
+
+    #[test]
+    fn installed_plugins_are_labelled_and_sorted() {
+        use crate::vpn::source::VpnPluginData;
+        let snapshot = VpnSnapshot::from_data_with_plugins(
+            &VpnData::default(),
+            &[
+                VpnPluginData {
+                    service_type: "org.freedesktop.NetworkManager.wireguard".to_owned(),
+                    label: "WireGuard".to_owned(),
+                    builtin: true,
+                },
+                VpnPluginData {
+                    service_type: "org.freedesktop.NetworkManager.openvpn".to_owned(),
+                    label: "OpenVPN".to_owned(),
+                    builtin: false,
+                },
+            ],
+        );
+        assert!(snapshot.plugins_present());
+        assert_eq!(snapshot.plugin_count(), 2);
+        assert_eq!(snapshot.plugins[0].label, "OpenVPN");
+        assert_eq!(snapshot.plugins[1].label, "WireGuard");
+        assert!(snapshot.plugins[1].builtin);
     }
 
     #[test]

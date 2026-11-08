@@ -50,6 +50,11 @@ impl CommandFirewall {
                     )
                 }
             }
+            Err(error) if error.to_ascii_lowercase().contains("not running") => {
+                // firewalld is installed but stopped: that is an honest Off,
+                // not an unavailable status. The pane can start it.
+                (false, true, None)
+            }
             Err(error) => (
                 false,
                 false,
@@ -95,9 +100,7 @@ impl CommandFirewall {
                         default_zone: None,
                         open_ports: Vec::new(),
                         open_services: Vec::new(),
-                        note: Some(format!(
-                            "ufw status requires administrator rights: {first}"
-                        )),
+                        note: Some(format!("ufw status requires administrator rights: {first}")),
                     }))
                 }
             },
@@ -419,12 +422,12 @@ mod tests {
 
     #[test]
     fn detection_prefers_firewalld_then_ufw_then_nftables() {
-        assert_eq!(
-            detect_backend(true, true, true),
-            FirewallBackend::Firewalld
-        );
+        assert_eq!(detect_backend(true, true, true), FirewallBackend::Firewalld);
         assert_eq!(detect_backend(false, true, true), FirewallBackend::Ufw);
-        assert_eq!(detect_backend(false, false, true), FirewallBackend::Nftables);
+        assert_eq!(
+            detect_backend(false, false, true),
+            FirewallBackend::Nftables
+        );
         assert_eq!(detect_backend(false, false, false), FirewallBackend::None);
     }
 
@@ -482,8 +485,7 @@ Samba                      ALLOW IN    Anywhere
 
     #[test]
     fn ufw_inactive_is_known_and_off() {
-        let (enabled, ports, services, note) =
-            parse_ufw_status("Status: inactive\n\n");
+        let (enabled, ports, services, note) = parse_ufw_status("Status: inactive\n\n");
         assert!(!enabled);
         assert!(note.is_none());
         assert!(ports.is_empty());

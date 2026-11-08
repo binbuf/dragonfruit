@@ -28,6 +28,9 @@ public:
     virtual bool isAvailable() const = 0;
 
     virtual void refreshWifi() = 0;
+    // T225: the Wi-Fi radio write the Control Center tile and the quick sheet
+    // raise. The host re-reads and pushes the new view.
+    virtual void setWifiEnabled(bool enabled) = 0;
     virtual void refreshAudio() = 0;
     // The battery item is read-only: there is no write action.
     virtual void refreshBattery() = 0;
@@ -105,6 +108,7 @@ public:
 
     bool isAvailable() const override;
     void refreshWifi() override;
+    void setWifiEnabled(bool enabled) override;
     void refreshAudio() override;
     void refreshBattery() override;
     void refreshBluetooth() override;
@@ -132,8 +136,12 @@ public:
 
 private:
     using ReplySignal = void (SystemStatusClient::*)(const QByteArray &);
+    // `refreshWifiAfter` re-reads the Wi-Fi view once a write returns, so the
+    // quick sheet and Control Center tile follow the daemon instead of the
+    // write report.
     void call(const QString &interface, const QString &method,
-              const QVariantList &arguments, ReplySignal replySignal);
+              const QVariantList &arguments, ReplySignal replySignal,
+              bool refreshWifiAfter = false);
     // The service name/path are compiled in so the demo and the live shell
     // address the same object.
     QString m_service;
@@ -155,6 +163,7 @@ public:
 
     bool isAvailable() const override { return true; }
     void refreshWifi() override;
+    void setWifiEnabled(bool enabled) override;
     void refreshAudio() override;
     void refreshBattery() override;
     void refreshBluetooth() override;
@@ -182,6 +191,7 @@ public:
 
 private:
     QString m_activeSsid = QStringLiteral("dragonfruit");
+    bool m_wifiEnabled = true;
     double m_volume = 0.6;
     bool m_muted = false;
     // The audio routing fixture (T-15.3b): the default output/input names the

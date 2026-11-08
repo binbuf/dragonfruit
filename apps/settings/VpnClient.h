@@ -41,9 +41,18 @@ public:
     // `uuid`. The host re-reads and pushes the new view.
     virtual void connectVpn(const QString &uuid) = 0;
     virtual void disconnectVpn(const QString &uuid) = 0;
+    // Add a saved VPN for `plugin` (a NetworkManager service type). The pane's
+    // MVP Add sheet supplies a name and an optional gateway; credentials are
+    // edited in the full connection editor, which is out of this task's scope.
+    virtual void addVpn(const QString &plugin, const QString &name,
+                        const QString &gateway) = 0;
+    // Change whether the saved VPN comes up automatically.
+    virtual void setAutoconnect(const QString &uuid, bool enabled) = 0;
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
+    // Test/capture seam: `live` or `no-plugin`. A no-op on the live client.
+    virtual void setFixture(const QString &mode) { Q_UNUSED(mode); }
 
 signals:
     void changed(const QVariantMap &view);
@@ -64,6 +73,9 @@ public:
     void refresh() override;
     void connectVpn(const QString &uuid) override;
     void disconnectVpn(const QString &uuid) override;
+    void addVpn(const QString &plugin, const QString &name,
+                const QString &gateway) override;
+    void setAutoconnect(const QString &uuid, bool enabled) override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
@@ -92,7 +104,11 @@ public:
     void refresh() override;
     void connectVpn(const QString &uuid) override;
     void disconnectVpn(const QString &uuid) override;
+    void addVpn(const QString &plugin, const QString &name,
+                const QString &gateway) override;
+    void setAutoconnect(const QString &uuid, bool enabled) override;
     void resetForTest() override;
+    void setFixture(const QString &mode) override;
 
 private:
     void rebuild();
@@ -104,6 +120,12 @@ private:
         bool connected = false;
         bool autoconnect = false;
     };
+    struct Plugin {
+        QString serviceType;
+        QString label;
+        bool builtin = false;
+    };
     QVector<Connection> m_connections;
+    QVector<Plugin> m_plugins;
     QVariantMap m_view;
 };

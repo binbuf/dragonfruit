@@ -50,6 +50,9 @@ public:
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
+    // Test/capture seam: `live`, `nftables`, or `absent`. A no-op on the live
+    // client.
+    virtual void setFixture(const QString &mode) { Q_UNUSED(mode); }
 
 signals:
     void changed(const QVariantMap &view);
@@ -120,6 +123,7 @@ public:
     void openService(const QString &service) override;
     void closeService(const QString &service) override;
     void resetForTest() override;
+    void setFixture(const QString &mode) override;
 
 private:
     void rebuild();

@@ -77,7 +77,8 @@ bool DbusSystemStatusClient::isAvailable() const
 }
 
 void DbusSystemStatusClient::call(const QString &interface, const QString &method,
-                                  const QVariantList &arguments, ReplySignal replySignal)
+                                  const QVariantList &arguments, ReplySignal replySignal,
+                                  bool refreshWifiAfter)
 {
 #if defined(QT_DBUS_LIB)
     auto *call = new QDBusInterface(m_service, m_path, interface,
@@ -91,7 +92,7 @@ void DbusSystemStatusClient::call(const QString &interface, const QString &metho
     QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(
         call->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher, replySignal, call]() {
+            [this, watcher, replySignal, refreshWifiAfter, call]() {
                 // The host returns the JSON payload as a D-Bus string.
                 const QDBusPendingReply<QString> reply = *watcher;
                 if (reply.isValid()) {
@@ -102,18 +103,29 @@ void DbusSystemStatusClient::call(const QString &interface, const QString &metho
                 }
                 call->deleteLater();
                 watcher->deleteLater();
+                if (refreshWifiAfter)
+                    refreshWifi();
             });
 #else
     Q_UNUSED(interface);
     Q_UNUSED(method);
     Q_UNUSED(arguments);
     Q_UNUSED(replySignal);
+    Q_UNUSED(refreshWifiAfter);
 #endif
 }
 
 void DbusSystemStatusClient::refreshWifi()
 {
-    call(kWifiInterface, QStringLiteral("State"), {}, &SystemStatusClient::wifiState);
+    // `Refresh` re-reads NetworkManager; `State` would replay the host's
+    // startup snapshot.
+    call(kWifiInterface, QStringLiteral("Refresh"), {}, &SystemStatusClient::wifiState);
+}
+
+void DbusSystemStatusClient::setWifiEnabled(bool enabled)
+{
+    call(kWifiInterface, QStringLiteral("SetWirelessEnabled"), {enabled},
+         &SystemStatusClient::writeReport, true);
 }
 
 void DbusSystemStatusClient::refreshAudio()
@@ -825,13 +837,21 @@ void MockSystemStatusClient::refreshWifi()
     QJsonObject view;
     view.insert(QStringLiteral("kind"), QStringLiteral("wifi"));
     view.insert(QStringLiteral("state"), QStringLiteral("available"));
-    view.insert(QStringLiteral("glyph"), QStringLiteral("wifi-secure"));
+    view.insert(QStringLiteral("glyph"),
+                m_wifiEnabled ? QStringLiteral("wifi-secure")
+                              : QStringLiteral("wifi-disabled"));
     view.insert(QStringLiteral("label"),
-                m_activeSsid + QStringLiteral(" \u00b7 82%"));
-    view.insert(QStringLiteral("radioEnabled"), true);
-    view.insert(QStringLiteral("wifiState"), QStringLiteral("connected"));
-    view.insert(QStringLiteral("connectivity"), QStringLiteral("Connected"));
-    view.insert(QStringLiteral("activeSsid"), m_activeSsid);
+                m_wifiEnabled ? m_activeSsid + QStringLiteral(" \u00b7 82%")
+                              : QStringLiteral("Wi-Fi Off"));
+    view.insert(QStringLiteral("radioEnabled"), m_wifiEnabled);
+    view.insert(QStringLiteral("wifiState"),
+                m_wifiEnabled ? QStringLiteral("connected")
+                              : QStringLiteral("disconnected"));
+    view.insert(QStringLiteral("connectivity"),
+                m_wifiEnabled ? QStringLiteral("Connected")
+                              : QStringLiteral("No Internet"));
+    view.insert(QStringLiteral("activeSsid"),
+                m_wifiEnabled ? m_activeSsid : QString());
     view.insert(QStringLiteral("readOnly"), false);
     view.insert(QStringLiteral("note"), QString());
     view.insert(QStringLiteral("networkCount"), 3);
@@ -856,6 +876,12 @@ void MockSystemStatusClient::refreshWifi()
                             false, QStringLiteral("5 GHz")));
     view.insert(QStringLiteral("networks"), networks);
     emit wifiState(compact(view));
+}
+
+void MockSystemStatusClient::setWifiEnabled(bool enabled)
+{
+    m_wifiEnabled = enabled;
+    refreshWifi();
 }
 
 void MockSystemStatusClient::refreshAudio()

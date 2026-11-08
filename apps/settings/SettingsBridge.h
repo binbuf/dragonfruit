@@ -47,6 +47,8 @@ class PrintersClient;
 class PrivacyClient;
 class AccessibilityClient;
 class VpnClient;
+class WifiClient;
+class NetworkClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -215,6 +217,23 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Network
     // advanced (VPN) surface at all; the pane shows the absence note.
     Q_PROPERTY(bool vpnAvailable READ vpnAvailable NOTIFY vpnChanged)
+    // The Wi-Fi view from the bridge host (T225): `{ state, glyph, label,
+    // radioEnabled, wifiState, connectivity, activeSsid, activeAddress,
+    // readOnly, note, networks, knownNetworks, services }`. The Wi-Fi pane and
+    // the shell's quick sheet read the same shape; empty when the host (or
+    // NetworkManager) is absent.
+    Q_PROPERTY(QVariantMap wifi READ wifi NOTIFY wifiChanged)
+    // Whether the bridge host is on the session bus. False means no Wi-Fi
+    // surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool wifiAvailable READ wifiAvailable NOTIFY wifiChanged)
+    // The Network pane's combined view from the bridge host (T225): the Wi-Fi
+    // snapshot's services plus the `firewall` sub-view (`{ state, detected,
+    // backend, backendLabel, statusKnown, enabled, ports, services, note }`).
+    // Empty when the host is absent.
+    Q_PROPERTY(QVariantMap network READ network NOTIFY networkChanged)
+    // Whether the bridge host is on the session bus. False means no Network
+    // surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool networkAvailable READ networkAvailable NOTIFY networkChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -274,6 +293,10 @@ public:
     bool accessibilityAvailable() const;
     QVariantMap vpn() const;
     bool vpnAvailable() const;
+    QVariantMap wifi() const;
+    bool wifiAvailable() const;
+    QVariantMap network() const;
+    bool networkAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -471,9 +494,44 @@ public:
     Q_INVOKABLE void refreshVpn();
     Q_INVOKABLE void connectVpn(const QString &uuid);
     Q_INVOKABLE void disconnectVpn(const QString &uuid);
+    Q_INVOKABLE void addVpn(const QString &plugin, const QString &name,
+                            const QString &gateway);
+    Q_INVOKABLE void setVpnAutoconnect(const QString &uuid, bool enabled);
     // Test seam (`DF_VPN_FIXTURE` only): restore the in-process fixture. A
     // no-op on the live client.
     Q_INVOKABLE void resetVpnFixture();
+    Q_INVOKABLE void setVpnFixture(const QString &mode);
+
+    // T225: the Wi-Fi pane's seam. `refreshWifi` re-reads the bridge host on
+    // open; each write calls the adapter once and the host pushes the new view
+    // back through `wifiChanged`. A no-op when the host is absent.
+    Q_INVOKABLE void refreshWifi();
+    Q_INVOKABLE void setWifiEnabled(bool enabled);
+    Q_INVOKABLE void joinWifi(const QString &ssid, const QString &secret);
+    Q_INVOKABLE void joinHiddenWifi(const QString &ssid, const QString &secret);
+    Q_INVOKABLE void forgetWifi(const QString &uuid);
+    Q_INVOKABLE void setWifiAutoconnect(const QString &uuid, bool enabled);
+    Q_INVOKABLE void resetWifiFixture();
+    Q_INVOKABLE void setWifiFixture(const QString &mode);
+
+    // T225: the Network pane's seam. Service order is NetworkManager's
+    // autoconnect priority; `moveNetworkService` moves one position. Firewall
+    // writes go to the same bridge host's Firewall interface.
+    Q_INVOKABLE void refreshNetwork();
+    Q_INVOKABLE void activateNetworkService(const QString &uuid);
+    Q_INVOKABLE void deactivateNetworkService(const QString &uuid);
+    Q_INVOKABLE void moveNetworkService(const QString &uuid, int delta);
+    Q_INVOKABLE void addNetworkService(const QString &name, const QString &kind,
+                                       const QString &plugin,
+                                       const QString &gateway);
+    Q_INVOKABLE void setNetworkAutoconnect(const QString &uuid, bool enabled);
+    Q_INVOKABLE void setFirewallEnabled(bool enabled);
+    Q_INVOKABLE void openFirewallPort(int port, const QString &protocol);
+    Q_INVOKABLE void closeFirewallPort(int port, const QString &protocol);
+    Q_INVOKABLE void openFirewallService(const QString &service);
+    Q_INVOKABLE void closeFirewallService(const QString &service);
+    Q_INVOKABLE void resetNetworkFixture();
+    Q_INVOKABLE void setNetworkFixture(const QString &mode);
 
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
@@ -534,6 +592,10 @@ signals:
     void accessibilityChanged();
     // The Network advanced (VPN) view or availability changed (T-15.15b).
     void vpnChanged();
+    // The Wi-Fi view or availability changed (T225).
+    void wifiChanged();
+    // The Network/firewall view or availability changed (T225).
+    void networkChanged();
 
 private:
     // T224: authorize one privileged account write, then run it. A denial
@@ -615,4 +677,6 @@ private:
     // T-15.15b: the Network advanced (VPN) seam (`DF_VPN_FIXTURE` selects the
     // mock).
     VpnClient *m_vpn = nullptr;
+    WifiClient *m_wifi = nullptr;
+    NetworkClient *m_network = nullptr;
 };

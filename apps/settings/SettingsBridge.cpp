@@ -13,7 +13,9 @@
 #include "SoundClient.h"
 #include "StorageClient.h"
 #include "UpdatesClient.h"
+#include "NetworkClient.h"
 #include "VpnClient.h"
+#include "WifiClient.h"
 #include "settingsclient.h"
 
 #include <QColor>
@@ -276,6 +278,25 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_vpn, &VpnClient::availableChanged, this,
             [this](bool) { emit vpnChanged(); });
 
+    // T225: the Wi-Fi and Network/Firewall seams, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_WIFI_FIXTURE"))
+        m_wifi = new MockWifiClient(this);
+    else
+        m_wifi = new DbusWifiClient(this);
+    connect(m_wifi, &WifiClient::changed, this,
+            [this](const QVariantMap &) { emit wifiChanged(); });
+    connect(m_wifi, &WifiClient::availableChanged, this,
+            [this](bool) { emit wifiChanged(); });
+
+    if (qEnvironmentVariableIsSet("DF_NETWORK_FIXTURE"))
+        m_network = new MockNetworkClient(this);
+    else
+        m_network = new DbusNetworkClient(this);
+    connect(m_network, &NetworkClient::changed, this,
+            [this](const QVariantMap &) { emit networkChanged(); });
+    connect(m_network, &NetworkClient::availableChanged, this,
+            [this](bool) { emit networkChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -428,6 +449,26 @@ QVariantMap SettingsBridge::vpn() const
 bool SettingsBridge::vpnAvailable() const
 {
     return m_vpn && m_vpn->available();
+}
+
+QVariantMap SettingsBridge::wifi() const
+{
+    return m_wifi ? m_wifi->view() : QVariantMap();
+}
+
+bool SettingsBridge::wifiAvailable() const
+{
+    return m_wifi && m_wifi->available();
+}
+
+QVariantMap SettingsBridge::network() const
+{
+    return m_network ? m_network->view() : QVariantMap();
+}
+
+bool SettingsBridge::networkAvailable() const
+{
+    return m_network && m_network->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -1185,10 +1226,157 @@ void SettingsBridge::disconnectVpn(const QString &uuid)
         m_vpn->disconnectVpn(uuid);
 }
 
+void SettingsBridge::addVpn(const QString &plugin, const QString &name,
+                            const QString &gateway)
+{
+    if (m_vpn && !plugin.isEmpty() && !name.isEmpty())
+        m_vpn->addVpn(plugin, name, gateway);
+}
+
+void SettingsBridge::setVpnAutoconnect(const QString &uuid, bool enabled)
+{
+    if (m_vpn && !uuid.isEmpty())
+        m_vpn->setAutoconnect(uuid, enabled);
+}
+
 void SettingsBridge::resetVpnFixture()
 {
     if (m_vpn)
         m_vpn->resetForTest();
+}
+
+void SettingsBridge::setVpnFixture(const QString &mode)
+{
+    if (m_vpn)
+        m_vpn->setFixture(mode);
+}
+
+void SettingsBridge::refreshWifi()
+{
+    if (m_wifi)
+        m_wifi->refresh();
+}
+
+void SettingsBridge::setWifiEnabled(bool enabled)
+{
+    if (m_wifi)
+        m_wifi->setEnabled(enabled);
+}
+
+void SettingsBridge::joinWifi(const QString &ssid, const QString &secret)
+{
+    if (m_wifi && !ssid.isEmpty())
+        m_wifi->join(ssid, secret);
+}
+
+void SettingsBridge::joinHiddenWifi(const QString &ssid, const QString &secret)
+{
+    if (m_wifi && !ssid.isEmpty())
+        m_wifi->joinHidden(ssid, secret);
+}
+
+void SettingsBridge::forgetWifi(const QString &uuid)
+{
+    if (m_wifi && !uuid.isEmpty())
+        m_wifi->forget(uuid);
+}
+
+void SettingsBridge::setWifiAutoconnect(const QString &uuid, bool enabled)
+{
+    if (m_wifi && !uuid.isEmpty())
+        m_wifi->setAutoconnect(uuid, enabled);
+}
+
+void SettingsBridge::resetWifiFixture()
+{
+    if (m_wifi)
+        m_wifi->resetForTest();
+}
+
+void SettingsBridge::setWifiFixture(const QString &mode)
+{
+    if (m_wifi)
+        m_wifi->setFixture(mode);
+}
+
+void SettingsBridge::refreshNetwork()
+{
+    if (m_network)
+        m_network->refresh();
+}
+
+void SettingsBridge::activateNetworkService(const QString &uuid)
+{
+    if (m_network && !uuid.isEmpty())
+        m_network->activateService(uuid);
+}
+
+void SettingsBridge::deactivateNetworkService(const QString &uuid)
+{
+    if (m_network && !uuid.isEmpty())
+        m_network->deactivateService(uuid);
+}
+
+void SettingsBridge::moveNetworkService(const QString &uuid, int delta)
+{
+    if (m_network && !uuid.isEmpty() && delta != 0)
+        m_network->moveService(uuid, delta);
+}
+
+void SettingsBridge::addNetworkService(const QString &name, const QString &kind,
+                                       const QString &plugin,
+                                       const QString &gateway)
+{
+    if (m_network && !name.isEmpty())
+        m_network->addService(name, kind, plugin, gateway);
+}
+
+void SettingsBridge::setNetworkAutoconnect(const QString &uuid, bool enabled)
+{
+    if (m_network && !uuid.isEmpty())
+        m_network->setAutoconnect(uuid, enabled);
+}
+
+void SettingsBridge::setFirewallEnabled(bool enabled)
+{
+    if (m_network)
+        m_network->setFirewallEnabled(enabled);
+}
+
+void SettingsBridge::openFirewallPort(int port, const QString &protocol)
+{
+    if (m_network)
+        m_network->openPort(port, protocol);
+}
+
+void SettingsBridge::closeFirewallPort(int port, const QString &protocol)
+{
+    if (m_network)
+        m_network->closePort(port, protocol);
+}
+
+void SettingsBridge::openFirewallService(const QString &service)
+{
+    if (m_network && !service.isEmpty())
+        m_network->openService(service);
+}
+
+void SettingsBridge::closeFirewallService(const QString &service)
+{
+    if (m_network && !service.isEmpty())
+        m_network->closeService(service);
+}
+
+void SettingsBridge::resetNetworkFixture()
+{
+    if (m_network)
+        m_network->resetForTest();
+}
+
+void SettingsBridge::setNetworkFixture(const QString &mode)
+{
+    if (m_network)
+        m_network->setFixture(mode);
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

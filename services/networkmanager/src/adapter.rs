@@ -277,7 +277,9 @@ impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
     /// Change whether the saved connection comes up automatically. One
     /// explicit write.
     pub fn set_autoconnect(&mut self, uuid: &str, enabled: bool) -> NetworkResult {
-        self.write(|source| source.update_connection(uuid, ConnectionProperty::Autoconnect(enabled)))
+        self.write(|source| {
+            source.update_connection(uuid, ConnectionProperty::Autoconnect(enabled))
+        })
     }
 
     /// Move a service one position up (`delta < 0`) or down (`delta > 0`) in
@@ -310,9 +312,7 @@ impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
         } else {
             neighbour.priority.saturating_sub(1)
         };
-        self.write(|source| {
-            source.update_connection(uuid, ConnectionProperty::Priority(priority))
-        })
+        self.write(|source| source.update_connection(uuid, ConnectionProperty::Priority(priority)))
     }
 
     /// Create a saved service or VPN connection. One explicit write.
@@ -552,6 +552,100 @@ mod tests {
         assert_eq!(result, JoinResult::Absent);
         assert!(adapter.state().is_unavailable());
         assert!(!adapter.state().slot(AdapterId::WIFI).visible);
+    }
+
+    #[test]
+    fn radio_forget_and_autoconnect_writes_apply_once() {
+        let mut adapter =
+            NetworkManagerAdapter::new(MockNetworkManager::present(Default::default()));
+        adapter.refresh();
+        assert_eq!(adapter.set_wifi_enabled(false), NetworkResult::Applied);
+        assert_eq!(
+            adapter.forget("ghost"),
+            NetworkResult::Failed(AdapterError::new(
+                "NetworkManager: unknown connection 'ghost'"
+            ))
+        );
+        assert_eq!(
+            adapter.set_autoconnect("ghost", true),
+            NetworkResult::Failed(AdapterError::new(
+                "NetworkManager: unknown connection 'ghost'"
+            ))
+        );
+        assert_eq!(adapter.source().writes(), 3);
+    }
+
+    #[test]
+    fn a_denied_service_write_degrades_to_read_only() {
+        let mut adapter =
+            NetworkManagerAdapter::new(MockNetworkManager::present(Default::default()));
+        adapter.refresh();
+        adapter.source_mut().deny_writes("not authorized");
+        assert_eq!(
+            adapter.set_wifi_enabled(true),
+            NetworkResult::Denied {
+                note: "not authorized".to_owned()
+            }
+        );
+        assert!(adapter.is_read_only());
+        // A second write is refused locally, without reaching the daemon.
+        assert!(matches!(
+            adapter.add_connection(&crate::source::AddConnectionSpec {
+                name: "Lab".to_owned(),
+                ..Default::default()
+            }),
+            NetworkResult::Denied { .. }
+        ));
+        assert_eq!(adapter.source().writes(), 1);
+    }
+
+    #[test]
+    fn a_hidden_join_uses_the_hidden_source_path() {
+        let mut adapter =
+            NetworkManagerAdapter::new(MockNetworkManager::present(Default::default()));
+        adapter.refresh();
+        let result = adapter.join_hidden(&JoinRequest::new("lab", None));
+        assert_eq!(result, JoinResult::Accepted);
+        assert_eq!(adapter.source().activations(), 1);
+        adapter.refresh();
+        assert_eq!(
+            adapter.snapshot().unwrap().active_ssid.as_deref(),
+            Some("lab")
+        );
+    }
+
+    #[test]
+    fn moving_a_service_rewrites_priority() {
+        use crate::source::{ConnectionData, MockNetworkManager};
+        let data = crate::source::NetworkManagerData {
+            connections: vec![
+                ConnectionData {
+                    id: "Wired".to_owned(),
+                    uuid: "wired".to_owned(),
+                    kind: "802-3-ethernet".to_owned(),
+                    priority: 10,
+                    autoconnect: true,
+                    ..ConnectionData::default()
+                },
+                ConnectionData {
+                    id: "Bridge".to_owned(),
+                    uuid: "bridge".to_owned(),
+                    kind: "bridge".to_owned(),
+                    priority: 0,
+                    autoconnect: true,
+                    ..ConnectionData::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let mut adapter = NetworkManagerAdapter::new(MockNetworkManager::present(data));
+        adapter.refresh();
+        assert_eq!(adapter.move_service("wired", 1), NetworkResult::Applied);
+        adapter.refresh();
+        assert_eq!(adapter.snapshot().unwrap().services[0].id, "Bridge");
+        assert_eq!(adapter.move_service("wired", -1), NetworkResult::Applied);
+        adapter.refresh();
+        assert_eq!(adapter.snapshot().unwrap().services[0].id, "Wired");
     }
 
     #[test]

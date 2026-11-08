@@ -42,6 +42,10 @@ qt_add_qml_module(dragonfruit-settings-ui
         AccessibilityClient.h
         VpnClient.cpp
         VpnClient.h
+        WifiClient.cpp
+        WifiClient.h
+        NetworkClient.cpp
+        NetworkClient.h
     QML_FILES
         SettingsPanes.qml
         SettingsMap.qml
@@ -73,6 +77,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         PrintersScannersPane.qml
         PrivacyPane.qml
         AccessibilityPane.qml
+        WifiPane.qml
         NetworkPane.qml
         SettingsDebugView.qml
         SettingsSearchResults.qml
@@ -141,6 +146,7 @@ df_qml_lint(app-settings
     PrintersScannersPane.qml
     PrivacyPane.qml
     AccessibilityPane.qml
+    WifiPane.qml
     NetworkPane.qml
     SettingsDebugView.qml
     SettingsSearchResults.qml

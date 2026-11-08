@@ -45,7 +45,7 @@ Item {
             compare(SettingsPanes.catalog[SettingsPanes.catalog.length - 1].id,
                     "game-controllers");
             // Only panes whose content has landed are advertised (no half panes).
-            compare(SettingsPanes.shippedPanes.length, 22);
+            compare(SettingsPanes.shippedPanes.length, 23);
         }
 
         // -- Category tiles (T-19.1b) -------------------------------------------
@@ -113,7 +113,7 @@ Item {
         function test_shell_opens_with_sidebar_and_search() {
             var shell = make();
             compare(shell.currentPaneId, "appearance");
-            compare(shell.visiblePanes.length, 22);
+            compare(shell.visiblePanes.length, 23);
             verify(shell.searchField !== null);
             verify(shell.sidebar !== null);
             verify(shell.titleBar !== null);
@@ -210,7 +210,7 @@ Item {
 
             shell.searchText = "";
             compare(ids(shell), JSON.stringify(
-                ["bluetooth", "network", "battery", "general", "storage",
+                ["wifi", "bluetooth", "network", "battery", "general", "storage",
                  "appearance", "accessibility", "menu-bar", "privacy",
                  "desktop-dock", "mission-control", "displays", "wallpaper",
                  "notifications", "sound", "focus", "lock-screen",
@@ -230,12 +230,12 @@ Item {
             var shell = make();
             shell.sidebar.forceActiveFocus();
             waitForRendering(stage);
-            // The default pane is Appearance, the sixth shipped row (Bluetooth,
-            // Network, Battery, General, and Storage come first in the map
-            // catalog order).
-            compare(shell.sidebar.currentIndex, 5);
-            keyClick(Qt.Key_Down);
+            // The default pane is Appearance, the seventh shipped row (Wi-Fi,
+            // Bluetooth, Network, Battery, General, and Storage come first in
+            // the map catalog order).
             compare(shell.sidebar.currentIndex, 6);
+            keyClick(Qt.Key_Down);
+            compare(shell.sidebar.currentIndex, 7);
             keyClick(Qt.Key_Return);
             compare(shell.currentPaneId, "accessibility");
             verify(shell.canGoBack);

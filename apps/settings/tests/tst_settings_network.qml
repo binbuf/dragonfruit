@@ -25,6 +25,8 @@ Item {
         // starts on the known OpenVPN-up / WireGuard-idle store.
         function init() {
             Settings.resetVpnFixture();
+            Settings.resetNetworkFixture();
+            Settings.resetWifiFixture();
         }
 
         function make() {
@@ -108,6 +110,120 @@ Item {
             // The host answers, so the absence note is hidden.
             compare(pane.absenceNote.visible, false);
             compare(pane.vpnGroup.visible, true);
+        }
+
+        function serviceRow(pane, id) {
+            for (var i = 0; i < pane.servicesRepeater.count; ++i) {
+                var row = pane.servicesRepeater.itemAt(i);
+                if (row && String(row.modelData.id) === id)
+                    return row;
+            }
+            return null;
+        }
+
+        function test_services_are_listed_and_reordered() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.ready, true);
+            // The fixture's Other Services: Wired and Thunderbolt Bridge
+            // (Wi-Fi and VPN have their own surfaces).
+            compare(pane.otherServices.length, 2);
+            var wired = serviceRow(pane, "Wired");
+            verify(wired !== null);
+            compare(wired.modelData.connected, true);
+            findChild(wired, "networkServiceDown").clicked();
+            tryVerify(function() {
+                var services = Settings.network.services;
+                for (var i = 0; i < services.length; ++i)
+                    if (services[i].id === "Wired")
+                        return services[i].order > 0;
+                return false;
+            });
+        }
+
+        function test_a_service_can_be_added() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.addServiceRow.trailingButton.clicked();
+            tryVerify(function() { return pane.addServiceDialog.open === true; });
+            findChild(pane, "networkAddServiceName").text = "Lab Ethernet";
+            findChild(pane, "networkAddServiceConfirm").clicked();
+            tryVerify(function() {
+                for (var i = 0; i < Settings.network.services.length; ++i)
+                    if (Settings.network.services[i].id === "Lab Ethernet")
+                        return true;
+                return false;
+            });
+        }
+
+        function test_the_firewall_toggle_and_rules() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.firewallGroup.visible, true);
+            compare(pane.firewallToggle.checked, false);
+            pane.firewallToggle.toggle();
+            tryVerify(function() { return Settings.network.firewall.enabled === true; });
+            compare(pane.firewallToggle.checked, true);
+            pane.firewallToggle.toggle();
+            tryVerify(function() { return Settings.network.firewall.enabled === false; });
+
+            pane.firewallOptionsRow.trailingButton.clicked();
+            tryVerify(function() { return pane.firewallDialog.open === true; });
+            findChild(pane, "networkFirewallPortField").text = "8080";
+            findChild(pane, "networkFirewallOpenPort").clicked();
+            tryVerify(function() {
+                var ports = Settings.network.firewall.ports;
+                for (var i = 0; i < ports.length; ++i)
+                    if (String(ports[i].id) === "8080/tcp")
+                        return true;
+                return false;
+            });
+            findChild(pane, "networkFirewallServiceField").text = "mdns";
+            findChild(pane, "networkFirewallOpenService").clicked();
+            tryVerify(function() {
+                return Settings.network.firewall.services.indexOf("mdns") >= 0;
+            });
+        }
+
+        function test_vpn_plugins_and_add() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(Settings.vpn.plugins.length, 2);
+            compare(pane.vpnPlugins.length, 2);
+            pane.addVpnRow.trailingButton.clicked();
+            tryVerify(function() { return pane.addVpnDialog.open === true; });
+            findChild(pane, "networkAddVpnName").text = "Lab VPN";
+            findChild(pane, "networkAddVpnConfirm").clicked();
+            tryVerify(function() { return Settings.vpn.connections.length === 3; });
+        }
+
+        function test_no_vpn_plugin_is_an_honest_absence() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setVpnFixture("no-plugin");
+            tryVerify(function() { return Settings.vpn.plugins.length === 0; });
+            compare(pane.vpnPlugins.length, 0);
+            compare(pane.addVpnRow.trailingAction, "");
+            Settings.setVpnFixture("live");
+            tryVerify(function() { return Settings.vpn.plugins.length === 2; });
+        }
+
+        function test_firewall_absence_and_unavailable_are_distinct() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setNetworkFixture("nftables");
+            tryVerify(function() { return Settings.network.firewall.backend === "nftables"; });
+            compare(pane.firewallDetected, true);
+            compare(pane.firewallStatusKnown, false);
+            compare(pane.firewallToggle.enabled, false);
+
+            Settings.setNetworkFixture("absent");
+            tryVerify(function() { return pane.ready === false; });
+            compare(pane.absenceNote.visible, true);
+            compare(pane.firewallToggle.enabled, false);
+
+            Settings.setNetworkFixture("live");
+            tryVerify(function() { return pane.ready === true; });
         }
     }
 }

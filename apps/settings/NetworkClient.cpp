@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "NetworkClient.h"
 
+#include <algorithm>
+
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
@@ -67,7 +69,10 @@ bool DbusNetworkClient::available() const
 
 void DbusNetworkClient::refresh()
 {
-    call(m_networkInterface, QStringLiteral("State"), {}, true);
+    // `Refresh` re-reads NetworkManager and the firewall before returning the
+    // combined view. A firewall write reuses this too, because the pane's
+    // `network` view carries both halves.
+    call(m_networkInterface, QStringLiteral("Refresh"), {}, true);
 }
 
 void DbusNetworkClient::activateService(const QString &uuid)
@@ -188,6 +193,30 @@ MockNetworkClient::MockNetworkClient(QObject *parent)
         m_servicesList.clear();
         rebuild();
     }
+}
+
+void MockNetworkClient::setFixture(const QString &mode)
+{
+    if (mode == QLatin1String("absent")) {
+        m_available = false;
+        m_view.clear();
+        emit availableChanged(false);
+        emit changed(m_view);
+        return;
+    }
+    m_available = true;
+    resetForTest();
+    if (mode == QLatin1String("nftables")) {
+        m_firewallBackend = QStringLiteral("nftables");
+        m_firewallStatusKnown = false;
+        m_firewallEnabled = false;
+        m_firewallNote = QStringLiteral(
+            "nftables has no service status; enable/disable is managed by the host.");
+        m_ports.clear();
+        m_servicesList.clear();
+        rebuild();
+    }
+    emit availableChanged(true);
 }
 
 void MockNetworkClient::resetForTest()
@@ -352,6 +381,16 @@ void MockNetworkClient::rebuild()
     view.insert(QStringLiteral("radioEnabled"), true);
     view.insert(QStringLiteral("readOnly"), false);
     view.insert(QStringLiteral("note"), QString());
+    QString activeSsid;
+    QString activeAddress;
+    for (const Service &service : m_services) {
+        if (service.connected && service.kind == QLatin1String("wifi")) {
+            activeSsid = QStringLiteral("dragonfruit");
+            activeAddress = service.address;
+        }
+    }
+    view.insert(QStringLiteral("activeSsid"), activeSsid);
+    view.insert(QStringLiteral("activeAddress"), activeAddress);
 
     std::sort(m_services.begin(), m_services.end(),
               [](const Service &left, const Service &right) {

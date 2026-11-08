@@ -201,6 +201,44 @@ a `VpnAccess::ReadOnly { note }` degradation, exactly like the Wi-Fi join
 (ADR 0027): reads stay live and only the write affordances disable. The
 Settings pane and Control Center tile land with T-15.15b.
 
+## The Wi-Fi, Network, VPN, and firewall panes (T225)
+
+T225 completes the Settings network surfaces without adding a second backend.
+The NetworkManager snapshot grew the fields the panes need: every saved
+connection (`ConnectionData`), every active connection
+(`ActiveConnectionData`), and every managed device (`ServiceData`). The
+existing `WifiSnapshot` now also carries the saved non-VPN **services** (in
+service order), the **known Wi-Fi networks**, and the active IPv4 address.
+The shell's Wi-Fi quick sheet and the Settings Wi-Fi pane both read this one
+`wifi` view; the Network pane reads the combined `network` view (the same
+fields plus a `firewall` sub-view). See
+[adr/0234](adr/0234-network-panes-model-order-firewall.md).
+
+The Wi-Fi writes are the radio (`WirelessEnabled`), join (visible and hidden),
+forget (delete a saved connection by UUID), autoconnect, and the two
+`settingsd` prompt-policy keys (`network.wifi.askToJoin`,
+`network.wifi.askToJoinHotspots`, schema revision 19). A polkit refusal
+degrades the same adapter to read-only. Service order is NetworkManager's
+`connection.autoconnect-priority` (higher wins); moving a service writes a
+priority just past its neighbour, and the daemon's next read re-sorts the list.
+
+The firewall lives in its own crate, `dragonfruit-firewall`
+(`services/firewall`), behind a `FirewallSource` seam and the shared
+three-state contract. Detection prefers firewalld, then ufw, then nftables.
+firewalld and ufw report status and accept enable/disable/open-port/open-service
+writes (`pkexec` when present so the shell polkit agent prompts). nftables is
+detected but reports `statusKnown: false` (Unavailable) and has no first-party
+rule editor (ADR 0229), so the pane never shows a fake Off toggle. No manager is
+"No firewall detected", not an error.
+
+VPN plugins are discovered from NetworkManager's plugin directories (plus the
+built-in WireGuard entry); Add writes one saved `vpn` connection with a name,
+service type, and optional gateway. A host with no plugin still lists saved
+connections and hides the Add affordance. Absence remains layered for all three
+halves: NetworkManager absent disables the controls with a reason, firewall
+absent/status-unavailable has distinct views, and a missing plugin hides only
+Add.
+
 ## The audio path (T-07.3)
 
 The audio adapter, `dragonfruit-audio` (`services/audio`), gives the menu bar
