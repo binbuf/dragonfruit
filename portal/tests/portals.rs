@@ -310,7 +310,7 @@ fn the_settings_portal_answers_appearance_and_desktop_reads() {
     assert_eq!(u32::try_from(contrast).unwrap(), 0);
 
     // Sandboxed Electron/GTK clients read the window-control layout from the
-    // standard GNOME compatibility namespace.
+    // standard GNOME compatibility namespace. // df-allow-desktop-name
     let layout: OwnedValue =
         settings_read(&client, "org.gnome.desktop.wm.preferences", "button-layout")
             .expect("Read button-layout");

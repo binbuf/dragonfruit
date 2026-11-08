@@ -24,7 +24,7 @@ pub const DESKTOP_NAME: &str = "dragonfruit";
 /// spelling: close, minimize, maximize on the left, nothing on the right.
 ///
 /// The session writes this to the host GTK/GSettings sources, and the
-/// Settings portal projects it into the standard GNOME
+/// Settings portal projects it into the standard GNOME // df-allow-desktop-name
 /// `org.gnome.desktop.wm.preferences` namespace so sandboxed toolkits
 /// (Flatpak Electron/GTK apps) see the same layout as host apps.
 pub const WINDOW_BUTTON_LAYOUT: &str = "close,minimize,maximize:";

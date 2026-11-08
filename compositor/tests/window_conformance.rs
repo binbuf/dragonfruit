@@ -88,7 +88,7 @@ struct TestClient {
     toplevel_configures: Vec<ToplevelConfigure>,
     /// Decoration modes delivered by `zxdg_toplevel_decoration_v1.configure`.
     decoration_configures: Vec<zxdg_toplevel_decoration_v1::Mode>,
-    /// KDE manager default modes and per-surface decoration modes.
+    /// KDE manager default modes and per-surface decoration modes. // df-allow-desktop-name
     kde_default_modes: Vec<org_kde_kwin_server_decoration_manager::Mode>,
     kde_modes: Vec<org_kde_kwin_server_decoration::Mode>,
     popup_configures: Vec<PopupConfigure>,
@@ -1617,7 +1617,7 @@ fn late_decoration_object_negotiates_ssd_on_a_mapped_window() {
     );
 }
 
-/// GTK 3 on Wayland reads KDE's legacy server-decoration manager default
+/// GTK 3 on Wayland reads KDE's legacy server-decoration manager default // df-allow-desktop-name
 /// mode (not `xdg-decoration`) before deciding to draw CSD. Advertising
 /// `Server` and recording the per-surface mode before the first buffer must
 /// give the window the compositor titlebar.
@@ -1625,11 +1625,11 @@ fn late_decoration_object_negotiates_ssd_on_a_mapped_window() {
 fn kde_server_decoration_default_mode_server_gets_a_titlebar() {
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
     let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
-        "dragonfruit-kde-decoration-synth-{}",
+        "dragonfruit-kde-decoration-synth-{}", // df-allow-desktop-name
         std::process::id()
     ));
     let proc = CompositorProcess::start_with_synthetic(
-        "dragonfruit-conformance-kde-decoration",
+        "dragonfruit-conformance-kde-decoration", // df-allow-desktop-name
         Some(&synthetic_path),
     );
     let input = SyntheticInput::connect(&synthetic_path);
@@ -1646,8 +1646,8 @@ fn kde_server_decoration_default_mode_server_gets_a_titlebar() {
     let surface = compositor.create_surface(&qh, ());
     let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
     let toplevel = xdg_surface.get_toplevel(&qh, ());
-    toplevel.set_title("KDE Decorated".into());
-    // GTK's path: the KDE decoration object, and no `xdg-decoration` object.
+    toplevel.set_title("KDE Decorated".into()); // df-allow-desktop-name
+    // GTK's path: the KDE decoration object, and no `xdg-decoration` object. // df-allow-desktop-name
     let decoration = manager.create(&surface, &qh, ());
     surface.commit();
     queue.roundtrip(&mut state).expect("initial configure");
@@ -1656,7 +1656,7 @@ fn kde_server_decoration_default_mode_server_gets_a_titlebar() {
         state
             .kde_default_modes
             .contains(&org_kde_kwin_server_decoration_manager::Mode::Server),
-        "the KDE manager must advertise Server by default: {:?}",
+        "the KDE manager must advertise Server by default: {:?}", // df-allow-desktop-name
         state.kde_default_modes
     );
     assert!(

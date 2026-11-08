@@ -174,16 +174,11 @@ Item {
                 topPadding: Theme.primitive.spacing.sm
             }
 
-            Text {
+            SettingsAbsenceNotice {
                 id: absenceNote
                 objectName: "bluetoothAbsenceNote"
-                width: parent.width
-                visible: !root.ready
-                text: qsTr("Bluetooth is not available on this system.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-                topPadding: Theme.primitive.spacing.sm
+                kind: "disabled-with-reason"
+                reason: qsTr("Bluetooth is not available on this system.")
             }
         }
 

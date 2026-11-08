@@ -23,7 +23,7 @@ Environment=XDG_SESSION_TYPE=wayland
 Environment=WAYLAND_DISPLAY=dragonfruit-wayland
 # Ask GTK 3 clients on X11/Xwayland launched by the shell to use server-side
 # decorations, so the compositor draws the left-side traffic lights. Wayland
-# GTK 3 uses the compositor's KDE server-decoration default mode instead.
+# GTK 3 uses the compositor's KDE server-decoration default mode instead.  # df-allow-desktop-name
 Environment=GTK_CSD=0
 PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
 

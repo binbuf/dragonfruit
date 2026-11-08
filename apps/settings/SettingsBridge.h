@@ -22,8 +22,10 @@
 // `DF_SETTINGS_FIXTURE` to force the deterministic `MockSettingsClient`.
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QString>
+#include <functional>
 #include <QStringList>
 #include <QUrl>
 #include <QVariant>
@@ -32,6 +34,7 @@
 #include <QtQml/qqmlregistration.h>
 
 class SettingsClient;
+class SettingsAuthorizer;
 class BluetoothClient;
 class StorageClient;
 class SoundClient;
@@ -58,6 +61,15 @@ class SettingsBridge : public QObject
     // Whether the daemon currently owns the bus name. False means defaults +
     // in-memory writes (the absent-provider state panes must degrade under).
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
+    // T224: the common apply path's state. `writeErrors` maps a key to the
+    // last failure message (empty when it succeeded); `writeStates` maps a key
+    // to `idle`/`pending`/`deferred`/`error`. Rows read these to show an
+    // inline error next to the control and to revert honestly.
+    Q_PROPERTY(QVariantMap writeErrors READ writeErrors NOTIFY writeStatesChanged)
+    Q_PROPERTY(QVariantMap writeStates READ writeStates NOTIFY writeStatesChanged)
+    // T224: a denied/cancelled privileged account action. The pane shows this
+    // next to the control; there is no password field in the app.
+    Q_PROPERTY(QString accountsError READ accountsError NOTIFY accountsErrorChanged)
     // The Wallpaper pane's built-in artwork (T-09.3): one entry per original
     // gradient preset, each `{ id, name, collection, source, url }` where
     // `source` is an absolute image path the compositor can decode and `url` a
@@ -233,6 +245,9 @@ public:
 
     QVariantMap values() const;
     bool available() const;
+    QVariantMap writeErrors() const;
+    QVariantMap writeStates() const;
+    QString accountsError() const { return m_accountsError; }
     QVariantList wallpaperPresets() const;
     QVariantList providerItems() const;
     QVariantMap bluetooth() const;
@@ -274,9 +289,34 @@ public:
 
     // Read one key (with an optional fallback for an unknown key).
     Q_INVOKABLE QVariant value(const QString &key, const QVariant &fallback = {}) const;
-    // Write one key through settingsd. The local store updates on the same
-    // event-loop turn; the daemon's `Changed` echo is de-duplicated.
-    Q_INVOKABLE void set(const QString &key, const QVariant &value);
+    // T224: the one write path. Validate first, apply optimistically, then
+    // confirm or revert with a message. Returns false when the value was
+    // rejected before any change. `set` is the compatibility alias panes have
+    // used since T-09; it now routes through the same path.
+    Q_INVOKABLE bool apply(const QString &key, const QVariant &value);
+    Q_INVOKABLE bool set(const QString &key, const QVariant &value);
+    // The schema validation message for a proposed value (empty when valid).
+    Q_INVOKABLE QString validationError(const QString &key,
+                                        const QVariant &value) const;
+    // The last failure/state for one key, and the schema metadata the row can
+    // use to configure a bounded control.
+    Q_INVOKABLE QString errorFor(const QString &key) const;
+    Q_INVOKABLE QString stateFor(const QString &key) const;
+    Q_INVOKABLE QVariantMap schemaFor(const QString &key) const;
+    // Test/capture seam (`DF_SETTINGS_FIXTURE` only): make the next write of
+    // `key` apply optimistically and then fail. A no-op on the live client.
+    Q_INVOKABLE void failNextWrite(const QString &key, const QString &message);
+    // Test/capture seam (`DF_SETTINGS_FIXTURE` only): pretend settingsd
+    // disappeared/returned while a pane is open. A no-op on the live client.
+    Q_INVOKABLE void setAvailableFixture(bool available);
+    // T224 test/capture seam for the privileged-action path: `allow`, `deny`,
+    // `cancel`, `wrong-password`, `unavailable`, or empty for the live
+    // authority.
+    Q_INVOKABLE void setAuthFixture(const QString &mode);
+    // T224: ask the system authority for one privileged action. The shell's
+    // polkit agent renders the prompt; the app never collects a password.
+    Q_INVOKABLE QString requestAuthorization(const QString &actionId,
+                                             const QString &message);
     // Re-read the daemon snapshot (`GetAll`); a no-op when no daemon is up.
     Q_INVOKABLE void refresh();
     // Temporary diagnostics: emit one `DFTRACE <message> t=<epoch-ms>` line to
@@ -453,6 +493,14 @@ public:
 signals:
     void valuesChanged();
     void availableChanged(bool available);
+    // T224: any key's write state/error changed.
+    void writeStatesChanged();
+    void writeFinished(const QString &key, const QVariant &value, bool ok,
+                       const QString &message);
+    // T224: one privileged action resolved. `error` is empty on success.
+    void authorizationFinished(const QString &requestId, bool authorized,
+                               const QString &error);
+    void accountsErrorChanged();
     // One key really changed (local write or daemon signal). `values` also
     // changes; listen to this only when a key's identity matters.
     void changed(const QString &key, const QVariant &value);
@@ -488,6 +536,11 @@ signals:
     void vpnChanged();
 
 private:
+    // T224: authorize one privileged account write, then run it. A denial
+    // leaves the view untouched and publishes `accountsError`.
+    void authorizeAccountAction(const QString &actionId, const QString &message,
+                                const std::function<void()> &action);
+    void setAccountsError(const QString &message);
     void buildWallpaperPresets();
     void connectPortalWatcher();
     void setChooserAvailable(bool available);
@@ -511,6 +564,10 @@ private slots:
 
 private:
     SettingsClient *m_client = nullptr;
+    SettingsAuthorizer *m_authorizer = nullptr;
+    QHash<QString, std::function<void()>> m_pendingAuthActions;
+    int m_authRequestCounter = 0;
+    QString m_accountsError;
     QVariantList m_presets;
     bool m_chooserAvailable = false;
     QString m_requestPath;

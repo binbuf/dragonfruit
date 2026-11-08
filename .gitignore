@@ -23,8 +23,10 @@ screenshot.png
 /harness/
 
 # Local art-direction reference screenshots (not original project assets;
-# must never ship — see docs/design/14-risks.md).
+# must never ship — see docs/design/14-risks.md). Capture evidence is local
+# too: regenerate it with the `*-capture` make targets.
 /docs/reference/macos/
+/docs/captures/
 /docs/v*/
 /docs/tasks/
 /docs/ROADMAP.md

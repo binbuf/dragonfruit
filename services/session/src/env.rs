@@ -13,7 +13,7 @@
 //! * `GTK_CSD=0` — ask GTK 3 on X11/Xwayland to use server-side decorations,
 //!   so cooperative GTK applications get the compositor titlebar with the
 //!   left-side traffic lights instead of drawing their own headerbar. On
-//!   Wayland, GTK 3 uses the compositor's KDE server-decoration default mode
+//!   Wayland, GTK 3 uses the compositor's KDE server-decoration default mode // df-allow-desktop-name
 //!   instead (see `compositor/src/state.rs`); GTK 4/libadwaita may still draw
 //!   CSD, and the `gtk-decoration-layout` steering in [`crate::toolkit`]
 //!   covers that case.
@@ -46,7 +46,7 @@ pub const WAYLAND_DISPLAY: &str = "WAYLAND_DISPLAY";
 pub const DISPLAY: &str = "DISPLAY";
 /// `GTK_CSD`; `0` asks GTK 3 on X11/Xwayland to use server-side decorations.
 /// The compositor then draws the left-side traffic lights instead of the
-/// client's headerbar. Wayland GTK 3 reads the compositor's KDE
+/// client's headerbar. Wayland GTK 3 reads the compositor's KDE // df-allow-desktop-name
 /// server-decoration default mode instead.
 pub const GTK_CSD: &str = "GTK_CSD";
 /// The value that disables GTK client-side decorations.

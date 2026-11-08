@@ -145,7 +145,7 @@ Item {
             title: qsTr("Appearance")
             sectionId: "Appearance"
 
-            SettingsRow {
+            SettingsKeyRow {
                 id: schemeRow
                 width: parent.width
                 label: qsTr("Appearance")
@@ -167,10 +167,13 @@ Item {
             width: parent.width
             title: qsTr("Accent color")
 
-            SettingsRow {
+            SettingsKeyRow {
                 id: accentRow
                 width: parent.width
                 label: qsTr("Accent color")
+                settingsId: "accent"
+                owner: "settingsd + compositor"
+                settingsKey: "appearance.accent"
                 showSeparator: false
 
                 controlData: Row {
@@ -200,10 +203,13 @@ Item {
             width: parent.width
             title: qsTr("Transparency")
 
-            SettingsRow {
+            SettingsKeyRow {
                 id: transparencyRow
                 width: parent.width
                 label: qsTr("Attached-menu transparency")
+                settingsId: "transparency"
+                owner: "settingsd + shell"
+                settingsKey: "appearance.transparency"
                 description: qsTr("Light attached menus only; higher values are clearer. "
                                   + "The Dock, menu bar, windows, and panels keep their own "
                                   + "materials. Reduce Transparency overrides this slider.")

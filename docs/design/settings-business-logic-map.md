@@ -808,7 +808,9 @@ since-revision.
 Every row must define one of:
 
 1. **Live on defaults** — settingsd-backed; the daemon may be absent, but the
-   control stays interactive and mirrors when it returns.
+   control stays interactive on the schema defaults. A write made while it is
+   away is in-memory for the session only; when the daemon returns, `GetAll`
+   is authoritative and reconciles it away (ADR 0032).
 2. **Disabled with explanation** — the owner is absent; the row is visible and
    inert, with a one-line reason.
 3. **Hidden** — the row/control does not exist on this host (e.g. no

@@ -39,7 +39,7 @@ wayland-client = "0.31"
 # `staging` carries `ext-session-lock-v1`, which the T-12.3a conformance
 # client drives against the headless compositor.
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
-# GTK 3 asks for server-side decorations through KDE's legacy
+# GTK 3 asks for server-side decorations through KDE's legacy  # df-allow-desktop-name
 # `org_kde_kwin_server_decoration_manager` on Wayland; the conformance client
 # binds it to prove the compositor's default is Server.
 wayland-protocols-misc = { version = "0.3", features = ["client"] }

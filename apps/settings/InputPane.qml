@@ -268,6 +268,14 @@ Item {
                         onMoved: (value) => Settings.set("input.repeatRate",
                                                          Math.round(value * 200.0))
                     }
+                    Text {
+                        width: parent.width
+                        visible: text.length > 0
+                        text: String(Settings.writeErrors["input.repeatRate"] || "")
+                        color: Theme.color.danger
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
 
@@ -302,6 +310,14 @@ Item {
                         onMoved: (value) => Settings.set("input.repeatDelay",
                                                          Math.round((1.0 - value) * 5000.0))
                     }
+                    Text {
+                        width: parent.width
+                        visible: text.length > 0
+                        text: String(Settings.writeErrors["input.repeatDelay"] || "")
+                        color: Theme.color.danger
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
         }
@@ -312,9 +328,12 @@ Item {
             visible: root.keyboard
             title: qsTr("Keyboard Brightness")
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Adjust keyboard brightness in low light")
+                settingsId: "adjustBrightness"
+                owner: "settingsd"
+                settingsKey: "input.adjustBrightnessLowLight"
                 description: qsTr("The hardware backlight bridge is a follow-up.")
                 controlData: Toggle {
                     id: adjustBrightnessToggle
@@ -355,12 +374,23 @@ Item {
                         onMoved: (value) =>
                             Settings.set("input.keyboardBrightness", value)
                     }
+                    Text {
+                        width: parent.width
+                        visible: text.length > 0
+                        text: String(Settings.writeErrors["input.keyboardBrightness"] || "")
+                        color: Theme.color.danger
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Turn keyboard backlight off after inactivity")
+                settingsId: "backlightOff"
+                owner: "settingsd"
+                settingsKey: "input.backlightOffAfter"
                 controlData: Select {
                     id: backlightOffSelect
                     accessibleName: qsTr("Turn keyboard backlight off after inactivity")
@@ -378,9 +408,12 @@ Item {
             visible: root.keyboard
             title: qsTr("Keyboard Navigation")
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Keyboard navigation")
+                settingsId: "keyboardNavigation"
+                owner: "settingsd"
+                settingsKey: "input.keyboardNavigation"
                 description: qsTr("Use keyboard navigation to move focus between "
                                   + "controls. Press the Tab key to move focus forward "
                                   + "and Shift Tab to move focus backward.")
@@ -392,9 +425,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Press Super key to")
+                settingsId: "emojiKey"
+                owner: "settingsd"
+                settingsKey: "input.emojiKeyAction"
                 showSeparator: false
                 controlData: Select {
                     id: emojiKeySelect
@@ -444,12 +480,23 @@ Item {
                         maxLabel: qsTr("Fast")
                         onMoved: (value) => Settings.set("input.pointerSpeed", value)
                     }
+                    Text {
+                        width: parent.width
+                        visible: text.length > 0
+                        text: String(Settings.writeErrors["input.pointerSpeed"] || "")
+                        color: Theme.color.danger
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Natural scrolling")
+                settingsId: "naturalScroll"
+                owner: "settingsd"
+                settingsKey: "input.naturalScroll"
                 description: qsTr("Content moves in the same direction as your fingers.")
                 controlData: Toggle {
                     id: naturalScrollToggle
@@ -458,9 +505,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Left-handed")
+                settingsId: "leftHanded"
+                owner: "settingsd"
+                settingsKey: "input.leftHanded"
                 description: qsTr("Swap the primary and secondary buttons.")
                 controlData: Toggle {
                     id: leftHandedToggle
@@ -469,9 +519,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Scroll method")
+                settingsId: "scrollMethod"
+                owner: "settingsd"
+                settingsKey: "input.scrollMethod"
                 showSeparator: false
                 controlData: Select {
                     id: scrollMethodSelect
@@ -556,13 +609,24 @@ Item {
                         maxLabel: qsTr("Fast")
                         onMoved: (value) => Settings.set("input.pointerSpeed", value)
                     }
+                    Text {
+                        width: parent.width
+                        visible: text.length > 0
+                        text: String(Settings.writeErrors["input.pointerSpeed"] || "")
+                        color: Theme.color.danger
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 visible: root.pointClick
                 label: qsTr("Tap to click")
+                settingsId: "tapToClick"
+                owner: "settingsd"
+                settingsKey: "input.tapToClick"
                 description: qsTr("Tap with one finger.")
                 showSeparator: false
                 controlData: Toggle {
@@ -572,10 +636,13 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 visible: root.scrollZoom
                 label: qsTr("Natural scrolling")
+                settingsId: "trackpadNaturalScroll"
+                owner: "settingsd"
+                settingsKey: "input.naturalScroll"
                 description: qsTr("Content moves in the same direction as your fingers.")
                 controlData: Toggle {
                     id: trackpadNaturalToggle
@@ -584,10 +651,13 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 visible: root.scrollZoom
                 label: qsTr("Scroll method")
+                settingsId: "trackpadScrollMethod"
+                owner: "settingsd"
+                settingsKey: "input.scrollMethod"
                 showSeparator: false
                 controlData: Select {
                     id: trackpadScrollMethodSelect
@@ -599,10 +669,13 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 visible: root.moreGestures
                 label: qsTr("Gestures")
+                settingsId: "gestures"
+                owner: "settingsd"
+                settingsKey: "gestures.enabled"
                 description: qsTr("Swipe between workspaces and open Overview.")
                 controlData: Toggle {
                     id: gesturesEnabledToggle
@@ -611,10 +684,13 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 visible: root.moreGestures
                 label: qsTr("Swipe between Workspaces")
+                settingsId: "gestureSpace"
+                owner: "settingsd"
+                settingsKey: "gestures.spaceSwitch"
                 controlData: Toggle {
                     id: gestureSpaceToggle
                     text: ""
@@ -622,10 +698,13 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 visible: root.moreGestures
                 label: qsTr("Overview")
+                settingsId: "gestureMission"
+                owner: "settingsd"
+                settingsKey: "gestures.missionControl"
                 showSeparator: false
                 controlData: Toggle {
                     id: gestureMissionToggle

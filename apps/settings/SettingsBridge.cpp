@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "SettingsBridge.h"
 
+#include "SettingsAuthorizer.h"
 #include "AccessibilityClient.h"
 #include "AccountsClient.h"
 #include "BatteryClient.h"
@@ -117,6 +118,41 @@ SettingsBridge::SettingsBridge(QObject *parent)
             });
     connect(m_client, &SettingsClient::availableChanged, this,
             [this](bool available) { emit availableChanged(available); });
+    connect(m_client, &SettingsClient::writeStateChanged, this,
+            [this](const QString &) { emit writeStatesChanged(); });
+    connect(m_client, &SettingsClient::writeFinished, this,
+            [this](const QString &key, const QVariant &value, bool ok,
+                   const QString &message) {
+                // A rejected write never emitted `changed`, so re-evaluate
+                // `Settings.values` bindings explicitly; a reverted write did
+                // emit one. Both paths must snap the control back.
+                if (!ok)
+                    emit valuesChanged();
+                emit writeStatesChanged();
+                emit writeFinished(key, value, ok, message);
+            });
+
+    // T224: privileged actions go through polkit, never an app password field.
+    m_authorizer = new SettingsAuthorizer(this);
+    if (qEnvironmentVariableIsSet("DF_ACCOUNTS_FIXTURE")
+            && !qEnvironmentVariableIsSet("DF_SETTINGS_AUTH_FIXTURE")) {
+        // Existing headless pane tests use the deterministic account fixture;
+        // it has no authority to ask, so the fixture is the authorizer.
+        m_authorizer->setFixture(QStringLiteral("allow"));
+    }
+    connect(m_authorizer, &SettingsAuthorizer::finished, this,
+            [this](const QString &requestId, bool authorized, const QString &error) {
+                const auto action = m_pendingAuthActions.take(requestId);
+                if (!authorized) {
+                    setAccountsError(error.isEmpty()
+                                         ? tr("Authentication was denied.")
+                                         : error);
+                } else if (action) {
+                    setAccountsError(QString());
+                    action();
+                }
+                emit authorizationFinished(requestId, authorized, error);
+            });
 
     // T-15.1b: the Bluetooth seam. `DF_BLUETOOTH_FIXTURE` selects the
     // deterministic in-process client for the headless pane tests; otherwise
@@ -491,9 +527,91 @@ QVariant SettingsBridge::value(const QString &key, const QVariant &fallback) con
     return m_client->value(key, fallback);
 }
 
-void SettingsBridge::set(const QString &key, const QVariant &value)
+QVariantMap SettingsBridge::writeErrors() const
 {
-    m_client->set(key, value);
+    return m_client->writeErrors();
+}
+
+QVariantMap SettingsBridge::writeStates() const
+{
+    return m_client->writeStates();
+}
+
+bool SettingsBridge::apply(const QString &key, const QVariant &value)
+{
+    return m_client->set(key, value);
+}
+
+bool SettingsBridge::set(const QString &key, const QVariant &value)
+{
+    return apply(key, value);
+}
+
+QString SettingsBridge::validationError(const QString &key, const QVariant &value) const
+{
+    return m_client->validate(key, value);
+}
+
+QString SettingsBridge::errorFor(const QString &key) const
+{
+    return m_client->writeError(key);
+}
+
+QString SettingsBridge::stateFor(const QString &key) const
+{
+    return m_client->writeState(key);
+}
+
+QVariantMap SettingsBridge::schemaFor(const QString &key) const
+{
+    // One schema table, shared with the validator: a row can size a slider or
+    // an enum popup from the same bounds the owner enforces.
+    return settingsSchemaInfo(key);
+}
+
+void SettingsBridge::failNextWrite(const QString &key, const QString &message)
+{
+    if (auto *mock = qobject_cast<MockSettingsClient *>(m_client))
+        mock->failNextWrite(key, message);
+}
+
+void SettingsBridge::setAvailableFixture(bool available)
+{
+    if (auto *mock = qobject_cast<MockSettingsClient *>(m_client))
+        mock->setAvailableFixture(available);
+}
+
+void SettingsBridge::setAuthFixture(const QString &mode)
+{
+    if (m_authorizer)
+        m_authorizer->setFixture(mode);
+}
+
+QString SettingsBridge::requestAuthorization(const QString &actionId,
+                                             const QString &message)
+{
+    const QString requestId = QStringLiteral("auth-%1").arg(++m_authRequestCounter);
+    if (m_authorizer)
+        m_authorizer->check(requestId, actionId, message);
+    return requestId;
+}
+
+void SettingsBridge::authorizeAccountAction(const QString &actionId,
+                                            const QString &message,
+                                            const std::function<void()> &action)
+{
+    const QString requestId = QStringLiteral("auth-%1").arg(++m_authRequestCounter);
+    m_pendingAuthActions.insert(requestId, action);
+    if (m_authorizer)
+        m_authorizer->check(requestId, actionId, message);
+}
+
+void SettingsBridge::setAccountsError(const QString &message)
+{
+    if (m_accountsError == message)
+        return;
+    m_accountsError = message;
+    emit accountsErrorChanged();
 }
 
 void SettingsBridge::refresh()
@@ -876,57 +994,103 @@ void SettingsBridge::resetUpdatesFixture()
 
 void SettingsBridge::refreshAccounts()
 {
+    setAccountsError(QString());
     if (m_accounts)
         m_accounts->refresh();
 }
 
+// All account/group writes are privileged. They are authorized by the host
+// polkit authority (which raises the shell's agent) before the adapter is
+// asked; a denial leaves the view untouched and publishes `accountsError`.
+// The app never renders a password field of its own.
+static const QString kAccountAdminAction =
+    QStringLiteral("org.freedesktop.accounts.user-administration");
+
 void SettingsBridge::createAccount(const QString &userName, const QString &realName,
                                    const QString &accountType)
 {
-    if (m_accounts && !userName.trimmed().isEmpty())
-        m_accounts->createUser(userName, realName, accountType);
+    if (!m_accounts || userName.trimmed().isEmpty())
+        return;
+    authorizeAccountAction(
+        kAccountAdminAction,
+        tr("Authentication is required to create a user account."),
+        [this, userName, realName, accountType]() {
+            m_accounts->createUser(userName, realName, accountType);
+        });
 }
 
 void SettingsBridge::deleteAccount(int uid)
 {
-    if (m_accounts)
-        m_accounts->deleteUser(uid);
+    if (!m_accounts)
+        return;
+    authorizeAccountAction(
+        kAccountAdminAction,
+        tr("Authentication is required to delete a user account."),
+        [this, uid]() { m_accounts->deleteUser(uid); });
 }
 
 void SettingsBridge::setAccountType(int uid, const QString &accountType)
 {
-    if (m_accounts && !accountType.isEmpty())
-        m_accounts->setAccountType(uid, accountType);
+    if (!m_accounts || accountType.isEmpty())
+        return;
+    authorizeAccountAction(
+        kAccountAdminAction,
+        tr("Authentication is required to change a user account type."),
+        [this, uid, accountType]() {
+            m_accounts->setAccountType(uid, accountType);
+        });
 }
 
 void SettingsBridge::setAccountLocked(int uid, bool locked)
 {
-    if (m_accounts)
-        m_accounts->setLocked(uid, locked);
+    if (!m_accounts)
+        return;
+    authorizeAccountAction(
+        kAccountAdminAction,
+        tr("Authentication is required to change a user account."),
+        [this, uid, locked]() { m_accounts->setLocked(uid, locked); });
 }
 
 void SettingsBridge::setAccountAutomaticLogin(int uid, bool automaticLogin)
 {
-    if (m_accounts)
-        m_accounts->setAutomaticLogin(uid, automaticLogin);
+    if (!m_accounts)
+        return;
+    authorizeAccountAction(
+        kAccountAdminAction,
+        tr("Authentication is required to change automatic login."),
+        [this, uid, automaticLogin]() {
+            m_accounts->setAutomaticLogin(uid, automaticLogin);
+        });
 }
 
 void SettingsBridge::createAccountGroup(const QString &name)
 {
-    if (m_accounts && !name.trimmed().isEmpty())
-        m_accounts->createGroup(name);
+    if (!m_accounts || name.trimmed().isEmpty())
+        return;
+    authorizeAccountAction(
+        kAccountAdminAction,
+        tr("Authentication is required to create a group."),
+        [this, name]() { m_accounts->createGroup(name); });
 }
 
 void SettingsBridge::deleteAccountGroup(const QString &name)
 {
-    if (m_accounts && !name.isEmpty())
-        m_accounts->deleteGroup(name);
+    if (!m_accounts || name.isEmpty())
+        return;
+    authorizeAccountAction(
+        kAccountAdminAction,
+        tr("Authentication is required to delete a group."),
+        [this, name]() { m_accounts->deleteGroup(name); });
 }
 
 void SettingsBridge::setAccountGroupMembers(const QString &name, const QStringList &members)
 {
-    if (m_accounts && !name.isEmpty())
-        m_accounts->setGroupMembers(name, members);
+    if (!m_accounts || name.isEmpty())
+        return;
+    authorizeAccountAction(
+        kAccountAdminAction,
+        tr("Authentication is required to change group membership."),
+        [this, name, members]() { m_accounts->setGroupMembers(name, members); });
 }
 
 void SettingsBridge::resetAccountsFixture()

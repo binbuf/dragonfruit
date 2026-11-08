@@ -102,7 +102,7 @@ Item {
             title: qsTr("Dock")
             sectionId: "Dock"
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Size")
                 settingsId: "size"
@@ -120,9 +120,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Magnification")
+                settingsId: "magnification"
+                owner: "settingsd"
+                settingsKey: "dock.magnification"
                 controlData: Slider {
                     id: magnificationSlider
                     width: 220
@@ -136,9 +139,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Dock position on screen")
+                settingsId: "position"
+                owner: "settingsd"
+                settingsKey: "dock.position"
                 controlData: Select {
                     id: positionSelect
                     accessibleName: qsTr("Dock position on screen")
@@ -148,9 +154,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Minimized window animation")
+                settingsId: "minimizedAnimation"
+                owner: "settingsd"
+                settingsKey: "dock.minimizedAnimation"
                 controlData: Select {
                     id: minimizedAnimationSelect
                     accessibleName: qsTr("Minimized window animation")
@@ -161,9 +170,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Window title bar double-click action")
+                settingsId: "titlebarDoubleClick"
+                owner: "settingsd"
+                settingsKey: "dock.titlebarDoubleClick"
                 controlData: Select {
                     id: titlebarSelect
                     accessibleName: qsTr("Window title bar double-click action")
@@ -174,9 +186,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Minimize windows into application icon")
+                settingsId: "minimizeIntoTileIcon"
+                owner: "settingsd"
+                settingsKey: "dock.minimizeIntoTileIcon"
                 controlData: Toggle {
                     id: minimizeIntoTileToggle
                     text: ""
@@ -184,9 +199,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Automatically hide and show the Dock")
+                settingsId: "autohide"
+                owner: "settingsd"
+                settingsKey: "dock.autohide"
                 controlData: Toggle {
                     id: autohideToggle
                     text: ""
@@ -194,9 +212,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Animate opening applications")
+                settingsId: "animateOpening"
+                owner: "settingsd"
+                settingsKey: "dock.animateOpening"
                 controlData: Toggle {
                     id: animateOpeningToggle
                     text: ""
@@ -204,9 +225,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Show indicators for open applications")
+                settingsId: "showIndicators"
+                owner: "settingsd"
+                settingsKey: "dock.showIndicators"
                 controlData: Toggle {
                     id: showIndicatorsToggle
                     text: ""
@@ -214,9 +238,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Show suggested and recent apps in Dock")
+                settingsId: "showRecentApps"
+                owner: "settingsd"
+                settingsKey: "dock.showRecentApps"
                 controlData: Toggle {
                     id: showRecentAppsToggle
                     text: ""
@@ -224,9 +251,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Open a window chooser by hovering")
+                settingsId: "chooserOnHover"
+                owner: "settingsd"
+                settingsKey: "dock.chooserOnHover"
                 controlData: Toggle {
                     id: chooserOnHoverToggle
                     text: ""
@@ -234,9 +264,12 @@ Item {
                 }
             }
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Bounce app icons when windows minimize")
+                settingsId: "minimizeReaction"
+                owner: "settingsd"
+                settingsKey: "dock.minimizeReaction"
                 showSeparator: false
                 controlData: Toggle {
                     id: minimizeReactionToggle
@@ -254,9 +287,12 @@ Item {
             width: parent.width
             title: qsTr("Menu Bar")
 
-            SettingsRow {
+            SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Show application menus in the menu bar")
+                settingsId: "globalMenu"
+                owner: "settingsd"
+                settingsKey: "menu.global"
                 showSeparator: false
                 controlData: Toggle {
                     id: globalMenuToggle
