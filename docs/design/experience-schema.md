@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | implemented contract (T219) |
-| **Date** | 2026-11-07 |
+| **Status** | implemented contract (T219; structural extension T230a) |
+| **Date** | 2026-11-08 |
 | **Release** | v0.2.0 |
 | **Scope** | every surface id, state, axis, evidence class, trigger, acceptance metric, and per-surface threshold used by the total-experience track |
 | **Related** | [evidence and acceptance](evidence-and-acceptance.md), [total experience](22-total-experience.md), [motion and feedback](motion-and-feedback.md), [T260](../tasks/0.2.0/260-t-22.8-acceptance-harness.md), [ADR 0228](adr/0228-experience-schema-and-thresholds.md) |
@@ -50,21 +50,21 @@ and has a row id `<surface>-NN` (for example `S-DOCK-13`).
 
 | Family | Surfaces | State rows |
 |---|---|---:|
-| Always-visible shell | `S-MB`, `S-SYS`, `S-APP`, `S-ST`, `S-DOCK`, `S-DESK`, `S-CC`, `S-NC` | 107 |
-| Navigation and windows | `N-MC`, `N-SW`, `N-WIN`, `N-STAGE`, `N-PREV`, `N-LOCK` | 71 |
-| Search and launching | `Q-SP`, `Q-AD`, `Q-AP` | 30 |
+| Always-visible shell | `S-MB`, `S-SYS`, `S-APP`, `S-ST`, `S-DOCK`, `S-DESK`, `S-CC`, `S-NC` | 131 |
+| Navigation and windows | `N-MC`, `N-SW`, `N-WIN`, `N-STAGE`, `N-PREV`, `N-FILES`, `N-LOCK` | 98 |
+| Search and launching | `Q-SP`, `Q-AD`, `Q-AP` | 39 |
 | Menus and popovers | `S-MENU`, `S-POP`, `S-SHEET`, `S-DLG` | 24 |
 | HUDs and transients | `H-VOL` … `H-PRIV` (14 HUDs) | 42 |
-| System Settings | 23 shipped pane surfaces, 13 adapted/omitted panes, `SET-OMIT`, `SET-SEARCH`, `SET-AUTH` | 99 |
+| System Settings | 23 shipped pane surfaces, 13 adapted/omitted panes, `SET-OMIT`, `SET-SEARCH`, `SET-AUTH` | 103 |
 | Motion | `A-MENU` … `A-DRAWER` (14 transition groups) | 45 |
 
 The full state list is in the manifest. The inventory source is
 [`docs/reference/desktop-experience-inventory.md`](../reference/desktop-experience-inventory.md);
 the reference campaign's `S-*`, `N-*`, `Q-*`, `H-*`, `SET-*`, and `A-*`
 prefixes are preserved. The optional macOS reference checkout
-(`macos-design-review`) was not present in this tree when T219 landed;
-the local inventory is the id source and the reference checkout remains
-optional evidence, not a build dependency.
+(`macos-design-review`) sits outside this repository; the local inventory is
+the id source and the reference checkout remains optional evidence, not a
+build dependency.
 
 ## 4. Entry schema
 
@@ -183,12 +183,25 @@ concrete where the profile is not enough:
 - `SET-*`: 44 pt row height, 24 pt hit target, 13 pt type.
 - `A-*`: motion/latency/performance only; material, geometry, typography, and
   contrast are measured on the owning surface.
-- `N-WIN` / structural surfaces (T230a): chrome height 0/32/40/48/52/66/88 pt
-  ±1 pt; traffic lights 16×16 pt ±1 pt; 8/18 pt insets ±1 pt; 23 pt spacing
-  ±1 pt; About panel 280×503 pt ±1 pt; drawer 7 columns/115×92 pt cell/77 pt
-  icon; Notification Center 344 pt width and three material bands; Control
-  Center 64 pt cells/12 pt gaps/292 pt field; Finder 52/198/28/30/28 pt bars
-  and Get Info 328×1034 pt.
+- `N-WIN` (T230a): chrome heights 0/32/40/48/52/66/88 pt ±1 pt; traffic
+  lights 16×16 pt ±1 pt; 8/18 pt top insets ±1 pt; 23 pt spacing ±1 pt;
+  accessory bars 28/30/28 pt (format 20 pt) in the content layer.
+- `SET-GENERAL` / About (T230a): panel 280×503 pt ±1 pt with 32 pt chrome;
+  page 740×820 pt ±1 pt with 52 pt chrome and a 768 pt scroll column.
+- `Q-AD` (T230a): 7 columns, 115×92 pt cell, 77×77 pt icon, 18 pt label,
+  115/102 pt pitches, 17 pt section gap, 844×577 pt grid, 727×58 pt search
+  field, 26 pt chips, 1800×1044 pt list with a 640 pt column.
+- `S-NC` (T230a): 344 pt panel width, 344×75 pt banner stack, 164×164 pt
+  Calendar widget, 1027×552 pt gallery with a 240 pt sidebar and 19
+  categories; three material bands (0.549/0.976, 0.551/0.706,
+  0.407/0.852).
+- `S-CC` (T230a): 4 columns of 64 pt cells, 12 pt gaps, 292 pt module field,
+  spans 64×64/140×64/140×140/292×64 pt, 308×87 and 308×64 pt expanded
+  sheets, 736×900 pt Edit Controls with a 245 pt sidebar and 22 categories.
+- `N-FILES` (T230a): 900×600 pt window, 52 pt toolbar, 198 pt sidebar,
+  28/30/28 pt tab/path/status bars, 164×52 pt view group with 40×36 pt
+  segments, 328×1034 pt Get Info with 32 pt chrome, 64 pt toolbar-hidden
+  content inset. `N-PREV` stays the Quick Look surface.
 
 ### 7.3 Structural surface states (2026-11-08 review)
 
@@ -197,19 +210,24 @@ cover:
 
 | Family | New states |
 |---|---|
-| `N-WIN` | chrome styles 0/32/40/48/52/66/88, traffic-light geometry, accessory bars, fullscreen hidden/revealed, long title/RTL |
-| `SET-GENERAL` / About | compact 280×503 pt panel, full 740×820 pt page, More Info transition, long/localized names |
-| `Q-AD` | Spotlight Apps grid, list, search, category filter, suggestions, empty/no-results, launch |
-| `S-NC` | 344 pt panel, banner stack, widget stack, gallery, empty/actions/Focus, motion |
-| `S-CC` | 4-column grid, module spans, expanded sheets, Edit Controls catalogue, pages/resize/pinning, motion |
-| `N-PREV` / Files | Finder chrome, four view modes, Get Info inspector, toolbar-hidden mode |
+| `N-WIN` | `chrome-borderless`, `chrome-titlebar`, `chrome-unified-compact`, `chrome-expanded`, `chrome-unified`, `chrome-unified-labelled`, `chrome-preference`, `traffic-lights-titlebar`, `traffic-lights-unified`, `accessory-bars`, `fullscreen-chrome-hidden`, `fullscreen-chrome-revealed`, `long-title`, `rtl-titlebar` |
+| `SET-GENERAL` / About | `about-panel`, `about-page`, `about-dark`, `about-localized` |
+| `Q-AD` | `spotlight-grid`, `spotlight-list`, `suggestions`, `search-focused`, `category-chips`, `no-results`, `launch-motion`, `spotlight-keyboard`, `iphone-apps` |
+| `S-NC` | `panel-layout`, `banner-stack`, `widget-stack`, `widget-gallery`, `material-ramp`, `empty`, `reply-actions`, `focus-active`, `widget-variants`, `motion-open-close`, `motion-banner-stack` |
+| `S-CC` | `grid`, `module-sizes`, `expanded-wifi`, `expanded-bluetooth`, `expanded-focus`, `edit-controls`, `addable-modules`, `pages`, `resize`, `menu-bar-pinning`, `motion-open-close`, `motion-expand`, `motion-edit` |
+| `N-FILES` / Files | `chrome`, `toolbar-hidden`, `view-icon`, `view-list`, `view-column`, `view-gallery`, `get-info`, `search`, `gallery-preview`, `tags`, `customization`, `dark-matrix`, `motion` |
 
 The reference geometry is in
 `macos-design-review/docs/experience_measurements.json`. A row without a
 Dragonfruit capture/test stays `OPEN`; the reference value goes in the row's
 summary/threshold, not in a fake `captured` status. The OPEN ids are listed in
 [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
-§9.
+§9. `N-FILES` is a new surface rather than an extension of `N-PREV`: `N-PREV`
+stays the Quick Look overlay, so the Files window and the preview overlay do
+not share evidence rows. The machine-readable structural values live under
+`N-WIN`, `SET-GENERAL`, `Q-AD`, `S-NC`, `S-CC`, and `N-FILES` in
+`experience-thresholds.json`; `N-WIN` also carries the chrome-height,
+traffic-light, inset, spacing and accessory-bar keys.
 
 ### 7.2 Threshold dimensions
 
@@ -222,6 +240,20 @@ summary/threshold, not in a fake `captured` status. The OPEN ids are listed in
 | `latency` | `input_to_photon_frames_max`, `p95_ms_max`, `p99_ms_max` |
 | `contrast` | `text_wcag`, `text_ratio_min`, `large_text_ratio_min`, `control_ratio_min`, `focus_visible`, `focus_ratio_min` |
 | `performance` | `p95_frame_ms_max`, `p99_frame_ms_max`, `dropped_frames_max`, `gesture_budget_ms` |
+
+The structural surfaces add named `geometry` keys on top of the generic
+fields: `chrome_height_pt` + `chrome_height_tolerance_pt`,
+`traffic_light_size_pt`, `traffic_light_top_inset_pt`,
+`traffic_light_spacing_pt`, `accessory_bar_heights_pt`, `about_panel_pt`,
+`about_page_pt`, `drawer_cell_pt`, `drawer_icon_pt`, `panel_width_pt`,
+`banner_stack_pt`, `gallery_window_pt`, `cell_pt`, `gap_pt`,
+`module_field_width_pt`, `module_spans_pt`, `edit_controls_window_pt`,
+`toolbar_height_pt`, `sidebar_width_pt`, `tab_bar_height_pt`,
+`path_bar_height_pt`, `status_bar_height_pt`, `get_info_window_pt`,
+`get_info_chrome_height_pt`, and `toolbar_hidden_content_inset_pt`. Each
+surface also carries a `*_tolerance_pt` key fixed at 1.0 pt. `S-NC` adds
+`material.bands` with the three alpha/tint pairs and a ±0.01 tolerance. A
+later task may tighten a value; it must not loosen one.
 
 A dimension may be `"applicable": false` only with a `reason`. A row may not
 claim a dimension that its surface marks not applicable; the validator
@@ -249,10 +281,15 @@ rejects that.
 every surface and the overall total. The T219 landing snapshot is:
 
 ```text
-TOTAL   169 captured   71 verified   178 open   418 rows
-Covered (captured + verified): 240/418 (57.4%)
+TOTAL   168 captured   74 verified   240 open   482 rows
+Covered (captured + verified): 242/482 (50.2%)
 ```
 
+The T230a structural intake adds 64 rows: 61 are explicit `OPEN` debt and
+three are verified (two Files view tests and the Notification Center material
+ramp). The pre-review `Q-AD/folder` row is retired to `OPEN` because Spotlight
+Apps has no folders; the coverage percentage falls because the contract now
+records that debt, not because evidence was removed.
 The all-OPEN surfaces are the explicit debt list: Stage/tiling, Preview,
 Search, Sheets, most HUDs, the unshipped/omitted Settings panes, and the
 unmeasured Quick Settings/notification/HUD/Search/drawer motion groups. They

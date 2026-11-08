@@ -452,7 +452,9 @@ single-column auxiliary window, not a wide sheet.
 
 **Owner:** T230d for the measured chrome and Get Info inspector; T244a for the
 column and gallery views. The remaining tab/search/tag/customization/motion
-work stays tracked in `09-files.md` and `STATUS.md`.
+work stays tracked in `09-files.md` and `STATUS.md`. The manifest surface is
+`N-FILES` (Files window); `N-PREV` remains the Quick Look overlay, so the two
+surfaces do not share evidence rows.
 
 ## 8. Cross-surface rules
 
@@ -500,6 +502,26 @@ The structural review still leaves these rows open:
 
 These are explicit debt rows, not silent assumptions. Each task must replace
 its rows with a capture, a test, or a narrower `OPEN` row with a rerun command.
+
+### 9.1 Manifest mapping
+
+T230a carries the review into `docs/captures/experience-manifest.json` with
+append-only state ids:
+
+| Manifest surface | New structural states | Owner |
+|---|---|---|
+| `N-WIN` | `chrome-borderless` … `chrome-preference`, `traffic-lights-titlebar`, `traffic-lights-unified`, `accessory-bars`, `fullscreen-chrome-hidden`, `fullscreen-chrome-revealed`, `long-title`, `rtl-titlebar` | T230b |
+| `SET-GENERAL` | `about-panel`, `about-page`, `about-dark`, `about-localized` | T230c |
+| `Q-AD` | `spotlight-grid`, `spotlight-list`, `suggestions`, `search-focused`, `category-chips`, `no-results`, `launch-motion`, `spotlight-keyboard`, `iphone-apps` | T248 |
+| `S-NC` | `panel-layout`, `banner-stack`, `widget-stack`, `widget-gallery`, `material-ramp`, `empty`, `reply-actions`, `focus-active`, `widget-variants`, `motion-open-close`, `motion-banner-stack` | T234 |
+| `S-CC` | `grid`, `module-sizes`, `expanded-wifi`, `expanded-bluetooth`, `expanded-focus`, `edit-controls`, `addable-modules`, `pages`, `resize`, `menu-bar-pinning`, `motion-open-close`, `motion-expand`, `motion-edit` | T235 |
+| `N-FILES` | `chrome`, `toolbar-hidden`, `view-icon`, `view-list`, `view-column`, `view-gallery`, `get-info`, `search`, `gallery-preview`, `tags`, `customization`, `dark-matrix`, `motion` | T230d / T244a / Files track |
+
+Every uncaptured state is an `OPEN` row with `axes: open-intended`, the exact
+rerun command, the owner, and the impact in its `reason`. The 14 review ids
+above appear verbatim in those reasons. The measured geometry and material
+values are in `docs/captures/experience-thresholds.json` under the same surface
+ids. `N-FILES` is a new surface; `N-PREV` stays the Quick Look overlay.
 
 ## 10. Task map
 

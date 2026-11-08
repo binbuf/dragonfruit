@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | target process |
-| **Date** | 2026-11-06 |
+| **Date** | 2026-11-08 |
 | **Scope** | how total-experience claims are captured, measured, reviewed, and gated |
 | **Related** | [22-total-experience.md](22-total-experience.md), [motion/feedback](motion-and-feedback.md), [experience schema](experience-schema.md), `macos-design-review/docs/CAPTURE-PLAN.md`, [STATUS.md](STATUS.md) |
 
@@ -206,6 +206,17 @@ value with a design note; never silently loosen one.
 | Reduced motion | no unmeasured animation; state change immediate |
 | Contrast | WCAG AA for text/controls; visible focus |
 | Performance | per-surface budget; p95/p99 reported |
+
+The structural review values are machine-readable in
+`docs/captures/experience-thresholds.json` under `N-WIN`, `SET-GENERAL`,
+`Q-AD`, `S-NC`, `S-CC`, and `N-FILES`. `N-FILES` is the Files window; `N-PREV`
+remains the Quick Look overlay. The 14 review `OPEN` ids (`OPEN-CHROME-02`,
+`OPEN-CHROME-03`, `OPEN-ABOUT-01`, `OPEN-ABOUT-02`, `OPEN-DRAWER-01`,
+`OPEN-DRAWER-02`, `OPEN-NC-01`, `OPEN-NC-02`, `OPEN-CC-01`, `OPEN-CC-02`,
+`OPEN-CC-03`, `OPEN-FINDER-01`, `OPEN-FINDER-02`, `OPEN-FINDER-03`) are
+first-class manifest rows. Each names the missing evidence, the exact rerun
+command, the owner task, and the impact in its `reason`; a later task replaces
+it with a capture/test or a narrower `OPEN` row.
 
 ## 7. Evidence repository layout
 
