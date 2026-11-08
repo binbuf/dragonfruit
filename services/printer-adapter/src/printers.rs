@@ -29,8 +29,8 @@ use std::process::{Command, Output};
 use dragonfruit_system_adapters::AdapterError;
 
 use crate::source::{
-    PrintData, PrintJobData, PrintOutcome, PrintSource, PrinterData, PrinterState, ScanDeviceData,
-    ScannerKind,
+    PrintData, PrintJobData, PrintOutcome, PrintSource, PrinterData, PrinterDeviceData,
+    PrinterOptionData, PrinterState, ScanDeviceData, ScannerKind,
 };
 
 /// The CUPS status tool (`cups-client`).
@@ -45,6 +45,10 @@ pub const CUPSREJECT_BIN: &str = "cupsreject";
 pub const CANCEL_BIN: &str = "cancel";
 /// The SANE command-line frontend (`sane-utils`).
 pub const SCANIMAGE_BIN: &str = "scanimage";
+/// The CUPS discovery tool (`cups-client`).
+pub const LPINFO_BIN: &str = "lpinfo";
+/// The CUPS per-queue option tool (`cups-client`).
+pub const LPOPTIONS_BIN: &str = "lpoptions";
 
 /// The live CUPS + SANE source.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -91,6 +95,99 @@ impl PrintSource for HostPrint {
     fn cancel_job(&mut self, job_id: u32) -> PrintOutcome {
         run_write(CANCEL_BIN, &[&job_id.to_string()])
     }
+
+    fn discover(&mut self) -> Result<Vec<PrinterDeviceData>, AdapterError> {
+        let output =
+            run(LPINFO_BIN, &["-v"]).ok_or_else(|| AdapterError::new("lpinfo: not available"))?;
+        Ok(printer_devices_from_lpinfo(&combined(&output)))
+    }
+
+    fn add_printer(&mut self, name: &str, uri: &str, driver: &str) -> PrintOutcome {
+        let mut args = vec!["-p", name, "-E", "-v", uri];
+        if !driver.is_empty() {
+            args.push("-m");
+            args.push(driver);
+        }
+        run_write(LPADMIN_BIN, &args)
+    }
+
+    fn printer_options(&mut self, name: &str) -> Result<Vec<PrinterOptionData>, AdapterError> {
+        let output = run(LPOPTIONS_BIN, &["-p", name, "-l"])
+            .ok_or_else(|| AdapterError::new("lpoptions: not available"))?;
+        Ok(printer_options_from_lpoptions(&combined(&output)))
+    }
+
+    fn set_printer_option(&mut self, name: &str, key: &str, value: &str) -> PrintOutcome {
+        run_write(
+            LPOPTIONS_BIN,
+            &["-p", name, "-o", &format!("{key}={value}")],
+        )
+    }
+}
+
+/// Decode one `lpinfo -v` run into the discovery list.
+///
+/// Each non-empty line is `<class> <uri>`, optionally followed by a human
+/// description. Unknown shapes are skipped.
+pub fn printer_devices_from_lpinfo(output: &str) -> Vec<PrinterDeviceData> {
+    let mut devices = Vec::new();
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(' ') {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let Some(kind) = parts.next() else { continue };
+        let Some(uri) = parts.next() else { continue };
+        if !uri.contains("://") && !uri.starts_with("ipp:") && !uri.starts_with("usb:") {
+            continue;
+        }
+        let description = parts.collect::<Vec<_>>().join(" ");
+        devices.push(PrinterDeviceData {
+            kind: kind.to_owned(),
+            uri: uri.to_owned(),
+            description,
+        });
+    }
+    devices
+}
+
+/// Decode one `lpoptions -p <queue> -l` run into the option list.
+///
+/// A line is `<key>/<label>: <choice> <choice> …`, with the current choice
+/// prefixed by `*`. The label falls back to the key.
+pub fn printer_options_from_lpoptions(output: &str) -> Vec<PrinterOptionData> {
+    let mut options = Vec::new();
+    for line in output.lines() {
+        let line = line.trim();
+        let Some((head, choices)) = line.split_once(':') else {
+            continue;
+        };
+        let (key, label) = match head.split_once('/') {
+            Some((key, label)) => (key.trim(), label.trim()),
+            None => (head.trim(), head.trim()),
+        };
+        if key.is_empty() {
+            continue;
+        }
+        let mut value = String::new();
+        let mut values = Vec::new();
+        for token in choices.split_whitespace() {
+            if let Some(current) = token.strip_prefix('*') {
+                value = current.to_owned();
+                values.push(current.to_owned());
+            } else {
+                values.push(token.to_owned());
+            }
+        }
+        options.push(PrinterOptionData {
+            key: key.to_owned(),
+            label: label.to_owned(),
+            value,
+            choices: values,
+        });
+    }
+    options
 }
 
 /// One `lpstat -l -t` read. `None` means the scheduler is absent.
@@ -419,6 +516,31 @@ different, check that the scanner is plugged in.\n";
             outcome.error().map(|error| error.message()),
             Some("CUPS: lpadmin: Unable to connect to server")
         );
+    }
+
+    #[test]
+    fn lpinfo_decodes_devices() {
+        let text = "network ipp://192.168.0.12/ipp/print Office LaserJet\ndirect usb://Canon/MF230 Canon MF230 USB\nnetwork beh\n";
+        let devices = printer_devices_from_lpinfo(text);
+        assert_eq!(devices.len(), 2);
+        assert_eq!(devices[0].kind, "network");
+        assert_eq!(devices[0].uri, "ipp://192.168.0.12/ipp/print");
+        assert_eq!(devices[0].description, "Office LaserJet");
+        assert_eq!(devices[1].kind, "direct");
+        assert_eq!(devices[1].uri, "usb://Canon/MF230");
+    }
+
+    #[test]
+    fn lpoptions_decodes_labels_current_values_and_choices() {
+        let text = "PageSize/Media Size: *A4 Letter\nDuplex/Double-Sided: None *DuplexNoTumble\n";
+        let options = printer_options_from_lpoptions(text);
+        assert_eq!(options.len(), 2);
+        assert_eq!(options[0].key, "PageSize");
+        assert_eq!(options[0].label, "Media Size");
+        assert_eq!(options[0].value, "A4");
+        assert_eq!(options[0].choices, vec!["A4", "Letter"]);
+        assert_eq!(options[1].key, "Duplex");
+        assert_eq!(options[1].value, "DuplexNoTumble");
     }
 
     #[test]

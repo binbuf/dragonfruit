@@ -188,6 +188,23 @@ Item {
             compare(pane.findUser(1000).automaticLogin, false);
         }
 
+        function test_admin_group_and_directory_rows_are_live() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.adminGroupRow.visible);
+            compare(pane.adminGroup, "wheel");
+            verify(pane.directoryRow.visible);
+            compare(pane.directoryAvailable, true);
+            verify(pane.directoryRow.description.indexOf("Joined: example.com") >= 0);
+
+            pane.directoryDialog.show();
+            waitForRendering(stage);
+            verify(pane.directoryDialog.open);
+            compare(pane.directoryStatusText.text, "Joined: example.com");
+            pane.directoryDialog.accept();
+            wait(250);
+        }
+
         function test_absence_note_replaces_the_lists_without_a_host() {
             // The absence case itself lives in tst_settings_absence.qml (no
             // fixture, no bus); this asserts the gate is wired so a ready view

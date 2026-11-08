@@ -18,6 +18,9 @@ use std::process::Command;
 
 use dragonfruit_system_adapters::AdapterError;
 
+use crate::controllers::{
+    controllers_from_proc, dictation_available, test_controller, ControllerTest,
+};
 use crate::source::{InputData, InputDeviceData, InputSource};
 
 /// The libinput control tool (ships with `libinput`).
@@ -102,7 +105,10 @@ impl InputData {
         if let Some(device) = current.take() {
             devices.push(device);
         }
-        InputData { devices }
+        InputData {
+            devices,
+            ..InputData::default()
+        }
     }
 }
 
@@ -170,15 +176,38 @@ impl InputSource for CommandLibinput {
         // startup blocker. A tool that runs but cannot open any device (the
         // common non-seat case) exits 0 with an empty list, which is a present
         // stack with no devices.
-        let output = match Command::new(LIBINPUT_BIN).arg("list-devices").output() {
-            Ok(output) => output,
-            Err(_) => return Ok(None),
+        let libinput = Command::new(LIBINPUT_BIN)
+            .arg("list-devices")
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).into_owned());
+
+        // T229: the controller inventory and the dictation probe are
+        // independent of libinput. A session with no libinput but a gamepad
+        // still answers, so the optional Controllers pane is live.
+        let controllers = std::fs::read_to_string("/proc/bus/input/devices")
+            .map(|text| controllers_from_proc(&text))
+            .unwrap_or_default();
+        let dictation = dictation_available();
+        let Some(text) = libinput else {
+            if controllers.is_empty() && !dictation {
+                return Ok(None);
+            }
+            return Ok(Some(InputData {
+                controllers,
+                dictation_available: dictation,
+                ..InputData::default()
+            }));
         };
-        if !output.status.success() {
-            return Ok(None);
-        }
-        let text = String::from_utf8_lossy(&output.stdout);
-        Ok(Some(InputData::from_list_devices(&text)))
+        let mut data = InputData::from_list_devices(&text);
+        data.controllers = controllers;
+        data.dictation_available = dictation;
+        Ok(Some(data))
+    }
+
+    fn test_controller(&mut self, path: &str) -> ControllerTest {
+        test_controller(path)
     }
 }
 

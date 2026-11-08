@@ -48,7 +48,8 @@ use crate::online::{
     set_host_online_account_sync, OnlineAccountsData, OnlineAccountsOutcome, OnlineAccountsSource,
 };
 use crate::source::{
-    AccountData, AccountOutcome, AccountSource, AccountType, AccountsData, GroupData, PasswordMode,
+    AccountData, AccountOutcome, AccountSource, AccountType, AccountsData, DirectoryData,
+    GroupData, PasswordMode,
 };
 
 /// The well-known name `accounts-daemon` owns.
@@ -154,6 +155,7 @@ impl AccountSource for HostAccounts {
         Ok(Some(AccountsData {
             users: users.unwrap_or_default(),
             groups,
+            directory: read_directory(),
         }))
     }
 
@@ -264,6 +266,73 @@ impl OnlineAccountsSource for HostAccounts {
     ) -> OnlineAccountsOutcome {
         set_host_online_account_sync(id, capability, enabled)
     }
+}
+
+/// Read the host's directory configuration (T229).
+///
+/// SSSD's `sssd.conf` names the domains; `realm list` is consulted when it is
+/// installed so a joined realm with no local SSSD config is still reported.
+/// No configuration and no joined realm is `None` (the pane hides the row).
+pub fn read_directory() -> Option<DirectoryData> {
+    let mut domains = Vec::new();
+    let mut provider = String::new();
+    let mut note = String::new();
+
+    for path in ["/etc/sssd/sssd.conf", "/etc/sssd/conf.d/sssd.conf"] {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        for line in text.lines() {
+            let line = line.trim();
+            if let Some(rest) = line.strip_prefix("domains") {
+                if let Some((_, value)) = rest.split_once('=') {
+                    domains.extend(
+                        value
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|domain| !domain.is_empty())
+                            .map(str::to_owned),
+                    );
+                }
+            } else if let Some(rest) = line.strip_prefix("id_provider") {
+                if let Some((_, value)) = rest.split_once('=') {
+                    provider = value.trim().to_owned();
+                }
+            }
+        }
+        if !domains.is_empty() {
+            break;
+        }
+    }
+
+    if let Ok(output) = std::process::Command::new("realm").arg("list").output() {
+        if output.status.success() {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if let Some((domain, _)) = line.split_once(' ') {
+                    let domain = domain.trim();
+                    if !domain.is_empty() && !domains.iter().any(|entry| entry == domain) {
+                        domains.push(domain.to_owned());
+                    }
+                }
+            }
+            if provider.is_empty() {
+                provider = "realm".to_owned();
+            }
+        } else {
+            note = "realm list did not answer.".to_owned();
+        }
+    }
+
+    if domains.is_empty() && provider.is_empty() {
+        return None;
+    }
+    let joined = !domains.is_empty();
+    Some(DirectoryData {
+        domains,
+        provider,
+        joined,
+        note,
+    })
 }
 
 /// The AccountsService user path for `uid`.

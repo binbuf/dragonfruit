@@ -87,6 +87,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         ResetPane.qml
         UsersGroupsPane.qml
         PrintersScannersPane.qml
+        GameControllersPane.qml
         PrivacyPane.qml
         BiometricsPane.qml
         OnlineAccountsPane.qml
@@ -165,6 +166,7 @@ df_qml_lint(app-settings
     ResetPane.qml
     UsersGroupsPane.qml
     PrintersScannersPane.qml
+    GameControllersPane.qml
     PrivacyPane.qml
     AccessibilityPane.qml
     WifiPane.qml

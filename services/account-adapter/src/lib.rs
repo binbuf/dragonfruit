@@ -82,8 +82,8 @@ pub use online::{
     ONLINE_CAPABILITIES,
 };
 pub use source::{
-    AccountData, AccountOutcome, AccountSource, AccountType, AccountsData, GroupData, MockAccounts,
-    PasswordMode,
+    AccountData, AccountOutcome, AccountSource, AccountType, AccountsData, DirectoryData,
+    GroupData, MockAccounts, PasswordMode,
 };
 
 #[cfg(test)]

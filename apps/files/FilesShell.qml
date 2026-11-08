@@ -117,7 +117,8 @@ Item {
     // The app-local rollout/capability view. Production follows the process
     // environment and platform bridge; tests and captures may override them
     // without changing the shared singleton's binding.
-    property string glassRollout: Settings.glassRollout
+    property string glassRollout: Settings.glassRollout !== ""
+        ? Settings.glassRollout : Theme.glass.rollout.defaultMode
     property bool appChromeSupported: Settings.appChromeSupported
     // Bound to the host Window's focus so the titlebar/controls show the
     // focused state; the app-local chrome material itself is focus-invariant.

@@ -3064,6 +3064,46 @@ void ShellProtocol::setInputPolicy(int repeatDelayMs, int repeatRateHz, bool ges
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setPointerPolicy(double pointerSpeed, bool naturalScroll, bool tapToClick,
+                                     bool leftHanded, const QString &scrollMethod,
+                                     const QString &secondaryClick, double scrollSpeed,
+                                     int doubleClickMs, bool haptics)
+{
+    // T229: the pointer half of the Keyboard/Mouse/Trackpad pane. Additive in
+    // v10; older compositors keep the settingsd-only state.
+    if (m_manager && m_managerVersion >= 10) {
+        const auto millionths = [](double value) {
+            return static_cast<int32_t>(qRound(qBound(-1.0, value, 1.0) * 1000000.0));
+        };
+        const QByteArray scroll = scrollMethod.toUtf8();
+        const QByteArray secondary = secondaryClick.toUtf8();
+        df_toplevel_manager_set_pointer_policy(
+            m_manager, millionths(pointerSpeed), naturalScroll ? 1u : 0u,
+            tapToClick ? 1u : 0u, leftHanded ? 1u : 0u,
+            scrollMethod.isEmpty() ? nullptr : scroll.constData(),
+            secondaryClick.isEmpty() ? nullptr : secondary.constData(),
+            millionths(scrollSpeed), static_cast<uint32_t>(qMax(0, doubleClickMs)),
+            haptics ? 1u : 0u);
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
+void ShellProtocol::setKeyboardLayout(const QString &layout, const QString &variant)
+{
+    // T229: the active input source. Additive in v10; a null layout follows
+    // the host XKB_DEFAULT_* configuration.
+    if (m_manager && m_managerVersion >= 10) {
+        const QByteArray layoutBytes = layout.toUtf8();
+        const QByteArray variantBytes = variant.toUtf8();
+        df_toplevel_manager_set_keyboard_layout(
+            m_manager, layout.isEmpty() ? nullptr : layoutBytes.constData(),
+            variant.isEmpty() ? nullptr : variantBytes.constData());
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 void ShellProtocol::setWallpaper(const QString &source, uint32_t fit, bool showOnAllSpaces)
 {
     // T-09.3: remember the selection and push it to the announced Spaces. When

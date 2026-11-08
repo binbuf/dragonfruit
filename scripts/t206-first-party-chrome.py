@@ -133,9 +133,14 @@ def check(data: dict) -> tuple[list[str], dict]:
         reduced = _resolve(data, name, scheme, reduce_transparency=True)
         if reduced["renderMode"] != "solid" or reduced["alpha"] < 0.9:
             fail(f"{name} {scheme} Reduce Transparency must use the opaque plate")
-        legacy = presets.resolve(data, name, scheme=scheme)
+        default = presets.resolve(data, name, scheme=scheme)
+        if default["look"] != "replacement":
+            fail(f"{name} {scheme} must use the replacement look by default")
+        if default["renderMode"] != "solid":
+            fail(f"{name} {scheme} must stay a solid app-local preset by default")
+        legacy = presets.resolve(data, name, scheme=scheme, rollout="legacy")
         if legacy["look"] != "legacy":
-            fail(f"{name} {scheme} must keep the legacy look by default")
+            fail(f"{name} {scheme} must keep the legacy look selectable")
 
     # Files keeps its toolbar and sidebar independent in both schemes.
     for scheme in ("light", "dark"):

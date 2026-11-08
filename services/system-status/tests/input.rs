@@ -25,6 +25,7 @@ fn data() -> InputData {
                 ..InputDeviceData::default()
             },
         ],
+        ..InputData::default()
     }
 }
 

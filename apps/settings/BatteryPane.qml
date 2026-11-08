@@ -76,10 +76,20 @@ Item {
     property bool healthInfoOpen: false
     property bool chargingInfoOpen: false
 
-    // The Usage History range: 0 = Last 24 Hours, 1 = Last 10 Days. No charge
-    // history provider exists in this build (T-15.x), so the switch drives the
-    // empty-state caption rather than a chart series.
-    property int historyRange: 0
+    // The Usage History range: 0 = Last 24 Hours, 1 = Last 10 Days (T229: the
+    // selection is the `power.historyRange` key so it survives a restart).
+    readonly property int historyRange:
+        Settings.values["power.historyRange"] !== undefined
+            ? Number(Settings.values["power.historyRange"]) : 0
+    readonly property bool showPercentage:
+        Settings.values["power.showPercentage"] === true
+    readonly property int idleBlank:
+        Settings.values["idle.blank"] !== undefined
+            ? Number(Settings.values["idle.blank"]) : 300
+    readonly property int idleLock:
+        Settings.values["idle.lock"] !== undefined
+            ? Number(Settings.values["idle.lock"]) : 600
+    signal navigateRequested(string paneId)
     readonly property var historyRangeOptions: [
         { label: qsTr("Last 24 Hours") },
         { label: qsTr("Last 10 Days") }
@@ -106,6 +116,10 @@ Item {
     property alias screenChart: screenChart
     property alias absenceNote: absenceNote
     property alias profilesAbsenceNote: profilesAbsenceNote
+    property alias optionsGroup: optionsGroup
+    property alias showPercentageToggle: showPercentageToggle
+    property alias powerSettingsGroup: powerSettingsGroup
+    property alias openLockScreenButton: openLockScreenButton
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -337,7 +351,7 @@ Item {
                 width: parent.width - 2 * Theme.controls.settingsRow.paddingH
                 x: Theme.controls.settingsRow.paddingH
                 model: root.historyRangeOptions
-                onActivated: (index) => root.historyRange = index
+                onActivated: (index) => Settings.set("power.historyRange", index)
             }
 
             SettingsRow {
@@ -373,6 +387,88 @@ Item {
                 caption: qsTr("No screen-on history for the %1.").arg(root.historyRangeLabel)
             }
         }
+
+        // ── Battery options (T229) ────────────────────────────────────────
+        SettingsGroup {
+            id: optionsGroup
+            width: parent.width
+            title: qsTr("Options")
+            visible: root.available
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show battery percentage")
+                description: qsTr("Draw the percentage beside the menu-bar glyph.")
+                controlData: Toggle {
+                    id: showPercentageToggle
+                    text: ""
+                    onToggled: (checked) => Settings.set("power.showPercentage", checked)
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Usage range")
+                description: qsTr("The range the history charts cover.")
+                showSeparator: false
+                controlData: Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.historyRange === 0 ? qsTr("Last 24 Hours")
+                                                  : qsTr("Last 10 Days")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+        }
+
+        // ── Power settings link (T229) ────────────────────────────────────
+        SettingsGroup {
+            id: powerSettingsGroup
+            width: parent.width
+            title: qsTr("Power Settings")
+            visible: root.available
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Display off")
+                description: qsTr("Blank the display after inactivity.")
+                controlData: Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.idleBlank > 0
+                        ? qsTr("%1 min").arg(Math.round(root.idleBlank / 60))
+                        : qsTr("Never")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Require password")
+                description: qsTr("Lock the session after inactivity.")
+                controlData: Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.idleLock > 0
+                        ? qsTr("%1 min").arg(Math.round(root.idleLock / 60))
+                        : qsTr("Never")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("More power settings")
+                description: qsTr("Display and lock timers live in Lock Screen.")
+                showSeparator: false
+                controlData: Button {
+                    id: openLockScreenButton
+                    objectName: "batteryOpenLockScreen"
+                    text: qsTr("Open Lock Screen")
+                    onClicked: root.navigateRequested("lock-screen")
+                }
+            }
+        }
     }
 
     // Keep the popup in step with an external daemon change.
@@ -380,6 +476,16 @@ Item {
         target: profileSelect
         property: "currentIndex"
         value: root.profileIndex(root.activeProfile)
+    }
+    Binding {
+        target: rangeControl
+        property: "currentIndex"
+        value: root.historyRange
+    }
+    Binding {
+        target: showPercentageToggle
+        property: "checked"
+        value: root.showPercentage
     }
 
     // A chart frame with the capture's y-axis labels and an honest empty state

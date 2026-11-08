@@ -110,6 +110,14 @@ impl<S: AudioSource> AudioAdapter<S> {
         outcome
     }
 
+    /// Play a short test sound through the default output (T229). A playback
+    /// action, not a routing change.
+    pub fn play_test_sound(&mut self) -> SetOutcome {
+        let outcome = self.source.play_test_sound();
+        self.note_write(&outcome);
+        outcome
+    }
+
     /// Flip the default sink's mute state. The Control Center/OSD affordance.
     pub fn toggle_mute(&mut self) -> SetOutcome {
         let muted = self

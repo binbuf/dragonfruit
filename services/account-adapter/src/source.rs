@@ -246,6 +246,28 @@ pub struct GroupData {
     pub system: bool,
 }
 
+/// The host's directory (SSSD/FreeIPA) projection (T229).
+///
+/// AccountsService has no directory API, so this is a read of the
+/// distribution's own SSSD configuration and, when available, `realm list`.
+/// Joining a domain is delegated to the distribution's tooling; the pane only
+/// reports the state.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct DirectoryData {
+    /// The configured domain names.
+    #[serde(default)]
+    pub domains: Vec<String>,
+    /// The provider token (`sssd`, `winbind`, empty when unknown).
+    #[serde(default)]
+    pub provider: String,
+    /// Whether a domain is configured.
+    #[serde(default)]
+    pub joined: bool,
+    /// A human note when the read is partial.
+    #[serde(default)]
+    pub note: String,
+}
+
 /// The raw result of one host-stack read: the AccountsService user list, plus
 /// the group provider's list when the provider is present.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -257,6 +279,10 @@ pub struct AccountsData {
     /// the group controls disable).
     #[serde(default)]
     pub groups: Option<Vec<GroupData>>,
+    /// The directory projection; `None` when no SSSD/winbind configuration is
+    /// present.
+    #[serde(default)]
+    pub directory: Option<DirectoryData>,
 }
 
 impl AccountsData {
@@ -845,6 +871,7 @@ mod tests {
                 members: vec!["dan".to_owned()],
                 system: false,
             }]),
+            directory: None,
         }
     }
 

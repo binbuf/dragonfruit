@@ -29,6 +29,18 @@ struct CompositorPolicy {
     bool gesturesEnabled = true;
     bool gestureSpaceSwitch = true;
     bool gestureMissionControl = true;
+    // T229: the pointer/trackpad half and the active keyboard layout.
+    double pointerSpeed = 0.0;
+    bool naturalScroll = true;
+    bool tapToClick = true;
+    bool leftHanded = false;
+    QString scrollMethod = QStringLiteral("two-finger");
+    QString secondaryClick = QStringLiteral("right");
+    double scrollSpeed = 0.0;
+    int doubleClickMs = 400;
+    bool haptics = true;
+    QString keyboardLayout;
+    QString keyboardVariant;
 
     bool operator==(const CompositorPolicy &) const = default;
 };

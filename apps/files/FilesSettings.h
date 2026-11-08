@@ -30,8 +30,8 @@ class FilesSettings : public QObject
     // the client serves the schema defaults and the window still styles
     // itself.
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
-    // The one rollout switch, read from the same environment variable as the
-    // shell and Settings app.
+    // The explicit rollout override, read from the same environment variable
+    // as the shell and Settings app. Empty means the shipped token default.
     Q_PROPERTY(QString glassRollout READ glassRollout CONSTANT)
     // T206: whether the app window has a client-alpha composition path.
     // `DF_APP_CHROME_SOLID=1` forces the opaque fallback for captures.

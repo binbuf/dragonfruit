@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 21;
+pub const SCHEMA_VERSION: u32 = 22;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -858,6 +858,143 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "compositor/input (emoji panel bridge deferred)",
         since: 12,
         summary: "Action when the Compose/Super key is pressed: show the emoji panel or nothing.",
+    },
+    // ── Input breadth (T229) ────────────────────────────────────────────
+    // The remaining macOS pointer rows and the input-source/replacement/
+    // dictation rows. The pointer keys join the revision-12 `input.*` family
+    // and travel to the compositor in the same `set_pointer_policy` snapshot;
+    // input sources are the first entry of a durable layout list the shell
+    // forwards to the compositor keymap.
+    KeySpec {
+        key: "input.secondaryClick",
+        group: KeyGroup::Input,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("right"),
+        allowed: &["right", "left"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input pointer buttons",
+        since: 22,
+        summary: "Which button a secondary click uses: right (default) or left.",
+    },
+    KeySpec {
+        key: "input.scrollSpeed",
+        group: KeyGroup::Input,
+        kind: KeyType::Number,
+        default: KeyDefault::Number(0.0),
+        allowed: &[],
+        min: Some(-1.0),
+        max: Some(1.0),
+        owner: "apps/settings",
+        consumer: "compositor/input pointer scrolling",
+        since: 22,
+        summary: "Pointer scroll speed, -1.0 (slow) to 1.0 (fast); 0 is neutral.",
+    },
+    KeySpec {
+        key: "input.doubleClickSpeed",
+        group: KeyGroup::Input,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(400),
+        allowed: &[],
+        min: Some(100.0),
+        max: Some(900.0),
+        owner: "apps/settings",
+        consumer: "compositor/input pointer double-click interval",
+        since: 22,
+        summary: "Maximum milliseconds between two clicks for a double-click.",
+    },
+    KeySpec {
+        key: "input.haptics",
+        group: KeyGroup::Input,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input trackpad haptics (hardware bridge deferred)",
+        since: 22,
+        summary: "Haptic feedback for a trackpad that supports it.",
+    },
+    KeySpec {
+        key: "input.lookUp",
+        group: KeyGroup::Input,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("force-click"),
+        allowed: &["force-click", "three-finger", "off"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input gesture mapping",
+        since: 22,
+        summary: "How a trackpad look-up gesture is triggered; off disables it.",
+    },
+    KeySpec {
+        key: "input.sources",
+        group: KeyGroup::Input,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/compositor keymap",
+        since: 22,
+        summary: "Ordered keyboard layout ids; the first is the active source. Empty follows the host keymap.",
+    },
+    KeySpec {
+        key: "input.replacements",
+        group: KeyGroup::Input,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "input method (T253)",
+        since: 22,
+        summary: "Text replacements as `from\\tto` entries for the session input method.",
+    },
+    KeySpec {
+        key: "input.dictation",
+        group: KeyGroup::Input,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "speech-to-text delegate (when installed)",
+        since: 22,
+        summary: "Enable dictation when a speech-to-text service is installed.",
+    },
+    // ── Battery options (T229) ──────────────────────────────────────────
+    KeySpec {
+        key: "power.showPercentage",
+        group: KeyGroup::Session,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar battery item",
+        since: 22,
+        summary: "Show the battery percentage beside the menu-bar glyph.",
+    },
+    KeySpec {
+        key: "power.historyRange",
+        group: KeyGroup::Session,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(0),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(1.0),
+        owner: "apps/settings",
+        consumer: "apps/settings Battery pane",
+        since: 22,
+        summary: "Battery usage range: 0 = last 24 hours, 1 = last 10 days.",
     },
     // ── Session (lock / idle / suspend policy, T-12.5b) ─────────────────
     KeySpec {
@@ -2452,11 +2589,10 @@ mod tests {
         }
     }
 
-    /// The Printers & Scanners key (T-15.12b): the one durable presentation
     /// The glass preference and its two accessibility overrides are additive
     /// in revision 18 (T196). The slider is a bounded double with the measured
-    /// midpoint as its default; both overrides are off by default and apply
-    /// independently of the appearance rollout.
+    /// midpoint as its default; both overrides are off by default. These are
+    /// the settings defaults for the shipped replacement glass (ADR 0234).
     #[test]
     fn the_glass_keys_are_declared_in_revision_eighteen() {
         let transparency = spec("appearance.transparency").expect("transparency is declared");
@@ -2591,17 +2727,125 @@ mod tests {
             .is_err());
     }
 
+    /// The T229 input breadth and battery-option keys, additive in revision
+    /// 22.
+    #[test]
+    fn the_t229_keys_are_declared_in_revision_twenty_two() {
+        for (key, group, kind, default) in [
+            (
+                "input.secondaryClick",
+                KeyGroup::Input,
+                KeyType::Text,
+                KeyDefault::Text("right"),
+            ),
+            (
+                "input.scrollSpeed",
+                KeyGroup::Input,
+                KeyType::Number,
+                KeyDefault::Number(0.0),
+            ),
+            (
+                "input.doubleClickSpeed",
+                KeyGroup::Input,
+                KeyType::Integer,
+                KeyDefault::Integer(400),
+            ),
+            (
+                "input.haptics",
+                KeyGroup::Input,
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+            (
+                "input.lookUp",
+                KeyGroup::Input,
+                KeyType::Text,
+                KeyDefault::Text("force-click"),
+            ),
+            (
+                "input.sources",
+                KeyGroup::Input,
+                KeyType::TextList,
+                KeyDefault::List(&[]),
+            ),
+            (
+                "input.replacements",
+                KeyGroup::Input,
+                KeyType::TextList,
+                KeyDefault::List(&[]),
+            ),
+            (
+                "input.dictation",
+                KeyGroup::Input,
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "power.showPercentage",
+                KeyGroup::Session,
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "power.historyRange",
+                KeyGroup::Session,
+                KeyType::Integer,
+                KeyDefault::Integer(0),
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, group, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 22, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        assert!(spec("input.secondaryClick")
+            .unwrap()
+            .validate(&Value::Text("left".into()))
+            .is_ok());
+        assert!(spec("input.secondaryClick")
+            .unwrap()
+            .validate(&Value::Text("middle".into()))
+            .is_err());
+        assert!(spec("input.lookUp")
+            .unwrap()
+            .validate(&Value::Text("off".into()))
+            .is_ok());
+    }
+
     /// The T227 Appearance/Quick Settings/Search/Screen Saver/Desktop keys,
     /// additive in revision 21.
     #[test]
     fn the_t227_keys_are_declared_in_revision_twenty_one() {
         for (key, group, kind) in [
             ("appearance.highlight", KeyGroup::Appearance, KeyType::Text),
-            ("appearance.sidebarIconSize", KeyGroup::Appearance, KeyType::Text),
-            ("appearance.wallpaperTint", KeyGroup::Appearance, KeyType::Bool),
+            (
+                "appearance.sidebarIconSize",
+                KeyGroup::Appearance,
+                KeyType::Text,
+            ),
+            (
+                "appearance.wallpaperTint",
+                KeyGroup::Appearance,
+                KeyType::Bool,
+            ),
             ("appearance.scrollBars", KeyGroup::Appearance, KeyType::Text),
-            ("quickSettings.modules", KeyGroup::QuickSettings, KeyType::TextList),
-            ("quickSettings.menuBarOnly", KeyGroup::QuickSettings, KeyType::TextList),
+            (
+                "quickSettings.modules",
+                KeyGroup::QuickSettings,
+                KeyType::TextList,
+            ),
+            (
+                "quickSettings.menuBarOnly",
+                KeyGroup::QuickSettings,
+                KeyType::TextList,
+            ),
             ("search.categories", KeyGroup::Search, KeyType::TextList),
             ("search.indexLocations", KeyGroup::Search, KeyType::TextList),
             ("search.shortcut", KeyGroup::Search, KeyType::Text),
@@ -2610,7 +2854,11 @@ mod tests {
             ("screenSaver.style", KeyGroup::ScreenSaver, KeyType::Text),
             ("screenSaver.clock", KeyGroup::ScreenSaver, KeyType::Bool),
             ("screenSaver.showDate", KeyGroup::ScreenSaver, KeyType::Bool),
-            ("screenSaver.showSeconds", KeyGroup::ScreenSaver, KeyType::Bool),
+            (
+                "screenSaver.showSeconds",
+                KeyGroup::ScreenSaver,
+                KeyType::Bool,
+            ),
             ("desktop.showItems", KeyGroup::Desktop, KeyType::Text),
         ] {
             let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));

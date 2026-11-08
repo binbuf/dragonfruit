@@ -53,6 +53,54 @@ pub enum ScrollMethod {
     Button,
 }
 
+impl ScrollMethod {
+    /// The stable id the settings schema and the protocol use.
+    pub const fn id(self) -> &'static str {
+        match self {
+            ScrollMethod::TwoFinger => "two-finger",
+            ScrollMethod::Edge => "edge",
+            ScrollMethod::Button => "button",
+        }
+    }
+
+    /// Parse the schema's stable id; an unknown spelling is `None`.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "two-finger" => Some(ScrollMethod::TwoFinger),
+            "edge" => Some(ScrollMethod::Edge),
+            "button" => Some(ScrollMethod::Button),
+            _ => None,
+        }
+    }
+}
+
+/// Which button a secondary click uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SecondaryClick {
+    #[default]
+    Right,
+    Left,
+}
+
+impl SecondaryClick {
+    /// The stable id the settings schema and the protocol use.
+    pub const fn id(self) -> &'static str {
+        match self {
+            SecondaryClick::Right => "right",
+            SecondaryClick::Left => "left",
+        }
+    }
+
+    /// Parse the schema's stable id; an unknown spelling is `None`.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "right" => Some(SecondaryClick::Right),
+            "left" => Some(SecondaryClick::Left),
+            _ => None,
+        }
+    }
+}
+
 /// Per-device pointer/trackpad settings.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PointerSettings {
@@ -64,6 +112,14 @@ pub struct PointerSettings {
     pub scroll_method: ScrollMethod,
     pub tap_to_click: bool,
     pub left_handed: bool,
+    /// The secondary-click button (T229).
+    pub secondary_click: SecondaryClick,
+    /// Scroll speed, `-1.0..=1.0` (0 neutral) (T229).
+    pub scroll_speed: f64,
+    /// Double-click interval in milliseconds (T229).
+    pub double_click_ms: i32,
+    /// Trackpad haptic feedback, where the hardware supports it (T229).
+    pub haptics: bool,
 }
 
 impl Default for PointerSettings {
@@ -75,6 +131,10 @@ impl Default for PointerSettings {
             scroll_method: ScrollMethod::TwoFinger,
             tap_to_click: true,
             left_handed: false,
+            secondary_click: SecondaryClick::Right,
+            scroll_speed: 0.0,
+            double_click_ms: 400,
+            haptics: true,
         }
     }
 }
@@ -149,6 +209,22 @@ mod tests {
         );
         assert!(!settings.pointer("trackpad-0").natural_scroll);
         assert!(settings.pointer("other").natural_scroll);
+    }
+
+    #[test]
+    fn scroll_method_and_secondary_click_parse_their_schema_ids() {
+        assert_eq!(
+            ScrollMethod::parse("two-finger"),
+            Some(ScrollMethod::TwoFinger)
+        );
+        assert_eq!(ScrollMethod::parse("edge"), Some(ScrollMethod::Edge));
+        assert_eq!(ScrollMethod::parse("button"), Some(ScrollMethod::Button));
+        assert_eq!(ScrollMethod::parse("sideways"), None);
+        assert_eq!(SecondaryClick::parse("right"), Some(SecondaryClick::Right));
+        assert_eq!(SecondaryClick::parse("left"), Some(SecondaryClick::Left));
+        assert_eq!(SecondaryClick::parse("middle"), None);
+        assert_eq!(ScrollMethod::Edge.id(), "edge");
+        assert_eq!(SecondaryClick::Left.id(), "left");
     }
 
     #[test]

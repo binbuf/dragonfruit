@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="9">
+  <interface name="df_toplevel_manager" version="10">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -340,6 +340,45 @@
       <arg name="transparency_millionths" type="uint" summary="0..1000000; 0.5255 = 525500"/>
       <arg name="reduce_transparency" type="uint"/>
       <arg name="increase_contrast" type="uint"/>
+    </request>
+
+    <!-- T229: the pointer half of the Keyboard/Mouse/Trackpad pane, applied
+         live. Appended after the v9 messages so the scanner's `since` stays
+         non-decreasing and every pre-existing message keeps its opcode
+         (append-only). Additive in v10. -->
+    <request name="set_pointer_policy" since="10">
+      <description summary="set the live pointer/trackpad preferences">
+        The shell mirrors the settingsd `input.*` pointer keys here. Speeds
+        are millionths (-1000000..1000000, 0 neutral); the string fields use
+        the schema's stable ids. Unknown spellings leave the current value
+        untouched, and out-of-range speeds are clamped. The compositor applies
+        the snapshot to its default pointer settings; per-device overrides
+        remain the backend's.
+      </description>
+      <arg name="pointer_speed_millionths" type="int"/>
+      <arg name="natural_scroll" type="uint"/>
+      <arg name="tap_to_click" type="uint"/>
+      <arg name="left_handed" type="uint"/>
+      <arg name="scroll_method" type="string" allow-null="true"/>
+      <arg name="secondary_click" type="string" allow-null="true"/>
+      <arg name="scroll_speed_millionths" type="int"/>
+      <arg name="double_click_ms" type="uint"/>
+      <arg name="haptics" type="uint"/>
+    </request>
+
+    <!-- T229: the active keyboard layout, applied live through the seat's
+         keymap. The shell forwards the first `input.sources` entry (or leaves
+         both null to follow the host XKB_DEFAULT_* configuration). Additive in
+         v10. -->
+    <request name="set_keyboard_layout" since="10">
+      <description summary="set the live keyboard layout">
+        `layout` and `variant` are xkbcommon layout/variant names. A null
+        layout keeps the host `XKB_DEFAULT_*` configuration. The compositor
+        recompiles the seat keymap; an invalid layout is ignored and the
+        current keymap stays in force.
+      </description>
+      <arg name="layout" type="string" allow-null="true"/>
+      <arg name="variant" type="string" allow-null="true"/>
     </request>
 
     <enum name="hot_corner">

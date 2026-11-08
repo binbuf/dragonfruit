@@ -35,10 +35,13 @@ bool FilesSettings::available() const
 
 QString FilesSettings::glassRollout() const
 {
+    // Only an explicit override selects a rail; an empty result lets the QML
+    // shell read `Theme.glass.rollout.defaultMode` from the shared tokens.
     const QString requested =
         qEnvironmentVariable("DRAGONFRUIT_GLASS_ROLLOUT").trimmed().toLower();
-    return requested == QLatin1String("replacement")
-        ? QStringLiteral("replacement") : QStringLiteral("legacy");
+    return (requested == QLatin1String("legacy")
+            || requested == QLatin1String("replacement"))
+        ? requested : QString();
 }
 
 bool FilesSettings::appChromeSupported() const

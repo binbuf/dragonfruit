@@ -32,10 +32,14 @@ public:
     virtual QVariantMap view() const = 0;
     // Re-read the host once (the pane calls this on open).
     virtual void refresh() = 0;
+    // T229: read one diagnostic event from a controller node. The report is
+    // pushed through `controllerTested`; no device state changes.
+    virtual void testController(const QString &path) = 0;
 
 signals:
     void changed(const QVariantMap &view);
     void availableChanged(bool available);
+    void controllerTested(const QVariantMap &report);
 };
 
 // The live client over the user session bus.
@@ -50,6 +54,7 @@ public:
     bool available() const override;
     QVariantMap view() const override { return m_view; }
     void refresh() override;
+    void testController(const QString &path) override;
 
 private:
     void applyReply(const QByteArray &json);
@@ -73,6 +78,7 @@ public:
     bool available() const override { return true; }
     QVariantMap view() const override { return m_view; }
     void refresh() override;
+    void testController(const QString &path) override;
 
 private:
     void rebuild();

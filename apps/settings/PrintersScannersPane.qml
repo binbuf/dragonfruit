@@ -46,6 +46,18 @@ Item {
     property string selectedPrinterName: ""
     readonly property var selectedPrinter: root.selectedPrinterName.length > 0
         ? root.findPrinter(root.selectedPrinterName) : null
+    // T229: discovery, add, and options.
+    readonly property var discovery: Settings.printerDiscovery
+    readonly property var discoveryDevices: discovery.devices !== undefined
+        ? discovery.devices : []
+    readonly property var optionsReport: Settings.printerOptions
+    readonly property var printerOptionRows: optionsReport.options !== undefined
+        ? optionsReport.options : []
+    property string addName: ""
+    property string addUri: ""
+    property string addDriver: "everywhere"
+    property string optionsPrinterName: ""
+    property Item popupParent: null
 
     // Test surface (used by tst_settings_printers.qml).
     property alias defaultSelect: defaultSelect
@@ -63,6 +75,17 @@ Item {
     property alias setDefaultButton: setDefaultButton
     property alias jobsRepeater: jobsRepeater
     property alias noJobsNote: noJobsNote
+    property alias addPrinterButton: addPrinterButton
+    property alias addPrinterDialog: addPrinterDialog
+    property alias addDeviceRepeater: addDeviceRepeater
+    property alias addNameInput: addNameInput
+    property alias addUriInput: addUriInput
+    property alias addDriverInput: addDriverInput
+    property alias addPrinterConfirm: addPrinterConfirm
+    property alias optionsButton: optionsButton
+    property alias optionsDialog: optionsDialog
+    property alias optionsRepeater: optionsRepeater
+    property alias optionsAbsenceNote: optionsAbsenceNote
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -102,6 +125,39 @@ Item {
         var current = String(Settings.values["printers.defaultPaperSize"] || "us-letter");
         for (var i = 0; i < root.paperSizeModel.length; ++i)
             if (root.paperSizeModel[i].value === current)
+                return i;
+        return 0;
+    }
+
+    function openAddPrinter() {
+        root.addName = "";
+        root.addUri = "";
+        root.addDriver = "everywhere";
+        Settings.discoverPrinters();
+        root.addPrinterDialog.show();
+    }
+
+    function chooseDevice(device) {
+        root.addUri = String(device.uri);
+        if (root.addName.length === 0) {
+            var uri = String(device.uri);
+            var tail = uri.substring(uri.lastIndexOf("/") + 1);
+            root.addName = tail.length > 0 ? tail : uri;
+        }
+    }
+
+    function openOptions() {
+        if (root.selectedPrinter === null)
+            return;
+        root.optionsPrinterName = String(root.selectedPrinter.name);
+        Settings.loadPrinterOptions(root.optionsPrinterName);
+        root.optionsDialog.show();
+    }
+
+    function optionIndex(option, value) {
+        var choices = option.choices !== undefined ? option.choices : [];
+        for (var i = 0; i < choices.length; ++i)
+            if (String(choices[i]) === String(value))
                 return i;
         return 0;
     }
@@ -321,6 +377,20 @@ Item {
             }
         }
 
+        Row {
+            width: parent.width
+            visible: root.ready
+            spacing: Theme.primitive.spacing.md
+
+            Button {
+                id: addPrinterButton
+                objectName: "addPrinterButton"
+                text: qsTr("Add Printer or Scanner…")
+                enabled: root.printersAvailable
+                onClicked: root.openAddPrinter()
+            }
+        }
+
         // ── Scanners ──────────────────────────────────────────────────────
         SettingsGroup {
             id: scannersGroup
@@ -444,6 +514,7 @@ Item {
         title: root.selectedPrinter !== null
             ? String(root.selectedPrinter.displayName) : qsTr("Printer")
         dismissible: true
+        parent: root.popupParent ? root.popupParent : root
 
         contentData: Column {
             width: parent.width
@@ -568,6 +639,14 @@ Item {
             spacing: Theme.controls.dialog.buttonGap
 
             Button {
+                id: optionsButton
+                objectName: "printerOptionsButton"
+                text: qsTr("Options & Supplies…")
+                enabled: root.selectedPrinter !== null
+                onClicked: root.openOptions()
+            }
+
+            Button {
                 id: setDefaultButton
                 objectName: "setDefaultPrinterButton"
                 text: qsTr("Set as Default Printer")
@@ -583,6 +662,209 @@ Item {
                 text: qsTr("Done")
                 variant: "primary"
                 onClicked: printerDialog.accept()
+            }
+        }
+    }
+
+    // ── Add Printer dialog (T229) ─────────────────────────────────────────
+    Dialog {
+        id: addPrinterDialog
+        objectName: "addPrinterDialog"
+        title: qsTr("Add Printer")
+        dismissible: true
+        parent: root.popupParent ? root.popupParent : root
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                width: parent.width
+                text: root.discovery.outcome === "error"
+                    ? String(root.discovery.error)
+                    : qsTr("Choose a discovered device, then name the queue.")
+                color: root.discovery.outcome === "error"
+                    ? Theme.color.danger : Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                id: addDeviceRepeater
+                model: root.discoveryDevices
+                delegate: SettingsRow {
+                    required property var modelData
+                    width: parent.width
+                    label: modelData.description !== undefined
+                        && String(modelData.description).length > 0
+                        ? String(modelData.description) : String(modelData.uri)
+                    description: String(modelData.kind) + " · " + String(modelData.uri)
+                    showSeparator: true
+                    controlData: Button {
+                        text: qsTr("Use")
+                        variant: "ghost"
+                        onClicked: root.chooseDevice(modelData)
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                visible: root.discoveryDevices.length === 0
+                text: qsTr("No printer devices were discovered.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            Text {
+                text: qsTr("Queue name")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+            TextInput {
+                id: addNameInput
+                objectName: "addPrinterName"
+                width: parent.width
+                height: 28
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                verticalAlignment: TextInput.AlignVCenter
+                onTextChanged: root.addName = text
+            }
+
+            Text {
+                text: qsTr("Device URI")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+            TextInput {
+                id: addUriInput
+                objectName: "addPrinterUri"
+                width: parent.width
+                height: 28
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                verticalAlignment: TextInput.AlignVCenter
+                onTextChanged: root.addUri = text
+            }
+
+            Text {
+                text: qsTr("Driver (CUPS model, default everywhere)")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+            TextInput {
+                id: addDriverInput
+                objectName: "addPrinterDriver"
+                width: parent.width
+                height: 28
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                verticalAlignment: TextInput.AlignVCenter
+                onTextChanged: root.addDriver = text
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                text: qsTr("Cancel")
+                onClicked: addPrinterDialog.reject()
+            }
+
+            Button {
+                id: addPrinterConfirm
+                objectName: "addPrinterConfirm"
+                text: qsTr("Add")
+                variant: "primary"
+                enabled: root.addName.trim().length > 0 && root.addUri.trim().length > 0
+                onClicked: {
+                    Settings.addPrinter(root.addName.trim(), root.addUri.trim(),
+                                        root.addDriver.trim());
+                    addPrinterDialog.accept();
+                }
+            }
+        }
+    }
+
+    // ── Options & Supplies sheet (T229) ───────────────────────────────────
+    Dialog {
+        id: optionsDialog
+        objectName: "printerOptionsDialog"
+        title: root.optionsPrinterName.length > 0
+            ? qsTr("Options — %1").arg(root.optionsPrinterName)
+            : qsTr("Options & Supplies")
+        dismissible: true
+        parent: root.popupParent ? root.popupParent : root
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                id: optionsAbsenceNote
+                objectName: "printerOptionsAbsence"
+                width: parent.width
+                visible: root.optionsReport.outcome === "error"
+                text: root.optionsReport.error !== undefined
+                    ? String(root.optionsReport.error)
+                    : qsTr("This queue does not report configurable options.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                id: optionsRepeater
+                model: root.printerOptionRows
+                delegate: SettingsRow {
+                    required property var modelData
+                    width: parent.width
+                    label: modelData.label !== undefined
+                        ? String(modelData.label) : String(modelData.key)
+                    description: String(modelData.key)
+                    showSeparator: true
+                    controlData: Select {
+                        id: optionSelect
+                        accessibleName: String(modelData.key)
+                        model: {
+                            var choices = modelData.choices !== undefined
+                                ? modelData.choices : [];
+                            var out = [];
+                            for (var i = 0; i < choices.length; ++i)
+                                out.push({ value: String(choices[i]),
+                                           label: String(choices[i]) });
+                            return out;
+                        }
+                        onSelected: (value) => Settings.setPrinterOption(
+                            root.optionsPrinterName, String(modelData.key), String(value))
+                        Binding {
+                            target: optionSelect
+                            property: "currentIndex"
+                            value: root.optionIndex(modelData,
+                                                    modelData.value !== undefined
+                                                        ? modelData.value : "")
+                        }
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("Supplies are reported by the queue's state message. Changing a driver or installing supplies is delegated to the distribution's printer tooling.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                text: qsTr("Done")
+                variant: "primary"
+                onClicked: optionsDialog.accept()
             }
         }
     }

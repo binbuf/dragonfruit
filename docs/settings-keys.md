@@ -41,7 +41,7 @@ freezes the v1 key set.
 | `gestures.missionControl` | b | true | | settingsd | compositor/input | Vertical swipe opens Mission Control. |
 | `appearance.colorScheme` | s | `auto` | `light`/`dark`/`auto` | settingsd | compositor/window decoration, shell/design-system Theme | Light/dark scheme; auto follows the host style hint. The Control Center dark-mode tile writes `dark`/`light` only (T-11.3b). |
 | `appearance.accent` | s | `` (empty) | `#rrggbb` or empty | settingsd | shell/design-system Theme | Accent color override (`#rrggbb`); empty uses the token default. |
-| `appearance.transparency` | d | 0.5255 | 0.0–1.0 | apps/settings | shell/design-system Glass, compositor/material | Attached-menu glass transparency, 0 (opaque) to 1 (clearer); the measured midpoint is 0.5255. |
+| `appearance.transparency` | d | 0.5255 | 0.0–1.0 | apps/settings | shell/design-system Glass, compositor/material | Attached-menu glass transparency, 0 (opaque) to 1 (clearer); the measured midpoint is 0.5255 and is the default for the shipped replacement glass (ADR 0234). |
 | `wallpaper.source` | s | `` (empty) | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Image path for the selected wallpaper; empty keeps the solid color. |
 | `wallpaper.fit` | s | `fill` | `fill`/`fit`/`stretch`/`center` | apps/settings | shell/wallpaper forwarder, compositor/workspace model | How the wallpaper image maps onto the output. |
 | `wallpaper.showOnAllSpaces` | b | true | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Apply the selection to every Space, or only the active one. |
@@ -68,6 +68,16 @@ freezes the v1 key set.
 | `input.backlightOffAfter` | x | 0 | 0–3600 s | apps/settings | compositor/keyboard backlight (hardware bridge deferred) | Seconds of inactivity before the keyboard backlight turns off; 0 keeps it on. |
 | `input.keyboardNavigation` | b | false | | apps/settings | compositor/input keyboard navigation | Move focus between controls with Tab and Shift+Tab. |
 | `input.emojiKeyAction` | s | `emoji` | `emoji`/`none` | apps/settings | compositor/input (emoji panel bridge deferred) | Action when the Compose/Super key is pressed: show the emoji panel or nothing. |
+| `input.secondaryClick` | s | `right` | `right`/`left` | apps/settings | compositor/input pointer buttons | Which button a secondary click uses: right (default) or left. |
+| `input.scrollSpeed` | d | 0.0 | -1.0–1.0 | apps/settings | compositor/input pointer scrolling | Pointer scroll speed, -1.0 (slow) to 1.0 (fast); 0 is neutral. |
+| `input.doubleClickSpeed` | x | 400 | 100–900 ms | apps/settings | compositor/input pointer double-click interval | Maximum milliseconds between two clicks for a double-click. |
+| `input.haptics` | b | true | | apps/settings | compositor/input trackpad haptics (hardware bridge deferred) | Haptic feedback for a trackpad that supports it. |
+| `input.lookUp` | s | `force-click` | `force-click`/`three-finger`/`off` | apps/settings | compositor/input gesture mapping | How a trackpad look-up gesture is triggered; off disables it. |
+| `input.sources` | as | `[]` | | apps/settings | shell/compositor keymap | Ordered keyboard layout ids; the first is the active source. Empty follows the host keymap. |
+| `input.replacements` | as | `[]` | | apps/settings | input method (T253) | Text replacements as `from\tto` entries for the session input method. |
+| `input.dictation` | b | false | | apps/settings | speech-to-text delegate (when installed) | Enable dictation when a speech-to-text service is installed. |
+| `power.showPercentage` | b | false | | apps/settings | shell/MenuBar battery item | Show the battery percentage beside the menu-bar glyph. |
+| `power.historyRange` | x | 0 | 0–1 | apps/settings | apps/settings Battery pane | Battery usage range: 0 = last 24 hours, 1 = last 10 days. |
 | `idle.dim` | x | 150 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the screen dims; 0 disables the stage. |
 | `idle.blank` | x | 300 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the screen blanks; 0 disables the stage. |
 | `idle.lock` | x | 600 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the session locks; 0 disables the stage. |

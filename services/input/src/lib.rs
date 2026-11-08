@@ -49,11 +49,16 @@
 //! [adr/0034]: ../../../docs/design/adr/0034-compositor-policy-via-shell-bridge.md
 
 mod adapter;
+mod controllers;
 mod libinput;
 mod model;
 mod source;
 
 pub use adapter::InputAdapter;
+pub use controllers::{
+    command_in_path, controllers_from_proc, dictation_available, sdl_mappings, test_controller,
+    ControllerData, ControllerTest,
+};
 pub use libinput::{CommandLibinput, LIBINPUT_BIN};
-pub use model::{DeviceChange, DeviceKind, InputDevice, InputSnapshot};
+pub use model::{Controller, DeviceChange, DeviceKind, InputDevice, InputSnapshot};
 pub use source::{InputData, InputDeviceData, InputSource, MockInput};

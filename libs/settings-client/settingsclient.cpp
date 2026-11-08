@@ -129,7 +129,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 21). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 22). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -178,6 +178,16 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("input.backlightOffAfter"), qlonglong(0));
     values.insert(QStringLiteral("input.keyboardNavigation"), false);
     values.insert(QStringLiteral("input.emojiKeyAction"), QStringLiteral("emoji"));
+    values.insert(QStringLiteral("input.secondaryClick"), QStringLiteral("right"));
+    values.insert(QStringLiteral("input.scrollSpeed"), 0.0);
+    values.insert(QStringLiteral("input.doubleClickSpeed"), qlonglong(400));
+    values.insert(QStringLiteral("input.haptics"), true);
+    values.insert(QStringLiteral("input.lookUp"), QStringLiteral("force-click"));
+    values.insert(QStringLiteral("input.sources"), QStringList());
+    values.insert(QStringLiteral("input.replacements"), QStringList());
+    values.insert(QStringLiteral("input.dictation"), false);
+    values.insert(QStringLiteral("power.showPercentage"), false);
+    values.insert(QStringLiteral("power.historyRange"), qlonglong(0));
     values.insert(QStringLiteral("idle.dim"), qlonglong(150));
     values.insert(QStringLiteral("idle.blank"), qlonglong(300));
     values.insert(QStringLiteral("idle.lock"), qlonglong(600));
@@ -301,6 +311,8 @@ const char *const kWallpaperFit[] = { "fill", "fit", "stretch", "center" };
 const char *const kRotation[] = { "normal", "90", "180", "270" };
 const char *const kScrollMethod[] = { "two-finger", "edge", "button" };
 const char *const kEmojiAction[] = { "emoji", "none" };
+const char *const kSecondaryClick[] = { "right", "left" };
+const char *const kLookUp[] = { "force-click", "three-finger", "off" };
 const char *const kHotCorner[] = { "none", "mission-control", "notification-center",
                                    "desktop-reveal", "lock-screen" };
 const char *const kPreviews[] = { "always", "when-unlocked", "never" };
@@ -344,6 +356,11 @@ const Constraint kConstraints[] = {
     { "input.keyboardBrightness", nullptr, 0, true, 0.0, true, 1.0 },
     { "input.backlightOffAfter", nullptr, 0, true, 0.0, true, 3600.0 },
     { "input.emojiKeyAction", kEmojiAction, 2, false, 0, false, 0 },
+    { "input.secondaryClick", kSecondaryClick, 2, false, 0, false, 0 },
+    { "input.scrollSpeed", nullptr, 0, true, -1.0, true, 1.0 },
+    { "input.doubleClickSpeed", nullptr, 0, true, 100.0, true, 900.0 },
+    { "input.lookUp", kLookUp, 3, false, 0, false, 0 },
+    { "power.historyRange", nullptr, 0, true, 0.0, true, 1.0 },
     { "idle.dim", nullptr, 0, true, 0.0, true, 86400.0 },
     { "idle.blank", nullptr, 0, true, 0.0, true, 86400.0 },
     { "idle.lock", nullptr, 0, true, 0.0, true, 86400.0 },

@@ -95,13 +95,12 @@ fails, the compositor disables the sampled path and reports the fallback state
 to the shell. Check `material stats`: `blur_passes>0`, `blur_draws>0`,
 `blur_panels>=1`; `path=gpu` alone is not proof.
 
-The liquid-glass replacement is staged behind one rollout switch. The shipped
-default stays `legacy` until the T208 native gate passes; the switch is also
-the rollback:
+The liquid-glass replacement is the shipped default. One rollout switch also
+provides the A/B and rollback rails:
 
 ```bash
 DRAGONFRUIT_GLASS_ROLLOUT=legacy make native-rebuild       # explicit rollback
-DRAGONFRUIT_GLASS_ROLLOUT=replacement make native-rebuild  # pre-rollout A/B
+DRAGONFRUIT_GLASS_ROLLOUT=replacement make native-rebuild  # explicit replacement
 ```
 
 The value is persisted into `native.env` and both the compositor and shell

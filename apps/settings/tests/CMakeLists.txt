@@ -493,6 +493,30 @@ set_tests_properties(tst_settings_printers PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Game Controllers-pane tests (T229): the shared input fixture lists one
+# controller; the diagnostic test read and the read-only mapping sheet are the
+# two actions. The no-controller absence state is covered by the per-pane
+# absence sweep.
+qt_add_executable(tst_settings_controllers
+    tst_settings_controllers.cpp
+)
+target_link_libraries(tst_settings_controllers PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_controllers)
+
+add_test(
+    NAME tst_settings_controllers
+    COMMAND tst_settings_controllers
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_controllers.qml
+)
+set_tests_properties(tst_settings_controllers PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_INPUT_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Privacy & Security pane tests (T-15.13b): the flat category list, the
 # per-category permission dialog, and the tristate/removal round-trip.
 # `DF_PRIVACY_FIXTURE` is the deterministic in-process host-stack client, so the

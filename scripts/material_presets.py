@@ -176,8 +176,11 @@ def validate(data: dict) -> list[str]:
         _string(rollout, "legacyMode", "glass.rollout", errors, allowed=ROLLOUTS)
         _string(rollout, "replacementMode", "glass.rollout", errors, allowed=ROLLOUTS)
         _string(rollout, "envVar", "glass.rollout", errors)
-        if rollout.get("defaultMode") != "legacy":
-            errors.append("glass.rollout.defaultMode: must stay 'legacy' until T208")
+        declared = (rollout.get("legacyMode"), rollout.get("replacementMode"))
+        if rollout.get("defaultMode") not in declared:
+            errors.append(
+                "glass.rollout.defaultMode: must match the legacy or replacement mode"
+            )
 
     slider = _expect_object(glass.get("slider"), "glass.slider", errors)
     if slider is not None:
@@ -411,10 +414,15 @@ def resolve(
         backend = "software"
     if tier not in TIERS:
         tier = "minimal"
+    default_rollout = (
+        data.get("glass", {}).get("rollout", {}).get("defaultMode", "replacement")
+    )
+    if default_rollout not in ROLLOUTS:
+        default_rollout = "replacement"
     if rollout is None:
-        rollout = data.get("glass", {}).get("rollout", {}).get("defaultMode", "legacy")
+        rollout = default_rollout
     if rollout not in ROLLOUTS:
-        rollout = "legacy"
+        rollout = default_rollout
 
     glass = data.get("glass", {})
     presets = glass.get("presets", {})
@@ -605,8 +613,11 @@ def resolve(
 def rollout_from_env(env: dict[str, str] | None = None) -> str:
     """The one internal rollout switch, shared by nested and native fixtures."""
     values = os.environ if env is None else env
-    requested = str(values.get("DRAGONFRUIT_GLASS_ROLLOUT", "legacy")).strip().lower()
-    return requested if requested in ROLLOUTS else "legacy"
+    default = load().get("glass", {}).get("rollout", {}).get("defaultMode", "replacement")
+    if default not in ROLLOUTS:
+        default = "replacement"
+    requested = str(values.get("DRAGONFRUIT_GLASS_ROLLOUT", default)).strip().lower()
+    return requested if requested in ROLLOUTS else default
 
 
 def self_test() -> list[str]:
@@ -760,9 +771,12 @@ def self_test() -> list[str]:
               f"{name} {scheme} confidence must be {confidence}")
         check(result["alpha"] >= 0.9,
               f"{name} {scheme} must stay near-opaque")
-        legacy = resolve(data, name, scheme=scheme)
+        default = resolve(data, name, scheme=scheme)
+        check(default["look"] == "replacement",
+              f"{name} {scheme} must use the replacement look by default")
+        legacy = resolve(data, name, scheme=scheme, rollout="legacy")
         check(legacy["look"] == "legacy",
-              f"{name} {scheme} must keep the legacy look by default")
+              f"{name} {scheme} must keep the legacy look selectable")
         reduced = resolve(data, name, scheme=scheme, reduce_transparency=True,
                           rollout="replacement")
         check(reduced["renderMode"] == "solid" and reduced["alpha"] >= 0.9,
@@ -791,15 +805,22 @@ def self_test() -> list[str]:
     check((moving["alpha"], moving["renderMode"]) == (still["alpha"], still["renderMode"]),
           "Reduce Motion must not change the optics")
 
-    # The rollout switch defaults to the existing appearance and is stable.
-    legacy = resolve(data, "dock", scheme="light")
-    check(legacy["look"] == "legacy", "the default rollout must stay legacy")
+    # The rollout switch defaults to the replacement appearance and keeps the
+    # legacy rail selectable for A/B and rollback.
+    replacement = resolve(data, "dock", scheme="light")
+    check(replacement["look"] == "replacement",
+          "the default rollout must be replacement")
+    check(replacement["renderMode"] == "sampled-glass",
+          "replacement default keeps sampled glass")
+    legacy = resolve(data, "dock", scheme="light", rollout="legacy")
+    check(legacy["look"] == "legacy", "the legacy rollout stays selectable")
     check(legacy["renderMode"] == "sampled-glass", "legacy sampled appearance")
-    check(rollout_from_env({}) == "legacy", "unset rollout defaults to legacy")
-    check(rollout_from_env({"DRAGONFRUIT_GLASS_ROLLOUT": "replacement"}) == "replacement",
-          "replacement rollout is selectable")
-    check(rollout_from_env({"DRAGONFRUIT_GLASS_ROLLOUT": "bogus"}) == "legacy",
-          "unknown rollout is safe")
+    check(rollout_from_env({}) == "replacement",
+          "unset rollout defaults to replacement")
+    check(rollout_from_env({"DRAGONFRUIT_GLASS_ROLLOUT": "legacy"}) == "legacy",
+          "legacy rollout is selectable")
+    check(rollout_from_env({"DRAGONFRUIT_GLASS_ROLLOUT": "bogus"}) == "replacement",
+          "unknown rollout falls back to the default")
 
     return failures
 

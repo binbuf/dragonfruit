@@ -295,17 +295,17 @@ TestCase {
         compare(unknown.fallbackReason, "unknown-preset");
     }
 
-    function test_glass_rollout_defaults_to_the_existing_appearance() {
-        compare(Theme.glass.rollout.defaultMode, "legacy");
-        Glass.rollout = "legacy";
-        var legacy = Glass.resolve("dock", { scheme: "light" });
-        compare(legacy.look, "legacy");
-        verify(Math.abs(legacy.alpha - Theme.material.dockOpacity) < 1e-6);
+    function test_glass_rollout_defaults_to_the_replacement_appearance() {
+        compare(Theme.glass.rollout.defaultMode, "replacement");
         Glass.rollout = "replacement";
         var replacement = Glass.resolve("dock", { scheme: "light" });
         compare(replacement.look, "replacement");
         verify(Math.abs(replacement.alpha
                        - Theme.glass.presets.dock.light.calibration.neutralAlpha) < 1e-6);
+        Glass.rollout = "legacy";
+        var legacy = Glass.resolve("dock", { scheme: "light" });
+        compare(legacy.look, "legacy");
+        verify(Math.abs(legacy.alpha - Theme.material.dockOpacity) < 1e-6);
     }
 
     function test_glass_reduce_motion_is_orthogonal() {

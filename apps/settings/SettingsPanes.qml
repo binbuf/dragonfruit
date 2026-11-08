@@ -233,7 +233,7 @@ QtObject {
           deepLink: "settings://pane/trackpad",
           absence: "live-on-defaults" },
         { id: "game-controllers", title: qsTr("Game Controllers"), icon: "input",
-          description: "", shipped: false,
+          description: "", shipped: true,
           owner: "udev/SDL", deepLink: "settings://pane/game-controllers",
           absence: "disabled-with-reason" }
     ]

@@ -26,6 +26,8 @@ Item {
         // every case so the pane always opens on a known state.
         function init() {
             Settings.setPowerProfile("balanced");
+            Settings.set("power.showPercentage", false);
+            Settings.set("power.historyRange", 0);
         }
 
         function make() {
@@ -116,6 +118,23 @@ Item {
             compare(pane.historyRange, 1);
             verify(pane.batteryChart.caption.indexOf("last 10 days") >= 0);
             verify(pane.screenChart.caption.indexOf("last 10 days") >= 0);
+        }
+
+        function test_battery_options_and_power_settings_link() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.optionsGroup.visible);
+            compare(pane.showPercentageToggle.checked, false);
+            pane.showPercentageToggle.toggle();
+            compare(Settings.values["power.showPercentage"], true);
+
+            compare(pane.historyRange, 0);
+            pane.rangeControl.activateIndex(1);
+            compare(Settings.values["power.historyRange"], 1);
+
+            verify(pane.powerSettingsGroup.visible);
+            pane.openLockScreenButton.clicked();
+            tryVerify(function() { return shell.currentPaneId === "lock-screen"; });
         }
 
         function test_absence_note_hides_when_the_service_is_present() {

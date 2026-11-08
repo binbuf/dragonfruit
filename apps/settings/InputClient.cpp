@@ -87,6 +87,31 @@ void DbusInputClient::refresh()
             });
 }
 
+void DbusInputClient::testController(const QString &path)
+{
+    auto *iface = new QDBusInterface(m_service, m_path, m_interface,
+                                     QDBusConnection::sessionBus(), this);
+    if (!iface->isValid()) {
+        iface->deleteLater();
+        return;
+    }
+    auto *watcher = new QDBusPendingCallWatcher(
+        iface->asyncCall(QStringLiteral("TestController"), path), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, iface, watcher]() {
+                const QDBusPendingReply<QString> reply = *watcher;
+                iface->deleteLater();
+                watcher->deleteLater();
+                if (!reply.isValid())
+                    return;
+                QJsonParseError parseError{};
+                const QJsonDocument document =
+                    QJsonDocument::fromJson(reply.value().toUtf8(), &parseError);
+                if (parseError.error == QJsonParseError::NoError && document.isObject())
+                    emit controllerTested(document.object().toVariantMap());
+            });
+}
+
 void DbusInputClient::applyReply(const QByteArray &json)
 {
     QJsonParseError parseError{};
@@ -113,6 +138,20 @@ void MockInputClient::refresh()
     rebuild();
 }
 
+void MockInputClient::testController(const QString &path)
+{
+    QVariantMap report;
+    report.insert(QStringLiteral("outcome"),
+                  path.isEmpty() ? QStringLiteral("absent") : QStringLiteral("event"));
+    report.insert(QStringLiteral("path"), path);
+    report.insert(QStringLiteral("detail"),
+                  path.isEmpty() ? QStringLiteral("No controller device node is available.")
+                                 : QStringLiteral("Read 8 byte(s) from %1.").arg(path));
+    report.insert(QStringLiteral("bytes"),
+                  path.isEmpty() ? QString() : QStringLiteral("0000000001000000"));
+    emit controllerTested(report);
+}
+
 void MockInputClient::rebuild()
 {
     QVariantMap view;
@@ -127,6 +166,23 @@ void MockInputClient::rebuild()
     view.insert(QStringLiteral("pointerCount"), 2);
     view.insert(QStringLiteral("mouseCount"), 1);
     view.insert(QStringLiteral("touchpadCount"), 1);
+    view.insert(QStringLiteral("dictationAvailable"), false);
+
+    QVariantMap controller;
+    controller.insert(QStringLiteral("name"), QStringLiteral("Microsoft X-Box 360 pad"));
+    controller.insert(QStringLiteral("path"), QStringLiteral("/dev/input/js0"));
+    controller.insert(QStringLiteral("id"), QStringLiteral("/dev/input/js0"));
+    controller.insert(QStringLiteral("identity"), QStringLiteral("045E:028E"));
+    controller.insert(QStringLiteral("bustype"), QStringLiteral("0003"));
+    controller.insert(QStringLiteral("vendor"), QStringLiteral("045E"));
+    controller.insert(QStringLiteral("product"), QStringLiteral("028E"));
+    controller.insert(QStringLiteral("handlers"),
+                      QStringList{QStringLiteral("js0"), QStringLiteral("event20")});
+    controller.insert(QStringLiteral("mapping"), QString());
+    controller.insert(QStringLiteral("hasMapping"), false);
+    controller.insert(QStringLiteral("driver"), QStringLiteral("udev"));
+    view.insert(QStringLiteral("controllers"), QVariantList{controller});
+    view.insert(QStringLiteral("controllerCount"), 1);
 
     const auto device = [](const QString &name, const QString &kernel,
                            const QString &kind, const QString &kindLabel,

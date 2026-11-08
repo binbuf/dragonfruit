@@ -3451,8 +3451,7 @@ impl DfState {
         // `dock.minimizedAnimation=none` collapses minimize/restore exactly
         // like reduced motion: the window state still changes, only the tween
         // is skipped (T-08.2c).
-        let minimize_kind =
-            matches!(kind, WindowMotionKind::Minimize | WindowMotionKind::Restore);
+        let minimize_kind = matches!(kind, WindowMotionKind::Minimize | WindowMotionKind::Restore);
         let collapse_minimize = minimize_kind && self.minimized_animation.collapses();
         let reduced = self.animation_clock.reduced_motion() || collapse_minimize;
         // The genie mode uses the controlled reference's 450 ms envelope. Scale
@@ -4503,6 +4502,61 @@ impl DfState {
         self.input_settings.gestures.space_switch = gesture_space_switch;
         self.input_settings.gestures.mission_control = gesture_mission_control;
         self.apply_input_settings();
+    }
+
+    /// Apply the settingsd pointer/trackpad policy forwarded by the shell over
+    /// `df_toplevel_manager.set_pointer_policy` (T229): the live pointer half
+    /// of the Keyboard/Mouse/Trackpad pane. Speeds are millionths and are
+    /// clamped to the schema's -1.0..=1.0 range; unknown string ids leave the
+    /// current value untouched.
+    pub fn set_pointer_policy(
+        &mut self,
+        pointer_speed_millionths: i32,
+        natural_scroll: bool,
+        tap_to_click: bool,
+        left_handed: bool,
+        scroll_method: Option<&str>,
+        secondary_click: Option<&str>,
+        scroll_speed_millionths: i32,
+        double_click_ms: u32,
+        haptics: bool,
+    ) {
+        let pointer = &mut self.input_settings.default_pointer;
+        pointer.accel_speed =
+            f64::from(pointer_speed_millionths.clamp(-1_000_000, 1_000_000)) / 1_000_000.0;
+        pointer.natural_scroll = natural_scroll;
+        pointer.tap_to_click = tap_to_click;
+        pointer.left_handed = left_handed;
+        if let Some(method) = scroll_method.and_then(crate::input::settings::ScrollMethod::parse) {
+            pointer.scroll_method = method;
+        }
+        if let Some(click) = secondary_click.and_then(crate::input::settings::SecondaryClick::parse)
+        {
+            pointer.secondary_click = click;
+        }
+        pointer.scroll_speed =
+            f64::from(scroll_speed_millionths.clamp(-1_000_000, 1_000_000)) / 1_000_000.0;
+        pointer.double_click_ms = double_click_ms.clamp(100, 900) as i32;
+        pointer.haptics = haptics;
+        self.apply_input_settings();
+    }
+
+    /// Apply the active keyboard layout forwarded by the shell over
+    /// `df_toplevel_manager.set_keyboard_layout` (T229). A null layout keeps
+    /// the host `XKB_DEFAULT_*` configuration; an invalid layout is ignored by
+    /// the seat and the current keymap stays in force.
+    pub fn set_keyboard_layout(&mut self, layout: Option<&str>, variant: Option<&str>) {
+        let Some(keyboard) = self.seat.get_keyboard() else {
+            return;
+        };
+        let mut config = crate::input::keymap::xkb_config();
+        if let Some(layout) = layout.filter(|layout| !layout.is_empty()) {
+            config.layout = layout;
+            config.variant = variant.unwrap_or("");
+        }
+        if keyboard.set_xkb_config(self, config).is_ok() {
+            self.needs_redraw = true;
+        }
     }
 
     /// Offset the live window surfaces for an in-flight overview/workspace

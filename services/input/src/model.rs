@@ -13,6 +13,7 @@
 //! exactly as the battery item hides on a machine with no battery. Only the
 //! adapter-level `Unavailable` (no libinput at all) is a different state.
 
+use crate::controllers::ControllerData;
 use crate::source::{InputData, InputDeviceData};
 
 /// The kind of input device, from its libinput capabilities.
@@ -231,12 +232,71 @@ impl DeviceChange {
     }
 }
 
+/// One game controller the kernel inventory reports (T229).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Controller {
+    /// The kernel name.
+    pub name: String,
+    /// The node the test action opens.
+    pub path: String,
+    /// The bus id in upper-case hex.
+    pub bustype: String,
+    /// The vendor id in upper-case hex.
+    pub vendor: String,
+    /// The product id in upper-case hex.
+    pub product: String,
+    /// The handler tokens.
+    pub handlers: Vec<String>,
+    /// The SDL mapping line, empty when none matched.
+    pub mapping: String,
+    /// `sdl` when a mapping matched, else `udev`.
+    pub driver: String,
+}
+
+impl Controller {
+    fn from_data(data: &ControllerData) -> Self {
+        Controller {
+            name: data.name.clone(),
+            path: data.path.clone(),
+            bustype: data.bustype.clone(),
+            vendor: data.vendor.clone(),
+            product: data.product.clone(),
+            handlers: data.handlers.clone(),
+            mapping: data.mapping.clone(),
+            driver: data.driver.clone(),
+        }
+    }
+
+    /// The stable id the pane and test action use.
+    pub fn id(&self) -> &str {
+        &self.path
+    }
+
+    /// A human identity line (`045E:028E`).
+    pub fn identity(&self) -> String {
+        if self.vendor.is_empty() && self.product.is_empty() {
+            String::new()
+        } else {
+            format!("{}:{}", self.vendor, self.product)
+        }
+    }
+
+    /// Whether an SDL mapping was found.
+    pub fn has_mapping(&self) -> bool {
+        !self.mapping.is_empty()
+    }
+}
+
 /// The input inventory a pane or status slot renders.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct InputSnapshot {
     /// Every recognized device, keyboards then pointers then the rest, each
     /// group ordered by name.
     pub devices: Vec<InputDevice>,
+    /// The game controllers the kernel inventory reports (T229).
+    pub controllers: Vec<Controller>,
+    /// Whether a speech-to-text command is installed (T229).
+    pub dictation_available: bool,
 }
 
 impl InputSnapshot {
@@ -251,7 +311,18 @@ impl InputSnapshot {
                 .then_with(|| left.name.cmp(&right.name))
                 .then_with(|| left.kernel.cmp(&right.kernel))
         });
-        InputSnapshot { devices }
+        let mut controllers: Vec<Controller> =
+            data.controllers.iter().map(Controller::from_data).collect();
+        controllers.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.path.cmp(&right.path))
+        });
+        InputSnapshot {
+            devices,
+            controllers,
+            dictation_available: data.dictation_available,
+        }
     }
 
     /// Every recognized device.
@@ -305,6 +376,28 @@ impl InputSnapshot {
     /// The device with the kernel node `kernel`, when present.
     pub fn device_at(&self, kernel: &str) -> Option<&InputDevice> {
         self.devices.iter().find(|device| device.kernel == kernel)
+    }
+
+    /// The game controllers (T229).
+    pub fn controllers(&self) -> &[Controller] {
+        &self.controllers
+    }
+
+    /// The controller count.
+    pub fn controller_count(&self) -> usize {
+        self.controllers.len()
+    }
+
+    /// The controller with the device node `path`, when present.
+    pub fn controller_at(&self, path: &str) -> Option<&Controller> {
+        self.controllers
+            .iter()
+            .find(|controller| controller.path == path)
+    }
+
+    /// Whether a speech-to-text command is installed (T229).
+    pub fn dictation_available(&self) -> bool {
+        self.dictation_available
     }
 
     /// The devices that appeared or disappeared relative to `previous`,
@@ -382,6 +475,7 @@ mod tests {
                     ..InputDeviceData::default()
                 },
             ],
+            ..InputData::default()
         }
     }
 
@@ -419,6 +513,28 @@ mod tests {
         assert_eq!(snapshot.count(), 0);
         assert_eq!(snapshot.label(), "No input devices");
         assert_eq!(snapshot.glyph(), "input");
+        assert_eq!(snapshot.controller_count(), 0);
+        assert!(!snapshot.dictation_available());
+    }
+
+    #[test]
+    fn controllers_and_dictation_are_carried_through() {
+        let mut raw = InputData::default();
+        raw.controllers.push(crate::controllers::ControllerData {
+            name: "Microsoft X-Box 360 pad".to_owned(),
+            path: "/dev/input/js0".to_owned(),
+            vendor: "045E".to_owned(),
+            product: "028E".to_owned(),
+            driver: "udev".to_owned(),
+            ..crate::controllers::ControllerData::default()
+        });
+        raw.dictation_available = true;
+        let snapshot = InputSnapshot::from_data(&raw);
+        assert_eq!(snapshot.controller_count(), 1);
+        let controller = snapshot.controller_at("/dev/input/js0").unwrap();
+        assert_eq!(controller.identity(), "045E:028E");
+        assert!(!controller.has_mapping());
+        assert!(snapshot.dictation_available());
     }
 
     #[test]
@@ -437,6 +553,7 @@ mod tests {
                 capabilities: vec!["pointer".to_owned()],
                 ..InputDeviceData::default()
             }],
+            ..InputData::default()
         };
         assert_eq!(InputSnapshot::from_data(&data).glyph(), "mouse");
     }

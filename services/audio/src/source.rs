@@ -113,6 +113,13 @@ pub trait AudioSource {
     /// Route capture to the source with this PipeWire node id: the input
     /// device switch (`wpctl set-default <id>`). One explicit write.
     fn set_default_source(&mut self, id: u32) -> SetOutcome;
+
+    /// Play a short test sound through the default output (T229). This is a
+    /// playback action, not a routing change; a host with no player or no
+    /// sound file is absent.
+    fn play_test_sound(&mut self) -> SetOutcome {
+        SetOutcome::Absent
+    }
 }
 
 /// A fixture-backed source with a simulated daemon lifecycle.
@@ -132,6 +139,7 @@ pub struct MockAudio {
     mute_writes: u32,
     default_sink_writes: u32,
     default_source_writes: u32,
+    test_sounds: u32,
 }
 
 impl MockAudio {
@@ -147,6 +155,7 @@ impl MockAudio {
             mute_writes: 0,
             default_sink_writes: 0,
             default_source_writes: 0,
+            test_sounds: 0,
         }
     }
 
@@ -162,6 +171,7 @@ impl MockAudio {
             mute_writes: 0,
             default_sink_writes: 0,
             default_source_writes: 0,
+            test_sounds: 0,
         }
     }
 
@@ -177,6 +187,7 @@ impl MockAudio {
             mute_writes: 0,
             default_sink_writes: 0,
             default_source_writes: 0,
+            test_sounds: 0,
         }
     }
 
@@ -237,6 +248,11 @@ impl MockAudio {
     /// How many default-source (input routing) writes the source has served.
     pub fn default_source_writes(&self) -> u32 {
         self.default_source_writes
+    }
+
+    /// The number of test sounds the source played (T229).
+    pub fn test_sounds(&self) -> u32 {
+        self.test_sounds
     }
 
     /// The simulated default sink's current linear volume, after any writes.
@@ -375,6 +391,14 @@ impl AudioSource for MockAudio {
                 "wpctl: no source with node id {id}"
             ))),
         }
+    }
+
+    fn play_test_sound(&mut self) -> SetOutcome {
+        if let Some(outcome) = self.write_outcome() {
+            return outcome;
+        }
+        self.test_sounds += 1;
+        SetOutcome::Applied
     }
 }
 

@@ -13,19 +13,22 @@ import Dragonfruit.Settings
 // what the session has, and its absence is a normal state (a one-line note,
 // never an error).
 //
-// Deviations from the macOS capture (ADR 0122): the `Dictation` section, the
-// `Text Input`/`Input Sources` rows, `Force Click and haptic feedback`, and
-// `Look up & data detectors` are Apple-only and omitted; `Keyboard Shortcuts…`
-// opens a shortcut editor that does not exist yet and is omitted; the `⌘` glyph
-// is our Super key label; the keyboard-backlight and emoji-panel hardware
-// bridges are deferred (the rows persist their preference now). The `Mouse`
-// capture does not exist, so its rows follow the Trackpad `Point & Click`
-// controls (`Tracking speed`, natural scrolling, handedness).
+// T229 closes the input breadth: the Input Sources list (settingsd
+// `input.sources`, forwarded to the compositor keymap), Text Replacements
+// (`input.replacements`, consumed by the session input method), Dictation
+// (enabled only when a speech-to-text command is installed), Secondary click,
+// Scroll speed, Double-click speed, Look up, Haptics (where a trackpad is
+// present), and a Bluetooth-trackpad hand-off. `Keyboard Shortcuts…` still
+// opens no editor and is omitted; the `⌘` glyph is our Super key label; the
+// keyboard-backlight and emoji-panel hardware bridges are deferred (the rows
+// persist their preference now). The `Mouse` capture does not exist, so its
+// rows follow the Trackpad `Point & Click` controls.
 Item {
     id: root
 
     // Which catalog pane this body renders.
     property string section: "keyboard"
+    signal navigateRequested(string paneId)
     readonly property bool keyboard: root.section === "keyboard"
     readonly property bool mouse: root.section === "mouse"
     readonly property bool trackpad: root.section === "trackpad"
@@ -97,6 +100,57 @@ Item {
         { value: "emoji", label: qsTr("Show Emoji & Symbols") },
         { value: "none", label: qsTr("Do Nothing") }
     ]
+    // T229: the active keyboard layouts. The first entry is the compositor's
+    // active source; an empty list follows the host keymap.
+    readonly property var inputSources:
+        Settings.values["input.sources"] !== undefined
+            ? Settings.values["input.sources"] : []
+    readonly property string hostKeymap:
+        Settings.general !== undefined && Settings.general.locale !== undefined
+            ? String(Settings.general.locale.keymap || "") : ""
+    readonly property bool dictationAvailable:
+        root.view.dictationAvailable === true
+    readonly property bool hasTouchpad: {
+        for (var i = 0; i < root.devices.length; ++i)
+            if (root.devices[i].kind === "touchpad")
+                return true;
+        return false;
+    }
+    readonly property var secondaryClickOptions: [
+        { value: "right", label: qsTr("Right") },
+        { value: "left", label: qsTr("Left") }
+    ]
+    readonly property var lookUpOptions: [
+        { value: "force-click", label: qsTr("Pressure Click") },
+        { value: "three-finger", label: qsTr("Three-Finger Click") },
+        { value: "off", label: qsTr("Off") }
+    ]
+    readonly property var replacementEntries: {
+        var raw = Settings.values["input.replacements"] !== undefined
+            ? Settings.values["input.replacements"] : [];
+        var out = [];
+        for (var i = 0; i < raw.length; ++i) {
+            var parts = String(raw[i]).split("\t");
+            out.push({ from: parts[0] || "", to: parts.length > 1 ? parts[1] : "" });
+        }
+        return out;
+    }
+    // T229: the settings keys the new rows own.
+    readonly property string secondaryClick:
+        Settings.values["input.secondaryClick"] || "right"
+    readonly property real scrollSpeed:
+        Settings.values["input.scrollSpeed"] !== undefined
+            ? Number(Settings.values["input.scrollSpeed"]) : 0.0
+    readonly property int doubleClickSpeed:
+        Settings.values["input.doubleClickSpeed"] !== undefined
+            ? Number(Settings.values["input.doubleClickSpeed"]) : 400
+    readonly property bool haptics: Settings.values["input.haptics"] !== false
+    readonly property string lookUp:
+        Settings.values["input.lookUp"] || "force-click"
+    property string newSource: ""
+    property string newReplacementFrom: ""
+    property string newReplacementTo: ""
+    property Item popupParent: null
 
     // Test surface (used by tst_settings_input.qml).
     property alias inventoryGroup: inventoryGroup
@@ -118,6 +172,24 @@ Item {
     property alias gesturesEnabledToggle: gesturesEnabledToggle
     property alias gestureSpaceToggle: gestureSpaceToggle
     property alias gestureMissionToggle: gestureMissionToggle
+    property alias sourcesRow: sourcesRow
+    property alias sourcesDialog: sourcesDialog
+    property alias sourcesRepeater: sourcesRepeater
+    property alias newSourceInput: newSourceInput
+    property alias replacementsRow: replacementsRow
+    property alias replacementsDialog: replacementsDialog
+    property alias replacementsRepeater: replacementsRepeater
+    property alias replacementFromInput: replacementFromInput
+    property alias replacementToInput: replacementToInput
+    property alias dictationToggle: dictationToggle
+    property alias dictationAbsenceNote: dictationAbsenceNote
+    property alias secondaryClickSelect: secondaryClickSelect
+    property alias scrollSpeedSlider: scrollSpeedSlider
+    property alias doubleClickSlider: doubleClickSlider
+    property alias hapticsToggle: hapticsToggle
+    property alias lookUpSelect: lookUpSelect
+    property alias trackpadSecondarySelect: trackpadSecondarySelect
+    property alias pairTrackpadRow: pairTrackpadRow
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -142,6 +214,70 @@ Item {
 
     function emojiKeyIndex() {
         return root.emojiKeyAction === "none" ? 1 : 0;
+    }
+
+    function secondaryClickIndex(value) {
+        return value === "left" ? 1 : 0;
+    }
+
+    function lookUpIndex() {
+        for (var i = 0; i < root.lookUpOptions.length; ++i)
+            if (root.lookUpOptions[i].value === root.lookUp)
+                return i;
+        return 0;
+    }
+
+    // The double-click slider runs Fast (left) to Slow (right): 100 ms at 0,
+    // 900 ms at 1.
+    function doubleClickFraction() {
+        return (root.doubleClickSpeed - 100) / 800.0;
+    }
+
+    function addSource() {
+        var value = root.newSource.trim();
+        if (value.length === 0)
+            return;
+        var list = root.inputSources.slice();
+        if (list.indexOf(value) < 0)
+            list.push(value);
+        Settings.setList("input.sources", list);
+        root.newSource = "";
+    }
+
+    function removeSource(value) {
+        var list = root.inputSources.slice();
+        var at = list.indexOf(value);
+        if (at < 0)
+            return;
+        list.splice(at, 1);
+        Settings.setList("input.sources", list);
+    }
+
+    function addReplacement() {
+        var from = root.newReplacementFrom.trim();
+        var to = root.newReplacementTo;
+        if (from.length === 0)
+            return;
+        var list = [];
+        var raw = Settings.values["input.replacements"] !== undefined
+            ? Settings.values["input.replacements"] : [];
+        for (var i = 0; i < raw.length; ++i)
+            if (String(raw[i]).split("\t")[0] !== from)
+                list.push(String(raw[i]));
+        list.push(from + "\t" + to);
+        Settings.setList("input.replacements", list);
+        root.newReplacementFrom = "";
+        root.newReplacementTo = "";
+    }
+
+    function removeReplacement(from) {
+        var list = [];
+        var raw = Settings.values["input.replacements"] !== undefined
+            ? Settings.values["input.replacements"] : [];
+        for (var i = 0; i < raw.length; ++i)
+            if (String(raw[i]).split("\t")[0] !== from)
+                list.push(String(raw[i]));
+        Settings.setList("input.replacements", list);
     }
 
     // The repeat-rate slider's 0..1 fraction for the settings value.
@@ -443,6 +579,77 @@ Item {
             }
         }
 
+        // ── Input sources, text replacements, dictation (T229) ─────────────
+        SettingsGroup {
+            id: inputSourcesGroup
+            width: parent.width
+            visible: root.keyboard
+            title: qsTr("Text Input")
+
+            SettingsRow {
+                id: sourcesRow
+                objectName: "inputSourcesRow"
+                width: parent.width
+                label: qsTr("Input sources")
+                description: root.inputSources.length > 0
+                    ? root.inputSources.join(", ")
+                    : (root.hostKeymap.length > 0
+                        ? qsTr("Host layout: %1").arg(root.hostKeymap)
+                        : qsTr("Follows the host keyboard layout."))
+                controlData: Button {
+                    objectName: "inputSourcesEdit"
+                    text: qsTr("Edit…")
+                    onClicked: root.sourcesDialog.show()
+                }
+            }
+
+            SettingsRow {
+                id: replacementsRow
+                objectName: "inputReplacementsRow"
+                width: parent.width
+                label: qsTr("Text replacements")
+                description: root.replacementEntries.length === 1
+                    ? qsTr("1 replacement")
+                    : qsTr("%1 replacements").arg(root.replacementEntries.length)
+                controlData: Button {
+                    objectName: "inputReplacementsEdit"
+                    text: qsTr("Edit…")
+                    onClicked: root.replacementsDialog.show()
+                }
+            }
+
+            SettingsRow {
+                objectName: "inputDictationRow"
+                width: parent.width
+                label: qsTr("Dictation")
+                description: root.dictationAvailable
+                    ? qsTr("Use a speech-to-text service to dictate text.")
+                    : qsTr("Dictation is unavailable because no speech-to-text service is installed.")
+                showSeparator: false
+                controlData: Toggle {
+                    id: dictationToggle
+                    objectName: "inputDictationToggle"
+                    text: ""
+                    enabled: root.dictationAvailable
+                    onToggled: (checked) => Settings.set("input.dictation", checked)
+                }
+            }
+
+            Text {
+                id: dictationAbsenceNote
+                objectName: "inputDictationAbsence"
+                width: parent.width
+                visible: !root.dictationAvailable
+                text: qsTr("Install nerd-dictation, whisper, or another speech-to-text command to enable dictation.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                leftPadding: Theme.controls.settingsRow.paddingH
+                rightPadding: Theme.controls.settingsRow.paddingH
+                bottomPadding: Theme.primitive.spacing.sm
+            }
+        }
+
         // ── Mouse ─────────────────────────────────────────────────────────
         SettingsGroup {
             id: mouseGroup
@@ -516,6 +723,89 @@ Item {
                     id: leftHandedToggle
                     text: ""
                     onToggled: (checked) => Settings.set("input.leftHanded", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("Secondary click")
+                settingsId: "secondaryClick"
+                owner: "settingsd"
+                settingsKey: "input.secondaryClick"
+                controlData: Select {
+                    id: secondaryClickSelect
+                    accessibleName: qsTr("Secondary click")
+                    model: root.secondaryClickOptions
+                    onActivated: (index) => Settings.set(
+                                    "input.secondaryClick",
+                                    root.secondaryClickOptions[index].value)
+                }
+            }
+
+            Item {
+                width: parent.width
+                implicitHeight: scrollSpeedColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.sm
+
+                Column {
+                    id: scrollSpeedColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Theme.controls.settingsRow.paddingH
+                    anchors.rightMargin: Theme.controls.settingsRow.paddingH
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.primitive.spacing.xxs
+
+                    Text {
+                        text: qsTr("Scroll speed")
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                    }
+
+                    Slider {
+                        id: scrollSpeedSlider
+                        width: parent.width
+                        from: -1.0
+                        to: 1.0
+                        accessibleName: qsTr("Scroll speed")
+                        minLabel: qsTr("Slow")
+                        maxLabel: qsTr("Fast")
+                        onMoved: (value) => Settings.set("input.scrollSpeed", value)
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                implicitHeight: doubleClickColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.sm
+
+                Column {
+                    id: doubleClickColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Theme.controls.settingsRow.paddingH
+                    anchors.rightMargin: Theme.controls.settingsRow.paddingH
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.primitive.spacing.xxs
+
+                    Text {
+                        text: qsTr("Double-click speed")
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                    }
+
+                    Slider {
+                        id: doubleClickSlider
+                        width: parent.width
+                        from: 0.0
+                        to: 1.0
+                        accessibleName: qsTr("Double-click speed")
+                        minLabel: qsTr("Fast")
+                        maxLabel: qsTr("Slow")
+                        onMoved: (value) => Settings.set("input.doubleClickSpeed",
+                                                         Math.round(100 + value * 800))
+                    }
                 }
             }
 
@@ -638,6 +928,76 @@ Item {
 
             SettingsKeyRow {
                 width: parent.width
+                visible: root.pointClick
+                label: qsTr("Secondary click")
+                settingsId: "trackpadSecondaryClick"
+                owner: "settingsd"
+                settingsKey: "input.secondaryClick"
+                controlData: Select {
+                    id: trackpadSecondarySelect
+                    accessibleName: qsTr("Secondary click")
+                    model: root.secondaryClickOptions
+                    onActivated: (index) => Settings.set(
+                                    "input.secondaryClick",
+                                    root.secondaryClickOptions[index].value)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                visible: root.pointClick
+                label: qsTr("Look up")
+                settingsId: "lookUp"
+                owner: "settingsd"
+                settingsKey: "input.lookUp"
+                controlData: Select {
+                    id: lookUpSelect
+                    accessibleName: qsTr("Look up")
+                    model: root.lookUpOptions
+                    onActivated: (index) => Settings.set(
+                                    "input.lookUp",
+                                    root.lookUpOptions[index].value)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                visible: root.pointClick
+                label: qsTr("Haptic feedback")
+                settingsId: "haptics"
+                owner: "settingsd"
+                settingsKey: "input.haptics"
+                description: root.hasTouchpad
+                    ? qsTr("Where the trackpad supports it.")
+                    : qsTr("No trackpad is present; the preference is kept for the next one.")
+                controlData: Toggle {
+                    id: hapticsToggle
+                    text: ""
+                    enabled: root.hasTouchpad
+                    onToggled: (checked) => Settings.set("input.haptics", checked)
+                }
+            }
+
+            SettingsRow {
+                id: pairTrackpadRow
+                objectName: "trackpadPairRow"
+                width: parent.width
+                visible: root.moreGestures
+                label: qsTr("Set Up Bluetooth Trackpad…")
+                description: Settings.bluetoothAvailable
+                    ? qsTr("Pair a trackpad in Bluetooth.")
+                    : qsTr("Bluetooth is unavailable on this system.")
+                showSeparator: false
+                controlData: Button {
+                    objectName: "trackpadPairButton"
+                    text: qsTr("Open Bluetooth")
+                    enabled: Settings.bluetoothAvailable
+                    onClicked: root.navigateRequested("bluetooth")
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
                 visible: root.scrollZoom
                 label: qsTr("Natural scrolling")
                 settingsId: "trackpadNaturalScroll"
@@ -752,6 +1112,41 @@ Item {
         value: root.emojiKeyIndex()
     }
     Binding {
+        target: dictationToggle
+        property: "checked"
+        value: Settings.values["input.dictation"] === true
+    }
+    Binding {
+        target: secondaryClickSelect
+        property: "currentIndex"
+        value: root.secondaryClickIndex(root.secondaryClick)
+    }
+    Binding {
+        target: trackpadSecondarySelect
+        property: "currentIndex"
+        value: root.secondaryClickIndex(root.secondaryClick)
+    }
+    Binding {
+        target: scrollSpeedSlider
+        property: "value"
+        value: root.scrollSpeed
+    }
+    Binding {
+        target: doubleClickSlider
+        property: "value"
+        value: root.doubleClickFraction()
+    }
+    Binding {
+        target: hapticsToggle
+        property: "checked"
+        value: root.haptics
+    }
+    Binding {
+        target: lookUpSelect
+        property: "currentIndex"
+        value: root.lookUpIndex()
+    }
+    Binding {
         target: pointerSpeedSlider
         property: "value"
         value: root.pointerSpeed
@@ -814,4 +1209,145 @@ Item {
 
     // The trackpad speed slider shares `pointerSpeed` with the mouse one.
     property alias trackpadSpeed: trackpadSpeedSlider
+
+    // ── Input sources dialog ──────────────────────────────────────────────
+    Dialog {
+        id: sourcesDialog
+        objectName: "inputSourcesDialog"
+        title: qsTr("Input Sources")
+        dismissible: true
+        parent: root.popupParent ? root.popupParent : root
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                width: parent.width
+                text: qsTr("The first source is active. The compositor applies the layout live.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                id: sourcesRepeater
+                model: root.inputSources
+                delegate: Row {
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    spacing: Theme.primitive.spacing.sm
+
+                    Text {
+                        width: parent.width - 80
+                        text: modelData
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                        elide: Text.ElideRight
+                    }
+
+                    Button {
+                        text: qsTr("Remove")
+                        variant: "ghost"
+                        onClicked: root.removeSource(modelData)
+                    }
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.primitive.spacing.sm
+
+                TextInput {
+                    id: newSourceInput
+                    objectName: "inputNewSource"
+                    width: parent.width - 90
+                    height: 28
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                    verticalAlignment: TextInput.AlignVCenter
+                    onTextChanged: root.newSource = text
+                    Keys.onReturnPressed: root.addSource()
+                }
+
+                Button {
+                    text: qsTr("Add")
+                    enabled: root.newSource.trim().length > 0
+                    onClicked: root.addSource()
+                }
+            }
+        }
+    }
+
+    // ── Text replacements dialog ──────────────────────────────────────────
+    Dialog {
+        id: replacementsDialog
+        objectName: "inputReplacementsDialog"
+        title: qsTr("Text Replacements")
+        dismissible: true
+        parent: root.popupParent ? root.popupParent : root
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Repeater {
+                id: replacementsRepeater
+                model: root.replacementEntries
+                delegate: Row {
+                    required property var modelData
+                    width: parent.width
+                    spacing: Theme.primitive.spacing.sm
+
+                    Text {
+                        width: parent.width - 80
+                        text: modelData.from + "  →  " + modelData.to
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                        elide: Text.ElideRight
+                    }
+
+                    Button {
+                        text: qsTr("Remove")
+                        variant: "ghost"
+                        onClicked: root.removeReplacement(modelData.from)
+                    }
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.primitive.spacing.sm
+
+                TextInput {
+                    id: replacementFromInput
+                    objectName: "inputReplacementFrom"
+                    width: (parent.width - 90) / 2
+                    height: 28
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                    verticalAlignment: TextInput.AlignVCenter
+                    onTextChanged: root.newReplacementFrom = text
+                }
+
+                TextInput {
+                    id: replacementToInput
+                    objectName: "inputReplacementTo"
+                    width: (parent.width - 90) / 2
+                    height: 28
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                    verticalAlignment: TextInput.AlignVCenter
+                    onTextChanged: root.newReplacementTo = text
+                }
+
+                Button {
+                    text: qsTr("Add")
+                    enabled: root.newReplacementFrom.trim().length > 0
+                    onClicked: root.addReplacement()
+                }
+            }
+        }
+    }
 }

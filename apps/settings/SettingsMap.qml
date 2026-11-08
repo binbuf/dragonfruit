@@ -184,7 +184,7 @@ QtObject {
           deepLink: "settings://pane/trackpad",
           absence: "live-on-defaults",
           absenceNote: qsTr("Trackpad preferences stay live; the device inventory shows its own absence note.") },
-        { id: "game-controllers", title: qsTr("Game Controllers"), icon: "input", shipped: false,
+        { id: "game-controllers", title: qsTr("Game Controllers"), icon: "input", shipped: true,
           owner: "udev/SDL", disposition: "adapt/delegate",
           deepLink: "settings://pane/game-controllers",
           absence: "disabled-with-reason",
@@ -291,11 +291,11 @@ QtObject {
                 root.row("level", qsTr("Battery"), qsTr("Battery level"), "chart",
                          "UPower", "Battery.Percentage", "read-only", "shipped"),
                 root.row("screenOn", qsTr("Battery"), qsTr("Screen-on usage"), "chart",
-                         "settingsd/session", "power.screenOn", "live-on-defaults"),
+                         "settingsd/session", "power.screenOn", "live-on-defaults", "shipped"),
                 root.row("options", qsTr("Battery"), qsTr("Battery options"), "sheet",
-                         "settingsd", "power.*", "live-on-defaults"),
+                         "settingsd", "power.showPercentage/power.historyRange", "live-on-defaults", "shipped"),
                 root.row("powerSettings", qsTr("Battery"), qsTr("Power settings"), "rows",
-                         "settingsd", "idle.*", "live-on-defaults")
+                         "settingsd", "idle.*", "live-on-defaults", "shipped")
             ],
             "general": [
                 root.row("about.deviceName", qsTr("About"), qsTr("Device name"), "text",
@@ -393,9 +393,9 @@ QtObject {
             ],
             "storage": [
                 root.row("categories", qsTr("Storage"), qsTr("Categories"), "chart/list",
-                         "UDisks2 + filesystem usage", "storage.usage", "disabled-with-reason"),
+                         "UDisks2 + filesystem usage", "storage.usage", "disabled-with-reason", "shipped"),
                 root.row("manage", qsTr("Storage"), qsTr("Manage storage..."), "button",
-                         "Files/Storage", "files.open", "delegated"),
+                         "Files/Storage", "files.open", "delegated", "shipped"),
                 root.row("volumes", qsTr("Storage"), qsTr("Volumes"), "list",
                          "UDisks2", "storage.volumes", "disabled-with-reason", "shipped"),
                 root.row("removable", qsTr("Storage"), qsTr("Removable media"), "list",
@@ -755,7 +755,7 @@ QtObject {
                 root.row("input", qsTr("Output & Input"), qsTr("Input"), "tab",
                          "PipeWire", "audio.sources", "disabled-with-reason", "shipped"),
                 root.row("test", qsTr("Output & Input"), qsTr("Test"), "button",
-                         "PipeWire", "audio.test", "disabled-with-reason")
+                         "PipeWire", "audio.test", "disabled-with-reason", "shipped")
             ],
             "focus": [
                 root.row("dnd", qsTr("Focus"), qsTr("Do Not Disturb"), "toggle",
@@ -817,7 +817,7 @@ QtObject {
                 root.row("autoLogin", qsTr("Users & Groups"), qsTr("Automatic login"), "popup",
                          "display-manager adapter", "users.autologin", "disabled-with-reason", "shipped"),
                 root.row("directory", qsTr("Users & Groups"), qsTr("Directory account"), "button",
-                         "SSSD/FreeIPA adapter", "users.directory", "delegated"),
+                         "SSSD/FreeIPA adapter", "users.directory", "delegated", "shipped"),
                 root.row("adminGroup", qsTr("Users & Groups"), qsTr("Admin group"), "info",
                          "distro adapter", "users.adminGroup", "read-only", "shipped")
             ],
@@ -841,7 +841,7 @@ QtObject {
                 root.row("add", qsTr("Printers & Scanners"), qsTr("Add printer or scanner..."), "button",
                          "CUPS/SANE", "printers.add", "disabled-with-reason", "shipped"),
                 root.row("options", qsTr("Printers & Scanners"), qsTr("Options & supplies..."), "sheet",
-                         "CUPS", "printers.options", "disabled-with-reason"),
+                         "CUPS", "printers.options", "disabled-with-reason", "shipped"),
                 root.row("scanners", qsTr("Printers & Scanners"), qsTr("Scanners"), "list",
                          "SANE", "printers.scanners", "disabled-with-reason", "shipped")
             ],
@@ -861,13 +861,13 @@ QtObject {
                 root.row("navigation", qsTr("Keyboard"), qsTr("Keyboard navigation"), "toggle",
                          "settingsd", "input.keyboardNavigation", "live-on-defaults", "shipped"),
                 root.row("shortcuts", qsTr("Keyboard"), qsTr("Keyboard shortcuts..."), "sheet",
-                         "settingsd", "input.shortcuts", "live-on-defaults"),
+                         "settingsd", "input.shortcuts", "live-on-defaults", "omitted"),
                 root.row("sources", qsTr("Keyboard"), qsTr("Input sources"), "popup+edit",
-                         "ibus/fcitx5 + localectl", "input.sources", "delegated"),
+                         "ibus/fcitx5 + localectl", "input.sources", "delegated", "shipped"),
                 root.row("replacements", qsTr("Keyboard"), qsTr("Text replacements..."), "sheet",
-                         "settingsd/IME", "input.replacements", "live-on-defaults"),
+                         "settingsd/IME", "input.replacements", "live-on-defaults", "shipped"),
                 root.row("dictation", qsTr("Keyboard"), qsTr("Dictation"), "toggle+options",
-                         "speech-to-text delegate", "input.dictation", "delegated")
+                         "speech-to-text delegate", "input.dictation", "delegated", "shipped")
             ],
             "mouse": [
                 root.row("speed", qsTr("Mouse"), qsTr("Pointer speed"), "slider",
@@ -875,11 +875,11 @@ QtObject {
                 root.row("natural", qsTr("Mouse"), qsTr("Natural scrolling"), "toggle",
                          "settingsd", "input.naturalScroll", "live-on-defaults", "shipped"),
                 root.row("secondary", qsTr("Mouse"), qsTr("Secondary click"), "popup",
-                         "settingsd", "input.secondaryClick", "live-on-defaults"),
+                         "settingsd", "input.secondaryClick", "live-on-defaults", "shipped"),
                 root.row("scrollSpeed", qsTr("Mouse"), qsTr("Scroll speed"), "slider",
-                         "settingsd", "input.scrollSpeed", "live-on-defaults"),
+                         "settingsd", "input.scrollSpeed", "live-on-defaults", "shipped"),
                 root.row("doubleClick", qsTr("Mouse"), qsTr("Double-click speed"), "slider",
-                         "settingsd", "input.doubleClickSpeed", "live-on-defaults"),
+                         "settingsd", "input.doubleClickSpeed", "live-on-defaults", "shipped"),
                 root.row("leftHanded", qsTr("Mouse"), qsTr("Left-handed"), "toggle",
                          "settingsd", "input.leftHanded", "live-on-defaults", "shipped"),
                 root.row("scrollMethod", qsTr("Mouse"), qsTr("Scroll method"), "popup",
@@ -888,14 +888,14 @@ QtObject {
             "trackpad": [
                 root.row("speed", qsTr("Trackpad"), qsTr("Pointer speed"), "slider",
                          "settingsd", "input.pointerSpeed", "live-on-defaults", "shipped"),
-                root.row("click", qsTr("Trackpad"), qsTr("Click pressure"), "slider",
-                         "settingsd", "input.tapToClick", "live-on-defaults"),
+                root.row("click", qsTr("Trackpad"), qsTr("Tap to click"), "toggle",
+                         "settingsd", "input.tapToClick", "live-on-defaults", "shipped"),
                 root.row("haptics", qsTr("Trackpad"), qsTr("Haptic feedback"), "toggle",
-                         "settingsd", "input.haptics", "hidden"),
+                         "settingsd", "input.haptics", "live-on-defaults", "shipped"),
                 root.row("lookUp", qsTr("Trackpad"), qsTr("Look up"), "popup",
-                         "settingsd", "input.lookUp", "live-on-defaults"),
+                         "settingsd", "input.lookUp", "live-on-defaults", "shipped"),
                 root.row("secondary", qsTr("Trackpad"), qsTr("Secondary click"), "popup",
-                         "settingsd", "input.secondaryClick", "live-on-defaults"),
+                         "settingsd", "input.secondaryClick", "live-on-defaults", "shipped"),
                 root.row("tap", qsTr("Trackpad"), qsTr("Tap to click"), "toggle",
                          "settingsd", "input.tapToClick", "live-on-defaults", "shipped"),
                 root.row("scrollZoom", qsTr("Trackpad"), qsTr("Scroll & zoom"), "tab",
@@ -903,15 +903,15 @@ QtObject {
                 root.row("gestures", qsTr("Trackpad"), qsTr("More gestures"), "tab",
                          "settingsd", "gestures.*", "live-on-defaults", "shipped"),
                 root.row("pair", qsTr("Trackpad"), qsTr("Pair trackpad..."), "button",
-                         "BlueZ", "input.pairTrackpad", "disabled-with-reason")
+                         "BlueZ", "input.pairTrackpad", "disabled-with-reason", "shipped")
             ],
             "game-controllers": [
                 root.row("list", qsTr("Game Controllers"), qsTr("Controllers"), "list",
-                         "udev/SDL", "controllers.list", "disabled-with-reason"),
+                         "udev/SDL", "controllers.list", "disabled-with-reason", "shipped"),
                 root.row("mapping", qsTr("Game Controllers"), qsTr("Mapping"), "sheet",
-                         "SDL mapping", "controllers.mapping", "delegated"),
+                         "SDL mapping", "controllers.mapping", "delegated", "shipped"),
                 root.row("test", qsTr("Game Controllers"), qsTr("Test"), "button",
-                         "SDL", "controllers.test", "disabled-with-reason")
+                         "SDL", "controllers.test", "disabled-with-reason", "shipped")
             ]
         });
     }

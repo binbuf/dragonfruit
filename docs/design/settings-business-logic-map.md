@@ -235,6 +235,13 @@ profile write; read-only level if available.
 | Options… | Battery options | Sheet | `settingsd` | Show percentage, menu-bar item, low-battery warning |
 | — | Power settings | Rows | `settingsd` | Sleep/display-off timers link to Lock Screen |
 
+**T229 status.** The Battery pane adds the `Options` group
+(`power.showPercentage`, and the persisted `power.historyRange` behind the
+existing range switch) and a `Power Settings` group that reads `idle.blank`/
+`idle.lock` and navigates to Lock Screen. The two history charts remain honest
+empty states: UPower exposes no charge history on the tested host. The menu
+bar reads `power.showPercentage` for its percentage label.
+
 <a id="pane-general"></a>
 ### 5.5 General
 
@@ -683,6 +690,12 @@ Owner: PipeWire/WirePlumber + `settingsd`.
 | Input | Input | Tab | PipeWire | Device table, volume, mute |
 | — | Test | Button | PipeWire | Plays a test sound |
 
+**T229 status.** The Test row calls `Audio.PlayTestSound`: `pw-play` (falling
+back to `paplay`) plays `audio-test-signal.oga`/`bell.oga`/`Front_Center.wav`,
+whichever exists. A host with no player or no sound file disables only the
+button; the Sound Effects and Balance keys stay live. `sound.balance` remains a
+stored preference until a per-channel sink write lands.
+
 <a id="pane-focus"></a>
 ### 5.18 Focus
 
@@ -751,6 +764,13 @@ no add/remove.
 | Network account server | Directory account | Button | SSSD/FreeIPA adapter | Optional |
 | — | Admin group | Info | distro adapter | `wheel`/`sudo` mapping |
 
+**T229 status.** The pane lists the `wheel`/`sudo` admin group when the group
+provider reports it, and adds a read-only **Directory account** row. The
+directory projection reads `/etc/sssd/sssd.conf` (domains, `id_provider`) and
+`realm list` when installed; joining or leaving a domain is delegated to the
+distribution's `realm`/SSSD tooling. A host with no SSSD/winbind configuration
+shows "No directory service is configured" and disables only Details.
+
 <a id="pane-online-accounts"></a>
 ### 5.22 Online Accounts
 
@@ -785,6 +805,14 @@ Owner: CUPS + SANE. Absence: note; no add/queue write.
 | Options & Supplies… | Options & supplies… | Sheet | CUPS | Driver/status |
 | — | Scanners | List | SANE | Scan action (delegated) |
 
+**T229 status.** `Add Printer or Scanner…` opens the `lpinfo -v` discovery
+list, then `lpadmin -p <name> -E -v <uri> -m <driver>` adds the queue. The
+per-printer dialog's **Options & Supplies…** sheet reads `lpoptions -p <queue>
+-l` and writes one `lpoptions -p <queue> -o key=value` per change. A queue with
+no configurable options is an honest empty sheet; a host with no CUPS disables
+Add and Options. A full job manager and driver installation remain out of
+scope.
+
 <a id="pane-keyboard"></a>
 ### 5.24 Keyboard
 
@@ -804,6 +832,15 @@ Owner: `settingsd` + compositor input + ibus/fcitx5.
 | Text Replacements… | Text replacements… | Sheet | `settingsd`/IME | List |
 | Dictation | Dictation | Toggle + options | speech-to-text delegate | Optional; absent → note |
 
+**T229 status.** `Input sources` is the ordered `input.sources` list (first
+entry active); the shell forwards the first entry to the compositor keymap over
+`df_toplevel_manager.set_keyboard_layout` (v10). `Text replacements` edits the
+`input.replacements` `from\tto` list for the session input method (T253).
+`Dictation` is enabled only when `nerd-dictation`, `whisper`,
+`faster-whisper`, or `vosk-transcriber` is installed; otherwise the row is
+present and disabled with its reason. `Keyboard Shortcuts…` remains omitted
+until a shortcut editor exists.
+
 <a id="pane-mouse"></a>
 ### 5.25 Mouse
 
@@ -818,6 +855,12 @@ Owner: `settingsd` + compositor input.
 | Double-click speed | Double-click speed | Slider | `input.doubleClickSpeed` | Live |
 | — | Scroll method | Popup | existing: `input.scrollMethod` | Two fingers/edge/button |
 | — | Left-handed | Toggle | existing: `input.leftHanded` | Live |
+
+**T229 status.** Secondary click (`right`/`left`), scroll speed, and
+double-click speed join the pointer policy. They travel with the existing
+pointer keys in `df_toplevel_manager.set_pointer_policy` (v10); the compositor
+stores them in `PointerSettings`, and the backend applies the stored default
+when it configures a libinput device.
 
 <a id="pane-trackpad"></a>
 ### 5.26 Trackpad
@@ -836,6 +879,12 @@ Owner: `settingsd` + compositor input (libinput).
 | More Gestures | More gestures | Tab | `gestures.*` | Mission Control/workspaces |
 | Set Up Bluetooth Trackpad… | Pair trackpad… | Button | BlueZ | If supported |
 
+**T229 status.** `Look up` (`force-click`/`three-finger`/`off`), Secondary
+click, and Haptics join the Point & Click tab. Haptics is enabled only when the
+inventory reports a touchpad; the preference is kept for the next one. The
+Bluetooth hand-off navigates to the Bluetooth pane and disables when BlueZ is
+absent.
+
 <a id="pane-game-controllers"></a>
 ### 5.27 Game Controllers
 
@@ -846,6 +895,13 @@ Owner: udev/SDL; optional. Absence: note; no mapping write.
 | Connected controllers | Controllers | List | udev/SDL | Device info |
 | Mapping | Mapping | Sheet | SDL mapping | Optional |
 | — | Test | Button | SDL | Rumble/input test |
+
+**T229 status.** The Game Controllers pane is shipped and optional. The input
+adapter reads `/proc/bus/input/devices` for joystick/gamepad records and the
+session's SDL mapping table, so a host with no controller is a live empty list.
+`Test` reads one event from the `js`/`event` node with a two-second timeout and
+reports event/timeout/permission/absent; `Mapping` shows the SDL line read-only.
+A remapper and mapping editor are deliberately out of scope.
 
 ## 6. Cross-cutting settings keys
 

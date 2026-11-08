@@ -63,12 +63,13 @@ mod source;
 pub use adapter::PrinterAdapter;
 pub use model::{PrintChange, PrintJob, PrintSnapshot, Printer, Scanner};
 pub use printers::{
-    printers_from_lpstat, scanners_from_scanimage, HostPrint, CANCEL_BIN, CUPSACCEPT_BIN,
-    CUPSREJECT_BIN, LPADMIN_BIN, LPSTAT_BIN, SCANIMAGE_BIN,
+    printer_devices_from_lpinfo, printer_options_from_lpoptions, printers_from_lpstat,
+    scanners_from_scanimage, HostPrint, CANCEL_BIN, CUPSACCEPT_BIN, CUPSREJECT_BIN, LPADMIN_BIN,
+    LPINFO_BIN, LPOPTIONS_BIN, LPSTAT_BIN, SCANIMAGE_BIN,
 };
 pub use source::{
-    MockPrint, PrintData, PrintJobData, PrintOutcome, PrintSource, PrinterData, PrinterState,
-    ScanDeviceData, ScannerKind,
+    MockPrint, PrintData, PrintJobData, PrintOutcome, PrintSource, PrinterData, PrinterDeviceData,
+    PrinterOptionData, PrinterState, ScanDeviceData, ScannerKind,
 };
 
 #[cfg(test)]

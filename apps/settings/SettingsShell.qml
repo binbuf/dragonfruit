@@ -101,7 +101,8 @@ Item {
     // The app-local rollout/capability view. Production follows the process
     // environment and platform bridge; tests and captures may override them
     // without changing the shared singleton's binding.
-    property string glassRollout: Settings.glassRollout
+    property string glassRollout: Settings.glassRollout !== ""
+        ? Settings.glassRollout : Theme.glass.rollout.defaultMode
     property bool appChromeSupported: Settings.appChromeSupported
 
     signal closeRequested()
@@ -410,6 +411,8 @@ Item {
             return usersGroupsPaneComponent;
         case "printers":
             return printersPaneComponent;
+        case "game-controllers":
+            return gameControllersPaneComponent;
         case "privacy":
             return privacyPaneComponent;
         case "biometrics":
@@ -590,7 +593,9 @@ Item {
 
     Component {
         id: batteryPaneComponent
-        BatteryPane { }
+        BatteryPane {
+            onNavigateRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     Component {
@@ -615,17 +620,23 @@ Item {
 
     Component {
         id: keyboardPaneComponent
-        KeyboardPane { }
+        KeyboardPane {
+            onNavigateRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     Component {
         id: mousePaneComponent
-        MousePane { }
+        MousePane {
+            onNavigateRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     Component {
         id: trackpadPaneComponent
-        TrackpadPane { }
+        TrackpadPane {
+            onNavigateRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     Component {
@@ -663,6 +674,11 @@ Item {
     Component {
         id: printersPaneComponent
         PrintersScannersPane { }
+    }
+
+    Component {
+        id: gameControllersPaneComponent
+        GameControllersPane { }
     }
 
     Component {

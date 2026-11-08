@@ -389,6 +389,20 @@ Item {
                 }
             }
 
+            SettingsRow {
+                objectName: "soundTestRow"
+                width: parent.width
+                label: qsTr("Test")
+                description: qsTr("Play a short test sound through the selected output.")
+                controlData: Button {
+                    id: testButton
+                    objectName: "soundTestButton"
+                    text: qsTr("Play")
+                    enabled: root.ready
+                    onClicked: Settings.playTestSound()
+                }
+            }
+
             // ── Balance ───────────────────────────────────────────────────
             Item {
                 width: parent.width
