@@ -10,12 +10,14 @@
 //!
 //! * [`VeilSpec::alpha_at`] — the measured depth LUT, piecewise-linear through
 //!   the reference samples and exactly zero from 95 pt on.
-//! * [`VeilSpec::adapted_alpha`] — a bounded local-luminance readability
-//!   correction. It only ever *raises* the LUT alpha inside the 39 pt reference
-//!   strip, so it cannot move the measured black-background samples; it keeps
-//!   Light text legible over a dark moving window and Dark text legible over a
-//!   bright one. The correction uses a small luminance probe; the displayed
-//!   backdrop itself is always the sharp centre sample.
+//! * [`VeilSpec::adaptation`] — the measured background-luminance response.
+//!   The Light veil is 0.451 at 5 pt over black, but scales by
+//!   `1.0/1.06/0.91/0.48/0.0` at `L=0/0.25/0.5/0.78/1.0`, so it is invisible
+//!   over white. The Dark curve is a best guess fitted to the coverage
+//!   captures: a much subtler black wash that also reaches zero over white.
+//! * [`VeilSpec::adapted_alpha`] — the LUT alpha after that adaptation. The
+//!   probe never filters the displayed backdrop, which is always the sharp
+//!   centre sample.
 //! * [`VeilSpec::uniforms`] — the shader inputs, including the panel mapping
 //!   that makes the LUT depth output-relative even when the texture is a slice
 //!   of the padded material region.
@@ -35,13 +37,10 @@ use crate::window::RegionFilter;
 pub const VEIL_LUT_DEPTHS: [f32; 8] = [5.0, 15.0, 25.0, 35.0, 50.0, 75.0, 90.0, 95.0];
 
 /// The reference foreground strip height in logical points. Dragonfruit keeps
-/// its own 28 pt bar layout; this is the calibration band for readability.
+/// its own 28 pt bar layout; this is the calibration band for the LUT.
 pub const VEIL_STRIP_HEIGHT: f32 = tokens::STRIP_HEIGHT;
 /// The full visual extent of the veil in logical points.
 pub const VEIL_EXTENT: f32 = tokens::EXTENT;
-/// How far past the reference strip the readability correction fades out. A
-/// hard step at 39 pt would be visible over a bright window in Dark mode.
-pub const VEIL_READABILITY_FADE: f32 = 8.0;
 
 /// The shader uniform carrying the scheme veil colour (white in Light, black
 /// in Dark).
@@ -50,14 +49,16 @@ pub const VEIL_COLOR_UNIFORM: &str = "veil_color";
 pub const VEIL_HEIGHT_UNIFORM: &str = "veil_height";
 /// The shader uniform carrying the reference strip height.
 pub const VEIL_STRIP_UNIFORM: &str = "veil_strip";
-/// The shader uniform selecting the Light (1) or Dark (0) readability rule.
-pub const VEIL_LIGHT_UNIFORM: &str = "veil_light";
-/// The shader uniform carrying the post-veil readability target.
-pub const VEIL_READABILITY_UNIFORM: &str = "veil_readability";
-/// The shader uniform carrying the readability fade width past the strip.
-pub const VEIL_READABILITY_FADE_UNIFORM: &str = "veil_readability_fade";
 /// The shader uniform carrying the bounded luminance-probe radius in UV.
 pub const VEIL_PROBE_UNIFORM: &str = "veil_probe";
+/// The shader uniform carrying the first four background-luminance anchors.
+pub const VEIL_ADAPT_LUMA_A_UNIFORM: &str = "veil_adapt_luma_a";
+/// The shader uniform carrying the fifth background-luminance anchor.
+pub const VEIL_ADAPT_LUMA_B_UNIFORM: &str = "veil_adapt_luma_b";
+/// The shader uniform carrying the first four adaptation scales.
+pub const VEIL_ADAPT_SCALE_A_UNIFORM: &str = "veil_adapt_scale_a";
+/// The shader uniform carrying the fifth adaptation scale.
+pub const VEIL_ADAPT_SCALE_B_UNIFORM: &str = "veil_adapt_scale_b";
 /// The shader uniform carrying LUT depths 5/15/25/35 pt.
 pub const VEIL_DEPTH_A_UNIFORM: &str = "veil_depth_a";
 /// The shader uniform carrying LUT depths 50/75/90/95 pt.
@@ -73,16 +74,17 @@ pub const VEIL_PANEL_UV_SCALE_UNIFORM: &str = "panel_uv_scale";
 
 /// The additional uniform descriptors the veil shader declares, passed to
 /// `GlesRenderer::compile_custom_texture_shader`.
-pub fn veil_uniform_names() -> [smithay::backend::renderer::gles::UniformName<'static>; 13] {
+pub fn veil_uniform_names() -> [smithay::backend::renderer::gles::UniformName<'static>; 14] {
     use smithay::backend::renderer::gles::{UniformName, UniformType};
     [
         UniformName::new(VEIL_COLOR_UNIFORM, UniformType::_3f),
         UniformName::new(VEIL_HEIGHT_UNIFORM, UniformType::_1f),
         UniformName::new(VEIL_STRIP_UNIFORM, UniformType::_1f),
-        UniformName::new(VEIL_LIGHT_UNIFORM, UniformType::_1f),
-        UniformName::new(VEIL_READABILITY_UNIFORM, UniformType::_1f),
-        UniformName::new(VEIL_READABILITY_FADE_UNIFORM, UniformType::_1f),
         UniformName::new(VEIL_PROBE_UNIFORM, UniformType::_2f),
+        UniformName::new(VEIL_ADAPT_LUMA_A_UNIFORM, UniformType::_4f),
+        UniformName::new(VEIL_ADAPT_LUMA_B_UNIFORM, UniformType::_1f),
+        UniformName::new(VEIL_ADAPT_SCALE_A_UNIFORM, UniformType::_4f),
+        UniformName::new(VEIL_ADAPT_SCALE_B_UNIFORM, UniformType::_1f),
         UniformName::new(VEIL_DEPTH_A_UNIFORM, UniformType::_4f),
         UniformName::new(VEIL_DEPTH_B_UNIFORM, UniformType::_4f),
         UniformName::new(VEIL_ALPHA_A_UNIFORM, UniformType::_4f),
@@ -102,16 +104,17 @@ pub struct VeilSpec {
     pub depths: [f32; 8],
     /// The eight LUT alphas.
     pub alphas: [f32; 8],
+    /// The background-luminance anchors for the measured adaptation curve.
+    pub adapt_luma: [f32; 5],
+    /// The adaptation scale at each anchor. Both schemes reach zero over
+    /// white; the Dark curve is a best-guess fit to the coverage captures.
+    pub adapt_scale: [f32; 5],
     /// The full visual extent in logical points (the LUT is zero here).
     pub extent: f32,
-    /// The reference strip height the readability rule is bounded to.
+    /// The reference strip height the LUT is calibrated against.
     pub strip: f32,
     /// The bounded local luminance-probe radius in logical points.
     pub probe: f32,
-    /// Light: the minimum post-veil luminance in the strip. Dark: the maximum.
-    pub readability: f32,
-    /// True for the Light white lift, false for the Dark black wash.
-    pub light: bool,
 }
 
 impl VeilSpec {
@@ -122,7 +125,7 @@ impl VeilSpec {
         if resolved.render_mode != RenderMode::NoBlurVeil {
             return None;
         }
-        let (alphas, probe, readability, light) = match resolved.scheme {
+        let (alphas, adapt_luma, adapt_scale, probe) = match resolved.scheme {
             Scheme::Light => (
                 [
                     tokens::light::veil::ALPHA_5,
@@ -134,9 +137,9 @@ impl VeilSpec {
                     tokens::light::veil::ALPHA_90,
                     tokens::light::veil::ALPHA_95,
                 ],
+                tokens::light::veil::ADAPT_LUMA,
+                tokens::light::veil::ADAPT_SCALE,
                 tokens::light::veil::PROBE,
-                tokens::light::veil::READABILITY,
-                true,
             ),
             Scheme::Dark => (
                 [
@@ -149,20 +152,20 @@ impl VeilSpec {
                     tokens::dark::veil::ALPHA_90,
                     tokens::dark::veil::ALPHA_95,
                 ],
+                tokens::dark::veil::ADAPT_LUMA,
+                tokens::dark::veil::ADAPT_SCALE,
                 tokens::dark::veil::PROBE,
-                tokens::dark::veil::READABILITY,
-                false,
             ),
         };
         Some(Self {
             color: [resolved.tint, resolved.tint, resolved.tint],
             depths: VEIL_LUT_DEPTHS,
             alphas,
+            adapt_luma,
+            adapt_scale,
             extent: VEIL_EXTENT,
             strip: VEIL_STRIP_HEIGHT,
             probe,
-            readability,
-            light,
         })
     }
 
@@ -189,34 +192,40 @@ impl VeilSpec {
         0.0
     }
 
-    /// The LUT alpha after the bounded local-luminance readability rule.
+    /// The measured background-luminance adaptation for this scheme.
     ///
-    /// The correction only applies inside the reference strip and only raises
-    /// the LUT alpha. That keeps every measured black-background sample intact
-    /// (Light's LUT is already above the target there) while a Dark veil can
-    /// deepen over a bright window and a Light veil can lift a very dark one.
-    pub fn adapted_alpha(&self, depth: f32, local_luminance: f32) -> f32 {
-        let base = self.alpha_at(depth);
-        if depth >= self.strip + VEIL_READABILITY_FADE {
-            return base;
-        }
+    /// The reference Light veil is not a fixed alpha: over black it is 0.451
+    /// at 5 pt, but it falls to zero over white. The Light curve is the
+    /// measured `1.0/1.06/0.91/0.48/0.0` at `L=0/0.25/0.5/0.78/1.0`. The
+    /// unmeasured Dark curve is the best guess fitted to the coverage
+    /// captures: it peaks at 0.26 of the Dark LUT over mid-grey and reaches
+    /// zero over white.
+    pub fn adaptation(&self, local_luminance: f32) -> f32 {
         let lum = local_luminance.clamp(0.0, 1.0);
-        let need = if self.light {
-            if lum < self.readability {
-                (self.readability - lum) / (1.0 - lum).max(1e-4)
-            } else {
-                0.0
+        if lum <= self.adapt_luma[0] {
+            return self.adapt_scale[0];
+        }
+        for index in 1..self.adapt_luma.len() {
+            if lum <= self.adapt_luma[index] {
+                let span = self.adapt_luma[index] - self.adapt_luma[index - 1];
+                let ratio = if span <= 0.0 {
+                    0.0
+                } else {
+                    (lum - self.adapt_luma[index - 1]) / span
+                };
+                return self.adapt_scale[index - 1]
+                    + (self.adapt_scale[index] - self.adapt_scale[index - 1]) * ratio;
             }
-        } else if lum > self.readability {
-            (lum - self.readability) / lum.max(1e-4)
-        } else {
-            0.0
-        };
-        // Fade the correction out between the strip and the fade tail so a
-        // bright Dark window does not show a hard 39 pt seam.
-        let t = ((depth - self.strip) / VEIL_READABILITY_FADE).clamp(0.0, 1.0);
-        let weight = 1.0 - t * t * (3.0 - 2.0 * t);
-        base + (need - base).max(0.0) * weight
+        }
+        self.adapt_scale[self.adapt_scale.len() - 1]
+    }
+
+    /// The LUT alpha after the measured background adaptation.
+    ///
+    /// This is the report's model directly: `alpha_black(y) * adapt(L)`. The
+    /// displayed backdrop remains the sharp centre sample.
+    pub fn adapted_alpha(&self, depth: f32, local_luminance: f32) -> f32 {
+        (self.alpha_at(depth) * self.adaptation(local_luminance)).clamp(0.0, 1.0)
     }
 
     /// The backdrop transmission at `depth` for a spatial frequency. The veil
@@ -264,10 +273,27 @@ impl VeilSpec {
             ),
             Uniform::new(VEIL_HEIGHT_UNIFORM, panel_h),
             Uniform::new(VEIL_STRIP_UNIFORM, self.strip),
-            Uniform::new(VEIL_LIGHT_UNIFORM, if self.light { 1.0 } else { 0.0 }),
-            Uniform::new(VEIL_READABILITY_UNIFORM, self.readability),
-            Uniform::new(VEIL_READABILITY_FADE_UNIFORM, VEIL_READABILITY_FADE),
             Uniform::new(VEIL_PROBE_UNIFORM, (probe_x, probe_y)),
+            Uniform::new(
+                VEIL_ADAPT_LUMA_A_UNIFORM,
+                (
+                    self.adapt_luma[0],
+                    self.adapt_luma[1],
+                    self.adapt_luma[2],
+                    self.adapt_luma[3],
+                ),
+            ),
+            Uniform::new(VEIL_ADAPT_LUMA_B_UNIFORM, self.adapt_luma[4]),
+            Uniform::new(
+                VEIL_ADAPT_SCALE_A_UNIFORM,
+                (
+                    self.adapt_scale[0],
+                    self.adapt_scale[1],
+                    self.adapt_scale[2],
+                    self.adapt_scale[3],
+                ),
+            ),
+            Uniform::new(VEIL_ADAPT_SCALE_B_UNIFORM, self.adapt_scale[4]),
             Uniform::new(
                 VEIL_DEPTH_A_UNIFORM,
                 (
@@ -313,13 +339,12 @@ impl VeilSpec {
     pub fn diagnostic(&self, mode: RenderMode) -> String {
         format!(
             "material veil mode={} extent={:.1} strip={:.1} probe={:.1} tint={:.3} \
-             readability={:.3} alphas={:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4}",
+             alphas={:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4}",
             mode.name(),
             self.extent,
             self.strip,
             self.probe,
             self.color[0],
-            self.readability,
             self.alphas[0],
             self.alphas[1],
             self.alphas[2],
@@ -384,6 +409,61 @@ mod tests {
         assert!((veil.color[0] - 1.0).abs() < 1e-6, "Light veil is white");
         assert_eq!(veil.extent, 95.0);
         assert_eq!(veil.strip, 39.0);
+    }
+
+    #[test]
+    fn light_veil_matches_the_measured_background_luminance_table() {
+        // The report's measured top-of-bar response over the five neutral
+        // backgrounds. The fixed LUT alone gets these wrong on anything
+        // lighter than black; the adaptation curve is what makes the veil
+        // disappear over white.
+        let veil = spec(Scheme::Light);
+        let measured = [
+            (0.0, 0.451),
+            (0.251, 0.477),
+            (0.502, 0.409),
+            (0.784, 0.218),
+            (1.0, 0.0),
+        ];
+        for (background, expected) in measured {
+            let alpha = veil.adapted_alpha(5.0, background);
+            assert!(
+                (alpha - expected).abs() <= 0.02,
+                "background {background}: alpha {alpha} != measured {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn adaptation_curve_is_the_measured_luminance_response() {
+        let veil = spec(Scheme::Light);
+        for (luma, expected) in [
+            (0.0, 1.0),
+            (0.25, 1.06),
+            (0.5, 0.91),
+            (0.78, 0.48),
+            (1.0, 0.0),
+        ] {
+            assert!(
+                (veil.adaptation(luma) - expected).abs() < 1e-6,
+                "L={luma}: {} != {expected}",
+                veil.adaptation(luma)
+            );
+        }
+        // The Dark baseline was not measured, so it must not inherit the
+        // Light luminance response.
+        let dark = spec(Scheme::Dark);
+        for luma in [0.0, 0.25, 0.5, 0.78, 1.0] {
+            assert_eq!(dark.adaptation(luma), 1.0);
+        }
+    }
+
+    #[test]
+    fn light_veil_is_invisible_over_white_at_every_depth() {
+        let veil = spec(Scheme::Light);
+        for depth in [5.0, 15.0, 25.0, 35.0, 50.0, 75.0, 90.0, 95.0] {
+            assert_eq!(veil.adapted_alpha(depth, 1.0), 0.0);
+        }
     }
 
     #[test]

@@ -191,6 +191,13 @@ def main() -> int:
                      f"Light LUT alpha at {depth} pt is within 0.03")
     checks.check(light_veil["veil"]["alpha95"] == 0.0,
                  "Light LUT ends at zero by 95 pt")
+    # T200: the measured background-luminance response. Without this curve
+    # the veil stays at the black-background alpha over light wallpapers.
+    checks.check(light_veil["veil"]["adaptLuma"] == [0.0, 0.25, 0.5, 0.78, 1.0],
+                 "Light adaptation spans the measured luminance anchors")
+    for expected, actual in zip((1.0, 1.06, 0.91, 0.48, 0.0),
+                                light_veil["veil"]["adaptScale"]):
+        checks.near(actual, expected, "Light adaptation scale")
     dark_veil = presets.resolve(data, "menuBarVeil", scheme="dark",
                                 rollout="replacement")
     checks.near(dark_veil["tint"], 0.0, "Dark veil is a black wash")

@@ -678,10 +678,13 @@ sampled path so it cannot darken the compositor plate.
 T200 turns the menu bar into the explicit no-blur veil
 ([ADR 0219](adr/0219-menubar-no-blur-veil.md)). The veil preset takes the sharp
 path and `VEIL_SHADER` samples the live scene directly; the measured Light
-depth LUT (0.451 at 5 pt, zero by 95 pt) is a white lift, and Dark uses the
-documented black baseline with the same depth shape. A bounded local luminance
-probe may only raise the LUT alpha inside the 39 pt reference strip for
-foreground readability; the displayed scene is never spatially filtered. The
+depth LUT (0.451 at 5 pt, zero by 95 pt) is a white lift scaled by the measured
+background-luminance response (`1.0/1.06/0.91/0.48/0.0` at
+`L=0/0.25/0.5/0.78/1.0`, so it is invisible over white), and Dark uses the
+documented black baseline with the same depth shape and an identity adaptation.
+A bounded local luminance probe supplies both the adaptation and a readability
+floor; the floor may only raise alpha inside the 39 pt reference strip. The
+displayed scene is never spatially filtered. The
 menu-bar layer surface is configured to the 95 pt visual extent while its
 exclusive zone and committed input strip remain the 28 pt bar, so the lower
 veil is visual-only. The shell commits a `veil` panel region with the full

@@ -8,8 +8,11 @@ hardware-independent acceptance fixture:
 
 * the Light black-background LUT is within 0.03 of every measured sample and
   exactly zero at 95 pt;
+* the Light background-luminance adaptation matches the measured
+  0.451/0.477/0.409/0.218/0.0 table over L=0/0.251/0.502/0.784/1.0, so the
+  veil is invisible over white;
 * the LUT is monotone and the Dark baseline is a black wash with the same
-  depth shape;
+  depth shape and an identity adaptation (Dark was not measured);
 * the checker transmission at a fixed depth is independent of checker size
   (the veil has no spatial kernel);
 * a moving dark/bright window remains readable under Light/Dark and the
@@ -60,9 +63,26 @@ def alpha_at(samples: dict[int, float], depth: float) -> float:
     return 0.0
 
 
+def adaptation(lum: float, adapt_luma: list[float],
+               adapt_scale: list[float]) -> float:
+    """Piecewise-linear background-luminance response through the anchors."""
+    lum = max(0.0, min(1.0, lum))
+    if lum <= adapt_luma[0]:
+        return adapt_scale[0]
+    for left_l, right_l, left_s, right_s in zip(
+            adapt_luma, adapt_luma[1:], adapt_scale, adapt_scale[1:]):
+        if lum <= right_l:
+            span = right_l - left_l
+            ratio = 0.0 if span <= 0 else (lum - left_l) / span
+            return left_s + (right_s - left_s) * ratio
+    return adapt_scale[-1]
+
+
 def adapted_alpha(light: bool, base: float, depth: float, lum: float,
-                  strip: float, target: float) -> float:
-    """The same bounded readability rule the shader implements."""
+                  strip: float, target: float, adapt_luma: list[float],
+                  adapt_scale: list[float]) -> float:
+    """The same measured adaptation + bounded readability rule the shader uses."""
+    base = max(0.0, min(1.0, base * adaptation(lum, adapt_luma, adapt_scale)))
     if depth >= strip + READABILITY_FADE:
         return base
     lum = max(0.0, min(1.0, lum))
@@ -141,6 +161,29 @@ def evaluate(data: dict) -> tuple[list[str], dict]:
               f"checker transmission at {depth} pt depends on period")
     report["checker_transmission"] = checker
 
+    # Background-luminance adaptation: the fixed depth LUT alone over-veils a
+    # light wallpaper. The measured Light curve is 0.451/0.477/0.409/0.218/0.0
+    # over L=0/0.251/0.502/0.784/1.0 at the top of the bar.
+    backgrounds = {}
+    for bg, expected in ((0.0, 0.451), (0.251, 0.477), (0.502, 0.409),
+                         (0.784, 0.218), (1.0, 0.0)):
+        alpha = adapted_alpha(
+            True, alpha_at(light_lut, 5), 5, bg,
+            light["stripHeight"], light["veil"]["readability"],
+            light["veil"]["adaptLuma"], light["veil"]["adaptScale"])
+        backgrounds[str(bg)] = {
+            "alpha": round(alpha, 6),
+            "measured": expected,
+            "delta": round(alpha - expected, 6),
+        }
+        check(abs(alpha - expected) <= TOLERANCE,
+              f"background {bg}: alpha {alpha} is outside {TOLERANCE} of {expected}")
+    check(light["veil"]["adaptScale"][0] == 1.0,
+          "Light adaptation starts at 1.0 over black")
+    check(light["veil"]["adaptScale"][-1] == 0.0,
+          "Light adaptation ends at 0.0 over white")
+    report["background_adaptation"] = backgrounds
+
     # Live-window readability: a dark and a bright window move under the bar.
     # Light text is 0.05 on Light; Dark text is 0.95 on Dark.
     live = {}
@@ -155,7 +198,9 @@ def evaluate(data: dict) -> tuple[list[str], dict]:
         veil_luma = 1.0 if light_mode else 0.0
         depth = 25
         alpha = adapted_alpha(light_mode, alpha_at(lut, depth), depth, bg,
-                              entry["stripHeight"], entry["veil"]["readability"])
+                              entry["stripHeight"], entry["veil"]["readability"],
+                              entry["veil"]["adaptLuma"],
+                              entry["veil"]["adaptScale"])
         out = output_luminance(bg, alpha, veil_luma)
         ratio = contrast(out, text)
         live[label] = {
@@ -197,12 +242,16 @@ def evaluate(data: dict) -> tuple[list[str], dict]:
         "extent_pt": light["extent"],
         "tint": light["tint"],
         "alpha": light_lut,
+        "adapt_luma": light["veil"]["adaptLuma"],
+        "adapt_scale": light["veil"]["adaptScale"],
     }
     report["dark"] = {
         "strip_pt": dark["stripHeight"],
         "extent_pt": dark["extent"],
         "tint": dark["tint"],
         "alpha": dark_lut,
+        "adapt_luma": dark["veil"]["adaptLuma"],
+        "adapt_scale": dark["veil"]["adaptScale"],
     }
     report["checks"] = len(errors) == 0
     return errors, report

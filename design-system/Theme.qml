@@ -222,6 +222,8 @@ QtObject {
                         readonly property real alpha75: 0.05882353
                         readonly property real alpha90: 0.00784314
                         readonly property real alpha95: 0.0
+                        readonly property var adaptLuma: [0.0, 0.25, 0.5, 0.78, 1.0]
+                        readonly property var adaptScale: [1.0, 1.06, 0.91, 0.48, 0.0]
                     }
                     readonly property real blur: 0.0
                     readonly property real edge: 0.0
@@ -250,6 +252,8 @@ QtObject {
                         readonly property real alpha75: 0.0626
                         readonly property real alpha90: 0.00835
                         readonly property real alpha95: 0.0
+                        readonly property var adaptLuma: [0.0, 0.25, 0.5, 0.78, 1.0]
+                        readonly property var adaptScale: [1.0, 1.0, 1.0, 1.0, 1.0]
                     }
                     readonly property real blur: 0.0
                     readonly property real edge: 0.0

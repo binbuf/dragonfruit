@@ -266,6 +266,12 @@ TestCase {
         compare(veil.renderMode, "no-blur-veil");
         compare(veil.fallbackReason, "none");
         compare(veil.blur, 0);
+        // The measured background-luminance response travels with the preset:
+        // the veil must fall to zero over white, not stay at the black alpha.
+        compare(veil.veil.adaptLuma.length, 5);
+        fuzzyCompare(veil.veil.adaptLuma[3], 0.78, 0.0001);
+        fuzzyCompare(veil.veil.adaptScale[3], 0.48, 0.0001);
+        fuzzyCompare(veil.veil.adaptScale[4], 0.0, 0.0001);
         var unsupported = Glass.resolve("menuBarVeil", {
             scheme: "light", rollout: "replacement", backend: "gpu-no-sampled-blur"
         });

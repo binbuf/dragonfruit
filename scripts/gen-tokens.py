@@ -289,6 +289,14 @@ def rust_type_literal(value, kind: str) -> tuple[str, str]:
         return ("u32" if kind == "duration" else "f32"), rust_literal(value, kind)
     if isinstance(value, float):
         return "f32", rust_literal(value, kind)
+    if isinstance(value, list):
+        if not value:
+            raise TypeError("cannot render an empty list token as Rust")
+        item_type, _ = rust_type_literal(value[0], kind)
+        if item_type not in ("f32", "u32"):
+            raise TypeError(f"cannot render a {item_type} list token as Rust")
+        literal = "[" + ", ".join(rust_literal(item, kind) for item in value) + "]"
+        return f"[{item_type}; {len(value)}]", literal
     raise TypeError(f"cannot render {value!r} as Rust")
 
 
