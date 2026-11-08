@@ -25,6 +25,7 @@ members = [
     "services/lock-adapter",
     "services/menubar-adapter",
     "services/update-adapter",
+    "services/general-adapter",
     "services/account-adapter",
     "services/printer-adapter",
     "services/privacy-adapter",

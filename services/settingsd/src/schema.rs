@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 19;
+pub const SCHEMA_VERSION: u32 = 20;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,11 +75,12 @@ pub enum KeyGroup {
     Lock,
     Printers,
     Network,
+    General,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 16] = [
+    pub const ALL: [KeyGroup; 17] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -96,6 +97,7 @@ impl KeyGroup {
         KeyGroup::Lock,
         KeyGroup::Printers,
         KeyGroup::Network,
+        KeyGroup::General,
     ];
 
     /// The group name used in docs and tests.
@@ -117,6 +119,7 @@ impl KeyGroup {
             KeyGroup::Lock => "lock",
             KeyGroup::Printers => "printers",
             KeyGroup::Network => "network",
+            KeyGroup::General => "general",
         }
     }
 }
@@ -1427,6 +1430,182 @@ pub const KEYS: &[KeySpec] = &[
         since: 19,
         summary: "When to prompt before joining a captive-portal hotspot.",
     },
+    // ── General group (T226) ─────────────────────────────────────────────
+    // Date & Time, Language & Region, Software Update policy, and Backup.
+    // Each sub-pane owns its own state: the host adapters own the system
+    // clock/locale and the backup tools; these keys are the durable
+    // presentation and policy values the panes write. All defaults are the
+    // conservative/off choice, so a fresh profile never enables automatic
+    // updates or a backup schedule silently.
+    KeySpec {
+        key: "clock.use24Hour",
+        group: KeyGroup::General,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar clock",
+        since: 20,
+        summary: "Force the menu-bar clock to 24-hour time instead of the locale format.",
+    },
+    KeySpec {
+        key: "updates.auto",
+        group: KeyGroup::General,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "dragonfruit-system-status update provider",
+        since: 20,
+        summary: "Check for software updates automatically; never enabled by default.",
+    },
+    KeySpec {
+        key: "updates.autoInstall",
+        group: KeyGroup::General,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "dragonfruit-system-status update provider",
+        since: 20,
+        summary: "Install the updates a check finds automatically; never enabled by default.",
+    },
+    KeySpec {
+        key: "locale.calendar",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("gregorian"),
+        allowed: &["gregorian", "iso", "buddhist", "japanese"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (date preview)",
+        since: 20,
+        summary: "The calendar system the Date & Time and Language previews use.",
+    },
+    KeySpec {
+        key: "locale.temperature",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("celsius"),
+        allowed: &["celsius", "fahrenheit"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (weather and date previews)",
+        since: 20,
+        summary: "The temperature unit the desktop shows.",
+    },
+    KeySpec {
+        key: "locale.measurement",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("metric"),
+        allowed: &["metric", "imperial"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (measurement previews)",
+        since: 20,
+        summary: "The measurement system the desktop shows.",
+    },
+    KeySpec {
+        key: "locale.dateFormat",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("medium"),
+        allowed: &["short", "medium", "long"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (date preview)",
+        since: 20,
+        summary: "The date-format length the Language & Region preview uses.",
+    },
+    KeySpec {
+        key: "locale.numberFormat",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("locale"),
+        allowed: &["locale", "decimal", "comma"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (number preview)",
+        since: 20,
+        summary: "How numbers group and separate their decimals.",
+    },
+    KeySpec {
+        key: "locale.firstDay",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("locale"),
+        allowed: &["locale", "sunday", "monday", "saturday"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (calendar preview)",
+        since: 20,
+        summary: "The first day of the week the desktop calendar uses.",
+    },
+    KeySpec {
+        key: "backup.auto",
+        group: KeyGroup::General,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Backup pane / backup backend",
+        since: 20,
+        summary: "Run the selected backup backend on its schedule; off by default.",
+    },
+    KeySpec {
+        key: "backup.backend",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("auto"),
+        allowed: &["auto", "restic", "pika", "timeshift"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Backup pane",
+        since: 20,
+        summary: "The backup backend to prefer; auto detects restic, Pika, or Timeshift.",
+    },
+    KeySpec {
+        key: "backup.destination",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Backup pane / backup backend",
+        since: 20,
+        summary: "The destination the selected backup backend writes to.",
+    },
+    KeySpec {
+        key: "backup.schedule",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("off"),
+        allowed: &["off", "hourly", "daily", "weekly", "monthly"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Backup pane / backup backend",
+        since: 20,
+        summary: "How often the selected backup backend runs.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -2125,6 +2304,47 @@ mod tests {
             );
         }
         assert_eq!(KeyGroup::Network.name(), "network");
+    }
+
+    /// The General group keys (T226), additive in revision 20. Every default
+    /// is the conservative/off choice: automatic updates and backups are
+    /// never silently enabled.
+    #[test]
+    fn the_general_group_keys_are_declared_in_revision_twenty() {
+        for (key, default) in [
+            ("clock.use24Hour", KeyDefault::Bool(false)),
+            ("updates.auto", KeyDefault::Bool(false)),
+            ("updates.autoInstall", KeyDefault::Bool(false)),
+            ("locale.calendar", KeyDefault::Text("gregorian")),
+            ("locale.temperature", KeyDefault::Text("celsius")),
+            ("locale.measurement", KeyDefault::Text("metric")),
+            ("locale.dateFormat", KeyDefault::Text("medium")),
+            ("locale.numberFormat", KeyDefault::Text("locale")),
+            ("locale.firstDay", KeyDefault::Text("locale")),
+            ("backup.auto", KeyDefault::Bool(false)),
+            ("backup.backend", KeyDefault::Text("auto")),
+            ("backup.destination", KeyDefault::Text("")),
+            ("backup.schedule", KeyDefault::Text("off")),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::General, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.since, 20, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+        }
+        assert_eq!(KeyGroup::General.name(), "general");
+        assert!(spec("updates.auto")
+            .unwrap()
+            .validate(&Value::Bool(false))
+            .is_ok());
+        assert!(spec("backup.schedule")
+            .unwrap()
+            .validate(&Value::Text("daily".into()))
+            .is_ok());
+        assert!(spec("backup.schedule")
+            .unwrap()
+            .validate(&Value::Text("sometimes".into()))
+            .is_err());
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

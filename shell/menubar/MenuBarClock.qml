@@ -13,11 +13,16 @@ Item {
     property date now: new Date()
     property bool showSeconds: false
     property bool showDate: false
+    // T226: force 24-hour time instead of the locale's own format. The
+    // default follows the locale, so an untouched profile is unchanged.
+    property bool use24Hour: false
 
     signal activated()
 
     readonly property string timeText: Qt.formatTime(root.now,
-        Qt.locale().timeFormat(root.showSeconds ? Locale.LongFormat : Locale.ShortFormat))
+        root.use24Hour
+            ? (root.showSeconds ? "HH:mm:ss" : "HH:mm")
+            : Qt.locale().timeFormat(root.showSeconds ? Locale.LongFormat : Locale.ShortFormat))
     readonly property string dateText: Qt.formatDate(root.now, Locale.ShortFormat)
     readonly property string accessibleText: root.showDate ? root.dateText + " " + root.timeText
                                                            : root.timeText

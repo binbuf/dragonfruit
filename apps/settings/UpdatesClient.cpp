@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QTimer>
 
 namespace {
 
@@ -31,6 +32,9 @@ DbusUpdatesClient::DbusUpdatesClient(QObject *parent)
     if (!bus.isConnected())
         return;
     m_available = available();
+    m_busyTimer = new QTimer(this);
+    m_busyTimer->setInterval(1000);
+    connect(m_busyTimer, &QTimer::timeout, this, &DbusUpdatesClient::refresh);
     m_watcher = new QDBusServiceWatcher(
         m_service, bus, QDBusServiceWatcher::WatchForRegistration
                           | QDBusServiceWatcher::WatchForUnregistration,
@@ -45,6 +49,8 @@ DbusUpdatesClient::DbusUpdatesClient(QObject *parent)
             [this](const QString &) {
                 m_available = false;
                 emit availableChanged(false);
+                if (m_busyTimer)
+                    m_busyTimer->stop();
                 if (!m_view.isEmpty()) {
                     m_view.clear();
                     emit changed(m_view);
@@ -80,6 +86,11 @@ void DbusUpdatesClient::install()
 void DbusUpdatesClient::reboot()
 {
     call(QStringLiteral("Reboot"), {});
+}
+
+void DbusUpdatesClient::setAutoPolicy(bool autoCheck, bool autoInstall)
+{
+    call(QStringLiteral("SetAutomaticPolicy"), {autoCheck, autoInstall});
 }
 
 void DbusUpdatesClient::call(const QString &method, const QVariantList &arguments)
@@ -123,6 +134,14 @@ void DbusUpdatesClient::applyReply(const QByteArray &json)
     if (view == m_view)
         return;
     m_view = view;
+    if (m_busyTimer) {
+        if (m_view.value(QStringLiteral("busy")).toBool()) {
+            if (!m_busyTimer->isActive())
+                m_busyTimer->start();
+        } else {
+            m_busyTimer->stop();
+        }
+    }
     emit changed(m_view);
 }
 
@@ -163,6 +182,12 @@ void MockUpdatesClient::reboot()
     rebuild();
 }
 
+void MockUpdatesClient::setAutoPolicy(bool autoCheck, bool autoInstall)
+{
+    m_autoCheck = autoCheck;
+    m_autoInstall = autoInstall;
+}
+
 void MockUpdatesClient::resetForTest()
 {
     m_phase = QStringLiteral("available");
@@ -184,6 +209,10 @@ void MockUpdatesClient::rebuild()
     view.insert(QStringLiteral("memoryLabel"), QStringLiteral("16 GB"));
     view.insert(QStringLiteral("serial"), QStringLiteral("SERIAL-1"));
     view.insert(QStringLiteral("hasSerial"), true);
+    view.insert(QStringLiteral("gpu"), QStringLiteral("Example GPU"));
+    view.insert(QStringLiteral("gpuLabel"), QStringLiteral("Example GPU"));
+    view.insert(QStringLiteral("diskBytes"), qlonglong(512) * 1024 * 1024 * 1024);
+    view.insert(QStringLiteral("diskLabel"), QStringLiteral("512 GB"));
 
     view.insert(QStringLiteral("updatesAvailable"), true);
     view.insert(QStringLiteral("glyph"), QStringLiteral("software-update"));

@@ -226,6 +226,20 @@ QVariantMap settingsSchemaDefaults()
                   QStringLiteral("notify"));
     values.insert(QStringLiteral("network.wifi.askToJoinHotspots"),
                   QStringLiteral("ask"));
+    // Revision 20 (T226): the General group's durable policy.
+    values.insert(QStringLiteral("clock.use24Hour"), false);
+    values.insert(QStringLiteral("updates.auto"), false);
+    values.insert(QStringLiteral("updates.autoInstall"), false);
+    values.insert(QStringLiteral("locale.calendar"), QStringLiteral("gregorian"));
+    values.insert(QStringLiteral("locale.temperature"), QStringLiteral("celsius"));
+    values.insert(QStringLiteral("locale.measurement"), QStringLiteral("metric"));
+    values.insert(QStringLiteral("locale.dateFormat"), QStringLiteral("medium"));
+    values.insert(QStringLiteral("locale.numberFormat"), QStringLiteral("locale"));
+    values.insert(QStringLiteral("locale.firstDay"), QStringLiteral("locale"));
+    values.insert(QStringLiteral("backup.auto"), false);
+    values.insert(QStringLiteral("backup.backend"), QStringLiteral("auto"));
+    values.insert(QStringLiteral("backup.destination"), QString());
+    values.insert(QStringLiteral("backup.schedule"), QStringLiteral("off"));
     return values;
 }
 
@@ -262,6 +276,14 @@ const char *const kEffectsThrough[] = { "output", "alerts" };
 const char *const kPaperSize[] = { "us-letter", "us-legal", "a3", "a4", "a5" };
 const char *const kAskToJoin[] = { "off", "notify", "ask", "new" };
 const char *const kAskToJoinHotspots[] = { "off", "ask", "automatic" };
+const char *const kLocaleCalendar[] = { "gregorian", "iso", "buddhist", "japanese" };
+const char *const kLocaleTemperature[] = { "celsius", "fahrenheit" };
+const char *const kLocaleMeasurement[] = { "metric", "imperial" };
+const char *const kLocaleDateFormat[] = { "short", "medium", "long" };
+const char *const kLocaleNumberFormat[] = { "locale", "decimal", "comma" };
+const char *const kLocaleFirstDay[] = { "locale", "sunday", "monday", "saturday" };
+const char *const kBackupBackend[] = { "auto", "restic", "pika", "timeshift" };
+const char *const kBackupSchedule[] = { "off", "hourly", "daily", "weekly", "monthly" };
 
 const Constraint kConstraints[] = {
     { "dock.size", nullptr, 0, true, 0.0, true, 1.0 },
@@ -302,6 +324,14 @@ const Constraint kConstraints[] = {
     { "printers.defaultPaperSize", kPaperSize, 5, false, 0, false, 0 },
     { "network.wifi.askToJoin", kAskToJoin, 4, false, 0, false, 0 },
     { "network.wifi.askToJoinHotspots", kAskToJoinHotspots, 3, false, 0, false, 0 },
+    { "locale.calendar", kLocaleCalendar, 4, false, 0, false, 0 },
+    { "locale.temperature", kLocaleTemperature, 2, false, 0, false, 0 },
+    { "locale.measurement", kLocaleMeasurement, 2, false, 0, false, 0 },
+    { "locale.dateFormat", kLocaleDateFormat, 3, false, 0, false, 0 },
+    { "locale.numberFormat", kLocaleNumberFormat, 3, false, 0, false, 0 },
+    { "locale.firstDay", kLocaleFirstDay, 4, false, 0, false, 0 },
+    { "backup.backend", kBackupBackend, 4, false, 0, false, 0 },
+    { "backup.schedule", kBackupSchedule, 5, false, 0, false, 0 },
 };
 
 const Constraint *constraintFor(const QString &key)
@@ -765,6 +795,30 @@ MockSettingsClient::MockSettingsClient(QObject *parent)
     m_available = true;
 }
 
+void DbusSettingsClient::reset()
+{
+    if (!isAvailable())
+        return;
+    auto *call = new QDBusInterface(m_service, m_path, m_interface,
+                                    QDBusConnection::sessionBus(), this);
+    auto *watcher = new QDBusPendingCallWatcher(
+        call->asyncCall(QStringLiteral("Reset")), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher, call]() {
+                const QDBusPendingReply<> reply = *watcher;
+                call->deleteLater();
+                watcher->deleteLater();
+                if (!reply.isValid()) {
+                    qWarning() << "dragonfruit-shell: settings Reset failed:"
+                               << watcher->reply().errorMessage();
+                    return;
+                }
+                // The daemon emits Changed per key; the explicit resync also
+                // covers a key that already held its default.
+                refresh();
+            });
+}
+
 void MockSettingsClient::refresh()
 {
     // A mock resync is authoritative, like the daemon's `GetAll`.
@@ -794,6 +848,13 @@ bool MockSettingsClient::set(const QString &key, const QVariant &value)
     }
     completeWrite(key, generation, true, QString());
     return true;
+}
+
+void MockSettingsClient::reset()
+{
+    applyValues(settingsSchemaDefaults());
+    clearOwnerWriteStates();
+    emit refreshed();
 }
 
 void MockSettingsClient::failNextWrite(const QString &key, const QString &message)

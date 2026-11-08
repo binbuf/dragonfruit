@@ -23,6 +23,7 @@ dragonfruit-storage = { path = "../storage", version = "0.1.0" }
 dragonfruit-input = { path = "../input", version = "0.1.0" }
 dragonfruit-notify-adapter = { path = "../notify-adapter", version = "0.1.0" }
 dragonfruit-update-adapter = { path = "../update-adapter", version = "0.1.0" }
+dragonfruit-general-adapter = { path = "../general-adapter", version = "0.1.0" }
 dragonfruit-account-adapter = { path = "../account-adapter", version = "0.1.0" }
 dragonfruit-printer-adapter = { path = "../printer-adapter", version = "0.1.0" }
 dragonfruit-privacy-adapter = { path = "../privacy-adapter", version = "0.1.0" }

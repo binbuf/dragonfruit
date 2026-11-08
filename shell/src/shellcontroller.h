@@ -1067,6 +1067,7 @@ private:
     // unrelated settings change does not re-render the chrome.
     bool m_menuBarShowDate = true;
     bool m_menuBarShowSeconds = false;
+    bool m_menuBarUse24Hour = false;
     bool m_menuBarShowBackground = true;
     QString m_menuBarAutoHide;
     bool m_menuBarPolicySent = false;

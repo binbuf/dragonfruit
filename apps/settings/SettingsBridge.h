@@ -42,6 +42,7 @@ class InputClient;
 class BatteryClient;
 class NotificationsClient;
 class UpdatesClient;
+class GeneralClient;
 class AccountsClient;
 class PrintersClient;
 class PrivacyClient;
@@ -164,6 +165,13 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no General /
     // About / Updates surface at all; the pane shows the absence note.
     Q_PROPERTY(bool updatesAvailable READ updatesAvailable NOTIFY updatesChanged)
+    // The General sub-panes view from the bridge host (T226): `{ kind, state,
+    // time, locale, login, sharing, backup, storage, startup, errors }`, each
+    // sub-view carrying its own `state`. Empty when the host is absent; the
+    // pane renders the per-sub-pane absence notes.
+    Q_PROPERTY(QVariantMap general READ general NOTIFY generalChanged)
+    // Whether the General bridge host is on the session bus.
+    Q_PROPERTY(bool generalAvailable READ generalAvailable NOTIFY generalChanged)
     // The Users and Groups view from the bridge host (T-15.11b):
     // `{ state, glyph, label, present, humanCount, adminCount, lockedCount,
     // groupsAvailable, groupCount, automaticLogin, automaticLoginUser,
@@ -283,6 +291,8 @@ public:
     bool notificationsAvailable() const;
     QVariantMap updates() const;
     bool updatesAvailable() const;
+    QVariantMap general() const;
+    bool generalAvailable() const;
     QVariantMap accounts() const;
     bool accountsAvailable() const;
     QVariantMap printers() const;
@@ -342,6 +352,9 @@ public:
                                              const QString &message);
     // Re-read the daemon snapshot (`GetAll`); a no-op when no daemon is up.
     Q_INVOKABLE void refresh();
+    // Reset every settings key to its schema default (T226). The daemon emits
+    // one `Changed` per key; a pane sees the new values through `values`.
+    Q_INVOKABLE void resetSettings();
     // Temporary diagnostics: emit one `DFTRACE <message> t=<epoch-ms>` line to
     // stderr when `DF_SETTINGS_TRACE` is set. `fprintf` (not `console.log`) so
     // it survives the app's Qt logging rules and lands in the demo log.
@@ -429,6 +442,28 @@ public:
     // initial state so a test starts on a known update phase. A no-op on the
     // live client, which has no fixture to reset.
     Q_INVOKABLE void resetUpdatesFixture();
+
+    // T226: the General sub-panes seam. `refreshGeneral` re-reads every
+    // sub-pane on open; the writes each call the host once and the host pushes
+    // the new view back through `generalChanged`.
+    Q_INVOKABLE void refreshGeneral();
+    Q_INVOKABLE void setNtp(bool enabled);
+    Q_INVOKABLE void setTimezone(const QString &timezone);
+    Q_INVOKABLE void setTime(const QString &value);
+    Q_INVOKABLE void setLocale(const QString &locale);
+    Q_INVOKABLE void setAutostartEnabled(const QString &id, bool enabled);
+    Q_INVOKABLE void setUserUnitEnabled(const QString &unit, bool enabled);
+    Q_INVOKABLE void setSharingEnabled(const QString &id, bool enabled);
+    Q_INVOKABLE void runBackup(const QString &destination);
+    Q_INVOKABLE void openBackupRestore();
+    // The update policy keys are settingsd's; the pane forwards them to the
+    // running host so automatic checks/installs act immediately.
+    Q_INVOKABLE void applyUpdatePolicy(bool autoCheck, bool autoInstall);
+    // Test seam (`DF_GENERAL_FIXTURE` only): restore the fixture.
+    Q_INVOKABLE void resetGeneralFixture();
+    // Test seam (`DF_GENERAL_FIXTURE` only): pretend the bridge host is
+    // absent/returned while a pane is open.
+    Q_INVOKABLE void setGeneralAvailableFixture(bool available);
 
     // T-15.11b: the Users & Groups pane's one seam. `refreshAccounts` re-reads
     // the bridge host on pane open; each write calls the host stack adapter
@@ -582,6 +617,8 @@ signals:
     void notificationsChanged();
     // The General/About/Updates view or availability changed (T-15.10b).
     void updatesChanged();
+    // The General sub-panes view or availability changed (T226).
+    void generalChanged();
     // The Users and Groups view or availability changed (T-15.11b).
     void accountsChanged();
     // The Printers and Scanners view or availability changed (T-15.12b).
@@ -662,6 +699,8 @@ private:
     // T-15.10b: the General/About/Updates seam (`DF_UPDATES_FIXTURE` selects
     // the mock).
     UpdatesClient *m_updates = nullptr;
+    // T226: the General sub-panes seam (`DF_GENERAL_FIXTURE` selects the mock).
+    GeneralClient *m_general = nullptr;
     // T-15.11b: the Users & Groups seam (`DF_ACCOUNTS_FIXTURE` selects the
     // mock).
     AccountsClient *m_accounts = nullptr;

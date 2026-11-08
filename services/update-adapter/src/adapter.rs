@@ -25,7 +25,7 @@ use dragonfruit_system_adapters::{
 };
 
 use crate::model::{SystemSnapshot, UpdateChange};
-use crate::source::{SystemSource, UpdateOutcome};
+use crate::source::{SystemSource, UpdateOutcome, UpdatePolicy};
 
 /// The General, About, and Updates adapter.
 #[derive(Debug, Clone, PartialEq)]
@@ -98,6 +98,11 @@ impl<S: SystemSource> UpdateAdapter<S> {
     /// Ask the distribution provider to restart the host. One explicit write.
     pub fn reboot(&mut self) -> UpdateOutcome {
         self.source.reboot()
+    }
+
+    /// Forward the automatic-update policy. One explicit write.
+    pub fn set_auto_policy(&mut self, policy: UpdatePolicy) -> UpdateOutcome {
+        self.source.set_auto_policy(policy)
     }
 
     /// The live snapshot, when the host stack answered.

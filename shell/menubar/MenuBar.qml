@@ -58,6 +58,7 @@ Rectangle {
     readonly property bool statusMenuOpen: openStatusItem !== ""
     property bool showDate: false
     property bool showSeconds: false
+    property bool use24Hour: false
     // T-15.9b: `menu.showBackground`. When off the bar keeps its items and its
     // reserved zone but draws no chrome material, so the desktop shows through.
     property bool showBackground: true
@@ -708,6 +709,7 @@ Rectangle {
             objectName: "clock"
             showDate: menuBar.showDate
             showSeconds: menuBar.showSeconds
+            use24Hour: menuBar.use24Hour
             onActivated: menuBar.clockActivated()
         }
 

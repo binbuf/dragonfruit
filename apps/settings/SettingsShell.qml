@@ -589,7 +589,9 @@ Item {
 
     Component {
         id: generalPaneComponent
-        GeneralPane { }
+        GeneralPane {
+            onNavigateRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     Component {

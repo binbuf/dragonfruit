@@ -32,6 +32,7 @@ use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_firewall::CommandFirewall;
+use dragonfruit_general_adapter::HostGeneral;
 use dragonfruit_input::CommandLibinput;
 use dragonfruit_networkmanager::{DbusNetworkManager, DbusVpn};
 use dragonfruit_notify_adapter::DbusNotifications;
@@ -44,6 +45,7 @@ use dragonfruit_system_status::AccessibilityHost;
 use dragonfruit_system_status::AccountsHost;
 use dragonfruit_system_status::BluetoothHost;
 use dragonfruit_system_status::FirewallHost;
+use dragonfruit_system_status::GeneralHost;
 use dragonfruit_system_status::InputHost;
 use dragonfruit_system_status::NotificationsHost;
 use dragonfruit_system_status::PrintersHost;
@@ -52,7 +54,7 @@ use dragonfruit_system_status::StatusHost;
 use dragonfruit_system_status::StorageHost;
 use dragonfruit_system_status::UpdatesHost;
 use dragonfruit_system_status::VpnHost;
-use dragonfruit_update_adapter::HostSystem;
+use dragonfruit_update_adapter::{CommandUpdateProvider, HostSystem};
 
 fn main() -> ExitCode {
     let mut print_wifi = false;
@@ -63,6 +65,7 @@ fn main() -> ExitCode {
     let mut print_input = false;
     let mut print_notifications = false;
     let mut print_updates = false;
+    let mut check_updates = false;
     let mut print_accounts = false;
     let mut print_printers = false;
     let mut print_privacy = false;
@@ -70,6 +73,12 @@ fn main() -> ExitCode {
     let mut print_vpn = false;
     let mut print_firewall = false;
     let mut print_network = false;
+    let mut print_general = false;
+    let mut print_time = false;
+    let mut print_locale = false;
+    let mut print_sharing = false;
+    let mut print_backup = false;
+    let mut print_startup = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -80,6 +89,7 @@ fn main() -> ExitCode {
             "--print-input" => print_input = true,
             "--print-notifications" => print_notifications = true,
             "--print-updates" => print_updates = true,
+            "--check-updates" => check_updates = true,
             "--print-accounts" => print_accounts = true,
             "--print-printers" => print_printers = true,
             "--print-privacy" => print_privacy = true,
@@ -87,6 +97,12 @@ fn main() -> ExitCode {
             "--print-vpn" => print_vpn = true,
             "--print-firewall" => print_firewall = true,
             "--print-network" => print_network = true,
+            "--print-general" => print_general = true,
+            "--print-time" => print_time = true,
+            "--print-locale" => print_locale = true,
+            "--print-sharing" => print_sharing = true,
+            "--print-backup" => print_backup = true,
+            "--print-startup" => print_startup = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -111,7 +127,9 @@ fn main() -> ExitCode {
     // The host identity is always read; the distribution update provider is
     // absent until packaging attaches one (ADR 0136), so the update controls
     // report absence rather than inventing state.
-    let mut updates = UpdatesHost::new(HostSystem::new());
+    let mut updates = UpdatesHost::new(
+        HostSystem::new().with_provider(Box::new(CommandUpdateProvider::detect())),
+    );
     // AccountsService over the system bus, with no distribution group provider
     // attached until packaging supplies one (ADR 0138), so the group controls
     // report absence rather than inventing state.
@@ -131,7 +149,33 @@ fn main() -> ExitCode {
     // The firewall manager is detected on every read; no manager is a normal
     // "No firewall detected" state (T225).
     let mut firewall = FirewallHost::new(CommandFirewall::new());
+    // The General group's independent sub-panes: timedatectl, localectl, XDG
+    // autostart, systemd user/system units, the optional backup tools, df, and
+    // findmnt. Each degrades on its own (T226).
+    let mut general = GeneralHost::new(HostGeneral::new());
 
+    if print_general {
+        general.refresh();
+        println!("{}", general.state());
+        return ExitCode::SUCCESS;
+    }
+    if print_time || print_locale || print_sharing || print_backup || print_startup {
+        general.refresh();
+        let view = general.view();
+        let key = if print_time {
+            "time"
+        } else if print_locale {
+            "locale"
+        } else if print_sharing {
+            "sharing"
+        } else if print_backup {
+            "backup"
+        } else {
+            "startup"
+        };
+        println!("{}", view[key]);
+        return ExitCode::SUCCESS;
+    }
     if print_network {
         host.refresh_wifi();
         firewall.refresh();
@@ -166,6 +210,22 @@ fn main() -> ExitCode {
     if print_accounts {
         accounts.refresh();
         println!("{}", accounts.state());
+        return ExitCode::SUCCESS;
+    }
+    if check_updates {
+        updates.refresh();
+        updates.check();
+        // The provider runs the package manager on a worker; wait for the
+        // phase to settle so this debug command reports a real answer.
+        for _ in 0..180 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            updates.refresh();
+            let view = updates.view();
+            if view["busy"] != true {
+                break;
+            }
+        }
+        println!("{}", updates.state());
         return ExitCode::SUCCESS;
     }
     if print_updates {
@@ -221,6 +281,7 @@ fn main() -> ExitCode {
     accessibility.refresh();
     vpn.refresh();
     firewall.refresh();
+    general.refresh();
     match dbus::run(
         host,
         bluetooth,
@@ -234,6 +295,7 @@ fn main() -> ExitCode {
         accessibility,
         vpn,
         firewall,
+        general,
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -260,6 +322,7 @@ fn print_help() {
            --print-input    refresh libinput and print the input JSON view\n\
            --print-notifications refresh the notification service and print its JSON view\n\
            --print-updates  refresh the host stack and print the updates JSON view\n\
+           --check-updates  run the native/PackageKit check and print the settled view\n\
            --print-accounts refresh AccountsService/the group provider and print the\n\
                             Users and Groups JSON view\n\
            --print-printers refresh CUPS/SANE and print the Printers and Scanners JSON view\n\
@@ -268,6 +331,12 @@ fn print_help() {
            --print-vpn      refresh NetworkManager and print the Network advanced (VPN) JSON view\n\
            --print-firewall detect the firewall manager and print its JSON view\n\
            --print-network  print the combined Wi-Fi/service/firewall view\n\
+           --print-general  print the General sub-panes view (time, locale, login, sharing, backup, storage, startup)\n\
+           --print-time     print the Date & Time sub-view\n\
+           --print-locale   print the Language & Region sub-view\n\
+           --print-sharing  print the Sharing sub-view\n\
+           --print-backup   print the Backup sub-view\n\
+           --print-startup  print the Startup Disk sub-view\n\
            -h, --help       show this help"
     );
 }

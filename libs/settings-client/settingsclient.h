@@ -50,6 +50,10 @@ public:
     // revert on failure. Returns false when the value was rejected before any
     // change (unknown key, wrong type, out of range, not an allowed enum).
     virtual bool set(const QString &key, const QVariant &value) = 0;
+    // Reset every key to its schema default (T226). The live client calls
+    // `org.dragonfruit.Settings1.Reset`; the mock applies the defaults in
+    // process. Consumers converge through the usual `changed` signals.
+    virtual void reset() = 0;
 
     QVariant value(const QString &key, const QVariant &fallback = {}) const;
     bool boolean(const QString &key, bool fallback) const;
@@ -157,6 +161,7 @@ public:
     bool isAvailable() const override;
     void refresh() override;
     bool set(const QString &key, const QVariant &value) override;
+    void reset() override;
 
 private slots:
     void onRemoteChanged(const QString &key, const QDBusVariant &value);
@@ -186,6 +191,7 @@ public:
     bool isAvailable() const override { return m_available; }
     void refresh() override;
     bool set(const QString &key, const QVariant &value) override;
+    void reset() override;
 
     // Test seam (`DF_SETTINGS_FIXTURE` only): make the next write of `key`
     // apply optimistically and then fail on the next event-loop turn, so a

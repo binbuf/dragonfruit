@@ -26,6 +26,15 @@ Item {
     readonly property var drives: view.drives !== undefined ? view.drives : []
     readonly property int mountedCount: view.mountedCount !== undefined
         ? view.mountedCount : 0
+    // T226: the General host's filesystem usage categories. They are a
+    // separate read from UDisks2, so a missing `df` shows a note without
+    // hiding the volume rows.
+    readonly property var usage: Settings.general.storage !== undefined
+        ? Settings.general.storage : ({})
+    readonly property var usageCategories: usage.categories !== undefined
+        ? usage.categories : []
+    readonly property bool usageAvailable: Settings.generalAvailable
+        && usage.state === "available"
 
     // The second hide rule (ADR 0119): UDisks2 absent (not available) or a
     // running daemon with no mountable volume (`present: false`).
@@ -48,6 +57,10 @@ Item {
     property alias removableGroup: removableGroup
     property alias removableRepeater: removableRepeater
     property alias absenceNote: absenceNote
+    property alias usageGroup: usageGroup
+    property alias usageRepeater: usageRepeater
+    property alias usageAbsenceNote: usageAbsenceNote
+    property alias manageRow: manageRow
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -72,13 +85,83 @@ Item {
         Settings.ejectStorage(drivePath);
     }
 
+    function formatBytes(bytes) {
+        const value = Number(bytes || 0);
+        if (value <= 0)
+            return "0 GB";
+        const gib = value / (1024 * 1024 * 1024);
+        return (gib >= 10 ? Math.round(gib) : Math.round(gib * 10) / 10) + " GB";
+    }
+
     // Opening the pane asks the host for a re-read (a no-op when absent).
-    Component.onCompleted: Settings.refreshStorage()
+    Component.onCompleted: {
+        Settings.refreshStorage();
+        Settings.refreshGeneral();
+    }
 
     Column {
         id: content
         width: root.width
         spacing: Theme.primitive.spacing.lg
+
+        // ── Usage categories (T226) ───────────────────────────────────────
+        SettingsGroup {
+            id: usageGroup
+            width: parent.width
+            title: qsTr("Usage")
+            visible: root.usageAvailable
+
+            Text {
+                width: parent.width
+                visible: root.usageCategories.length === 0
+                text: qsTr("No filesystem usage is reported.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            Repeater {
+                id: usageRepeater
+                model: root.usageCategories
+                delegate: SettingsRow {
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    label: modelData.label
+                    description: qsTr("%1 of %2")
+                        .arg(root.formatBytes(modelData.bytes))
+                        .arg(root.formatBytes(root.usage.usedBytes))
+                    showSeparator: index < root.usageCategories.length - 1
+                    controlData: Rectangle {
+                        width: 120
+                        height: 6
+                        radius: 3
+                        color: Theme.color.controlFill
+                        Rectangle {
+                            width: parent.width * Math.min(1,
+                                root.usage.usedBytes > 0
+                                    ? modelData.bytes / root.usage.usedBytes : 0)
+                            height: parent.height
+                            radius: parent.radius
+                            color: Theme.color.accent
+                        }
+                    }
+                }
+            }
+
+            SettingsRow {
+                id: manageRow
+                objectName: "storageManageRow"
+                width: parent.width
+                label: qsTr("Manage storage…")
+                description: qsTr("Formatting and partitioning are delegated to the Files app and the disk utility.")
+                showSeparator: false
+                controlData: Text {
+                    text: qsTr("Delegated")
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+        }
 
         // ── Volumes ───────────────────────────────────────────────────────
         SettingsGroup {
@@ -208,6 +291,18 @@ Item {
                         }
                     }
                 }
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            visible: !root.usageAvailable && root.ready
+
+            SettingsAbsenceNotice {
+                id: usageAbsenceNote
+                objectName: "storageUsageAbsenceNote"
+                kind: "disabled-with-reason"
+                reason: qsTr("Filesystem usage is unavailable because df did not answer.")
             }
         }
 

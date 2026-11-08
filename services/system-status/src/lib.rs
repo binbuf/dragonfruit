@@ -53,6 +53,7 @@ pub mod accounts;
 pub mod bluetooth;
 pub mod dbus;
 pub mod firewall;
+pub mod general;
 pub mod input;
 pub mod network;
 pub mod notifications;
@@ -63,13 +64,14 @@ pub mod updates;
 pub mod vpn;
 
 pub use accessibility::{accessibility_snapshot_view, accessibility_view, AccessibilityHost};
-pub use firewall::{firewall_report, firewall_snapshot_view, firewall_view, FirewallHost};
-pub use network::{network_report, network_view};
 pub use accounts::{
     account_report, account_type_label, accounts_snapshot_view, accounts_view, AccountsHost,
 };
 pub use bluetooth::{bluetooth_report, bluetooth_snapshot_view, bluetooth_view, BluetoothHost};
+pub use firewall::{firewall_report, firewall_snapshot_view, firewall_view, FirewallHost};
+pub use general::{bytes_label, general_report, general_snapshot_view, general_view, GeneralHost};
 pub use input::{input_snapshot_view, input_view, InputHost};
+pub use network::{network_report, network_view};
 pub use notifications::{
     focus_report, notifications_snapshot_view, notifications_view, NotificationsHost,
 };
@@ -113,6 +115,8 @@ pub const VPN_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Vpn";
 pub const NETWORK_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Network";
 /// The firewall interface name under [`DBUS_NAME`] (T225).
 pub const FIREWALL_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Firewall";
+/// The General sub-panes interface name under [`DBUS_NAME`] (T226).
+pub const GENERAL_INTERFACE: &str = "org.dragonfruit.SystemStatus1.General";
 
 /// The host owns the three menu-bar adapters and exposes their snapshots and
 /// actions. Generic over the transport seams so CI drives it with the mocks.

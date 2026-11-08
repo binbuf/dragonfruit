@@ -48,6 +48,9 @@ impl AdapterId {
     pub const NETWORK: AdapterId = AdapterId("network");
     /// The firewall (firewalld/ufw/nftables).
     pub const FIREWALL: AdapterId = AdapterId("firewall");
+    /// The General group (Date & Time, Language & Region, Login Items,
+    /// Sharing, Backup, Storage usage, Startup Disk).
+    pub const GENERAL: AdapterId = AdapterId("general");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {

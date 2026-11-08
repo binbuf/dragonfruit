@@ -66,7 +66,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Wi-Fi, Network | NetworkManager (Wi-Fi, services, VPN connections) + the firewall adapter (firewalld/ufw/nftables) ([adr/0146](adr/0146-network-advanced-vpn-adapter.md), [adr/0147](adr/0147-network-advanced-vpn-pane-and-tile.md), [adr/0234](adr/0234-network-panes-model-order-firewall.md)) |
 | Bluetooth | BlueZ |
 | Battery | UPower + power-profiles-daemon where present |
-| General | `settingsd` + distro provider (about, updates, defaults) |
+| General | `settingsd` + host/distro adapters (About, native/PackageKit Updates, Storage usage, Login Items, Language & Region, Date & Time, Sharing, Backup, Startup Disk, Reset) ([adr/0235](adr/0235-general-group-host-adapters.md)) |
 | Appearance | `settingsd` (design-system themes, dark/light, accent, attached-menu transparency) |
 | Accessibility | live AT-SPI read + `settingsd` (`accessibility.reduceMotion`, `reduceTransparency`, `increaseContrast`) ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0215](adr/0215-glass-live-settings-and-appearance-policy.md)) |
 | Desktop & Dock | `settingsd` → shell + compositor |
@@ -108,6 +108,26 @@ Owners…** debug view (also `DF_SETTINGS_DEBUG=1`) and the **Business-Logic
 Map** document; the debug view shows the selected pane's owner/absence/deep
 link and every row's owner/key/absence/state. See ADR
 [0231](adr/0231-executable-settings-map.md).
+
+## The General group sub-panes (T226)
+
+The General group is one sidebar pane with an in-place sub-pane stack. About
+and Software Update stay dialogs (the reference anatomy); Storage is the
+existing top-level pane; Login Items, Language & Region, Date & Time, Sharing,
+Backup, Startup Disk, and Reset open in place with a `‹ General` back control.
+Every row is a live summary of the same bridge-host view the sub-pane renders,
+so the list never advertises a state the sub-pane contradicts.
+
+The host half is `services/general-adapter` + `services/system-status/src/general.rs`
+behind `org.dragonfruit.SystemStatus1.General`; the Settings client is
+`apps/settings/GeneralClient.*` and the QML files are
+`GeneralPane.qml`, `DateTimePane.qml`, `LanguageRegionPane.qml`,
+`LoginItemsPane.qml`, `SharingPane.qml`, `BackupPane.qml`,
+`StartupDiskPane.qml`, and `ResetPane.qml`. The native/PackageKit update
+provider is attached to the `Updates` interface; the pane's automatic-update
+toggles write `updates.auto`/`updates.autoInstall` and forward them to the
+running provider. Both default off, so a fresh profile never silently enables
+automatic updates (ADR [0235](adr/0235-general-group-host-adapters.md)).
 
 ## Search, deep links, and row anatomy (T223)
 
@@ -343,7 +363,7 @@ Two absence families appear, and a pane can mix them:
 | Network (VPN) | NetworkManager (bridge host) | note; connection list empty; `Connect`/`Deactivate` are no-ops; no plugin hides Add | **hides** |
 | Battery | UPower + power-profiles-daemon (bridge host) | note; no profile write | **hides** |
 | Storage | UDisks2/GIO (bridge host) | note; no mount/eject | **hides** |
-| General | settingsd + update adapter (bridge host) | About reads locally; the update half shows its note | **hides** |
+| General | settingsd + General/Updates host (bridge host) | About/Update rows stay live when only the General host is absent; each sub-pane shows its own absence note | **hides** (the update tile hides only when the host is absent) |
 | Sound | PipeWire/WirePlumber (bridge host) + settingsd | routing half note; Sound Effects/Balance stay live on defaults | volume tile `enabled: audioAvailable` |
 | Keyboard | libinput (bridge host) + settingsd | inventory note; every preference row live on defaults | **hides** |
 | Mouse | libinput (bridge host) + settingsd | inventory note; pointer settings live on defaults | — (shared Keyboard tile) |

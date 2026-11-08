@@ -1,0 +1,25 @@
+[package]
+name = "dragonfruit-general-adapter"
+description = "General Settings host adapter: date/time, locale, login items, sharing, backup, storage usage, and startup disk (T226)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The General sub-panes each project a host stack the desktop already owns:
+# systemd/timedatectl/localectl, the XDG autostart directories, systemd user
+# units, systemd system units, the optional backup tools, and the filesystem
+# usage `df` reports. This crate is the one place those commands and files are
+# parsed; the Settings host and the UI never shell out. The dependency-free
+# contract lives in `dragonfruit-system-adapters`.
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+serde_json = "=1.0.151"
+
+[dev-dependencies]
+serde_json = "=1.0.151"
+
+[lib]
+name = "dragonfruit_general_adapter"
+path = "src/lib.rs"

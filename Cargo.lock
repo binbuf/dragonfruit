@@ -628,6 +628,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-general-adapter"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-system-adapters",
+ "serde_json",
+]
+
+[[package]]
 name = "dragonfruit-input"
 version = "0.1.0"
 dependencies = [
@@ -777,6 +785,7 @@ dependencies = [
  "dragonfruit-bluetooth",
  "dragonfruit-distro-adapters",
  "dragonfruit-firewall",
+ "dragonfruit-general-adapter",
  "dragonfruit-input",
  "dragonfruit-networkmanager",
  "dragonfruit-notify-adapter",
