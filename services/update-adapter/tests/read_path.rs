@@ -23,6 +23,8 @@ fn identity() -> SystemIdentity {
         processor: "Example CPU".to_owned(),
         memory_bytes: 16 * 1024 * 1024 * 1024,
         serial: "SERIAL".to_owned(),
+        gpu: "Example GPU".to_owned(),
+        disk_bytes: 512 * 1024 * 1024 * 1024,
     }
 }
 

@@ -13,6 +13,7 @@
 #include "SoundClient.h"
 #include "StorageClient.h"
 #include "UpdatesClient.h"
+#include "GeneralClient.h"
 #include "NetworkClient.h"
 #include "VpnClient.h"
 #include "WifiClient.h"
@@ -228,6 +229,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_updates, &UpdatesClient::availableChanged, this,
             [this](bool) { emit updatesChanged(); });
 
+    // T226: the General sub-panes seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_GENERAL_FIXTURE"))
+        m_general = new MockGeneralClient(this);
+    else
+        m_general = new DbusGeneralClient(this);
+    connect(m_general, &GeneralClient::changed, this,
+            [this](const QVariantMap &) { emit generalChanged(); });
+    connect(m_general, &GeneralClient::availableChanged, this,
+            [this](bool) { emit generalChanged(); });
+
     // T-15.11b: the Users & Groups seam, selected the same way.
     if (qEnvironmentVariableIsSet("DF_ACCOUNTS_FIXTURE"))
         m_accounts = new MockAccountsClient(this);
@@ -399,6 +410,16 @@ QVariantMap SettingsBridge::updates() const
 bool SettingsBridge::updatesAvailable() const
 {
     return m_updates && m_updates->available();
+}
+
+QVariantMap SettingsBridge::general() const
+{
+    return m_general ? m_general->view() : QVariantMap();
+}
+
+bool SettingsBridge::generalAvailable() const
+{
+    return m_general && m_general->available();
 }
 
 QVariantMap SettingsBridge::accounts() const
@@ -614,6 +635,12 @@ void SettingsBridge::failNextWrite(const QString &key, const QString &message)
 {
     if (auto *mock = qobject_cast<MockSettingsClient *>(m_client))
         mock->failNextWrite(key, message);
+}
+
+void SettingsBridge::resetSettings()
+{
+    if (m_client)
+        m_client->reset();
 }
 
 void SettingsBridge::setAvailableFixture(bool available)
@@ -1031,6 +1058,84 @@ void SettingsBridge::resetUpdatesFixture()
 {
     if (m_updates)
         m_updates->resetForTest();
+}
+
+void SettingsBridge::refreshGeneral()
+{
+    if (m_general)
+        m_general->refresh();
+}
+
+void SettingsBridge::setNtp(bool enabled)
+{
+    if (m_general)
+        m_general->setNtp(enabled);
+}
+
+void SettingsBridge::setTimezone(const QString &timezone)
+{
+    if (m_general)
+        m_general->setTimezone(timezone);
+}
+
+void SettingsBridge::setTime(const QString &value)
+{
+    if (m_general)
+        m_general->setTime(value);
+}
+
+void SettingsBridge::setLocale(const QString &locale)
+{
+    if (m_general)
+        m_general->setLocale(locale);
+}
+
+void SettingsBridge::setAutostartEnabled(const QString &id, bool enabled)
+{
+    if (m_general)
+        m_general->setAutostartEnabled(id, enabled);
+}
+
+void SettingsBridge::setUserUnitEnabled(const QString &unit, bool enabled)
+{
+    if (m_general)
+        m_general->setUserUnitEnabled(unit, enabled);
+}
+
+void SettingsBridge::setSharingEnabled(const QString &id, bool enabled)
+{
+    if (m_general)
+        m_general->setSharingEnabled(id, enabled);
+}
+
+void SettingsBridge::runBackup(const QString &destination)
+{
+    if (m_general)
+        m_general->runBackup(destination);
+}
+
+void SettingsBridge::openBackupRestore()
+{
+    if (m_general)
+        m_general->openRestore();
+}
+
+void SettingsBridge::applyUpdatePolicy(bool autoCheck, bool autoInstall)
+{
+    if (m_updates)
+        m_updates->setAutoPolicy(autoCheck, autoInstall);
+}
+
+void SettingsBridge::resetGeneralFixture()
+{
+    if (m_general)
+        m_general->resetForTest();
+}
+
+void SettingsBridge::setGeneralAvailableFixture(bool available)
+{
+    if (auto *mock = qobject_cast<MockGeneralClient *>(m_general))
+        mock->setAbsentFixture(!available);
 }
 
 void SettingsBridge::refreshAccounts()

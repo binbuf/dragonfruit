@@ -221,6 +221,11 @@ pub struct SystemIdentity {
     pub memory_bytes: u64,
     /// The hardware serial (`/sys/.../dmi/id/product_serial`); often empty.
     pub serial: String,
+    /// The display adapter description (`lspci` on the live host); empty when
+    /// the host exposes none.
+    pub gpu: String,
+    /// The root filesystem's size in bytes (`0` when unknown).
+    pub disk_bytes: u64,
 }
 
 impl Default for SystemIdentity {
@@ -237,6 +242,8 @@ impl Default for SystemIdentity {
             processor: String::new(),
             memory_bytes: 0,
             serial: String::new(),
+            gpu: String::new(),
+            disk_bytes: 0,
         }
     }
 }
@@ -277,6 +284,27 @@ impl SystemIdentity {
         !self.serial.is_empty()
     }
 
+    /// The GPU label the About rows draw; `Unknown` when the host exposed no
+    /// display adapter.
+    pub fn gpu_label(&self) -> String {
+        if self.gpu.is_empty() {
+            "Unknown".to_owned()
+        } else {
+            self.gpu.clone()
+        }
+    }
+
+    /// The disk label the About rows draw, rounded to the nearest gigabyte;
+    /// `Unknown` when the read is missing.
+    pub fn disk_label(&self) -> String {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        if self.disk_bytes == 0 {
+            return "Unknown".to_owned();
+        }
+        let gib = (self.disk_bytes + GIB / 2) / GIB;
+        format!("{gib} GB")
+    }
+
     /// The device name the About heading draws: the model when the host
     /// exposed one, else the computer name.
     pub fn device_name(&self) -> String {
@@ -304,6 +332,19 @@ impl SystemData {
     pub const fn updates_available(&self) -> bool {
         self.updates.is_some()
     }
+}
+
+/// The automatic-update policy the Settings pane forwards to the provider.
+///
+/// The durable values are settingsd's `updates.auto` and
+/// `updates.autoInstall` keys. Both default to `false`; the pane must never
+/// silently enable them (T226).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UpdatePolicy {
+    /// Check for updates automatically.
+    pub auto_check: bool,
+    /// Install the updates a check finds automatically.
+    pub auto_install: bool,
 }
 
 /// The result of one update-provider write (check, install, or reboot).
@@ -358,6 +399,12 @@ pub trait SystemSource {
     fn reboot(&mut self) -> UpdateOutcome {
         UpdateOutcome::Absent
     }
+
+    /// Forward the automatic-update policy. One explicit write; the default
+    /// source has no provider to act on it.
+    fn set_auto_policy(&mut self, _policy: UpdatePolicy) -> UpdateOutcome {
+        UpdateOutcome::Absent
+    }
 }
 
 /// A fixture-backed source with a simulated host-stack lifecycle.
@@ -378,6 +425,8 @@ pub struct MockSystem {
     checks: u32,
     installs: u32,
     reboots: u32,
+    policy: UpdatePolicy,
+    policies: u32,
 }
 
 impl MockSystem {
@@ -392,6 +441,8 @@ impl MockSystem {
             checks: 0,
             installs: 0,
             reboots: 0,
+            policy: UpdatePolicy::default(),
+            policies: 0,
         }
     }
 
@@ -406,6 +457,8 @@ impl MockSystem {
             checks: 0,
             installs: 0,
             reboots: 0,
+            policy: UpdatePolicy::default(),
+            policies: 0,
         }
     }
 
@@ -421,6 +474,8 @@ impl MockSystem {
             checks: 0,
             installs: 0,
             reboots: 0,
+            policy: UpdatePolicy::default(),
+            policies: 0,
         }
     }
 
@@ -472,6 +527,16 @@ impl MockSystem {
     /// How many reboots the source has accepted.
     pub fn reboots(&self) -> u32 {
         self.reboots
+    }
+
+    /// The last automatic policy the source received.
+    pub fn auto_policy(&self) -> UpdatePolicy {
+        self.policy
+    }
+
+    /// How many policy writes the source accepted.
+    pub fn policies(&self) -> u32 {
+        self.policies
     }
 
     fn outcome(&self) -> UpdateOutcome {
@@ -536,6 +601,15 @@ impl SystemSource for MockSystem {
         }
         outcome
     }
+
+    fn set_auto_policy(&mut self, policy: UpdatePolicy) -> UpdateOutcome {
+        let outcome = self.outcome();
+        if outcome.is_applied() {
+            self.policy = policy;
+            self.policies += 1;
+        }
+        outcome
+    }
 }
 
 #[cfg(test)]
@@ -555,6 +629,8 @@ mod tests {
                 processor: "Example CPU".to_owned(),
                 memory_bytes: 16 * 1024 * 1024 * 1024,
                 serial: "SERIAL".to_owned(),
+                gpu: "Example GPU".to_owned(),
+                disk_bytes: 512 * 1024 * 1024 * 1024,
             },
             updates: Some(UpdateData {
                 phase: UpdatePhase::Available,

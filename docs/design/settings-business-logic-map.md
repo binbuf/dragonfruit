@@ -238,97 +238,99 @@ profile write; read-only level if available.
 <a id="pane-general"></a>
 ### 5.5 General
 
-Owner: `settingsd` + host/distro adapters. Each sub-pane has its own owner.
+Owner: `settingsd` + host/distro adapters. Each sub-pane has its own owner and
+absence path; the executable rows are in `SettingsMap.qml`.
 
 #### 5.5.1 About
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Device illustration | Device illustration | Art | Design system | Original artwork |
-| Device name | Device name | Text | hostname/distro adapter | Editable where permitted |
-| Chip/Memory/Serial/macOS | Processor/Memory/Serial/OS | Info | host info | Read-only; serial may be hidden |
-| More Info… | System Information… | Button | host info | Opens a detailed info window |
-| Regulatory Certification | Regulatory info | Link | distro/legal | Original text; optional |
+| Device name | Device name | Text (read-only) | hostname/distro adapter | `host.hostname` |
+| Chip / Memory / macOS | Processor / Memory / GPU / Disk / OS | Info | host info | `host.info`; serial is hidden when the DMI read is not permitted |
+| More Info… | More Info… | Button | host info | Opens the full host read: hostname, model, OS, kernel, architecture, processor, memory, GPU, disk, serial |
+| Regulatory Certification | Regulatory info | Link | distro/legal | Delegated; no legal page ships |
 
 #### 5.5.2 Software Update
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Automatic updates | Automatic updates | Toggle | PackageKit/distro adapter | Backend-specific policy |
-| Check for Updates | Check for updates | Button | PackageKit | Progress/result |
-| Update Now | Install updates | Button | PackageKit | Progress/reboot |
-| Advanced… | Options… | Sheet | distro adapter | Offline updates, reboot policy |
+| Automatic updates | Automatic updates | Toggle | `settingsd` → update provider | `updates.auto` / `updates.autoInstall`; both default off and are never silently enabled |
+| Check for Updates | Check for updates | Button | native/PackageKit provider | `dnf`/`apt-get`/`pacman`/`pkcon` check; progress phase; absent provider disables only the update controls |
+| Update Now | Install updates | Button | native/PackageKit provider | One explicit install; progress phase and restart state |
+| Advanced… | Automatic update policy | Sheet | `settingsd` → update provider | The two policy toggles; the provider owns the restart phase |
 
 #### 5.5.3 Storage
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Categories | Categories | Chart/list | UDisks2 + filesystem usage | Apps, documents, media, system, other |
-| Manage… | Manage storage… | Button | Files/Storage | Opens Files or a cleanup view |
-| — | Volumes | List | UDisks2 | Mount/eject/format (delegated where needed) |
+| Categories | Categories | Chart/list | UDisks2 + filesystem usage | `storage.usage` from `df`; system/home/media/other, never double-counting one device |
+| Manage… | Manage storage… | Button | Files/Storage | Delegated; formatting and partitioning stay in the Files app / disk utility |
+| — | Volumes | List | UDisks2 | Mount/unmount; absent UDisks2 hides the rows |
 | — | Removable media | List | UDisks2 | Eject; absent → note |
 
 #### 5.5.4 Login Items & Extensions
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Open at Login | Start at login | List + add/remove | XDG autostart + `settingsd` | `~/.config/autostart`, `/etc/xdg/autostart`; enable/disable |
-| Allow in Background | Background services | List | systemd user units + portals | Show/enable/disable; admin units via polkit |
-| Extensions | Extensions | List | portal extensions | Quick Look, file manager, etc. |
+| Open at Login | Start at login | List + toggle | XDG autostart + `settingsd` | `~/.config/autostart`, `/etc/xdg/autostart`; a system entry is disabled with a user override, never edited in place |
+| Allow in Background | Background services | List + toggle | systemd user units | `systemctl --user enable/disable`; static/masked units are read-only |
+| Extensions | Extensions | List | portal extensions | Delegated hand-off note; no fake rows |
 
 #### 5.5.5 Language & Region
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Preferred languages | Languages | List + add | `localectl`/locale adapter | Reorder, apply; session restart may be required |
-| Region | Region | Popup | locale adapter | Formats |
-| Calendar | Calendar | Popup | `settingsd` | Gregorian/other; locale |
-| Temperature | Temperature | Popup | `settingsd` | °C/°F |
-| Measurement system | Measurement | Popup | `settingsd` | Metric/imperial |
-| Date format | Date format | Popup | `settingsd` | Short/medium/long |
-| Number format | Number format | Popup | `settingsd` | Locale grouping/decimal |
-| First day of week | First day of week | Popup | `settingsd` | Calendar |
+| Preferred languages | Languages | List + add | `localectl`/locale adapter | `localectl set-locale LANG=…`; a session restart may be required |
+| Region | Region | Info | locale adapter | The formatting locale `localectl` reports |
+| Calendar | Calendar | Popup | `settingsd` | `locale.calendar`; Gregorian/ISO/Buddhist/Japanese |
+| Temperature | Temperature | Popup | `settingsd` | `locale.temperature`; °C/°F |
+| Measurement system | Measurement | Popup | `settingsd` | `locale.measurement`; metric/imperial |
+| Date format | Date format | Popup | `settingsd` | `locale.dateFormat`; short/medium/long |
+| Number format | Number format | Popup | `settingsd` | `locale.numberFormat`; locale/decimal/comma |
+| First day of week | First day of week | Popup | `settingsd` | `locale.firstDay`; locale/Sunday/Monday/Saturday |
 
 #### 5.5.6 Date & Time
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Set date and time automatically | Set automatically | Toggle | `timedatectl`/chrony adapter | NTP on/off |
-| Time zone | Time zone | Popup/map | `timedatectl` | Search/list |
-| Date and time | Date and time | Fields | `timedatectl` | Manual set requires auth |
-| 24-hour time | 24-hour time | Toggle | `settingsd` | Clock format |
-| Show seconds | Show seconds | Toggle | `settingsd` | Clock format |
-| Show date | Show date | Toggle | `settingsd` | Menu-bar clock |
-| Clock options… | Clock options… | Sheet | `settingsd` | Date/time style, flash separators |
+| Set date and time automatically | Set automatically | Toggle | `timedatectl`/chrony adapter | `timedatectl set-ntp`; absent `timedatectl` shows the absence note |
+| Time zone | Time zone | Popup/map | `timedatectl` | `timedatectl set-timezone` from `list-timezones` |
+| Date and time | Date and time | Fields | `timedatectl` | Manual set requires auth; disabled while NTP is on |
+| 24-hour time | 24-hour time | Toggle | `settingsd` | `clock.use24Hour`; the menu-bar clock consumes it |
+| Show seconds | Show seconds | Toggle | `settingsd` | `menu.clock.showSeconds` |
+| Show date | Show date | Toggle | `settingsd` | `menu.clock.showDate` |
+| Clock options… | Clock options… | Sheet | `settingsd` | `menu.clock.*` |
 
 #### 5.5.7 Sharing
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| File Sharing | File sharing | Toggle | Samba/NFS adapter | On/off; shares; auth |
-| Screen Sharing | Screen sharing | Toggle | portal ScreenCast/RDP | On/off; permissions |
-| Media Sharing | Media sharing | Toggle | DLNA adapter | Optional |
-| Printer Sharing | Printer sharing | Toggle | CUPS | Optional |
-| Remote Login | Remote login | Toggle | OpenSSH adapter | On/off; admin auth |
-| Remote Management | Remote management | Toggle | distro adapter | Optional |
-| Internet Sharing | Internet sharing | Toggle | NetworkManager | Optional |
+| File Sharing | File sharing | Toggle | Samba/NFS adapter | `smb.service`/`smbd.service`; installed services only |
+| Screen Sharing | Screen sharing | Toggle | portal ScreenCast/RDP | `gnome-remote-desktop.service`/`wayvnc.service`; hidden when neither is installed |
+| Media Sharing | Media sharing | Toggle | DLNA adapter | `rygel.service`/`minidlna.service`; hidden when absent |
+| Printer Sharing | Printer sharing | Toggle | CUPS | `cups.service`; hidden when absent |
+| Remote Login | Remote login | Toggle | OpenSSH adapter | `sshd.service`; admin auth |
+| Remote Management | Remote management | Toggle | distro adapter | `cockpit.socket`; hidden when absent |
+| Internet Sharing | Internet sharing | Toggle | NetworkManager | Hidden unless a shared connection exists |
 
 #### 5.5.8 Backup (Time Machine)
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Back Up Automatically | Back up automatically | Toggle | backup adapter | restic/Pika/Timeshift backend |
-| Back Up Now | Back up now | Button | backup adapter | Progress/result |
-| Select Disk… | Choose destination… | Button | FileChooser portal | Destination selection |
-| Options… | Options… | Sheet | backup adapter | Exclusions, schedule, retention |
-| — | Restore… | Button | backup adapter | Restore browser (delegated first pass) |
+| Back Up Automatically | Back up automatically | Toggle | `settingsd` → backup backend | `backup.auto`; off by default |
+| — | Backup backend | Popup | backup adapter | restic/Pika/Timeshift detection; automatic selects the installed one |
+| Select Disk… | Destination | Text | `settingsd` → backup backend | `backup.destination`; the backend's detected destination is shown as the hint |
+| Options… | Schedule | Popup | `settingsd` → backup backend | `backup.schedule`; off/hourly/daily/weekly/monthly |
+| Back Up Now | Back up now | Button | backup adapter | One explicit run; disabled when the backend cannot run non-interactively |
+| — | Restore… | Button | backup adapter | Delegated restore entry (Timeshift GUI/Pika); absent backend disables it |
 
-#### 5.5.9 Startup Disk / Reset / Device Management
+#### 5.5.9 Startup Disk / Reset
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Startup Disk | Startup disk | Info | UDisks2/bootloader adapter | Read-only first pass; no bootloader rewrite |
-| Transfer or Reset | Reset | Button | `settingsd` | Reset Dragonfruit settings; no factory reset |
+| Startup Disk | Startup disk | Info | UDisks2/bootloader adapter | Read-only first pass; boot device, filesystem, size, firmware mode, Secure Boot; no bootloader rewrite |
+| Transfer or Reset | Reset | Button | `settingsd` | `org.dragonfruit.Settings1.Reset`; resets Dragonfruit settings only, never personal files or host configuration |
 | Erase All Content… | — | Omit | — | Not a Linux concept |
 | Device Management | — | Omit | — | MDM is Apple-specific |
 
@@ -343,6 +345,15 @@ shows the available provider or a note; it does not store secrets itself.
 | Passwords… | Passwords… | Button | Secret Service | Delegated to GNOME Secrets/KeePassXC or the browser |
 | AutoFill from… | Autofill source | Popup | `defaults.passwordManager` | Provider selection; hidden if none |
 | — | Locked keyring | Info | Secret Service | Status/unlock entry |
+
+**T226 status.** The General group ships with real host/distro adapters:
+`timedatectl`/`localectl`, XDG autostart, systemd user/system units, the
+restic/Pika/Timeshift detection, `df` usage, and `findmnt` startup-disk reads.
+The native/PackageKit update provider is attached to the bridge host; the
+Settings pane and the Control Center tile read the same `Updates` view. Each
+sub-pane carries its own state and absence note; Storage remains a first-class
+sidebar pane and the General row navigates to it. The About `More Info…` button
+is live; the regulatory link is the one delegated omission.
 
 <a id="pane-appearance"></a>
 ### 5.6 Appearance

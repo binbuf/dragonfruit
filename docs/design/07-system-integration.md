@@ -1028,6 +1028,49 @@ provider is a distro seam, this pair rides the **bridge host**, not settingsd
   regulatory/copyright footer are omitted (no System Information app or legal
   page to open).
 
+## The General group's host adapters (T226)
+
+The General group's remaining reference sub-panes project host tools the
+desktop already owns; they do not add a second settings daemon. The adapter is
+`services/general-adapter` (`dragonfruit-general-adapter`) and the bridge host
+half is `services/system-status/src/general.rs` behind
+`org.dragonfruit.SystemStatus1.General` (ADR [0235](adr/0235-general-group-host-adapters.md)).
+
+- **Date & Time** reads `timedatectl show` (time zone, NTP, synchronization,
+  `CanNTP`) and `timedatectl list-timezones`; the writes are `set-ntp`,
+  `set-timezone`, and `set-time`. The clock-format keys (`clock.use24Hour`,
+  `menu.clock.showSeconds`, `menu.clock.showDate`) are settingsd's and the
+  shell's menu-bar clock consumes them.
+- **Language & Region** reads `localectl status`/`list-locales`; the write is
+  `localectl set-locale LANG=…`. The calendar, temperature, measurement,
+  date-format, number-format, and first-day keys are settingsd presentation
+  policy with a live pane preview.
+- **Login Items** reads the XDG autostart directories (user overrides win) and
+  the systemd user units under `~/.config/systemd/user`/`/etc/systemd/user`.
+  A system autostart entry is disabled with a user `Hidden=true` override,
+  never edited in place; user units toggle with `systemctl --user
+  enable/disable`.
+- **Sharing** detects installed systemd units and binaries for SMB, screen
+  sharing, DLNA, CUPS, OpenSSH, and Cockpit. Only installed services are rows;
+  each toggle is `systemctl enable/disable --now` (polkit owns the prompt).
+- **Backup** detects `restic`, `pika-backup`, and `timeshift`; Timeshift's own
+  config supplies the detected destination/schedule/last run. The pane owns
+  the durable `backup.*` policy, runs one explicit backend action, and opens
+  the backend's restore entry. Dragonfruit implements no backup engine.
+- **Storage usage** reads `df -B1 -P` and groups system/home/media/other,
+  deduplicating a device so one filesystem is never double-counted. Formatting
+  and partitioning stay delegated.
+- **Startup Disk** reads `findmnt`/`lsblk` and the firmware mode/Secure Boot
+  state; it is read-only and points at the firmware boot menu.
+- **Reset** is the one settingsd write: `org.dragonfruit.Settings1.Reset`
+  reseeds every key to its schema default and emits one `Changed` per changed
+  key. It never touches personal files or host configuration.
+
+Each sub-view carries its own `state`; one missing tool disables only its own
+pane and records the reason in `errors`. The adapter is `Unavailable` only when
+no sub-pane answers. The Settings pane keeps the About/Software Update rows
+live when only the General host is absent.
+
 ## The Users and Groups path (T-15.11a)
 
 Users and Groups do not wrap a single desktop daemon: they project the **host

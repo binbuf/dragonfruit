@@ -21,7 +21,8 @@
 
 use dragonfruit_system_adapters::Adapter;
 use dragonfruit_update_adapter::{
-    SystemSnapshot, SystemSource, UpdateAdapter, UpdateOutcome, UpdatePhase, UpdateSeverity,
+    SystemSnapshot, SystemSource, UpdateAdapter, UpdateOutcome, UpdatePhase, UpdatePolicy,
+    UpdateSeverity,
 };
 use serde_json::{json, Value};
 
@@ -73,6 +74,15 @@ impl<S: SystemSource> UpdatesHost<S> {
     /// Ask the provider to restart the host. One explicit write.
     pub fn reboot(&mut self) -> Value {
         update_report(self.adapter.reboot())
+    }
+
+    /// Forward the automatic-update policy. One explicit write; the provider
+    /// stores it for the lifetime of the host.
+    pub fn set_auto_policy(&mut self, auto_check: bool, auto_install: bool) -> Value {
+        update_report(self.adapter.set_auto_policy(UpdatePolicy {
+            auto_check,
+            auto_install,
+        }))
     }
 
     /// The adapter (read-only), for tests and introspection.
@@ -145,6 +155,10 @@ pub fn updates_snapshot_view(snapshot: &SystemSnapshot) -> Value {
         "memoryLabel": identity.memory_label(),
         "serial": identity.serial,
         "hasSerial": identity.has_serial(),
+        "gpu": identity.gpu,
+        "gpuLabel": identity.gpu_label(),
+        "diskBytes": identity.disk_bytes,
+        "diskLabel": identity.disk_label(),
         // The distribution update provider, when present.
         "updatesAvailable": snapshot.updates_available(),
         "glyph": snapshot.glyph(),
@@ -198,6 +212,8 @@ mod tests {
                 processor: "Example CPU".to_owned(),
                 memory_bytes: 16 * 1024 * 1024 * 1024,
                 serial: "SERIAL-1".to_owned(),
+                gpu: "Example GPU".to_owned(),
+                disk_bytes: 512 * 1024 * 1024 * 1024,
             },
             updates: Some(UpdateData {
                 phase: UpdatePhase::Available,

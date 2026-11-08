@@ -58,14 +58,19 @@
 mod adapter;
 mod host;
 mod model;
+mod native;
 mod source;
 
 pub use adapter::UpdateAdapter;
 pub use host::{HostSystem, MockUpdateProvider, UpdateProvider};
 pub use model::{SystemSnapshot, UpdateChange};
+pub use native::{
+    parse_apt_check, parse_dnf_check, parse_packagekit_check, parse_pacman_check, run_check,
+    run_install, CommandOutput, CommandRunner, CommandUpdateProvider, SystemRunner, UpdateBackend,
+};
 pub use source::{
     MockSystem, SystemData, SystemIdentity, SystemSource, UpdateData, UpdateItem, UpdateOutcome,
-    UpdatePhase, UpdateSeverity,
+    UpdatePhase, UpdatePolicy, UpdateSeverity,
 };
 
 #[cfg(test)]

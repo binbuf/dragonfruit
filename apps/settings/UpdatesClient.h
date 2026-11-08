@@ -15,6 +15,7 @@
 #include <QVariantMap>
 
 class QDBusServiceWatcher;
+class QTimer;
 
 class UpdatesClient : public QObject
 {
@@ -35,6 +36,8 @@ public:
     virtual void check() = 0;
     virtual void install() = 0;
     virtual void reboot() = 0;
+    // T226: forward the durable automatic-update policy to the running host.
+    virtual void setAutoPolicy(bool autoCheck, bool autoInstall) = 0;
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
@@ -59,6 +62,7 @@ public:
     void check() override;
     void install() override;
     void reboot() override;
+    void setAutoPolicy(bool autoCheck, bool autoInstall) override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
@@ -69,6 +73,11 @@ private:
     QVariantMap m_view;
     bool m_available = false;
     QDBusServiceWatcher *m_watcher = nullptr;
+    // T226: an operation-scoped re-read while a check/install is in flight.
+    // The provider runs the package manager on a worker thread, so the phase
+    // changes after the write reply; this is not a daemon poll and stops as
+    // soon as the phase settles.
+    QTimer *m_busyTimer = nullptr;
 };
 
 // The fixture client used by `DF_UPDATES_FIXTURE`: a Dragonfruit host identity
@@ -88,11 +97,14 @@ public:
     void check() override;
     void install() override;
     void reboot() override;
+    void setAutoPolicy(bool autoCheck, bool autoInstall) override;
     void resetForTest() override;
 
 private:
     void rebuild();
     QString m_phase = QStringLiteral("available");
     int m_updateCount = 1;
+    bool m_autoCheck = false;
+    bool m_autoInstall = false;
     QVariantMap m_view;
 };

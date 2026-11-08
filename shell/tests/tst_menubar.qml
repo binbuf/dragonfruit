@@ -1407,6 +1407,19 @@ Item {
             compare(clock.dateText, Qt.formatDate(fixed, Locale.ShortFormat));
         }
 
+        // T226: the Date & Time pane's 24-hour preference forces the clock
+        // format while the default keeps following the locale.
+        function test_clock_honours_the_24_hour_preference() {
+            var fixed = new Date(2026, 8, 19, 14, 5, 0);
+            var clock = make(clockComponent, { now: fixed, use24Hour: true });
+            compare(clock.timeText, "14:05");
+            clock.showSeconds = true;
+            compare(clock.timeText, "14:05:00");
+            clock.use24Hour = false;
+            compare(clock.timeText,
+                    Qt.formatTime(fixed, Qt.locale().timeFormat(Locale.LongFormat)));
+        }
+
         function test_the_clock_is_the_notification_center_entry_point() {
             var bar = make(menuBarComponent, {
                 appMenu: [],

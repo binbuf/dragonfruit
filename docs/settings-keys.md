@@ -107,6 +107,19 @@ freezes the v1 key set.
 | `printers.defaultPaperSize` | s | `us-letter` | `us-letter`/`us-legal`/`a3`/`a4`/`a5` | apps/settings | apps/settings (stored preference) | The default paper size new print jobs assume (T-15.12b). CUPS and SANE own the queue and scanner state. |
 | `network.wifi.askToJoin` | s | `notify` | `off`/`notify`/`ask`/`new` | apps/settings | shell/MenuBar Wi-Fi prompt policy | When to prompt before joining a nearby Wi-Fi network (T225). NetworkManager still owns autoconnect. |
 | `network.wifi.askToJoinHotspots` | s | `ask` | `off`/`ask`/`automatic` | apps/settings | shell/MenuBar Wi-Fi prompt policy | When to prompt before joining a captive-portal hotspot (T225). |
+| `clock.use24Hour` | b | false | | apps/settings | shell/MenuBar clock | Force the menu-bar clock to 24-hour time instead of the locale format (T226). |
+| `updates.auto` | b | false | | apps/settings | dragonfruit-system-status update provider | Check for software updates automatically; never enabled by default (T226). |
+| `updates.autoInstall` | b | false | | apps/settings | dragonfruit-system-status update provider | Install the updates a check finds automatically; never enabled by default (T226). |
+| `locale.calendar` | s | `gregorian` | `gregorian`/`iso`/`buddhist`/`japanese` | apps/settings | apps/settings (date preview) | The calendar system the Date & Time and Language previews use (T226). |
+| `locale.temperature` | s | `celsius` | `celsius`/`fahrenheit` | apps/settings | apps/settings (weather and date previews) | The temperature unit the desktop shows (T226). |
+| `locale.measurement` | s | `metric` | `metric`/`imperial` | apps/settings | apps/settings (measurement previews) | The measurement system the desktop shows (T226). |
+| `locale.dateFormat` | s | `medium` | `short`/`medium`/`long` | apps/settings | apps/settings (date preview) | The date-format length the Language & Region preview uses (T226). |
+| `locale.numberFormat` | s | `locale` | `locale`/`decimal`/`comma` | apps/settings | apps/settings (number preview) | How numbers group and separate their decimals (T226). |
+| `locale.firstDay` | s | `locale` | `locale`/`sunday`/`monday`/`saturday` | apps/settings | apps/settings (calendar preview) | The first day of the week the desktop calendar uses (T226). |
+| `backup.auto` | b | false | | apps/settings | apps/settings Backup pane / backup backend | Run the selected backup backend on its schedule; off by default (T226). |
+| `backup.backend` | s | `auto` | `auto`/`restic`/`pika`/`timeshift` | apps/settings | apps/settings Backup pane | The backup backend to prefer; auto detects restic, Pika, or Timeshift (T226). |
+| `backup.destination` | s | `` (empty) | | apps/settings | apps/settings Backup pane / backup backend | The destination the selected backup backend writes to (T226). |
+| `backup.schedule` | s | `off` | `off`/`hourly`/`daily`/`weekly`/`monthly` | apps/settings | apps/settings Backup pane / backup backend | How often the selected backup backend runs (T226). |
 
 ## Consumer map
 
@@ -131,6 +144,10 @@ freezes the v1 key set.
 | Notifications/Focus panes (`apps/settings/NotificationsPane.qml`, `apps/settings/FocusPane.qml`, T-15.7b) | `notifications.showPreviews`, `notifications.showWhenSleeping`, `notifications.showWhenLocked`, `notifications.showWhenMirroring` — the stored presentation policy the Notifications pane writes; the Focus mode and per-app allow list are the notification adapter's state, not settingsd keys |
 | Mission Control / hot corners (T-15.5b; `compositor/input/hot_corners.rs`) | `overview.hotCornerTopLeft`, `overview.hotCornerTopRight`, `overview.hotCornerBottomLeft`, `overview.hotCornerBottomRight` — the durable corner assignments the Mission Control pane writes, plus the revision-1 `gestures.enabled`/`gestures.spaceSwitch`/`gestures.missionControl` trio the compositor already applies live via `set_input_policy`. Applying an assignment needs the append-only compositor request ADR [0126](design/adr/0126-mission-control-hot-corners-adapter.md) names (deferred). |
 | Lock Screen pane (`apps/settings/LockScreenPane.qml`, T-15.8b) | `lock.showUserNameAndPhoto`, `lock.showPasswordHints`, `lock.showMessageWhenLocked`, `lock.message`, `lock.showPowerButtons` — the stored display policy the pane writes; the pane reuses the existing `idle.blank`/`idle.lock` timing keys (session idle engine) and the compositor lock stays compositor-owned (ADR [0132](design/adr/0132-lock-screen-policy-adapter.md)). The lock-screen renderer that consumes the `lock.*` keys is a follow-up. |
+| Date & Time pane (`apps/settings/DateTimePane.qml`, T226) | `clock.use24Hour`, `menu.clock.showSeconds`, `menu.clock.showDate` — the durable clock-format keys the pane writes; the shell's `applyMenuBarPolicy` forwards them to the menu-bar clock, and the host adapter owns NTP/time-zone/manual time through `timedatectl`. |
+| Software Update dialog (`apps/settings/GeneralPane.qml`, T226) | `updates.auto`, `updates.autoInstall` — the pane forwards both to the running `dragonfruit-system-status` update provider; both default to false and are never silently enabled. |
+| Language & Region pane (`apps/settings/LanguageRegionPane.qml`, T226) | `locale.calendar`, `locale.temperature`, `locale.measurement`, `locale.dateFormat`, `locale.numberFormat`, `locale.firstDay` — the pane's live preview and the stored format policy; the system locale itself is `localectl`'s. |
+| Backup pane (`apps/settings/BackupPane.qml`, T226) | `backup.auto`, `backup.backend`, `backup.destination`, `backup.schedule` — the durable policy the pane writes; the host adapter detects and runs restic/Pika/Timeshift, and `backup.auto` defaults off. |
 
 `dock.minimizeIntoTileIcon` is Dock entry visibility, not a compositor
 key — it is not forwarded over the private protocol. `appearance.accent`

@@ -72,8 +72,23 @@ impl Settings {
     }
 
     /// Drop all values and reseed the schema defaults (a full reset).
-    pub fn reset(&mut self) {
+    ///
+    /// Returns the keys whose value really changed, in schema order, so the
+    /// D-Bus layer can emit one `Changed` per key and every consumer converges
+    /// without a poll.
+    pub fn reset(&mut self) -> Vec<(&'static str, Value)> {
+        let previous = std::mem::take(&mut self.values);
         *self = Settings::new();
+        self.values
+            .iter()
+            .filter_map(|(key, value)| {
+                if previous.get(key) == Some(value) {
+                    None
+                } else {
+                    Some((*key, value.clone()))
+                }
+            })
+            .collect()
     }
 }
 

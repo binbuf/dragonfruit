@@ -32,6 +32,8 @@ qt_add_qml_module(dragonfruit-settings-ui
         NotificationsClient.h
         UpdatesClient.cpp
         UpdatesClient.h
+        GeneralClient.cpp
+        GeneralClient.h
         AccountsClient.cpp
         AccountsClient.h
         PrintersClient.cpp
@@ -73,6 +75,13 @@ qt_add_qml_module(dragonfruit-settings-ui
         LockScreenPane.qml
         MenuBarPane.qml
         GeneralPane.qml
+        LoginItemsPane.qml
+        LanguageRegionPane.qml
+        DateTimePane.qml
+        SharingPane.qml
+        BackupPane.qml
+        StartupDiskPane.qml
+        ResetPane.qml
         UsersGroupsPane.qml
         PrintersScannersPane.qml
         PrivacyPane.qml
@@ -142,6 +151,13 @@ df_qml_lint(app-settings
     LockScreenPane.qml
     MenuBarPane.qml
     GeneralPane.qml
+    LoginItemsPane.qml
+    LanguageRegionPane.qml
+    DateTimePane.qml
+    SharingPane.qml
+    BackupPane.qml
+    StartupDiskPane.qml
+    ResetPane.qml
     UsersGroupsPane.qml
     PrintersScannersPane.qml
     PrivacyPane.qml

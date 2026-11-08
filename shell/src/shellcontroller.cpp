@@ -5947,21 +5947,25 @@ void ShellController::applyMenuBarPolicy()
     // the bar until the apply lands.
     const bool showDate = values.value(QStringLiteral("menu.clock.showDate"), true).toBool();
     const bool showSeconds = values.value(QStringLiteral("menu.clock.showSeconds"), false).toBool();
+    const bool use24Hour = values.value(QStringLiteral("clock.use24Hour"), false).toBool();
     const bool showBackground =
         values.value(QStringLiteral("menu.showBackground"), true).toBool();
     const QString autoHide =
         values.value(QStringLiteral("menu.autoHide"), QStringLiteral("full-screen")).toString();
     const bool changed = !m_menuBarPolicySent || showDate != m_menuBarShowDate
         || showSeconds != m_menuBarShowSeconds
+        || use24Hour != m_menuBarUse24Hour
         || showBackground != m_menuBarShowBackground || autoHide != m_menuBarAutoHide;
     if (changed) {
         m_menuBarShowDate = showDate;
         m_menuBarShowSeconds = showSeconds;
+        m_menuBarUse24Hour = use24Hour;
         m_menuBarShowBackground = showBackground;
         m_menuBarAutoHide = autoHide;
         m_menuBarPolicySent = true;
         m_item->setProperty("showDate", showDate);
         m_item->setProperty("showSeconds", showSeconds);
+        m_item->setProperty("use24Hour", use24Hour);
         m_item->setProperty("showBackground", showBackground);
         m_item->setProperty("autoHideMode", autoHide);
         // T201: the compositor owns the per-output reveal. Forward the policy
@@ -5971,10 +5975,10 @@ void ShellController::applyMenuBarPolicy()
         render();
         fprintf(stderr,
                 "dragonfruit-shell: menu bar policy applied "
-                "(globalMenu=%d clockDate=%d clockSeconds=%d background=%d "
+                "(globalMenu=%d clockDate=%d clockSeconds=%d clock24h=%d background=%d "
                 "autoHide=%s)\n",
                 m_globalMenuEnabled ? 1 : 0, showDate ? 1 : 0, showSeconds ? 1 : 0,
-                showBackground ? 1 : 0, qPrintable(autoHide));
+                use24Hour ? 1 : 0, showBackground ? 1 : 0, qPrintable(autoHide));
     }
 }
 

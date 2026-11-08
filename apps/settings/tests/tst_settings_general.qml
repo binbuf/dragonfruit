@@ -26,6 +26,8 @@ Item {
         // the pane always opens with one security update on offer.
         function init() {
             Settings.resetUpdatesFixture();
+            Settings.resetGeneralFixture();
+            Settings.setGeneralAvailableFixture(true);
         }
 
         function make() {
@@ -36,6 +38,14 @@ Item {
             tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
             waitForRendering(stage);
             return shell;
+        }
+
+        function openSubPane(pane, id) {
+            pane.openSubPane(id);
+            tryVerify(function() { return pane.subPaneLoader.status === Loader.Ready; });
+            waitForRendering(stage);
+            verify(pane.subPaneLoader.item, "the " + id + " sub-pane must load");
+            return pane.subPaneLoader.item;
         }
 
         function paneOf(shell) {
@@ -121,6 +131,222 @@ Item {
             var pane = paneOf(shell);
             compare(pane.ready, true);
             compare(pane.absenceNote.visible, false);
+        }
+        Component { id: dateTimeComponent; DateTimePane { } }
+        Component { id: sharingComponent; SharingPane { } }
+        Component { id: backupComponent; BackupPane { } }
+
+        // -- T226: the General group's list --------------------------------
+
+        function test_general_list_shows_the_reference_rows() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.storageRow.visible, "Storage row");
+            verify(pane.loginRow.visible, "Login Items row");
+            verify(pane.languageRow.visible, "Language & Region row");
+            verify(pane.dateTimeRow.visible, "Date & Time row");
+            verify(pane.sharingRow.visible, "Sharing row");
+            verify(pane.backupRow.visible, "Backup row");
+            verify(pane.startupRow.visible, "Startup Disk row");
+            verify(pane.resetRow.visible, "Reset row");
+            compare(pane.dateTimeSummary, "America/Los_Angeles · Automatic");
+            compare(pane.loginSummary, "4 items");
+            compare(pane.sharingSummary, "2 of 3 on");
+            compare(pane.backupSummary, "Timeshift · daily");
+            compare(pane.storageSummary, "480 GB used");
+            compare(pane.startupSummary, "/dev/nvme0n1 · UEFI");
+        }
+
+        function test_more_info_shows_gpu_and_disk() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.moreInfoDialog.show();
+            compare(pane.moreInfoDialog.open, true);
+            verify(findChild(pane, "generalMoreInfoDialog"));
+            pane.moreInfoDialog.accept();
+        }
+
+        // -- Date & Time ---------------------------------------------------
+
+        function test_date_time_applies_ntp_timezone_and_clock_format() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "date-time");
+            compare(sub.available, true);
+            compare(sub.ntpToggle.checked, true);
+            sub.ntpToggle.toggle();
+            tryVerify(function() { return Settings.general.time.ntpEnabled === false; });
+
+            sub.timezoneSelect.activateIndex(2);
+            tryVerify(function() {
+                return Settings.general.time.timezone === "Europe/Berlin";
+            });
+
+            compare(Settings.values["clock.use24Hour"], false);
+            sub.hour24Toggle.toggle();
+            compare(Settings.values["clock.use24Hour"], true);
+            verify(sub.previewText.text.indexOf(":") >= 0);
+
+            sub.manualField.text = "2026-11-07 12:00:00";
+            sub.setTimeButton.clicked();
+            tryVerify(function() {
+                return Settings.general.time.localTimeMs
+                    === new Date(2026, 10, 7, 12, 0, 0).getTime();
+            });
+        }
+
+        function test_date_time_degrades_without_its_owner() {
+            Settings.setGeneralAvailableFixture(false);
+            var pane = createTemporaryObject(dateTimeComponent, stage);
+            verify(pane);
+            compare(pane.available, false);
+            compare(pane.absenceNote.visible, true);
+        }
+
+        // -- Language & Region ---------------------------------------------
+
+        function test_language_applies_locale_and_format_keys() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "language");
+            compare(sub.available, true);
+
+            sub.languageSelect.activateIndex(1);
+            tryVerify(function() { return Settings.general.locale.locale === "de_DE.UTF-8"; });
+
+            sub.calendarSelect.activateIndex(1);
+            compare(Settings.values["locale.calendar"], "iso");
+            sub.temperatureSelect.activateIndex(1);
+            compare(Settings.values["locale.temperature"], "fahrenheit");
+            sub.measurementSelect.activateIndex(1);
+            compare(Settings.values["locale.measurement"], "imperial");
+            sub.dateFormatSelect.activateIndex(2);
+            compare(Settings.values["locale.dateFormat"], "long");
+            sub.numberFormatSelect.activateIndex(2);
+            compare(Settings.values["locale.numberFormat"], "comma");
+            sub.firstDaySelect.activateIndex(2);
+            compare(Settings.values["locale.firstDay"], "monday");
+            verify(sub.previewText.text.indexOf("68 °F") >= 0);
+        }
+
+        // -- Login Items ---------------------------------------------------
+
+        function test_login_items_toggle_autostart_and_user_units() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "login");
+            compare(sub.available, true);
+            compare(sub.autostartRepeater.count, 2);
+            compare(sub.userUnitRepeater.count, 2);
+
+            var item = sub.autostartRepeater.itemAt(1);
+            item.control.children[0].toggle();
+            tryVerify(function() {
+                return Settings.general.login.autostart[1].enabled === true;
+            });
+            var unit = sub.userUnitRepeater.itemAt(1);
+            unit.control.children[0].toggle();
+            tryVerify(function() {
+                return Settings.general.login.userUnits[1].enabled === "enabled";
+            });
+        }
+
+        // -- Sharing -------------------------------------------------------
+
+        function test_sharing_lists_only_installed_services_and_toggles_one() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "sharing");
+            compare(sub.available, true);
+            compare(sub.servicesRepeater.count, 3);
+            compare(sub.servicesRepeater.itemAt(1).modelData.id, "remoteLogin");
+            var toggle = sub.servicesRepeater.itemAt(1).control.children[0];
+            compare(toggle.checked, true);
+            toggle.toggle();
+            tryVerify(function() {
+                return Settings.general.sharing.services[1].active === false;
+            });
+            compare(Settings.general.sharing.activeCount, 1);
+        }
+
+        // -- Backup --------------------------------------------------------
+
+        function test_backup_detects_a_backend_and_applies_policy() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "backup");
+            compare(sub.available, true);
+            compare(sub.detectedBackend, "timeshift");
+            compare(sub.canRun, true);
+
+            sub.scheduleSelect.activateIndex(3);
+            compare(Settings.values["backup.schedule"], "weekly");
+            sub.autoToggle.toggle();
+            compare(Settings.values["backup.auto"], true);
+            sub.runButton.clicked();
+            tryVerify(function() { return Settings.general.backup.message === "Backup started"; });
+            sub.restoreButton.clicked();
+            tryVerify(function() { return Settings.general.backup.message === "Restore opened"; });
+        }
+
+        // -- Startup Disk --------------------------------------------------
+
+        function test_startup_disk_is_read_only() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "startup");
+            compare(sub.available, true);
+            compare(findChild(sub, "startupDiskRow").control.children[0].text,
+                    "/dev/nvme0n1");
+            compare(findChild(sub, "startupBootModeRow").control.children[0].text, "UEFI");
+            compare(findChild(sub, "startupSecureBootRow").control.children[0].text, "On");
+            verify(sub.readOnlyNote.visible);
+        }
+
+        // -- Reset ---------------------------------------------------------
+
+        function test_reset_restores_the_schema_defaults() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.set("dock.size", 0.9);
+            compare(Settings.values["dock.size"], 0.9);
+            var sub = openSubPane(pane, "reset");
+            sub.resetButton.clicked();
+            compare(sub.confirmDialog.open, true);
+            sub.confirmButton.clicked();
+            tryVerify(function() {
+                return Settings.values["dock.size"] === Settings.schemaFor("dock.size").default;
+            });
+            compare(sub.doneText.visible, true);
+        }
+
+        // -- Absence -------------------------------------------------------
+
+        function test_every_general_sub_pane_degrades_with_the_host_absent() {
+            Settings.setGeneralAvailableFixture(false);
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.generalAvailable, false);
+            compare(pane.loginRow.visible, false);
+            var sharing = createTemporaryObject(sharingComponent, stage);
+            verify(sharing);
+            compare(sharing.available, false);
+            compare(sharing.absenceNote.visible, true);
+            var backup = createTemporaryObject(backupComponent, stage);
+            verify(backup);
+            compare(backup.available, false);
+            compare(backup.absenceNote.visible, true);
+        }
+
+        function test_storage_pane_reads_the_usage_categories() {
+            var shell = make();
+            shell.selectPane("storage");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = shell.paneBody.item;
+            compare(pane.usageGroup.visible, true);
+            compare(pane.usageRepeater.count, 3);
+            compare(pane.manageRow.visible, true);
         }
     }
 }

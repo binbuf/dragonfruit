@@ -28,7 +28,9 @@ use std::path::{Path, PathBuf};
 
 use dragonfruit_system_adapters::AdapterError;
 
-use crate::source::{SystemData, SystemIdentity, SystemSource, UpdateData, UpdateOutcome};
+use crate::source::{
+    SystemData, SystemIdentity, SystemSource, UpdateData, UpdateOutcome, UpdatePolicy,
+};
 
 /// The distribution's own update provider.
 ///
@@ -58,6 +60,12 @@ pub trait UpdateProvider: Send {
 
     /// Restart the host to finish an update. One explicit request.
     fn start_reboot(&mut self) -> UpdateOutcome {
+        UpdateOutcome::Absent
+    }
+
+    /// Apply the durable automatic-update policy. The default stores nothing;
+    /// a concrete provider that can act on it overrides this.
+    fn set_auto_policy(&mut self, _policy: UpdatePolicy) -> UpdateOutcome {
         UpdateOutcome::Absent
     }
 }
@@ -121,6 +129,13 @@ impl HostSystem {
         let memory_bytes = read_trimmed(self.root.join("proc/meminfo"))
             .map(|text| parse_mem_total(&text))
             .unwrap_or(0);
+        // The GPU and root-disk reads are live-host probes: a fixture root
+        // keeps the identity deterministic and leaves them empty.
+        let (gpu, disk_bytes) = if self.root == Path::new("/") {
+            (live_gpu(), live_root_disk_bytes())
+        } else {
+            (String::new(), 0)
+        };
 
         SystemIdentity {
             host_name,
@@ -137,8 +152,100 @@ impl HostSystem {
             processor,
             memory_bytes,
             serial,
+            gpu,
+            disk_bytes,
         }
     }
+}
+
+/// The live display adapter, read from `lspci -mm -nn`. Empty when the tool
+/// or the adapter is missing; never an error.
+fn live_gpu() -> String {
+    let Ok(output) = std::process::Command::new("lspci")
+        .args(["-mm", "-nn"])
+        .output()
+    else {
+        return String::new();
+    };
+    if !output.status.success() {
+        return String::new();
+    }
+    parse_lspci_display(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// The root filesystem size in bytes, read from `df -B1 /`. `0` when the
+/// tool is missing or the read fails.
+fn live_root_disk_bytes() -> u64 {
+    let Ok(output) = std::process::Command::new("df")
+        .args(["-B1", "-P", "/"])
+        .output()
+    else {
+        return 0;
+    };
+    if !output.status.success() {
+        return 0;
+    }
+    parse_df_size(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// Pick the first display-class line from `lspci -mm -nn` and join its vendor
+/// and device names.
+pub(crate) fn parse_lspci_display(text: &str) -> String {
+    for line in text.lines() {
+        let fields = quoted_fields(line);
+        if fields.len() < 3 {
+            continue;
+        }
+        let class = fields[0];
+        if !(class.contains("VGA compatible controller")
+            || class.contains("3D controller")
+            || class.contains("Display controller"))
+        {
+            continue;
+        }
+        let vendor = fields[1].split('[').next().unwrap_or("").trim();
+        let device = fields[2].split('[').next().unwrap_or("").trim();
+        let label = match (vendor.is_empty(), device.is_empty()) {
+            (false, false) => format!("{vendor} {device}"),
+            (false, true) => vendor.to_owned(),
+            (true, false) => device.to_owned(),
+            (true, true) => continue,
+        };
+        return label;
+    }
+    String::new()
+}
+
+/// Split the quoted fields of one `lspci -mm` line (`"a" "b" "c"`).
+fn quoted_fields(line: &str) -> Vec<&str> {
+    let mut fields = Vec::new();
+    let mut start = None;
+    for (index, ch) in line.char_indices() {
+        match ch {
+            '"' => match start {
+                Some(from) => {
+                    fields.push(&line[from..index]);
+                    start = None;
+                }
+                None => start = Some(index + 1),
+            },
+            _ => {}
+        }
+    }
+    fields
+}
+
+/// The filesystem size from one `df -B1 -P` body (the second field of the
+/// first data line).
+pub(crate) fn parse_df_size(text: &str) -> u64 {
+    for line in text.lines().skip(1) {
+        let mut fields = line.split_whitespace();
+        let _filesystem = fields.next();
+        if let Some(size) = fields.next().and_then(|value| value.parse::<u64>().ok()) {
+            return size;
+        }
+    }
+    0
 }
 
 impl SystemSource for HostSystem {
@@ -176,6 +283,13 @@ impl SystemSource for HostSystem {
     fn reboot(&mut self) -> UpdateOutcome {
         match self.provider.as_mut() {
             Some(provider) => provider.start_reboot(),
+            None => UpdateOutcome::Absent,
+        }
+    }
+
+    fn set_auto_policy(&mut self, policy: UpdatePolicy) -> UpdateOutcome {
+        match self.provider.as_mut() {
+            Some(provider) => provider.set_auto_policy(policy),
             None => UpdateOutcome::Absent,
         }
     }
@@ -438,6 +552,39 @@ mod tests {
         );
         assert_eq!(parse_cpu_model("Hardware\t: Board\n"), "Board");
         assert_eq!(parse_cpu_model(""), "");
+    }
+
+    #[test]
+    fn lspci_display_picks_the_vga_adapter() {
+        let text = "00:00.0 \"Host bridge [0600]\" \"Vendor [1022]\" \"Device [1630]\"\n\
+                    00:01.0 \"VGA compatible controller [0300]\" \"Advanced Micro Devices, Inc. [AMD/ATI] [1002]\" \"Lucienne [1681]\"\n";
+        assert_eq!(
+            parse_lspci_display(text),
+            "Advanced Micro Devices, Inc. Lucienne"
+        );
+        assert_eq!(parse_lspci_display(""), "");
+    }
+
+    #[test]
+    fn df_size_parses_the_first_data_line() {
+        assert_eq!(
+            parse_df_size("Filesystem 1-blocks Used Available Capacity Mounted on\n/dev/nvme0n1p3 509315383296 1 2 3% /\n"),
+            509_315_383_296
+        );
+        assert_eq!(parse_df_size(""), 0);
+    }
+
+    #[test]
+    fn identity_labels_include_gpu_and_disk() {
+        let identity = SystemIdentity {
+            gpu: "Example GPU".to_owned(),
+            disk_bytes: 512 * 1024 * 1024 * 1024,
+            ..SystemIdentity::default()
+        };
+        assert_eq!(identity.gpu_label(), "Example GPU");
+        assert_eq!(identity.disk_label(), "512 GB");
+        assert_eq!(SystemIdentity::default().gpu_label(), "Unknown");
+        assert_eq!(SystemIdentity::default().disk_label(), "Unknown");
     }
 
     #[test]

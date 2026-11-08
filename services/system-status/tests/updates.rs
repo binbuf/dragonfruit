@@ -21,6 +21,8 @@ fn data(with_updates: bool) -> SystemData {
             processor: "Example CPU".to_owned(),
             memory_bytes: 16 * 1024 * 1024 * 1024,
             serial: "SERIAL-1".to_owned(),
+            gpu: "Example GPU".to_owned(),
+            disk_bytes: 512 * 1024 * 1024 * 1024,
         },
         updates: with_updates.then(|| UpdateData {
             phase: UpdatePhase::Available,
@@ -52,6 +54,10 @@ fn the_updates_view_exposes_the_identity_and_provider() {
     assert_eq!(view["glyph"], "software-update");
     assert_eq!(view["label"], "1 Update Available");
     assert_eq!(view["updates"][0]["severityLabel"], "Security Update");
+    assert_eq!(view["gpu"], "Example GPU");
+    assert_eq!(view["gpuLabel"], "Example GPU");
+    assert_eq!(view["diskBytes"], 512u64 * 1024 * 1024 * 1024);
+    assert_eq!(view["diskLabel"], "512 GB");
 }
 
 #[test]
@@ -75,6 +81,21 @@ fn the_three_writes_apply_once_and_never_invent_a_snapshot() {
     assert_eq!(host.adapter().source().checks(), 1);
     assert_eq!(host.adapter().source().installs(), 1);
     assert_eq!(host.adapter().source().reboots(), 1);
+}
+
+#[test]
+fn the_automatic_policy_is_forwarded_once() {
+    let mut host = UpdatesHost::new(MockSystem::present(data(true)));
+    host.refresh();
+    assert_eq!(host.set_auto_policy(true, false)["outcome"], "applied");
+    assert_eq!(host.adapter().source().policies(), 1);
+    assert_eq!(
+        host.adapter().source().auto_policy(),
+        dragonfruit_update_adapter::UpdatePolicy {
+            auto_check: true,
+            auto_install: false,
+        }
+    );
 }
 
 #[test]

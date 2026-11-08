@@ -17,6 +17,7 @@ use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_firewall::CommandFirewall;
+use dragonfruit_general_adapter::HostGeneral;
 use dragonfruit_input::CommandLibinput;
 use dragonfruit_networkmanager::{DbusNetworkManager, DbusVpn};
 use dragonfruit_notify_adapter::DbusNotifications;
@@ -29,12 +30,12 @@ use zbus::blocking::connection;
 use zbus::interface;
 
 use crate::{
-    AccessibilityHost, AccountsHost, BluetoothHost, FirewallHost, InputHost, NotificationsHost,
-    PrintersHost, PrivacyHost, StatusHost, StorageHost, UpdatesHost, VpnHost,
+    AccessibilityHost, AccountsHost, BluetoothHost, FirewallHost, GeneralHost, InputHost,
+    NotificationsHost, PrintersHost, PrivacyHost, StatusHost, StorageHost, UpdatesHost, VpnHost,
     ACCESSIBILITY_INTERFACE, ACCOUNTS_INTERFACE, AUDIO_INTERFACE, BATTERY_INTERFACE,
-    BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, FIREWALL_INTERFACE, INPUT_INTERFACE,
-    NETWORK_INTERFACE, NOTIFICATIONS_INTERFACE, PRINTERS_INTERFACE, PRIVACY_INTERFACE,
-    STORAGE_INTERFACE, UPDATES_INTERFACE, VPN_INTERFACE, WIFI_INTERFACE,
+    BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, FIREWALL_INTERFACE, GENERAL_INTERFACE,
+    INPUT_INTERFACE, NETWORK_INTERFACE, NOTIFICATIONS_INTERFACE, PRINTERS_INTERFACE,
+    PRIVACY_INTERFACE, STORAGE_INTERFACE, UPDATES_INTERFACE, VPN_INTERFACE, WIFI_INTERFACE,
 };
 
 /// The live host: the three real network/audio/power adapter sources behind
@@ -60,6 +61,11 @@ pub type LiveNotifications = NotificationsHost<DbusNotifications>;
 /// (with no distribution update provider attached until packaging supplies one,
 /// ADR 0136) behind the bridge (T-15.10b).
 pub type LiveUpdates = UpdatesHost<HostSystem>;
+
+/// The live General sub-panes host: the real `timedatectl`/`localectl`, XDG
+/// autostart, systemd, backup-tool, `df`, and `findmnt` reads behind the
+/// bridge (T226).
+pub type LiveGeneral = GeneralHost<HostGeneral>;
 
 /// The live Users and Groups host: AccountsService over the system bus with no
 /// distribution group provider attached until packaging supplies one (ADR
@@ -188,6 +194,13 @@ pub struct NetworkInterface {
 /// explicit writes the Firewall sheet offers.
 pub struct FirewallInterface {
     host: Arc<Mutex<LiveFirewall>>,
+}
+
+/// The General sub-panes half of the service (T226): Date & Time, Language &
+/// Region, Login Items, Sharing, Backup, Storage usage, and Startup Disk,
+/// each with its own state and explicit writes.
+pub struct GeneralInterface {
+    host: Arc<Mutex<LiveGeneral>>,
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Wifi")]
@@ -463,6 +476,79 @@ impl UpdatesInterface {
     /// Returns the JSON report. One explicit write.
     fn reboot(&self) -> String {
         lock_updates(&self.host).reboot().to_string()
+    }
+
+    /// Forward the durable automatic-update policy. Returns the JSON report.
+    fn set_automatic_policy(&self, auto_check: bool, auto_install: bool) -> String {
+        lock_updates(&self.host)
+            .set_auto_policy(auto_check, auto_install)
+            .to_string()
+    }
+}
+
+#[interface(name = "org.dragonfruit.SystemStatus1.General")]
+impl GeneralInterface {
+    /// The current General sub-panes view as JSON.
+    fn state(&self) -> String {
+        lock_general(&self.host).state()
+    }
+
+    /// Re-read every General sub-pane once and return the new view.
+    fn refresh(&self) -> String {
+        let mut host = lock_general(&self.host);
+        host.refresh();
+        host.state()
+    }
+
+    /// Set the system time zone. Returns the JSON report.
+    fn set_timezone(&self, timezone: &str) -> String {
+        lock_general(&self.host).set_timezone(timezone).to_string()
+    }
+
+    /// Enable or disable NTP. Returns the JSON report.
+    fn set_ntp(&self, enabled: bool) -> String {
+        lock_general(&self.host).set_ntp(enabled).to_string()
+    }
+
+    /// Set the wall clock (`YYYY-MM-DD HH:MM:SS`). Returns the JSON report.
+    fn set_time(&self, value: &str) -> String {
+        lock_general(&self.host).set_time(value).to_string()
+    }
+
+    /// Set the system locale (`LANG`). Returns the JSON report.
+    fn set_locale(&self, locale: &str) -> String {
+        lock_general(&self.host).set_locale(locale).to_string()
+    }
+
+    /// Enable or disable one autostart entry. Returns the JSON report.
+    fn set_autostart_enabled(&self, id: &str, enabled: bool) -> String {
+        lock_general(&self.host)
+            .set_autostart_enabled(id, enabled)
+            .to_string()
+    }
+
+    /// Enable or disable one systemd user unit. Returns the JSON report.
+    fn set_user_unit_enabled(&self, unit: &str, enabled: bool) -> String {
+        lock_general(&self.host)
+            .set_user_unit_enabled(unit, enabled)
+            .to_string()
+    }
+
+    /// Enable or disable one sharing service. Returns the JSON report.
+    fn set_sharing_enabled(&self, id: &str, enabled: bool) -> String {
+        lock_general(&self.host)
+            .set_sharing_enabled(id, enabled)
+            .to_string()
+    }
+
+    /// Run one backup through the selected backend. Returns the JSON report.
+    fn run_backup(&self, destination: &str) -> String {
+        lock_general(&self.host).run_backup(destination).to_string()
+    }
+
+    /// Open the selected backend's restore entry. Returns the JSON report.
+    fn open_restore(&self) -> String {
+        lock_general(&self.host).open_restore().to_string()
     }
 }
 
@@ -877,6 +963,11 @@ fn lock_firewall(host: &Arc<Mutex<LiveFirewall>>) -> std::sync::MutexGuard<'_, L
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Lock the shared General host, recovering from a poisoned mutex.
+fn lock_general(host: &Arc<Mutex<LiveGeneral>>) -> std::sync::MutexGuard<'_, LiveGeneral> {
+    host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
@@ -896,6 +987,7 @@ pub fn run(
     accessibility: LiveAccessibility,
     vpn: LiveVpn,
     firewall: LiveFirewall,
+    general: LiveGeneral,
 ) -> zbus::Result<()> {
     let host = Arc::new(Mutex::new(host));
     let bluetooth = Arc::new(Mutex::new(bluetooth));
@@ -909,6 +1001,7 @@ pub fn run(
     let accessibility = Arc::new(Mutex::new(accessibility));
     let vpn = Arc::new(Mutex::new(vpn));
     let firewall = Arc::new(Mutex::new(firewall));
+    let general = Arc::new(Mutex::new(general));
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(
@@ -1002,6 +1095,12 @@ pub fn run(
                 host: Arc::clone(&firewall),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            GeneralInterface {
+                host: Arc::clone(&general),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -1013,7 +1112,7 @@ pub fn run(
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 15] {
+pub fn interface_names() -> [&'static str; 16] {
     [
         WIFI_INTERFACE,
         AUDIO_INTERFACE,
@@ -1030,5 +1129,6 @@ pub fn interface_names() -> [&'static str; 15] {
         VPN_INTERFACE,
         NETWORK_INTERFACE,
         FIREWALL_INTERFACE,
+        GENERAL_INTERFACE,
     ]
 }

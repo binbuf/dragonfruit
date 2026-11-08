@@ -163,6 +163,31 @@ impl Settings1 {
             .collect()
     }
 
+    /// Reset every key to its schema default. Emits `Changed` for each key
+    /// whose value really changed and persists the defaults once.
+    async fn reset(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Result<(), Settings1Error> {
+        let changed = {
+            let mut settings = lock(&self.settings);
+            settings.reset()
+        };
+        if let Some(persistence) = &self.persistence {
+            let snapshot = lock(&self.settings).clone();
+            if let Err(error) = persistence.save(&snapshot) {
+                eprintln!(
+                    "dragonfruit-settingsd: cannot persist settings to {}: {error}",
+                    persistence.path().display()
+                );
+            }
+        }
+        for (key, value) in changed {
+            Settings1::changed(&emitter, key, value.to_owned_value()).await?;
+        }
+        Ok(())
+    }
+
     /// The schema's key names, in stable order.
     fn list_keys(&self) -> Vec<String> {
         crate::schema::key_names()
