@@ -35,7 +35,9 @@ pub use model::{
     now_ms, Action, CloseReason, HistoryEntry, Notification, NotifyRequest, Queue, Urgency,
     DEFAULT_TIMEOUT_MS, HISTORY_CAPACITY,
 };
-pub use policy::{FocusMode, FocusPolicy};
+pub use policy::{
+    AppPreference, AppPreferenceEntry, FocusMode, FocusPolicy, NotificationStyle,
+};
 pub use view::{banners_json, focus_policy_json, history_json};
 
 #[cfg(test)]

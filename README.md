@@ -86,7 +86,7 @@ shell/             Qt Quick shell: menu bar, Dock, Control Center, …
 services/          settingsd, menu-broker, app-index, session
 apps/              Settings, Files
 portal/            xdg-desktop-portal-dragonfruit
-packaging/         fedora/, debian/ (T-32)
+packaging/         Fedora/Debian metadata + portable release bundle
 design-system/     QML module `Dragonfruit` — the visual identity
 tools/             the `dragonfruit` dev command
 scripts/           repo gates (desktop-name check, …)
@@ -118,6 +118,38 @@ without the DRM `-devel` packages, a user-space sysroot at
 `docs/tasks/legacy/PROGRESS.md`, T-02.)
 
 ## Getting Started
+
+### Install a release build
+
+Tagged releases publish a portable `tar.gz`, a Fedora RPM, a Debian binary
+package, and a source tarball. They install alongside your current desktop:
+they do **not** remove it, preselect a display-manager session, arm autologin,
+or change default applications. Log out and choose **Dragonfruit** at the
+login screen.
+
+Fedora 44 (primary reference platform):
+
+```bash
+sudo dnf install ./dragonfruit-desktop-*.rpm
+```
+
+Debian/Ubuntu with Qt 6.11 available:
+
+```bash
+sudo apt install ./dragonfruit-desktop_*.deb
+```
+
+Portable bundle (the host must already provide Qt 6.11 and the runtime stack):
+
+```bash
+tar -xzf dragonfruit-*-linux-*.tar.gz
+cd dragonfruit-*-linux-*
+sudo ./install.sh
+```
+
+See [`packaging/README.md`](packaging/README.md) for the asset list, local
+`make dist` targets, and the release workflow. These are early binary assets;
+T164/T165 still own official distro packaging.
 
 ### Build
 
@@ -229,6 +261,10 @@ desktop-name grep gate, the headless compositor smoke + teardown soak,
 the CMake/Qt build, and QML lint. Build logs are uploaded as an
 artifact on every run. The compositor's test suite runs on the
 **headless backend** — no display required.
+
+[.github/workflows/release.yml](.github/workflows/release.yml) builds and
+publishes the release assets on `v*` tags (or a manual dispatch). See
+[`packaging/README.md`](packaging/README.md).
 
 ## Licensing
 

@@ -20,7 +20,8 @@
 //! through the `Settings` singleton.
 
 use dragonfruit_notify_adapter::{
-    FocusMode, FocusOutcome, NotificationsAdapter, NotificationsSnapshot, NotificationsSource,
+    AppPreference, FocusMode, FocusOutcome, NotificationStyle, NotificationsAdapter,
+    NotificationsSnapshot, NotificationsSource,
 };
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
@@ -77,6 +78,31 @@ impl<S: NotificationsSource> NotificationsHost<S> {
         focus_report(self.adapter.set_focus_allow_list(apps))
     }
 
+    /// Set one app's durable notification preference (T229a). One explicit
+    /// write; the host re-reads the service afterwards.
+    pub fn set_app_preference(
+        &mut self,
+        app: &str,
+        style: &str,
+        sound: bool,
+        badge: bool,
+        allowed: bool,
+    ) -> Value {
+        let Some(style) = NotificationStyle::parse(style) else {
+            return json!({
+                "outcome": "failed",
+                "error": format!("unknown notification style: {style}"),
+            });
+        };
+        let preference = AppPreference {
+            allowed,
+            style,
+            sound,
+            badge,
+        };
+        focus_report(self.adapter.set_app_preference(app, preference))
+    }
+
     /// The adapter (read-only), for tests and introspection.
     pub fn adapter(&self) -> &NotificationsAdapter<S> {
         &self.adapter
@@ -122,8 +148,13 @@ pub fn notifications_snapshot_view(snapshot: &NotificationsSnapshot) -> Value {
             json!({
                 "name": app.name,
                 "allowed": app.allowed,
+                "notificationsAllowed": app.notifications_allowed,
                 "notifications": app.notifications,
                 "status": app.status_label(),
+                "style": app.style.name(),
+                "styleLabel": app.style.label(),
+                "sound": app.sound,
+                "badge": app.badge,
             })
         })
         .collect();
@@ -180,6 +211,7 @@ mod tests {
             batched_count: 2,
             active: vec![record(1, "Mail", false)],
             history: vec![record(2, "Pager", true), record(3, "chat", false)],
+            app_preferences: vec![],
         }
     }
 
@@ -193,8 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn a_present_service_projects_the_focus_policy_and_apps() {
-        let mut host = NotificationsHost::new(MockNotifications::present(data(FocusMode::Focus)));
+    fn a_present_service_projects_the_focus_policy_and_apps() {        let mut host = NotificationsHost::new(MockNotifications::present(data(FocusMode::Focus)));
         host.refresh();
         let view = host.view();
         assert_eq!(view["state"], "available");
@@ -274,5 +305,56 @@ mod tests {
         );
         assert_eq!(host.adapter().source().focus_writes(), 0);
         assert_eq!(host.view()["state"], "unavailable");
+    }
+
+    #[test]
+    fn the_app_preference_write_applies_once_and_projects_the_app_fields() {
+        let mut host = NotificationsHost::new(MockNotifications::present(data(FocusMode::Off)));
+        host.refresh();
+        assert_eq!(
+            host.set_app_preference("Mail", "alert", false, false, false)["outcome"],
+            "applied"
+        );
+        assert_eq!(host.adapter().source().focus_writes(), 1);
+        // The write invents no snapshot until the host re-reads.
+        assert_eq!(host.view()["apps"][1]["name"], "Mail");
+        host.refresh();
+        let view = host.view();
+        let mail = &view["apps"][1];
+        assert_eq!(mail["name"], "Mail");
+        assert_eq!(mail["status"], "Off");
+        assert_eq!(mail["notificationsAllowed"], false);
+        assert_eq!(mail["style"], "alert");
+        assert_eq!(mail["styleLabel"], "Alerts");
+        assert_eq!(mail["sound"], false);
+        assert_eq!(mail["badge"], false);
+    }
+
+    #[test]
+    fn an_unknown_app_style_is_a_failure_and_never_reaches_the_service() {
+        let mut host = NotificationsHost::new(MockNotifications::present(data(FocusMode::Off)));
+        host.refresh();
+        let report = host.set_app_preference("Mail", "vacation", true, true, true);
+        assert_eq!(report["outcome"], "failed");
+        assert!(report["error"].as_str().unwrap().contains("vacation"));
+        assert_eq!(host.adapter().source().focus_writes(), 0);
+    }
+
+    #[test]
+    fn a_muted_app_is_suppressed_by_the_service_policy() {
+        use dragonfruit_notify_adapter::AppPreference;
+        let mut host = NotificationsHost::new(MockNotifications::present(data(FocusMode::Off)));
+        host.refresh();
+        host.adapter_mut()
+            .source_mut()
+            .set_app_preference(
+                "Mail",
+                AppPreference {
+                    allowed: false,
+                    ..AppPreference::DEFAULT
+                },
+            );
+        host.refresh();
+        assert_eq!(host.view()["apps"][1]["status"], "Off");
     }
 }

@@ -111,5 +111,53 @@ Item {
             lock.message = "Webcam in use";
             compare(lock.Accessible.description, "Webcam in use");
         }
+
+        // T229a: the Lock Screen pane's `lock.*` keys are pushed onto the
+        // scene by the shell; the scene only draws the resulting state.
+        function test_user_name_and_photo_toggle_hides_the_identity() {
+            var lock = make({ userName: "ada", showUserNameAndPhoto: true });
+            verify(findChild(lock, "lockAvatar").visible);
+            verify(findChild(lock, "lockUserName").visible);
+
+            lock.showUserNameAndPhoto = false;
+            verify(!findChild(lock, "lockAvatar").visible);
+            verify(!findChild(lock, "lockUserName").visible);
+        }
+
+        function test_password_hint_and_lock_message_are_gated() {
+            var lock = make({ showPasswordHints: false, passwordHint: "cat",
+                              showLockMessage: false,
+                              lockMessageText: "Back at 3." });
+            verify(!findChild(lock, "lockPasswordHint").visible);
+            verify(!findChild(lock, "lockScreenMessage").visible);
+
+            lock.showPasswordHints = true;
+            verify(findChild(lock, "lockPasswordHint").visible);
+            compare(findChild(lock, "lockPasswordHint").text, "cat");
+
+            lock.showLockMessage = true;
+            verify(findChild(lock, "lockScreenMessage").visible);
+            compare(findChild(lock, "lockScreenMessage").text, "Back at 3.");
+        }
+
+        function test_power_buttons_are_optional_and_report_intent() {
+            var lock = make({ showPowerButtons: true });
+            var row = findChild(lock, "lockPowerRow");
+            verify(row.visible);
+            compare(findChild(lock, "lockSleepButton").text, "Sleep");
+            compare(findChild(lock, "lockRestartButton").text, "Restart");
+            compare(findChild(lock, "lockShutDownButton").text, "Shut Down");
+
+            var seen = [];
+            lock.powerActionRequested.connect(function(action) {
+                seen.push(action);
+            });
+            findChild(lock, "lockSleepButton").clicked();
+            findChild(lock, "lockShutDownButton").clicked();
+            compare(seen.join(","), "sleep,shut-down");
+
+            lock.showPowerButtons = false;
+            verify(!row.visible);
+        }
     }
 }

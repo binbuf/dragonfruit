@@ -637,6 +637,14 @@ always available; Featured empty, never an error.
 | Cityscape | Cityscapes | Grid | `wallpaperd` | Featured/offline |
 | — | Built-in | Grid | shipped assets | Default; offline |
 
+**T229a status.** The pane ships the current preview, Show on all
+Workspaces, Fit, the Built-in default plus presets, the fetched Featured
+catalogue, and the portal Custom row. The two reference links are live:
+**Screen Saver…** and **Clock Appearance…** navigate to the Screen Saver
+pane, which owns `screenSaver.style`/`screenSaver.clock` and the lock scene's
+clock options. A provider that is offline, empty, or fetching shows the
+available-soon note or skeletons; the Built-in row is never empty (T-18).
+
 <a id="pane-screen-saver"></a>
 ### 5.15 Screen Saver
 
@@ -673,6 +681,16 @@ Owner: notification service + `settingsd`.
 | Badges | Badge | Toggle | notification service | Dock badge |
 | Focus | Focus | Link | Focus pane | Deep link |
 
+**T229a status.** The four global preferences are settingsd keys and apply
+live. The **Application Notifications** list is the notification service's
+observed app inventory; each row opens one live sheet with **Allow
+notifications**, **Style** (Banners/Alerts/None), **Play sound**, and **Show
+in Dock badge**, all stored by the service (`SetAppPreference`) and reflected
+back through the adapter. Apps on the Focus allow list read **Allowed**; a
+muted app reads **Off**. The **Focus** link opens the Focus pane. A service
+that is absent or unreadable shows the note and hides only the app list; the
+settingsd preferences stay live.
+
 <a id="pane-sound"></a>
 ### 5.17 Sound
 
@@ -703,12 +721,24 @@ Owner: notification service + `settingsd`.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Do Not Disturb | Do Not Disturb | Toggle | notification service | Live |
-| Personal/Work/Sleep/Custom | Modes | List | notification service | Add/edit |
-| Allowed people | Allowed people | List | notification service | Per-mode |
-| Allowed apps | Allowed apps | List | notification service | Per-mode |
-| Time | Schedule | Sheet | notification service | Start/end |
-| Shortcuts | Shortcut | Recorder | `settingsd` | Global shortcut |
+| Do Not Disturb | Do Not Disturb | Segmented + list | notification service | Off/Focus/DND; active state |
+| Personal/Work/Sleep/Custom | Modes | List | notification service | The three service modes with their admission rule; custom named modes are a service follow-up |
+| Allowed people | Allowed people | Note | notification service | Senders are applications, not people; explicit Linux absence |
+| Allowed apps | Allowed apps | List | notification service | Per-app Focus allow list |
+| Time | Schedule | Toggle + time fields + days | `settingsd`: `focus.schedule.*` | Shell `FocusSchedule` applies the mode at the window boundary |
+| Shortcuts | Shortcut | Recorder | `settingsd`: `focus.shortcut` | Validated; global registration deferred |
+
+**T229a status.** The pane renders the service's three modes with their
+admission rule and the live active state, the per-app Focus allow list, and an
+explicit **Allowed People** note (the service identifies senders by
+application, not person, so no dead per-person list is drawn). **Schedule**
+writes `focus.schedule.enabled/start/end/days`; the shell's `FocusSchedule`
+reads them and applies Focus at the window boundary, respecting a manual
+override. **Shortcut** writes `focus.shortcut` with a modifier+key validator;
+global registration is deferred with the shell shortcut engine (the same
+stored-policy contract as `search.shortcut`). The mode and allow list are the
+notification service's state; schedule and shortcut stay live on schema
+defaults when it is absent.
 
 <a id="pane-lock-screen"></a>
 ### 5.19 Lock Screen
@@ -721,11 +751,22 @@ Owner: `settingsd` + compositor/lock + logind.
 | Turn display off on power | Display off on AC | Popup | existing: `idle.blank` | logind/compositor |
 | Require password after… | Require password | Popup | `lock.requirePasswordAfter` | PAM |
 | Show user name and photo | Show user name/photo | Toggle | existing: `lock.showUserNameAndPhoto` | Lock UI |
-| Show password hints | Show password hints | Toggle | existing: `lock.showPasswordHints` | Lock UI |
+| Show password hints | Show password hints | Toggle + Set… | existing: `lock.showPasswordHints`/`lock.passwordHint` | Lock UI |
 | Show message when locked | Lock message | Toggle + Set… | existing: `lock.showMessageWhenLocked`/`lock.message` | Lock UI |
 | Login window shows | Login window | Radio | `login.windowStyle` | List/name+password |
 | Show Sleep/Restart/Shut Down | Power buttons | Toggle | existing: `lock.showPowerButtons` | Lock UI |
 | Accessibility Options… | Accessibility options… | Button | `settingsd` | Lock UI |
+
+**T229a status.** The two timing rows reuse `idle.blank`/`idle.lock`; the
+display rows write `lock.showUserNameAndPhoto`, `lock.showPasswordHints` plus
+`lock.passwordHint`, `lock.showMessageWhenLocked`/`lock.message`, and
+`lock.showPowerButtons`. The shell pushes all of them onto the first-party
+lock scene, which hides the identity, shows the hint and message, and renders
+the power row; the power actions go to logind (`Suspend`/`Reboot`/`PowerOff`).
+**Login window shows** is visible but disabled with its reason: the display
+manager does not expose a login-window style on the host. **Accessibility
+options…** opens the Accessibility pane. The pane never enforces the lock;
+the compositor owns the fail-secure state.
 
 <a id="pane-biometrics"></a>
 ### 5.20 Biometrics & Password

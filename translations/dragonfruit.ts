@@ -2444,11 +2444,35 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1, %2–%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Allow %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Allow-listed apps and critical alerts banner; the rest are batched.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Allowed Apps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allowed People</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Days</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2457,6 +2481,14 @@
     </message>
     <message>
         <source>Do Not Disturb is on. Notifications are silenced.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter both times as 24-hour HH:MM, for example 22:00.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every day</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2469,6 +2501,34 @@
     </message>
     <message>
         <source>Focus is on. Notifications are silenced.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus keyboard shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus on %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus schedule end time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus schedule start time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fri</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>From</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mon</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2492,7 +2552,79 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The system status service or the notification service is not running, so Focus is not available.</source>
+        <source>Only allow-listed apps banner; everything else is batched.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sun</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The global shortcut the shell registers when shortcut registration lands; empty disables it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The notification service could not be read: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The notification service identifies senders by application, not person, so a per-person allow list is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The schedule is off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The shell applies Focus when the window starts and returns to Off when it ends.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The system status service or the notification service is not running, so Focus is not available. The schedule and shortcut preferences below are still stored.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Thu</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>To</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toggle Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tue</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn on Focus on a schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use Allowed Apps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use a modifier and a key, for example Ctrl+Alt+F.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wed</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3239,12 +3371,28 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Restart</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Session locked.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shut Down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sleep</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>LockScreenPane</name>
+    <message>
+        <source>Accessibility options…</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>After 1 minute</source>
         <translation type="unfinished"></translation>
@@ -3310,7 +3458,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Hint</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>List of users</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Lock Screen Message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Login Window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Login window shows</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3318,7 +3482,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Name and password</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Accessibility settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open the Accessibility pane for the lock screen's keyboard and visual options.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Password Hint</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3350,6 +3534,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The display manager owns the login window; it does not expose a style setting on this host, so the choice is disabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The list of users on the login screen is provided by the display manager; configuring it arrives with the Users &amp; Groups pane.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3363,6 +3551,10 @@
     </message>
     <message>
         <source>The settings daemon is not running, so these preferences apply from the built-in defaults. The lock itself is enforced by the compositor.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This hint appears under the password field when password hints are on.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3947,6 +4139,18 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Alerts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow notifications for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Allowed</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3963,7 +4167,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Banners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose how this application's notifications appear.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current mode: %1. Allowed apps and the schedule are managed in the Focus pane.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3975,6 +4199,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No badge</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notification style for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Notifications</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3983,7 +4223,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Notifications for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Focus settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Focus…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play a sound for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play sound</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3991,7 +4251,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show a Dock badge for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show in Dock badge</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show previews</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Style</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The notification service could not be read: %1. The preferences below are still applied.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7599,6 +7875,14 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Choose the lock-screen style and timing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock Appearance…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Current wallpaper</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7639,11 +7923,31 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open Screen Saver settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open clock appearance settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Photo by %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Screen Saver…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show on all Workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the clock, date, and seconds on the lock screen.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

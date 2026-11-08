@@ -379,6 +379,15 @@ impl Queue {
         self.policy.set_allow_list(apps);
     }
 
+    /// Store one app's durable notification preference (T229a).
+    pub fn set_app_preference(
+        &mut self,
+        app_name: &str,
+        preference: crate::policy::AppPreference,
+    ) {
+        self.policy.set_app_preference(app_name, preference);
+    }
+
     /// Whether Do Not Disturb (mode `dnd`) is on. Kept as the compat accessor
     /// for the T-11.1a `DoNotDisturb` surface.
     pub fn do_not_disturb(&self) -> bool {

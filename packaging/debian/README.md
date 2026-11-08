@@ -1,8 +1,21 @@
 # Debian packaging
 
 Lands in T165 (Debian packaging and CI; still OPEN). Until then this
-directory only anchors the monorepo layout from
+directory anchors the monorepo layout from
 [docs/design/01-architecture.md](../../docs/design/01-architecture.md).
+
+## Release asset
+
+[`control.in`](control.in), [`postinst`](postinst), and [`postrm`](postrm)
+are used by `.github/workflows/release.yml` to build a binary DEB from the
+staged install tree. Build it locally with:
+
+```bash
+make dist FORMATS=deb
+```
+
+This is an early binary asset, not a `debian/` source package. T165 still owns
+Debian policy, source packaging, and clean-VM validation.
 
 Note for T165: Qt 6.11 availability on Debian vs Fedora is an open
 question (T-01 risks); resolve it there, not by lowering the CMake

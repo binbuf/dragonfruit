@@ -24,9 +24,112 @@
 //! returns to `off`, so the shell can summarize "N notifications while Focus
 //! was on" without the service ever emitting a synthetic banner.
 
+use std::collections::BTreeMap;
+
 use crate::model::Urgency;
 
+/// How a per-app notification is presented (T229a).
+///
+/// The service owns the preference so the pane and the shell read one source.
+/// `Banner` is the default transient banner, `Alert` is a persistent banner
+/// (the shell may keep it until dismissed), and `None` suppresses the banner
+/// while still recording the notification in the history.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NotificationStyle {
+    /// A transient banner.
+    #[default]
+    Banner,
+    /// A persistent alert that waits for dismissal.
+    Alert,
+    /// No banner; the notification is recorded in the history only.
+    None,
+}
+
+impl NotificationStyle {
+    /// The lowercase name on the wire and in the JSON view.
+    pub fn name(self) -> &'static str {
+        match self {
+            NotificationStyle::Banner => "banner",
+            NotificationStyle::Alert => "alert",
+            NotificationStyle::None => "none",
+        }
+    }
+
+    /// Parse the wire name. Unknown names are rejected.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "banner" => Some(NotificationStyle::Banner),
+            "alert" => Some(NotificationStyle::Alert),
+            "none" => Some(NotificationStyle::None),
+            _ => None,
+        }
+    }
+
+    /// The human label the Settings pane shows.
+    pub fn label(self) -> &'static str {
+        match self {
+            NotificationStyle::Banner => "Banners",
+            NotificationStyle::Alert => "Alerts",
+            NotificationStyle::None => "None",
+        }
+    }
+}
+
+/// One app's durable notification preference (T229a).
+///
+/// `allowed` is the per-app mute ("Allow notifications"); `style`, `sound`
+/// and `badge` are the presentation choices the pane edits. The Focus allow
+/// list is separate: it only governs whether the app is admitted while Focus
+/// or Do Not Disturb is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppPreference {
+    /// Whether the app may raise notifications at all.
+    pub allowed: bool,
+    /// How a notification is presented.
+    pub style: NotificationStyle,
+    /// Whether the banner plays a sound.
+    pub sound: bool,
+    /// Whether the app contributes a Dock badge.
+    pub badge: bool,
+}
+
+impl Default for AppPreference {
+    fn default() -> Self {
+        AppPreference {
+            allowed: true,
+            style: NotificationStyle::Banner,
+            sound: true,
+            badge: true,
+        }
+    }
+}
+
+impl AppPreference {
+    /// The preference for an app the user has not customized.
+    pub const DEFAULT: AppPreference = AppPreference {
+        allowed: true,
+        style: NotificationStyle::Banner,
+        sound: true,
+        badge: true,
+    };
+
+    /// Whether this is the default preference (the store drops it).
+    pub fn is_default(self) -> bool {
+        self == AppPreference::DEFAULT
+    }
+}
+
+/// One stored per-app preference, with the app name as the user spelled it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppPreferenceEntry {
+    /// The app name the `Notify` call carried (first spelling wins).
+    pub name: String,
+    /// The preference.
+    pub preference: AppPreference,
+}
+
 /// The Focus/DND mode.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FocusMode {
     /// Notifications banner normally.
@@ -71,6 +174,7 @@ impl FocusMode {
 pub struct FocusPolicy {
     mode: FocusMode,
     allow_list: Vec<String>,
+    app_preferences: BTreeMap<String, AppPreferenceEntry>,
     batched: Vec<u32>,
 }
 
@@ -130,9 +234,55 @@ impl FocusPolicy {
                 .any(|allowed| allowed.eq_ignore_ascii_case(app_name))
     }
 
+    /// The durable preference for `app_name`, defaulting to
+    /// [`AppPreference::DEFAULT`].
+    pub fn app_preference(&self, app_name: &str) -> AppPreference {
+        let key = app_name.trim().to_ascii_lowercase();
+        self.app_preferences
+            .get(&key)
+            .map(|entry| entry.preference)
+            .unwrap_or(AppPreference::DEFAULT)
+    }
+
+    /// Every stored per-app preference, sorted by the normalized app name.
+    pub fn app_preferences(&self) -> impl Iterator<Item = &AppPreferenceEntry> {
+        self.app_preferences.values()
+    }
+
+    /// Store one app's preference. A default preference is dropped from the
+    /// store so the JSON view carries only customizations. Empty app names
+    /// are ignored; the first spelling of an app name is kept.
+    pub fn set_app_preference(&mut self, app_name: &str, preference: AppPreference) {
+        let name = app_name.trim();
+        if name.is_empty() {
+            return;
+        }
+        let key = name.to_ascii_lowercase();
+        if preference.is_default() {
+            self.app_preferences.remove(&key);
+            return;
+        }
+        match self.app_preferences.get_mut(&key) {
+            Some(entry) => entry.preference = preference,
+            None => {
+                self.app_preferences.insert(
+                    key,
+                    AppPreferenceEntry {
+                        name: name.to_owned(),
+                        preference,
+                    },
+                );
+            }
+        }
+    }
+
     /// The admission rule: whether a notification from `app_name` with
     /// `urgency` becomes a banner under the current mode.
     pub fn admits(&self, app_name: &str, urgency: Urgency) -> bool {
+        let preference = self.app_preference(app_name);
+        if !preference.allowed || preference.style == NotificationStyle::None {
+            return false;
+        }
         match self.mode {
             FocusMode::Off => true,
             FocusMode::Focus => urgency == Urgency::Critical || self.is_allowed(app_name),
@@ -220,6 +370,68 @@ mod tests {
         assert_eq!(FocusMode::parse(" DND "), Some(FocusMode::Dnd));
         assert_eq!(FocusMode::parse("do-not-disturb"), Some(FocusMode::Dnd));
         assert_eq!(FocusMode::parse("vacation"), None);
+    }
+
+    #[test]
+    fn app_preferences_default_and_round_trip() {
+        let mut policy = FocusPolicy::new();
+        assert_eq!(policy.app_preference("Mail"), AppPreference::DEFAULT);
+        assert_eq!(policy.app_preferences().count(), 0);
+
+        let pref = AppPreference {
+            allowed: false,
+            style: NotificationStyle::Alert,
+            sound: false,
+            badge: true,
+        };
+        policy.set_app_preference("  Mail ", pref);
+        assert_eq!(policy.app_preference("mail"), pref);
+        assert_eq!(policy.app_preferences().count(), 1);
+        let entry = policy.app_preferences().next().unwrap();
+        assert_eq!(entry.name, "Mail");
+
+        // The first spelling wins across later updates.
+        policy.set_app_preference("MAIL", AppPreference::DEFAULT);
+        assert_eq!(policy.app_preferences().count(), 0);
+        assert_eq!(policy.app_preference("mail"), AppPreference::DEFAULT);
+    }
+
+    #[test]
+    fn a_muted_or_hidden_app_never_banners() {
+        let mut policy = FocusPolicy::new();
+        policy.set_app_preference(
+            "Mail",
+            AppPreference {
+                allowed: false,
+                ..AppPreference::DEFAULT
+            },
+        );
+        assert!(!policy.admits("Mail", Urgency::Critical));
+        assert!(!policy.admits("mail", Urgency::Normal));
+
+        policy.set_app_preference(
+            "Chat",
+            AppPreference {
+                style: NotificationStyle::None,
+                ..AppPreference::DEFAULT
+            },
+        );
+        assert!(!policy.admits("Chat", Urgency::Critical));
+        // An untouched app still banners in `off`.
+        assert!(policy.admits("Files", Urgency::Normal));
+    }
+
+    #[test]
+    fn notification_style_names_round_trip() {
+        for style in [
+            NotificationStyle::Banner,
+            NotificationStyle::Alert,
+            NotificationStyle::None,
+        ] {
+            assert_eq!(NotificationStyle::parse(style.name()), Some(style));
+            assert!(!style.label().is_empty());
+        }
+        assert_eq!(NotificationStyle::parse("vacation"), None);
     }
 
     #[test]

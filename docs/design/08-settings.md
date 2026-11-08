@@ -71,12 +71,12 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Accessibility | live AT-SPI read + `settingsd` (`accessibility.reduceMotion`, `reduceTransparency`, `increaseContrast`) ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0215](adr/0215-glass-live-settings-and-appearance-policy.md)) |
 | Desktop & Dock | `settingsd` → shell + compositor; the Desktop & Stage Manager group writes `desktop.showItems` for the Files desktop, with T242/T245b rows disabled by reason |
 | Displays | Compositor output API — **shipped:** scale, rotation, and brightness; **capability-gated:** refresh, arrangement, night light, color profile, HDR, and VRR are disabled with an OPEN reason until the compositor/colord half exists ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md)) |
-| Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures |
+| Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures; Screen Saver…/Clock Appearance… deep-link to the Screen Saver pane ([adr/0239](adr/0239-wallpaper-notifications-focus-lock-panes.md)) |
 | Menu Bar | `settingsd` → shell |
 | Search | `settingsd` durable preferences → the T246 search service; the pane ships categories, indexed locations, shortcut, web search, and menu-bar visibility, while indexing status/rebuild are disabled with the service absent |
 | Screen Saver | `settingsd` + shell/LockScreen — style and clock options reuse the first-party lock scene; Start After is the session idle engine's `idle.blank` |
-| Notifications, Focus | Notification service |
-| Lock Screen | `settingsd` + compositor lock/idle policy |
+| Notifications, Focus | Notification service — per-app preferences (`SetAppPreference`) and the Focus mode/allow list; schedule/shortcut are `settingsd` keys the shell's `FocusSchedule` consumes ([adr/0239](adr/0239-wallpaper-notifications-focus-lock-panes.md)) |
+| Lock Screen | `settingsd` + compositor lock/idle policy; the shell pushes `lock.*` onto the first-party lock scene and the power row calls logind ([adr/0239](adr/0239-wallpaper-notifications-focus-lock-panes.md)) |
 | Privacy & Security | Portals (`xdg-desktop-portal` PermissionStore) mapped to the macOS categories; Security reads the distro/Flatpak sources, LUKS, SELinux/AppArmor, portal extensions, and the Advanced inventory ([adr/0237](adr/0237-security-biometrics-online-accounts.md)) |
 | Biometrics & Password | fprintd + PAM + AccountsService where present; PAM and LUKS status are read-only ([adr/0237](adr/0237-security-biometrics-online-accounts.md)) |
 | Users & Groups | accountsservice + distro provider |
@@ -214,6 +214,36 @@ live evidence is `make t228-privacy-accounts-capture`
 `t228-security.png`, `t228-security-sources.png`, `t228-biometrics.png`,
 `t228-online-accounts.png`, and the three absence stills). See ADR
 [0237](adr/0237-security-biometrics-online-accounts.md).
+
+## The T229a panes (Wallpaper, Notifications, Focus, Lock Screen)
+
+The last four panes close the reference information architecture
+([adr/0239](adr/0239-wallpaper-notifications-focus-lock-panes.md)):
+
+- **Wallpaper** keeps the current preview, Show on all Workspaces, Fit, the
+  Built-in/Featured/Custom sources, and the provider's fetching/offline/empty
+  states. **Screen Saver…** and **Clock Appearance…** navigate to the Screen
+  Saver pane instead of duplicating its controls.
+- **Notifications** keeps the four settingsd presentation preferences, adds
+  one live per-app sheet (Allow, Style, Sound, Badge) over the notification
+  service's new `SetAppPreference`, and links to Focus. The service enforces
+  the mute and `style = none` in admission; the app inventory is the observed
+  list, not a guessed installed-app set.
+- **Focus** renders the three modes with their admission rule and active
+  state, the per-app allow list, an explicit Allowed People note (senders are
+  apps, not people), the durable `focus.schedule.*` schedule, and the
+  `focus.shortcut` recorder. `shell/src/focusschedule.cpp` is the one consumer:
+  it applies Focus at the opening boundary and Off at the closing boundary,
+  and a manual mode change wins until the next window.
+- **Lock Screen** writes the `lock.*` display keys and the shell now pushes
+  them onto the first-party lock scene (identity, password hint, message,
+  power buttons). The power row calls logind `Suspend`/`Reboot`/`PowerOff`
+  through the same shell path as the system menu. The Login window row is
+  disabled with the display-manager reason; Accessibility Options navigates
+  to the Accessibility pane.
+
+Schema revision 23 adds `focus.schedule.enabled/start/end/days`,
+`focus.shortcut`, `lock.passwordHint`, and `login.windowStyle`.
 
 ## The T229 panes (Sound, Keyboard/Input, Mouse/Trackpad, Controllers, Users & Groups, Printers & Scanners, Battery/Storage)
 
@@ -506,9 +536,9 @@ Two absence families appear, and a pane can mix them:
 | Mouse | libinput (bridge host) + settingsd | inventory note; pointer settings live on defaults | — (shared Keyboard tile) |
 | Trackpad | libinput (bridge host) + settingsd | inventory note; tap-to-click/haptics/look-up live on defaults; haptics disabled with no touchpad | — (shared Keyboard tile) |
 | Game Controllers | udev/SDL inventory (bridge host) | note; list empty; Test/Mapping disabled | **hides** |
-| Notifications | notification service (bridge host) + settingsd | per-app inventory note; presentation prefs stay live | — (none) |
-| Focus | notification service (bridge host) + settingsd | inventory note; policy rows stay live | **hides** |
-| Lock Screen | settingsd + compositor lock/idle | controls live on defaults; the note names the daemon | **hides** |
+| Notifications | notification service (bridge host) + settingsd | per-app inventory and its Allow/Style/Sound/Badge sheet hide behind the note; the four presentation prefs stay live | — (none) |
+| Focus | notification service (bridge host) + settingsd | mode/allow-list and the people note hide; schedule and shortcut stay live on defaults | **hides** |
+| Lock Screen | settingsd + compositor lock/idle | controls live on defaults; the note names the daemon; the lock scene renders the schema defaults | **hides** |
 | Menu Bar | settingsd → shell | controls live on defaults; the note names the daemon | **hides** |
 | Users & Groups | accountsservice/distro (bridge host) | note; read-only tile; Directory account is a read-only projection | **hides** |
 | Printers & Scanners | CUPS/SANE (bridge host) | note; Add/Options/queue writes disabled | **hides** |

@@ -220,11 +220,22 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("notifications.showWhenSleeping"), false);
     values.insert(QStringLiteral("notifications.showWhenLocked"), true);
     values.insert(QStringLiteral("notifications.showWhenMirroring"), false);
+    values.insert(QStringLiteral("focus.schedule.enabled"), false);
+    values.insert(QStringLiteral("focus.schedule.start"), QStringLiteral("22:00"));
+    values.insert(QStringLiteral("focus.schedule.end"), QStringLiteral("07:00"));
+    values.insert(QStringLiteral("focus.schedule.days"), QStringList({
+        QStringLiteral("mon"), QStringLiteral("tue"), QStringLiteral("wed"),
+        QStringLiteral("thu"), QStringLiteral("fri"), QStringLiteral("sat"),
+        QStringLiteral("sun")
+    }));
+    values.insert(QStringLiteral("focus.shortcut"), QString());
     values.insert(QStringLiteral("lock.showUserNameAndPhoto"), true);
     values.insert(QStringLiteral("lock.showPasswordHints"), false);
     values.insert(QStringLiteral("lock.showMessageWhenLocked"), false);
     values.insert(QStringLiteral("lock.message"), QString());
     values.insert(QStringLiteral("lock.showPowerButtons"), true);
+    values.insert(QStringLiteral("lock.passwordHint"), QString());
+    values.insert(QStringLiteral("login.windowStyle"), QStringLiteral("list"));
     // Revision-7/17 keys the Settings app also writes. Keep this table the
     // complete schema mirror; a missing key would make a valid write look
     // unknown to the client-side validator (T224).
@@ -316,6 +327,7 @@ const char *const kLookUp[] = { "force-click", "three-finger", "off" };
 const char *const kHotCorner[] = { "none", "mission-control", "notification-center",
                                    "desktop-reveal", "lock-screen" };
 const char *const kPreviews[] = { "always", "when-unlocked", "never" };
+const char *const kLoginWindowStyle[] = { "list", "name-and-password" };
 const char *const kMenuAutoHide[] = { "never", "always", "full-screen" };
 const char *const kAlertSound[] = { "Chime", "Marimba", "Pulse", "Woodblock", "Breeze" };
 const char *const kEffectsThrough[] = { "output", "alerts" };
@@ -374,6 +386,7 @@ const Constraint kConstraints[] = {
     { "overview.hotCornerBottomLeft", kHotCorner, 5, false, 0, false, 0 },
     { "overview.hotCornerBottomRight", kHotCorner, 5, false, 0, false, 0 },
     { "notifications.showPreviews", kPreviews, 3, false, 0, false, 0 },
+    { "login.windowStyle", kLoginWindowStyle, 2, false, 0, false, 0 },
     { "menu.autoHide", kMenuAutoHide, 3, false, 0, false, 0 },
     { "menu.recentItems", nullptr, 0, true, 0.0, true, 50.0 },
     { "printers.defaultPaperSize", kPaperSize, 5, false, 0, false, 0 },

@@ -685,9 +685,9 @@ QtObject {
                 root.row("fit", qsTr("Wallpaper"), qsTr("Fit"), "popup",
                          "settingsd", "wallpaper.fit", "live-on-defaults", "shipped"),
                 root.row("screenSaver", qsTr("Wallpaper"), qsTr("Screen saver..."), "button",
-                         "settingsd", "screenSaver.style", "live-on-defaults"),
+                         "settingsd", "screenSaver.style", "live-on-defaults", "shipped"),
                 root.row("clock", qsTr("Wallpaper"), qsTr("Clock appearance..."), "button",
-                         "settingsd", "lock.clock", "live-on-defaults"),
+                         "settingsd", "lock.clock", "live-on-defaults", "shipped"),
                 root.row("dynamic", qsTr("Wallpaper"), qsTr("Dynamic"), "grid",
                          "wallpaperd", "wallpaper.dynamic", "disabled-with-reason"),
                 root.row("photos", qsTr("Wallpaper"), qsTr("Your photos"), "button",
@@ -735,7 +735,7 @@ QtObject {
                 root.row("badge", qsTr("Notifications"), qsTr("Badge"), "toggle",
                          "notification service", "notifications.badge", "disabled-with-reason", "shipped"),
                 root.row("focus", qsTr("Notifications"), qsTr("Focus"), "link",
-                         "settingsd", "notifications.focus", "live-on-defaults")
+                         "settingsd", "notifications.focus", "live-on-defaults", "shipped")
             ],
             "sound": [
                 root.row("alertSound", qsTr("Sound Effects"), qsTr("Alert sound"), "popup+play",
@@ -763,13 +763,13 @@ QtObject {
                 root.row("modes", qsTr("Focus"), qsTr("Modes"), "list",
                          "notification service", "focus.modes", "disabled-with-reason", "shipped"),
                 root.row("people", qsTr("Focus"), qsTr("Allowed people"), "list",
-                         "notification service", "focus.people", "disabled-with-reason"),
+                         "notification service", "focus.people", "disabled-with-reason", "shipped"),
                 root.row("apps", qsTr("Focus"), qsTr("Allowed apps"), "list",
                          "notification service", "focus.apps", "disabled-with-reason", "shipped"),
                 root.row("schedule", qsTr("Focus"), qsTr("Schedule"), "sheet",
-                         "notification service", "focus.schedule", "disabled-with-reason"),
+                         "settingsd", "focus.schedule.*", "live-on-defaults", "shipped"),
                 root.row("shortcut", qsTr("Focus"), qsTr("Shortcut"), "recorder",
-                         "settingsd", "focus.shortcut", "live-on-defaults")
+                         "settingsd", "focus.shortcut", "live-on-defaults", "shipped")
             ],
             "lock-screen": [
                 root.row("displayBattery", qsTr("Lock Screen"), qsTr("Display off on battery"), "popup",
@@ -780,16 +780,16 @@ QtObject {
                          "settingsd", "idle.lock", "live-on-defaults", "shipped"),
                 root.row("userNamePhoto", qsTr("Lock Screen"), qsTr("Show user name/photo"), "toggle",
                          "settingsd", "lock.showUserNameAndPhoto", "live-on-defaults", "shipped"),
-                root.row("passwordHints", qsTr("Lock Screen"), qsTr("Show password hints"), "toggle",
-                         "settingsd", "lock.showPasswordHints", "live-on-defaults", "shipped"),
+                root.row("passwordHints", qsTr("Lock Screen"), qsTr("Show password hints"), "toggle+set",
+                         "settingsd", "lock.showPasswordHints/lock.passwordHint", "live-on-defaults", "shipped"),
                 root.row("message", qsTr("Lock Screen"), qsTr("Lock message"), "toggle+set",
                          "settingsd", "lock.showMessageWhenLocked/lock.message", "live-on-defaults", "shipped"),
                 root.row("loginWindow", qsTr("Lock Screen"), qsTr("Login window"), "radio",
-                         "settingsd", "login.windowStyle", "live-on-defaults"),
+                         "settingsd", "login.windowStyle", "disabled-with-reason", "shipped"),
                 root.row("powerButtons", qsTr("Lock Screen"), qsTr("Power buttons"), "toggle",
                          "settingsd", "lock.showPowerButtons", "live-on-defaults", "shipped"),
                 root.row("accessibility", qsTr("Lock Screen"), qsTr("Accessibility options..."), "button",
-                         "settingsd", "a11y.lockOptions", "live-on-defaults")
+                         "settingsd", "a11y.lockOptions", "live-on-defaults", "shipped")
             ],
             "biometrics": [
                 root.row("password", qsTr("Password"), qsTr("Change password..."), "button",

@@ -28,7 +28,7 @@
 //! [0056]: ../../../docs/design/adr/0056-notification-service-surface-and-shell-banner.md
 //! [0058]: ../../../docs/design/adr/0058-focus-dnd-policy-semantics.md
 
-use dragonfruit_notifications::{FocusMode, Urgency};
+use dragonfruit_notifications::{AppPreference, AppPreferenceEntry, FocusMode, Urgency};
 use dragonfruit_system_adapters::AdapterError;
 
 /// One recorded notification, the flattened read of the service's
@@ -70,6 +70,9 @@ pub struct NotificationsData {
     pub active: Vec<NotificationRecord>,
     /// The recorded history, most recent first (the service's order).
     pub history: Vec<NotificationRecord>,
+    /// The durable per-app notification preferences (T229a), sorted by the
+    /// service's normalized app name.
+    pub app_preferences: Vec<AppPreferenceEntry>,
 }
 
 /// The result of one Focus/DND write.
@@ -118,6 +121,12 @@ pub trait NotificationsSource {
 
     /// Replace the per-app Focus allow list. One explicit write.
     fn set_focus_allow_list(&mut self, _apps: Vec<String>) -> FocusOutcome {
+        FocusOutcome::Absent
+    }
+
+    /// Set one app's durable notification preference (T229a). One explicit
+    /// write; the service re-emits and the host re-reads.
+    fn set_app_preference(&mut self, _app: &str, _preference: AppPreference) -> FocusOutcome {
         FocusOutcome::Absent
     }
 }
@@ -256,6 +265,35 @@ impl NotificationsSource for MockNotifications {
         self.focus_writes += 1;
         FocusOutcome::Applied
     }
+
+    fn set_app_preference(&mut self, app: &str, preference: AppPreference) -> FocusOutcome {
+        if !self.present {
+            return FocusOutcome::Absent;
+        }
+        if let Some(error) = &self.write_failure {
+            return FocusOutcome::Failed(error.clone());
+        }
+        let name = app.trim();
+        if name.is_empty() {
+            return FocusOutcome::Failed(AdapterError::new("empty app name"));
+        }
+        if let Some(data) = self.data.as_mut() {
+            let key = name.to_ascii_lowercase();
+            data.app_preferences
+                .retain(|entry| entry.name.to_ascii_lowercase() != key);
+            if !preference.is_default() {
+                data.app_preferences.push(AppPreferenceEntry {
+                    name: name.to_owned(),
+                    preference,
+                });
+                data.app_preferences.sort_by(|a, b| {
+                    a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase())
+                });
+            }
+        }
+        self.focus_writes += 1;
+        FocusOutcome::Applied
+    }
 }
 
 #[cfg(test)]
@@ -276,6 +314,7 @@ mod tests {
                 created_at_ms: 1000,
             }],
             history: vec![],
+            app_preferences: vec![],
         }
     }
 

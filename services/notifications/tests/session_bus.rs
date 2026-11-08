@@ -512,6 +512,57 @@ fn focus_mode_suppresses_batches_and_lets_critical_and_allowed_apps_through() {
 }
 
 #[test]
+fn a_per_app_preference_mutes_and_projects_into_the_focus_view() {
+    let bus = PrivateBus::start();
+    let (_service, _queue) = serve(&bus);
+    let client = bus.connect();
+
+    assert!(
+        shell_call::<bool>(
+            &client,
+            "SetAppPreference",
+            ("Mail", "none", true, true, false),
+        )
+        .unwrap()
+    );
+    let policy = focus_policy(&client);
+    assert_eq!(policy["appPreferences"][0]["name"], "Mail");
+    assert_eq!(policy["appPreferences"][0]["style"], "none");
+    assert_eq!(policy["appPreferences"][0]["allowed"], false);
+
+    // A muted app never banners, even outside Focus.
+    let id = notify(&client, "Mail", 0, "quiet", "", 0);
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert!(banners.as_array().unwrap().is_empty());
+    let history = json_array(&shell_call::<String>(&client, "History", ()).unwrap());
+    assert_eq!(history[0]["id"], id);
+    assert_eq!(history[0]["suppressed"], true);
+
+    // An unknown style is rejected and keeps the previous preference.
+    assert!(!shell_call::<bool>(
+        &client,
+        "SetAppPreference",
+        ("Mail", "vacation", true, true, true),
+    )
+    .unwrap());
+    assert_eq!(focus_policy(&client)["appPreferences"][0]["style"], "none");
+
+    // Restoring the defaults drops the entry.
+    assert!(
+        shell_call::<bool>(
+            &client,
+            "SetAppPreference",
+            ("Mail", "banner", true, true, true),
+        )
+        .unwrap()
+    );
+    assert!(focus_policy(&client)["appPreferences"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn dnd_silences_critical_but_honors_the_per_app_override() {
     let bus = PrivateBus::start();
     let (_service, _queue) = serve(&bus);

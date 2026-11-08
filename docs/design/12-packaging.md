@@ -2,11 +2,15 @@
 
 ## Summary
 
-> **Status (2026-11): design-only.** `packaging/fedora/` and
-> `packaging/debian/` still contain only README placeholders. The package
-> names, contents, and commands below are the target; Fedora packaging/CI
+> **Status (2026-11): design + early binary release assets.** The package
+> names, contents, and commands below remain the target; Fedora packaging/CI
 > (T164), Debian packaging/CI (T165), and the packaged perf re-measure (T166)
-> are OPEN. See [STATUS.md](STATUS.md) G-11.
+> are OPEN. `scripts/stage-install.sh` now produces one install tree and
+> `scripts/package.sh` turns it into a portable tar.gz, a binary DEB, and a
+> binary RPM; `.github/workflows/release.yml` publishes them on `v*` tags.
+> These are early-testing assets, not official distro packages. See
+> [`packaging/README.md`](../../packaging/README.md) and [STATUS.md](STATUS.md)
+> G-11.
 
 Fedora 44 is the reference platform, but the desktop is designed so very
 little knows it is running on Fedora. Fedora already treats alternative
@@ -135,6 +139,8 @@ interface stays identical.
 
 ```text
 packaging/
-├── fedora/
-└── debian/
+├── README.md          # release-asset workflow and scope
+├── fedora/            # binary RPM spec (T164 owns the source/COPR spec)
+├── debian/            # binary DEB control/scripts (T165 owns source packaging)
+└── tar/               # portable bundle install/uninstall scripts
 ```

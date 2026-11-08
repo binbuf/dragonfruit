@@ -109,11 +109,18 @@ freezes the v1 key set.
 | `notifications.showWhenSleeping` | b | false | | apps/settings | apps/settings (stored policy) | Show notification banners while the display is sleeping. |
 | `notifications.showWhenLocked` | b | true | | apps/settings | apps/settings (stored policy) | Show notification banners while the screen is locked. |
 | `notifications.showWhenMirroring` | b | false | | apps/settings | apps/settings (stored policy) | Show notification banners while mirroring or sharing the display. |
+| `focus.schedule.enabled` | b | false | | apps/settings | shell/FocusSchedule | Enable the daily Focus schedule (T229a). |
+| `focus.schedule.start` | s | `22:00` | | apps/settings | shell/FocusSchedule | Focus schedule start time, 24-hour HH:MM (T229a). |
+| `focus.schedule.end` | s | `07:00` | | apps/settings | shell/FocusSchedule | Focus schedule end time, 24-hour HH:MM; an earlier end crosses midnight (T229a). |
+| `focus.schedule.days` | as | `[mon, tue, wed, thu, fri, sat, sun]` | | apps/settings | shell/FocusSchedule | Weekdays the Focus schedule runs, `mon`…`sun`; empty means every day (T229a). |
+| `focus.shortcut` | s | `` (empty) | | apps/settings | shell shortcuts (registration deferred) | Global shortcut that toggles Focus; empty disables it (T229a). |
 | `lock.showUserNameAndPhoto` | b | true | | apps/settings | shell/LockScreen (stored policy) | Show the user name and photo on the lock screen (T-15.8b). |
 | `lock.showPasswordHints` | b | false | | apps/settings | shell/LockScreen (stored policy) | Show the password hint on the lock screen (T-15.8b). |
 | `lock.showMessageWhenLocked` | b | false | | apps/settings | shell/LockScreen (stored policy) | Show a custom message on the lock screen (T-15.8b). |
 | `lock.message` | s | `` (empty) | | apps/settings | shell/LockScreen (stored policy) | The custom lock-screen message set by the `Set...` editor (T-15.8b). |
 | `lock.showPowerButtons` | b | true | | apps/settings | shell/LockScreen (stored policy) | Show the Sleep, Restart, and Shut Down buttons on the lock screen (T-15.8b). |
+| `lock.passwordHint` | s | `` (empty) | | apps/settings | shell/LockScreen | The hint shown under the password field when password hints are on (T229a). |
+| `login.windowStyle` | s | `list` | `list`/`name-and-password` | apps/settings | display manager adapter (not exposed; row disabled) | Login-window style: a user list or name-and-password fields (T229a). |
 | `printers.defaultPaperSize` | s | `us-letter` | `us-letter`/`us-legal`/`a3`/`a4`/`a5` | apps/settings | apps/settings (stored preference) | The default paper size new print jobs assume (T-15.12b). CUPS and SANE own the queue and scanner state. |
 | `network.wifi.askToJoin` | s | `notify` | `off`/`notify`/`ask`/`new` | apps/settings | shell/MenuBar Wi-Fi prompt policy | When to prompt before joining a nearby Wi-Fi network (T225). NetworkManager still owns autoconnect. |
 | `network.wifi.askToJoinHotspots` | s | `ask` | `off`/`ask`/`automatic` | apps/settings | shell/MenuBar Wi-Fi prompt policy | When to prompt before joining a captive-portal hotspot (T225). |

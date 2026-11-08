@@ -37,3 +37,6 @@ screenshot.png
 
 build-release/
 .gitignore
+
+# Release/packaging outputs (scripts/package.sh)
+/dist/

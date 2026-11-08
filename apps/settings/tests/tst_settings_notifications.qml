@@ -33,6 +33,17 @@ Item {
             Settings.set("notifications.showWhenSleeping", false);
             Settings.set("notifications.showWhenLocked", true);
             Settings.set("notifications.showWhenMirroring", false);
+            Settings.set("focus.schedule.enabled", false);
+            Settings.set("focus.schedule.start", "22:00");
+            Settings.set("focus.schedule.end", "07:00");
+            Settings.setList("focus.schedule.days", ["mon", "tue", "wed", "thu",
+                                                    "fri", "sat", "sun"]);
+            Settings.set("focus.shortcut", "");
+            for (var i = 0; i < 3; ++i) {
+                var name = ["Mail", "chat", "Pager"][i];
+                Settings.setNotificationAppPreference(name, "banner", true,
+                                                      true, true);
+            }
         }
 
         function make(paneId) {
@@ -154,6 +165,170 @@ Item {
             var pane = paneOf(shell);
             compare(Settings.notificationsAvailable, true);
             compare(pane.absenceNote.visible, false);
+        }
+
+        // -- T229a: per-app preferences and the Focus link ---------------------
+
+        function test_app_detail_sheet_round_trips_allow_style_sound_badge() {
+            var shell = make("notifications");
+            var pane = paneOf(shell);
+            var mail = pane.apps[1];
+            compare(mail.name, "Mail");
+
+            pane.openAppDetail(mail);
+            waitForRendering(stage);
+            compare(pane.appDialog.open, true);
+            compare(pane.appDialogTitle.text, "Mail");
+            compare(pane.appAllowToggle.checked, true);
+
+            pane.appAllowToggle.toggle();
+            tryVerify(function() {
+                var app = pane.appByName("Mail");
+                return app && app.status === "Off";
+            }, 2000, "muting Mail turns its row Off");
+
+            pane.appStyleSelect.activateIndex(1); // Alerts
+            tryVerify(function() {
+                var app = pane.appByName("Mail");
+                return app && app.style === "alert" && app.styleLabel === "Alerts";
+            }, 2000, "the style write reaches the service view");
+
+            pane.appSoundToggle.toggle();
+            pane.appBadgeToggle.toggle();
+            tryVerify(function() {
+                var app = pane.appByName("Mail");
+                return app && app.sound === false && app.badge === false;
+            }, 2000, "the sound and badge writes reach the service view");
+
+            // Reopening seeds the sheet from the authoritative view.
+            pane.appDialog.reject();
+            waitForRendering(stage);
+            pane.openAppDetail(pane.appByName("Mail"));
+            waitForRendering(stage);
+            compare(pane.appAllowToggle.checked, false);
+            compare(pane.appStyleSelect.currentIndex, 1);
+            compare(pane.appSoundToggle.checked, false);
+            compare(pane.appBadgeToggle.checked, false);
+            pane.appDialog.reject();
+        }
+
+        function test_app_detail_seeds_from_the_service_state() {
+            var shell = make("notifications");
+            var pane = paneOf(shell);
+            Settings.setNotificationAppPreference("Pager", "none", false,
+                                                  false, false);
+            tryVerify(function() {
+                var app = pane.appByName("Pager");
+                return app && app.status === "Off" && app.style === "none";
+            }, 2000);
+            pane.openAppDetail(pane.appByName("Pager"));
+            waitForRendering(stage);
+            compare(pane.appStyleSelect.currentIndex, 2); // None
+            compare(pane.appSoundToggle.checked, false);
+            compare(pane.appBadgeToggle.checked, false);
+            pane.appDialog.reject();
+        }
+
+        function test_focus_link_opens_the_focus_pane() {
+            var shell = make("notifications");
+            var pane = paneOf(shell);
+            verify(pane.focusRow.visible);
+            pane.focusButton.clicked();
+            tryCompare(shell, "currentPaneId", "focus");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            compare(paneOf(shell).mode, "focus");
+        }
+
+        function test_long_app_name_stays_inside_the_sheet() {
+            var shell = make("notifications");
+            var pane = paneOf(shell);
+            var longName = "An application with an extremely long display name "
+                         + "that should elide instead of widening the sheet";
+            pane.openAppDetail({ name: longName, notificationsAllowed: true,
+                                 style: "banner", sound: true, badge: true,
+                                 notifications: 0, status: "Default" });
+            waitForRendering(stage);
+            compare(pane.appDialogTitle.text, longName);
+            compare(pane.appDialogTitle.elide, Text.ElideRight);
+            verify(pane.appDialog.card.width <= stage.width,
+                   "the sheet card must stay inside the capture stage");
+            pane.appDialog.reject();
+        }
+
+        // -- T229a: the Focus modes, people, schedule, and shortcut -----------
+
+        function test_focus_modes_render_the_admission_rule_and_active_state() {
+            var shell = make("focus");
+            var pane = paneOf(shell);
+            compare(pane.modeRepeater.count, 3);
+            compare(pane.modeRepeater.itemAt(0).active, false);
+            compare(pane.modeRepeater.itemAt(1).active, true); // fixture focus
+            compare(pane.modeRepeater.itemAt(1).Accessible.checked, true);
+            verify(pane.modeRepeater.itemAt(0).Accessible.description.length > 0);
+            verify(pane.summary.text.length > 0);
+        }
+
+        function test_allowed_people_is_an_explicit_absence_not_a_dead_list() {
+            var shell = make("focus");
+            var pane = paneOf(shell);
+            verify(pane.peopleGroup.visible);
+            verify(pane.peopleRow.description.indexOf("application") >= 0,
+                   "the people note must explain the Linux limitation");
+        }
+
+        function test_schedule_validates_and_round_trips() {
+            var shell = make("focus");
+            var pane = paneOf(shell);
+            Settings.set("focus.schedule.enabled", true);
+            compare(pane.scheduleToggle.checked, true);
+
+            // An invalid time reverts nothing and shows the reason.
+            pane.scheduleStartDraft = "25:99";
+            pane.scheduleApplyButton.clicked();
+            verify(pane.scheduleErrorText.visible);
+            compare(Settings.values["focus.schedule.start"], "22:00");
+
+            // A valid time writes both keys and clears the error.
+            pane.scheduleStartDraft = "21:30";
+            pane.scheduleEndDraft = "06:15";
+            pane.scheduleApplyButton.clicked();
+            compare(Settings.values["focus.schedule.start"], "21:30");
+            compare(Settings.values["focus.schedule.end"], "06:15");
+            compare(pane.scheduleErrorText.visible, false);
+            verify(pane.scheduleSummary.text.indexOf("21:30") >= 0);
+        }
+
+        function test_schedule_days_round_trip_as_a_list() {
+            var shell = make("focus");
+            var pane = paneOf(shell);
+            Settings.set("focus.schedule.enabled", true);
+            pane.dayRepeater.itemAt(6).clicked(); // Sunday off
+            tryVerify(function() {
+                return Settings.values["focus.schedule.days"].indexOf("sun") === -1;
+            }, 2000);
+            pane.dayRepeater.itemAt(6).clicked(); // back on
+            tryVerify(function() {
+                return Settings.values["focus.schedule.days"].indexOf("sun") >= 0;
+            }, 2000);
+        }
+
+        function test_shortcut_validates_and_round_trips() {
+            var shell = make("focus");
+            var pane = paneOf(shell);
+            pane.shortcutDraft = "F";
+            pane.shortcutApplyButton.clicked();
+            verify(pane.shortcutErrorText.visible);
+            compare(Settings.values["focus.shortcut"], "");
+
+            pane.shortcutDraft = "Ctrl+Alt+F";
+            pane.shortcutApplyButton.clicked();
+            compare(Settings.values["focus.shortcut"], "Ctrl+Alt+F");
+            compare(pane.shortcutErrorText.visible, false);
+
+            // Clearing disables the shortcut.
+            pane.shortcutDraft = "";
+            pane.shortcutApplyButton.clicked();
+            compare(Settings.values["focus.shortcut"], "");
         }
     }
 }

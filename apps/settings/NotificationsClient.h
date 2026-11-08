@@ -18,6 +18,7 @@
 // the view `unavailable`; the panes render the absence state without error.
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -46,6 +47,10 @@ public:
     virtual void setFocusMode(const QString &mode) = 0;
     // Replace the per-app Focus allow list. One explicit write.
     virtual void setFocusAllowList(const QStringList &apps) = 0;
+    // Set one app's durable notification preference (T229a). One explicit
+    // write; the host re-reads and pushes the new view.
+    virtual void setAppPreference(const QString &app, const QString &style,
+                                  bool sound, bool badge, bool allowed) = 0;
 
 signals:
     void changed(const QVariantMap &view);
@@ -66,6 +71,8 @@ public:
     void refresh() override;
     void setFocusMode(const QString &mode) override;
     void setFocusAllowList(const QStringList &apps) override;
+    void setAppPreference(const QString &app, const QString &style, bool sound,
+                          bool badge, bool allowed) override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
@@ -94,10 +101,15 @@ public:
     void refresh() override;
     void setFocusMode(const QString &mode) override;
     void setFocusAllowList(const QStringList &apps) override;
+    void setAppPreference(const QString &app, const QString &style, bool sound,
+                          bool badge, bool allowed) override;
 
 private:
     void rebuild();
     QString m_mode = QStringLiteral("focus");
     QStringList m_allowList = QStringList{ QStringLiteral("Pager") };
+    // App name (case-insensitive) -> {style, sound, badge, allowed}. Only
+    // non-default entries are stored, like the service.
+    QHash<QString, QVariantMap> m_appPreferences;
     QVariantMap m_view;
 };

@@ -158,6 +158,7 @@ mod tests {
             "--print-env",
             "--sync-toolkit",
             "import-environment",
+            "daemon-reload",
             "XDG_CURRENT_DESKTOP",
             "XDG_SESSION_TYPE",
             "WAYLAND_DISPLAY",
