@@ -42,10 +42,10 @@ freezes the v1 key set.
 | `appearance.colorScheme` | s | `auto` | `light`/`dark`/`auto` | settingsd | compositor/window decoration, shell/design-system Theme | Light/dark scheme; auto follows the host style hint. The Control Center dark-mode tile writes `dark`/`light` only (T-11.3b). |
 | `appearance.accent` | s | `` (empty) | `#rrggbb` or empty | settingsd | shell/design-system Theme | Accent color override (`#rrggbb`); empty uses the token default. |
 | `appearance.transparency` | d | 0.5255 | 0.0–1.0 | apps/settings | shell/design-system Glass, compositor/material | Attached-menu glass transparency, 0 (opaque) to 1 (clearer); the measured midpoint is 0.5255 and is the default for the shipped replacement glass (ADR 0234). |
-| `wallpaper.source` | s | `` (empty) | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Image path for the selected wallpaper; empty keeps the solid color. |
+| `wallpaper.source` | s | `` (empty) | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Image path for the selected wallpaper; empty falls back to the shipped default (ADR 0094). |
 | `wallpaper.fit` | s | `fill` | `fill`/`fit`/`stretch`/`center` | apps/settings | shell/wallpaper forwarder, compositor/workspace model | How the wallpaper image maps onto the output. |
 | `wallpaper.showOnAllSpaces` | b | true | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Apply the selection to every Space, or only the active one. |
-| `wallpaper.provider` | s | `wikimedia` | | wallpaperd | services/wallpaperd | Active online wallpaper content provider; `wikimedia` today. |
+| `wallpaper.provider` | s | `wikimedia` | | wallpaperd | services/wallpaperd | Primary online wallpaper content provider; `wikimedia` plus the additive NASA Space source (ADR 0240). |
 | `wallpaper.providerAutoFetch` | b | true | | wallpaperd | services/wallpaperd | Let the provider refresh its Featured catalogue in the background. |
 | `wallpaper.providerLastFetch` | x | 0 | 0– | wallpaperd | services/wallpaperd | Unix seconds of the provider's last successful catalogue fetch; 0 = never. |
 | `wallpaper.providerSource` | s | `` (empty) | | wallpaperd | shell/wallpaper forwarder | Fetched Featured default/fallback image path; empty until a catalogue exists. |
@@ -200,11 +200,14 @@ T-18 provider group (revision 10, owner `wallpaperd`): `wallpaper.source` stays
 the user override and is never written by the provider. The shell's effective
 source is `wallpaper.source` when non-empty, otherwise `wallpaper.builtinDefault`
 (the shipped `Default.jpg`), otherwise `wallpaper.providerSource` (the fetched
-Featured fallback), otherwise the Space's solid color. The shell also reads the
-provider's live `org.dragonfruit.Wallpaper1` `BuiltinDefaultSource`/`DefaultSource`
-properties, so the shipped default still reaches the compositor when `settingsd`
-is absent; with the provider absent it resolves the shipped asset itself. See
-ADR [0094](design/adr/0094-bundled-default-wallpaper-and-lazy-cache.md).
+Featured fallback), otherwise the Space's solid color. The provider's catalogue
+now spans Wikimedia Commons plus the NASA Space source (ADR 0240); NASA
+thumbnails are cached first and the full original is fetched on demand through
+`org.dragonfruit.Wallpaper1.FetchItem`. The shell also reads the provider's live
+`BuiltinDefaultSource`/`DefaultSource` properties, so the shipped default still
+reaches the compositor when `settingsd` is absent; with the provider absent it
+resolves the shipped asset itself. See ADR
+[0094](design/adr/0094-bundled-default-wallpaper-and-lazy-cache.md).
 
 ## Restart and resync
 

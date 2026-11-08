@@ -1,0 +1,153 @@
+{
+  "collection": {
+    "items": [
+      {
+        "href": "https://images-assets.nasa.gov/image/PIA14417/collection.json",
+        "data": [
+          {
+            "center": "JPL",
+            "date_created": "2011-08-10T21:00:09Z",
+            "description": "The Dumbbell nebula, also known as Messier 27, pumps out infrared light in this image from NASA Spitzer Space Telescope.",
+            "keywords": ["Helix Nebula", "Spitzer Space Telescope"],
+            "media_type": "image",
+            "nasa_id": "PIA14417",
+            "secondary_creator": "NASA/JPL-Caltech/Harvard-Smithsonian CfA",
+            "title": "Weighing in on the Dumbbell Nebula"
+          }
+        ],
+        "links": [
+          {
+            "href": "https://images-assets.nasa.gov/image/PIA14417/PIA14417~medium.jpg",
+            "rel": "alternate",
+            "render": "image",
+            "width": 1280,
+            "height": 640
+          },
+          {
+            "href": "https://images-assets.nasa.gov/image/PIA14417/PIA14417~orig.jpg",
+            "rel": "canonical",
+            "render": "image",
+            "width": 2800,
+            "height": 1400
+          }
+        ]
+      },
+      {
+        "href": "https://images-assets.nasa.gov/image/PORTRAIT/collection.json",
+        "data": [
+          {
+            "center": "JPL",
+            "description": "A tall image.",
+            "media_type": "image",
+            "nasa_id": "PORTRAIT",
+            "secondary_creator": "NASA/JPL-Caltech",
+            "title": "Tall Nebula"
+          }
+        ],
+        "links": [
+          {
+            "href": "https://images-assets.nasa.gov/image/PORTRAIT/PORTRAIT~medium.jpg",
+            "rel": "alternate",
+            "render": "image",
+            "width": 720,
+            "height": 1280
+          },
+          {
+            "href": "https://images-assets.nasa.gov/image/PORTRAIT/PORTRAIT~orig.jpg",
+            "rel": "canonical",
+            "render": "image",
+            "width": 1080,
+            "height": 1920
+          }
+        ]
+      },
+      {
+        "href": "https://images-assets.nasa.gov/image/LOGO/collection.json",
+        "data": [
+          {
+            "center": "GSFC",
+            "description": "The NASA meatball logo.",
+            "media_type": "image",
+            "nasa_id": "LOGO",
+            "secondary_creator": "NASA",
+            "title": "NASA logo"
+          }
+        ],
+        "links": [
+          {
+            "href": "https://images-assets.nasa.gov/image/LOGO/LOGO~medium.jpg",
+            "rel": "alternate",
+            "render": "image",
+            "width": 1280,
+            "height": 720
+          },
+          {
+            "href": "https://images-assets.nasa.gov/image/LOGO/LOGO~orig.jpg",
+            "rel": "canonical",
+            "render": "image",
+            "width": 3840,
+            "height": 2160
+          }
+        ]
+      },
+      {
+        "href": "https://images-assets.nasa.gov/image/GSFC_20171208_Archive_e001465/collection.json",
+        "data": [
+          {
+            "center": "GSFC",
+            "description": "This planetary nebula's simple, graceful appearance is thought to be due to perspective.",
+            "media_type": "image",
+            "nasa_id": "GSFC_20171208_Archive_e001465",
+            "secondary_creator": "",
+            "title": "Ring Nebula"
+          }
+        ],
+        "links": [
+          {
+            "href": "https://images-assets.nasa.gov/image/GSFC_20171208_Archive_e001465/GSFC_20171208_Archive_e001465~medium.jpg",
+            "rel": "alternate",
+            "render": "image",
+            "width": 1280,
+            "height": 720
+          },
+          {
+            "href": "https://images-assets.nasa.gov/image/GSFC_20171208_Archive_e001465/GSFC_20171208_Archive_e001465~orig.jpg",
+            "rel": "canonical",
+            "render": "image",
+            "width": 3840,
+            "height": 2160
+          }
+        ]
+      },
+      {
+        "href": "https://images-assets.nasa.gov/image/ESA/collection.json",
+        "data": [
+          {
+            "center": "GSFC",
+            "description": "A third-party image.",
+            "media_type": "image",
+            "nasa_id": "ESA",
+            "secondary_creator": "ESA/Hubble",
+            "title": "Hubble Image"
+          }
+        ],
+        "links": [
+          {
+            "href": "https://images-assets.nasa.gov/image/ESA/ESA~medium.jpg",
+            "rel": "alternate",
+            "render": "image",
+            "width": 1280,
+            "height": 720
+          },
+          {
+            "href": "https://images-assets.nasa.gov/image/ESA/ESA~orig.jpg",
+            "rel": "canonical",
+            "render": "image",
+            "width": 3840,
+            "height": 2160
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -4,13 +4,13 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// Wallpaper-pane tests (T-09.3, extended by T-18.2). Headless with
-// `DF_SETTINGS_FIXTURE` and `DF_WALLPAPER_FIXTURE` (see CMakeLists.txt), so
-// the `Settings` singleton serves the schema defaults and a deterministic
-// in-process provider catalogue: no bus, no daemon. The cases cover the three
-// source rows (Featured/Built-in/Custom), the fetching skeleton, the
-// ready/offline/error states, attribution (including HTML sanitization),
-// selection into `wallpaper.source`, and the eager Preload on pane open.
+// Wallpaper-pane tests (T-09.3, extended by T-18.2 and ADR 0240). Headless
+// with `DF_SETTINGS_FIXTURE` and `DF_WALLPAPER_FIXTURE` (see CMakeLists.txt),
+// so the `Settings` singleton serves the schema defaults and a deterministic
+// in-process provider catalogue: no bus, no daemon. The cases cover the hero,
+// category rows, Show All/Less, the fetching skeleton, ready/offline/error
+// states, attribution (including HTML sanitization), the apply spinner,
+// deferred downloads, and the eager Preload on pane open.
 Item {
     id: stage
     width: 900
@@ -51,19 +51,56 @@ Item {
             return pane;
         }
 
-        // -- Three source rows -------------------------------------------------
+        function waitForApply(pane) {
+            tryVerify(function() { return pane.pending === false; }, 5000);
+            waitForRendering(stage);
+        }
 
-        function test_pane_opens_with_the_three_source_rows() {
+        function chooseAndWait(pane, tile) {
+            tile.choose();
+            waitForApply(pane);
+        }
+
+        function sectionSlugs(pane) {
+            var out = [];
+            for (var i = 0; i < pane.sections.length; ++i) {
+                if (pane.sections[i].slug.length > 0)
+                    out.push(pane.sections[i].slug);
+            }
+            return out;
+        }
+
+        // -- Hero and collection rows -----------------------------------------
+
+        function test_pane_opens_with_the_hero_and_collections() {
             var shell = make();
             compare(shell.currentPaneId, "wallpaper");
             var pane = paneOf(shell);
-            verify(pane.featuredGroup, "the Featured row must exist");
-            verify(pane.builtinGroup, "the Built-in row must exist");
-            verify(pane.customGroup, "the Custom row must exist");
+            verify(pane.hero, "the hero must exist");
+            verify(pane.heroPreview, "the hero preview must exist");
+            verify(pane.featuredGroup, "the online collection must exist");
+            verify(pane.builtinGroup, "the Built-in section must exist");
+            verify(pane.customGroup, "the Your Photos section must exist");
             compare(pane.providerStatus, "ready");
             compare(pane.fitControl.currentIndex, 0); // fill
             compare(pane.showOnAllToggle.checked, true);
-            verify(pane.photoButton);
+            verify(pane.photoButton, "the Add Photo tile must exist");
+            verify(pane.sections.length >= 10,
+                   "eight provider rows plus Built-in and Your Photos");
+            compare(sectionSlugs(pane).join(","),
+                    "abstract,nature,water,cityscapes,earth,space,scenery,underwater");
+        }
+
+        function test_default_tile_is_selected_when_no_user_choice() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.currentSource, "");
+            compare(pane.selectedSource, pane.builtinDefault);
+            verify(pane.builtinTiles[0].selected,
+                   "the shipped Default is the out-of-box selection");
+            compare(pane.currentName, "Default");
+            verify(pane.currentPreviewUrl.indexOf("Default.jpg") >= 0);
+            verify(!pane.hasAttribution);
         }
 
         // -- Featured: fetching skeleton --------------------------------------
@@ -77,8 +114,8 @@ Item {
 
             compare(pane.providerStatus, "fetching");
             compare(pane.providerItems.length, 0);
-            verify(pane.featuredFetching, "an empty fetching catalogue is loading");
-            compare(pane.skeletonItems.length, 6);
+            verify(pane.featuredFetching, "the provider is loading");
+            verify(pane.skeletonItems.length > 0);
             compare(pane.skeletonItems[0].Accessible.name, "Downloading wallpapers");
             compare(pane.skeletonItems[0].Accessible.role, Accessible.Graphic);
             verify(!pane.featuredMessageItem.visible,
@@ -141,16 +178,18 @@ Item {
             verify(pane.featuredMessageItem.text.length > 0);
             compare(pane.featuredTiles.length, 0);
             verify(!pane.featuredFetching);
+            verify(pane.retryButton.visible, "offline offers Try Again");
 
             Settings.setWallpaperFixture("error");
             waitForRendering(stage);
             compare(pane.providerStatus, "error");
             verify(pane.featuredMessageItem.visible);
+            verify(pane.retryButton.visible);
         }
 
         // -- Selection and attribution ----------------------------------------
 
-        function test_selecting_a_featured_tile_writes_the_source() {
+        function test_selecting_a_featured_tile_shows_the_apply_state() {
             var shell = make();
             var pane = paneOf(shell);
             waitForRendering(stage);
@@ -158,12 +197,20 @@ Item {
             var tile = pane.featuredTiles[1];
             var source = pane.featuredItems[1].source;
             tile.choose();
+            verify(pane.pending, "the apply state starts immediately");
+            verify(pane.heroSpinner.visible, "the hero shows the progress ring");
+            verify(!pane.fitControl.visible, "the Fit popup yields to the ring");
+            compare(pane.pendingPhase, "applying");
+
+            waitForApply(pane);
             compare(Settings.values["wallpaper.source"], source);
             compare(pane.currentSource, source);
             compare(pane.currentName, "Ocean Wave");
             verify(tile.selected);
             verify(pane.hasAttribution, "a fetched picture shows its attribution");
             compare(pane.attributionLicense.text, "CC BY 4.0");
+            verify(!pane.heroSpinner.visible);
+            verify(pane.fitControl.visible);
         }
 
         function test_attribution_never_renders_provider_html() {
@@ -171,7 +218,7 @@ Item {
             var pane = paneOf(shell);
             waitForRendering(stage);
 
-            pane.featuredTiles[0].choose();
+            chooseAndWait(pane, pane.featuredTiles[0]);
             compare(pane.currentItem.artist, "Alice Example");
             verify(pane.attributionArtist.text.indexOf("Alice Example") >= 0,
                    "the sanitized artist is shown");
@@ -195,7 +242,7 @@ Item {
             verify(pane.builtinDefault.indexOf("Default.jpg") >= 0,
                    "the shipped default is Default.jpg");
 
-            defaultTile.choose();
+            chooseAndWait(pane, defaultTile);
             compare(Settings.values["wallpaper.source"], pane.builtinDefault);
             verify(defaultTile.selected);
             compare(pane.currentName, "Default");
@@ -209,15 +256,16 @@ Item {
 
             var tile = pane.builtinTiles[1];
             var source = pane.presets[0].source;
-            tile.choose();
+            chooseAndWait(pane, tile);
             compare(Settings.values["wallpaper.source"], source);
             compare(pane.currentName, pane.presets[0].name);
             compare(pane.currentUrl, pane.presets[0].url);
             verify(tile.selected);
 
-            pane.builtinTiles[3].choose();
+            var other = pane.builtinTiles[3];
+            chooseAndWait(pane, other);
             verify(!tile.selected);
-            verify(pane.builtinTiles[3].selected);
+            verify(other.selected);
         }
 
         // -- The eager Preload on pane open ------------------------------------
@@ -266,17 +314,19 @@ Item {
             compare(pane.currentSource, "/tmp/dragonfruit-custom.png");
             compare(pane.currentName, "dragonfruit-custom.png");
             compare(pane.currentUrl, "file:///tmp/dragonfruit-custom.png");
+            verify(!pane.hasAttribution);
 
-            pane.builtinTiles[1].choose();
+            chooseAndWait(pane, pane.builtinTiles[1]);
             compare(pane.currentSource, pane.presets[0].source);
         }
 
         function test_row_controls_are_right_aligned() {
             var shell = make();
             var pane = paneOf(shell);
-            verify(pane.showOnAllRow.control.x > pane.width * 0.6,
-                   "the all-Spaces control must sit at the right of the row, x="
-                   + pane.showOnAllRow.control.x + " pane.width=" + pane.width);
+            verify(pane.showOnAllRow.control.x > pane.showOnAllRow.width * 0.6,
+                   "the all-Workspaces control must sit at the right of the row, x="
+                   + pane.showOnAllRow.control.x + " row.width="
+                   + pane.showOnAllRow.width);
             verify(pane.showOnAllToggle.width > 0,
                    "the toggle must have a non-zero width");
         }
@@ -286,10 +336,14 @@ Item {
             var pane = paneOf(shell);
 
             pane.applyPhoto("/home/user/Pictures/holiday.jpg");
-            compare(Settings.values["wallpaper.source"], "/home/user/Pictures/holiday.jpg");
+            waitForApply(pane);
+            compare(Settings.values["wallpaper.source"],
+                    "/home/user/Pictures/holiday.jpg");
             compare(pane.currentName, "holiday.jpg");
             verify(pane.photoNotice.text.length > 0);
             verify(!pane.hasAttribution, "a user photo carries no attribution");
+            compare(pane.customTiles.length, 2,
+                    "Add Photo plus the current custom photo");
         }
 
         // -- T229a: screen saver / clock appearance links ----------------------
@@ -323,6 +377,100 @@ Item {
             verify(pane.currentUrl.length > 0);
             verify(pane.width <= stage.width,
                    "the pane must not grow past its host for a long name");
+        }
+
+        // -- ADR 0240: rows, Show All, deferred downloads ----------------------
+
+        function test_show_all_expands_and_collapses() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setWallpaperFixture("many");
+            waitForRendering(stage);
+
+            var nature = pane.sectionFor("nature");
+            verify(nature, "the Nature section exists");
+            compare(nature.items.length, 6);
+            compare(nature.tileRepeater.count, 4);
+            verify(nature.showAllButton.visible);
+            verify(nature.showAllButton.text.indexOf("Show All (6)") >= 0);
+
+            nature.toggleExpanded();
+            waitForRendering(stage);
+            compare(nature.tileRepeater.count, 6);
+            verify(nature.showAllButton.text.indexOf("Show Less") >= 0);
+
+            nature.toggleExpanded();
+            waitForRendering(stage);
+            compare(nature.tileRepeater.count, 4);
+        }
+
+        function test_deferred_item_downloads_then_applies() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setWallpaperFixture("deferred");
+            waitForRendering(stage);
+
+            var space = pane.sectionFor("space");
+            verify(space, "the Space section exists");
+            compare(space.items.length, 1);
+            compare(space.items[0].source, "",
+                    "the NASA full image is deferred");
+            var tile = space.tileRepeater.itemAt(0);
+            tile.choose();
+            verify(pane.pending);
+            compare(pane.pendingPhase, "downloading");
+            verify(pane.heroSpinner.visible);
+
+            waitForApply(pane);
+            compare(pane.currentName, "Space Nebula");
+            verify(pane.hasAttribution);
+            verify(pane.attributionArtist.text.indexOf("NASA") >= 0);
+            compare(pane.attributionLicense.text, "Public domain (NASA)");
+            verify(Settings.values["wallpaper.source"].length > 0);
+        }
+
+        function test_download_failure_keeps_the_old_wallpaper() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setWallpaperFixture("deferred-fail");
+            waitForRendering(stage);
+
+            var before = Settings.values["wallpaper.source"];
+            var space = pane.sectionFor("space");
+            space.tileRepeater.itemAt(0).choose();
+            waitForApply(pane);
+            compare(Settings.values["wallpaper.source"], before,
+                    "a failed download must not change the wallpaper");
+            verify(pane.applyError.length > 0);
+            verify(pane.pending === false);
+        }
+
+        function test_empty_provider_offers_try_again() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setWallpaperFixture("offline");
+            waitForRendering(stage);
+            verify(pane.featuredMessageItem.visible);
+            verify(pane.retryButton.visible);
+
+            pane.retryButton.clicked();
+            tryCompare(pane, "providerStatus", "ready", 3000);
+            waitForRendering(stage);
+            verify(!pane.featuredMessageItem.visible);
+            verify(pane.featuredTiles.length > 0);
+        }
+
+        function test_reduced_motion_spinner_is_static() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.set("accessibility.reduceMotion", true);
+            waitForRendering(stage);
+
+            pane.featuredTiles[0].choose();
+            verify(pane.pending);
+            verify(!pane.heroSpinner.spinning,
+                   "reduced motion holds the progress ring static");
+            waitForApply(pane);
         }
     }
 }

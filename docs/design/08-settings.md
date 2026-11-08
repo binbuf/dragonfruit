@@ -396,25 +396,38 @@ chroma pickup is not reproduced; T206 captures record the rendered channel
 spread separately. ADR [0225](adr/0225-first-party-app-chrome-presets.md)
 records the decision and the unresolved chroma transport.
 
-## Wallpaper sources (T-18)
+## Wallpaper sources (T-18 / ADR 0240)
 
-The Wallpaper pane presents three source rows: **Featured** (Wikimedia
-Commons Featured Pictures, fetched by `services/wallpaperd`), **Built-in**
-(the shipped original default `assets/graphics/wallpapers/Default.jpg` plus the
-original gradients), and **Custom** (the portal chooser). The out-of-box
-background is the shipped original default, so first run and a cold cache never
-depend on the network. The provider downloads Featured at first run and
-re-checks roughly weekly, caching the images and their attribution metadata
-under `$XDG_CACHE_HOME/dragonfruit/`; it warms lazily on launch and eagerly when
-the pane is opened. The effective source is `wallpaper.source` (a user choice)
-when non-empty, otherwise the shipped `wallpaper.builtinDefault`, otherwise the
-fetched `wallpaper.providerSource`. While the first catalogue is still
-downloading, Featured renders as reduced-motion-aware skeleton tiles. The
-provider, key ownership, effective-source precedence, cache policy, offline
-behavior, and licensing are fixed by ADRs
+The Wallpaper pane is a flat gallery, not a card stack: a 160×100 hero with the
+current name, Fit, Show on all Workspaces, and the Screen Saver/Clock
+Appearance links, then collection rows with four tiles per row and a
+**Show All (N)** / **Show Less** toggle. The online rows are **Abstract**
+(Wikimedia Commons), **Nature**, **Water**, **Cityscapes**, **Earth**,
+**Space** (NASA Image and Video Library), **Scenery**, and **Underwater**;
+**Built-in** holds the shipped original default
+`assets/graphics/wallpapers/Default.jpg` plus the original gradients, and
+**Your Photos** starts with the portal **Add Photo…** tile.
+
+The out-of-box background is the shipped original default, so first run and a
+cold cache never depend on the network. The provider warms lazily on launch and
+eagerly when the pane is opened, caching images and attribution under
+`$XDG_CACHE_HOME/dragonfruit/`. Wikimedia images are downloaded in full during
+the catalogue fetch; NASA Space thumbnails are cached first and the full
+original is downloaded on demand through `FetchItem`. The effective source is
+`wallpaper.source` (a user choice) when non-empty, otherwise the shipped
+`wallpaper.builtinDefault`, otherwise the fetched `wallpaper.providerSource`.
+
+Clicking a tile enters an explicit apply state: the old preview stays, the tile
+and hero show a progress ring, a deferred full image downloads if needed, and
+`wallpaper.source` is written only when the new image is ready. A failure keeps
+the previous wallpaper. While the catalogue is fetching, empty rows show
+reduced-motion-aware skeletons; a cold/offline/error catalogue shows the
+available-soon note plus **Try Again**, never an error. The provider, key
+ownership, effective-source precedence, cache policy, offline behavior, and
+licensing are fixed by ADRs
 [0055](adr/0055-online-wallpaper-content-provider.md) /
-[0094](adr/0094-bundled-default-wallpaper-and-lazy-cache.md); the pane UI,
-states, and attribution are T-18.2.
+[0094](adr/0094-bundled-default-wallpaper-and-lazy-cache.md) /
+[0240](adr/0240-wallpaper-pane-collections-and-additional-sources.md).
 
 ## Persistence and change notification
 

@@ -9,11 +9,35 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// The six Dragonfruit wallpaper categories, one Wikimedia Commons category
-/// each (ADR [0055](../../../docs/design/adr/0055-online-wallpaper-content-provider.md)).
+/// The online wallpaper sources. Wikimedia is the original Featured Pictures
+/// provider; NASA is the additive Space provider (ADR 0240).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SourceKind {
+    /// Wikimedia Commons Featured Pictures.
+    Wikimedia,
+    /// NASA Image and Video Library.
+    Nasa,
+}
+
+impl SourceKind {
+    /// The wire/provider spelling stored on a catalogue item.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            SourceKind::Wikimedia => "wikimedia",
+            SourceKind::Nasa => "nasa",
+        }
+    }
+}
+
+/// The eight Dragonfruit wallpaper categories. The first six map to one
+/// Wikimedia Commons category each (ADR
+/// [0055](../../../docs/design/adr/0055-online-wallpaper-content-provider.md));
+/// Abstract is the additional Commons collection and Space is the NASA
+/// collection (ADR 0240).
 ///
 /// The slug is also the cache directory name, so the ordering is part of the
-/// cache layout and must not be reordered casually.
+/// cache layout and must not be reordered casually. New categories are appended
+/// so existing cache directories keep their meaning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Category {
@@ -29,17 +53,23 @@ pub enum Category {
     Scenery,
     /// `Category:Featured pictures taken underwater`.
     Underwater,
+    /// `Category:Featured abstract photos`.
+    Abstract,
+    /// NASA Image and Video Library space imagery.
+    Space,
 }
 
 impl Category {
     /// Every category, in cache/query order.
-    pub const ALL: [Category; 6] = [
+    pub const ALL: [Category; 8] = [
         Category::Nature,
         Category::Water,
         Category::Cityscapes,
         Category::Earth,
         Category::Scenery,
         Category::Underwater,
+        Category::Abstract,
+        Category::Space,
     ];
 
     /// The lowercase directory name and JSON discriminator.
@@ -51,10 +81,14 @@ impl Category {
             Category::Earth => "earth",
             Category::Scenery => "scenery",
             Category::Underwater => "underwater",
+            Category::Abstract => "abstract",
+            Category::Space => "space",
         }
     }
 
-    /// The exact Commons category title the query asks for.
+    /// The exact Commons category title the query asks for. Space is not a
+    /// Commons category; its stable title is the NASA collection name and the
+    /// live source routes it to [`NasaSource`](crate::nasa::NasaSource).
     pub const fn commons_title(self) -> &'static str {
         match self {
             Category::Nature => "Category:Featured pictures of nature",
@@ -63,6 +97,8 @@ impl Category {
             Category::Earth => "Category:Featured pictures of Earth from space",
             Category::Scenery => "Category:Featured pictures of landscapes",
             Category::Underwater => "Category:Featured pictures taken underwater",
+            Category::Abstract => "Category:Featured abstract photos",
+            Category::Space => "NASA Image and Video Library",
         }
     }
 
@@ -75,12 +111,25 @@ impl Category {
             Category::Earth => "Earth",
             Category::Scenery => "Scenery",
             Category::Underwater => "Underwater",
+            Category::Abstract => "Abstract",
+            Category::Space => "Space",
+        }
+    }
+
+    /// The provider that owns this category.
+    pub const fn source(self) -> SourceKind {
+        match self {
+            Category::Space => SourceKind::Nasa,
+            _ => SourceKind::Wikimedia,
         }
     }
 
     /// Look a category up by slug, Commons title, or label (case-insensitive).
     pub fn parse(text: &str) -> Option<Category> {
         let text = text.trim();
+        if text.eq_ignore_ascii_case("nasa") {
+            return Some(Category::Space);
+        }
         Category::ALL.into_iter().find(|category| {
             category.slug().eq_ignore_ascii_case(text)
                 || category.commons_title().eq_ignore_ascii_case(text)
@@ -115,26 +164,34 @@ impl Status {
     }
 }
 
-/// One cached Featured picture: the local file plus the attribution the pane
+/// One cached Featured picture: the local files plus the attribution the pane
 /// must display.
 ///
-/// `source_url` is the normalized (utm-stripped) thumbnail URL the bytes came
-/// from; `local_path` is where they were written, or `None` when the download
-/// failed. `fetched_at` is Unix seconds.
+/// `source_url` is the normalized thumbnail URL the grid uses; `full_url` is
+/// the full-resolution URL applied on demand (equal to `source_url` for
+/// Wikimedia items, which are downloaded in full during the catalogue fetch).
+/// `thumb_path` is the cached grid image; `local_path` is the full-resolution
+/// local file, or `None` for a deferred item that has not been applied yet.
+/// `fetched_at` is Unix seconds.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WallpaperItem {
-    /// The Commons `pageid`, the dedupe key.
+    /// The stable numeric id: the Commons `pageid`, or a stable hash of the
+    /// NASA `nasa_id`. It is the cache filename and the D-Bus `FetchItem` key.
     pub pageid: u64,
-    /// The file title (`File:…`).
+    /// The provider spelling (`wikimedia` / `nasa`). Older indexes default to
+    /// Wikimedia.
+    #[serde(default = "default_provider")]
+    pub provider: String,
+    /// The file title (`File:…` or the NASA title).
     pub title: String,
     /// The artist/author, HTML stripped.
     pub artist: String,
-    /// The license short name (`CC BY-SA 4.0`, `Public domain`, …).
+    /// The license short name (`CC BY-SA 4.0`, `Public domain (NASA)`, …).
     pub license_short_name: String,
     /// The license URL.
     pub license_url: String,
-    /// The Commons file page URL.
+    /// The file page URL.
     pub page_url: String,
     /// The description, HTML stripped.
     pub description: String,
@@ -146,13 +203,25 @@ pub struct WallpaperItem {
     pub height: u32,
     /// The MIME type (`image/jpeg`, …).
     pub mime: String,
-    /// The normalized source (thumbnail) URL.
+    /// The normalized thumbnail URL the grid uses.
     pub source_url: String,
-    /// The local cache path when the download succeeded.
+    /// The full-resolution URL used when the item is applied. Empty means the
+    /// item is already local and no on-demand download is needed.
+    #[serde(default)]
+    pub full_url: String,
+    /// The local grid-thumbnail path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumb_path: Option<PathBuf>,
+    /// The local full-resolution path when the download succeeded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_path: Option<PathBuf>,
     /// When this item was fetched, Unix seconds.
     pub fetched_at: u64,
+}
+
+/// The provider spelling for an index written before providers were recorded.
+fn default_provider() -> String {
+    SourceKind::Wikimedia.as_str().to_owned()
 }
 
 impl WallpaperItem {
@@ -237,12 +306,34 @@ mod tests {
             Category::Underwater.commons_title(),
             "Category:Featured pictures taken underwater"
         );
+        assert_eq!(
+            Category::Abstract.commons_title(),
+            "Category:Featured abstract photos"
+        );
+        assert_eq!(
+            Category::Space.commons_title(),
+            "NASA Image and Video Library"
+        );
+    }
+
+    #[test]
+    fn only_space_is_owned_by_nasa() {
+        for category in Category::ALL {
+            let expected = if category == Category::Space {
+                SourceKind::Nasa
+            } else {
+                SourceKind::Wikimedia
+            };
+            assert_eq!(category.source(), expected);
+        }
+        assert_eq!(Category::parse("nasa"), Some(Category::Space));
     }
 
     #[test]
     fn featured_default_is_the_first_nature_entry_in_fetch_order() {
         let mk = |pageid, category| WallpaperItem {
             pageid,
+            provider: SourceKind::Wikimedia.as_str().to_owned(),
             title: String::new(),
             artist: String::new(),
             license_short_name: String::new(),
@@ -254,6 +345,8 @@ mod tests {
             height: 1,
             mime: "image/jpeg".to_owned(),
             source_url: String::new(),
+            full_url: String::new(),
+            thumb_path: None,
             local_path: None,
             fetched_at: 0,
         };

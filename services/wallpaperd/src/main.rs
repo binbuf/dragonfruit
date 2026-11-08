@@ -24,7 +24,7 @@ use dragonfruit_wallpaperd::cache::CacheLayout;
 use dragonfruit_wallpaperd::dbus;
 use dragonfruit_wallpaperd::defaults;
 use dragonfruit_wallpaperd::provider::{now_secs, Provider, ServiceState};
-use dragonfruit_wallpaperd::source::{ContentSource, UreqHttp, WikipediaSource};
+use dragonfruit_wallpaperd::source::{ContentSource, LiveSource};
 
 fn main() -> ExitCode {
     let mut print_builtin = false;
@@ -89,7 +89,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let source: Arc<dyn ContentSource> = Arc::new(WikipediaSource::new(UreqHttp::new()));
+    let source: Arc<dyn ContentSource> = Arc::new(LiveSource::new());
     let state = ServiceState::new(source, Provider::load(cache, builtin));
 
     if print_status || preload {

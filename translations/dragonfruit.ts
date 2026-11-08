@@ -5412,6 +5412,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Abstract</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Accent color</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5852,7 +5856,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Dynamic</source>
+        <source>Earth</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6008,10 +6012,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Landscapes</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Language &amp; Region</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6156,6 +6156,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Nature</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Nearby Transfer</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6205,6 +6209,10 @@
     </message>
     <message>
         <source>Online accounts are not installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Online wallpapers</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6436,6 +6444,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Scenery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Schedule</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6616,6 +6628,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Speech recognition</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6732,6 +6748,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Underwater</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Usage limits</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6816,6 +6836,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Water</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Web search</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6849,6 +6873,10 @@
     </message>
     <message>
         <source>Windows</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your Photos</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7851,15 +7879,23 @@ Provider: %2</source>
 <context>
     <name>WallpaperPane</name>
     <message>
+        <source>Abstract</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Add Photo…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Add wallpaper photo</source>
+        <source>Applying</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Apply this wallpaper to every workspace.</source>
+        <source>Applying %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applying…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7875,7 +7911,7 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Choose the lock-screen style and timing.</source>
+        <source>Cityscapes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7883,11 +7919,11 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Current wallpaper</source>
+        <source>Could not apply this wallpaper.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Custom</source>
+        <source>Custom photo</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7895,11 +7931,23 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Downloading</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloading %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Downloading wallpapers</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Featured</source>
+        <source>Downloading…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Earth</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7915,7 +7963,19 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Image credit: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>License: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NASA Image and Video Library</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nature</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7931,11 +7991,19 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open…</source>
+        <source>Photo by %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Photo by %1</source>
+        <source>Refreshing wallpapers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refreshing wallpapers…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scenery</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7943,11 +8011,27 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show All (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Less</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show all %1 wallpapers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show less %1 wallpapers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show on all Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show the clock, date, and seconds on the lock screen.</source>
+        <source>Showing cached wallpapers.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7955,7 +8039,31 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Stretch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The wallpaper could not be downloaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The wallpaper image could not be loaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The wallpaper image is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Underwater</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7964,6 +8072,22 @@ Provider: %2</source>
     </message>
     <message>
         <source>View file page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>View on NASA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Water</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wikimedia Commons Featured Pictures</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your Photos</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
