@@ -54,16 +54,23 @@
 mod adapter;
 mod model;
 mod privacy;
+mod security;
 mod source;
 
 pub use adapter::PrivacyAdapter;
 pub use model::{
-    table_label, table_rank, AppPermission, KnownTable, PermissionCategory, PermissionResource,
-    PermissionState, PrivacyChange, PrivacySnapshot, KNOWN_TABLES,
+    table_label, table_rank, AppPermission, KnownTable, MacPrivacyCategory, MappedApp,
+    MappedCategory, PermissionCategory, PermissionResource, PermissionState, PrivacyBinding,
+    PrivacyChange, PrivacySnapshot, KNOWN_TABLES, MAC_PRIVACY_CATEGORIES,
 };
 pub use privacy::{
     apps_from_lookup, HostPrivacy, PERMISSION_STORE_INTERFACE, PERMISSION_STORE_PATH,
     PERMISSION_STORE_SERVICE,
+};
+pub use security::{
+    read_host_security, security_fixture, AdvancedRowData, EncryptionData, EncryptionDeviceData,
+    ExtensionData, HardeningData, MockSecurity, SecurityAdapter, SecurityData, SecurityOutcome,
+    SecuritySnapshot, SecuritySource, SoftwareSourceData, SoftwareSourcesData,
 };
 pub use source::{
     AppPermissionData, MockPrivacy, PrivacyData, PrivacyOutcome, PrivacySource, ResourceData,

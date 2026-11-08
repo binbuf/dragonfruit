@@ -62,7 +62,7 @@ fn the_privacy_view_exposes_the_categories_and_counts() {
     assert_eq!(view["label"], "4 Apps");
     assert_eq!(view["present"], true);
     assert_eq!(view["appCount"], 4);
-    assert_eq!(view["categoryCount"], 14);
+    assert_eq!(view["categoryCount"], 15);
     // The curated order: Camera before Location before Notifications.
     assert_eq!(view["categories"][0]["id"], "devices");
     assert_eq!(
@@ -89,7 +89,7 @@ fn an_empty_store_is_available_but_not_present() {
     assert_eq!(view["state"], "available");
     assert_eq!(view["present"], false);
     assert_eq!(view["label"], "No App Permissions");
-    assert_eq!(view["categories"].as_array().unwrap().len(), 14);
+    assert_eq!(view["categories"].as_array().unwrap().len(), 15);
 }
 
 #[test]
@@ -104,8 +104,8 @@ fn the_permission_writes_apply_once_and_report_denials() {
         host.delete_permission("notifications", "notification", "org.example.Calendar")["outcome"],
         "applied"
     );
-    assert_eq!(host.adapter().source().permission_sets(), 1);
-    assert_eq!(host.adapter().source().permission_deletes(), 1);
+    assert_eq!(host.adapter().source().lock().permission_sets(), 1);
+    assert_eq!(host.adapter().source().lock().permission_deletes(), 1);
 
     let mut denied =
         PrivacyHost::new(MockPrivacy::present(data()).deny_writes("portal: not authorized"));

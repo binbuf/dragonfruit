@@ -45,7 +45,7 @@ Item {
             compare(SettingsPanes.catalog[SettingsPanes.catalog.length - 1].id,
                     "game-controllers");
             // Only panes whose content has landed are advertised (no half panes).
-            compare(SettingsPanes.shippedPanes.length, 26);
+            compare(SettingsPanes.shippedPanes.length, 27);
         }
 
         // -- Category tiles (T-19.1b) -------------------------------------------
@@ -113,7 +113,7 @@ Item {
         function test_shell_opens_with_sidebar_and_search() {
             var shell = make();
             compare(shell.currentPaneId, "appearance");
-            compare(shell.visiblePanes.length, 26);
+            compare(shell.visiblePanes.length, 27);
             verify(shell.searchField !== null);
             verify(shell.sidebar !== null);
             verify(shell.titleBar !== null);
@@ -214,7 +214,7 @@ Item {
                  "appearance", "accessibility", "control-center", "menu-bar",
                  "search", "privacy", "desktop-dock", "mission-control",
                  "displays", "wallpaper", "screen-saver", "notifications",
-                 "sound", "focus", "lock-screen", "users-groups", "printers",
+                 "sound", "focus", "lock-screen", "biometrics", "users-groups", "printers",
                  "keyboard", "mouse", "trackpad"]));
         }
 

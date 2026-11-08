@@ -55,7 +55,9 @@
 
 mod accounts;
 mod adapter;
+mod biometrics;
 mod model;
+mod online;
 mod source;
 
 pub use accounts::{
@@ -63,7 +65,22 @@ pub use accounts::{
     ACCOUNTS_INTERFACE, ACCOUNTS_ROOT, ACCOUNTS_SERVICE, PROPERTIES_INTERFACE, USER_INTERFACE,
 };
 pub use adapter::AccountsAdapter;
+pub use biometrics::{
+    biometrics_fixture, cancel_host_enrollment, change_host_password, delete_host_finger,
+    finger_label, read_host_biometrics, start_host_enrollment, BiometricsAdapter, BiometricsData,
+    BiometricsHostState, BiometricsOutcome, BiometricsSnapshot, BiometricsSource, EnrollmentData,
+    FingerprintDeviceData, MockBiometrics, PamData, PasswordData, FINGERS, FPRINT_DEVICE_INTERFACE,
+    FPRINT_MANAGER_INTERFACE, FPRINT_MANAGER_PATH, FPRINT_SERVICE, PAM_FPRINTD_MODULE,
+};
 pub use model::{Account, AccountsChange, AccountsSnapshot, Group};
+pub use online::{
+    add_host_online_account, online_accounts_fixture, read_host_online_accounts,
+    remove_host_online_account, set_host_online_account_sync, MockOnlineAccounts,
+    OnlineAccountData, OnlineAccountsAdapter, OnlineAccountsData, OnlineAccountsOutcome,
+    OnlineAccountsSnapshot, OnlineAccountsSource, OnlineCapabilityData, OnlineProviderData,
+    GOA_ACCOUNT_INTERFACE, GOA_MANAGER_INTERFACE, GOA_MANAGER_PATH, GOA_SERVICE,
+    ONLINE_CAPABILITIES,
+};
 pub use source::{
     AccountData, AccountOutcome, AccountSource, AccountType, AccountsData, GroupData, MockAccounts,
     PasswordMode,

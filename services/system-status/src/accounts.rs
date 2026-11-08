@@ -18,28 +18,39 @@
 //! successful action, and the read state stays the single source of truth.
 
 use dragonfruit_account_adapter::{
-    Account, AccountOutcome, AccountSource, AccountType, AccountsAdapter, AccountsSnapshot, Group,
+    Account, AccountOutcome, AccountSource, AccountType, AccountsAdapter, AccountsSnapshot,
+    BiometricsAdapter, BiometricsOutcome, BiometricsSnapshot, BiometricsSource, Group,
+    OnlineAccountsAdapter, OnlineAccountsOutcome, OnlineAccountsSnapshot, OnlineAccountsSource,
     PasswordMode,
 };
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
+use crate::shared::SharedSource;
+
 /// The `kind` discriminator the view carries, so one decode path can reject a
 /// payload from an unexpected interface.
 const KIND_ACCOUNTS: &str = "accounts";
+const KIND_BIOMETRICS: &str = "biometrics";
+const KIND_ONLINE_ACCOUNTS: &str = "online-accounts";
 
-/// The bridge host for the Users and Groups adapter: one state path and the
-/// explicit account/group writes the Settings pane offers.
+/// The bridge host for the account services: Users & Groups, Biometrics &
+/// Password, and Online Accounts share one host-stack source (T228).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccountsHost<S> {
-    adapter: AccountsAdapter<S>,
+    adapter: AccountsAdapter<SharedSource<S>>,
+    biometrics: BiometricsAdapter<SharedSource<S>>,
+    online: OnlineAccountsAdapter<SharedSource<S>>,
 }
 
-impl<S: AccountSource> AccountsHost<S> {
+impl<S: AccountSource + BiometricsSource + OnlineAccountsSource + Send> AccountsHost<S> {
     /// A host over a host-stack source.
     pub fn new(source: S) -> Self {
+        let shared = SharedSource::new(source);
         AccountsHost {
-            adapter: AccountsAdapter::new(source),
+            adapter: AccountsAdapter::new(shared.clone()),
+            biometrics: BiometricsAdapter::new(shared.clone()),
+            online: OnlineAccountsAdapter::new(shared),
         }
     }
 
@@ -47,6 +58,23 @@ impl<S: AccountSource> AccountsHost<S> {
     /// action; never a poll.
     pub fn refresh(&mut self) {
         self.adapter.refresh();
+        self.biometrics.refresh();
+        self.online.refresh();
+    }
+
+    /// Re-read only the user/group half.
+    pub fn refresh_accounts(&mut self) {
+        self.adapter.refresh();
+    }
+
+    /// Re-read only the biometrics half.
+    pub fn refresh_biometrics(&mut self) {
+        self.biometrics.refresh();
+    }
+
+    /// Re-read only the online-accounts half.
+    pub fn refresh_online_accounts(&mut self) {
+        self.online.refresh();
     }
 
     /// The Users and Groups view the pane and tile render.
@@ -54,9 +82,64 @@ impl<S: AccountSource> AccountsHost<S> {
         accounts_view(&self.adapter)
     }
 
+    /// The Biometrics and Password view.
+    pub fn biometrics_view(&self) -> Value {
+        biometrics_view(&self.biometrics)
+    }
+
+    /// The Online Accounts view.
+    pub fn online_accounts_view(&self) -> Value {
+        online_accounts_view(&self.online)
+    }
+
     /// The view as a JSON string (the D-Bus `State()` payload).
     pub fn state(&self) -> String {
         self.view().to_string()
+    }
+
+    /// The Biometrics view as JSON.
+    pub fn biometrics_state(&self) -> String {
+        self.biometrics_view().to_string()
+    }
+
+    /// The Online Accounts view as JSON.
+    pub fn online_accounts_state(&self) -> String {
+        self.online_accounts_view().to_string()
+    }
+
+    /// Start enrolling `finger`.
+    pub fn start_enrollment(&mut self, finger: &str) -> Value {
+        biometrics_report(self.biometrics.start_enrollment(finger))
+    }
+
+    /// Stop the in-flight enrollment.
+    pub fn cancel_enrollment(&mut self) -> Value {
+        biometrics_report(self.biometrics.cancel_enrollment())
+    }
+
+    /// Delete `finger`.
+    pub fn delete_finger(&mut self, finger: &str) -> Value {
+        biometrics_report(self.biometrics.delete_finger(finger))
+    }
+
+    /// Change the current user's password.
+    pub fn change_password(&mut self, password: &str) -> Value {
+        biometrics_report(self.biometrics.change_password(password))
+    }
+
+    /// Add an online account.
+    pub fn add_online_account(&mut self, provider: &str, identity: &str) -> Value {
+        online_accounts_report(self.online.add_account(provider, identity))
+    }
+
+    /// Remove an online account.
+    pub fn remove_online_account(&mut self, id: &str) -> Value {
+        online_accounts_report(self.online.remove_account(id))
+    }
+
+    /// Set one online-account sync capability.
+    pub fn set_online_account_sync(&mut self, id: &str, capability: &str, enabled: bool) -> Value {
+        online_accounts_report(self.online.set_sync(id, capability, enabled))
     }
 
     /// Create a user. One explicit write; an unknown account-type id is a
@@ -113,14 +196,25 @@ impl<S: AccountSource> AccountsHost<S> {
         account_report(self.adapter.set_group_members(name, &members))
     }
 
-    /// The adapter (read-only), for tests and introspection.
-    pub fn adapter(&self) -> &AccountsAdapter<S> {
+    /// The Users & Groups adapter (read-only), for tests and introspection.
+    pub fn adapter(&self) -> &AccountsAdapter<SharedSource<S>> {
         &self.adapter
     }
 
-    /// The adapter, mutably (mostly for tests that drive a mock source).
-    pub fn adapter_mut(&mut self) -> &mut AccountsAdapter<S> {
+    /// The Users & Groups adapter, mutably (mostly for tests that drive a
+    /// mock source).
+    pub fn adapter_mut(&mut self) -> &mut AccountsAdapter<SharedSource<S>> {
         &mut self.adapter
+    }
+
+    /// The biometrics adapter (read-only).
+    pub fn biometrics_adapter(&self) -> &BiometricsAdapter<SharedSource<S>> {
+        &self.biometrics
+    }
+
+    /// The online-accounts adapter (read-only).
+    pub fn online_adapter(&self) -> &OnlineAccountsAdapter<SharedSource<S>> {
+        &self.online
     }
 }
 
@@ -253,6 +347,176 @@ pub fn password_mode_label(mode: PasswordMode) -> &'static str {
     mode.label()
 }
 
+/// Build the Biometrics and Password view from an adapter.
+pub fn biometrics_view<S: BiometricsSource>(adapter: &BiometricsAdapter<S>) -> Value {
+    let state = adapter.state();
+    if state.is_unavailable() {
+        return json!({ "kind": KIND_BIOMETRICS, "state": "unavailable" });
+    }
+    if let Some(error) = state.error() {
+        return json!({
+            "kind": KIND_BIOMETRICS,
+            "state": "error",
+            "error": error.message(),
+        });
+    }
+    let Some(snapshot) = state.snapshot() else {
+        return json!({ "kind": KIND_BIOMETRICS, "state": "unavailable" });
+    };
+    biometrics_snapshot_view(snapshot)
+}
+
+/// Build the Biometrics view from an already-decoded snapshot.
+pub fn biometrics_snapshot_view(snapshot: &BiometricsSnapshot) -> Value {
+    let device = snapshot.device().map(|device| {
+        let fingers: Vec<Value> = device
+            .enrolled
+            .iter()
+            .map(|finger| {
+                json!({
+                    "id": finger,
+                    "label": dragonfruit_account_adapter::finger_label(finger),
+                })
+            })
+            .collect();
+        json!({
+            "path": device.path,
+            "name": device.name,
+            "scanType": device.scan_type,
+            "enrolled": fingers,
+            "enrolledCount": device.enrolled.len(),
+            "note": device.note,
+        })
+    });
+    let enrolling = snapshot.enrolling().map(|enrollment| {
+        json!({
+            "finger": enrollment.finger,
+            "label": dragonfruit_account_adapter::finger_label(&enrollment.finger),
+            "status": enrollment.status,
+        })
+    });
+    json!({
+        "kind": KIND_BIOMETRICS,
+        "state": "available",
+        "glyph": snapshot.glyph(),
+        "label": snapshot.label(),
+        "user": snapshot.user(),
+        "uid": snapshot.uid(),
+        "fprintdAvailable": snapshot.fprintd_available(),
+        "device": device,
+        "pam": {
+            "available": snapshot.pam().available,
+            "unlock": snapshot.pam().unlock,
+            "auth": snapshot.pam().auth,
+            "files": snapshot.pam().files,
+        },
+        "password": {
+            "available": snapshot.password().available,
+            "method": snapshot.password().method,
+            "note": snapshot.password().note,
+        },
+        "enrolling": enrolling,
+    })
+}
+
+/// The JSON report for a biometrics write.
+pub fn biometrics_report(outcome: BiometricsOutcome) -> Value {
+    match outcome {
+        BiometricsOutcome::Applied => json!({ "outcome": "applied" }),
+        BiometricsOutcome::Denied(note) => json!({ "outcome": "denied", "note": note }),
+        BiometricsOutcome::Absent => json!({ "outcome": "absent" }),
+        BiometricsOutcome::Failed(error) => {
+            json!({ "outcome": "failed", "error": error.message() })
+        }
+    }
+}
+
+/// Build the Online Accounts view from an adapter.
+pub fn online_accounts_view<S: OnlineAccountsSource>(adapter: &OnlineAccountsAdapter<S>) -> Value {
+    let state = adapter.state();
+    if state.is_unavailable() {
+        return json!({ "kind": KIND_ONLINE_ACCOUNTS, "state": "unavailable" });
+    }
+    if let Some(error) = state.error() {
+        return json!({
+            "kind": KIND_ONLINE_ACCOUNTS,
+            "state": "error",
+            "error": error.message(),
+        });
+    }
+    let Some(snapshot) = state.snapshot() else {
+        return json!({ "kind": KIND_ONLINE_ACCOUNTS, "state": "unavailable" });
+    };
+    online_accounts_snapshot_view(snapshot)
+}
+
+/// Build the Online Accounts view from an already-decoded snapshot.
+pub fn online_accounts_snapshot_view(snapshot: &OnlineAccountsSnapshot) -> Value {
+    let providers: Vec<Value> = snapshot
+        .providers()
+        .iter()
+        .map(|provider| {
+            json!({
+                "id": provider.id,
+                "name": provider.name,
+                "icon": provider.icon,
+                "supported": provider.supported,
+            })
+        })
+        .collect();
+    let accounts: Vec<Value> = snapshot
+        .accounts()
+        .iter()
+        .map(|account| {
+            let capabilities: Vec<Value> = account
+                .capabilities
+                .iter()
+                .map(|capability| {
+                    json!({
+                        "id": capability.id,
+                        "label": capability.label,
+                        "enabled": capability.enabled,
+                    })
+                })
+                .collect();
+            json!({
+                "id": account.id,
+                "path": account.path,
+                "provider": account.provider,
+                "providerName": account.provider_name,
+                "identity": account.identity,
+                "presentationIdentity": account.presentation_identity,
+                "locked": account.locked,
+                "attentionNeeded": account.attention_needed,
+                "capabilities": capabilities,
+            })
+        })
+        .collect();
+    json!({
+        "kind": KIND_ONLINE_ACCOUNTS,
+        "state": "available",
+        "glyph": snapshot.glyph(),
+        "label": snapshot.label(),
+        "present": snapshot.present(),
+        "providerCount": providers.len(),
+        "accountCount": accounts.len(),
+        "providers": providers,
+        "accounts": accounts,
+    })
+}
+
+/// The JSON report for an online-accounts write.
+pub fn online_accounts_report(outcome: OnlineAccountsOutcome) -> Value {
+    match outcome {
+        OnlineAccountsOutcome::Applied => json!({ "outcome": "applied" }),
+        OnlineAccountsOutcome::Denied(note) => json!({ "outcome": "denied", "note": note }),
+        OnlineAccountsOutcome::Absent => json!({ "outcome": "absent" }),
+        OnlineAccountsOutcome::Failed(error) => {
+            json!({ "outcome": "failed", "error": error.message() })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +556,97 @@ mod tests {
                 system: false,
             }]),
         }
+    }
+
+    #[test]
+    fn the_biometrics_view_carries_the_reader_pam_and_password() {
+        let mut host = AccountsHost::new(MockAccounts::present(data()).with_biometrics());
+        host.refresh();
+        let view = host.biometrics_view();
+        assert_eq!(view["kind"], "biometrics");
+        assert_eq!(view["state"], "available");
+        assert_eq!(view["fprintdAvailable"], true);
+        assert_eq!(view["device"]["enrolledCount"], 1);
+        assert_eq!(view["pam"]["available"], true);
+        assert_eq!(view["pam"]["unlock"], true);
+        assert_eq!(view["pam"]["auth"], true);
+        assert_eq!(view["password"]["available"], true);
+    }
+
+    #[test]
+    fn a_missing_fprintd_keeps_pam_and_password_live() {
+        let biometrics = dragonfruit_account_adapter::MockBiometrics::with_data(
+            dragonfruit_account_adapter::BiometricsData {
+                user: "dan".to_owned(),
+                uid: 1000,
+                fprintd_available: false,
+                device: None,
+                pam: dragonfruit_account_adapter::PamData {
+                    available: true,
+                    unlock: true,
+                    auth: true,
+                    files: vec!["system-auth".to_owned()],
+                },
+                password: dragonfruit_account_adapter::PasswordData {
+                    available: true,
+                    method: "accountsservice".to_owned(),
+                    note: String::new(),
+                },
+                enrolling: None,
+            },
+        );
+        let mut host =
+            AccountsHost::new(MockAccounts::present(data()).with_biometrics_source(biometrics));
+        host.refresh();
+        let view = host.biometrics_view();
+        assert_eq!(view["state"], "available");
+        assert_eq!(view["fprintdAvailable"], false);
+        assert_eq!(view["device"], serde_json::Value::Null);
+        assert_eq!(view["pam"]["available"], true);
+        assert_eq!(view["password"]["available"], true);
+    }
+
+    #[test]
+    fn a_missing_biometrics_owner_is_an_unavailable_view() {
+        let mut host = AccountsHost::new(MockAccounts::present(data()));
+        host.refresh();
+        assert_eq!(host.biometrics_view()["state"], "unavailable");
+    }
+
+    #[test]
+    fn the_online_accounts_view_carries_providers_accounts_and_sync() {
+        let mut host = AccountsHost::new(MockAccounts::present(data()).with_online_accounts());
+        host.refresh();
+        let view = host.online_accounts_view();
+        assert_eq!(view["kind"], "online-accounts");
+        assert_eq!(view["state"], "available");
+        assert_eq!(view["providerCount"], 2);
+        assert_eq!(view["accountCount"], 1);
+        assert_eq!(view["accounts"][0]["providerName"], "Google");
+        assert_eq!(
+            view["accounts"][0]["capabilities"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+        assert_eq!(
+            host.set_online_account_sync("account-1", "contacts", true)["outcome"],
+            "applied"
+        );
+        host.refresh_online_accounts();
+        assert_eq!(
+            host.online_accounts_view()["accounts"][0]["capabilities"][2]["enabled"],
+            true
+        );
+    }
+
+    #[test]
+    fn an_absent_goa_is_an_unavailable_view() {
+        let mut host = AccountsHost::new(MockAccounts::present(data()));
+        host.refresh();
+        assert_eq!(host.online_accounts_view()["state"], "unavailable");
+        assert_eq!(host.remove_online_account("account-1")["outcome"], "absent");
     }
 
     #[test]
@@ -373,11 +728,11 @@ mod tests {
         assert_eq!(host.set_locked(1000, true)["outcome"], "applied");
         assert_eq!(host.set_automatic_login(1000, true)["outcome"], "applied");
         assert_eq!(host.delete_user(1001)["outcome"], "applied");
-        assert_eq!(host.adapter().source().creates(), 1);
-        assert_eq!(host.adapter().source().type_sets(), 1);
-        assert_eq!(host.adapter().source().lock_sets(), 1);
-        assert_eq!(host.adapter().source().auto_login_sets(), 1);
-        assert_eq!(host.adapter().source().deletes(), 1);
+        assert_eq!(host.adapter().source().lock().creates(), 1);
+        assert_eq!(host.adapter().source().lock().type_sets(), 1);
+        assert_eq!(host.adapter().source().lock().lock_sets(), 1);
+        assert_eq!(host.adapter().source().lock().auto_login_sets(), 1);
+        assert_eq!(host.adapter().source().lock().deletes(), 1);
     }
 
     #[test]
@@ -390,9 +745,9 @@ mod tests {
             "applied"
         );
         assert_eq!(host.delete_group("devs")["outcome"], "applied");
-        assert_eq!(host.adapter().source().group_creates(), 1);
-        assert_eq!(host.adapter().source().group_member_sets(), 1);
-        assert_eq!(host.adapter().source().group_deletes(), 1);
+        assert_eq!(host.adapter().source().lock().group_creates(), 1);
+        assert_eq!(host.adapter().source().lock().group_member_sets(), 1);
+        assert_eq!(host.adapter().source().lock().group_deletes(), 1);
     }
 
     #[test]
@@ -403,10 +758,10 @@ mod tests {
         assert_eq!(report["outcome"], "failed");
         assert!(report["error"].as_str().unwrap().contains("superuser"));
         // The write never reached the daemon.
-        assert_eq!(host.adapter().source().type_sets(), 0);
+        assert_eq!(host.adapter().source().lock().type_sets(), 0);
         let report = host.create_user("kim", "Kim", "root-user");
         assert_eq!(report["outcome"], "failed");
-        assert_eq!(host.adapter().source().creates(), 0);
+        assert_eq!(host.adapter().source().lock().creates(), 0);
     }
 
     #[test]

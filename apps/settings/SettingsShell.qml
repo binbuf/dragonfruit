@@ -212,6 +212,10 @@ Item {
         var pane = SettingsPanes.paneById(link.paneId);
         if (pane === null || !pane.shipped)
             return false;
+        // An optional pane whose host is absent is not in the sidebar, so a
+        // deep link must not open it (T228).
+        if (SettingsPanes.indexOf(link.paneId) < 0)
+            return false;
         if (link.rowId.length > 0) {
             var row = SettingsMap.rowFor(link.paneId, link.rowId);
             if (row === null || row.state !== "shipped")
@@ -408,6 +412,10 @@ Item {
             return printersPaneComponent;
         case "privacy":
             return privacyPaneComponent;
+        case "biometrics":
+            return biometricsPaneComponent;
+        case "online-accounts":
+            return onlineAccountsPaneComponent;
         case "accessibility":
             return accessibilityPaneComponent;
         case "wifi":
@@ -660,6 +668,16 @@ Item {
     Component {
         id: privacyPaneComponent
         PrivacyPane { }
+    }
+
+    Component {
+        id: biometricsPaneComponent
+        BiometricsPane { }
+    }
+
+    Component {
+        id: onlineAccountsPaneComponent
+        OnlineAccountsPane { }
     }
 
     Component {

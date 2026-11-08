@@ -527,11 +527,24 @@ the difference.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Allow applications from | Software sources | Popup | distro adapter | Distro/Flathub policy; no fake Gatekeeper |
+| Allow applications from | Software sources | Popup | distro adapter + Flatpak | Distro repositories read-only; Flatpak remotes writable |
 | FileVault | Disk encryption | Info | LUKS adapter | Read-only status; unlock/recovery delegated |
-| Lockdown Mode | Hardening mode | Toggle | `settingsd`/distro adapter | Optional; conservative defaults |
-| Extensions | Extensions | List | portal extensions | Enable/disable |
+| Lockdown Mode | Hardening mode | Info | SELinux/AppArmor + Secure Boot | Read-only status; no fake toggle |
+| Extensions | Extensions | List | portal extensions | Read-only inventory |
 | Advanced… | Advanced… | Sheet | adapters | Firewall, network, etc. |
+
+**T228 status.** The pane renders the fifteen macOS privacy rows mapped to the
+closest portal permission, with the Linux difference on every row and the
+remaining real portal tables under **Other portal permissions**. Per-app state
+is live and writable for the mapped tables; delegated rows name their Linux
+owner and never draw a TCC-style toggle. Security ships Software sources
+(Flatpak remotes writable, distribution repositories read-only), read-only
+Disk encryption (LUKS), read-only Hardening (SELinux/AppArmor + Secure Boot),
+installed portal Extensions (read-only), and the Advanced sheet. The proposed
+Hardening *toggle* and the Extensions *enable/disable* were deliberately
+demoted to read-only status: there is no desktop consumer for a hardening
+preference and portal backend selection is system policy, so a toggle would be
+a dead affordance.
 
 <a id="pane-desktop-dock"></a>
 ### 5.12 Desktop & Dock
@@ -715,6 +728,13 @@ Owner: `fprintd` + PAM + distro adapter. Absence: note; no fingerprint write.
 | Use Touch ID for autofill | Use fingerprint for authentication | Toggle | PAM | Live |
 | Use Touch ID for fast user switching | Fingerprint for user switching | Toggle | PAM/display manager | If supported |
 
+**T228 status.** fprintd lists/enrolls/deletes fingerprints over its system-bus
+API; AccountsService `SetPassword` (polkit-authorized) changes the password and
+the app never stores it. The PAM unlock/authentication rows are read-only
+status rows, hidden when `pam_fprintd.so` is not configured. A host with no
+reader keeps the password half live; a host with no AccountsService keeps the
+fingerprint half live.
+
 <a id="pane-users-groups"></a>
 ### 5.21 Users & Groups
 
@@ -743,6 +763,13 @@ shows an explicit "Online accounts are not installed" note.
 | Add Account… | Add account… | Sheet | GOA | OAuth/provider flow |
 | Mail/Contacts/Calendars/Notes | Sync toggles | Toggles | GOA | Per-account |
 | — | Remove account | Button | GOA | Confirmation |
+
+**T228 status.** The pane is shipped but optional: it appears only while
+`org.gnome.OnlineAccounts` owns its session-bus name. Providers come from the
+installed `.provider` descriptors, accounts/capabilities from GOA's object
+manager, and Add/Remove/sync are explicit GOA writes. No OAuth is
+reimplemented. With GOA absent the sidebar entry, search result, and deep link
+are all gone — not a dead entry.
 
 <a id="pane-printers"></a>
 ### 5.23 Printers & Scanners

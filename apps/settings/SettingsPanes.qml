@@ -199,7 +199,7 @@ QtObject {
           deepLink: "settings://pane/lock-screen",
           absence: "live-on-defaults" },
         { id: "biometrics", title: qsTr("Biometrics & Password"), icon: "general",
-          description: "", shipped: false,
+          description: "", shipped: true,
           owner: "fprintd + PAM + distro adapter",
           deepLink: "settings://pane/biometrics",
           absence: "disabled-with-reason" },
@@ -209,7 +209,7 @@ QtObject {
           deepLink: "settings://pane/users-groups",
           absence: "read-only" },
         { id: "online-accounts", title: qsTr("Online Accounts"), icon: "network",
-          description: "", shipped: false,
+          description: "", shipped: true, optional: true,
           owner: "Online Accounts service",
           deepLink: "settings://pane/online-accounts",
           absence: "delegated" },
@@ -238,9 +238,15 @@ QtObject {
           absence: "disabled-with-reason" }
     ]
 
-    // Panes whose content has landed (the sidebar list).
+    // Panes whose content has landed (the sidebar list). An optional pane is
+    // hidden when its host service is absent: Online Accounts is not a dead
+    // entry on a host without GNOME Online Accounts (T228). df-allow-desktop-name: third-party service name
     readonly property var shippedPanes: root.catalog.filter(function(pane) {
-        return pane.shipped === true;
+        if (pane.shipped !== true)
+            return false;
+        if (pane.optional === true && !Settings.onlineAccountsAvailable)
+            return false;
+        return true;
     })
 
     // Case-insensitive local search over the shipped pane titles, ids, and

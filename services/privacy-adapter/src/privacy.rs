@@ -38,6 +38,7 @@ use zbus::blocking::Connection;
 use zbus::zvariant::OwnedValue;
 
 use crate::model::KNOWN_TABLES;
+use crate::security::{read_host_security, SecurityData, SecurityOutcome, SecuritySource};
 use crate::source::{
     AppPermissionData, PrivacyData, PrivacyOutcome, PrivacySource, ResourceData, TableData,
 };
@@ -133,6 +134,50 @@ impl PrivacySource for HostPrivacy {
         ) {
             Ok(_) => PrivacyOutcome::Applied,
             Err(error) => classify(error),
+        }
+    }
+}
+
+impl SecuritySource for HostPrivacy {
+    fn read_security(&mut self) -> Result<Option<SecurityData>, AdapterError> {
+        read_host_security()
+    }
+
+    fn set_source_enabled(&mut self, id: &str, enabled: bool) -> SecurityOutcome {
+        // Only Flatpak remotes are writable; distribution repositories are
+        // system policy. The id is `flatpak:<name>:<scope>`.
+        let Some(rest) = id.strip_prefix("flatpak:") else {
+            return SecurityOutcome::Denied(
+                "Distribution repositories are managed by system policy.".to_owned(),
+            );
+        };
+        let Some((name, scope)) = rest.rsplit_once(':') else {
+            return SecurityOutcome::Absent;
+        };
+        if name.is_empty() || !matches!(scope, "system" | "user") {
+            return SecurityOutcome::Absent;
+        }
+        let mut command = std::process::Command::new("flatpak");
+        command.args(["remote-modify", &format!("--{scope}")]);
+        command.arg(if enabled { "--enable" } else { "--disable" });
+        command.arg(name);
+        match command.output() {
+            Ok(output) if output.status.success() => SecurityOutcome::Applied,
+            Ok(output) => {
+                let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+                if message.to_lowercase().contains("not authorized")
+                    || message.to_lowercase().contains("polkit")
+                {
+                    SecurityOutcome::Denied(message)
+                } else {
+                    SecurityOutcome::Failed(AdapterError::new(format!(
+                        "flatpak remote-modify: {message}"
+                    )))
+                }
+            }
+            Err(error) => SecurityOutcome::Failed(AdapterError::new(format!(
+                "flatpak remote-modify: {error}"
+            ))),
         }
     }
 }

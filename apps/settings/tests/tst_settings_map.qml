@@ -154,7 +154,8 @@ Item {
         function test_sidebar_order_matches_the_map() {
             var shell = make();
             var expected = SettingsMap.panes.filter(function(pane) {
-                return pane.shipped;
+                return pane.shipped
+                    && (pane.optional !== true || Settings.onlineAccountsAvailable);
             }).map(function(pane) { return pane.id; });
             var actual = shell.visiblePanes.map(function(pane) { return pane.id; });
             compare(ids(actual), ids(expected),

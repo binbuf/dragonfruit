@@ -43,6 +43,8 @@ DbusAccountsClient::DbusAccountsClient(QObject *parent)
                 m_available = true;
                 emit availableChanged(true);
                 refresh();
+                refreshBiometrics();
+                refreshOnlineAccounts();
             });
     connect(m_watcher, &QDBusServiceWatcher::serviceUnregistered, this,
             [this](const QString &) {
@@ -52,8 +54,18 @@ DbusAccountsClient::DbusAccountsClient(QObject *parent)
                     m_view.clear();
                     emit changed(m_view);
                 }
+                if (!m_biometricsView.isEmpty()) {
+                    m_biometricsView.clear();
+                    emit biometricsChanged(m_biometricsView);
+                }
+                if (!m_onlineView.isEmpty()) {
+                    m_onlineView.clear();
+                    emit onlineAccountsChanged(m_onlineView);
+                }
             });
     refresh();
+    refreshBiometrics();
+    refreshOnlineAccounts();
 }
 
 DbusAccountsClient::~DbusAccountsClient() = default;
@@ -65,9 +77,31 @@ bool DbusAccountsClient::available() const
     return iface && iface->isServiceRegistered(m_service);
 }
 
+bool DbusAccountsClient::biometricsAvailable() const
+{
+    return m_available && m_biometricsView.value(QStringLiteral("state")).toString()
+        != QStringLiteral("unavailable");
+}
+
+bool DbusAccountsClient::onlineAccountsAvailable() const
+{
+    return m_available && m_onlineView.value(QStringLiteral("state")).toString()
+        == QStringLiteral("available");
+}
+
 void DbusAccountsClient::refresh()
 {
     call(QStringLiteral("State"), {});
+}
+
+void DbusAccountsClient::refreshBiometrics()
+{
+    call(QStringLiteral("RefreshBiometrics"), {});
+}
+
+void DbusAccountsClient::refreshOnlineAccounts()
+{
+    call(QStringLiteral("RefreshOnlineAccounts"), {});
 }
 
 void DbusAccountsClient::createUser(const QString &userName, const QString &realName,
@@ -111,6 +145,42 @@ void DbusAccountsClient::setGroupMembers(const QString &name, const QStringList 
     call(QStringLiteral("SetGroupMembers"), {name, members});
 }
 
+void DbusAccountsClient::startFingerprintEnrollment(const QString &finger)
+{
+    call(QStringLiteral("StartFingerprintEnrollment"), {finger});
+}
+
+void DbusAccountsClient::cancelFingerprintEnrollment()
+{
+    call(QStringLiteral("CancelFingerprintEnrollment"), {});
+}
+
+void DbusAccountsClient::deleteFingerprint(const QString &finger)
+{
+    call(QStringLiteral("DeleteFingerprint"), {finger});
+}
+
+void DbusAccountsClient::changePassword(const QString &password)
+{
+    call(QStringLiteral("ChangePassword"), {password});
+}
+
+void DbusAccountsClient::addOnlineAccount(const QString &provider, const QString &identity)
+{
+    call(QStringLiteral("AddOnlineAccount"), {provider, identity});
+}
+
+void DbusAccountsClient::removeOnlineAccount(const QString &id)
+{
+    call(QStringLiteral("RemoveOnlineAccount"), {id});
+}
+
+void DbusAccountsClient::setOnlineAccountSync(const QString &id, const QString &capability,
+                                              bool enabled)
+{
+    call(QStringLiteral("SetOnlineAccountSync"), {id, capability, enabled});
+}
+
 void DbusAccountsClient::call(const QString &method, const QVariantList &arguments)
 {
     auto *iface = new QDBusInterface(m_service, m_path, m_interface,
@@ -124,10 +194,22 @@ void DbusAccountsClient::call(const QString &method, const QVariantList &argumen
         return;
     }
     const bool isState = method == QStringLiteral("State");
+    const bool isBiometricsState = method == QStringLiteral("BiometricsState")
+        || method == QStringLiteral("RefreshBiometrics");
+    const bool isOnlineState = method == QStringLiteral("OnlineAccountsState")
+        || method == QStringLiteral("RefreshOnlineAccounts");
+    const bool isBiometricsWrite = method == QStringLiteral("StartFingerprintEnrollment")
+        || method == QStringLiteral("CancelFingerprintEnrollment")
+        || method == QStringLiteral("DeleteFingerprint")
+        || method == QStringLiteral("ChangePassword");
+    const bool isOnlineWrite = method == QStringLiteral("AddOnlineAccount")
+        || method == QStringLiteral("RemoveOnlineAccount")
+        || method == QStringLiteral("SetOnlineAccountSync");
     auto *watcher = new QDBusPendingCallWatcher(
         iface->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, isState, iface, watcher]() {
+            [this, isState, isBiometricsState, isOnlineState, isBiometricsWrite,
+             isOnlineWrite, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;
                 iface->deleteLater();
                 watcher->deleteLater();
@@ -135,10 +217,20 @@ void DbusAccountsClient::call(const QString &method, const QVariantList &argumen
                     return;
                 if (isState)
                     applyReply(reply.value().toUtf8());
-                else
+                else if (isBiometricsState)
+                    applyBiometricsReply(reply.value().toUtf8());
+                else if (isOnlineState)
+                    applyOnlineReply(reply.value().toUtf8());
+                else {
                     // The write reply is the outcome report; the new state is
                     // the host's re-read, never invented here.
-                    refresh();
+                    if (isBiometricsWrite)
+                        refreshBiometrics();
+                    else if (isOnlineWrite)
+                        refreshOnlineAccounts();
+                    else
+                        refresh();
+                }
             });
 }
 
@@ -153,6 +245,32 @@ void DbusAccountsClient::applyReply(const QByteArray &json)
         return;
     m_view = view;
     emit changed(m_view);
+}
+
+void DbusAccountsClient::applyBiometricsReply(const QByteArray &json)
+{
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
+    QVariantMap view;
+    if (parseError.error == QJsonParseError::NoError && document.isObject())
+        view = document.object().toVariantMap();
+    if (view == m_biometricsView)
+        return;
+    m_biometricsView = view;
+    emit biometricsChanged(m_biometricsView);
+}
+
+void DbusAccountsClient::applyOnlineReply(const QByteArray &json)
+{
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
+    QVariantMap view;
+    if (parseError.error == QJsonParseError::NoError && document.isObject())
+        view = document.object().toVariantMap();
+    if (view == m_onlineView)
+        return;
+    m_onlineView = view;
+    emit onlineAccountsChanged(m_onlineView);
 }
 
 // --- MockAccountsClient ----------------------------------------------------
@@ -180,12 +298,46 @@ void MockAccountsClient::resetForTest()
     };
     m_groupsAvailable = true;
     m_nextUid = 1002;
+
+    // T228: the biometrics and online-accounts halves are independent
+    // fixtures, selected by their own environment variables so the users
+    // suite keeps its deterministic two-user stack.
+    m_biometricsPresent = qEnvironmentVariableIsSet("DF_BIOMETRICS_FIXTURE");
+    m_fingers = { QStringLiteral("right-index-finger") };
+    m_pamAvailable = true;
+    m_pamUnlock = true;
+    m_pamAuth = true;
+    m_passwordAvailable = true;
+
+    m_onlinePresent = qEnvironmentVariableIsSet("DF_ONLINE_ACCOUNTS_FIXTURE");
+    m_onlineAccounts = {
+        { QStringLiteral("account-1"), QStringLiteral("google"), QStringLiteral("Google"),
+          QStringLiteral("dan@example.com"),
+          { { QStringLiteral("mail"), true },
+            { QStringLiteral("calendar"), true },
+            { QStringLiteral("contacts"), false } } },
+    };
+
     rebuild();
+    rebuildBiometrics();
+    rebuildOnlineAccounts();
 }
 
 void MockAccountsClient::refresh()
 {
     rebuild();
+    rebuildBiometrics();
+    rebuildOnlineAccounts();
+}
+
+void MockAccountsClient::refreshBiometrics()
+{
+    rebuildBiometrics();
+}
+
+void MockAccountsClient::refreshOnlineAccounts()
+{
+    rebuildOnlineAccounts();
 }
 
 void MockAccountsClient::createUser(const QString &userName, const QString &realName,
@@ -281,6 +433,79 @@ void MockAccountsClient::setGroupMembers(const QString &name, const QStringList 
         if (group.name == name)
             group.members = members;
     rebuild();
+}
+
+void MockAccountsClient::startFingerprintEnrollment(const QString &finger)
+{
+    if (!m_biometricsPresent || finger.isEmpty())
+        return;
+    if (!m_fingers.contains(finger))
+        m_fingers.append(finger);
+    rebuildBiometrics();
+}
+
+void MockAccountsClient::cancelFingerprintEnrollment()
+{
+    if (!m_biometricsPresent)
+        return;
+    rebuildBiometrics();
+}
+
+void MockAccountsClient::deleteFingerprint(const QString &finger)
+{
+    if (!m_biometricsPresent)
+        return;
+    m_fingers.removeAll(finger);
+    rebuildBiometrics();
+}
+
+void MockAccountsClient::changePassword(const QString &password)
+{
+    if (!m_biometricsPresent || password.isEmpty())
+        return;
+    // The fixture records only that the write happened; the password is not
+    // stored anywhere, matching the live AccountsService path.
+    rebuildBiometrics();
+}
+
+void MockAccountsClient::addOnlineAccount(const QString &provider, const QString &identity)
+{
+    if (!m_onlinePresent || provider.isEmpty() || identity.isEmpty())
+        return;
+    OnlineAccount account;
+    account.id = QStringLiteral("account-%1").arg(m_onlineAccounts.size() + 1);
+    account.provider = provider;
+    account.providerName = provider == QStringLiteral("google")
+        ? QStringLiteral("Google") : QStringLiteral("Nextcloud");
+    account.identity = identity;
+    account.capabilities = { { QStringLiteral("mail"), true } };
+    m_onlineAccounts.append(account);
+    rebuildOnlineAccounts();
+}
+
+void MockAccountsClient::removeOnlineAccount(const QString &id)
+{
+    if (!m_onlinePresent)
+        return;
+    for (int i = 0; i < m_onlineAccounts.size(); ++i)
+        if (m_onlineAccounts[i].id == id)
+            m_onlineAccounts.removeAt(i);
+    rebuildOnlineAccounts();
+}
+
+void MockAccountsClient::setOnlineAccountSync(const QString &id, const QString &capability,
+                                              bool enabled)
+{
+    if (!m_onlinePresent)
+        return;
+    for (OnlineAccount &account : m_onlineAccounts) {
+        if (account.id != id)
+            continue;
+        for (QPair<QString, bool> &entry : account.capabilities)
+            if (entry.first == capability)
+                entry.second = enabled;
+    }
+    rebuildOnlineAccounts();
 }
 
 void MockAccountsClient::rebuild()
@@ -386,4 +611,126 @@ void MockAccountsClient::rebuild()
     view.insert(QStringLiteral("groups"), groupArray.toVariantList());
     m_view = view;
     emit changed(m_view);
+}
+
+void MockAccountsClient::rebuildBiometrics()
+{
+    if (!m_biometricsPresent) {
+        m_biometricsView.clear();
+        emit biometricsChanged(m_biometricsView);
+        return;
+    }
+    QJsonArray fingers;
+    for (const QString &finger : m_fingers) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("id"), finger);
+        QString label = finger;
+        label.replace(QLatin1Char('-'), QLatin1Char(' '));
+        if (!label.isEmpty())
+            label[0] = label[0].toUpper();
+        entry.insert(QStringLiteral("label"), label);
+        fingers.append(entry);
+    }
+    QJsonObject device;
+    device.insert(QStringLiteral("path"), QStringLiteral("/net/reactivated/Fprint/Device/0"));
+    device.insert(QStringLiteral("name"), QStringLiteral("Goodix Fingerprint Sensor"));
+    device.insert(QStringLiteral("scanType"), QStringLiteral("press"));
+    device.insert(QStringLiteral("enrolled"), fingers);
+    device.insert(QStringLiteral("enrolledCount"), m_fingers.size());
+    device.insert(QStringLiteral("note"), QString());
+    QJsonObject pam;
+    pam.insert(QStringLiteral("available"), m_pamAvailable);
+    pam.insert(QStringLiteral("unlock"), m_pamUnlock);
+    pam.insert(QStringLiteral("auth"), m_pamAuth);
+    pam.insert(QStringLiteral("files"),
+               QJsonArray::fromStringList({QStringLiteral("system-auth"),
+                                           QStringLiteral("fingerprint-auth")}));
+    QJsonObject password;
+    password.insert(QStringLiteral("available"), m_passwordAvailable);
+    password.insert(QStringLiteral("method"), QStringLiteral("accountsservice"));
+    password.insert(QStringLiteral("note"),
+                    QStringLiteral("The password is changed through the account "
+                                   "service after authorization."));
+
+    QVariantMap view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("biometrics"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("glyph"), QStringLiteral("fingerprint"));
+    view.insert(QStringLiteral("label"),
+                m_fingers.size() == 0 ? QStringLiteral("No Fingerprints")
+                : m_fingers.size() == 1 ? QStringLiteral("1 Fingerprint")
+                                        : QStringLiteral("%1 Fingerprints").arg(m_fingers.size()));
+    view.insert(QStringLiteral("user"), QStringLiteral("dan"));
+    view.insert(QStringLiteral("uid"), 1000);
+    view.insert(QStringLiteral("fprintdAvailable"), true);
+    view.insert(QStringLiteral("device"), device.toVariantMap());
+    view.insert(QStringLiteral("pam"), pam.toVariantMap());
+    view.insert(QStringLiteral("password"), password.toVariantMap());
+    view.insert(QStringLiteral("enrolling"), QVariant());
+    m_biometricsView = view;
+    emit biometricsChanged(m_biometricsView);
+}
+
+void MockAccountsClient::rebuildOnlineAccounts()
+{
+    if (!m_onlinePresent) {
+        m_onlineView.clear();
+        emit onlineAccountsChanged(m_onlineView);
+        return;
+    }
+    QJsonArray providers;
+    const auto provider = [&providers](const QString &id, const QString &name) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("id"), id);
+        entry.insert(QStringLiteral("name"), name);
+        entry.insert(QStringLiteral("icon"), id);
+        entry.insert(QStringLiteral("supported"), true);
+        providers.append(entry);
+    };
+    provider(QStringLiteral("google"), QStringLiteral("Google"));
+    provider(QStringLiteral("nextcloud"), QStringLiteral("Nextcloud"));
+
+    QJsonArray accounts;
+    for (const OnlineAccount &account : m_onlineAccounts) {
+        QJsonArray capabilities;
+        for (const QPair<QString, bool> &capability : account.capabilities) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("id"), capability.first);
+            QString label = capability.first;
+            if (!label.isEmpty())
+                label[0] = label[0].toUpper();
+            entry.insert(QStringLiteral("label"), label);
+            entry.insert(QStringLiteral("enabled"), capability.second);
+            capabilities.append(entry);
+        }
+        QJsonObject entry;
+        entry.insert(QStringLiteral("id"), account.id);
+        entry.insert(QStringLiteral("path"),
+                     QStringLiteral("/org/gnome/OnlineAccounts/Accounts/account_1")); // df-allow-desktop-name: GOA object path
+        entry.insert(QStringLiteral("provider"), account.provider);
+        entry.insert(QStringLiteral("providerName"), account.providerName);
+        entry.insert(QStringLiteral("identity"), account.identity);
+        entry.insert(QStringLiteral("presentationIdentity"), account.identity);
+        entry.insert(QStringLiteral("locked"), false);
+        entry.insert(QStringLiteral("attentionNeeded"), false);
+        entry.insert(QStringLiteral("capabilities"), capabilities);
+        accounts.append(entry);
+    }
+
+    QVariantMap view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("online-accounts"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("glyph"), QStringLiteral("cloud"));
+    view.insert(QStringLiteral("label"),
+                m_onlineAccounts.size() == 0 ? QStringLiteral("No Accounts")
+                : m_onlineAccounts.size() == 1 ? QStringLiteral("1 Account")
+                                                : QStringLiteral("%1 Accounts")
+                                                      .arg(m_onlineAccounts.size()));
+    view.insert(QStringLiteral("present"), !m_onlineAccounts.isEmpty());
+    view.insert(QStringLiteral("providerCount"), providers.size());
+    view.insert(QStringLiteral("accountCount"), accounts.size());
+    view.insert(QStringLiteral("providers"), providers.toVariantList());
+    view.insert(QStringLiteral("accounts"), accounts.toVariantList());
+    m_onlineView = view;
+    emit onlineAccountsChanged(m_onlineView);
 }

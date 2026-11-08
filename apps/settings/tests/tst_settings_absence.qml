@@ -35,8 +35,8 @@ Item {
              "wallpaper", "screen-saver", "wifi", "bluetooth", "network",
              "battery", "storage", "general", "sound", "control-center",
              "search", "keyboard", "mouse", "trackpad", "notifications",
-             "focus", "lock-screen", "menu-bar", "users-groups", "printers",
-             "privacy", "accessibility"]
+             "focus", "lock-screen", "menu-bar", "biometrics", "users-groups",
+             "printers", "privacy", "accessibility"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -89,7 +89,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 26);
+            compare(SettingsPanes.shippedPanes.length, 27);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);

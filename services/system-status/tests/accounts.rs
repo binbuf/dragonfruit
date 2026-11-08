@@ -84,7 +84,7 @@ fn the_account_writes_apply_once_and_report_polkit_denials() {
     assert_eq!(host.set_locked(1000, true)["outcome"], "applied");
     assert_eq!(host.set_automatic_login(1000, true)["outcome"], "applied");
     assert_eq!(host.delete_user(1001)["outcome"], "applied");
-    assert_eq!(host.adapter().source().writes(), 5);
+    assert_eq!(host.adapter().source().lock().writes(), 5);
 
     let mut denied =
         AccountsHost::new(MockAccounts::present(data(true)).deny_writes("polkit: denied"));
@@ -103,9 +103,9 @@ fn the_group_writes_apply_once_through_the_adapter() {
         "applied"
     );
     assert_eq!(host.delete_group("devs")["outcome"], "applied");
-    assert_eq!(host.adapter().source().group_creates(), 1);
-    assert_eq!(host.adapter().source().group_member_sets(), 1);
-    assert_eq!(host.adapter().source().group_deletes(), 1);
+    assert_eq!(host.adapter().source().lock().group_creates(), 1);
+    assert_eq!(host.adapter().source().lock().group_member_sets(), 1);
+    assert_eq!(host.adapter().source().lock().group_deletes(), 1);
 }
 
 #[test]
@@ -115,7 +115,7 @@ fn an_unknown_account_type_is_a_failure_not_a_guess() {
     let report = host.set_account_type(1000, "superuser");
     assert_eq!(report["outcome"], "failed");
     assert!(report["error"].as_str().unwrap().contains("superuser"));
-    assert_eq!(host.adapter().source().type_sets(), 0);
+    assert_eq!(host.adapter().source().lock().type_sets(), 0);
 }
 
 #[test]

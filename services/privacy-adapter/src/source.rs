@@ -29,6 +29,8 @@
 use dragonfruit_system_adapters::AdapterError;
 use serde::Deserialize;
 
+use crate::security::{security_fixture, SecurityData, SecurityOutcome, SecuritySource};
+
 /// One application's stored permissions for a resource.
 ///
 /// The permission strings are opaque to the store and kept verbatim. The
@@ -187,6 +189,10 @@ pub struct MockPrivacy {
     behavior: WriteBehavior,
     reads: u32,
     writes: WriteCounts,
+    security: Option<SecurityData>,
+    security_behavior: WriteBehavior,
+    security_writes: u32,
+    last_security_source: Option<(String, bool)>,
 }
 
 impl MockPrivacy {
@@ -199,10 +205,15 @@ impl MockPrivacy {
             behavior: WriteBehavior::Accept,
             reads: 0,
             writes: WriteCounts::default(),
+            security: None,
+            security_behavior: WriteBehavior::Accept,
+            security_writes: 0,
+            last_security_source: None,
         }
     }
 
-    /// A store that answers with `data`.
+    /// A store that answers with `data` and the deterministic security
+    /// fixture (T228).
     pub fn present(data: PrivacyData) -> Self {
         MockPrivacy {
             present: true,
@@ -211,7 +222,25 @@ impl MockPrivacy {
             behavior: WriteBehavior::Accept,
             reads: 0,
             writes: WriteCounts::default(),
+            security: Some(security_fixture()),
+            security_behavior: WriteBehavior::Accept,
+            security_writes: 0,
+            last_security_source: None,
         }
+    }
+
+    /// A store that answers with `data` and no security owner.
+    pub fn present_privacy_only(data: PrivacyData) -> Self {
+        let mut mock = MockPrivacy::present(data);
+        mock.security = None;
+        mock
+    }
+
+    /// No PermissionStore, but a security host that answers with the fixture.
+    pub fn present_security_only() -> Self {
+        let mut mock = MockPrivacy::absent();
+        mock.security = Some(security_fixture());
+        mock
     }
 
     /// A store that fails every read (e.g. the daemon went unresponsive).
@@ -223,6 +252,10 @@ impl MockPrivacy {
             behavior: WriteBehavior::Accept,
             reads: 0,
             writes: WriteCounts::default(),
+            security: None,
+            security_behavior: WriteBehavior::Accept,
+            security_writes: 0,
+            last_security_source: None,
         }
     }
 
@@ -281,6 +314,45 @@ impl MockPrivacy {
     /// prove a write is one explicit call, never a loop.
     pub fn writes(&self) -> u32 {
         self.writes.total()
+    }
+
+    /// Make every security write fail with `message`.
+    pub fn fail_security_writes(mut self, message: impl Into<String>) -> Self {
+        self.security_behavior = WriteBehavior::Fail(AdapterError::new(message));
+        self
+    }
+
+    /// Make every security write a policy denial with `note`.
+    pub fn deny_security_writes(mut self, note: impl Into<String>) -> Self {
+        self.security_behavior = WriteBehavior::Deny(note.into());
+        self
+    }
+
+    /// The security host publishes fresh state.
+    pub fn push_security(&mut self, data: SecurityData) {
+        self.security = Some(data);
+    }
+
+    /// The security host goes away.
+    pub fn kill_security(&mut self) {
+        self.security = None;
+    }
+
+    /// The security host comes back (serving the last state, if any).
+    pub fn restart_security(&mut self) {
+        if self.security.is_none() {
+            self.security = Some(security_fixture());
+        }
+    }
+
+    /// How many security writes the source has accepted.
+    pub fn security_writes(&self) -> u32 {
+        self.security_writes
+    }
+
+    /// The last security source write, for tests.
+    pub fn last_security_source(&self) -> Option<&(String, bool)> {
+        self.last_security_source.as_ref()
     }
 
     fn read_outcome(&self) -> Result<(), AdapterError> {
@@ -371,6 +443,49 @@ impl PrivacySource for MockPrivacy {
             }
         }
         outcome
+    }
+}
+
+impl SecuritySource for MockPrivacy {
+    fn read_security(&mut self) -> Result<Option<SecurityData>, AdapterError> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        Ok(self.security.clone())
+    }
+
+    fn set_source_enabled(&mut self, id: &str, enabled: bool) -> SecurityOutcome {
+        if self.security.is_none() {
+            return SecurityOutcome::Absent;
+        }
+        if let Some(error) = &self.failure {
+            return SecurityOutcome::Failed(error.clone());
+        }
+        match &self.security_behavior {
+            WriteBehavior::Accept => {}
+            WriteBehavior::Deny(note) => return SecurityOutcome::Denied(note.clone()),
+            WriteBehavior::Fail(error) => return SecurityOutcome::Failed(error.clone()),
+        }
+        let Some(data) = self.security.as_mut() else {
+            return SecurityOutcome::Absent;
+        };
+        let Some(source) = data
+            .software_sources
+            .sources
+            .iter_mut()
+            .find(|source| source.id == id)
+        else {
+            return SecurityOutcome::Absent;
+        };
+        if !source.writable {
+            return SecurityOutcome::Denied(
+                "Distribution repositories are managed by system policy.".to_owned(),
+            );
+        }
+        source.enabled = enabled;
+        self.security_writes += 1;
+        self.last_security_source = Some((id.to_owned(), enabled));
+        SecurityOutcome::Applied
     }
 }
 

@@ -290,7 +290,7 @@ Item {
         function test_deep_link_rejects_unknown_targets() {
             var shell = make();
             verify(!shell.deepLink("settings://pane/no-such-pane"));
-            verify(!shell.deepLink("settings://pane/biometrics"));
+            verify(!shell.deepLink("settings://pane/online-accounts"));
             verify(!shell.deepLink("settings://pane/appearance/row/no-such-row"));
             verify(!shell.deepLink("https://example.org/pane/appearance"));
             compare(shell.currentPaneId, "appearance");
