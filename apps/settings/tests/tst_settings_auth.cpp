@@ -287,5 +287,5 @@ private:
     FakeAuthority m_authority;
 };
 
-QTEST_MAIN(TestSettingsAuth)
+QTEST_GUILESS_MAIN(TestSettingsAuth)
 #include "tst_settings_auth.moc"
