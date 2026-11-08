@@ -17,9 +17,11 @@ make dist FORMATS=deb
 This is an early binary asset, not a `debian/` source package. T165 still owns
 Debian policy, source packaging, and clean-VM validation.
 
-Note for T165: Qt 6.11 availability on Debian vs Fedora is an open
-question (T-01 risks); resolve it there, not by lowering the CMake
-minimum.
+The CMake floor is Qt 6.8, which is the real API floor (`QChronoTimer` in the
+shell), not an arbitrary pin. Debian 13 ships Qt 6.8, so the DEB is built
+there against the system Qt; Ubuntu 25.04+ inherits it. Ubuntu 24.04 and
+Debian 12 ship Qt 6.4 and use the portable bundle. T165 still owns the
+`debian/` source package and policy review.
 
 ## Optional dependency markers (T220)
 

@@ -116,6 +116,36 @@ shared with Debian and recorded in `NOTICE`. Rules:
   starts and is legible on any renderer, and the material degrades honestly (the
   same tier the trace reports).
 
+## Release binary assets
+
+The tagged release assets are binary packages, not official distro packages.
+They follow three rules:
+
+1. **Native dependencies, no bundling.** A DEB/RPM/Arch package declares the
+   Qt, Wayland, systemd, PAM, and portal packages it needs and lets the distro
+   resolve them. Qt and system libraries are never copied inside the package:
+   a bundled Qt would fight the distro's platform plugins, theming, and
+   security updates. Only our own binaries, QML modules, and data are shipped.
+2. **Build on the oldest supported release of each family.** A binary built
+   against the oldest Qt runs on newer releases of the same family (the Qt 6
+   soname is stable across minors). The declared Qt version is derived from
+   the build host (`pkg-config --modversion Qt6Core`), never hard-coded, so a
+   package cannot claim a version its own build host does not provide.
+3. **Install-test every package.** The release workflow installs its own
+   output in the same container and checks the Wayland session entry plus
+   `ldd` on every ELF. A wrong dependency or Qt floor fails the job instead of
+   publishing an unusable asset.
+
+The current binary matrix is Debian 13 (DEB + portable tar), Fedora 43 (RPM),
+and Arch (`pkg.tar.zst`). The shared Qt floor is **6.8**: `QChronoTimer`
+(`shell/src/shellcontroller.cpp`) arrived in 6.8 and `QtQuick.VectorImage`
+(`shell/dock/DockGlyph.qml`) in 6.6. That covers current stable releases
+(Debian 13, Fedora 43+, Ubuntu 25.04+, Arch). Ubuntu 24.04 and Debian 12 ship
+Qt 6.4 and are served by the portable bundle until the floor is lowered (that
+requires replacing `QChronoTimer` and the `VectorImage` fallback). Official
+source packaging per distro remains T164/T165; an Arch `PKGBUILD`/AUR entry is
+part of that later work.
+
 ## Distribution path
 
 1. **COPR** for early testers — Fedora describes COPR as its easy-to-use
@@ -124,7 +154,10 @@ shared with Debian and recorded in `NOTICE`. Rules:
 3. **A Fedora Spin** once genuinely stable — the existence of official Sway
    and COSMIC Spins demonstrates the model.
 
-## Debian / Ubuntu later
+## Debian / Ubuntu official packaging (later)
+
+The tagged release already publishes a Debian binary asset (see above); this
+section is about the official `debian/` source package and policy review.
 
 Most of the software architecture is unchanged on Debian-derived
 distributions because NetworkManager, BlueZ, PipeWire, UPower, D-Bus, Wayland,
@@ -143,4 +176,5 @@ packaging/
 ├── fedora/            # binary RPM spec (T164 owns the source/COPR spec)
 ├── debian/            # binary DEB control/scripts (T165 owns source packaging)
 └── tar/               # portable bundle install/uninstall scripts
+                       # Arch pkg.tar.zst is emitted by scripts/package.sh
 ```

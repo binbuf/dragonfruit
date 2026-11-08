@@ -57,14 +57,18 @@ Options:
                      sanitised git describe value)
   --output DIR       output directory (default: dist)
   --profile NAME     release (default) or debug
-  --formats LIST     comma-separated tar, deb, rpm (default: all three)
+  --formats LIST     comma-separated tar, deb, rpm, arch (default: tar,deb,rpm)
   --no-build         use the already-built tree
   --no-strip         keep debug symbols
   -h, --help         show this help
 
-The DEB needs dpkg-deb (dpkg-dev on Debian/Ubuntu). The RPM needs rpmbuild
-(rpm-build on Fedora; rpm on Debian/Ubuntu). Use --formats tar to build only
-the portable bundle on a host without those tools.
+Build each native package on the oldest release of its family that still has
+the Qt floor (currently Debian 13 / Fedora 43 / Arch): a binary built against
+the oldest Qt runs on newer releases of the same family, and the dependency
+version is derived from the build host, never hard-coded. The DEB needs
+dpkg-deb (dpkg-dev on Debian/Ubuntu). The RPM needs rpmbuild (rpm-build on
+Fedora). The Arch package needs bsdtar and zstd. Use --formats tar to build
+only the portable bundle on a host without those tools.
 EOF
 }
 
@@ -168,11 +172,18 @@ esac
 RPM_VERSION="${VERSION//-/\~}"
 RPM_RELEASE=1
 
+# The binary packages must declare the Qt they were actually built against.
+# Each CI job builds on the oldest supported release of its family, so this
+# stays honest and never hard-codes a version the build host does not provide.
+QT_MIN="$(pkg-config --modversion Qt6Core 2>/dev/null | cut -d. -f1,2 || true)"
+[ -n "$QT_MIN" ] || QT_MIN="6.8"
+
 mkdir -p "$OUTPUT"
 OUTPUT="$(cd "$OUTPUT" && pwd)"
 # Replace assets from a previous version in this output directory; leave any
 # unrelated files the user keeps there alone.
-rm -f "$OUTPUT"/*.tar.gz "$OUTPUT"/*.deb "$OUTPUT"/*.rpm "$OUTPUT"/SHA256SUMS
+rm -f "$OUTPUT"/*.tar.gz "$OUTPUT"/*.deb "$OUTPUT"/*.rpm \
+    "$OUTPUT"/*.pkg.tar.zst "$OUTPUT"/SHA256SUMS
 STAGE="$OUTPUT/stage"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
@@ -221,8 +232,8 @@ done
 IFS=',' read -r -a format_list <<<"$FORMATS"
 for format in "${format_list[@]}"; do
     case "$format" in
-        tar|deb|rpm) ;;
-        *) die "unknown format: $format (expected tar, deb, or rpm)" ;;
+        tar|deb|rpm|arch) ;;
+        *) die "unknown format: $format (expected tar, deb, rpm, or arch)" ;;
     esac
 done
 
@@ -261,8 +272,10 @@ build_deb() {
     cp -a "$STAGE/usr" "$debroot/"
 
     size="$(du -sk "$debroot/usr" | awk '{print $1}')"
-    depends="libc6, libgomp1, libstdc++6, libqt6core6 (>= 6.11), libqt6gui6 (>= 6.11), libqt6quick6 (>= 6.11), libqt6qml6 (>= 6.11), libqt6qmlmodels6 (>= 6.11), libqt6qmlworkerscript6 (>= 6.11), libqt6opengl6 (>= 6.11), libqt6dbus6 (>= 6.11), libqt6network6 (>= 6.11), qt6-wayland (>= 6.11), libwayland-client0, libxkbcommon0, libdrm2, libgbm1, libinput10, libseat1, libudev1, libsystemd0, libdbus-1-3, libegl1, libgl1, libpam0g, systemd, dbus, xdg-desktop-portal, xwayland"
-    recommends="qml6-module-qtquick, qml6-module-qtquick-shapes, qml6-module-qtquick-vectorimage, xdg-desktop-portal-gtk, network-manager, bluez, pipewire, wireplumber, upower, udisks2, polkitd, flatpak, cups, sane-utils, colord, fprintd, accountsservice, gnome-online-accounts, orca, speech-dispatcher, ibus, fcitx5"  # df-allow-desktop-name: distro package names
+    # The QML modules the shell imports at startup are runtime requirements,
+    # not suggestions: a minimal install without them cannot load the shell.
+    depends="libc6, libgomp1, libstdc++6, libqt6core6t64 (>= $QT_MIN) | libqt6core6 (>= $QT_MIN), libqt6gui6 (>= $QT_MIN), libqt6quick6 (>= $QT_MIN), libqt6qml6 (>= $QT_MIN), libqt6qmlmeta6 (>= $QT_MIN), libqt6qmlmodels6 (>= $QT_MIN), libqt6qmlworkerscript6 (>= $QT_MIN), libqt6opengl6 (>= $QT_MIN), libqt6dbus6 (>= $QT_MIN), libqt6network6 (>= $QT_MIN), qt6-wayland (>= $QT_MIN), qml6-module-qtqml (>= $QT_MIN), qml6-module-qtqml-workerscript (>= $QT_MIN), qml6-module-qtquick (>= $QT_MIN), qml6-module-qtquick-window (>= $QT_MIN), qml6-module-qtquick-shapes (>= $QT_MIN), qml6-module-qtquick-vectorimage (>= $QT_MIN), libwayland-client0, libxkbcommon0, libdrm2, libgbm1, libinput10, libseat1, libudev1, libsystemd0, libdbus-1-3, libegl1, libgl1, libopengl0, libpam0g, systemd, dbus, xdg-desktop-portal, xwayland"
+    recommends="xdg-desktop-portal-gtk, network-manager, bluez, pipewire, wireplumber, upower, udisks2, polkitd, flatpak, cups, sane-utils, colord, fprintd, accountsservice, gnome-online-accounts, orca, speech-dispatcher, ibus, fcitx5"  # df-allow-desktop-name: distro package names
     suggests="gnome-software, plasma-discover, snapd, ufw, firewalld, restic, pika-backup, timeshift, tracker, baloo-kf5, recoll, espeak-ng, localsend"  # df-allow-desktop-name: distro package names
 
     sed \
@@ -303,6 +316,7 @@ build_rpm() {
         --define "_topdir $topdir" \
         --define "df_version $RPM_VERSION" \
         --define "df_release $RPM_RELEASE" \
+        --define "df_qt_min $QT_MIN" \
         --define "df_stage $STAGE" \
         --define "df_date $(date -u '+%a %b %d %Y')"
 
@@ -312,18 +326,77 @@ build_rpm() {
     rm -rf "$topdir"
 }
 
+build_arch() {
+    command -v bsdtar >/dev/null 2>&1 \
+        || die "bsdtar not found; install libarchive (bsdtar) or use another format"
+    command -v zstd >/dev/null 2>&1 \
+        || die "zstd not found; install zstd or use another format"
+
+    local pkgdir="$OUTPUT/.arch"
+    # Arch pkgver must not contain '-'; reuse the RPM-sanitised form.
+    local pkgname="dragonfruit-desktop-${RPM_VERSION}-1-${ARCH}.pkg.tar.zst"
+    local size
+
+    say "building $pkgname"
+    rm -rf "$pkgdir"
+    mkdir -p "$pkgdir"
+    cp -a "$STAGE/usr" "$pkgdir/"
+    size="$(du -sb "$pkgdir/usr" | awk '{print $1}')"
+
+    cat >"$pkgdir/.PKGINFO" <<EOF
+# Generated by scripts/package.sh. Do not edit.
+pkgname = dragonfruit-desktop
+pkgbase = dragonfruit-desktop
+pkgver = ${RPM_VERSION}-1
+pkgdesc = Modern Wayland desktop environment
+url = https://github.com/dragonfruit-desktop/dragonfruit
+builddate = $(date +%s)
+packager = Dragonfruit Developers <dragonfruit@users.noreply.github.com>
+size = ${size}
+arch = ${ARCH}
+license = MIT
+depend = glibc
+depend = gcc-libs
+depend = qt6-base
+depend = qt6-declarative
+depend = qt6-wayland
+depend = wayland
+depend = libxkbcommon
+depend = libdrm
+depend = mesa
+depend = libinput
+depend = seatd
+depend = systemd-libs
+depend = dbus
+depend = pam
+depend = xdg-desktop-portal
+depend = xorg-xwayland
+EOF
+
+    # Pacman verifies .MTREE on install; makepkg builds it the same way.
+    ( cd "$pkgdir" \
+        && bsdtar -czf .MTREE --format=mtree \
+            --options='!all,use-set,type,uid,gid,mode,time,size,md5,sha256,link' \
+            .PKGINFO usr )
+    ( cd "$pkgdir" \
+        && tar --zstd -cf "$OUTPUT/$pkgname" .PKGINFO .MTREE usr )
+    rm -rf "$pkgdir"
+}
+
 for format in "${format_list[@]}"; do
     case "$format" in
         tar) build_tar ;;
         deb) build_deb ;;
         rpm) build_rpm ;;
+        arch) build_arch ;;
     esac
 done
 
 (
     cd "$OUTPUT"
     find . -maxdepth 1 -type f \
-        \( -name '*.tar.gz' -o -name '*.deb' -o -name '*.rpm' \) \
+        \( -name '*.tar.gz' -o -name '*.deb' -o -name '*.rpm' \
+           -o -name '*.pkg.tar.zst' \) \
         -printf '%P\n' \
         | LC_ALL=C sort \
         | xargs -r sha256sum >SHA256SUMS
@@ -331,5 +404,6 @@ done
 
 say "assets in $OUTPUT"
 find "$OUTPUT" -maxdepth 1 -type f \
-    \( -name '*.tar.gz' -o -name '*.deb' -o -name '*.rpm' -o -name 'SHA256SUMS' \) \
+    \( -name '*.tar.gz' -o -name '*.deb' -o -name '*.rpm' \
+       -o -name '*.pkg.tar.zst' -o -name 'SHA256SUMS' \) \
     -printf '  %f\n' | LC_ALL=C sort

@@ -21,10 +21,11 @@ PREFIX ?= /usr
 DIST_DIR ?= dist
 # Build the formats the host can actually produce; override with FORMATS=...
 FORMATS ?= $(shell \
-    if command -v dpkg-deb >/dev/null 2>&1 && command -v rpmbuild >/dev/null 2>&1; then echo tar,deb,rpm; \
-    elif command -v dpkg-deb >/dev/null 2>&1; then echo tar,deb; \
-    elif command -v rpmbuild >/dev/null 2>&1; then echo tar,rpm; \
-    else echo tar; fi)
+    formats=tar; \
+    if command -v dpkg-deb >/dev/null 2>&1; then formats=$$formats,deb; fi; \
+    if command -v rpmbuild >/dev/null 2>&1; then formats=$$formats,rpm; fi; \
+    if command -v bsdtar >/dev/null 2>&1 && command -v zstd >/dev/null 2>&1; then formats=$$formats,arch; fi; \
+    echo $$formats)
 VERSION ?=
 DF_TOOLCHAIN ?= $(HOME)/.local/df-toolchain/usr
 DF_DEVROOT ?= $(HOME)/.local/df-devroot/lib64
@@ -1096,9 +1097,9 @@ install: cargo-build
 	$(CARGO) run -p dragonfruit-session -- --install-session $(DESTDIR)$(PREFIX)
 
 # Release assets (T-32/T164/T165): one staging root, then the portable tar.gz,
-# DEB, and binary RPM. `make dist` builds the full tree; `make stage` stops
-# after staging for inspection. FORMATS=tar,deb,rpm selects outputs and
-# VERSION=0.2.0 overrides the git-derived package version.
+# DEB, binary RPM, and Arch package. `make dist` builds the full tree; `make
+# stage` stops after staging for inspection. FORMATS=tar,deb,rpm,arch selects
+# outputs and VERSION=0.2.0 overrides the git-derived package version.
 stage:
 	rm -rf "$(DIST_DIR)/stage"
 	scripts/stage-install.sh --destdir "$(DIST_DIR)/stage" --prefix "$(PREFIX)"

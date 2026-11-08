@@ -1,10 +1,18 @@
 # SPDX-License-Identifier: MIT
 #
 # Release assets: one staged install tree, published as a portable tar.gz,
-# a Debian binary package, a Fedora binary RPM, and a source tarball.
+# a Debian binary package, a Fedora binary RPM, an Arch binary package, and a
+# source tarball.
 #
 # Triggered by a `v*` tag (or a manual dispatch for a dry run). The publish
 # job only runs for tags; manual runs leave the artifacts on the workflow run.
+#
+# Each package is built on the oldest supported release of its family, against
+# that release's own Qt, so the binary runs on newer releases of the same
+# family and the declared dependency version is the one it was built with. No
+# Qt or system library is bundled inside a distro package. The smoke test
+# installs the package in the same container and checks the session entry and
+# that every ELF resolves its shared libraries.
 #
 # These are early-testing binary assets, not official distro packages. T164
 # and T165 still own Fedora review/COPR and Debian policy/source packaging.
@@ -29,10 +37,16 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  tar-deb:
-    name: Portable tar.gz + DEB
+  deb:
+    name: Debian 13 DEB + portable tar
     runs-on: ubuntu-24.04
+    container: debian:13
     steps:
+      - name: Install git for checkout
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
       - uses: actions/checkout@v4
 
       - name: Resolve version
@@ -46,15 +60,17 @@ jobs:
           echo "value=$version" >> "$GITHUB_OUTPUT"
           echo "Building Dragonfruit $version"
 
-      - name: Install native deps
+      - name: Install build deps
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          apt-get update
+          apt-get install -y --no-install-recommends \
             build-essential pkg-config cmake ninja-build \
+            qt6-base-dev qt6-declarative-dev qt6-wayland-dev \
             libxkbcommon-dev libwayland-dev libdrm-dev libgbm-dev \
             libinput-dev libseat-dev libudev-dev libsystemd-dev \
             libdbus-1-dev libegl-dev libgl-dev \
-            xwayland x11-utils dpkg-dev fakeroot binutils
+            xwayland dpkg-dev fakeroot binutils file zstd \
+            curl ca-certificates git
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -62,18 +78,27 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install Qt 6.11
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: "6.11.*"
-          cache: true
-
-      - name: Build release assets
+      - name: Build DEB + tar
         run: |
           scripts/package.sh \
             --version "${{ steps.version.outputs.value }}" \
             --output dist \
             --formats tar,deb
+
+      - name: Install smoke test
+        run: |
+          apt-get install -y ./dist/*.deb
+          dpkg -L dragonfruit-desktop \
+            | grep -qx /usr/share/wayland-sessions/dragonfruit.desktop
+          for b in /usr/bin/dragonfruit-* /usr/bin/xdg-desktop-portal-dragonfruit; do
+            [ -x "$b" ] || continue
+            file "$b" | grep -q ELF || continue
+            if ldd "$b" | grep -q 'not found'; then
+              echo "unresolved shared libraries in $b"
+              ldd "$b"
+              exit 1
+            fi
+          done
 
       - name: Source tarball
         run: |
@@ -102,12 +127,12 @@ jobs:
           if-no-files-found: error
 
   rpm:
-    name: Fedora 44 binary RPM
+    name: Fedora 43 binary RPM
     runs-on: ubuntu-24.04
-    container: fedora:44
+    container: fedora:43
     steps:
       - name: Install git for checkout
-        run: dnf install -y git tar gzip
+        run: dnf install -y git tar gzip ca-certificates
 
       - uses: actions/checkout@v4
 
@@ -130,7 +155,7 @@ jobs:
             wayland-devel libxkbcommon-devel libdrm-devel \
             mesa-libgbm-devel mesa-libEGL-devel libglvnd-devel \
             libinput-devel libseat-devel systemd-devel dbus-devel \
-            rpm-build binutils curl tar gzip findutils
+            rpm-build binutils file curl tar gzip findutils
 
       - name: Install pinned Rust
         run: |
@@ -145,6 +170,21 @@ jobs:
             --output dist \
             --formats rpm
 
+      - name: Install smoke test
+        run: |
+          dnf install -y ./dist/*.rpm
+          rpm -ql dragonfruit-desktop \
+            | grep -qx /usr/share/wayland-sessions/dragonfruit.desktop
+          for b in /usr/bin/dragonfruit-* /usr/bin/xdg-desktop-portal-dragonfruit; do
+            [ -x "$b" ] || continue
+            file "$b" | grep -q ELF || continue
+            if ldd "$b" | grep -q 'not found'; then
+              echo "unresolved shared libraries in $b"
+              ldd "$b"
+              exit 1
+            fi
+          done
+
       - name: Upload RPM artifact
         uses: actions/upload-artifact@v4
         with:
@@ -154,10 +194,79 @@ jobs:
             dist/SHA256SUMS
           if-no-files-found: error
 
+  arch:
+    name: Arch binary package
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - name: Install git for checkout
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "Building Dragonfruit $version"
+
+      - name: Install build deps
+        run: |
+          pacman -S --noconfirm --needed \
+            base-devel pkgconf cmake ninja \
+            qt6-base qt6-declarative qt6-wayland \
+            wayland libxkbcommon libdrm mesa libinput seatd \
+            systemd-libs dbus pam \
+            zstd libarchive file curl tar gzip
+
+      - name: Install pinned Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain 1.98.1
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Build Arch package
+        run: |
+          scripts/package.sh \
+            --version "${{ steps.version.outputs.value }}" \
+            --output dist \
+            --formats arch
+
+      - name: Install smoke test
+        run: |
+          pacman -U --noconfirm dist/*.pkg.tar.zst
+          pacman -Ql dragonfruit-desktop \
+            | grep -q '/usr/share/wayland-sessions/dragonfruit.desktop'
+          for b in /usr/bin/dragonfruit-* /usr/bin/xdg-desktop-portal-dragonfruit; do
+            [ -x "$b" ] || continue
+            file "$b" | grep -q ELF || continue
+            if ldd "$b" | grep -q 'not found'; then
+              echo "unresolved shared libraries in $b"
+              ldd "$b"
+              exit 1
+            fi
+          done
+
+      - name: Upload Arch artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-arch
+          path: |
+            dist/*.pkg.tar.zst
+            dist/SHA256SUMS
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [tar-deb, rpm]
+    needs: [deb, rpm, arch]
     runs-on: ubuntu-latest
     permissions:
       contents: write
