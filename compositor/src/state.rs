@@ -76,7 +76,7 @@ use smithay::wayland::selection::data_device::{
 use smithay::wayland::selection::wlr_data_control::{DataControlHandler, DataControlState};
 use smithay::wayland::selection::SelectionHandler;
 use smithay::wayland::session_lock::{SessionLockHandler, SessionLockManagerState, SessionLocker};
-use smithay::wayland::shell::kde::decoration::{KdeDecorationHandler, KdeDecorationState};
+use smithay::wayland::shell::kde::decoration::{KdeDecorationHandler, KdeDecorationState}; // df-allow-desktop-name
 use smithay::wayland::shell::xdg::{
     decoration::{XdgDecorationHandler, XdgDecorationState}, PopupSurface, PositionerState,
     SurfaceCachedState, ToplevelSurface, XdgShellHandler, XdgShellState, XdgToplevelSurfaceData,
@@ -700,12 +700,12 @@ pub struct DfState {
     dmabuf_formats: Vec<smithay::backend::allocator::Format>,
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
-    /// KDE's legacy server-decoration global. GTK 3 on Wayland reads its
+    /// KDE's legacy server-decoration global. GTK 3 on Wayland reads its // df-allow-desktop-name
     /// manager default mode (not `xdg-decoration`) to decide whether to draw
     /// CSD, so advertising it with `Server` is what lets GTK 3 windows get
     /// the compositor titlebar and its left-side traffic lights.
     pub kde_decoration_state: KdeDecorationState,
-    /// Decoration tier recorded by the KDE server-decoration protocol for
+    /// Decoration tier recorded by the KDE server-decoration protocol for // df-allow-desktop-name
     /// surfaces that have not mapped yet. GTK 3 creates the object before its
     /// first buffer, so the map path consults this before falling back to
     /// `xdg-decoration`.
@@ -1256,11 +1256,11 @@ impl DfState {
             if let Some(toplevel) = window.toplevel() {
                 self.windows.set_app_id(&window, toplevel_app_id(toplevel));
                 self.windows.set_title(&window, toplevel_title(toplevel));
-                // Decoration tier from `xdg-decoration` or KDE's legacy
+                // Decoration tier from `xdg-decoration` or KDE's legacy // df-allow-desktop-name
                 // server-decoration protocol: only a client that negotiated
                 // server-side decoration gets our titlebar; a client that
                 // requested CSD (or created no decoration object) keeps its
-                // own (T-01.1). GTK 3 uses the KDE protocol, and it creates
+                // own (T-01.1). GTK 3 uses the KDE protocol, and it creates // df-allow-desktop-name
                 // the object before the first buffer, so consult the recorded
                 // mode first.
                 let tier = self
@@ -3039,7 +3039,7 @@ impl DfState {
         self.set_decoration_tier(&window, tier);
     }
 
-    /// Record the tier a client selected through KDE's legacy
+    /// Record the tier a client selected through KDE's legacy // df-allow-desktop-name
     /// server-decoration protocol and apply it to a mapped window.
     ///
     /// GTK 3 creates the decoration object before its first buffer, so the
@@ -5458,7 +5458,7 @@ impl KdeDecorationHandler for DfState {
 
     fn release(&mut self, _decoration: &OrgKdeKwinServerDecoration, surface: &WlSurface) {
         self.kde_decorations.remove(surface);
-        // The client no longer participates in the KDE protocol; fall back to
+        // The client no longer participates in the KDE protocol; fall back to // df-allow-desktop-name
         // its xdg-decoration tier instead of keeping a titlebar it released.
         let fallback = self.window_for_surface(surface).and_then(|window| {
             if self.windows.is_closing(&window) {

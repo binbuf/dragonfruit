@@ -548,6 +548,74 @@ set_tests_properties(tst_settings_live PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# T224: the common apply path against a fake owner on a private bus —
+# validation, optimistic apply + revert, service disappearance, and restart
+# resync (including a write queued while the daemon was away).
+qt_add_executable(tst_settings_apply
+    tst_settings_apply.cpp
+)
+target_link_libraries(tst_settings_apply PRIVATE
+    Qt6::QuickTest Qt6::DBus
+    dragonfruit-settings-client
+)
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_settings_apply
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_settings_apply>
+    )
+else()
+    add_test(NAME tst_settings_apply COMMAND tst_settings_apply)
+endif()
+set_tests_properties(tst_settings_apply PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# T224: the privileged-action authorizer against a fake polkit authority on
+# the private bus — allow, deny, cancel, dismissed, authority error, and the
+# wrong-password fixture.
+qt_add_executable(tst_settings_auth
+    tst_settings_auth.cpp
+)
+target_include_directories(tst_settings_auth PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_link_libraries(tst_settings_auth PRIVATE
+    Qt6::QuickTest Qt6::DBus
+    dragonfruit-settings-ui
+)
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_settings_auth
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_settings_auth>
+    )
+else()
+    add_test(NAME tst_settings_auth COMMAND tst_settings_auth)
+endif()
+set_tests_properties(tst_settings_auth PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# T224: the Settings UI half — inline validation/error surface, absence kinds,
+# privileged-action cancellation, and the no-password-field rule. The settings
+# and accounts fixtures keep the cases in-process.
+qt_add_executable(tst_settings_apply_ui
+    tst_settings_apply_ui.cpp
+)
+target_link_libraries(tst_settings_apply_ui PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_apply_ui)
+
+add_test(
+    NAME tst_settings_apply_ui
+    COMMAND tst_settings_apply_ui
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_apply_ui.qml
+)
+set_tests_properties(tst_settings_apply_ui PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_ACCOUNTS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings map/catalog tests (T222): the executable business-logic map agrees
 # with the pane catalog, every visible row has an owner/key/absence path, an
 # unowned row fails validation, omitted panes are absent and documented, and

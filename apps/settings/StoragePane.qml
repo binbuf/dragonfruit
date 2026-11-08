@@ -216,14 +216,11 @@ Item {
             width: parent.width
             visible: !root.ready
 
-            Text {
+            SettingsAbsenceNotice {
                 id: absenceNote
                 objectName: "storageAbsenceNote"
-                width: parent.width
-                text: qsTr("No storage devices are available on this system.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
+                kind: "disabled-with-reason"
+                reason: qsTr("No storage devices are available on this system.")
             }
         }
     }

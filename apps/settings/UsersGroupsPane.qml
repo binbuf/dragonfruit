@@ -83,6 +83,7 @@ Item {
     property alias addGroupCreateButton: addGroupCreateButton
     property alias groupsAbsentNote: groupsAbsentNote
     property alias absenceNote: absenceNote
+    property alias authErrorNote: authErrorNote
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -147,6 +148,22 @@ Item {
         id: content
         width: root.width
         spacing: Theme.primitive.spacing.lg
+
+        // A privileged account write is authorized by polkit. A denial or a
+        // cancelled prompt leaves the account unchanged and lands here; the
+        // app never shows a password field of its own (T224).
+        Text {
+            id: authErrorNote
+            objectName: "usersGroupsAuthError"
+            width: parent.width
+            visible: Settings.accountsError.length > 0
+            text: Settings.accountsError
+            color: Theme.color.danger
+            font.pixelSize: Theme.primitive.font.sizeSm
+            wrapMode: Text.WordWrap
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: Settings.accountsError
+        }
 
         // ── The user list ─────────────────────────────────────────────────
         SettingsGroup {
@@ -419,15 +436,12 @@ Item {
             width: parent.width
             visible: !root.ready
 
-            Text {
+            SettingsAbsenceNotice {
                 id: absenceNote
                 objectName: "usersGroupsAbsenceNote"
-                width: parent.width
-                text: qsTr("The account service is not running, so users and "
-                           + "groups are unavailable.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
+                kind: "read-only"
+                reason: qsTr("The account service is not running, so users and "
+                             + "groups are unavailable.")
             }
         }
     }
@@ -443,6 +457,16 @@ Item {
         contentData: Column {
             width: parent.width
             spacing: Theme.primitive.spacing.sm
+
+            Text {
+                objectName: "userDialogAuthError"
+                width: parent.width
+                visible: Settings.accountsError.length > 0
+                text: Settings.accountsError
+                color: Theme.color.danger
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
 
             SettingsGroup {
                 width: parent.width
@@ -594,6 +618,16 @@ Item {
         contentData: Column {
             width: parent.width
             spacing: Theme.primitive.spacing.sm
+
+            Text {
+                objectName: "addUserAuthError"
+                width: parent.width
+                visible: Settings.accountsError.length > 0
+                text: Settings.accountsError
+                color: Theme.color.danger
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
 
             AccountField {
                 id: addUserNameInput

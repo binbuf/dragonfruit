@@ -46,7 +46,7 @@ const GSETTINGS_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The GTK window-control layout. The colon separates the left and right
 /// sides, so close/minimize/maximize sit on the left and the right side is
-/// empty. The shared constant also feeds the Settings portal's GNOME
+/// empty. The shared constant also feeds the Settings portal's GNOME // df-allow-desktop-name
 /// compatibility namespace, so host and sandboxed apps cannot drift.
 pub const BUTTON_LAYOUT: &str = df_ipc::WINDOW_BUTTON_LAYOUT;
 

@@ -40,7 +40,7 @@ use zbus::zvariant::{Array, OwnedValue};
 pub const APPEARANCE_NAMESPACE: &str = "org.freedesktop.appearance";
 /// The Dragonfruit read-only namespace exposing every settingsd key.
 pub const DESKTOP_NAMESPACE: &str = "org.dragonfruit.desktop";
-/// The standard GNOME compatibility namespace toolkits already query.
+/// The standard GNOME compatibility namespace toolkits already query. // df-allow-desktop-name
 pub const GNOME_WM_NAMESPACE: &str = "org.gnome.desktop.wm.preferences";
 /// The key that carries the window-control layout in [`GNOME_WM_NAMESPACE`].
 pub const GNOME_BUTTON_LAYOUT_KEY: &str = "button-layout";
@@ -187,7 +187,7 @@ impl SettingsSnapshot {
         }
     }
 
-    /// Seed the GNOME compatibility namespace with the desktop's
+    /// Seed the GNOME compatibility namespace with the desktop's // df-allow-desktop-name
     /// window-control layout. This is the value sandboxed Electron/GTK apps
     /// read through the Settings portal; it matches the session's GTK
     /// steering and the compositor's left-side traffic lights.

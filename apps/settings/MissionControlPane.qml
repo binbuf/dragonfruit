@@ -83,16 +83,14 @@ Item {
             width: parent.width
             visible: !Settings.available
 
-            Text {
+            SettingsAbsenceNotice {
                 id: absenceNote
                 objectName: "missionControlAbsenceNote"
-                width: parent.width
-                text: qsTr("The settings daemon is not running, so these "
-                           + "preferences apply from the built-in defaults. "
-                           + "Overview itself is run by the compositor.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
+                kind: "live-on-defaults"
+                showWhenLive: true
+                reason: qsTr("The settings daemon is not running, so these "
+                             + "preferences apply from the built-in defaults. "
+                             + "Overview itself is run by the compositor.")
             }
         }
 

@@ -7,6 +7,7 @@ set_source_files_properties(SettingsPanes.qml PROPERTIES QT_QML_SINGLETON_TYPE T
 set_source_files_properties(SettingsMenu.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(SettingsMap.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(SettingsSearch.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(SettingsAbsence.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_library(dragonfruit-settings-ui STATIC)
 qt_add_qml_module(dragonfruit-settings-ui
@@ -15,6 +16,8 @@ qt_add_qml_module(dragonfruit-settings-ui
     SOURCES
         SettingsBridge.cpp
         SettingsBridge.h
+        SettingsAuthorizer.cpp
+        SettingsAuthorizer.h
         BluetoothClient.cpp
         BluetoothClient.h
         StorageClient.cpp
@@ -43,6 +46,9 @@ qt_add_qml_module(dragonfruit-settings-ui
         SettingsPanes.qml
         SettingsMap.qml
         SettingsSearch.qml
+        SettingsAbsence.qml
+        SettingsAbsenceNotice.qml
+        SettingsKeyRow.qml
         SettingsMenu.qml
         PaneHeader.qml
         AppearancePane.qml
@@ -108,6 +114,9 @@ df_qml_lint(app-settings
     SettingsPanes.qml
     SettingsMap.qml
     SettingsSearch.qml
+    SettingsAbsence.qml
+    SettingsAbsenceNotice.qml
+    SettingsKeyRow.qml
     SettingsMenu.qml
     PaneHeader.qml
     AppearancePane.qml

@@ -279,7 +279,8 @@ is our own, the schema defaults are the documented contract
 ([ADR 0030](adr/0030-settingsd-schema-and-dbus-surface.md)), and a pane that
 showed a "settings unavailable" banner would be a half-pane. When the daemon
 appears, `GetAll` makes its persisted state authoritative; a write made while it
-was down is applied in memory and mirrored when it returns.
+was down survives in memory for the session only and is reconciled away by that
+resync (ADR [0032](adr/0032-shell-settings-client.md)).
 
 The headless half of the matrix is the CI gate:
 
@@ -316,9 +317,11 @@ Two absence families appear, and a pane can mix them:
 - **settingsd-backed controls** (Appearance, Desktop & Dock, Mission Control,
   Displays, Lock Screen, Menu Bar, and the durable halves of Wallpaper, Sound,
   Keyboard/Mouse/Trackpad, Notifications/Focus, Accessibility) stay **live on
-  the schema defaults** with no settingsd. A write lands in memory and is
-  mirrored when the daemon returns ([ADR 0030](adr/0030-settingsd-schema-and-dbus-surface.md));
-  there is no "settings unavailable" banner.
+  the schema defaults** with no settingsd. A write lands in memory for the
+  session and is reported as `deferred`; when the daemon returns, `GetAll`
+  reconciles it away ([ADR 0030](adr/0030-settingsd-schema-and-dbus-surface.md),
+  [ADR 0032](adr/0032-shell-settings-client.md)). There is no "settings
+  unavailable" banner.
 - **adapter-read halves** read a host daemon through the `system-status` bridge
   host ([ADR 0029](adr/0029-system-status-bridge-host.md)). With no host, an
   unowned bus name, or a daemon answering `present: false`, the pane replaces
@@ -373,6 +376,78 @@ pane and tile — is the design's "real masking in a VM when available"
 matrix rather than automated. "No bridge host" is the same
 hidden-everything state on a live session, because the host is a separate
 process.
+
+## Live apply, validation, admin auth, and absence (T224)
+
+Every settingsd-backed control goes through one write path in the shared
+client. `Settings.apply(key, value)` (and its `Settings.set` compatibility
+alias) first runs `SettingsClient::validate` against the same schema mirror the
+owner uses: unknown keys, wrong types, out-of-range numbers, and values outside
+an enum are rejected before anything is written. A valid write is applied
+optimistically on the same event-loop turn, marked `pending`, and sent to
+settingsd. Success clears the state; a failure reverts to the previous value
+and records the owner's message. A monotonic generation per key makes a stale
+reply from an older write harmless, so a dragged slider cannot be clobbered by
+an earlier answer.
+
+The message is part of the row, not a global banner: `SettingsRow.errorText`
+draws it under the label/description, and `SettingsKeyRow` binds that property
+to `Settings.writeErrors[key]`. `Settings.schemaFor(key)` exposes the declared
+type, default, range, and allowed values for a row that wants to size a bounded
+control from the owner's contract. `Settings.stateFor(key)` is
+`idle`/`pending`/`deferred`/`error`.
+
+Privileged account and group actions are authorized by the host polkit
+authority (`CheckAuthorization` with `AllowUserInteraction`). The shell's
+registered polkit agent renders the system prompt and owns the PAM
+conversation; the Settings app never renders a password field. A denial,
+cancellation, wrong password, or unavailable authority leaves the view
+untouched and publishes `Settings.accountsError`, which the Users & Groups pane
+shows next to the affected section. The deterministic fixture seam is
+`Settings.setAuthFixture(...)`; the live path talks to the authority on the
+system bus.
+
+Absence has one policy table, `SettingsAbsence`, with the five design kinds:
+
+| Kind | Controls | Note | Example |
+|---|---|---|---|
+| `live-on-defaults` | visible, enabled | optional | settingsd-backed panes with no daemon |
+| `disabled-with-reason` | visible, inert | required | Bluetooth with no BlueZ/bridge host |
+| `hidden` | not drawn | none | a row that does not exist on this host |
+| `read-only` | visible, inert | required | observable state with no writable owner |
+| `delegated` | not drawn; hand-off action | required | a third-party service's own UI |
+
+`SettingsAbsenceNotice` renders the note/action and exposes the policy
+(`controlsVisible`, `controlsEnabled`, `writable`, `delegated`). A pane keeps
+its own enabling because it can mix a live settingsd half with an absent
+adapter half. The executable map assigns all five kinds to panes or rows;
+`tst_settings_apply_ui` fails if one is unused.
+
+The settingsd restart resync keeps the T-08.3/ADR 0032 contract: a write made
+while the daemon is away is in-memory for the session only and is reported as
+`deferred`; when the daemon returns, `GetAll` is authoritative, the while-down
+value is reconciled away, and the deferred state clears. Other controls keep
+their values, so the pane never loses its live half.
+
+The headless gate is three suites:
+
+- **`tst_settings_apply`** (private `dbus-run-session`, fake owner) covers
+  range/enum/type/unknown-key validation, repeated rejection replacing the
+  message, an owner failure with optimistic apply then revert, service
+  disappearance with deferred writes, and restart resync.
+- **`tst_settings_auth`** (private bus, fake polkit authority) covers allow,
+  deny, cancel, dismissed, authority error, and the wrong-password fixture; it
+  asserts the `AllowUserInteraction` flag and the unix-session subject.
+- **`tst_settings_apply_ui`** (settings + accounts fixtures) covers the inline
+  error, the five absence kinds, every map kind being used, every common row
+  naming a real schema key/control, and cancelled/denied/wrong-password/allow
+  account actions with no password field.
+
+The deterministic visual check is `make t224-settings-apply-capture`
+(`scripts/capture-t224-settings-apply.sh`), writing
+`docs/captures/t224-settings-{live,write-failure,auth-cancel,service-absence}.png`
+through the real Settings shell offscreen. A host session can repeat the same
+four states with the same fixtures.
 
 ## Distro provider interface
 

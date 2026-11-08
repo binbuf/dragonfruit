@@ -8,6 +8,8 @@
 #include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
 #include <QFileInfo>
+#include <QMetaType>
+#include <QTimer>
 
 namespace {
 
@@ -88,6 +90,16 @@ QVariant coerceToSchema(const QString &key, const QVariant &value)
     if (declared.typeId() == QMetaType::Double
             && value.typeId() == QMetaType::LongLong)
         return value.toDouble();
+    if (declared.typeId() == QMetaType::QStringList
+            && value.typeId() == QMetaType::QVariantList) {
+        // QML passes a JS array as QVariantList; the schema/D-Bus type is
+        // `as`, so normalize every element to a string.
+        QStringList list;
+        const QVariantList items = value.toList();
+        for (const QVariant &item : items)
+            list.append(item.toString());
+        return list;
+    }
     return value;
 }
 
@@ -203,7 +215,369 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("lock.showMessageWhenLocked"), false);
     values.insert(QStringLiteral("lock.message"), QString());
     values.insert(QStringLiteral("lock.showPowerButtons"), true);
+    // Revision-7/17 keys the Settings app also writes. Keep this table the
+    // complete schema mirror; a missing key would make a valid write look
+    // unknown to the client-side validator (T224).
+    values.insert(QStringLiteral("dock.pinnedFolders"), QStringList());
+    values.insert(QStringLiteral("printers.defaultPaperSize"),
+                  QStringLiteral("us-letter"));
     return values;
+}
+
+namespace {
+
+// One constrained schema key. `allowed` is the exhaustive enum (empty for
+// free-form text); `hasMin`/`hasMax` bound numeric keys. Mirrors
+// services/settingsd/src/schema.rs; the Rust store remains the final owner,
+// this table only lets the client reject a bad value before it leaves QML.
+struct Constraint {
+    const char *key;
+    const char *const *allowed;
+    int allowedCount;
+    bool hasMin;
+    double min;
+    bool hasMax;
+    double max;
+};
+
+const char *const kDockPosition[] = { "bottom", "left", "right" };
+const char *const kDockAnimation[] = { "genie", "scale", "none" };
+const char *const kTitlebarAction[] = { "zoom", "minimize", "none" };
+const char *const kColorScheme[] = { "light", "dark", "auto" };
+const char *const kWallpaperFit[] = { "fill", "fit", "stretch", "center" };
+const char *const kRotation[] = { "normal", "90", "180", "270" };
+const char *const kScrollMethod[] = { "two-finger", "edge", "button" };
+const char *const kEmojiAction[] = { "emoji", "none" };
+const char *const kHotCorner[] = { "none", "mission-control", "notification-center",
+                                   "desktop-reveal", "lock-screen" };
+const char *const kPreviews[] = { "always", "when-unlocked", "never" };
+const char *const kMenuAutoHide[] = { "never", "always", "full-screen" };
+const char *const kAlertSound[] = { "Chime", "Marimba", "Pulse", "Woodblock", "Breeze" };
+const char *const kEffectsThrough[] = { "output", "alerts" };
+const char *const kPaperSize[] = { "us-letter", "us-legal", "a3", "a4", "a5" };
+
+const Constraint kConstraints[] = {
+    { "dock.size", nullptr, 0, true, 0.0, true, 1.0 },
+    { "dock.magnification", nullptr, 0, true, 0.0, true, 1.0 },
+    { "dock.position", kDockPosition, 3, false, 0, false, 0 },
+    { "dock.minimizedAnimation", kDockAnimation, 3, false, 0, false, 0 },
+    { "dock.titlebarDoubleClick", kTitlebarAction, 3, false, 0, false, 0 },
+    { "workspaces.count", nullptr, 0, true, 1.0, true, 16.0 },
+    { "appearance.colorScheme", kColorScheme, 3, false, 0, false, 0 },
+    { "appearance.transparency", nullptr, 0, true, 0.0, true, 1.0 },
+    { "wallpaper.fit", kWallpaperFit, 4, false, 0, false, 0 },
+    { "display.scale", nullptr, 0, true, 0.5, true, 2.0 },
+    { "display.rotation", kRotation, 4, false, 0, false, 0 },
+    { "display.brightness", nullptr, 0, true, 0.0, true, 1.0 },
+    { "wallpaper.providerLastFetch", nullptr, 0, true, 0.0, false, 0.0 },
+    { "input.repeatDelay", nullptr, 0, true, 0.0, true, 5000.0 },
+    { "input.repeatRate", nullptr, 0, true, 0.0, true, 200.0 },
+    { "input.pointerSpeed", nullptr, 0, true, -1.0, true, 1.0 },
+    { "input.scrollMethod", kScrollMethod, 3, false, 0, false, 0 },
+    { "input.keyboardBrightness", nullptr, 0, true, 0.0, true, 1.0 },
+    { "input.backlightOffAfter", nullptr, 0, true, 0.0, true, 3600.0 },
+    { "input.emojiKeyAction", kEmojiAction, 2, false, 0, false, 0 },
+    { "idle.dim", nullptr, 0, true, 0.0, true, 86400.0 },
+    { "idle.blank", nullptr, 0, true, 0.0, true, 86400.0 },
+    { "idle.lock", nullptr, 0, true, 0.0, true, 86400.0 },
+    { "idle.suspend", nullptr, 0, true, 0.0, true, 86400.0 },
+    { "sound.alertSound", kAlertSound, 5, false, 0, false, 0 },
+    { "sound.playEffectsThrough", kEffectsThrough, 2, false, 0, false, 0 },
+    { "sound.alertVolume", nullptr, 0, true, 0.0, true, 1.0 },
+    { "sound.balance", nullptr, 0, true, 0.0, true, 1.0 },
+    { "overview.hotCornerTopLeft", kHotCorner, 5, false, 0, false, 0 },
+    { "overview.hotCornerTopRight", kHotCorner, 5, false, 0, false, 0 },
+    { "overview.hotCornerBottomLeft", kHotCorner, 5, false, 0, false, 0 },
+    { "overview.hotCornerBottomRight", kHotCorner, 5, false, 0, false, 0 },
+    { "notifications.showPreviews", kPreviews, 3, false, 0, false, 0 },
+    { "menu.autoHide", kMenuAutoHide, 3, false, 0, false, 0 },
+    { "menu.recentItems", nullptr, 0, true, 0.0, true, 50.0 },
+    { "printers.defaultPaperSize", kPaperSize, 5, false, 0, false, 0 },
+};
+
+const Constraint *constraintFor(const QString &key)
+{
+    for (const Constraint &constraint : kConstraints) {
+        if (key == QLatin1String(constraint.key))
+            return &constraint;
+    }
+    return nullptr;
+}
+
+QString numberText(double value)
+{
+    return QString::number(value, 'g', 12);
+}
+
+QString schemaTypeName(const QVariant &declared)
+{
+    switch (declared.typeId()) {
+    case QMetaType::Bool:
+        return QStringLiteral("bool");
+    case QMetaType::Double:
+        return QStringLiteral("double");
+    case QMetaType::LongLong:
+        return QStringLiteral("int64");
+    case QMetaType::QStringList:
+        return QStringLiteral("string list");
+    default:
+        return QStringLiteral("string");
+    }
+}
+
+bool isNumeric(const QVariant &value)
+{
+    switch (value.typeId()) {
+    case QMetaType::Bool:
+        return false;
+    case QMetaType::Double:
+    case QMetaType::Float:
+    case QMetaType::Int:
+    case QMetaType::UInt:
+    case QMetaType::Long:
+    case QMetaType::ULong:
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:
+    case QMetaType::Short:
+    case QMetaType::UShort:
+        return true;
+    default:
+        return false;
+    }
+}
+
+} // namespace
+
+QVariantMap settingsSchemaInfo(const QString &key)
+{
+    const QVariantMap defaults = settingsSchemaDefaults();
+    const auto it = defaults.constFind(key);
+    if (it == defaults.constEnd())
+        return {};
+
+    QVariantMap out;
+    out.insert(QStringLiteral("key"), key);
+    out.insert(QStringLiteral("default"), it.value());
+    out.insert(QStringLiteral("type"), schemaTypeName(it.value()));
+    const Constraint *constraint = constraintFor(key);
+    QStringList allowed;
+    bool hasMin = false;
+    bool hasMax = false;
+    double min = 0.0;
+    double max = 0.0;
+    if (constraint) {
+        for (int i = 0; i < constraint->allowedCount; ++i)
+            allowed.append(QString::fromLatin1(constraint->allowed[i]));
+        hasMin = constraint->hasMin;
+        hasMax = constraint->hasMax;
+        min = constraint->min;
+        max = constraint->max;
+    }
+    out.insert(QStringLiteral("allowed"), allowed);
+    out.insert(QStringLiteral("hasMin"), hasMin);
+    out.insert(QStringLiteral("min"), min);
+    out.insert(QStringLiteral("hasMax"), hasMax);
+    out.insert(QStringLiteral("max"), max);
+    return out;
+}
+
+QString SettingsClient::validate(const QString &key, const QVariant &value) const
+{
+    const QVariantMap defaults = settingsSchemaDefaults();
+    const auto it = defaults.constFind(key);
+    if (it == defaults.constEnd())
+        return QStringLiteral("unknown settings key \"%1\"").arg(key);
+
+    const QVariant declared = it.value();
+    const QVariant coerced = coerceToSchema(key, value);
+    const QString expected = schemaTypeName(declared);
+
+    switch (declared.typeId()) {
+    case QMetaType::Bool:
+        if (coerced.typeId() != QMetaType::Bool)
+            return QStringLiteral("%1: expected %2, got %3")
+                .arg(key, expected, schemaTypeName(coerced));
+        break;
+    case QMetaType::Double:
+        if (!isNumeric(coerced))
+            return QStringLiteral("%1: expected %2, got %3")
+                .arg(key, expected, schemaTypeName(coerced));
+        break;
+    case QMetaType::LongLong:
+        if (!isNumeric(coerced))
+            return QStringLiteral("%1: expected %2, got %3")
+                .arg(key, expected, schemaTypeName(coerced));
+        break;
+    case QMetaType::QStringList:
+        if (coerced.typeId() != QMetaType::QStringList
+                && coerced.typeId() != QMetaType::QVariantList)
+            return QStringLiteral("%1: expected %2, got %3")
+                .arg(key, expected, schemaTypeName(coerced));
+        break;
+    default:
+        if (coerced.typeId() != QMetaType::QString)
+            return QStringLiteral("%1: expected %2, got %3")
+                .arg(key, expected, schemaTypeName(coerced));
+        break;
+    }
+
+    const Constraint *constraint = constraintFor(key);
+    if (!constraint)
+        return QString();
+
+    if (constraint->allowedCount > 0) {
+        const QString text = coerced.toString();
+        for (int i = 0; i < constraint->allowedCount; ++i) {
+            if (text == QLatin1String(constraint->allowed[i]))
+                return QString();
+        }
+        QStringList allowed;
+        for (int i = 0; i < constraint->allowedCount; ++i)
+            allowed.append(QString::fromLatin1(constraint->allowed[i]));
+        return QStringLiteral("%1: \"%2\" is not one of [%3]")
+            .arg(key, text, allowed.join(QStringLiteral(", ")));
+    }
+
+    if (isNumeric(coerced)) {
+        const double number = coerced.toDouble();
+        const bool below = constraint->hasMin && number < constraint->min;
+        const bool above = constraint->hasMax && number > constraint->max;
+        if (below || above) {
+            if (constraint->hasMin && constraint->hasMax) {
+                return QStringLiteral("%1: %2 is outside %3..=%4")
+                    .arg(key, numberText(number), numberText(constraint->min),
+                         numberText(constraint->max));
+            }
+            if (below) {
+                return QStringLiteral("%1: %2 is below %3")
+                    .arg(key, numberText(number), numberText(constraint->min));
+            }
+            return QStringLiteral("%1: %2 is above %3")
+                .arg(key, numberText(number), numberText(constraint->max));
+        }
+    }
+    return QString();
+}
+
+QVariantMap SettingsClient::writeErrors() const
+{
+    QVariantMap out;
+    for (auto it = m_writeErrors.constBegin(); it != m_writeErrors.constEnd(); ++it)
+        out.insert(it.key(), it.value());
+    return out;
+}
+
+QVariantMap SettingsClient::writeStates() const
+{
+    QVariantMap out;
+    for (auto it = m_writeStates.constBegin(); it != m_writeStates.constEnd(); ++it)
+        out.insert(it.key(), it.value());
+    return out;
+}
+
+QString SettingsClient::writeError(const QString &key) const
+{
+    return m_writeErrors.value(key);
+}
+
+QString SettingsClient::writeState(const QString &key) const
+{
+    return m_writeStates.value(key, QStringLiteral("idle"));
+}
+
+void SettingsClient::setWriteState(const QString &key, const QString &state)
+{
+    // Emit even when the state name is unchanged: the error message for an
+    // `error` state can change without the state changing, and rows bind
+    // `writeErrors[key]` to this one notification.
+    m_writeStates.insert(key, state);
+    emit writeStateChanged(key);
+}
+
+void SettingsClient::clearWriteError(const QString &key)
+{
+    if (!m_writeErrors.contains(key))
+        return;
+    m_writeErrors.remove(key);
+    setWriteState(key, QStringLiteral("idle"));
+}
+
+bool SettingsClient::beginWrite(const QString &key, const QVariant &value,
+                                quint64 *generation)
+{
+    const QString problem = validate(key, value);
+    if (!problem.isEmpty()) {
+        m_writeErrors.insert(key, problem);
+        setWriteState(key, QStringLiteral("error"));
+        // The control has already moved itself (a Toggle flips before it
+        // emits), so nudge every `Settings.values` binding to re-read even
+        // though the map did not change.
+        emit writeFinished(key, value, false, problem);
+        return false;
+    }
+
+    const QVariant coerced = coerceToSchema(key, value);
+    PendingWrite pending;
+    pending.previous = this->value(key);
+    pending.value = coerced;
+    pending.generation = ++m_generations[key];
+    m_writes.insert(key, pending);
+    if (generation)
+        *generation = pending.generation;
+    m_writeErrors.remove(key);
+    setWriteState(key, QStringLiteral("pending"));
+    emit writeStarted(key, coerced);
+    applyValue(key, coerced);
+    return true;
+}
+
+void SettingsClient::completeWrite(const QString &key, quint64 generation, bool ok,
+                                   const QString &message, bool deferred)
+{
+    auto it = m_writes.find(key);
+    if (it == m_writes.end() || it->generation != generation)
+        return; // a newer write owns this key now
+
+    const QVariant attempted = it->value;
+    const QVariant previous = it->previous;
+    m_writes.erase(it);
+
+    if (ok) {
+        m_writeErrors.remove(key);
+        setWriteState(key, deferred ? QStringLiteral("deferred")
+                                    : QStringLiteral("idle"));
+        emit writeFinished(key, attempted, true, QString());
+        return;
+    }
+
+    // Revert to the value the owner last confirmed. `applyValue` emits
+    // `changed`, so every bound control snaps back without polling.
+    applyValue(key, previous);
+    m_writeErrors.insert(key, message);
+    setWriteState(key, QStringLiteral("error"));
+    emit writeFinished(key, attempted, false, message);
+}
+
+void SettingsClient::noteOwnerValue(const QString &key, const QVariant &value)
+{
+    Q_UNUSED(value);
+    // The owner has spoken: a pending local error is no longer the truth. An
+    // echo that races our own in-flight write is left to `completeWrite`.
+    if (m_writes.contains(key))
+        return;
+    clearWriteError(key);
+}
+
+void SettingsClient::clearOwnerWriteStates()
+{
+    const QStringList keys = m_writeStates.keys();
+    for (const QString &key : keys) {
+        if (m_writes.contains(key))
+            continue; // an in-flight write owns this key until it resolves
+        m_writeStates.remove(key);
+        m_writeErrors.remove(key);
+        emit writeStateChanged(key);
+    }
 }
 
 QString shippedDefaultWallpaperPath()
@@ -277,7 +651,9 @@ void DbusSettingsClient::subscribeToChanges()
 
 void DbusSettingsClient::onRemoteChanged(const QString &key, const QDBusVariant &value)
 {
-    applyValue(key, unwrapVariant(QVariant::fromValue(value)));
+    const QVariant unwrapped = unwrapVariant(QVariant::fromValue(value));
+    noteOwnerValue(key, unwrapped);
+    applyValue(key, unwrapped);
 }
 
 void DbusSettingsClient::onServiceRegistered(const QString &name)
@@ -316,6 +692,11 @@ void DbusSettingsClient::refresh()
                     for (auto it = raw.constBegin(); it != raw.constEnd(); ++it)
                         values.insert(it.key(), unwrapVariant(it.value()));
                     applyValues(values);
+                    // The owner's snapshot is authoritative (ADR 0032). A
+                    // write made while the daemon was away survives in memory
+                    // for the session only, so its `deferred` state is
+                    // reconciled away here rather than claiming persistence.
+                    clearOwnerWriteStates();
                 } else {
                     qWarning() << "dragonfruit-shell: settings GetAll failed:"
                                << watcher->reply().errorMessage();
@@ -326,17 +707,25 @@ void DbusSettingsClient::refresh()
             });
 }
 
-void DbusSettingsClient::set(const QString &key, const QVariant &value)
+bool DbusSettingsClient::set(const QString &key, const QVariant &value)
 {
-    // Optimistic local apply so the Dock reacts on the same event-loop turn;
-    // the daemon's `Changed` echo then de-duplicates. When no daemon is on the
-    // bus this is the only effect (in-memory for the session). The value is
-    // coerced to the schema type first, so a QML double for an integer key is
-    // accepted by the daemon.
-    const QVariant coerced = coerceToSchema(key, value);
-    applyValue(key, coerced);
-    if (!isAvailable())
-        return;
+    // T224: one apply path. Validate first, apply optimistically, then let the
+    // owner confirm. A rejection or a daemon error reverts to the previous
+    // value and leaves a message for the row.
+    quint64 generation = 0;
+    if (!beginWrite(key, value, &generation))
+        return false;
+
+    if (!isAvailable()) {
+        // No owner: keep the write in memory for this session only. The next
+        // `GetAll` (daemon restart resync) makes the owner's persisted value
+        // authoritative again, so this is reported as `deferred`, never as a
+        // durable success.
+        completeWrite(key, generation, true, QString(), true);
+        return true;
+    }
+
+    const QVariant coerced = this->value(key);
     auto *call = new QDBusInterface(m_service, m_path, m_interface,
                                     QDBusConnection::sessionBus(), this);
     auto *watcher = new QDBusPendingCallWatcher(
@@ -344,14 +733,19 @@ void DbusSettingsClient::set(const QString &key, const QVariant &value)
                         QVariant::fromValue(QDBusVariant(coerced))),
         this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher, call]() {
+            [this, watcher, call, key, generation]() {
                 const QDBusMessage reply = watcher->reply();
-                if (reply.type() == QDBusMessage::ErrorMessage)
+                if (reply.type() == QDBusMessage::ErrorMessage) {
                     qWarning() << "dragonfruit-shell: settings Set failed:"
                                << reply.errorMessage();
+                    completeWrite(key, generation, false, reply.errorMessage());
+                } else {
+                    completeWrite(key, generation, true, QString());
+                }
                 call->deleteLater();
                 watcher->deleteLater();
             });
+    return true;
 }
 
 // --- MockSettingsClient ----------------------------------------------------
@@ -364,10 +758,45 @@ MockSettingsClient::MockSettingsClient(QObject *parent)
 
 void MockSettingsClient::refresh()
 {
+    // A mock resync is authoritative, like the daemon's `GetAll`.
+    clearOwnerWriteStates();
     emit refreshed();
 }
 
-void MockSettingsClient::set(const QString &key, const QVariant &value)
+bool MockSettingsClient::set(const QString &key, const QVariant &value)
 {
-    applyValue(key, value);
+    quint64 generation = 0;
+    if (!beginWrite(key, value, &generation))
+        return false;
+
+    if (!m_available) {
+        completeWrite(key, generation, true, QString(), true);
+        return true;
+    }
+
+    const QString failure = m_failures.take(key);
+    if (!failure.isEmpty()) {
+        // Apply optimistically now and fail on the next event-loop turn, so a
+        // test can observe the optimistic value before the revert.
+        QTimer::singleShot(0, this, [this, key, generation, failure]() {
+            completeWrite(key, generation, false, failure);
+        });
+        return true;
+    }
+    completeWrite(key, generation, true, QString());
+    return true;
+}
+
+void MockSettingsClient::failNextWrite(const QString &key, const QString &message)
+{
+    m_failures.insert(key, message);
+}
+
+void MockSettingsClient::setAvailableFixture(bool available)
+{
+    if (m_available == available)
+        return;
+    setAvailable(available);
+    if (available)
+        refresh();
 }

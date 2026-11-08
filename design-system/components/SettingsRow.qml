@@ -19,6 +19,9 @@ Item {
 
     property string label: ""
     property string description: ""
+    // T224: an inline failure/validation message. It sits under the label and
+    // description so the row explains why a control reverted; empty hides it.
+    property string errorText: ""
     property alias controlData: controlSlot.data
     property alias control: controlSlot
     property bool showSeparator: true
@@ -54,6 +57,7 @@ Item {
     // Test/consumer aliases for the one anatomy.
     property alias labelText: labelText
     property alias descriptionText: descriptionText
+    property alias errorLabel: errorTextItem
     property alias labelColumn: labelColumn
     property alias trailingRow: trailingRow
     property alias disclosureArea: disclosureArea
@@ -209,6 +213,18 @@ Item {
             color: Theme.color.textTertiary
             font.pixelSize: Theme.primitive.font.sizeSm
             wrapMode: Text.WordWrap
+        }
+        Text {
+            id: errorTextItem
+            objectName: "settingsRowError"
+            width: parent.width
+            visible: root.errorText.length > 0
+            text: root.errorText
+            color: Theme.color.danger
+            font.pixelSize: Theme.primitive.font.sizeSm
+            wrapMode: Text.WordWrap
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: root.errorText
         }
     }
 
