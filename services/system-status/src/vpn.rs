@@ -72,6 +72,19 @@ impl<S: VpnSource> VpnHost<S> {
         vpn_report(&self.adapter.deactivate(uuid))
     }
 
+    /// Add a saved VPN connection for `plugin` (a service type). One explicit
+    /// write; the report is JSON.
+    pub fn add(&mut self, plugin: &str, name: &str, gateway: &str) -> Value {
+        let gateway = (!gateway.is_empty()).then_some(gateway);
+        vpn_report(&self.adapter.add(plugin, name, gateway))
+    }
+
+    /// Change whether the saved VPN comes up automatically. One explicit
+    /// write; the report is JSON.
+    pub fn set_autoconnect(&mut self, uuid: &str, enabled: bool) -> Value {
+        vpn_report(&self.adapter.set_autoconnect(uuid, enabled))
+    }
+
     /// The adapter, for tests and introspection.
     pub fn adapter(&self) -> &VpnAdapter<S> {
         &self.adapter
@@ -132,6 +145,18 @@ pub fn vpn_snapshot_view(snapshot: &VpnSnapshot) -> Value {
             })
         })
         .collect();
+    let plugins: Vec<Value> = snapshot
+        .plugins
+        .iter()
+        .map(|plugin| {
+            json!({
+                "id": plugin.service_type,
+                "serviceType": plugin.service_type,
+                "label": plugin.label,
+                "builtin": plugin.builtin,
+            })
+        })
+        .collect();
     json!({
         "kind": KIND_VPN,
         "state": "available",
@@ -147,6 +172,9 @@ pub fn vpn_snapshot_view(snapshot: &VpnSnapshot) -> Value {
         "readOnly": false,
         "note": "",
         "connections": connections,
+        "plugins": plugins,
+        "pluginCount": snapshot.plugin_count(),
+        "pluginsPresent": snapshot.plugins_present(),
     })
 }
 
@@ -159,6 +187,7 @@ pub fn vpn_report(result: &VpnResult) -> Value {
         VpnResult::Failed(error) => {
             json!({ "outcome": "failed", "error": error.message() })
         }
+        VpnResult::Unsupported => json!({ "outcome": "unsupported" }),
     }
 }
 

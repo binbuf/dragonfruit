@@ -17,6 +17,7 @@ use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_input::CommandLibinput;
+use dragonfruit_firewall::CommandFirewall;
 use dragonfruit_networkmanager::{DbusNetworkManager, DbusVpn};
 use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
@@ -28,10 +29,11 @@ use zbus::blocking::connection;
 use zbus::interface;
 
 use crate::{
-    AccessibilityHost, AccountsHost, BluetoothHost, InputHost, NotificationsHost, PrintersHost,
-    PrivacyHost, StatusHost, StorageHost, UpdatesHost, VpnHost, ACCESSIBILITY_INTERFACE,
-    ACCOUNTS_INTERFACE, AUDIO_INTERFACE, BATTERY_INTERFACE, BLUETOOTH_INTERFACE, DBUS_NAME,
-    DBUS_PATH, INPUT_INTERFACE, NOTIFICATIONS_INTERFACE, PRINTERS_INTERFACE, PRIVACY_INTERFACE,
+    AccessibilityHost, AccountsHost, BluetoothHost, FirewallHost, InputHost, NotificationsHost,
+    PrintersHost, PrivacyHost, StatusHost, StorageHost, UpdatesHost, VpnHost,
+    ACCESSIBILITY_INTERFACE, ACCOUNTS_INTERFACE, AUDIO_INTERFACE, BATTERY_INTERFACE,
+    BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, FIREWALL_INTERFACE, INPUT_INTERFACE,
+    NETWORK_INTERFACE, NOTIFICATIONS_INTERFACE, PRINTERS_INTERFACE, PRIVACY_INTERFACE,
     STORAGE_INTERFACE, UPDATES_INTERFACE, VPN_INTERFACE, WIFI_INTERFACE,
 };
 
@@ -80,6 +82,10 @@ pub type LiveAccessibility = AccessibilityHost<HostAccessibility>;
 /// (`Settings.Connection` + `Connection.Active`) over the system bus (ADR 0146)
 /// behind the bridge (T-15.15b).
 pub type LiveVpn = VpnHost<DbusVpn>;
+
+/// The live firewall host: firewalld/ufw/nftables detection and writes behind
+/// the bridge (T225).
+pub type LiveFirewall = FirewallHost<CommandFirewall>;
 
 /// The Wi-Fi half of the service.
 pub struct WifiInterface {
@@ -170,6 +176,20 @@ pub struct VpnInterface {
     host: Arc<Mutex<LiveVpn>>,
 }
 
+/// The Network pane's combined half (T225): the Wi-Fi/service snapshot plus
+/// the firewall sub-view, and the service/radio writes. The Wi-Fi quick sheet
+/// keeps using the narrower `Wifi` interface; both read the same adapter.
+pub struct NetworkInterface {
+    host: Arc<Mutex<LiveHost>>,
+    firewall: Arc<Mutex<LiveFirewall>>,
+}
+
+/// The firewall half of the service (T225): detection, status, and the five
+/// explicit writes the Firewall sheet offers.
+pub struct FirewallInterface {
+    host: Arc<Mutex<LiveFirewall>>,
+}
+
 #[interface(name = "org.dragonfruit.SystemStatus1.Wifi")]
 impl WifiInterface {
     /// The current Wi-Fi status view as JSON (the last adapter state).
@@ -192,6 +212,32 @@ impl WifiInterface {
         let mut host = lock(&self.host);
         let secret = (!secret.is_empty()).then_some(secret);
         host.join(ssid, secret).to_string()
+    }
+
+    /// Join a hidden network by SSID. `secret` may be empty for an open
+    /// network. Returns the JSON report.
+    fn join_hidden(&self, ssid: &str, secret: &str) -> String {
+        let mut host = lock(&self.host);
+        let secret = (!secret.is_empty()).then_some(secret);
+        host.join_hidden(ssid, secret).to_string()
+    }
+
+    /// Enable or disable the Wi-Fi radio. Returns the JSON report.
+    fn set_wireless_enabled(&self, enabled: bool) -> String {
+        lock(&self.host).set_wifi_enabled(enabled).to_string()
+    }
+
+    /// Forget the saved connection with `uuid`. Returns the JSON report.
+    fn forget(&self, uuid: &str) -> String {
+        lock(&self.host).forget_wifi(uuid).to_string()
+    }
+
+    /// Change whether the saved connection comes up automatically. Returns
+    /// the JSON report.
+    fn set_autoconnect(&self, uuid: &str, enabled: bool) -> String {
+        lock(&self.host)
+            .set_wifi_autoconnect(uuid, enabled)
+            .to_string()
     }
 }
 
@@ -589,6 +635,119 @@ impl AccessibilityInterface {
     }
 }
 
+#[interface(name = "org.dragonfruit.SystemStatus1.Network")]
+impl NetworkInterface {
+    /// The combined Network view as JSON: the Wi-Fi/service snapshot plus the
+    /// firewall sub-view.
+    fn state(&self) -> String {
+        let host = lock(&self.host);
+        let firewall = lock_firewall(&self.firewall);
+        host.network_view(firewall.adapter()).to_string()
+    }
+
+    /// Re-read NetworkManager and the firewall once.
+    fn refresh(&self) -> String {
+        let mut host = lock(&self.host);
+        let mut firewall = lock_firewall(&self.firewall);
+        host.refresh_wifi();
+        firewall.refresh();
+        host.network_view(firewall.adapter()).to_string()
+    }
+
+    /// Enable or disable the Wi-Fi radio. Returns the JSON report.
+    fn set_wireless_enabled(&self, enabled: bool) -> String {
+        lock(&self.host).set_wifi_enabled(enabled).to_string()
+    }
+
+    /// Join a hidden network. Returns the JSON report.
+    fn join_hidden(&self, ssid: &str, secret: &str) -> String {
+        let mut host = lock(&self.host);
+        let secret = (!secret.is_empty()).then_some(secret);
+        host.join_hidden(ssid, secret).to_string()
+    }
+
+    /// Forget the saved connection with `uuid`. Returns the JSON report.
+    fn forget(&self, uuid: &str) -> String {
+        lock(&self.host).forget_wifi(uuid).to_string()
+    }
+
+    /// Change whether the saved connection comes up automatically. Returns the
+    /// JSON report.
+    fn set_autoconnect(&self, uuid: &str, enabled: bool) -> String {
+        lock(&self.host)
+            .set_wifi_autoconnect(uuid, enabled)
+            .to_string()
+    }
+
+    /// Activate a saved network service by UUID. Returns the JSON report.
+    fn activate_service(&self, uuid: &str) -> String {
+        lock(&self.host).activate_service(uuid).to_string()
+    }
+
+    /// Deactivate the active service with `uuid`. Returns the JSON report.
+    fn deactivate_service(&self, uuid: &str) -> String {
+        lock(&self.host).deactivate_service(uuid).to_string()
+    }
+
+    /// Move a service one position in the order. Returns the JSON report.
+    fn move_service(&self, uuid: &str, delta: i32) -> String {
+        lock(&self.host).move_service(uuid, delta).to_string()
+    }
+
+    /// Create a saved service or VPN connection. `kind` is
+    /// `ethernet`/`wifi`/`vpn`; `plugin` and `gateway` apply to VPN. Returns
+    /// the JSON report.
+    fn add_service(&self, name: &str, kind: &str, plugin: &str, gateway: &str) -> String {
+        lock(&self.host)
+            .add_service(name, kind, plugin, gateway)
+            .to_string()
+    }
+}
+
+#[interface(name = "org.dragonfruit.SystemStatus1.Firewall")]
+impl FirewallInterface {
+    /// The firewall view as JSON.
+    fn state(&self) -> String {
+        lock_firewall(&self.host).state()
+    }
+
+    /// Re-read the firewall manager once.
+    fn refresh(&self) -> String {
+        let mut host = lock_firewall(&self.host);
+        host.refresh();
+        host.state()
+    }
+
+    /// Enable or disable the firewall. Returns the JSON report.
+    fn set_enabled(&self, enabled: bool) -> String {
+        lock_firewall(&self.host).set_enabled(enabled).to_string()
+    }
+
+    /// Open a port (`tcp`/`udp`). Returns the JSON report.
+    fn open_port(&self, port: u16, protocol: &str) -> String {
+        lock_firewall(&self.host)
+            .open_port(port, protocol)
+            .to_string()
+    }
+
+    /// Close a port (`tcp`/`udp`). Returns the JSON report.
+    fn close_port(&self, port: u16, protocol: &str) -> String {
+        lock_firewall(&self.host)
+            .close_port(port, protocol)
+            .to_string()
+    }
+
+    /// Open a named service. Returns the JSON report.
+    fn open_service(&self, service: &str) -> String {
+        lock_firewall(&self.host).open_service(service).to_string()
+    }
+
+    /// Close a named service. Returns the JSON report.
+    fn close_service(&self, service: &str) -> String {
+        lock_firewall(&self.host).close_service(service).to_string()
+    }
+}
+
 #[interface(name = "org.dragonfruit.SystemStatus1.Vpn")]
 impl VpnInterface {
     /// The current Network advanced (VPN) view as JSON (the last adapter
@@ -618,6 +777,21 @@ impl VpnInterface {
     /// report. One explicit write.
     fn deactivate(&self, uuid: &str) -> String {
         lock_vpn(&self.host).deactivate(uuid).to_string()
+    }
+
+    /// Add a saved VPN connection for `plugin`. Returns the JSON report.
+    fn add(&self, plugin: &str, name: &str, gateway: &str) -> String {
+        lock_vpn(&self.host)
+            .add(plugin, name, gateway)
+            .to_string()
+    }
+
+    /// Change whether the saved VPN comes up automatically. Returns the JSON
+    /// report.
+    fn set_autoconnect(&self, uuid: &str, enabled: bool) -> String {
+        lock_vpn(&self.host)
+            .set_autoconnect(uuid, enabled)
+            .to_string()
     }
 }
 
@@ -684,6 +858,13 @@ fn lock_vpn(host: &Arc<Mutex<LiveVpn>>) -> std::sync::MutexGuard<'_, LiveVpn> {
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Lock the shared firewall host, recovering from a poisoned mutex.
+fn lock_firewall(
+    host: &Arc<Mutex<LiveFirewall>>,
+) -> std::sync::MutexGuard<'_, LiveFirewall> {
+    host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
@@ -702,6 +883,7 @@ pub fn run(
     privacy: LivePrivacy,
     accessibility: LiveAccessibility,
     vpn: LiveVpn,
+    firewall: LiveFirewall,
 ) -> zbus::Result<()> {
     let host = Arc::new(Mutex::new(host));
     let bluetooth = Arc::new(Mutex::new(bluetooth));
@@ -714,6 +896,7 @@ pub fn run(
     let privacy = Arc::new(Mutex::new(privacy));
     let accessibility = Arc::new(Mutex::new(accessibility));
     let vpn = Arc::new(Mutex::new(vpn));
+    let firewall = Arc::new(Mutex::new(firewall));
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(
@@ -794,6 +977,19 @@ pub fn run(
                 host: Arc::clone(&vpn),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            NetworkInterface {
+                host: Arc::clone(&host),
+                firewall: Arc::clone(&firewall),
+            },
+        )?
+        .serve_at(
+            DBUS_PATH,
+            FirewallInterface {
+                host: Arc::clone(&firewall),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -805,7 +1001,7 @@ pub fn run(
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 13] {
+pub fn interface_names() -> [&'static str; 15] {
     [
         WIFI_INTERFACE,
         AUDIO_INTERFACE,
@@ -820,5 +1016,7 @@ pub fn interface_names() -> [&'static str; 13] {
         PRIVACY_INTERFACE,
         ACCESSIBILITY_INTERFACE,
         VPN_INTERFACE,
+        NETWORK_INTERFACE,
+        FIREWALL_INTERFACE,
     ]
 }

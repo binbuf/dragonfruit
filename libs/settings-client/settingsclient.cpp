@@ -129,7 +129,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 18). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 19). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -221,6 +221,11 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("dock.pinnedFolders"), QStringList());
     values.insert(QStringLiteral("printers.defaultPaperSize"),
                   QStringLiteral("us-letter"));
+    // Revision 19 (T225): the Wi-Fi prompt policy.
+    values.insert(QStringLiteral("network.wifi.askToJoin"),
+                  QStringLiteral("notify"));
+    values.insert(QStringLiteral("network.wifi.askToJoinHotspots"),
+                  QStringLiteral("ask"));
     return values;
 }
 
@@ -255,6 +260,8 @@ const char *const kMenuAutoHide[] = { "never", "always", "full-screen" };
 const char *const kAlertSound[] = { "Chime", "Marimba", "Pulse", "Woodblock", "Breeze" };
 const char *const kEffectsThrough[] = { "output", "alerts" };
 const char *const kPaperSize[] = { "us-letter", "us-legal", "a3", "a4", "a5" };
+const char *const kAskToJoin[] = { "off", "notify", "ask", "new" };
+const char *const kAskToJoinHotspots[] = { "off", "ask", "automatic" };
 
 const Constraint kConstraints[] = {
     { "dock.size", nullptr, 0, true, 0.0, true, 1.0 },
@@ -293,6 +300,8 @@ const Constraint kConstraints[] = {
     { "menu.autoHide", kMenuAutoHide, 3, false, 0, false, 0 },
     { "menu.recentItems", nullptr, 0, true, 0.0, true, 50.0 },
     { "printers.defaultPaperSize", kPaperSize, 5, false, 0, false, 0 },
+    { "network.wifi.askToJoin", kAskToJoin, 4, false, 0, false, 0 },
+    { "network.wifi.askToJoinHotspots", kAskToJoinHotspots, 3, false, 0, false, 0 },
 };
 
 const Constraint *constraintFor(const QString &key)

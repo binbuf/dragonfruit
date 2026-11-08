@@ -34,6 +34,20 @@ pub struct VpnData {
     pub active: Vec<ActiveVpnData>,
 }
 
+/// One installed NetworkManager VPN plugin.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct VpnPluginData {
+    /// The NetworkManager service type
+    /// (`org.freedesktop.NetworkManager.openvpn`).
+    pub service_type: String,
+    /// The human label (`OpenVPN`).
+    pub label: String,
+    /// Whether NetworkManager carries the plugin without a separate package
+    /// (WireGuard).
+    #[serde(default)]
+    pub builtin: bool,
+}
+
 /// One configured VPN connection (`org.freedesktop.NetworkManager.Settings.
 /// Connection`, decoded from its `GetSettings` map plus its object path).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -109,6 +123,8 @@ pub enum VpnOutcome {
     Absent,
     /// The request failed for a reason other than authorization.
     Failed(AdapterError),
+    /// The source does not implement the write (a fixture or an old daemon).
+    Unsupported,
 }
 
 /// Reads NetworkManager's VPN connections, and connects/disconnects them.
@@ -133,6 +149,25 @@ pub trait VpnSource {
 
     /// Disconnect (deactivate) the active VPN with `request.uuid`.
     fn deactivate(&mut self, request: &VpnRequest) -> VpnOutcome;
+
+    /// Add a saved VPN connection for `plugin` with `name` and an optional
+    /// gateway. One explicit write.
+    fn add(&mut self, _plugin: &str, _name: &str, _gateway: Option<&str>) -> VpnOutcome {
+        VpnOutcome::Unsupported
+    }
+
+    /// Change whether the saved VPN comes up automatically. One explicit
+    /// write.
+    fn set_autoconnect(&mut self, _uuid: &str, _enabled: bool) -> VpnOutcome {
+        VpnOutcome::Unsupported
+    }
+
+    /// The VPN plugins installed on the host. This is a separate read from the
+    /// connection list because plugins live outside NetworkManager's settings
+    /// store; the default is empty (a fixture that does not model plugins).
+    fn plugins(&self) -> Vec<VpnPluginData> {
+        Vec::new()
+    }
 }
 
 /// How the simulated daemon answers a VPN write.
@@ -163,6 +198,7 @@ pub struct MockVpn {
     reads: u32,
     activations: u32,
     deactivations: u32,
+    plugins: Vec<VpnPluginData>,
 }
 
 impl MockVpn {
@@ -176,6 +212,7 @@ impl MockVpn {
             reads: 0,
             activations: 0,
             deactivations: 0,
+            plugins: Vec::new(),
         }
     }
 
@@ -189,7 +226,15 @@ impl MockVpn {
             reads: 0,
             activations: 0,
             deactivations: 0,
+            plugins: Vec::new(),
         }
+    }
+
+    /// A present daemon that also reports `plugins` as installed.
+    pub fn present_with_plugins(data: VpnData, plugins: Vec<VpnPluginData>) -> Self {
+        let mut mock = MockVpn::present(data);
+        mock.plugins = plugins;
+        mock
     }
 
     /// A present daemon that fails every read (e.g. it went unresponsive).
@@ -202,6 +247,7 @@ impl MockVpn {
             reads: 0,
             activations: 0,
             deactivations: 0,
+            plugins: Vec::new(),
         }
     }
 
@@ -348,6 +394,50 @@ impl VpnSource for MockVpn {
             .active
             .retain(|active| active.uuid != request.uuid);
         VpnOutcome::Accepted
+    }
+
+    fn add(&mut self, plugin: &str, name: &str, _gateway: Option<&str>) -> VpnOutcome {
+        let outcome = self.write_outcome();
+        if outcome != VpnOutcome::Accepted {
+            return outcome;
+        }
+        let uuid = format!("mock-vpn-{}", self.data.connections.len() + 1);
+        self.data.connections.push(VpnConnectionData {
+            path: format!("/org/freedesktop/NetworkManager/Settings/{uuid}"),
+            id: name.to_owned(),
+            uuid,
+            kind: if plugin.ends_with(".wireguard") {
+                "wireguard".to_owned()
+            } else {
+                "vpn".to_owned()
+            },
+            service_type: Some(plugin.to_owned()),
+            autoconnect: true,
+        });
+        VpnOutcome::Accepted
+    }
+
+    fn set_autoconnect(&mut self, uuid: &str, enabled: bool) -> VpnOutcome {
+        let outcome = self.write_outcome();
+        if outcome != VpnOutcome::Accepted {
+            return outcome;
+        }
+        let Some(connection) = self
+            .data
+            .connections
+            .iter_mut()
+            .find(|connection| connection.uuid == uuid)
+        else {
+            return VpnOutcome::Failed(AdapterError::new(format!(
+                "NetworkManager: unknown VPN connection '{uuid}'"
+            )));
+        };
+        connection.autoconnect = enabled;
+        VpnOutcome::Accepted
+    }
+
+    fn plugins(&self) -> Vec<VpnPluginData> {
+        self.plugins.clone()
     }
 }
 

@@ -68,6 +68,8 @@ pub enum VpnResult {
     /// The request failed for a reason other than authorization. The read
     /// state is left untouched.
     Failed(AdapterError),
+    /// The source does not implement the write (a fixture or an old daemon).
+    Unsupported,
 }
 
 /// The VPN status adapter.
@@ -112,7 +114,10 @@ impl<S: VpnSource> VpnAdapter<S> {
         match self.source.read() {
             Ok(Some(data)) => {
                 self.subscription.subscribed();
-                self.state = AdapterState::available(VpnSnapshot::from_data(&data));
+                let plugins = self.source.plugins();
+                self.state = AdapterState::available(VpnSnapshot::from_data_with_plugins(
+                    &data, &plugins,
+                ));
                 self.subscription.changed();
             }
             Ok(None) => {
@@ -153,6 +158,51 @@ impl<S: VpnSource> VpnAdapter<S> {
         self.write(VpnRequest::new(uuid), VpnWrite::Disconnect)
     }
 
+    /// Add a saved VPN connection for `plugin` (a service type) with `name`
+    /// and an optional gateway. One explicit write.
+    pub fn add(&mut self, plugin: &str, name: &str, gateway: Option<&str>) -> VpnResult {
+        self.write_other(|source| source.add(plugin, name, gateway))
+    }
+
+    /// Change whether the saved VPN comes up automatically. One explicit
+    /// write.
+    pub fn set_autoconnect(&mut self, uuid: &str, enabled: bool) -> VpnResult {
+        self.write_other(|source| source.set_autoconnect(uuid, enabled))
+    }
+
+    /// The installed VPN plugins, when the daemon answered.
+    pub fn plugins(&self) -> &[crate::vpn::model::VpnPlugin] {
+        self.state
+            .snapshot()
+            .map(|snapshot| snapshot.plugins.as_slice())
+            .unwrap_or_default()
+    }
+
+    /// The shared write path for add/autoconnect: refuse early when read-only,
+    /// degrade on a denial, and hide on absence.
+    fn write_other(
+        &mut self,
+        write: impl FnOnce(&mut S) -> crate::vpn::source::VpnOutcome,
+    ) -> VpnResult {
+        if let VpnAccess::ReadOnly { note } = &self.access {
+            return VpnResult::Denied { note: note.clone() };
+        }
+        match write(&mut self.source) {
+            VpnOutcome::Accepted => VpnResult::Accepted,
+            VpnOutcome::Denied(note) => {
+                self.access = VpnAccess::read_only(note.clone());
+                VpnResult::Denied { note }
+            }
+            VpnOutcome::Absent => {
+                self.state = AdapterState::Unavailable;
+                self.subscription.absent();
+                VpnResult::Absent
+            }
+            VpnOutcome::Failed(error) => VpnResult::Failed(error),
+            VpnOutcome::Unsupported => VpnResult::Unsupported,
+        }
+    }
+
     fn write(&mut self, request: VpnRequest, kind: VpnWrite) -> VpnResult {
         if let VpnAccess::ReadOnly { note } = &self.access {
             // The session already learned it cannot write; do not hammer the
@@ -177,6 +227,7 @@ impl<S: VpnSource> VpnAdapter<S> {
                 VpnResult::Absent
             }
             VpnOutcome::Failed(error) => VpnResult::Failed(error),
+            VpnOutcome::Unsupported => VpnResult::Unsupported,
         }
     }
 

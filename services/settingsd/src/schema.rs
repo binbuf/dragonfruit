@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 18;
+pub const SCHEMA_VERSION: u32 = 19;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,11 +74,12 @@ pub enum KeyGroup {
     Notifications,
     Lock,
     Printers,
+    Network,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 15] = [
+    pub const ALL: [KeyGroup; 16] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -94,6 +95,7 @@ impl KeyGroup {
         KeyGroup::Notifications,
         KeyGroup::Lock,
         KeyGroup::Printers,
+        KeyGroup::Network,
     ];
 
     /// The group name used in docs and tests.
@@ -114,6 +116,7 @@ impl KeyGroup {
             KeyGroup::Notifications => "notifications",
             KeyGroup::Lock => "lock",
             KeyGroup::Printers => "printers",
+            KeyGroup::Network => "network",
         }
     }
 }
@@ -1393,6 +1396,37 @@ pub const KEYS: &[KeySpec] = &[
         since: 17,
         summary: "The default paper size new print jobs assume.",
     },
+    // ── Network prompt policy (T225) ─────────────────────────────────────
+    // NetworkManager owns the radio, connections, and autoconnect. These two
+    // keys only decide whether the shell prompts before a network is joined;
+    // they never override NetworkManager's own autoconnect. The stable ids
+    // mirror the pane's popup labels.
+    KeySpec {
+        key: "network.wifi.askToJoin",
+        group: KeyGroup::Network,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("notify"),
+        allowed: &["off", "notify", "ask", "new"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar Wi-Fi prompt policy",
+        since: 19,
+        summary: "When to prompt before joining a nearby Wi-Fi network.",
+    },
+    KeySpec {
+        key: "network.wifi.askToJoinHotspots",
+        group: KeyGroup::Network,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("ask"),
+        allowed: &["off", "ask", "automatic"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar Wi-Fi prompt policy",
+        since: 19,
+        summary: "When to prompt before joining a captive-portal hotspot.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -2053,6 +2087,44 @@ mod tests {
             "printers",
             "the group name is stable"
         );
+    }
+
+    /// The Wi-Fi prompt policy (T225), additive in revision 19. The pane owns
+    /// the two popup rows; NetworkManager still owns autoconnect.
+    #[test]
+    fn the_network_wifi_prompt_keys_are_declared_in_revision_nineteen() {
+        for (key, default, allowed) in [
+            (
+                "network.wifi.askToJoin",
+                KeyDefault::Text("notify"),
+                &["off", "notify", "ask", "new"],
+            ),
+            (
+                "network.wifi.askToJoinHotspots",
+                KeyDefault::Text("ask"),
+                &["off", "ask", "automatic"],
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Network, "{key}");
+            assert_eq!(spec.kind, KeyType::Text, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.allowed, allowed, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 19, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            for value in allowed {
+                assert!(
+                    spec.validate(&Value::Text((*value).into())).is_ok(),
+                    "{key}: {value}"
+                );
+            }
+            assert!(
+                spec.validate(&Value::Text("sometimes".into())).is_err(),
+                "{key} rejects an unknown mode"
+            );
+        }
+        assert_eq!(KeyGroup::Network.name(), "network");
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend
