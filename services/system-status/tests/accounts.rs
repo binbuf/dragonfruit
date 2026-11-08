@@ -4,7 +4,7 @@
 //! writes applied once through the adapter.
 
 use dragonfruit_account_adapter::{
-    AccountData, AccountType, AccountsData, GroupData, MockAccounts,
+    AccountData, AccountType, AccountsData, DirectoryData, GroupData, MockAccounts,
 };
 use dragonfruit_system_status::AccountsHost;
 
@@ -35,6 +35,7 @@ fn data(groups: bool) -> AccountsData {
                 system: false,
             }]
         }),
+        directory: None,
     }
 }
 
@@ -55,6 +56,26 @@ fn the_accounts_view_exposes_the_users_groups_and_auto_login() {
     assert_eq!(view["users"][0]["displayName"], "Dan Doe");
     assert_eq!(view["users"][0]["accountTypeLabel"], "Admin");
     assert_eq!(view["groups"][0]["name"], "wheel");
+}
+
+#[test]
+fn the_directory_projection_and_admin_group_are_in_the_view() {
+    let mut raw = data(true);
+    raw.directory = Some(DirectoryData {
+        domains: vec!["example.com".to_owned()],
+        provider: "sssd".to_owned(),
+        joined: true,
+        note: String::new(),
+    });
+    let mut host = AccountsHost::new(MockAccounts::present(raw));
+    host.refresh();
+    let view = host.view();
+    assert_eq!(view["adminGroup"], "wheel");
+    assert_eq!(view["adminGroupAvailable"], true);
+    assert_eq!(view["directoryAvailable"], true);
+    assert_eq!(view["directory"]["joined"], true);
+    assert_eq!(view["directory"]["status"], "Joined: example.com");
+    assert_eq!(view["directory"]["domains"][0], "example.com");
 }
 
 #[test]

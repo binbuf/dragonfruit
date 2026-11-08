@@ -586,6 +586,20 @@ public:
     void setInputPolicy(int repeatDelayMs, int repeatRateHz, bool gesturesEnabled,
                         bool gestureSpaceSwitch, bool gestureMissionControl);
 
+    // Mirror the settingsd pointer/trackpad preferences into the compositor
+    // (T229, `df_toplevel_manager.set_pointer_policy`, additive in v10).
+    // Speeds are 0..1 fractions here and travel as millionths; the string
+    // fields are the schema's stable ids.
+    void setPointerPolicy(double pointerSpeed, bool naturalScroll, bool tapToClick,
+                          bool leftHanded, const QString &scrollMethod,
+                          const QString &secondaryClick, double scrollSpeed,
+                          int doubleClickMs, bool haptics);
+
+    // Mirror the active keyboard layout into the compositor (T229,
+    // `df_toplevel_manager.set_keyboard_layout`, additive in v10). An empty
+    // layout keeps the host `XKB_DEFAULT_*` configuration.
+    void setKeyboardLayout(const QString &layout, const QString &variant);
+
     // Forward the settingsd wallpaper selection to the compositor (T-09.3,
     // `df_workspace.set_wallpaper`): `source` empty keeps the Space's solid
     // color; `fit` is the already-mapped `df_workspace.wallpaper_fit` value;

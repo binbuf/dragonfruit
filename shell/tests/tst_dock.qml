@@ -52,6 +52,7 @@ Item {
         // a failure mid-test cannot leak into the next one. Same for the colour
         // scheme the T-14.7d glyph tests flip.
         function init() {
+            Glass.rollout = "legacy";
             Theme.reducedMotion = false;
             Theme.dark = false;
         }

@@ -1002,8 +1002,8 @@ def _external_rows() -> list[dict]:
             "evidence": "design-system/tokens/tokens.json glass.rollout.defaultMode",
             "command": "python3 -c \"import json; print(json.load(open('design-system/tokens/tokens.json'))['glass']['rollout']['defaultMode'])\"",
             "verdict": "pass",
-            "reason": "the shipped default remains legacy until T208; "
-                      "DRAGONFRUIT_GLASS_ROLLOUT selects either rail",
+            "reason": "the shipped default is replacement; "
+                      "DRAGONFRUIT_GLASS_ROLLOUT=legacy selects the rollback rail",
         },
         {
             "id": "native-drm",

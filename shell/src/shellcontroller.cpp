@@ -558,16 +558,21 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_themeBinding = new ThemeBinding(m_settingsClient, m_engine, this);
     m_themeBinding->apply();
     // T195: one internal rollout switch for the end-to-end material
-    // replacement. The default stays `legacy` until T208 flips it; nested and
-    // native fixtures select the replacement reproducibly with
-    // `DRAGONFRUIT_GLASS_ROLLOUT=replacement`. The compositor reads the same
-    // variable through its material-preset resolver.
+    // replacement. The shipped default is the replacement look; nested and
+    // native fixtures can select either rail with
+    // `DRAGONFRUIT_GLASS_ROLLOUT=legacy|replacement`. The compositor reads the
+    // same variable through its material-preset resolver.
     if (QObject *glass = m_engine->singletonInstance<QObject *>(
                 QStringLiteral("Dragonfruit"), QStringLiteral("Glass"))) {
         const QString requested =
             qEnvironmentVariable("DRAGONFRUIT_GLASS_ROLLOUT").trimmed().toLower();
-        const QString selected = requested == QLatin1String("replacement")
-            ? QStringLiteral("replacement") : QStringLiteral("legacy");
+        const QString shipped = glass->property("rollout").toString();
+        const QString selected =
+            (requested == QLatin1String("legacy")
+             || requested == QLatin1String("replacement"))
+            ? requested
+            : (shipped == QLatin1String("legacy")
+               ? QStringLiteral("legacy") : QStringLiteral("replacement"));
         glass->setProperty("rollout", selected);
         qInfo() << "shell: glass rollout:" << selected;
     }
@@ -5931,6 +5936,11 @@ void ShellController::applyCompositorPolicy()
     m_protocol->setInputPolicy(policy.repeatDelayMs, policy.repeatRateHz,
                                policy.gesturesEnabled, policy.gestureSpaceSwitch,
                                policy.gestureMissionControl);
+    m_protocol->setPointerPolicy(policy.pointerSpeed, policy.naturalScroll,
+                                 policy.tapToClick, policy.leftHanded,
+                                 policy.scrollMethod, policy.secondaryClick,
+                                 policy.scrollSpeed, policy.doubleClickMs, policy.haptics);
+    m_protocol->setKeyboardLayout(policy.keyboardLayout, policy.keyboardVariant);
     // T200: the veil's accessibility variants are decided in the same policy
     // snapshot. Push them to QML so Reduce Transparency draws the opaque
     // scheme plate instead of leaving the compositor's skipped veil bare.

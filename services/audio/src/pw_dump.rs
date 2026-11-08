@@ -27,6 +27,16 @@ use crate::source::{AudioData, AudioSource, SetOutcome, SinkData, SourceData};
 pub const PW_DUMP_BIN: &str = "pw-dump";
 /// The WirePlumber control CLI (ships with `wireplumber`).
 pub const WPCTL_BIN: &str = "wpctl";
+/// The PipeWire playback tool, when installed.
+pub const PW_PLAY_BIN: &str = "pw-play";
+/// The PulseAudio-compatible playback tool, when installed.
+pub const PAPLAY_BIN: &str = "paplay";
+/// The first existing test-sound file, in preference order.
+pub const TEST_SOUNDS: [&str; 3] = [
+    "/usr/share/sounds/freedesktop/stereo/audio-test-signal.oga",
+    "/usr/share/sounds/freedesktop/stereo/bell.oga",
+    "/usr/share/sounds/alsa/Front_Center.wav",
+];
 /// The symbolic id `wpctl` resolves to the current default sink.
 pub const DEFAULT_SINK_TARGET: &str = "@DEFAULT_AUDIO_SINK@";
 
@@ -232,6 +242,32 @@ impl AudioSource for CommandAudio {
 
     fn set_default_source(&mut self, id: u32) -> SetOutcome {
         run_wpctl(&["set-default", &id.to_string()])
+    }
+
+    fn play_test_sound(&mut self) -> SetOutcome {
+        let Some(file) = TEST_SOUNDS
+            .iter()
+            .find(|path| std::path::Path::new(path).is_file())
+        else {
+            return SetOutcome::Absent;
+        };
+        for bin in [PW_PLAY_BIN, PAPLAY_BIN] {
+            match Command::new(bin).arg(file).output() {
+                Ok(output) if output.status.success() => return SetOutcome::Applied,
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return SetOutcome::Failed(AdapterError::new(format!(
+                        "{bin}: {}",
+                        stderr.trim()
+                    )));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return SetOutcome::Failed(AdapterError::new(format!("{bin}: {error}")))
+                }
+            }
+        }
+        SetOutcome::Absent
     }
 }
 

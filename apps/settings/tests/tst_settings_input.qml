@@ -32,6 +32,14 @@ Item {
             Settings.set("input.backlightOffAfter", 0);
             Settings.set("input.keyboardNavigation", false);
             Settings.set("input.emojiKeyAction", "emoji");
+            Settings.set("input.secondaryClick", "right");
+            Settings.set("input.scrollSpeed", 0.0);
+            Settings.set("input.doubleClickSpeed", 400);
+            Settings.set("input.haptics", true);
+            Settings.set("input.lookUp", "force-click");
+            Settings.setList("input.sources", []);
+            Settings.setList("input.replacements", []);
+            Settings.set("input.dictation", false);
             Settings.set("input.pointerSpeed", 0.0);
             Settings.set("input.naturalScroll", true);
             Settings.set("input.tapToClick", true);
@@ -112,6 +120,36 @@ Item {
             compare(Settings.values["input.emojiKeyAction"], "none");
         }
 
+        function test_keyboard_input_sources_replacements_and_dictation() {
+            var shell = make("keyboard");
+            var pane = paneOf(shell);
+
+            pane.sourcesDialog.show();
+            waitForRendering(stage);
+            verify(pane.sourcesDialog.open);
+            pane.newSourceInput.text = "de";
+            pane.addSource();
+            compare(Settings.values["input.sources"].length, 1);
+            compare(Settings.values["input.sources"][0], "de");
+            pane.removeSource("de");
+            compare(Settings.values["input.sources"].length, 0);
+            pane.sourcesDialog.accept();
+            wait(250);
+
+            pane.newReplacementFrom = "omw";
+            pane.newReplacementTo = "On my way";
+            pane.addReplacement();
+            compare(Settings.values["input.replacements"].length, 1);
+            compare(Settings.values["input.replacements"][0], "omw\tOn my way");
+            pane.removeReplacement("omw");
+            compare(Settings.values["input.replacements"].length, 0);
+
+            // The fixture has no speech-to-text command: the row is present
+            // and disabled with its own reason, never a fake toggle.
+            verify(!pane.dictationToggle.enabled);
+            verify(pane.dictationAbsenceNote.visible);
+        }
+
         // -- Mouse ------------------------------------------------------------
 
         function test_mouse_pane_round_trips_the_pointer_rows() {
@@ -131,6 +169,17 @@ Item {
 
             pane.scrollMethodSelect.activateIndex(1); // Edge Scrolling
             compare(Settings.values["input.scrollMethod"], "edge");
+
+            pane.secondaryClickSelect.activateIndex(1); // Left
+            compare(Settings.values["input.secondaryClick"], "left");
+
+            pane.scrollSpeedSlider.setValue(-0.3);
+            pane.scrollSpeedSlider.commit();
+            verify(Math.abs(Settings.values["input.scrollSpeed"] - (-0.3)) < 0.001);
+
+            pane.doubleClickSlider.setValue(1.0);
+            pane.doubleClickSlider.commit();
+            compare(Settings.values["input.doubleClickSpeed"], 900);
         }
 
         // -- Trackpad ---------------------------------------------------------
@@ -148,6 +197,8 @@ Item {
             pane.tabIndex = 2;
             waitForRendering(stage);
             verify(pane.moreGestures);
+            verify(pane.pairTrackpadRow.visible);
+            compare(pane.pairTrackpadRow.enabled, true);
         }
 
         function test_trackpad_point_click_and_gestures_round_trip() {
@@ -167,6 +218,13 @@ Item {
             compare(Settings.values["gestures.spaceSwitch"], false);
             pane.gestureMissionToggle.toggle();
             compare(Settings.values["gestures.missionControl"], false);
+
+            pane.trackpadSecondarySelect.activateIndex(1);
+            compare(Settings.values["input.secondaryClick"], "left");
+            pane.lookUpSelect.activateIndex(2); // Off
+            compare(Settings.values["input.lookUp"], "off");
+            pane.hapticsToggle.toggle();
+            compare(Settings.values["input.haptics"], false);
         }
 
         function test_external_change_converges_into_the_pane() {

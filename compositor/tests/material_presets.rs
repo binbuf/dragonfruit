@@ -187,10 +187,17 @@ fn notification_materials_are_three_distinct_presets() {
 }
 
 #[test]
-fn rollout_defaults_to_the_existing_appearance() {
-    assert_eq!(Rollout::default(), Rollout::Legacy);
+fn rollout_defaults_to_the_replacement_appearance() {
+    assert_eq!(Rollout::default(), Rollout::Replacement);
+    let replacement = resolve(ResolveInput {
+        preset: Preset::Dock,
+        ..ResolveInput::default()
+    });
+    assert_eq!(replacement.look, Rollout::Replacement);
+    assert_eq!(replacement.render_mode, RenderMode::SampledGlass);
     let legacy = resolve(ResolveInput {
         preset: Preset::Dock,
+        rollout: Rollout::Legacy,
         ..ResolveInput::default()
     });
     assert_eq!(legacy.look, Rollout::Legacy);

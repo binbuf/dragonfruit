@@ -107,6 +107,59 @@ void DbusPrintersClient::cancelJob(int jobId)
     call(QStringLiteral("CancelJob"), {jobId});
 }
 
+void DbusPrintersClient::discover()
+{
+    callReport(QStringLiteral("DiscoverPrinters"), {}, false);
+}
+
+void DbusPrintersClient::addPrinter(const QString &name, const QString &uri,
+                                    const QString &driver)
+{
+    call(QStringLiteral("AddPrinter"), {name, uri, driver});
+}
+
+void DbusPrintersClient::printerOptions(const QString &name)
+{
+    callReport(QStringLiteral("PrinterOptions"), {name}, true);
+}
+
+void DbusPrintersClient::setPrinterOption(const QString &name, const QString &key,
+                                          const QString &value)
+{
+    call(QStringLiteral("SetPrinterOption"), {name, key, value});
+}
+
+void DbusPrintersClient::callReport(const QString &method, const QVariantList &arguments,
+                                    bool options)
+{
+    auto *iface = new QDBusInterface(m_service, m_path, m_interface,
+                                     QDBusConnection::sessionBus(), this);
+    if (!iface->isValid()) {
+        iface->deleteLater();
+        return;
+    }
+    auto *watcher = new QDBusPendingCallWatcher(
+        iface->asyncCallWithArgumentList(method, arguments), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, iface, watcher, options]() {
+                const QDBusPendingReply<QString> reply = *watcher;
+                iface->deleteLater();
+                watcher->deleteLater();
+                if (!reply.isValid())
+                    return;
+                QJsonParseError parseError{};
+                const QJsonDocument document =
+                    QJsonDocument::fromJson(reply.value().toUtf8(), &parseError);
+                if (parseError.error != QJsonParseError::NoError || !document.isObject())
+                    return;
+                const QVariantMap report = document.object().toVariantMap();
+                if (options)
+                    emit optionsChanged(report);
+                else
+                    emit discoveryChanged(report);
+            });
+}
+
 void DbusPrintersClient::call(const QString &method, const QVariantList &arguments)
 {
     auto *iface = new QDBusInterface(m_service, m_path, m_interface,
@@ -179,6 +232,25 @@ void MockPrintersClient::resetForTest()
           QStringLiteral("Epson GT-1500 flatbed scanner"),
           QStringLiteral("flatbed") },
     };
+    m_discovery = {
+        { { QStringLiteral("kind"), QStringLiteral("network") },
+          { QStringLiteral("uri"), QStringLiteral("ipp://192.168.0.12/ipp/print") },
+          { QStringLiteral("description"), QStringLiteral("Office LaserJet") } },
+        { { QStringLiteral("kind"), QStringLiteral("direct") },
+          { QStringLiteral("uri"), QStringLiteral("usb://Canon/MF230") },
+          { QStringLiteral("description"), QStringLiteral("Canon MF230 USB") } },
+    };
+    m_options = {
+        { { QStringLiteral("key"), QStringLiteral("PageSize") },
+          { QStringLiteral("label"), QStringLiteral("Media Size") },
+          { QStringLiteral("value"), QStringLiteral("A4") },
+          { QStringLiteral("choices"), QStringList{QStringLiteral("A4"), QStringLiteral("Letter")} } },
+        { { QStringLiteral("key"), QStringLiteral("Duplex") },
+          { QStringLiteral("label"), QStringLiteral("Double-Sided") },
+          { QStringLiteral("value"), QStringLiteral("DuplexNoTumble") },
+          { QStringLiteral("choices"),
+            QStringList{QStringLiteral("None"), QStringLiteral("DuplexNoTumble")} } },
+    };
     rebuild();
 }
 
@@ -218,6 +290,57 @@ void MockPrintersClient::cancelJob(int jobId)
         }
     }
     rebuild();
+}
+
+void MockPrintersClient::discover()
+{
+    QVariantMap report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("available"));
+    QVariantList devices;
+    for (const QVariantMap &device : m_discovery)
+        devices.append(device);
+    report.insert(QStringLiteral("devices"), devices);
+    emit discoveryChanged(report);
+}
+
+void MockPrintersClient::addPrinter(const QString &name, const QString &uri,
+                                    const QString &driver)
+{
+    Q_UNUSED(driver);
+    for (const Printer &printer : m_printers)
+        if (printer.name == name)
+            return;
+    Printer printer;
+    printer.name = name;
+    printer.displayName = name;
+    printer.uri = uri;
+    printer.state = QStringLiteral("idle");
+    printer.stateMessage = QStringLiteral("Idle");
+    m_printers.append(printer);
+    rebuild();
+}
+
+void MockPrintersClient::printerOptions(const QString &name)
+{
+    Q_UNUSED(name);
+    QVariantMap report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("available"));
+    QVariantList options;
+    for (const QVariantMap &option : m_options)
+        options.append(option);
+    report.insert(QStringLiteral("options"), options);
+    emit optionsChanged(report);
+}
+
+void MockPrintersClient::setPrinterOption(const QString &name, const QString &key,
+                                          const QString &value)
+{
+    Q_UNUSED(name);
+    for (QVariantMap &option : m_options) {
+        if (option.value(QStringLiteral("key")).toString() == key)
+            option.insert(QStringLiteral("value"), value);
+    }
+    printerOptions(name);
 }
 
 void MockPrintersClient::rebuild()

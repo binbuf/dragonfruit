@@ -647,7 +647,7 @@ pub mod component {
 pub mod glass {
     pub const VERSION: &str = "1";
     pub mod rollout {
-        pub const DEFAULT_MODE: &str = "legacy";
+        pub const DEFAULT_MODE: &str = "replacement";
         pub const LEGACY_MODE: &str = "legacy";
         pub const REPLACEMENT_MODE: &str = "replacement";
         pub const ENV_VAR: &str = "DRAGONFRUIT_GLASS_ROLLOUT";

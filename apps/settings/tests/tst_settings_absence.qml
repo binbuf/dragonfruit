@@ -36,7 +36,7 @@ Item {
              "battery", "storage", "general", "sound", "control-center",
              "search", "keyboard", "mouse", "trackpad", "notifications",
              "focus", "lock-screen", "menu-bar", "biometrics", "users-groups",
-             "printers", "privacy", "accessibility"]
+             "printers", "privacy", "accessibility", "game-controllers"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -89,7 +89,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 27);
+            compare(SettingsPanes.shippedPanes.length, 28);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -150,6 +150,9 @@ Item {
             compare(Theme.dark, true);
             pane.schemeControl.activateIndex(0); // light
             compare(Settings.values["appearance.colorScheme"], "light");
+            // This headless software scene has no sampled pass; pin the
+            // legacy preview so the slider's resolver is deterministic.
+            pane.previewRollout = "legacy";
 
             // T196: the glass slider stays live on the schema defaults and
             // its preview uses the same resolver with no daemon.

@@ -289,6 +289,13 @@ impl<N: NetworkManagerSource, A: AudioSource, P: PowerSource> StatusHost<N, A, P
         write_report(&outcome)
     }
 
+    /// Play a short test sound through the default output (T229). One
+    /// explicit playback action; it changes no routing or level.
+    pub fn play_test_sound(&mut self) -> Value {
+        let outcome = self.audio.play_test_sound();
+        write_report(&outcome)
+    }
+
     /// Flip the default sink's mute state. One explicit write.
     pub fn toggle_mute(&mut self) -> Value {
         let outcome = self.audio.toggle_mute();
@@ -864,6 +871,19 @@ mod tests {
         assert_eq!(host.audio().source().muted(), Some(false));
         assert_eq!(host.audio().source().volume_writes(), 1);
         assert_eq!(host.audio().source().mute_writes(), 2);
+    }
+
+    #[test]
+    fn a_test_sound_is_one_playback_action() {
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::present(audio_data()),
+            MockPower::absent(),
+        );
+        host.refresh();
+        assert_eq!(host.play_test_sound()["outcome"], "applied");
+        assert_eq!(host.audio().source().test_sounds(), 1);
+        assert_eq!(host.audio().source().volume_writes(), 0);
     }
 
     #[test]

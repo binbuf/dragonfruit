@@ -1,6 +1,7 @@
 # 0227 — T208 keeps the glass rollout staged until a native replacement cycle passes
 
-**Status:** accepted (2026-11-07)
+**Status:** superseded by [0234](0234-replacement-glass-default.md) (2026-11-07);
+the gate record below is kept for the native evidence boundary.
 
 ## Context
 
@@ -34,6 +35,10 @@ The shipped glass rollout default stays `legacy`. T208 does **not** flip
 through the native replacement rows and a rollback cycle with no new
 presentation, resource, fullscreen, scanout or lock regression.
 
+> Historical decision. ADR [0234](0234-replacement-glass-default.md) later
+> enabled `replacement` by operator decision; the T208 native evidence rows
+> remain OPEN.
+
 The one rollback/selection switch is `DRAGONFRUIT_GLASS_ROLLOUT`. The native
 session helper now persists it (like `DRAGONFRUIT_DRM_MATERIAL` and
 `DRAGONFRUIT_DRM_GLASS`), so a rollback survives `native-rebuild`:
@@ -49,9 +54,11 @@ and [`t208-native-stats.txt`](../../captures/t208-native-stats.txt).
 
 ## Consequences
 
+- ADR [0234](0234-replacement-glass-default.md) later enabled `replacement` by
+  operator decision while the native replacement rows stayed OPEN. The rollback
+  rail remains `DRAGONFRUIT_GLASS_ROLLOUT=legacy`.
 - The replacement is still a staged release candidate; nested T207 remains its
-  acceptance evidence. The default flip is an operator follow-up on a free
-  seat, not an unattended agent change.
+  acceptance evidence. The native replacement rows remain OPEN on a free seat.
 - A future task must not treat the native baseline as replacement proof. The
   native replacement stills/perf, native accessibility overrides, direct
   scanout, lock-exit and hotplug/mixed-refresh rows stay OPEN.

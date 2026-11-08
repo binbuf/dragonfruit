@@ -275,6 +275,19 @@ pub fn accounts_snapshot_view(snapshot: &AccountsSnapshot) -> Value {
         // The distribution group provider, when present.
         "groupsAvailable": snapshot.groups_available(),
         "groupCount": groups.len(),
+        "adminGroup": snapshot
+            .admin_group()
+            .map(|group| group.name.clone())
+            .unwrap_or_default(),
+        "adminGroupAvailable": snapshot.admin_group().is_some(),
+        "directoryAvailable": snapshot.directory_available(),
+        "directory": snapshot.directory().map(|directory| json!({
+            "domains": directory.domains,
+            "provider": directory.provider,
+            "joined": directory.joined,
+            "status": directory.status(),
+            "note": directory.note,
+        })),
         // The automatic login user, when one is configured.
         "automaticLogin": automatic.map(Account::display_name).unwrap_or(""),
         "automaticLoginUser": automatic.map(|user| user.user_name.clone()).unwrap_or_default(),
@@ -555,6 +568,7 @@ mod tests {
                 members: vec!["dan".to_owned()],
                 system: false,
             }]),
+            directory: None,
         }
     }
 

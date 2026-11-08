@@ -56,15 +56,16 @@ const INTERFACE_VERSION: u32 = 1;
 /// bumps in tandem with its child interface.
 const SHELL_INTERFACE_VERSION: u32 = 4;
 
-/// `df_toplevel_manager` is version 9 since `set_appearance_policy` was added
-/// (T196); `activation_result` was the v8 addition (T-14.7g),
+/// `df_toplevel_manager` is version 10 since the T229 pointer/layout policy
+/// requests were added; `set_appearance_policy` was the v9 addition (T196);
+/// `activation_result` was the v8 addition (T-14.7g),
 /// `set_app_accelerators` v7 (T-14.2b), `capture_screenshot` and the
 /// `screenshot_saved`/`screenshot_failed` events were the v6 additions
 /// (T-13.3b), `set_motion_policy`/`set_input_policy` were the v5 additions
 /// (T-08.2c), `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3
 /// (T-11), and `release_keyboard_focus` v2 (T-10). The other interfaces stay
 /// at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 9;
+const MANAGER_INTERFACE_VERSION: u32 = 10;
 
 /// `df_output` is version 4 since the role-keyed `material_role_state` event
 /// was added (T-21.2c); v3 added the global effective `material_state` event
@@ -583,10 +584,9 @@ impl DfState {
                         let regions: Vec<ChromeRegion> = declared
                             .iter()
                             .filter_map(|region| {
-                                let rect = crate::window::explicit_panel_bounds(
-                                    geometry, region.rect,
-                                )?
-                                .intersection(output_rect)?;
+                                let rect =
+                                    crate::window::explicit_panel_bounds(geometry, region.rect)?
+                                        .intersection(output_rect)?;
                                 if rect.size.w <= 0 || rect.size.h <= 0 {
                                     return None;
                                 }
@@ -620,7 +620,8 @@ impl DfState {
                                     |states| {
                                         states
                                             .cached_state
-                                            .get::<smithay::wayland::compositor::SurfaceAttributes>()
+                                            .get::<smithay::wayland::compositor::SurfaceAttributes>(
+                                            )
                                             .current()
                                             .input_region
                                             .clone()
@@ -2143,9 +2144,8 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
                         // its siblings. `clear_panel_regions` is the explicit
                         // way to remove everything.
                         if entry.pending_panel_regions.is_none() {
-                            entry.pending_panel_regions = Some(
-                                entry.state.panel_regions.clone().unwrap_or_default(),
-                            );
+                            entry.pending_panel_regions =
+                                Some(entry.state.panel_regions.clone().unwrap_or_default());
                         }
                         let pending = entry
                             .pending_panel_regions
@@ -2419,6 +2419,34 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     gesture_space_switch != 0,
                     gesture_mission_control != 0,
                 );
+            }
+            df_toplevel_manager::Request::SetPointerPolicy {
+                pointer_speed_millionths,
+                natural_scroll,
+                tap_to_click,
+                left_handed,
+                scroll_method,
+                secondary_click,
+                scroll_speed_millionths,
+                double_click_ms,
+                haptics,
+            } => {
+                // T229: the live pointer/trackpad half.
+                state.set_pointer_policy(
+                    pointer_speed_millionths,
+                    natural_scroll != 0,
+                    tap_to_click != 0,
+                    left_handed != 0,
+                    scroll_method.as_deref(),
+                    secondary_click.as_deref(),
+                    scroll_speed_millionths,
+                    double_click_ms,
+                    haptics != 0,
+                );
+            }
+            df_toplevel_manager::Request::SetKeyboardLayout { layout, variant } => {
+                // T229: the active input source.
+                state.set_keyboard_layout(layout.as_deref(), variant.as_deref());
             }
             df_toplevel_manager::Request::SetAppAccelerators {
                 app_id,

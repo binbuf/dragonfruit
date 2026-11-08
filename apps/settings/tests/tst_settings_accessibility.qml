@@ -29,7 +29,6 @@ Item {
             Settings.set("accessibility.reduceMotion", false);
             Settings.set("accessibility.reduceTransparency", false);
             Settings.set("accessibility.increaseContrast", false);
-            Glass.rollout = "legacy";
         }
 
         function make() {
@@ -100,6 +99,9 @@ Item {
 
         function test_reduce_transparency_round_trips_and_applies_live() {
             var shell = make();
+            // Pin the legacy rail explicitly: the shell binding otherwise
+            // follows the shipped replacement default.
+            shell.glassRollout = "legacy";
             var pane = paneOf(shell);
             compare(pane.reduceTransparency, false);
             compare(pane.reduceTransparencyToggle.checked, false);

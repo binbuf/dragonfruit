@@ -19,11 +19,19 @@
 
 use dragonfruit_system_adapters::AdapterError;
 
+use crate::controllers::{ControllerData, ControllerTest};
+
 /// The raw result of one libinput read: the devices the host stack recognizes.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct InputData {
     /// Every device `libinput` recognizes, in the order the tool reports them.
     pub devices: Vec<InputDeviceData>,
+    /// The game controllers the kernel inventory reports (T229). Empty is a
+    /// live empty list, never an error.
+    pub controllers: Vec<ControllerData>,
+    /// Whether a speech-to-text command is installed (T229). Dictation is
+    /// delegated; this only enables the pane's row.
+    pub dictation_available: bool,
 }
 
 /// One libinput device, flattened from one `Device:` record.
@@ -98,6 +106,12 @@ pub struct InputDeviceData {
 pub trait InputSource {
     /// One read of the host input stack.
     fn read(&mut self) -> Result<Option<InputData>, AdapterError>;
+
+    /// Read one diagnostic event from a controller node. This is an explicit
+    /// test action, not a device configuration write; the default is absent.
+    fn test_controller(&mut self, _path: &str) -> ControllerTest {
+        ControllerTest::default()
+    }
 }
 
 /// A fixture-backed source with a simulated host-stack lifecycle.
@@ -111,6 +125,7 @@ pub struct MockInput {
     data: Option<InputData>,
     failure: Option<AdapterError>,
     reads: u32,
+    controller_tests: u32,
 }
 
 impl MockInput {
@@ -121,6 +136,7 @@ impl MockInput {
             data: None,
             failure: None,
             reads: 0,
+            controller_tests: 0,
         }
     }
 
@@ -131,6 +147,7 @@ impl MockInput {
             data: Some(data),
             failure: None,
             reads: 0,
+            controller_tests: 0,
         }
     }
 
@@ -141,6 +158,7 @@ impl MockInput {
             data: None,
             failure: Some(AdapterError::new(message)),
             reads: 0,
+            controller_tests: 0,
         }
     }
 
@@ -149,6 +167,18 @@ impl MockInput {
         self.present = true;
         self.failure = None;
         self.data = Some(data);
+    }
+
+    /// Replace the controller inventory (a hotplug test).
+    pub fn set_controllers(&mut self, controllers: Vec<ControllerData>) {
+        self.data.get_or_insert_with(InputData::default).controllers = controllers;
+    }
+
+    /// Replace the dictation availability probe.
+    pub fn set_dictation_available(&mut self, available: bool) {
+        self.data
+            .get_or_insert_with(InputData::default)
+            .dictation_available = available;
     }
 
     /// The host stack becomes unavailable.
@@ -165,6 +195,11 @@ impl MockInput {
     /// Whether the simulated host stack is available.
     pub fn is_present(&self) -> bool {
         self.present
+    }
+
+    /// The number of controller tests the source has answered.
+    pub fn controller_tests(&self) -> u32 {
+        self.controller_tests
     }
 
     /// How many times the source has been read. Lets a test prove there is no
@@ -185,6 +220,14 @@ impl InputSource for MockInput {
         }
         Ok(Some(self.data.clone().unwrap_or_default()))
     }
+
+    fn test_controller(&mut self, path: &str) -> ControllerTest {
+        self.controller_tests += 1;
+        if path.is_empty() {
+            return ControllerTest::default();
+        }
+        ControllerTest::event(path, &[0, 0, 0, 0, 1, 0, 0, 0])
+    }
 }
 
 #[cfg(test)]
@@ -199,6 +242,7 @@ mod tests {
                 capabilities: vec!["keyboard".to_owned()],
                 ..InputDeviceData::default()
             }],
+            ..InputData::default()
         }
     }
 

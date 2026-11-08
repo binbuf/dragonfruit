@@ -88,6 +88,11 @@ void DbusSoundClient::setDefaultSource(int id)
     call(QStringLiteral("SetDefaultSource"), {id});
 }
 
+void DbusSoundClient::playTestSound()
+{
+    call(QStringLiteral("PlayTestSound"), {});
+}
+
 void DbusSoundClient::call(const QString &method, const QVariantList &arguments)
 {
     auto *iface = new QDBusInterface(m_service, m_path, m_interface,
@@ -173,6 +178,12 @@ void MockSoundClient::setDefaultSource(int id)
     rebuild();
 }
 
+void MockSoundClient::playTestSound()
+{
+    ++m_testSounds;
+    rebuild();
+}
+
 void MockSoundClient::rebuild()
 {
     const int percent = m_muted ? 0 : qRound(m_volume * 100.0);
@@ -188,6 +199,7 @@ void MockSoundClient::rebuild()
     view.insert(QStringLiteral("volume"), m_volume);
     view.insert(QStringLiteral("percent"), percent);
     view.insert(QStringLiteral("muted"), m_muted);
+    view.insert(QStringLiteral("testSounds"), m_testSounds);
     view.insert(QStringLiteral("defaultSink"),
                 m_defaultSinkId == 9 ? QStringLiteral("headphones")
                                      : QStringLiteral("speakers"));

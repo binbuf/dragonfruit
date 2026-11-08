@@ -607,6 +607,18 @@ void MockAccountsClient::rebuild()
     view.insert(QStringLiteral("automaticLogin"), automaticLogin);
     view.insert(QStringLiteral("automaticLoginUser"), automaticLoginUser);
     view.insert(QStringLiteral("automaticLoginUid"), automaticLoginUid);
+    view.insert(QStringLiteral("adminGroup"),
+                m_groupsAvailable ? QStringLiteral("wheel") : QString());
+    view.insert(QStringLiteral("adminGroupAvailable"), m_groupsAvailable);
+    view.insert(QStringLiteral("directoryAvailable"), true);
+    QVariantMap directory;
+    directory.insert(QStringLiteral("domains"),
+                     QStringList{QStringLiteral("example.com")});
+    directory.insert(QStringLiteral("provider"), QStringLiteral("sssd"));
+    directory.insert(QStringLiteral("joined"), true);
+    directory.insert(QStringLiteral("status"), QStringLiteral("Joined: example.com"));
+    directory.insert(QStringLiteral("note"), QString());
+    view.insert(QStringLiteral("directory"), directory);
     view.insert(QStringLiteral("users"), userArray.toVariantList());
     view.insert(QStringLiteral("groups"), groupArray.toVariantList());
     m_view = view;

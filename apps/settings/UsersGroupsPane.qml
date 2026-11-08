@@ -46,6 +46,12 @@ Item {
         ? String(root.view.automaticLoginUser) : ""
     readonly property int automaticLoginUid: root.view.automaticLoginUid !== undefined
         ? Number(root.view.automaticLoginUid) : 0
+    // T229: the distribution's admin group and the SSSD/FreeIPA projection.
+    readonly property string adminGroup: root.view.adminGroup !== undefined
+        ? String(root.view.adminGroup) : ""
+    readonly property bool directoryAvailable: root.view.directoryAvailable === true
+    readonly property var directory: root.view.directory !== undefined
+        ? root.view.directory : ({})
 
     // The user/group the info dialog edits. Keyed by uid/name and derived from
     // the live view, so a write's round-trip is reflected in the open dialog
@@ -82,8 +88,14 @@ Item {
     property alias addGroupNameInput: addGroupNameInput
     property alias addGroupCreateButton: addGroupCreateButton
     property alias groupsAbsentNote: groupsAbsentNote
+    property alias adminGroupRow: adminGroupRow
+    property alias directoryRow: directoryRow
+    property alias directoryDialog: directoryDialog
+    property alias directoryStatusText: directoryStatusText
     property alias absenceNote: absenceNote
     property alias authErrorNote: authErrorNote
+
+    property Item popupParent: null
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -336,6 +348,43 @@ Item {
             }
         }
 
+        // ── Admin group and directory account (T229) ──────────────────────
+        SettingsGroup {
+            width: parent.width
+            visible: root.ready
+
+            SettingsRow {
+                id: adminGroupRow
+                objectName: "adminGroupRow"
+                width: parent.width
+                label: qsTr("Admin group")
+                description: qsTr("Members of this group can administer the system.")
+                controlData: Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.adminGroup.length > 0 ? root.adminGroup : qsTr("Not detected")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
+            SettingsRow {
+                id: directoryRow
+                objectName: "directoryAccountRow"
+                width: parent.width
+                label: qsTr("Directory account")
+                description: root.directoryAvailable
+                    ? String(root.directory.status || qsTr("Configured"))
+                    : qsTr("No directory service (SSSD/FreeIPA) is configured.")
+                showSeparator: false
+                controlData: Button {
+                    objectName: "directoryDetailsButton"
+                    text: qsTr("Details…")
+                    enabled: root.directoryAvailable
+                    onClicked: root.directoryDialog.show()
+                }
+            }
+        }
+
         // ── The group list ────────────────────────────────────────────────
         SettingsGroup {
             width: parent.width
@@ -442,6 +491,65 @@ Item {
                 kind: "read-only"
                 reason: qsTr("The account service is not running, so users and "
                              + "groups are unavailable.")
+            }
+        }
+    }
+
+    Dialog {
+        id: directoryDialog
+        objectName: "directoryDialog"
+        title: qsTr("Directory Account")
+        dismissible: true
+        parent: root.popupParent ? root.popupParent : root
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                id: directoryStatusText
+                objectName: "directoryStatus"
+                width: parent.width
+                text: root.directoryAvailable
+                    ? String(root.directory.status || "") : qsTr("Not configured")
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+            }
+
+            Text {
+                width: parent.width
+                text: {
+                    var domains = root.directory.domains !== undefined
+                        ? root.directory.domains.join(", ") : "";
+                    var provider = root.directory.provider !== undefined
+                        ? String(root.directory.provider) : "";
+                    if (domains.length === 0 && provider.length === 0)
+                        return qsTr("Joining a domain is delegated to the distribution's realmd/SSSD tooling.");
+                    return qsTr("Domains: %1\nProvider: %2")
+                        .arg(domains.length > 0 ? domains : qsTr("None"))
+                        .arg(provider.length > 0 ? provider : qsTr("Unknown"));
+                }
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                visible: root.directory.note !== undefined
+                         && String(root.directory.note).length > 0
+                text: root.directory.note !== undefined ? String(root.directory.note) : ""
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("Join or leave a domain with your distribution's domain-join tool; this pane reports the state and never rewrites SSSD configuration.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
             }
         }
     }

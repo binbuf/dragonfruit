@@ -31,6 +31,12 @@ Item {
         SignalSpy { id: centerActionSpy; signalName: "actionInvoked" }
         SignalSpy { id: centerEntryDismissSpy; signalName: "dismissEntryRequested" }
 
+        // These tests exercise the legacy sampled/fallback rail unless a
+        // case explicitly selects the replacement look.
+        function init() {
+            Glass.rollout = "legacy";
+        }
+
         function make(component, props) {
             var obj = createTemporaryObject(component, stage, props || {});
             waitForRendering(stage);

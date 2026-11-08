@@ -49,10 +49,11 @@ must never be mistaken for a deliberately veil-only surface.
    `solid` (or `software-fallback`) with an opaque scheme plate and a named
    reason. Persistent roles keep their sampled floor at `Minimal`.
 6. **One internal rollout switch.** `DRAGONFRUIT_GLASS_ROLLOUT` selects
-   `legacy` (the default until T208) or `replacement`. The shell's `Glass`
-   singleton exposes it to QML and the compositor's `Rollout::from_env` reads
-   the same value, so nested and native fixtures select either look
-   reproducibly. An unset or unknown value is always the existing appearance.
+   `legacy` or `replacement`; the shipped default is `replacement` (ADR 0234),
+   with `legacy` kept as the rollback rail. The shell's `Glass` singleton
+   exposes it to QML and the compositor's `Rollout::from_env` reads the same
+   value, so nested and native fixtures select either look reproducibly. An
+   unset or unknown value takes the shipped default.
 7. **Two runtime resolvers, one data source.** `design-system/Glass.qml` and
    `compositor/src/material_preset.rs` implement the same policy over the
    generated values. `tests/glass/test_material_presets.py`, the QML

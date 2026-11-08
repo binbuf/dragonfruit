@@ -1240,9 +1240,9 @@ Rust crate into the app.
   discovers the same printers over generic IPP/DNS-SD); the per-printer
   disclosure opens a detail dialog with the status, model/location, the
   accept-jobs toggle, the queued jobs with a Cancel action, and a
-  `Set as Default Printer` action. `Add Printer, Scanner, or Fax…` is not shown
-  yet (no CUPS discovery seam in the adapter; a disabled button would be a dead
-  control — recorded as a follow-up).
+  `Set as Default Printer` action. T229 adds `Add Printer or Scanner…`
+  (`lpinfo -v` discovery + `lpadmin` add) and an `Options & Supplies…` sheet
+  (`lpoptions -l`/`-o`). A queue with no options is an honest empty sheet.
 - **The Control Center tile fits without a scroll.** The fifteenth tile needed
   the content gap compacted from `xs` to `xxs` (and the new tile's own gap
   compacted to `xs`); the fixed 360×1160 surface still holds every tile.
@@ -1462,13 +1462,18 @@ NetworkManager, audio, and power adapters and serves
 - `org.dragonfruit.SystemStatus1.Printers` (T-15.12b) — `State()`/`Refresh()`
   plus `SetDefaultPrinter(name)`, `SetPrinterAcceptingJobs(name, accepting)`,
   and `CancelJob(id)` (the Printers & Scanners pane's writes over the CUPS/SANE
-  host-stack adapter).
+  host-stack adapter). T229 adds `DiscoverPrinters()`, `AddPrinter(name, uri,
+  driver)`, `PrinterOptions(name)`, and `SetPrinterOption(name, key, value)`.
 - `org.dragonfruit.SystemStatus1.Privacy` (T-15.13b) — `State()`/`Refresh()`
   plus `SetPermission(table, id, app, permission)` and
   `DeletePermission(table, id, app)` (the Privacy & Security pane's writes over
   the portal PermissionStore adapter). T228 adds
   `SecurityState()`/`RefreshSecurity()` and
   `SetSecuritySourceEnabled(id, enabled)` for the Security group.
+- `org.dragonfruit.SystemStatus1.Input` (T-15.4b) — `State()`/`Refresh()` and
+  T229's `TestController(path)` diagnostic read. The adapter remains
+  read-only for device configuration; the pointer/keymap preferences travel
+  through the compositor policy below.
 - `org.dragonfruit.SystemStatus1.Accessibility` (T-15.14b) — `State()`/
   `Refresh()` only (the Accessibility pane and tile read the bridge host's
   live AT-SPI projection; the adapter has no setter, and the pane's
@@ -1476,6 +1481,30 @@ NetworkManager, audio, and power adapters and serves
 - `org.dragonfruit.SystemStatus1.Vpn` (T-15.15b) — `State()`/`Refresh()` plus
   `Connect(uuid)` and `Deactivate(uuid)` (the Network advanced (VPN) pane's
   writes over the NetworkManager VPN adapter).
+
+## Input breadth and the v10 policy (T229)
+
+`dragonfruit-input` grows the controller inventory: `controllers_from_proc`
+reads `/proc/bus/input/devices` for joystick/gamepad records, `sdl_mappings`
+reads `SDL_GAMECONTROLLERCONFIG`/`gamecontrollerdb.txt`, and
+`test_controller` performs one diagnostic event read with a two-second timeout.
+`dictation_available` probes the speech-to-text commands the Keyboard pane
+names. The bridge host exposes the controller list in the existing `input`
+view and `TestController(path)` on the `Input` interface.
+
+The pointer and keyboard-layout preferences do not go through the bridge
+host. The shell mirrors the settingsd keys over
+`df_toplevel_manager.set_pointer_policy` and `set_keyboard_layout` (v10); the
+compositor clamps the speeds, stores the pointer snapshot in
+`PointerSettings`, and recompiles the seat keymap for the first
+`input.sources` entry. Older compositors ignore both requests and keep the
+settingsd-only state.
+
+The audio adapter grows one playback action (`PlayTestSound`); the printer
+adapter grows discovery/add/options; the account adapter grows the
+`/etc/sssd/sssd.conf` + `realm list` directory projection and the
+`wheel`/`sudo` admin-group helper. Each is projected through its existing
+bridge interface.
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one

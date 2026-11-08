@@ -15,7 +15,9 @@
 //! libinput answers (or when the session asks), and the read state stays the
 //! single source of truth.
 
-use dragonfruit_input::{DeviceKind, InputAdapter, InputDevice, InputSnapshot, InputSource};
+use dragonfruit_input::{
+    Controller, ControllerTest, DeviceKind, InputAdapter, InputDevice, InputSnapshot, InputSource,
+};
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
@@ -51,6 +53,13 @@ impl<S: InputSource> InputHost<S> {
     /// The view as a JSON string (the D-Bus `State()` payload).
     pub fn state(&self) -> String {
         self.view().to_string()
+    }
+
+    /// Read one diagnostic event from a controller node (T229). The returned
+    /// JSON is the test report; it changes no device state.
+    pub fn test_controller(&mut self, path: &str) -> String {
+        let test = self.adapter.test_controller(path);
+        controller_test_view(&test).to_string()
     }
 
     /// The adapter (read-only), for tests and introspection.
@@ -104,7 +113,39 @@ pub fn input_snapshot_view(snapshot: &InputSnapshot) -> Value {
         "pointerCount": snapshot.pointers().len(),
         "mouseCount": snapshot.mice().len(),
         "touchpadCount": snapshot.touchpads().len(),
+        "controllers": snapshot
+            .controllers()
+            .iter()
+            .map(controller_view)
+            .collect::<Vec<Value>>(),
+        "controllerCount": snapshot.controller_count(),
+        "dictationAvailable": snapshot.dictation_available(),
         "devices": devices,
+    })
+}
+
+fn controller_view(controller: &Controller) -> Value {
+    json!({
+        "name": controller.name,
+        "path": controller.path,
+        "id": controller.id(),
+        "identity": controller.identity(),
+        "bustype": controller.bustype,
+        "vendor": controller.vendor,
+        "product": controller.product,
+        "handlers": controller.handlers,
+        "mapping": controller.mapping,
+        "hasMapping": controller.has_mapping(),
+        "driver": controller.driver,
+    })
+}
+
+fn controller_test_view(test: &ControllerTest) -> Value {
+    json!({
+        "outcome": test.outcome,
+        "path": test.path,
+        "detail": test.detail,
+        "bytes": test.bytes,
     })
 }
 
@@ -181,6 +222,7 @@ mod tests {
                     ..InputDeviceData::default()
                 },
             ],
+            ..InputData::default()
         }
     }
 
@@ -207,6 +249,8 @@ mod tests {
         assert_eq!(view["pointerCount"], 2);
         assert_eq!(view["mouseCount"], 1);
         assert_eq!(view["touchpadCount"], 1);
+        assert_eq!(view["controllerCount"], 0);
+        assert_eq!(view["dictationAvailable"], false);
         // Keyboards sort first, then the pointing devices by name.
         assert_eq!(view["devices"][0]["kind"], "keyboard");
         assert_eq!(view["devices"][1]["kind"], "mouse");
@@ -237,9 +281,40 @@ mod tests {
 
     #[test]
     fn the_input_host_is_read_only() {
-        // There is no write method: the pane's preferences are settingsd keys,
-        // and libinput is an inventory (ADR 0124).
+        // There is no configuration write: the pane's preferences are
+        // settingsd keys, and libinput is an inventory (ADR 0124).
         let host = InputHost::new(MockInput::present(data()));
         assert_eq!(host.adapter().source().reads(), 0);
+    }
+
+    #[test]
+    fn controllers_and_dictation_are_in_the_view() {
+        let mut raw = data();
+        raw.controllers.push(dragonfruit_input::ControllerData {
+            name: "Microsoft X-Box 360 pad".to_owned(),
+            path: "/dev/input/js0".to_owned(),
+            vendor: "045E".to_owned(),
+            product: "028E".to_owned(),
+            driver: "udev".to_owned(),
+            ..dragonfruit_input::ControllerData::default()
+        });
+        raw.dictation_available = true;
+        let mut host = InputHost::new(MockInput::present(raw));
+        host.refresh();
+        let view = host.view();
+        assert_eq!(view["controllerCount"], 1);
+        assert_eq!(view["dictationAvailable"], true);
+        assert_eq!(view["controllers"][0]["name"], "Microsoft X-Box 360 pad");
+        assert_eq!(view["controllers"][0]["identity"], "045E:028E");
+        assert_eq!(view["controllers"][0]["hasMapping"], false);
+    }
+
+    #[test]
+    fn a_controller_test_reads_one_event() {
+        let mut host = InputHost::new(MockInput::present(data()));
+        let report: Value = serde_json::from_str(&host.test_controller("/dev/input/js0")).unwrap();
+        assert_eq!(report["outcome"], "event");
+        assert_eq!(report["path"], "/dev/input/js0");
+        assert!(!report["bytes"].as_str().unwrap().is_empty());
     }
 }

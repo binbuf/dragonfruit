@@ -36,6 +36,8 @@ public:
     virtual void setMute(bool muted) = 0;
     virtual void setDefaultSink(int id) = 0;
     virtual void setDefaultSource(int id) = 0;
+    // T229: play a short test sound through the default output.
+    virtual void playTestSound() = 0;
 
 signals:
     void changed(const QVariantMap &view);
@@ -58,6 +60,7 @@ public:
     void setMute(bool muted) override;
     void setDefaultSink(int id) override;
     void setDefaultSource(int id) override;
+    void playTestSound() override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
@@ -87,6 +90,7 @@ public:
     void setMute(bool muted) override;
     void setDefaultSink(int id) override;
     void setDefaultSource(int id) override;
+    void playTestSound() override;
 
 private:
     void rebuild();
@@ -94,5 +98,6 @@ private:
     bool m_muted = false;
     int m_defaultSinkId = 7;
     int m_defaultSourceId = 20;
+    int m_testSounds = 0;
     QVariantMap m_view;
 };

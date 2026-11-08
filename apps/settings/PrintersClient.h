@@ -37,6 +37,13 @@ public:
     virtual void setDefaultPrinter(const QString &name) = 0;
     virtual void setPrinterAcceptingJobs(const QString &name, bool accepting) = 0;
     virtual void cancelJob(int jobId) = 0;
+    // T229: discovery, add, and per-queue options.
+    virtual void discover() = 0;
+    virtual void addPrinter(const QString &name, const QString &uri,
+                            const QString &driver) = 0;
+    virtual void printerOptions(const QString &name) = 0;
+    virtual void setPrinterOption(const QString &name, const QString &key,
+                                  const QString &value) = 0;
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
@@ -44,6 +51,9 @@ public:
 signals:
     void changed(const QVariantMap &view);
     void availableChanged(bool available);
+    // T229: the Add dialog's discovery list and the options sheet's rows.
+    void discoveryChanged(const QVariantMap &report);
+    void optionsChanged(const QVariantMap &report);
 };
 
 // The live client over the user session bus.
@@ -61,9 +71,17 @@ public:
     void setDefaultPrinter(const QString &name) override;
     void setPrinterAcceptingJobs(const QString &name, bool accepting) override;
     void cancelJob(int jobId) override;
+    void discover() override;
+    void addPrinter(const QString &name, const QString &uri,
+                    const QString &driver) override;
+    void printerOptions(const QString &name) override;
+    void setPrinterOption(const QString &name, const QString &key,
+                          const QString &value) override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
+    void callReport(const QString &method, const QVariantList &arguments,
+                    bool options);
     void applyReply(const QByteArray &json);
     QString m_service;
     QString m_path;
@@ -90,6 +108,12 @@ public:
     void setDefaultPrinter(const QString &name) override;
     void setPrinterAcceptingJobs(const QString &name, bool accepting) override;
     void cancelJob(int jobId) override;
+    void discover() override;
+    void addPrinter(const QString &name, const QString &uri,
+                    const QString &driver) override;
+    void printerOptions(const QString &name) override;
+    void setPrinterOption(const QString &name, const QString &key,
+                          const QString &value) override;
     void resetForTest() override;
 
 private:
@@ -121,6 +145,8 @@ private:
     };
     QList<Printer> m_printers;
     QList<Scanner> m_scanners;
+    QList<QVariantMap> m_discovery;
+    QList<QVariantMap> m_options;
     bool m_cupsAvailable = true;
     bool m_saneAvailable = true;
     QVariantMap m_view;

@@ -102,7 +102,7 @@ QtObject {
     readonly property var glass: QtObject {
         readonly property string version: "1"
         readonly property var rollout: QtObject {
-            readonly property string defaultMode: "legacy"
+            readonly property string defaultMode: "replacement"
             readonly property string legacyMode: "legacy"
             readonly property string replacementMode: "replacement"
             readonly property string envVar: "DRAGONFRUIT_GLASS_ROLLOUT"

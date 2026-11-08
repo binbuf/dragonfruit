@@ -49,6 +49,12 @@ Item {
         SignalSpy { id: clipboardPinSpy; signalName: "clipboardPinToggled" }
         SignalSpy { id: clipboardClearSpy; signalName: "clipboardClearRequested" }
 
+        // These tests exercise the legacy sampled/fallback rail unless a
+        // case explicitly selects the replacement look.
+        function init() {
+            Glass.rollout = "legacy";
+        }
+
         function wifiModel(state, radioEnabled, label) {
             return {
                 kind: "wifi",

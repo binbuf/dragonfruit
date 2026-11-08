@@ -255,6 +255,37 @@ impl ScannerKind {
     }
 }
 
+/// One printer discovery result, as `lpinfo -v` reports it (T229).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct PrinterDeviceData {
+    /// The CUPS device class (`direct`, `network`, …).
+    #[serde(default)]
+    pub kind: String,
+    /// The device URI (`usb://…`, `ipp://…`, `dnssd://…`).
+    #[serde(default)]
+    pub uri: String,
+    /// The human description, when the tool prints one.
+    #[serde(default)]
+    pub description: String,
+}
+
+/// One configurable printer option, as `lpoptions -l` reports it (T229).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct PrinterOptionData {
+    /// The option key (`PageSize`, `Duplex`, …).
+    #[serde(default)]
+    pub key: String,
+    /// The human label (`Media Size`, …), falling back to the key.
+    #[serde(default)]
+    pub label: String,
+    /// The current value (`A4`, `DuplexNoTumble`, …).
+    #[serde(default)]
+    pub value: String,
+    /// Every accepted value, in the tool's order.
+    #[serde(default)]
+    pub choices: Vec<String>,
+}
+
 /// One SANE scanner device, as `scanimage -L` reports it.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct ScanDeviceData {
@@ -359,6 +390,27 @@ pub trait PrintSource {
     fn cancel_job(&mut self, _job_id: u32) -> PrintOutcome {
         PrintOutcome::Absent
     }
+
+    /// Discover printer devices (`lpinfo -v`). An explicit read, never a
+    /// background poll.
+    fn discover(&mut self) -> Result<Vec<PrinterDeviceData>, AdapterError> {
+        Ok(Vec::new())
+    }
+
+    /// Add a CUPS queue for a discovered device. One explicit write.
+    fn add_printer(&mut self, _name: &str, _uri: &str, _driver: &str) -> PrintOutcome {
+        PrintOutcome::Absent
+    }
+
+    /// Read one queue's configurable options (`lpoptions -l`).
+    fn printer_options(&mut self, _name: &str) -> Result<Vec<PrinterOptionData>, AdapterError> {
+        Ok(Vec::new())
+    }
+
+    /// Set one queue option (`lpoptions -o`). One explicit write.
+    fn set_printer_option(&mut self, _name: &str, _key: &str, _value: &str) -> PrintOutcome {
+        PrintOutcome::Absent
+    }
 }
 
 /// How the simulated daemon answers write requests.
@@ -405,6 +457,11 @@ pub struct MockPrint {
     behavior: WriteBehavior,
     reads: u32,
     writes: WriteCounts,
+    discovery: Vec<PrinterDeviceData>,
+    options: Vec<PrinterOptionData>,
+    adds: u32,
+    option_sets: u32,
+    discoveries: u32,
 }
 
 impl MockPrint {
@@ -420,6 +477,11 @@ impl MockPrint {
             behavior: WriteBehavior::Accept,
             reads: 0,
             writes: WriteCounts::default(),
+            discovery: Vec::new(),
+            options: Vec::new(),
+            adds: 0,
+            option_sets: 0,
+            discoveries: 0,
         }
     }
 
@@ -437,6 +499,11 @@ impl MockPrint {
             behavior: WriteBehavior::Accept,
             reads: 0,
             writes: WriteCounts::default(),
+            discovery: Vec::new(),
+            options: Vec::new(),
+            adds: 0,
+            option_sets: 0,
+            discoveries: 0,
         }
     }
 
@@ -453,6 +520,11 @@ impl MockPrint {
             behavior: WriteBehavior::Accept,
             reads: 0,
             writes: WriteCounts::default(),
+            discovery: Vec::new(),
+            options: Vec::new(),
+            adds: 0,
+            option_sets: 0,
+            discoveries: 0,
         }
     }
 
@@ -466,6 +538,31 @@ impl MockPrint {
     pub fn deny_writes(mut self, note: impl Into<String>) -> Self {
         self.behavior = WriteBehavior::Deny(note.into());
         self
+    }
+
+    /// Serve a discovery list for the Add dialog.
+    pub fn set_discovery(&mut self, devices: Vec<PrinterDeviceData>) {
+        self.discovery = devices;
+    }
+
+    /// Serve the options for one queue.
+    pub fn set_options(&mut self, options: Vec<PrinterOptionData>) {
+        self.options = options;
+    }
+
+    /// How many queues the source added.
+    pub fn adds(&self) -> u32 {
+        self.adds
+    }
+
+    /// How many option writes the source accepted.
+    pub fn option_sets(&self) -> u32 {
+        self.option_sets
+    }
+
+    /// How many discovery reads the source served.
+    pub fn discoveries(&self) -> u32 {
+        self.discoveries
     }
 
     /// The host stack publishes fresh state.
@@ -612,6 +709,45 @@ impl PrintSource for MockPrint {
             self.writes.job_cancels += 1;
             for printer in &mut self.printers {
                 printer.jobs.retain(|job| job.id != job_id);
+            }
+        }
+        outcome
+    }
+
+    fn discover(&mut self) -> Result<Vec<PrinterDeviceData>, AdapterError> {
+        self.read_outcome()?;
+        self.discoveries += 1;
+        Ok(self.discovery.clone())
+    }
+
+    fn add_printer(&mut self, name: &str, uri: &str, _driver: &str) -> PrintOutcome {
+        let outcome = self.write_outcome();
+        if outcome.is_applied() {
+            self.adds += 1;
+            self.printers.push(PrinterData {
+                name: name.to_owned(),
+                display_name: name.to_owned(),
+                uri: uri.to_owned(),
+                state: PrinterState::Idle,
+                accepting_jobs: true,
+                enabled: true,
+                ..PrinterData::default()
+            });
+        }
+        outcome
+    }
+
+    fn printer_options(&mut self, _name: &str) -> Result<Vec<PrinterOptionData>, AdapterError> {
+        self.read_outcome()?;
+        Ok(self.options.clone())
+    }
+
+    fn set_printer_option(&mut self, _name: &str, key: &str, value: &str) -> PrintOutcome {
+        let outcome = self.write_outcome();
+        if outcome.is_applied() {
+            self.option_sets += 1;
+            if let Some(option) = self.options.iter_mut().find(|option| option.key == key) {
+                option.value = value.to_owned();
             }
         }
         outcome

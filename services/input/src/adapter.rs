@@ -5,6 +5,7 @@ use dragonfruit_system_adapters::{
     Adapter, AdapterEvent, AdapterId, AdapterState, ConnectionState, Subscription,
 };
 
+use crate::controllers::ControllerTest;
 use crate::model::InputSnapshot;
 use crate::source::InputSource;
 
@@ -72,6 +73,12 @@ impl<S: InputSource> InputAdapter<S> {
         }
     }
 
+    /// Read one diagnostic event from a controller node (T229). This is an
+    /// explicit test action; it changes no device state.
+    pub fn test_controller(&mut self, path: &str) -> ControllerTest {
+        self.source.test_controller(path)
+    }
+
     /// The live snapshot, when the host stack answered.
     pub fn snapshot(&self) -> Option<&InputSnapshot> {
         self.state.snapshot()
@@ -134,6 +141,7 @@ mod tests {
                     ..InputDeviceData::default()
                 },
             ],
+            ..InputData::default()
         }
     }
 

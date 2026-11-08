@@ -78,5 +78,39 @@ CompositorPolicy compositorPolicyFromValues(const QVariantMap &values, bool host
         readValue(values, QStringLiteral("gestures.missionControl"),
                   policy.gestureMissionControl)
             .toBool();
+    policy.pointerSpeed =
+        readValue(values, QStringLiteral("input.pointerSpeed"), policy.pointerSpeed).toDouble();
+    policy.naturalScroll =
+        readValue(values, QStringLiteral("input.naturalScroll"), policy.naturalScroll).toBool();
+    policy.tapToClick =
+        readValue(values, QStringLiteral("input.tapToClick"), policy.tapToClick).toBool();
+    policy.leftHanded =
+        readValue(values, QStringLiteral("input.leftHanded"), policy.leftHanded).toBool();
+    policy.scrollMethod =
+        readValue(values, QStringLiteral("input.scrollMethod"), policy.scrollMethod).toString();
+    policy.secondaryClick =
+        readValue(values, QStringLiteral("input.secondaryClick"), policy.secondaryClick)
+            .toString();
+    policy.scrollSpeed =
+        readValue(values, QStringLiteral("input.scrollSpeed"), policy.scrollSpeed).toDouble();
+    policy.doubleClickMs =
+        readValue(values, QStringLiteral("input.doubleClickSpeed"), policy.doubleClickMs).toInt();
+    policy.haptics =
+        readValue(values, QStringLiteral("input.haptics"), policy.haptics).toBool();
+    // The first input source is the active layout; a `layout:variant` spelling
+    // carries the variant. Empty keeps the host XKB_DEFAULT_* configuration.
+    const QStringList sources =
+        readValue(values, QStringLiteral("input.sources"), QStringList()).toStringList();
+    if (!sources.isEmpty()) {
+        const QString first = sources.first();
+        const qsizetype separator = first.indexOf(QLatin1Char(':'));
+        if (separator >= 0) {
+            policy.keyboardLayout = first.left(separator);
+            policy.keyboardVariant = first.mid(separator + 1);
+        } else {
+            policy.keyboardLayout = first;
+            policy.keyboardVariant.clear();
+        }
+    }
     return policy;
 }

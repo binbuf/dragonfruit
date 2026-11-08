@@ -65,5 +65,7 @@ mod source;
 
 pub use adapter::AudioAdapter;
 pub use model::{AudioSnapshot, Sink, Source};
-pub use pw_dump::{CommandAudio, DEFAULT_SINK_TARGET, PW_DUMP_BIN, WPCTL_BIN};
+pub use pw_dump::{
+    CommandAudio, DEFAULT_SINK_TARGET, PAPLAY_BIN, PW_DUMP_BIN, PW_PLAY_BIN, TEST_SOUNDS, WPCTL_BIN,
+};
 pub use source::{AudioData, AudioSource, MockAudio, SetOutcome, SinkData, SourceData};

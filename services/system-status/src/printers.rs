@@ -73,6 +73,38 @@ impl<S: PrintSource> PrintersHost<S> {
         printers_report(self.adapter.cancel_job(job_id))
     }
 
+    /// Discover printer devices for the Add dialog (T229). One explicit read.
+    pub fn discover(&mut self) -> Value {
+        match self.adapter.discover() {
+            Ok(devices) => json!({
+                "outcome": "available",
+                "devices": devices.iter().map(device_json).collect::<Vec<Value>>(),
+            }),
+            Err(error) => json!({ "outcome": "error", "error": error.message() }),
+        }
+    }
+
+    /// Add a CUPS queue for a discovered device (T229). One explicit write.
+    pub fn add_printer(&mut self, name: &str, uri: &str, driver: &str) -> Value {
+        printers_report(self.adapter.add_printer(name, uri, driver))
+    }
+
+    /// Read one queue's configurable options (T229).
+    pub fn printer_options(&mut self, name: &str) -> Value {
+        match self.adapter.printer_options(name) {
+            Ok(options) => json!({
+                "outcome": "available",
+                "options": options.iter().map(option_json).collect::<Vec<Value>>(),
+            }),
+            Err(error) => json!({ "outcome": "error", "error": error.message() }),
+        }
+    }
+
+    /// Set one queue option (T229). One explicit write.
+    pub fn set_printer_option(&mut self, name: &str, key: &str, value: &str) -> Value {
+        printers_report(self.adapter.set_printer_option(name, key, value))
+    }
+
     /// The adapter (read-only), for tests and introspection.
     pub fn adapter(&self) -> &PrinterAdapter<S> {
         &self.adapter
@@ -128,6 +160,25 @@ pub fn printers_snapshot_view(snapshot: &PrintSnapshot) -> Value {
         "defaultPrinter": snapshot.default_printer.clone().unwrap_or_default(),
         "printers": printers,
         "scanners": scanners,
+    })
+}
+
+/// One discovered device's flat JSON row.
+fn device_json(device: &dragonfruit_printer_adapter::PrinterDeviceData) -> Value {
+    json!({
+        "kind": device.kind,
+        "uri": device.uri,
+        "description": device.description,
+    })
+}
+
+/// One queue option's flat JSON row.
+fn option_json(option: &dragonfruit_printer_adapter::PrinterOptionData) -> Value {
+    json!({
+        "key": option.key,
+        "label": option.label,
+        "value": option.value,
+        "choices": option.choices,
     })
 }
 

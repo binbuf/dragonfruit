@@ -522,6 +522,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Blank the display after inactivity.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Capacity %1% of design</source>
         <translation type="unfinished"></translation>
     </message>
@@ -550,6 +554,18 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Display and lock timers live in Lock Screen.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Draw the percentage beside the menu-bar glyph.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Empty</source>
         <translation type="unfinished"></translation>
     </message>
@@ -566,7 +582,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Lock the session after inactivity.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Low Power Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More power settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Never</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -590,6 +618,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open Lock Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Performance is currently degraded by the system.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -598,11 +634,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Power Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Require password</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Screen On Usage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show battery percentage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The battery is fully charged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The range the history charts cover.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -627,6 +679,10 @@
     </message>
     <message>
         <source>Usage History</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Usage range</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2441,6 +2497,85 @@
     </message>
 </context>
 <context>
+    <name>GameControllersPane</name>
+    <message>
+        <source>Bytes: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Controllers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device node unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Event received</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mapping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mapping edits are delegated to the session's SDL configuration; this build does not rewrite it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mapping — %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No SDL mapping is available for this controller. It still works through the kernel's evdev interface.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No event</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No game controller inventory is available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No game controllers are connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Permission denied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Press a button or move a stick while the read is in flight.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Test</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Test %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Test Controller</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Test failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The system status service is not running, so game controllers are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>GeneralPane</name>
     <message>
         <source>%1 → %2 · %3</source>
@@ -2630,6 +2765,18 @@
 <context>
     <name>InputPane</name>
     <message>
+        <source>%1 replacements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 replacement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Adjust keyboard brightness in low light</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2647,6 +2794,10 @@
     </message>
     <message>
         <source>After 5 seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth is unavailable on this system.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2670,6 +2821,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Dictation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dictation is unavailable because no speech-to-text service is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Dim</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2678,7 +2837,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Double-click speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Edge Scrolling</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2686,7 +2853,31 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Follows the host keyboard layout.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Gestures</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Haptic feedback</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Host layout: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input Sources</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input sources</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install nerd-dictation, whisper, or another speech-to-text command to enable dictation.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2714,11 +2905,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Left-handed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Long</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Look up</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2746,11 +2945,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No trackpad is present; the preference is kept for the next one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Off</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair a trackpad in Bluetooth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2762,11 +2973,35 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Pressure Click</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Scroll &amp; Zoom</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Scroll method</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scroll speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Secondary click</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set Up Bluetooth Trackpad…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2802,7 +3037,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Text Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Text Replacements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Text replacements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The first source is active. The compositor applies the layout live.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The hardware backlight bridge is a follow-up.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Three-Finger Click</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2822,7 +3077,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Use a speech-to-text service to dictate text.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Use keyboard navigation to move focus between controls. Press the Tab key to move focus forward and Shift Tab to move focus backward.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Where the trackpad supports it.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3974,11 +4237,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Printer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Printer or Scanner…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Cancel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Cancel job %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a discovered device, then name the queue.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3994,7 +4273,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Device URI</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Driver (CUPS model, default everywhere)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4018,11 +4305,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No printer devices were discovered.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No printers are configured.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No scanners were found.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Options &amp; Supplies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Options &amp; Supplies…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Options — %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4042,6 +4345,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Queue name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Scanner support is unavailable because SANE is not running.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4058,7 +4365,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Supplies are reported by the queue's state message. Changing a driver or installing supplies is delegated to the distribution's printer tooling.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The printing service is not running, so printers and scanners are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This queue does not report configurable options.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4067,6 +4382,10 @@
     </message>
     <message>
         <source>US Letter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5090,10 +5409,6 @@
     </message>
     <message>
         <source>Cityscapes</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Click pressure</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6816,6 +7131,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Play</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play a short test sound through the selected output.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Play feedback when volume is changed</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6845,6 +7168,10 @@
     </message>
     <message>
         <source>Sound Effects</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Test</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7049,6 +7376,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Admin group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Administrator</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7066,6 +7397,10 @@
     </message>
     <message>
         <source>Choose the users that belong to this group.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Configured</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7093,7 +7428,24 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Details…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Directory Account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Directory account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Domains: %1
+Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7125,7 +7477,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Join or leave a domain with your distribution's domain-join tool; this pane reports the state and never rewrites SSSD configuration.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Joining a domain is delegated to the distribution's realmd/SSSD tooling.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Locked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Members of this group can administer the system.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7134,6 +7498,22 @@
     </message>
     <message>
         <source>New User</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No directory service (SSSD/FreeIPA) is configured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not configured</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not detected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7150,6 +7530,10 @@
     </message>
     <message>
         <source>The account that logs in without a prompt.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

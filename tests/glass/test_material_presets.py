@@ -225,9 +225,12 @@ def main() -> int:
                      f"{name} {scheme} stays near-opaque")
         checks.check(result["fallbackReason"] == "none",
                      f"{name} {scheme} names no fallback")
-        legacy = presets.resolve(data, name, scheme=scheme)
+        default = presets.resolve(data, name, scheme=scheme)
+        checks.check(default["look"] == "replacement",
+                     f"{name} {scheme} uses the replacement look by default")
+        legacy = presets.resolve(data, name, scheme=scheme, rollout="legacy")
         checks.check(legacy["look"] == "legacy",
-                     f"{name} {scheme} keeps the legacy look by default")
+                     f"{name} {scheme} keeps the legacy look selectable")
         reduced = presets.resolve(data, name, scheme=scheme,
                                   reduce_transparency=True,
                                   rollout="replacement")
@@ -298,20 +301,25 @@ def main() -> int:
                  == (still["alpha"], still["renderMode"]),
                  "Reduce Motion does not change optics")
 
-    # The rollout switch defaults to the existing appearance and parses the
-    # shared fixture/native value.
-    legacy = presets.resolve(data, "dock", scheme="light")
-    checks.check(legacy["look"] == "legacy", "default rollout is legacy")
+    # The rollout switch defaults to the replacement appearance and parses the
+    # shared fixture/native value; the legacy rail stays selectable.
+    replacement = presets.resolve(data, "dock", scheme="light")
+    checks.check(replacement["look"] == "replacement",
+                 "default rollout is replacement")
+    checks.check(replacement["renderMode"] == "sampled-glass",
+                 "replacement default keeps sampled glass")
+    legacy = presets.resolve(data, "dock", scheme="light", rollout="legacy")
+    checks.check(legacy["look"] == "legacy", "legacy rollout is selectable")
     checks.check(legacy["renderMode"] == "sampled-glass",
-                 "legacy default keeps sampled glass")
-    checks.check(presets.rollout_from_env({}) == "legacy",
-                 "unset rollout defaults to legacy")
+                 "legacy rollout keeps sampled glass")
+    checks.check(presets.rollout_from_env({}) == "replacement",
+                 "unset rollout defaults to replacement")
     checks.check(presets.rollout_from_env(
-        {"DRAGONFRUIT_GLASS_ROLLOUT": "replacement"}) == "replacement",
-        "replacement rollout is selectable")
+        {"DRAGONFRUIT_GLASS_ROLLOUT": "legacy"}) == "legacy",
+        "legacy rollout is selectable")
     checks.check(presets.rollout_from_env(
-        {"DRAGONFRUIT_GLASS_ROLLOUT": "bogus"}) == "legacy",
-        "unknown rollout is safe")
+        {"DRAGONFRUIT_GLASS_ROLLOUT": "bogus"}) == "replacement",
+        "unknown rollout falls back to the default")
 
     # T205: the banner, stack and lower panel are three measured/adapted
     # materials with independent resolution, not one Popup plate.

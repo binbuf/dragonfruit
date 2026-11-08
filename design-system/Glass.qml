@@ -18,8 +18,8 @@ QtObject {
     id: glass
 
     // The one internal rollout switch. The shell controller sets this from
-    // `DRAGONFRUIT_GLASS_ROLLOUT` for nested/native fixtures; the default is
-    // the existing appearance until T208 flips it.
+    // `DRAGONFRUIT_GLASS_ROLLOUT` for nested/native fixtures; unset uses the
+    // shipped replacement default from the token file.
     property string rollout: Theme.glass.rollout.defaultMode
     // The active scheme. Bound to the Theme unless a preview/test sets it.
     property string scheme: Theme.dark ? "dark" : "light"

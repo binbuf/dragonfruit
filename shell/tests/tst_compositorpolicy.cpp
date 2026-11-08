@@ -37,6 +37,17 @@ void TestCompositorPolicy::defaultsMatchTheSchema()
     QCOMPARE(policy.gesturesEnabled, true);
     QCOMPARE(policy.gestureSpaceSwitch, true);
     QCOMPARE(policy.gestureMissionControl, true);
+    QCOMPARE(policy.pointerSpeed, 0.0);
+    QCOMPARE(policy.naturalScroll, true);
+    QCOMPARE(policy.tapToClick, true);
+    QCOMPARE(policy.leftHanded, false);
+    QCOMPARE(policy.scrollMethod, QStringLiteral("two-finger"));
+    QCOMPARE(policy.secondaryClick, QStringLiteral("right"));
+    QCOMPARE(policy.scrollSpeed, 0.0);
+    QCOMPARE(policy.doubleClickMs, 400);
+    QCOMPARE(policy.haptics, true);
+    QVERIFY(policy.keyboardLayout.isEmpty());
+    QVERIFY(policy.keyboardVariant.isEmpty());
 }
 
 void TestCompositorPolicy::everyKeyMapsThrough()
@@ -54,6 +65,17 @@ void TestCompositorPolicy::everyKeyMapsThrough()
     values.insert(QStringLiteral("gestures.enabled"), false);
     values.insert(QStringLiteral("gestures.spaceSwitch"), false);
     values.insert(QStringLiteral("gestures.missionControl"), true);
+    values.insert(QStringLiteral("input.pointerSpeed"), -0.4);
+    values.insert(QStringLiteral("input.naturalScroll"), false);
+    values.insert(QStringLiteral("input.tapToClick"), false);
+    values.insert(QStringLiteral("input.leftHanded"), true);
+    values.insert(QStringLiteral("input.scrollMethod"), QStringLiteral("edge"));
+    values.insert(QStringLiteral("input.secondaryClick"), QStringLiteral("left"));
+    values.insert(QStringLiteral("input.scrollSpeed"), 0.25);
+    values.insert(QStringLiteral("input.doubleClickSpeed"), 300);
+    values.insert(QStringLiteral("input.haptics"), false);
+    values.insert(QStringLiteral("input.sources"),
+                  QStringList{QStringLiteral("de:nodeadkeys")});
 
     const CompositorPolicy policy = compositorPolicyFromValues(values, /*hostDark=*/false);
     QCOMPARE(policy.reducedMotion, true);
@@ -68,6 +90,17 @@ void TestCompositorPolicy::everyKeyMapsThrough()
     QCOMPARE(policy.gesturesEnabled, false);
     QCOMPARE(policy.gestureSpaceSwitch, false);
     QCOMPARE(policy.gestureMissionControl, true);
+    QCOMPARE(policy.pointerSpeed, -0.4);
+    QCOMPARE(policy.naturalScroll, false);
+    QCOMPARE(policy.tapToClick, false);
+    QCOMPARE(policy.leftHanded, true);
+    QCOMPARE(policy.scrollMethod, QStringLiteral("edge"));
+    QCOMPARE(policy.secondaryClick, QStringLiteral("left"));
+    QCOMPARE(policy.scrollSpeed, 0.25);
+    QCOMPARE(policy.doubleClickMs, 300);
+    QCOMPARE(policy.haptics, false);
+    QCOMPARE(policy.keyboardLayout, QStringLiteral("de"));
+    QCOMPARE(policy.keyboardVariant, QStringLiteral("nodeadkeys"));
 }
 
 void TestCompositorPolicy::autoFollowsTheHost()

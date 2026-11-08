@@ -200,6 +200,7 @@ mod tests {
                 ..AccountData::default()
             }],
             groups: Some(vec![]),
+            directory: None,
         }
     }
 

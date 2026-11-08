@@ -199,6 +199,11 @@ SettingsBridge::SettingsBridge(QObject *parent)
             [this](const QVariantMap &) { emit inputChanged(); });
     connect(m_input, &InputClient::availableChanged, this,
             [this](bool) { emit inputChanged(); });
+    connect(m_input, &InputClient::controllerTested, this,
+            [this](const QVariantMap &report) {
+                m_controllerTest = report;
+                emit controllerTestChanged();
+            });
 
     // T-15.6b: the battery / power-profiles seam, selected the same way.
     if (qEnvironmentVariableIsSet("DF_BATTERY_FIXTURE"))
@@ -266,6 +271,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
             [this](const QVariantMap &) { emit printersChanged(); });
     connect(m_printers, &PrintersClient::availableChanged, this,
             [this](bool) { emit printersChanged(); });
+    connect(m_printers, &PrintersClient::discoveryChanged, this,
+            [this](const QVariantMap &report) {
+                m_printerDiscovery = report;
+                emit printerDiscoveryChanged();
+            });
+    connect(m_printers, &PrintersClient::optionsChanged, this,
+            [this](const QVariantMap &report) {
+                m_printerOptions = report;
+                emit printerOptionsChanged();
+            });
 
     // T-15.13b: the Privacy & Security seam, selected the same way.
     if (qEnvironmentVariableIsSet("DF_PRIVACY_FIXTURE"))
@@ -392,6 +407,11 @@ bool SettingsBridge::inputAvailable() const
     return m_input && m_input->available();
 }
 
+QVariantMap SettingsBridge::controllerTest() const
+{
+    return m_controllerTest;
+}
+
 QVariantMap SettingsBridge::battery() const
 {
     return m_battery ? m_battery->view() : QVariantMap();
@@ -450,6 +470,16 @@ QVariantMap SettingsBridge::printers() const
 bool SettingsBridge::printersAvailable() const
 {
     return m_printers && m_printers->available();
+}
+
+QVariantMap SettingsBridge::printerDiscovery() const
+{
+    return m_printerDiscovery;
+}
+
+QVariantMap SettingsBridge::printerOptions() const
+{
+    return m_printerOptions;
 }
 
 QVariantMap SettingsBridge::privacy() const
@@ -612,12 +642,15 @@ bool SettingsBridge::debugView() const
 QString SettingsBridge::glassRollout() const
 {
     // The same selection rule as `shell/src/shellcontroller.cpp` and
-    // `material_preset::Rollout::from_env`: anything other than an explicit
-    // `replacement` is the T208-safe legacy look.
+    // `material_preset::Rollout::from_env`: only an explicit
+    // `legacy`/`replacement` overrides the shipped default. An empty result
+    // lets the QML shell read `Theme.glass.rollout.defaultMode`, so the token
+    // file remains the single source of the default.
     const QString requested =
         qEnvironmentVariable("DRAGONFRUIT_GLASS_ROLLOUT").trimmed().toLower();
-    return requested == QLatin1String("replacement")
-        ? QStringLiteral("replacement") : QStringLiteral("legacy");
+    return (requested == QLatin1String("legacy")
+            || requested == QLatin1String("replacement"))
+        ? requested : QString();
 }
 
 bool SettingsBridge::appChromeSupported() const
@@ -1035,10 +1068,22 @@ void SettingsBridge::setSoundDefaultSource(int id)
         m_sound->setDefaultSource(id);
 }
 
+void SettingsBridge::playTestSound()
+{
+    if (m_sound)
+        m_sound->playTestSound();
+}
+
 void SettingsBridge::refreshInput()
 {
     if (m_input)
         m_input->refresh();
+}
+
+void SettingsBridge::testController(const QString &path)
+{
+    if (m_input)
+        m_input->testController(path);
 }
 
 void SettingsBridge::refreshBattery()
@@ -1323,6 +1368,32 @@ void SettingsBridge::cancelPrinterJob(int jobId)
 {
     if (m_printers)
         m_printers->cancelJob(jobId);
+}
+
+void SettingsBridge::discoverPrinters()
+{
+    if (m_printers)
+        m_printers->discover();
+}
+
+void SettingsBridge::addPrinter(const QString &name, const QString &uri,
+                                const QString &driver)
+{
+    if (m_printers && !name.isEmpty() && !uri.isEmpty())
+        m_printers->addPrinter(name, uri, driver);
+}
+
+void SettingsBridge::loadPrinterOptions(const QString &name)
+{
+    if (m_printers && !name.isEmpty())
+        m_printers->printerOptions(name);
+}
+
+void SettingsBridge::setPrinterOption(const QString &name, const QString &key,
+                                      const QString &value)
+{
+    if (m_printers && !name.isEmpty() && !key.isEmpty())
+        m_printers->setPrinterOption(name, key, value);
 }
 
 void SettingsBridge::resetPrintersFixture()

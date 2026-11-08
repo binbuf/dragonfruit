@@ -23,7 +23,7 @@ use dragonfruit_system_adapters::{
 };
 
 use crate::model::{PrintChange, PrintSnapshot};
-use crate::source::{PrintOutcome, PrintSource};
+use crate::source::{PrintOutcome, PrintSource, PrinterDeviceData, PrinterOptionData};
 
 /// The Printers and Scanners adapter.
 #[derive(Debug, Clone, PartialEq)]
@@ -95,6 +95,31 @@ impl<S: PrintSource> PrinterAdapter<S> {
     /// Cancel the queued job with `job_id`. One explicit write.
     pub fn cancel_job(&mut self, job_id: u32) -> PrintOutcome {
         self.source.cancel_job(job_id)
+    }
+
+    /// Discover printer devices for the Add dialog (T229). One explicit read.
+    pub fn discover(
+        &mut self,
+    ) -> Result<Vec<PrinterDeviceData>, dragonfruit_system_adapters::AdapterError> {
+        self.source.discover()
+    }
+
+    /// Add a CUPS queue for a discovered device (T229). One explicit write.
+    pub fn add_printer(&mut self, name: &str, uri: &str, driver: &str) -> PrintOutcome {
+        self.source.add_printer(name, uri, driver)
+    }
+
+    /// Read one queue's configurable options (T229).
+    pub fn printer_options(
+        &mut self,
+        name: &str,
+    ) -> Result<Vec<PrinterOptionData>, dragonfruit_system_adapters::AdapterError> {
+        self.source.printer_options(name)
+    }
+
+    /// Set one queue option (T229). One explicit write.
+    pub fn set_printer_option(&mut self, name: &str, key: &str, value: &str) -> PrintOutcome {
+        self.source.set_printer_option(name, key, value)
     }
 
     /// The live snapshot, when at least one half of the host stack answered.

@@ -376,13 +376,12 @@ write_session_environment() {
         env_names+=(DRAGONFRUIT_DRM_GLASS)
         env_values+=("$DRAGONFRUIT_DRM_GLASS")
     fi
-    # T208: the glass replacement is the release candidate; the rollout
-    # default stays `legacy` until the native gate passes. Persist the
-    # one-shot switch so a rollback (or an explicit pre-rollout A/B) survives
-    # `native-rebuild` instead of depending on the caller's shell:
+    # ADR 0234: the glass replacement is the shipped default. Persist an
+    # explicit switch so a rollback (or an A/B run) survives `native-rebuild`
+    # instead of depending on the caller's shell:
     #   DRAGONFRUIT_GLASS_ROLLOUT=legacy make native-rebuild
     #   DRAGONFRUIT_GLASS_ROLLOUT=replacement make native-rebuild
-    # Unset keeps the built-in default.
+    # Unset keeps the built-in replacement default.
     if [ -n "${DRAGONFRUIT_GLASS_ROLLOUT:-}" ]; then
         env_names+=(DRAGONFRUIT_GLASS_ROLLOUT)
         env_values+=("$DRAGONFRUIT_GLASS_ROLLOUT")

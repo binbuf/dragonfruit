@@ -130,6 +130,42 @@ Item {
             tryVerify(function() { return pane.defaultPrinter === "HP_LaserJet"; });
         }
 
+        function test_add_printer_uses_discovery_and_adds_a_queue() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.addPrinterButton.clicked();
+            tryVerify(function() { return pane.addPrinterDialog.open; });
+            compare(pane.discoveryDevices.length, 2);
+
+            pane.chooseDevice(pane.discoveryDevices[0]);
+            compare(pane.addUri, "ipp://192.168.0.12/ipp/print");
+            pane.addNameInput.text = "Office_Laser";
+            pane.addDriverInput.text = "everywhere";
+            pane.addPrinterConfirm.clicked();
+            tryVerify(function() { return pane.printers.length === 3; });
+            verify(pane.findPrinter("Office_Laser") !== null,
+                   "the discovered device becomes a queue");
+        }
+
+        function test_options_sheet_reads_and_writes_a_queue_option() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var row = findChild(pane.printerRepeater.itemAt(0), "printerRowArea");
+            mouseClick(row, row.width / 2, row.height / 2);
+            pane.optionsButton.clicked();
+            tryVerify(function() { return pane.optionsDialog.open; });
+            compare(pane.printerOptionRows.length, 2);
+            compare(pane.printerOptionRows[0].key, "PageSize");
+
+            var optionRow = pane.optionsRepeater.itemAt(0);
+            // The Select is the row's control slot child.
+            var select = optionRow.control.children[0];
+            select.selected(select.entries[1].value); // Letter
+            tryVerify(function() {
+                return pane.printerOptionRows[0].value === "Letter";
+            });
+        }
+
         function test_absence_note_hidden_with_a_ready_view() {
             var shell = make();
             var pane = paneOf(shell);

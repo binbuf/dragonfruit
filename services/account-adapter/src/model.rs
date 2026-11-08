@@ -14,7 +14,9 @@
 //! login user; the group provider appearing; a group added, removed, or
 //! edited) without any polling.
 
-use crate::source::{AccountData, AccountType, AccountsData, GroupData, PasswordMode};
+use crate::source::{
+    AccountData, AccountType, AccountsData, DirectoryData, GroupData, PasswordMode,
+};
 
 /// One user account the pane draws.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -162,6 +164,39 @@ impl Group {
     }
 }
 
+/// The host's directory (SSSD/FreeIPA) projection (T229).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Directory {
+    /// The configured domain names.
+    pub domains: Vec<String>,
+    /// The provider token (`sssd`, `winbind`, empty when unknown).
+    pub provider: String,
+    /// Whether a domain is configured.
+    pub joined: bool,
+    /// A human note when the read is partial.
+    pub note: String,
+}
+
+impl Directory {
+    fn from_data(data: &DirectoryData) -> Self {
+        Directory {
+            domains: data.domains.clone(),
+            provider: data.provider.clone(),
+            joined: data.joined,
+            note: data.note.clone(),
+        }
+    }
+
+    /// A one-line status (`Joined: example.com`, `Not joined`).
+    pub fn status(&self) -> String {
+        if self.joined && !self.domains.is_empty() {
+            format!("Joined: {}", self.domains.join(", "))
+        } else {
+            "Not joined".to_owned()
+        }
+    }
+}
+
 /// The Users and Groups snapshot a pane renders.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AccountsSnapshot {
@@ -169,6 +204,9 @@ pub struct AccountsSnapshot {
     pub users: Vec<Account>,
     /// The group list; `None` when the distro group provider is absent.
     pub groups: Option<Vec<Group>>,
+    /// The directory projection; `None` when no directory provider is
+    /// configured.
+    pub directory: Option<Directory>,
 }
 
 impl AccountsSnapshot {
@@ -192,7 +230,11 @@ impl AccountsSnapshot {
             groups
         });
 
-        AccountsSnapshot { users, groups }
+        AccountsSnapshot {
+            users,
+            groups,
+            directory: data.directory.as_ref().map(Directory::from_data),
+        }
     }
 
     /// Every user, human and system alike.
@@ -218,6 +260,24 @@ impl AccountsSnapshot {
     /// Whether the distribution group provider is present.
     pub const fn groups_available(&self) -> bool {
         self.groups.is_some()
+    }
+
+    /// The directory projection, when a provider is configured (T229).
+    pub fn directory(&self) -> Option<&Directory> {
+        self.directory.as_ref()
+    }
+
+    /// The distribution's administrator group (`wheel` or `sudo`), when the
+    /// group provider lists one (T229).
+    pub fn admin_group(&self) -> Option<&Group> {
+        self.groups()
+            .iter()
+            .find(|group| group.name == "wheel" || group.name == "sudo")
+    }
+
+    /// Whether a directory provider is configured.
+    pub const fn directory_available(&self) -> bool {
+        self.directory.is_some()
     }
 
     /// The user with `uid`, when the snapshot has one.
@@ -454,6 +514,7 @@ mod tests {
                     system: false,
                 },
             ]),
+            directory: None,
         }
     }
 

@@ -422,10 +422,11 @@ rows remain OPEN on the nested scene-texture scale path and are recorded in
 `docs/captures/t198-dock-optics.md` (ADR [0217](adr/0217-dock-optics-fit.md)).
 
 The one internal rollout switch is `DRAGONFRUIT_GLASS_ROLLOUT=legacy|replacement`.
-It defaults to `legacy` until T208; the shell controller applies it to the
-`Glass` singleton and the compositor resolver reads the same variable, so
-nested and native fixtures select either look reproducibly. An unset or unknown
-value keeps the existing appearance.
+The shipped default is `replacement`; `DRAGONFRUIT_GLASS_ROLLOUT=legacy`
+selects the legacy rail for A/B and rollback. The shell controller applies the
+selection to the `Glass` singleton and the compositor resolver reads the same
+variable, so nested and native fixtures select either look reproducibly. An
+unset or unknown value takes the shipped default.
 
 The durable inputs are settingsd keys (T196): `appearance.transparency`
 (double, default 0.5255, clearer toward 1) drives the light attached-menu
@@ -512,9 +513,9 @@ rules:
   `make glass-presets-check` (also part of `make gates`): schema ranges and
   finite values, the three measured light anchors, unchanged unmeasured slider
   roles, distinct dark attached/detached presets, the explicit veil mode, safe
-  unsupported paths, and the legacy rollout default. The Rust and QML
-  resolvers pin the same cases in `compositor/tests/material_presets.rs` and
-  the design-system QML tests.
+  unsupported paths, and the replacement rollout default with the legacy rail
+  selectable. The Rust and QML resolvers pin the same cases in
+  `compositor/tests/material_presets.rs` and the design-system QML tests.
 - First-party app chrome is checked by `make first-party-chrome-check` (also
   part of `make gates`): the four measured/adapted presets, the scalar
   fallback, both app-local Theme/Glass bindings, the transparent frame and

@@ -142,6 +142,16 @@ Item {
             verify(Math.abs(Settings.values["sound.balance"] - 0.25) < 0.001);
         }
 
+        function test_test_button_plays_a_test_sound() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var before = Number(Settings.sound.testSounds || 0);
+            findChild(pane, "soundTestButton").clicked();
+            tryVerify(function() {
+                return Number(Settings.sound.testSounds || 0) === before + 1;
+            });
+        }
+
         function test_external_change_converges_into_the_pane() {
             var shell = make();
             var pane = paneOf(shell);

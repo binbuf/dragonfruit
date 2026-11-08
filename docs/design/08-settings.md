@@ -99,7 +99,7 @@ any drift, on a shipped pane without a body, or on a visible row without an
 owner/key/absence path. Omitted panes live only in `SettingsMap.omittedPanes`,
 so they cannot appear in the sidebar, and each carries its reason.
 
-The map has 29 top-level catalog entries and 27 shipped panes after T228; the
+The map has 29 top-level catalog entries and 28 shipped panes after T229; the
 new `control-center` (Quick Settings), `search` (renamed from `spotlight`), and
 `screen-saver` entries ship with T227, and T228 ships `biometrics` plus the
 optional `online-accounts` entry. `game-controllers` remains unshipped until
@@ -136,7 +136,7 @@ automatic updates (ADR [0235](adr/0235-general-group-host-adapters.md)).
 T227 completes the shell-owned settings panes. The new sidebar panes are
 `control-center` (Quick Settings), `search`, and `screen-saver`; Appearance,
 Desktop & Dock, and Displays gain their remaining groups. The executable map
-and the sidebar catalog both mark 27 shipped panes after T228 (Online Accounts
+and the sidebar catalog both mark 28 shipped panes after T229 (Online Accounts
 is optional and appears only while GOA answers).
 
 - **Appearance** adds highlight color (`appearance.highlight`), sidebar icon
@@ -179,7 +179,7 @@ module list, then a second no-settingsd pass for the absence stills. See ADR
 
 ## The T228 panes (Privacy & Security, Biometrics & Password, Online Accounts)
 
-T228 completes the three host-service panes. The catalog now has **27 shipped
+T228 completes the three host-service panes. The catalog then had **27 shipped
 panes**; `online-accounts` is shipped with `optional: true`, so it appears only
 while `org.gnome.OnlineAccounts` answers. The executable map carries the same
 optional flag.
@@ -214,6 +214,54 @@ live evidence is `make t228-privacy-accounts-capture`
 `t228-security.png`, `t228-security-sources.png`, `t228-biometrics.png`,
 `t228-online-accounts.png`, and the three absence stills). See ADR
 [0237](adr/0237-security-biometrics-online-accounts.md).
+
+## The T229 panes (Sound, Keyboard/Input, Mouse/Trackpad, Controllers, Users & Groups, Printers & Scanners, Battery/Storage)
+
+T229 closes the remaining Settings breadth with real host adapters and one
+absence path per row. The catalog now has **28 shipped panes** (Online Accounts
+remains optional).
+
+- **Sound** adds the Test action: `Audio.PlayTestSound` runs `pw-play`
+  (`paplay` fallback) on a system sound file; no player/file disables only the
+  button. The existing device table, volume, balance, mute, startup/UI/feedback
+  rows are unchanged.
+- **Keyboard** adds the ordered `input.sources` list (the first entry is the
+  active layout, forwarded to the compositor keymap in protocol v10),
+  `input.replacements` (`from\tto` entries for the T253 input method), and a
+  Dictation row enabled only when a speech-to-text command is installed.
+  Repeat, backlight, navigation, and the emoji-key action stay live.
+- **Mouse/Trackpad** add Secondary click, Scroll speed, Double-click speed,
+  Look up, and Haptics. They travel with the existing pointer keys in
+  `df_toplevel_manager.set_pointer_policy` (v10); the compositor stores them in
+  `PointerSettings` and the backend applies the default when it configures a
+  libinput device. Haptics is enabled only when a touchpad is present; the
+  Bluetooth-trackpad hand-off navigates to Bluetooth and disables when BlueZ is
+  absent.
+- **Game Controllers** is a shipped, optional pane. `services/input` reads
+  `/proc/bus/input/devices` for joystick/gamepad records and the SDL mapping
+  table; `Test` reads one event from the `js`/`event` node with a two-second
+  timeout and reports event/timeout/permission/absent; `Mapping` is read-only.
+  A remapper and mapping editor are out of scope.
+- **Users & Groups** adds the `wheel`/`sudo` admin-group row and a read-only
+  Directory account projection (`/etc/sssd/sssd.conf` domains/provider plus
+  `realm list`). Joining a domain stays delegated to `realm`/SSSD.
+- **Printers & Scanners** adds `lpinfo -v` discovery, `lpadmin` add, and a
+  per-queue `lpoptions -l`/`-o` Options & Supplies sheet. A queue with no
+  options is an honest empty sheet; a host with no CUPS disables Add/Options.
+- **Battery** adds the Options group (`power.showPercentage`, persisted
+  `power.historyRange`) and a Power Settings group that reads `idle.blank`/
+  `idle.lock` and navigates to Lock Screen. Storage's usage categories and
+  Manage row are now shipped rows in the map.
+
+Schema revision 22 adds `input.secondaryClick`, `input.scrollSpeed`,
+`input.doubleClickSpeed`, `input.haptics`, `input.lookUp`, `input.sources`,
+`input.replacements`, `input.dictation`, `power.showPercentage`, and
+`power.historyRange`. The input adapter grows the controller inventory and the
+diagnostic test read; the audio adapter grows one playback action; the printer
+adapter grows discovery/add/options; the account adapter grows the directory
+projection and admin-group helper. See ADR
+[0238](adr/0238-input-breadth-users-printers-battery.md). Live evidence is
+`make t229-input-users-printers-capture` (`docs/captures/t229-*.png`).
 
 ## Search, deep links, and row anatomy (T223)
 
@@ -413,7 +461,7 @@ reduced-motion stills.
 ## The absent-daemon masking matrix (T-15.16)
 
 T-15 landed the Wave-2/3 panes and their Control Center tiles; T225–T228 added
-the later panes, taking the catalog to **27 shipped panes**
+the later panes, taking the catalog to **28 shipped panes**
 (`SettingsPanes.shippedPanes`; Online Accounts is optional). Each pane routes
 to exactly one subsystem; masking that subsystem is a supported session state,
 not an incident. The matrix below is the contract every shipped pane satisfies
@@ -450,19 +498,20 @@ Two absence families appear, and a pane can mix them:
 | Network | NetworkManager + firewall adapter (bridge host) | note; service/VPN writes disabled; firewall "No firewall detected" or Unavailable (never a fake Off); settingsd policy rows stay live | **hides** |
 | Bluetooth | BlueZ (bridge host) | note; toggle disabled; no write | **hides** |
 | Network (VPN) | NetworkManager (bridge host) | note; connection list empty; `Connect`/`Deactivate` are no-ops; no plugin hides Add | **hides** |
-| Battery | UPower + power-profiles-daemon (bridge host) | note; no profile write | **hides** |
+| Battery | UPower + power-profiles-daemon (bridge host) | note; no profile write; Options stay live on defaults | **hides** |
 | Storage | UDisks2/GIO (bridge host) | note; no mount/eject | **hides** |
 | General | settingsd + General/Updates host (bridge host) | About/Update rows stay live when only the General host is absent; each sub-pane shows its own absence note | **hides** (the update tile hides only when the host is absent) |
-| Sound | PipeWire/WirePlumber (bridge host) + settingsd | routing half note; Sound Effects/Balance stay live on defaults | volume tile `enabled: audioAvailable` |
-| Keyboard | libinput (bridge host) + settingsd | inventory note; every preference row live on defaults | **hides** |
+| Sound | PipeWire/WirePlumber (bridge host) + settingsd | routing half note; Test disabled; Sound Effects/Balance stay live on defaults | volume tile `enabled: audioAvailable` |
+| Keyboard | libinput (bridge host) + settingsd | inventory note; every preference row live on defaults; input sources/replacements live; Dictation disabled with its reason | **hides** |
 | Mouse | libinput (bridge host) + settingsd | inventory note; pointer settings live on defaults | — (shared Keyboard tile) |
-| Trackpad | libinput (bridge host) + settingsd | inventory note; tap-to-click etc. live on defaults | — (shared Keyboard tile) |
+| Trackpad | libinput (bridge host) + settingsd | inventory note; tap-to-click/haptics/look-up live on defaults; haptics disabled with no touchpad | — (shared Keyboard tile) |
+| Game Controllers | udev/SDL inventory (bridge host) | note; list empty; Test/Mapping disabled | **hides** |
 | Notifications | notification service (bridge host) + settingsd | per-app inventory note; presentation prefs stay live | — (none) |
 | Focus | notification service (bridge host) + settingsd | inventory note; policy rows stay live | **hides** |
 | Lock Screen | settingsd + compositor lock/idle | controls live on defaults; the note names the daemon | **hides** |
 | Menu Bar | settingsd → shell | controls live on defaults; the note names the daemon | **hides** |
-| Users & Groups | accountsservice/distro (bridge host) | note; read-only tile | **hides** |
-| Printers & Scanners | CUPS/SANE (bridge host) | note; no add/queue write | **hides** |
+| Users & Groups | accountsservice/distro (bridge host) | note; read-only tile; Directory account is a read-only projection | **hides** |
+| Printers & Scanners | CUPS/SANE (bridge host) | note; Add/Options/queue writes disabled | **hides** |
 | Privacy & Security | portal `PermissionStore` (bridge host) | note; no permission write | **hides** |
 | Accessibility | AT-SPI (bridge host) + settingsd | status note; `accessibility.reduceMotion`/`reduceTransparency`/`increaseContrast` stay live | **hides** |
 
@@ -470,7 +519,7 @@ The headless half is the CI gate:
 
 - **`apps/settings/tests/tst_settings_absence.qml`** runs under a private
   `dbus-run-session` with no settingsd, no portal, and no bridge host. It
-  asserts both providers are absent, that all 27 shipped panes have a body and
+  asserts both providers are absent, that all 28 shipped panes have a body and
   no unshipped id does, that **every shipped pane mounts and stays interactive**
   (the routing sweep, `test_every_shipped_pane_routes_and_stays_live_with_providers_absent`),
   and carries one case per pane (including the shared Mouse section) that

@@ -32,8 +32,9 @@ and scorer:
   frames/wakeups and the reference error. The legacy rail is expected to miss
   the reference target; that is recorded as an adaptation, not a pair
   failure.
-- The shipped default stays `legacy` until T208. `DRAGONFRUIT_GLASS_ROLLOUT`
-  is the A/B and rollback switch.
+- The shipped default was `legacy` while T208 was staged; ADR 0234 later
+  enabled `replacement` by operator decision. `DRAGONFRUIT_GLASS_ROLLOUT` is
+  the A/B and rollback switch.
 
 ## Consequences
 

@@ -294,6 +294,12 @@ impl AudioInterface {
     fn set_default_source(&self, id: u32) -> String {
         lock(&self.host).set_default_source(id).to_string()
     }
+
+    /// Play a short test sound through the default output (T229). Returns the
+    /// JSON report.
+    fn play_test_sound(&self) -> String {
+        lock(&self.host).play_test_sound().to_string()
+    }
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Battery")]
@@ -405,6 +411,13 @@ impl InputInterface {
         let mut host = lock_input(&self.host);
         host.refresh();
         host.state()
+    }
+
+    /// Read one diagnostic event from a controller node and return the JSON
+    /// report (T229). This is an explicit test action; no device state is
+    /// changed.
+    fn test_controller(&self, path: &str) -> String {
+        lock_input(&self.host).test_controller(path)
     }
 }
 
@@ -732,6 +745,32 @@ impl PrintersInterface {
     /// Cancel the queued job with `job_id`. Returns the JSON report.
     fn cancel_job(&self, job_id: u32) -> String {
         lock_printers(&self.host).cancel_job(job_id).to_string()
+    }
+
+    /// Discover printer devices for the Add dialog (T229). Returns the JSON
+    /// list.
+    fn discover_printers(&self) -> String {
+        lock_printers(&self.host).discover().to_string()
+    }
+
+    /// Add a CUPS queue for a discovered device (T229). Returns the JSON
+    /// report.
+    fn add_printer(&self, name: &str, uri: &str, driver: &str) -> String {
+        lock_printers(&self.host)
+            .add_printer(name, uri, driver)
+            .to_string()
+    }
+
+    /// Read one queue's configurable options (T229). Returns the JSON list.
+    fn printer_options(&self, name: &str) -> String {
+        lock_printers(&self.host).printer_options(name).to_string()
+    }
+
+    /// Set one queue option (T229). Returns the JSON report.
+    fn set_printer_option(&self, name: &str, key: &str, value: &str) -> String {
+        lock_printers(&self.host)
+            .set_printer_option(name, key, value)
+            .to_string()
     }
 }
 

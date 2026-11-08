@@ -250,13 +250,19 @@ pub enum IntendedRender {
     Solid,
 }
 
-/// The one internal end-to-end rollout switch. T208 owns flipping the default;
-/// until then an unset/unknown value keeps the existing appearance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// The one internal end-to-end rollout switch. The shipped default is the
+/// replacement look; `DRAGONFRUIT_GLASS_ROLLOUT=legacy` keeps the old sampled
+/// rail available for A/B and rollback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rollout {
-    #[default]
     Legacy,
     Replacement,
+}
+
+impl Default for Rollout {
+    fn default() -> Self {
+        Self::from_name(glass::rollout::DEFAULT_MODE).unwrap_or(Rollout::Replacement)
+    }
 }
 
 impl Rollout {
@@ -275,8 +281,8 @@ impl Rollout {
         }
     }
 
-    /// Read the shared fixture/native switch. A missing or unknown value is
-    /// the safe existing appearance, never the replacement by accident.
+    /// Read the shared fixture/native switch. A missing or unknown value takes
+    /// the shipped default; an explicit `legacy` value selects the rollback rail.
     pub fn from_env() -> Self {
         std::env::var(glass::rollout::ENV_VAR)
             .ok()
@@ -1120,10 +1126,17 @@ mod tests {
     }
 
     #[test]
-    fn default_rollout_is_the_existing_appearance() {
-        assert_eq!(Rollout::default(), Rollout::Legacy);
+    fn default_rollout_is_the_replacement_appearance() {
+        assert_eq!(Rollout::default(), Rollout::Replacement);
+        let replacement = resolve(ResolveInput {
+            preset: Preset::Dock,
+            ..ResolveInput::default()
+        });
+        assert_eq!(replacement.look, Rollout::Replacement);
+        assert_eq!(replacement.render_mode, RenderMode::SampledGlass);
         let legacy = resolve(ResolveInput {
             preset: Preset::Dock,
+            rollout: Rollout::Legacy,
             ..ResolveInput::default()
         });
         assert_eq!(legacy.look, Rollout::Legacy);

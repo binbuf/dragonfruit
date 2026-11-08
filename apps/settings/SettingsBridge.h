@@ -135,6 +135,9 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no input
     // inventory at all; the pane shows the absence note.
     Q_PROPERTY(bool inputAvailable READ inputAvailable NOTIFY inputChanged)
+    // T229: the last controller test report (`{outcome, path, detail, bytes}`),
+    // pushed by `testController`. Empty until a test runs.
+    Q_PROPERTY(QVariantMap controllerTest READ controllerTest NOTIFY controllerTestChanged)
     // The battery and power-profiles view from the bridge host (T-15.6b):
     // `{ state, present, percent, level, charging, plugged, onBattery,
     // chargeState, health, healthLabel, capacity, chargeCycles,
@@ -193,6 +196,10 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Printers &
     // Scanners surface at all; the pane shows the absence note.
     Q_PROPERTY(bool printersAvailable READ printersAvailable NOTIFY printersChanged)
+    // T229: the Add Printer discovery report (`{outcome, devices}`) and the
+    // options sheet's report (`{outcome, options}`). Empty until requested.
+    Q_PROPERTY(QVariantMap printerDiscovery READ printerDiscovery NOTIFY printerDiscoveryChanged)
+    Q_PROPERTY(QVariantMap printerOptions READ printerOptions NOTIFY printerOptionsChanged)
     // The Privacy and Security view from the bridge host (T-15.13b):
     // `{ state, glyph, label, present, appCount, grantedCount, deniedCount,
     // categoryCount, categories }`. Empty when the host is absent; the pane
@@ -267,10 +274,10 @@ class SettingsBridge : public QObject
     // T222: `DF_SETTINGS_DEBUG=1` opens the pane/row owner debug view on
     // launch. The Help menu opens the same view interactively.
     Q_PROPERTY(bool debugView READ debugView CONSTANT)
-    // The glass rollout selected for this process (`legacy`/`replacement`),
-    // read from the same `DRAGONFRUIT_GLASS_ROLLOUT` switch the shell and
-    // compositor use. The Appearance preview resolves with this look, so it
-    // matches the rendered menus rather than hard-coding the replacement.
+    // The explicit glass rollout override (`legacy`/`replacement`) read from
+    // the same `DRAGONFRUIT_GLASS_ROLLOUT` switch the shell and compositor
+    // use. Empty means "use the shipped token default"; the QML shell then
+    // resolves with that look, so it matches the rendered menus.
     Q_PROPERTY(QString glassRollout READ glassRollout CONSTANT)
     // T206: whether the app window has a client-alpha composition path. A
     // capture/diagnostic can force the opaque fallback with
@@ -299,6 +306,7 @@ public:
     bool soundAvailable() const;
     QVariantMap input() const;
     bool inputAvailable() const;
+    QVariantMap controllerTest() const;
     QVariantMap battery() const;
     bool batteryAvailable() const;
     QVariantMap notifications() const;
@@ -311,6 +319,8 @@ public:
     bool accountsAvailable() const;
     QVariantMap printers() const;
     bool printersAvailable() const;
+    QVariantMap printerDiscovery() const;
+    QVariantMap printerOptions() const;
     QVariantMap privacy() const;
     bool privacyAvailable() const;
     QVariantMap security() const;
@@ -432,12 +442,14 @@ public:
     Q_INVOKABLE void setSoundMute(bool muted);
     Q_INVOKABLE void setSoundDefaultSink(int id);
     Q_INVOKABLE void setSoundDefaultSource(int id);
+    Q_INVOKABLE void playTestSound();
 
     // T-15.4b: the Keyboard/Mouse/Trackpad pane's one inventory seam.
     // `refreshInput` re-reads the bridge host on pane open; the view is
     // read-only (libinput has no setter), so `input` carries no write. A no-op
     // when the host is absent.
     Q_INVOKABLE void refreshInput();
+    Q_INVOKABLE void testController(const QString &path);
 
     // T-15.6b: the Battery pane's one seam. `refreshBattery` re-reads the
     // bridge host on pane open; `setPowerProfile` selects the active profile by
@@ -519,6 +531,12 @@ public:
     Q_INVOKABLE void setDefaultPrinter(const QString &name);
     Q_INVOKABLE void setPrinterAcceptingJobs(const QString &name, bool accepting);
     Q_INVOKABLE void cancelPrinterJob(int jobId);
+    Q_INVOKABLE void discoverPrinters();
+    Q_INVOKABLE void addPrinter(const QString &name, const QString &uri,
+                                const QString &driver);
+    Q_INVOKABLE void loadPrinterOptions(const QString &name);
+    Q_INVOKABLE void setPrinterOption(const QString &name, const QString &key,
+                                      const QString &value);
     // Test seam (`DF_PRINTERS_FIXTURE` only): restore the in-process fixture's
     // initial queues. A no-op on the live client.
     Q_INVOKABLE void resetPrintersFixture();
@@ -661,6 +679,7 @@ signals:
     void soundChanged();
     // The input inventory or availability changed (T-15.4b).
     void inputChanged();
+    void controllerTestChanged();
     // The battery / power-profiles view or availability changed (T-15.6b).
     void batteryChanged();
     // The Notifications/Focus view or availability changed (T-15.7b).
@@ -673,6 +692,8 @@ signals:
     void accountsChanged();
     // The Printers and Scanners view or availability changed (T-15.12b).
     void printersChanged();
+    void printerDiscoveryChanged();
+    void printerOptionsChanged();
     // The Privacy and Security view or availability changed (T-15.13b).
     void privacyChanged();
     void securityChanged();
@@ -743,6 +764,7 @@ private:
     SoundClient *m_sound = nullptr;
     // T-15.4b: the input inventory seam (`DF_INPUT_FIXTURE` selects the mock).
     InputClient *m_input = nullptr;
+    QVariantMap m_controllerTest;
     // T-15.6b: the battery / power-profiles seam (`DF_BATTERY_FIXTURE` selects
     // the mock).
     BatteryClient *m_battery = nullptr;
@@ -760,6 +782,8 @@ private:
     // T-15.12b: the Printers & Scanners seam (`DF_PRINTERS_FIXTURE` selects the
     // mock).
     PrintersClient *m_printers = nullptr;
+    QVariantMap m_printerDiscovery;
+    QVariantMap m_printerOptions;
     // T-15.13b: the Privacy & Security seam (`DF_PRIVACY_FIXTURE` selects the
     // mock).
     PrivacyClient *m_privacy = nullptr;
