@@ -39,6 +39,10 @@ Item {
     // can fire before the Loader swaps, so a pending deep link waits for this
     // to match instead of searching the outgoing pane's rows.
     property string loadedPaneId: ""
+    property bool pendingAboutPage: false
+    readonly property bool aboutOpen: root.currentPaneId === "general"
+                                      && paneBody.item !== null
+                                      && paneBody.item.subPaneId === "about"
 
     readonly property bool searchActive: root.searchText.trim().length > 0
     readonly property var searchResults: SettingsSearch.search(root.searchText)
@@ -115,6 +119,7 @@ Item {
     // A window-edge press. `edges` is a `Qt.Edges` flag; the host window
     // forwards it to `startSystemResize`.
     signal resizeRequested(int edges)
+    signal aboutPageOpened()
 
     readonly property var visiblePanes: SettingsPanes.filter(root.searchText)
     readonly property var currentPane: SettingsPanes.paneById(root.currentPaneId)
@@ -160,6 +165,14 @@ Item {
         root.syncSelection();
     }
 
+    function openAboutPage() {
+        root.pendingAboutPage = true;
+        root.selectPane("general");
+        if (root.loadedPaneId === "general" && root.paneBody.item) {
+            root.paneBody.item.openSubPane("about");
+            root.pendingAboutPage = false;
+        }
+    }
     function back() {
         if (!root.canGoBack)
             return;
@@ -671,6 +684,10 @@ Item {
         id: generalPaneComponent
         GeneralPane {
             onNavigateRequested: (paneId) => root.selectPane(paneId)
+            onAboutPageOpened: {
+                root.detailScroll.flickable.contentY = 0;
+                root.aboutPageOpened();
+            }
         }
     }
 
@@ -735,7 +752,8 @@ Item {
 
         titleBarData: TitleBar {
             id: titleBar
-            title: root.currentPane ? root.currentPane.title : qsTr("Settings")
+                title: root.aboutOpen ? qsTr("About")
+                                      : (root.currentPane ? root.currentPane.title : qsTr("Settings"))
             active: root.windowActive
             fillColor: Material.appChromeFill("settingsToolbar",
                                               Theme.color.chrome)
@@ -905,7 +923,7 @@ Item {
                                 // Only panes whose macOS capture has a header
                                 // card show one; the settings-list panes open
                                 // at their first group.
-                                visible: SettingsPanes.hasHeader(root.currentPane)
+                                visible: !root.aboutOpen && SettingsPanes.hasHeader(root.currentPane)
                                 pane: root.currentPane
                             }
 
@@ -925,6 +943,10 @@ Item {
                                 sourceComponent: root.paneComponent(root.currentPaneId)
                                 onLoaded: {
                                     root.loadedPaneId = root.currentPaneId;
+                                    if (root.pendingAboutPage && root.currentPaneId === "general") {
+                                        paneBody.item.openSubPane("about");
+                                        root.pendingAboutPage = false;
+                                    }
                                     // Panes with an in-pane popup get the shell
                                     // root as its parent so the detail
                                     // ScrollView's clip cannot cut it off.

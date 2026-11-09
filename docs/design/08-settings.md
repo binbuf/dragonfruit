@@ -117,8 +117,20 @@ The General group is one sidebar pane with an in-place sub-pane stack. About
 has two surfaces after the 2026-11-08 structural review: a compact 280×503 pt
 utility panel with a blank 32 pt title bar, and the canonical 740×820 pt
 Settings page with 52 pt chrome and a scrolling 768 pt content area. Software
-Update stays a dialog. T230c replaces the current single About dialog with the
-measured two-surface anatomy; the panel is a summary that links to the page.
+Update stays a dialog. T230c replaced the two About dialogs with an original
+Dragonfruit 280×503 utility panel and the canonical in-place About page. The
+system menu launches the Settings executable with `--about-system`; its blank
+32 pt chrome, 194 pt vector hero, five host rows, and More Info action belong
+to `AboutPanel.qml`. More Info reveals the 740×820 Settings window and opens
+`AboutPage.qml` under General. The page uses 52 pt unified chrome, a 128 pt
+hero and a 768 pt scroll viewport. Both surfaces read the existing Updates
+identity view; startup disk/free space use the existing General host view.
+Missing fields, including serial/model/display, say “Not available”. The
+utility material is a separate near-opaque vertical gradient with a shadow,
+and reduced transparency makes it opaque. Warranty/parts rows are omitted:
+no Linux service owns those values. The license/regulatory actions disclose
+the available local information without inventing certifications. See
+[ADR 0246](adr/0246-about-two-surfaces.md).
 Storage is the existing top-level pane; Login Items, Language & Region,
 Date & Time, Sharing, Backup, Startup Disk, and Reset open in place with a
 `‹ General` back control. Every row is a live summary of the same bridge-host

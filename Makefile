@@ -503,6 +503,9 @@ t225-network-panes-capture: build
 t226-general-panes-capture: build
 	bash scripts/capture-t226-general-panes.sh
 
+t230c-about-capture: build
+	bash scripts/capture-t230c-about.sh
+
 # T227: headless Settings Appearance/Quick Settings/Search/Screen Saver/
 # Desktop & Stage/Displays-advanced visual check, plus the live Control Center
 # panel with a customized module list and the no-settingsd absence stills.

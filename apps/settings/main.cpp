@@ -20,6 +20,8 @@ int main(int argc, char *argv[])
     Dragonfruit::installTranslations(app);
 
     QQmlApplicationEngine engine;
+    engine.setInitialProperties({{QStringLiteral("startAboutPanel"),
+                                  app.arguments().contains(QStringLiteral("--about-system"))}});
     // T230: the app-side end of the native global-menu publication. The model
     // stays in SettingsMenu.qml; this object only carries it to the broker.
     MenuPublisher menuPublisher;

@@ -5404,10 +5404,20 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
         // "Settings…" open the first-party Settings app (T-09); if it is
         // already running its window is focused instead of a second launch.
         openApp(QStringLiteral("org.dragonfruit.Settings.desktop"));
-    } else if (action == QLatin1String("about") || action == QLatin1String("about-system")) {
-        // The About panel needs the General > About pane data (T-15.10);
-        // until it lands the item is a logged stub.
-        qInfo() << "shell: About requested (T-15.10)";
+    } else if (action == QLatin1String("about-system")) {
+        // The Settings executable owns both About surfaces. Launch its
+        // utility-window entry point; More Info reveals the canonical page.
+        const DesktopEntry entry = m_index.byId(QStringLiteral("org.dragonfruit.Settings.desktop"));
+        QStringList argv = DesktopEntryIndex::buildLaunchCommand(entry, QStringList());
+        if (!argv.isEmpty()) {
+            argv << QStringLiteral("--about-system");
+            if (!launchDetachedFromShell(argv, m_waylandDisplay, nullptr))
+                qWarning() << "shell: could not open About This System";
+        } else {
+            qWarning() << "shell: Settings launcher unavailable for About This System";
+        }
+    } else if (action == QLatin1String("about")) {
+        openApp(QStringLiteral("org.dragonfruit.Settings.desktop"));
     } else if (action == QLatin1String("hide")) {
         hideAppWindows(m_appId);
     } else if (action == QLatin1String("hide-others")) {

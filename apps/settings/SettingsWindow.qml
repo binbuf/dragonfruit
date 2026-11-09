@@ -8,6 +8,10 @@ import Dragonfruit
 // reports window-control intent and this file maps it to `Window` state.
 Window {
     id: win
+    property bool startAboutPanel: false
+    property alias aboutWindow: aboutWindow
+    property alias aboutPanel: aboutPanel
+    property alias settingsShell: shell
 
     // The macOS reference capture (Desktop & Dock, Accessibility, ...) is
     // ~620x627 in design-system token units, with the sidebar ~31% of the
@@ -20,7 +24,7 @@ Window {
     height: 640
     minimumWidth: 720
     minimumHeight: 480
-    visible: true
+    visible: !startAboutPanel
     title: qsTr("Settings")
     color: "transparent"
     flags: Qt.Window | Qt.FramelessWindowHint
@@ -29,6 +33,10 @@ Window {
         id: shell
         anchors.fill: parent
         windowActive: win.active
+        onAboutPageOpened: {
+            win.width = 740;
+            win.height = 820;
+        }
 
         onCloseRequested: win.close()
         onMinimizeRequested: win.showMinimized()
@@ -39,6 +47,33 @@ Window {
         // for the interactive resize (`xdg_toplevel.resize`), which honors the
         // min-size hints above.
         onResizeRequested: (edges) => win.startSystemResize(edges)
+    }
+
+    Window {
+        id: aboutWindow
+        transientParent: null
+        width: 280
+        height: 503
+        minimumWidth: 280
+        maximumWidth: 280
+        minimumHeight: 503
+        maximumHeight: 503
+        visible: win.startAboutPanel
+        title: qsTr("About This System")
+        color: "transparent"
+        flags: Qt.Tool | Qt.FramelessWindowHint
+        AboutPanel {
+            id: aboutPanel
+            anchors.fill: parent
+            onCloseRequested: aboutWindow.close()
+            onMoreInfoRequested: {
+                aboutWindow.close();
+                win.show();
+                shell.openAboutPage();
+                win.raise();
+                win.requestActivate();
+            }
+        }
     }
 
     // The published menu model's actions (T-09.6a). The menu bar is in the

@@ -3,23 +3,9 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The General group (T-15.10b / T226).
-//
-// General mirrors the macOS pane as grouped disclosure rows: About and
-// Software Update open dialogs, Storage jumps to the Storage pane, and the
-// remaining reference rows open their own sub-pane in place (Login Items,
-// Language & Region, Date & Time, Sharing, Backup, Startup Disk, Reset). The
-// rows are a live summary of the same bridge-host view the sub-panes render.
-//
-// Deviations from the macOS capture reference (ADR 0122), recorded so later
-// tasks do not re-litigate them:
-//   * `Storage` is a first-class sidebar pane in Dragonfruit (T-15.2b), so
-//     its General row navigates there instead of duplicating the pane.
-//   * the About illustration is our own `computer` glyph, and the `Chip` value
-//     is the host's processor (never `Apple M5`); `OS` reads the host's own
-//     release.
-//   * the `Regulatory Certification` / copyright footer is omitted.
-//   * the trailing `?` help is omitted project-wide.
+// The General list opens an in-place canonical About page. Software Update
+// remains a dialog; the other host-backed rows use their own sub-panes.
+// Storage navigates to its existing top-level pane.
 Item {
     id: root
 
@@ -125,13 +111,6 @@ Item {
 
     // Test surface (used by tst_settings_general.qml).
     property alias aboutRow: aboutRow
-    property alias aboutDialog: aboutDialog
-    property alias aboutHeading: aboutHeading
-    property alias aboutOsRow: aboutOsRow
-    property alias aboutMemoryRow: aboutMemoryRow
-    property alias aboutSerialRow: aboutSerialRow
-    property alias moreInfoButton: moreInfoButton
-    property alias moreInfoDialog: moreInfoDialog
     property alias updateRow: updateRow
     property alias updateDialog: updateDialog
     property alias updateStatusText: updateStatusText
@@ -156,6 +135,7 @@ Item {
     property alias backButton: backButton
 
     signal navigateRequested(string paneId)
+    signal aboutPageOpened()
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -164,6 +144,7 @@ Item {
 
     function openSubPane(id) {
         root.subPaneId = id;
+        if (id === "about") root.aboutPageOpened();
     }
 
     function closeSubPane() {
@@ -172,6 +153,7 @@ Item {
 
     function subPaneComponent(id) {
         switch (id) {
+        case "about": return aboutComponent;
         case "login": return loginComponent;
         case "language": return languageComponent;
         case "date-time": return dateTimeComponent;
@@ -214,7 +196,7 @@ Item {
                     label: qsTr("About")
                     description: root.deviceName
                     disclosure: true
-                    onDisclosureClicked: aboutDialog.show()
+                    onDisclosureClicked: root.openSubPane("about")
                 }
 
                 SettingsRow {
@@ -354,192 +336,10 @@ Item {
         }
     }
 
-    // ── The About dialog (About This System) ──────────────────────────────
-    Dialog {
-        id: aboutDialog
-        objectName: "generalAboutDialog"
-        title: root.deviceName.length > 0 ? root.deviceName : qsTr("About This System")
-        dismissible: true
-
-        contentData: Column {
-            width: parent.width
-            spacing: Theme.primitive.spacing.md
-
-            Icon {
-                anchors.horizontalCenter: parent.horizontalCenter
-                name: "computer"
-                size: 72
-                color: Theme.color.textSecondary
-            }
-
-            Text {
-                id: aboutHeading
-                objectName: "generalAboutHeading"
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                text: root.deviceName.length > 0
-                    ? root.deviceName : qsTr("This System")
-                color: Theme.color.textPrimary
-                font.pixelSize: Theme.primitive.font.sizeXl
-                font.weight: Theme.primitive.font.weightSemibold
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                objectName: "generalAboutSublabel"
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                visible: root.processor.length > 0
-                text: root.processor
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
-
-            SettingsGroup {
-                width: parent.width
-                reserveBottomMargin: false
-
-                SettingsRow {
-                    objectName: "generalAboutChipRow"
-                    width: parent.width
-                    label: qsTr("Chip")
-                    controlData: Text {
-                        objectName: "generalAboutChipValue"
-                        text: root.processor.length > 0
-                            ? root.processor : qsTr("Unknown")
-                        color: Theme.color.textPrimary
-                        font.pixelSize: Theme.controls.button.fontSize
-                    }
-                }
-
-                SettingsRow {
-                    id: aboutMemoryRow
-                    objectName: "generalAboutMemoryRow"
-                    width: parent.width
-                    label: qsTr("Memory")
-                    controlData: Text {
-                        objectName: "generalAboutMemoryValue"
-                        text: root.memoryLabel.length > 0
-                            ? root.memoryLabel : qsTr("Unknown")
-                        color: Theme.color.textPrimary
-                        font.pixelSize: Theme.controls.button.fontSize
-                    }
-                }
-
-                SettingsRow {
-                    id: aboutSerialRow
-                    objectName: "generalAboutSerialRow"
-                    width: parent.width
-                    label: qsTr("Serial number")
-                    visible: root.hasSerial
-                    controlData: Text {
-                        objectName: "generalAboutSerialValue"
-                        text: root.serial
-                        color: Theme.color.textPrimary
-                        font.pixelSize: Theme.controls.button.fontSize
-                    }
-                }
-
-                SettingsRow {
-                    id: aboutOsRow
-                    objectName: "generalAboutOsRow"
-                    width: parent.width
-                    label: qsTr("OS")
-                    showSeparator: false
-                    controlData: Text {
-                        objectName: "generalAboutOsValue"
-                        text: root.osLabel.length > 0
-                            ? root.osLabel : qsTr("Unknown")
-                        color: Theme.color.textPrimary
-                        font.pixelSize: Theme.controls.button.fontSize
-                    }
-                }
-            }
-
-            Text {
-                objectName: "generalAboutKernel"
-                width: parent.width
-                visible: root.kernel.length > 0
-                horizontalAlignment: Text.AlignHCenter
-                text: qsTr("Kernel %1").arg(root.kernel)
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-
-            Button {
-                id: moreInfoButton
-                objectName: "generalAboutMoreInfo"
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: qsTr("More Info…")
-                onClicked: {
-                    aboutDialog.accept();
-                    moreInfoDialog.show();
-                }
-            }
-        }
-
-        buttonsData: Row {
-            spacing: Theme.controls.dialog.buttonGap
-
-            Button {
-                text: qsTr("Done")
-                variant: "primary"
-                onClicked: aboutDialog.accept()
-            }
-        }
+    Component {
+        id: aboutComponent
+        AboutPage { onNavigateRequested: (paneId) => root.navigateRequested(paneId) }
     }
-
-    // ── More Info (the full host read, no invented Apple hardware) ────────
-    Dialog {
-        id: moreInfoDialog
-        objectName: "generalMoreInfoDialog"
-        title: qsTr("System Info")
-        dismissible: true
-
-        contentData: SettingsGroup {
-            width: parent.width
-            reserveBottomMargin: false
-
-            Repeater {
-                model: [
-                    { label: qsTr("Computer name"), value: root.view.hostName || "—" },
-                    { label: qsTr("Model"), value: root.view.deviceModel || "—" },
-                    { label: qsTr("OS"), value: root.osLabel || "—" },
-                    { label: qsTr("Kernel"), value: root.kernel || "—" },
-                    { label: qsTr("Architecture"), value: root.view.architecture || "—" },
-                    { label: qsTr("Processor"), value: root.processor || "—" },
-                    { label: qsTr("Memory"), value: root.memoryLabel || "—" },
-                    { label: qsTr("GPU"), value: root.gpuLabel || "—" },
-                    { label: qsTr("Disk"), value: root.diskLabel || "—" },
-                    { label: qsTr("Serial number"), value: root.hasSerial ? root.serial : qsTr("Not available") }
-                ]
-                delegate: SettingsRow {
-                    required property var modelData
-                    required property int index
-                    width: parent.width
-                    label: modelData.label
-                    showSeparator: index < 9
-                    controlData: Text {
-                        text: modelData.value
-                        color: Theme.color.textPrimary
-                        font.pixelSize: Theme.controls.button.fontSize
-                    }
-                }
-            }
-        }
-
-        buttonsData: Row {
-            spacing: Theme.controls.dialog.buttonGap
-
-            Button {
-                text: qsTr("Done")
-                variant: "primary"
-                onClicked: moreInfoDialog.accept()
-            }
-        }
-    }
-
     // ── The Software Update dialog ────────────────────────────────────────
     Dialog {
         id: updateDialog
