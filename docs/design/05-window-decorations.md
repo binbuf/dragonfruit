@@ -44,10 +44,49 @@ also hides the Finder sidebar and moves the status bar.
 
 Do not hard-code 52 pt for utility windows, and do not derive a window's style
 from its size: Calculator is compact but uses a 52 pt unified toolbar. T230b
-owns the design-system/compositor migration; fullscreen hidden/revealed chrome,
-long titles and RTL mirroring remain `OPEN`. See
+landed the design-system/compositor migration; fullscreen hidden/revealed
+chrome is implemented, while long titles and RTL mirroring remain `OPEN` (see
+below). See
 [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
-and [ADR 0241](adr/0241-macos-structural-surface-review.md).
+and [ADR 0241](adr/0241-macos-structural-surface-review.md), with the T230b
+implementation decision in [ADR 0242](adr/0242-window-chrome-style-system.md).
+
+### Style model and measured geometry (T230b)
+
+The one source is `component.windowStyle` in
+`design-system/tokens/tokens.json`. Each named style carries `height`,
+`titleRow`, and `toolbarRow`; the row sum is the baseline, and
+`WindowStyle.chromeHeight(style, { labelledToolbar, toolbarRowHeight })`
+derives the final height. The QML `WindowStyle` singleton and the compositor's
+`WindowStyle`/`WindowChrome` types are generated from or checked against that
+table. A `TitleBar` inside an `AppWindow` inherits the window's
+`windowStyle`, so Settings and Files declare `unified` once and never hard-code
+52 pt.
+
+Traffic-light geometry is also one table: `component.trafficLights.diameter`
+(16 pt), `spacing` (23 pt centre-to-centre), and `inset` (the leading inset).
+The vertical inset is derived from the final chrome height
+(`(height - diameter) / 2`), which yields 8 pt in the 32 pt `titlebar` style and
+18 pt in the 52 pt `unified` style and stays centred for 66/70 pt variants.
+The existing hover reveal, disabled/focused fills, keyboard activation, and
+window-action routing are unchanged.
+
+Accessory bars are content: `component.accessoryBar` records the Finder
+tab/path/status heights (28/30/28 pt) and the TextEdit format bar (20 pt).
+They are not added to `WindowStyle.height()`. The Files path bar consumes the
+30 pt token; tab/status/format bars land with their owning app tasks.
+
+The compositor's default SSD style is `titlebar` (32 pt) because it draws no
+toolbar. A style can be applied per window through the window model and the
+synthetic `set window-style <window-id> <style>` seam; the conformance test
+covers every baseline and the fullscreen reveal strip uses the same height.
+The compositor still never draws a second titlebar over a CSD client (the
+tier-3 dignity rule).
+
+**OPEN:** long-title truncation beyond the existing `Text.ElideMiddle`, and
+RTL titlebar mirroring/traffic-light order, are not implemented. They are
+recorded as `N-WIN-29`/`N-WIN-30` in the experience manifest and must not be
+claimed with a clipped screenshot.
 
 ## Three quality tiers
 
@@ -183,13 +222,16 @@ accepted compromises (see [00-overview.md](00-overview.md)).
 The T-01 loop lands the SSD titlebar element from the generated tokens
 (`compositor/src/window/decoration.rs`): a flat token fill with square
 corners, left-side close/minimize/zoom lights, and hover/disabled *drawing*.
-The titlebar reserves its height as a top inset (`component.titlebar.height`,
-40 logical px) above the client area, so a zoomed client is configured one
-titlebar shorter through the single `configure_window_size` path; fullscreen
-hides the titlebar and reserves nothing. A client that negotiates client-side
-decoration via `xdg-decoration` (or never creates a decoration object, or an
-X11 client marked undecorated) is never given a compositor titlebar — the
-tier-3 dignity rule.
+T230b replaces the original single 40 pt token with the measured
+`component.windowStyle` table: the compositor's default SSD style is
+`titlebar` (32 pt), and a window can carry any named style through
+`WindowModel`/the synthetic test seam. The titlebar reserves its style height
+as a top inset above the client area, so a zoomed client is configured one
+chrome height shorter through the single `configure_window_size` path;
+fullscreen hides the titlebar and reserves nothing. A client that negotiates
+client-side decoration via `xdg-decoration` (or never creates a decoration
+object, or an X11 client marked undecorated) is never given a compositor
+titlebar — the tier-3 dignity rule.
 
 At T-01, explicitly deferred: real materials (blur/shadow/rounded corners,
 T-04), drag-to-move and double-click zoom on the titlebar (T-01.3), the window
@@ -223,11 +265,12 @@ state machine:
   compositor holds the field (default `zoom`) and a synthetic-input command
   sets it for tests (see ADR 0001).
 - A fullscreen window has no persistent titlebar; when the pointer enters the
-  top `component.titlebar.height` strip, the titlebar is laid out as an
-  overlay on the content (no inset) and its glyphs reveal. Moving away hides
-  it again. The overlay wins the titlebar hit-test even though a client
-  surface is under it, because it is compositor chrome that only exists while
-  revealed.
+  top strip sized by the window's `WindowStyle` (32 pt for the default
+  `titlebar`, 52 pt for `unified`, 88 pt for `preference`), the titlebar is
+  laid out as an overlay on the content (no inset) and its glyphs reveal.
+  Moving away hides it again. The overlay wins the titlebar hit-test even
+  though a client surface is under it, because it is compositor chrome that
+  only exists while revealed.
 
 Zoomed and fullscreen windows are not interactively moved (matching the grab
 module's contract); multi-monitor drag polish is T-16.
@@ -294,11 +337,19 @@ following T-04 material tasks, on the same element and the same geometry.
 **Current status (2026-11).** T-04.1a/1b landed the shadow and rounded-corner
 geometry; T-20's sampled material is a chrome-panel pass and deliberately does
 not turn the SSD titlebar into glass, so the titlebar fill remains the
-token-opaque surface described above. The current design-system
-`component.titlebar.height` is still a single 40 pt token; T230b replaces it
-with the measured style taxonomy. `_NET_FRAME_EXTENTS` is still not published
-to X11 clients ([STATUS.md](STATUS.md) G-16). The label-less window menu is the
-main decoration gap (G-06). The GTK steering bridge now runs from
+token-opaque surface described above. T230b landed the measured style
+taxonomy: `WindowStyle` (QML singleton + Rust enum) resolves the
+`borderless`/`titlebar`/`unifiedCompact`/`expanded`/`unified`/`preference`
+baselines (0/32/40/48/52/88 pt), `unified` plus the 14 pt labelled row is
+66 pt, and an app-specific toolbar row can take an expanded document to 70 pt.
+The first-party `TitleBar` and the compositor SSD renderer both read the same
+table, so their height and traffic-light geometry cannot drift. Traffic lights
+are 16×16 pt with 23 pt centre spacing and a leading inset token; the
+style-derived top inset is 8 pt in a 32 pt bar and 18 pt in a 52 pt bar.
+Settings and Files are 52 pt `unified` windows; their main toolbar is the
+titlebar row, while the Files path bar (30 pt) stays content. `_NET_FRAME_EXTENTS`
+is still not published to X11 clients ([STATUS.md](STATUS.md) G-16). The
+label-less window menu is the main decoration gap (G-06). The GTK steering bridge now runs from
 the session entry (`dragonfruit-session --sync-toolkit`), the session exports
 `GTK_CSD=0` for X11 GTK 3, and the compositor advertises KDE's legacy
 server-decoration manager with default mode `Server` for Wayland GTK 3. The

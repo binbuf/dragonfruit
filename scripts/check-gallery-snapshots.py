@@ -33,7 +33,7 @@ PAGES = [
     "buttons", "sidebar", "toolbar", "splitview", "settings", "segmented", "contextmenu",
     "searchfield", "sourcelist", "dialog", "sheet", "popover", "scrollview", "slider",
     "select", "icons", "tooltip", "skeleton", "phosphor", "settingscategory",
-    "tabler",
+    "tabler", "windowstyles",
 ]
 SCHEMES = [("light", False), ("dark", False), ("dark", True)]
 

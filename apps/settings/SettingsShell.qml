@@ -2,9 +2,9 @@
 import QtQuick
 import Dragonfruit
 
-// The Settings app shell (T-09.1a): the window chrome (titlebar + traffic
-// lights), the sidebar with local pane search, the back/forward history
-// affordances, and the detail-pane header card.
+// The Settings app shell (T-09.1a): the 52 pt unified window chrome
+// (titlebar row, traffic lights, and back/forward), the sidebar with local
+// pane search, and the detail-pane header card.
 //
 // Everything visual is a design-system component; this file only owns the
 // information architecture and the pane navigation state. Pane bodies land in
@@ -47,7 +47,9 @@ Item {
     property alias searchResultsList: searchResultsList
     property alias sidebar: sidebar
     property alias sidebarPane: sidebarPane
-    property alias toolbar: toolbar
+    // T230b: the unified toolbar is the titlebar row; keep the old alias so
+    // existing chrome-material consumers read the same surface.
+    property alias toolbar: titleBar
     property alias titleBar: titleBar
     property alias appWindow: appWindow
     property alias header: header
@@ -724,14 +726,40 @@ Item {
         anchors.fill: parent
         title: qsTr("Settings")
         active: root.windowActive
+        // T230b: Settings is a 52 pt unified-toolbar window. The style is
+        // declared once here; the titlebar inherits it.
+        windowStyle: "unified"
         // T206: the sidebar/toolbar carry the measured app-local alpha; the
         // detail sheet below stays opaque.
         chromeTransparent: true
 
         titleBarData: TitleBar {
             id: titleBar
-            title: qsTr("Settings")
+            title: root.currentPane ? root.currentPane.title : qsTr("Settings")
             active: root.windowActive
+            fillColor: Material.appChromeFill("settingsToolbar",
+                                              Theme.color.chrome)
+            borderColor: Material.appChromeBorder("settingsToolbar",
+                                                  Theme.color.border)
+            leadingData: Row {
+                spacing: Theme.controls.toolbar.spacing
+                Button {
+                    id: backButton
+                    icon: "chevron-left"
+                    variant: "ghost"
+                    accessibleName: qsTr("Back")
+                    enabled: root.canGoBack
+                    onClicked: root.back()
+                }
+                Button {
+                    id: forwardButton
+                    icon: "chevron-right"
+                    variant: "ghost"
+                    accessibleName: qsTr("Forward")
+                    enabled: root.canGoForward
+                    onClicked: root.forward()
+                }
+            }
             onCloseRequested: root.closeRequested()
             onMinimizeRequested: root.minimizeRequested()
             onZoomRequested: root.zoomRequested()
@@ -839,15 +867,14 @@ Item {
                 height: parent.height
                 color: "transparent"
 
-                // The toolbar keeps the app-local material; the scrolling
-                // detail sheet below it is the opaque content surface and owns
-                // the bottom-right window corner.
+                // The titlebar is the app-local toolbar (52 pt unified); the
+                // scrolling detail sheet below it is the opaque content
+                // surface and owns the bottom-right window corner.
                 ChromeSheet {
                     id: detailSheet
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.topMargin: Theme.controls.toolbar.height
                     anchors.bottom: parent.bottom
                     color: Theme.color.surface
                     bottomRightRadius: Theme.controls.window.radius
@@ -857,37 +884,10 @@ Item {
                     anchors.fill: parent
                     spacing: 0
 
-                    Toolbar {
-                        id: toolbar
-                        width: parent.width
-                        title: root.currentPane ? root.currentPane.title : ""
-                        fillColor: Material.appChromeFill("settingsToolbar",
-                                                          Theme.color.chrome)
-                        borderColor: Material.appChromeBorder("settingsToolbar",
-                                                              Theme.color.border)
-
-                        Button {
-                            id: backButton
-                            icon: "chevron-left"
-                            variant: "ghost"
-                            accessibleName: qsTr("Back")
-                            enabled: root.canGoBack
-                            onClicked: root.back()
-                        }
-                        Button {
-                            id: forwardButton
-                            icon: "chevron-right"
-                            variant: "ghost"
-                            accessibleName: qsTr("Forward")
-                            enabled: root.canGoForward
-                            onClicked: root.forward()
-                        }
-                    }
-
                     ScrollView {
                         id: detailScroll
                         width: parent.width
-                        height: Math.max(0, parent.height - toolbar.height)
+                        height: parent.height
                         scrollbarVisible: true
                         scrollBars: root.scrollBars
 

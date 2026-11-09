@@ -1049,8 +1049,43 @@ QtObject {
             readonly property int resizeCorner: 12
             readonly property int shadowBlur: 40
         }
+        readonly property var windowStyle: QtObject {
+            readonly property int trafficLightSize: 16
+            readonly property int trafficLightSpacing: 23
+            readonly property int trafficLightLeadingInset: 12
+            readonly property int labelledToolbarRow: 14
+            readonly property var borderless: QtObject {
+                readonly property int height: 0
+                readonly property int titleRow: 0
+                readonly property int toolbarRow: 0
+            }
+            readonly property var titlebar: QtObject {
+                readonly property int height: 32
+                readonly property int titleRow: 32
+                readonly property int toolbarRow: 0
+            }
+            readonly property var unifiedCompact: QtObject {
+                readonly property int height: 40
+                readonly property int titleRow: 0
+                readonly property int toolbarRow: 40
+            }
+            readonly property var expanded: QtObject {
+                readonly property int height: 48
+                readonly property int titleRow: 28
+                readonly property int toolbarRow: 20
+            }
+            readonly property var unified: QtObject {
+                readonly property int height: 52
+                readonly property int titleRow: 0
+                readonly property int toolbarRow: 52
+            }
+            readonly property var preference: QtObject {
+                readonly property int height: 88
+                readonly property int titleRow: 32
+                readonly property int toolbarRow: 56
+            }
+        }
         readonly property var titlebar: QtObject {
-            readonly property int height: 40
             readonly property int paddingH: 8
             readonly property int paddingV: 4
             readonly property int spacing: 8
@@ -1059,10 +1094,10 @@ QtObject {
             readonly property int cornerRadius: 14
         }
         readonly property var trafficLights: QtObject {
-            readonly property int diameter: 12
-            readonly property int gap: 8
+            readonly property int diameter: 16
+            readonly property int spacing: 23
             readonly property int inset: 12
-            readonly property int glyphSize: 6
+            readonly property int glyphSize: 8
             readonly property bool hoverReveal: true
         }
         readonly property var toggle: QtObject {
@@ -1255,6 +1290,12 @@ QtObject {
             readonly property int spacing: 8
             readonly property int buttonSize: 28
             readonly property int radius: 10
+        }
+        readonly property var accessoryBar: QtObject {
+            readonly property int tab: 28
+            readonly property int path: 30
+            readonly property int status: 28
+            readonly property int format: 20
         }
         readonly property var splitView: QtObject {
             readonly property int dividerWidth: 1

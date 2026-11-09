@@ -331,14 +331,15 @@ fn parse_decorations(report: &str) -> Vec<DecorationReport> {
         .collect()
 }
 
-/// Traffic-light geometry from `component.trafficLights` tokens (T-01.2).
-const LIGHT_DIAMETER: i32 = 12;
-const LIGHT_GAP: i32 = 8;
+/// Traffic-light geometry from `component.trafficLights` tokens
+/// (T-01.2/T230b).
+const LIGHT_DIAMETER: i32 = 16;
+const LIGHT_SPACING: i32 = 23;
 const LIGHT_INSET: i32 = 12;
 
 fn light_center(report: &DecorationReport, index: i32) -> (i32, i32) {
     let (tx, ty, _tw, th) = report.titlebar;
-    let cx = tx + LIGHT_INSET + LIGHT_DIAMETER / 2 + index * (LIGHT_DIAMETER + LIGHT_GAP);
+    let cx = tx + LIGHT_INSET + LIGHT_DIAMETER / 2 + index * LIGHT_SPACING;
     let cy = ty + th / 2;
     (cx, cy)
 }
@@ -392,8 +393,8 @@ fn report_for(reports: &[DecorationReport], window: u64) -> DecorationReport {
         .expect("reported window")
 }
 
-/// The design-system SSD titlebar height (T-01.1).
-const TITLEBAR_HEIGHT: i32 = 40;
+/// The compositor's default SSD chrome height (T-01.1/T230b).
+const TITLEBAR_HEIGHT: i32 = 32;
 
 #[test]
 fn x11_window_maps_and_unmaps_through_the_xwm() {

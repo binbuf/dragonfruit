@@ -95,9 +95,10 @@ fn print_plan(plan: &SessionPlan) {
 }
 
 /// The environment to import into the systemd user manager before starting
-/// `dragonfruit-session.target`. Prints `KEY=VALUE` lines, including a freshly
-/// minted `DRAGONFRUIT_LAUNCH_TOKEN`; the token is a session secret, so the
-/// caller must import it rather than log it.
+/// `dragonfruit-session.target`. Prints `KEY=VALUE` lines, including freshly
+/// minted `DRAGONFRUIT_LAUNCH_TOKEN` and `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`
+/// values; the tokens are session secrets, so the caller must import them
+/// rather than log them.
 ///
 /// Options: `--socket-name NAME`, `--x11-display DISPLAY`, `--dev-return
 /// SESSION`. When `--dev-return` is absent and `$XDG_STATE_HOME/dragonfruit/
@@ -159,7 +160,7 @@ fn print_env(args: &[String]) -> ExitCode {
         }
     }
 
-    let mut environment = SessionEnvironment::new(socket_name).with_generated_token();
+    let mut environment = SessionEnvironment::new(socket_name).with_generated_tokens();
     if let Some(display) = x11_display {
         environment = environment.with_x11_display(display);
     }

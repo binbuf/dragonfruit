@@ -81,6 +81,10 @@ pub struct ServiceSpec {
     /// that pre-mints the token; the shell is the client that presents it
     /// (T-12.1b).
     pub trusted: bool,
+    /// A trusted Files desktop process: the session environment gives it the
+    /// role-scoped `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN` (T-19.3). The
+    /// compositor sets this too, because it issues both tokens.
+    pub desktop_trusted: bool,
 }
 
 impl ServiceSpec {
@@ -97,6 +101,7 @@ impl ServiceSpec {
             ends_session: false,
             gate: false,
             trusted: false,
+            desktop_trusted: false,
         }
     }
 
@@ -138,6 +143,13 @@ impl ServiceSpec {
     /// environment hands it the one-time launch token (T-12.1b).
     pub fn trusted(mut self, trusted: bool) -> Self {
         self.trusted = trusted;
+        self
+    }
+
+    /// Mark this service as the Files desktop; the session environment hands
+    /// it the role-scoped desktop token (T-19.3).
+    pub fn desktop_trusted(mut self, desktop_trusted: bool) -> Self {
+        self.desktop_trusted = desktop_trusted;
         self
     }
 
@@ -183,12 +195,18 @@ impl SessionPlan {
                 .policy(RestartPolicy::Never)
                 .ends_session(true)
                 .gate(true)
-                .trusted(true),
+                .trusted(true)
+                .desktop_trusted(true),
             ServiceSpec::new("shell", "dragonfruit-shell")
                 .stage(1)
                 .policy(RestartPolicy::Always)
                 .trusted(true),
             ServiceSpec::new("settingsd", "dragonfruit-settingsd").stage(1),
+            ServiceSpec::new("files-desktop", "dragonfruit-files")
+                .args(["--desktop"])
+                .stage(1)
+                .policy(RestartPolicy::Always)
+                .desktop_trusted(true),
             ServiceSpec::new("menu-broker", "dragonfruit-menu-broker").stage(1),
             ServiceSpec::new("app-index", "dragonfruit-app-index").stage(1),
             ServiceSpec::new("notifications", "dragonfruit-notifications").stage(1),
@@ -212,10 +230,11 @@ impl SessionPlan {
             .iter()
             .map(|spec| {
                 let mut spec = spec.clone();
-                spec.env = if spec.trusted {
-                    env.trusted()
-                } else {
-                    env.base()
+                spec.env = match (spec.trusted, spec.desktop_trusted) {
+                    (true, true) => env.issuer(),
+                    (true, false) => env.trusted(),
+                    (false, true) => env.desktop_trusted(),
+                    (false, false) => env.base(),
                 };
                 spec
             })
@@ -324,12 +343,23 @@ mod tests {
             .unwrap();
         assert_eq!(shell.policy, RestartPolicy::Always);
 
-        // Everything in stage 1 except the shell restarts on failure.
+        // The shell and the Files desktop restart on every exit; the rest of
+        // stage 1 restarts only on failure.
         for spec in plan.services_in_stage(1) {
-            if spec.name != "shell" {
+            if !matches!(spec.name.as_str(), "shell" | "files-desktop") {
                 assert_eq!(spec.policy, RestartPolicy::OnFailure, "{}", spec.name);
             }
         }
+
+        let desktop = plan
+            .services
+            .iter()
+            .find(|spec| spec.name == "files-desktop")
+            .expect("the Files desktop is part of the session");
+        assert_eq!(desktop.program, PathBuf::from("dragonfruit-files"));
+        assert_eq!(desktop.args, vec!["--desktop".to_string()]);
+        assert_eq!(desktop.stage, 1);
+        assert!(desktop.desktop_trusted);
 
         // The portal registers with xdg-desktop-portal last.
         assert_eq!(
@@ -344,7 +374,9 @@ mod tests {
     fn with_environment_attaches_the_token_only_to_trusted_services() {
         use crate::env::{self, SessionEnvironment};
 
-        let environment = SessionEnvironment::default_socket().with_launch_token("tok");
+        let environment = SessionEnvironment::default_socket()
+            .with_launch_token("tok")
+            .with_desktop_launch_token("desktop-tok");
         let plan = SessionPlan::default_session_for(&environment);
         plan.validate()
             .expect("environment does not break the plan");
@@ -360,6 +392,15 @@ mod tests {
             );
             let has_token = spec.env.iter().any(|(key, _)| key == env::LAUNCH_TOKEN);
             assert_eq!(has_token, spec.trusted, "{}", spec.name);
+            let has_desktop_token = spec
+                .env
+                .iter()
+                .any(|(key, _)| key == env::DESKTOP_LAUNCH_TOKEN);
+            assert_eq!(
+                has_desktop_token, spec.desktop_trusted,
+                "{} desktop token",
+                spec.name
+            );
         }
 
         let compositor = plan
@@ -372,10 +413,17 @@ mod tests {
             .iter()
             .find(|spec| spec.name == "shell")
             .unwrap();
+        let desktop = plan
+            .services
+            .iter()
+            .find(|spec| spec.name == "files-desktop")
+            .unwrap();
         assert!(
-            compositor.trusted && shell.trusted,
-            "the compositor issues the token and the shell presents it"
+            compositor.trusted && compositor.desktop_trusted,
+            "the compositor issues both tokens"
         );
+        assert!(shell.trusted && !shell.desktop_trusted);
+        assert!(desktop.desktop_trusted && !desktop.trusted);
     }
 
     #[test]

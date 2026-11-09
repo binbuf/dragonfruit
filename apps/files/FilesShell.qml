@@ -2,9 +2,9 @@
 import QtQuick
 import Dragonfruit
 
-// The Files app shell (T-10.4a): the window chrome (titlebar + traffic
-// lights), the sidebar with the Favorites/Locations sections, the toolbar
-// (back/forward, the view switch, local search), and the footer path bar.
+// The Files app shell (T-10.4a): the 52 pt unified window chrome (titlebar
+// row, traffic lights, back/forward, view switch, and local search), the
+// sidebar with the Favorites/Locations sections, and the footer path bar.
 //
 // The browsing model is `FilesBrowser`; the locations and breadcrumb come
 // from the `Files` platform singleton, and the directory listing from
@@ -62,7 +62,9 @@ Item {
     property alias browser: browser
     property alias sidebar: sidebar
     property alias sidebarPane: sidebarPane
-    property alias toolbar: toolbar
+    // T230b: the unified toolbar is the titlebar row; keep the old alias so
+    // existing chrome-material consumers read the same surface.
+    property alias toolbar: titleBar
     property alias titleBar: titleBar
     property alias appWindow: appWindow
     property alias searchField: searchField
@@ -641,6 +643,9 @@ Item {
         anchors.fill: parent
         title: root.locationTitle
         active: root.windowActive
+        // T230b: Files is a 52 pt unified-toolbar window. The style is
+        // declared once here; the titlebar inherits it.
+        windowStyle: "unified"
         // T206: the sidebar/toolbar carry the measured app-local alpha; the
         // content area and path bar stay opaque.
         chromeTransparent: true
@@ -649,6 +654,45 @@ Item {
             id: titleBar
             title: root.locationTitle
             active: root.windowActive
+            fillColor: Material.appChromeFill("filesToolbar",
+                                              Theme.color.chrome)
+            borderColor: Material.appChromeBorder("filesToolbar",
+                                                  Theme.color.border)
+            leadingData: Row {
+                spacing: Theme.controls.toolbar.spacing
+                Button {
+                    id: backButton
+                    icon: "chevron-left"
+                    variant: "ghost"
+                    accessibleName: qsTr("Back")
+                    enabled: browser.canGoBack
+                    onClicked: browser.back()
+                }
+                Button {
+                    id: forwardButton
+                    icon: "chevron-right"
+                    variant: "ghost"
+                    accessibleName: qsTr("Forward")
+                    enabled: browser.canGoForward
+                    onClicked: browser.forward()
+                }
+                SegmentedControl {
+                    id: viewControl
+                    model: [
+                        { label: qsTr("Icon View"), icon: "icon-view" },
+                        { label: qsTr("List View"), icon: "list-view" }
+                    ]
+                    onActivated: (index) => browser.setView(index === 1
+                                                            ? "list" : "icon")
+                }
+            }
+            trailingData: SearchField {
+                id: searchField
+                width: 220
+                placeholderText: qsTr("Search")
+                onTextChanged: root.searchText = searchField.text
+                onCleared: root.searchText = ""
+            }
             onCloseRequested: root.closeRequested()
             onMinimizeRequested: root.minimizeRequested()
             onZoomRequested: root.zoomRequested()
@@ -692,21 +736,21 @@ Item {
                 }
             }
 
-            // Detail: toolbar, the location's content, and the path bar.
+            // Detail: the location's content and the path bar (both below the
+            // unified chrome).
             Rectangle {
                 width: parent.width - sidebarPane.width
                 height: parent.height
                 color: "transparent"
 
-                // The toolbar is app-local glass; the listing behind it and the
-                // path bar below stay opaque. The sheet owns the bottom-right
-                // window corner.
+                // The titlebar is the app-local unified toolbar (52 pt); the
+                // listing behind it and the path bar below stay opaque. The
+                // sheet owns the bottom-right window corner.
                 ChromeSheet {
                     id: detailSheet
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.topMargin: Theme.controls.toolbar.height
                     anchors.bottom: parent.bottom
                     color: Theme.color.surface
                     bottomRightRadius: Theme.controls.window.radius
@@ -716,50 +760,6 @@ Item {
                     anchors.fill: parent
                     spacing: 0
 
-                    Toolbar {
-                        id: toolbar
-                        width: parent.width
-                        fillColor: Material.appChromeFill("filesToolbar",
-                                                          Theme.color.chrome)
-                        borderColor: Material.appChromeBorder("filesToolbar",
-                                                              Theme.color.border)
-
-                        Button {
-                            id: backButton
-                            icon: "chevron-left"
-                            variant: "ghost"
-                            accessibleName: qsTr("Back")
-                            enabled: browser.canGoBack
-                            onClicked: browser.back()
-                        }
-                        Button {
-                            id: forwardButton
-                            icon: "chevron-right"
-                            variant: "ghost"
-                            accessibleName: qsTr("Forward")
-                            enabled: browser.canGoForward
-                            onClicked: browser.forward()
-                        }
-
-                        SegmentedControl {
-                            id: viewControl
-                            model: [
-                                { label: qsTr("Icon View"), icon: "icon-view" },
-                                { label: qsTr("List View"), icon: "list-view" }
-                            ]
-                            onActivated: (index) => browser.setView(index === 1
-                                                                    ? "list" : "icon")
-                        }
-
-                        trailingData: SearchField {
-                            id: searchField
-                            width: 220
-                            placeholderText: qsTr("Search")
-                            onTextChanged: root.searchText = searchField.text
-                            onCleared: root.searchText = ""
-                        }
-                    }
-
                     // The location content: the files-core listing rendered
                     // by the icon or list view (T-10.4b). Both views stay
                     // instantiated and share the selection, so the view
@@ -768,7 +768,7 @@ Item {
                     Item {
                         id: contentArea
                         width: parent.width
-                        height: Math.max(0, parent.height - toolbar.height - pathBar.height)
+                        height: Math.max(0, parent.height - pathBar.height)
 
                         FilesDirectoryModel {
                             id: directory

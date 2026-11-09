@@ -27,7 +27,9 @@ Item {
 
     Row {
         id: row
-        spacing: Theme.controls.trafficLights.gap
+        // The measured 23 pt spacing is centre-to-centre; Qt's Row wants the
+        // edge gap between two 16 pt lights.
+        spacing: WindowStyle.trafficLightGap()
         anchors.verticalCenter: parent.verticalCenter
 
         TrafficLight {

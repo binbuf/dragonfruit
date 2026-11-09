@@ -15,6 +15,7 @@ provides its own scene graph and rendering engine.
 ## Component library
 
 ```text
+WindowStyle
 AppWindow
 TitleBar
 TrafficLights
@@ -366,6 +367,37 @@ Light/Dark empty, banner-only, populated, concurrent and scrollable states plus
 Reduce Transparency, Increase Contrast and the software path over neutral/grid
 backdrops; `scripts/t205-notification-materials.py` reports independent banner,
 stack and lower-panel fit errors.
+
+### Window chrome styles (T230b)
+
+`WindowStyle` is the design-system model for the measured chrome taxonomy. It
+resolves `component.windowStyle` from the one token source:
+
+| Id | Baseline | Composition |
+|---|---:|---|
+| `borderless` | 0 pt | panel/overlay; no chrome |
+| `titlebar` | 32 pt | title row only; the compositor SSD default |
+| `unifiedCompact` | 40 pt | shorter toolbar row |
+| `expanded` | 48 pt | 28 pt title row + 20 pt toolbar row |
+| `unified` | 52 pt | default modern toolbar row |
+| `preference` | 88 pt | 32 pt title row + 56 pt toolbar row |
+
+`unified` plus the 14 pt labelled toolbar row is the 66 pt icon-and-label
+variant; `chromeHeight(style, { toolbarRowHeight })` adds an app-specific row
+(a Pages-style expanded document is 48 + 22 = 70 pt). A `TitleBar` inside an
+`AppWindow` inherits the window's `windowStyle`, so first-party windows declare
+a named style once instead of hard-coding a height. Settings and Files are
+`unified`; the compositor's SSD renderer reads the same table and defaults to
+`titlebar`.
+
+Traffic lights are 16×16 pt with 23 pt centre spacing and a 12 pt leading
+inset token. Their top inset is derived from the final chrome height:
+`(height - 16) / 2`, which is the measured 8 pt in a 32 pt bar and 18 pt in a
+52 pt bar. Tab/path/status/format bars are content, not chrome;
+`component.accessoryBar` carries the 28/30/28 pt Finder bars and the 20 pt
+TextEdit format bar. The Files path bar consumes the 30 pt token. See
+[05-window-decorations.md](05-window-decorations.md) and
+[ADR 0242](adr/0242-window-chrome-style-system.md).
 
 ### First-party app chrome (T206)
 

@@ -128,6 +128,13 @@ Item {
             compare(shell.browser.currentUri, Files.homeUri);
             compare(shell.locationTitle, "tester");
             compare(shell.titleBar.title, "tester");
+            compare(shell.titleBar.style, "unified",
+                    "Files must declare the unified window style");
+            compare(shell.titleBar.height, WindowStyle.height("unified"),
+                    "the titlebar height must come from the style table");
+            compare(shell.titleBar.trafficLights.width,
+                    WindowStyle.trafficLightSize * 3
+                    + WindowStyle.trafficLightGap() * 2);
             compare(shell.titleBar.width, shell.width,
                     "the titlebar must span the window so the whole bar drags");
             verify(shell.sidebar !== null);

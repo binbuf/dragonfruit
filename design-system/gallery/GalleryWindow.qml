@@ -100,7 +100,8 @@ Window {
                         required property int index
                         required property string modelData
                         width: pageLabel.implicitWidth + Theme.primitive.spacing.lg
-                        height: Theme.controls.titlebar.height
+                        height: Theme.controls.toolbar.buttonSize
+                                + Theme.primitive.spacing.md
                         radius: Theme.primitive.radius.sm
                         color: index === gallery.pageIndex ? Theme.color.accent
                                                            : Theme.color.controlFill

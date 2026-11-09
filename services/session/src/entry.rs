@@ -73,6 +73,10 @@ pub const UNIT_FILES: &[(&str, &str)] = &[
         include_str!("../units/dragonfruit-settingsd.service"),
     ),
     (
+        "dragonfruit-files-desktop.service",
+        include_str!("../units/dragonfruit-files-desktop.service"),
+    ),
+    (
         "dragonfruit-menu-broker.service",
         include_str!("../units/dragonfruit-menu-broker.service"),
     ),
@@ -165,6 +169,7 @@ mod tests {
             "DISPLAY",
             "GTK_CSD",
             "DRAGONFRUIT_LAUNCH_TOKEN",
+            "DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN",
             "DRAGONFRUIT_DEV_RETURN",
             "DRAGONFRUIT_DEV_BIN",
             "XDG_SESSION_ID",

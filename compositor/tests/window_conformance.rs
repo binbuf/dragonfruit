@@ -47,10 +47,10 @@ const OUTPUT_H: i32 = 720;
 const WINDOW_W: i32 = 200;
 const WINDOW_H: i32 = 150;
 
-/// The design-system SSD titlebar height (`component.titlebar.height` in
-/// `design-system/tokens/tokens.json`). The compositor reserves this strip
-/// above a Tier-2 client's content (T-01.1).
-const TITLEBAR_HEIGHT: i32 = 40;
+/// The compositor's default SSD chrome height (`component.windowStyle.titlebar`
+/// in `design-system/tokens/tokens.json`). The compositor reserves this strip
+/// above a Tier-2 client's content (T-01.1/T230b).
+const TITLEBAR_HEIGHT: i32 = 32;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ToplevelConfigure {
@@ -889,15 +889,15 @@ fn parse_material(report: &str) -> MaterialReport {
 }
 
 /// Traffic-light geometry from `component.trafficLights` tokens, used to aim
-/// the synthetic pointer at each control (T-01.2).
-const LIGHT_DIAMETER: i32 = 12;
-const LIGHT_GAP: i32 = 8;
+/// the synthetic pointer at each control (T-01.2/T230b).
+const LIGHT_DIAMETER: i32 = 16;
+const LIGHT_SPACING: i32 = 23;
 const LIGHT_INSET: i32 = 12;
 
 /// The global-space center of a traffic light on a reported titlebar.
 fn light_center(report: &DecorationReport, index: i32) -> (i32, i32) {
     let (tx, ty, _tw, th) = report.titlebar;
-    let cx = tx + LIGHT_INSET + LIGHT_DIAMETER / 2 + index * (LIGHT_DIAMETER + LIGHT_GAP);
+    let cx = tx + LIGHT_INSET + LIGHT_DIAMETER / 2 + index * LIGHT_SPACING;
     let cy = ty + th / 2;
     (cx, cy)
 }
@@ -1378,6 +1378,85 @@ fn ssd_toplevel_carries_a_titlebar_and_csd_does_not() {
     );
 }
 
+/// T230b acceptance: the compositor's SSD titlebar follows the same named
+/// style table as the first-party QML `TitleBar`. The synthetic style seam
+/// lets a headless run exercise every measured height, including the
+/// borderless 0 pt case (which draws no titlebar) and the 88 pt preference
+/// window.
+#[test]
+fn ssd_titlebar_follows_the_named_window_style_table() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-window-style-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-window-style",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports.iter().any(|report| report.server_side)
+    });
+    let window = reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("a mapped SSD toplevel")
+        .window;
+
+    let cases = [
+        ("borderless", 0),
+        ("titlebar", 32),
+        ("unifiedCompact", 40),
+        ("expanded", 48),
+        ("unified", 52),
+        ("preference", 88),
+    ];
+    for (style, height) in cases {
+        input.send(&format!("set window-style {window} {style}"));
+        let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+            reports.iter().any(|report| {
+                report.window == window
+                    && if height == 0 {
+                        report.titlebar == (0, 0, 0, 0)
+                    } else {
+                        report.titlebar.3 == height
+                    }
+            })
+        });
+        let report = reports
+            .iter()
+            .find(|report| report.window == window)
+            .expect("the styled window");
+        if height == 0 {
+            assert_eq!(report.titlebar, (0, 0, 0, 0), "{style}");
+            assert!(!report.server_side, "{style}: borderless draws no chrome");
+        } else {
+            assert_eq!(report.titlebar.3, height, "{style} chrome height");
+            assert!(report.server_side, "{style} must draw SSD chrome");
+            assert_eq!(
+                report.titlebar.1 + report.titlebar.3,
+                report.content.1,
+                "{style}: content sits directly below the chrome"
+            );
+        }
+    }
+
+    toplevel.destroy();
+    xdg_surface.destroy();
+    surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
 /// Build and map a toplevel that requests `mode` via `xdg-decoration`
 /// (T-01.5). Returns the decoration proxy so a test can flip the mode later.
 #[allow(clippy::type_complexity)]
@@ -1647,7 +1726,7 @@ fn kde_server_decoration_default_mode_server_gets_a_titlebar() {
     let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
     let toplevel = xdg_surface.get_toplevel(&qh, ());
     toplevel.set_title("KDE Decorated".into()); // df-allow-desktop-name
-    // GTK's path: the KDE decoration object, and no `xdg-decoration` object. // df-allow-desktop-name
+                                                // GTK's path: the KDE decoration object, and no `xdg-decoration` object. // df-allow-desktop-name
     let decoration = manager.create(&surface, &qh, ());
     surface.commit();
     queue.roundtrip(&mut state).expect("initial configure");

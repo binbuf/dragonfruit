@@ -30,15 +30,144 @@ use smithay::backend::renderer::Color32F;
 use smithay::utils::{Logical, Physical, Point, Rectangle, Scale};
 
 use crate::design_tokens::{
-    component::{titlebar, traffic_lights},
+    component::{traffic_lights, window_style},
     semantic,
 };
 use crate::window::corner::CornerMask;
 use crate::window::motion::MotionFrame;
 use crate::window::{DecorationTier, WindowId, WindowState};
 
-/// The logical height of the SSD titlebar, from the design tokens.
-pub const TITLEBAR_HEIGHT: i32 = titlebar::HEIGHT as i32;
+/// The measured window-chrome style taxonomy (T230b). Chrome height is a
+/// property of the window style, not one universal height. The 66 pt
+/// icon-and-label toolbar is `Unified` plus [`WindowChrome::labelled_toolbar`];
+/// an app-specific toolbar row can be added on top of any style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WindowStyle {
+    Borderless,
+    /// Titled, no toolbar: the minimum real chrome (32 pt).
+    #[default]
+    Titlebar,
+    UnifiedCompact,
+    Expanded,
+    Unified,
+    Preference,
+}
+
+impl WindowStyle {
+    pub const ALL: [WindowStyle; 6] = [
+        WindowStyle::Borderless,
+        WindowStyle::Titlebar,
+        WindowStyle::UnifiedCompact,
+        WindowStyle::Expanded,
+        WindowStyle::Unified,
+        WindowStyle::Preference,
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            WindowStyle::Borderless => "borderless",
+            WindowStyle::Titlebar => "titlebar",
+            WindowStyle::UnifiedCompact => "unifiedCompact",
+            WindowStyle::Expanded => "expanded",
+            WindowStyle::Unified => "unified",
+            WindowStyle::Preference => "preference",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|style| style.name() == value)
+    }
+
+    /// The measured baseline chrome height, from the generated tokens.
+    pub const fn height(self) -> i32 {
+        match self {
+            WindowStyle::Borderless => window_style::borderless::HEIGHT as i32,
+            WindowStyle::Titlebar => window_style::titlebar::HEIGHT as i32,
+            WindowStyle::UnifiedCompact => window_style::unified_compact::HEIGHT as i32,
+            WindowStyle::Expanded => window_style::expanded::HEIGHT as i32,
+            WindowStyle::Unified => window_style::unified::HEIGHT as i32,
+            WindowStyle::Preference => window_style::preference::HEIGHT as i32,
+        }
+    }
+
+    pub const fn title_row(self) -> i32 {
+        match self {
+            WindowStyle::Borderless => window_style::borderless::TITLE_ROW as i32,
+            WindowStyle::Titlebar => window_style::titlebar::TITLE_ROW as i32,
+            WindowStyle::UnifiedCompact => window_style::unified_compact::TITLE_ROW as i32,
+            WindowStyle::Expanded => window_style::expanded::TITLE_ROW as i32,
+            WindowStyle::Unified => window_style::unified::TITLE_ROW as i32,
+            WindowStyle::Preference => window_style::preference::TITLE_ROW as i32,
+        }
+    }
+
+    pub const fn toolbar_row(self) -> i32 {
+        match self {
+            WindowStyle::Borderless => window_style::borderless::TOOLBAR_ROW as i32,
+            WindowStyle::Titlebar => window_style::titlebar::TOOLBAR_ROW as i32,
+            WindowStyle::UnifiedCompact => window_style::unified_compact::TOOLBAR_ROW as i32,
+            WindowStyle::Expanded => window_style::expanded::TOOLBAR_ROW as i32,
+            WindowStyle::Unified => window_style::unified::TOOLBAR_ROW as i32,
+            WindowStyle::Preference => window_style::preference::TOOLBAR_ROW as i32,
+        }
+    }
+}
+
+/// The final chrome configuration: a named style plus an optional labelled
+/// toolbar row (the 66 pt variant) and an app-specific toolbar row (e.g. a
+/// Pages-style document at 48 + 22 = 70 pt).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct WindowChrome {
+    pub style: WindowStyle,
+    pub labelled_toolbar: bool,
+    pub toolbar_row: i32,
+}
+
+impl WindowChrome {
+    pub const fn new(style: WindowStyle) -> Self {
+        WindowChrome {
+            style,
+            labelled_toolbar: false,
+            toolbar_row: 0,
+        }
+    }
+
+    pub const fn height(self) -> i32 {
+        let extra = if self.toolbar_row > 0 {
+            self.toolbar_row
+        } else {
+            0
+        };
+        self.style.height()
+            + extra
+            + if self.labelled_toolbar {
+                window_style::LABELLED_TOOLBAR_ROW as i32
+            } else {
+                0
+            }
+    }
+
+    /// The measured top inset centres a 16 pt light in the final bar: 8 pt in
+    /// a 32 pt bar, 18 pt in a 52 pt bar, and the same rule for the 66/70 pt
+    /// variants.
+    pub const fn traffic_top_inset(self) -> i32 {
+        let diameter = traffic_lights::DIAMETER as i32;
+        let inset = (self.height() - diameter) / 2;
+        if inset > 0 {
+            inset
+        } else {
+            0
+        }
+    }
+}
+
+/// The compositor's default style for a server-decorated client. It draws a
+/// titlebar without a toolbar, so the minimum titled style is the honest
+/// default; first-party CSD apps declare their own style in QML.
+pub const DEFAULT_WINDOW_STYLE: WindowStyle = WindowStyle::Titlebar;
 
 /// Two titlebar presses within this many milliseconds count as a
 /// double-click (T-01.3).
@@ -50,9 +179,13 @@ pub const TITLEBAR_DOUBLE_CLICK_SLOP: i32 = 4;
 
 /// The top strip of a fullscreen window's content whose hover reveals the
 /// titlebar (T-01.3). When revealed the titlebar overlays exactly this
-/// strip; fullscreen reserves no inset.
-pub fn fullscreen_reveal_rect(content: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
-    Rectangle::new(content.loc, (content.size.w, TITLEBAR_HEIGHT).into())
+/// strip; fullscreen reserves no inset. T230b sizes the strip from the
+/// window's style rather than the old single titlebar token.
+pub fn fullscreen_reveal_rect(
+    content: Rectangle<i32, Logical>,
+    chrome: WindowChrome,
+) -> Rectangle<i32, Logical> {
+    Rectangle::new(content.loc, (content.size.w, chrome.height()).into())
 }
 
 /// The design-system color scheme the titlebar draws from. The compositor's
@@ -174,11 +307,18 @@ impl WindowInsets {
         bottom: 0,
     };
 
-    /// The insets a window with this decoration tier reserves.
+    /// The insets a window with this decoration tier reserves, using the
+    /// default compositor style (a titlebar-only window).
     pub const fn for_tier(tier: DecorationTier) -> Self {
+        Self::for_tier_with_chrome(tier, WindowChrome::new(DEFAULT_WINDOW_STYLE))
+    }
+
+    /// The insets a window with this decoration tier and chrome style
+    /// reserves (T230b).
+    pub const fn for_tier_with_chrome(tier: DecorationTier, chrome: WindowChrome) -> Self {
         match tier {
             DecorationTier::ServerSide => WindowInsets {
-                top: TITLEBAR_HEIGHT,
+                top: chrome.height(),
                 ..WindowInsets::NONE
             },
             DecorationTier::ClientSide => WindowInsets::NONE,
@@ -339,6 +479,8 @@ pub struct TitlebarElement {
     pub window: WindowId,
     /// The client/content area the titlebar decorates.
     pub content: Rectangle<i32, Logical>,
+    /// The named style and final chrome height that produced this titlebar.
+    pub chrome: WindowChrome,
     pub insets: WindowInsets,
     /// The titlebar rect, directly above `content`.
     pub titlebar: Rectangle<i32, Logical>,
@@ -363,18 +505,19 @@ impl TitlebarElement {
         content: Rectangle<i32, Logical>,
         tier: DecorationTier,
         state: WindowState,
+        chrome: WindowChrome,
         focused: bool,
         hovered: bool,
     ) -> Option<Self> {
         if tier != DecorationTier::ServerSide {
             return None;
         }
-        if content.size.w <= 0 || content.size.h <= 0 {
+        if content.size.w <= 0 || content.size.h <= 0 || chrome.height() <= 0 {
             return None;
         }
         let (insets, titlebar) = match state {
             WindowState::Floating | WindowState::Zoomed => {
-                let insets = WindowInsets::for_tier(tier);
+                let insets = WindowInsets::for_tier_with_chrome(tier, chrome);
                 let titlebar = Rectangle::new(
                     (content.loc.x, content.loc.y - insets.top).into(),
                     (content.size.w, insets.top).into(),
@@ -385,7 +528,7 @@ impl TitlebarElement {
                 if !hovered {
                     return None;
                 }
-                (WindowInsets::NONE, fullscreen_reveal_rect(content))
+                (WindowInsets::NONE, fullscreen_reveal_rect(content, chrome))
             }
             WindowState::Minimized => return None,
         };
@@ -393,6 +536,7 @@ impl TitlebarElement {
         Some(TitlebarElement {
             window,
             content,
+            chrome,
             insets,
             titlebar,
             focused,
@@ -404,7 +548,8 @@ impl TitlebarElement {
 
     fn layout_buttons(titlebar: Rectangle<i32, Logical>) -> Vec<TrafficLightButton> {
         let diameter = traffic_lights::DIAMETER as i32;
-        let gap = traffic_lights::GAP as i32;
+        // The token is centre-to-centre; advance by exactly that much.
+        let spacing = traffic_lights::SPACING as i32;
         let inset = traffic_lights::INSET as i32;
         let y = titlebar.loc.y + (titlebar.size.h - diameter) / 2;
         let mut x = titlebar.loc.x + inset;
@@ -412,7 +557,7 @@ impl TitlebarElement {
             .iter()
             .map(|kind| {
                 let rect = Rectangle::new((x, y).into(), (diameter, diameter).into());
-                x += diameter + gap;
+                x += spacing;
                 TrafficLightButton {
                     kind: *kind,
                     rect,
@@ -761,11 +906,16 @@ mod tests {
     }
 
     fn ssd(content: Rectangle<i32, Logical>) -> TitlebarElement {
+        ssd_with_chrome(content, WindowChrome::new(DEFAULT_WINDOW_STYLE))
+    }
+
+    fn ssd_with_chrome(content: Rectangle<i32, Logical>, chrome: WindowChrome) -> TitlebarElement {
         TitlebarElement::for_window(
             window_id(),
             content,
             DecorationTier::ServerSide,
             WindowState::Floating,
+            chrome,
             true,
             false,
         )
@@ -780,10 +930,15 @@ mod tests {
             titlebar.insets,
             WindowInsets::for_tier(DecorationTier::ServerSide)
         );
-        assert_eq!(titlebar.insets.top, TITLEBAR_HEIGHT);
+        assert_eq!(titlebar.insets.top, DEFAULT_WINDOW_STYLE.height());
         assert_eq!(
             titlebar.titlebar,
-            rect(100, 200 - TITLEBAR_HEIGHT, 800, TITLEBAR_HEIGHT)
+            rect(
+                100,
+                200 - DEFAULT_WINDOW_STYLE.height(),
+                800,
+                DEFAULT_WINDOW_STYLE.height()
+            )
         );
         // The client area is directly below the titlebar and shares its width.
         assert_eq!(titlebar.titlebar.loc.x, titlebar.content.loc.x);
@@ -795,6 +950,72 @@ mod tests {
     }
 
     #[test]
+    fn window_style_table_covers_the_measured_baselines() {
+        let expected = [
+            (WindowStyle::Borderless, "borderless", 0),
+            (WindowStyle::Titlebar, "titlebar", 32),
+            (WindowStyle::UnifiedCompact, "unifiedCompact", 40),
+            (WindowStyle::Expanded, "expanded", 48),
+            (WindowStyle::Unified, "unified", 52),
+            (WindowStyle::Preference, "preference", 88),
+        ];
+        assert_eq!(WindowStyle::ALL.len(), expected.len());
+        for (style, name, height) in expected {
+            assert_eq!(style.name(), name);
+            assert_eq!(WindowStyle::parse(name), Some(style));
+            assert_eq!(style.height(), height, "{name}");
+            assert_eq!(
+                style.title_row() + style.toolbar_row(),
+                style.height(),
+                "{name}: title row + toolbar row must be the baseline"
+            );
+        }
+        assert_eq!(WindowStyle::parse("labelled"), None);
+    }
+
+    #[test]
+    fn labelled_unified_is_66_and_a_document_row_can_make_70() {
+        let labelled = WindowChrome {
+            style: WindowStyle::Unified,
+            labelled_toolbar: true,
+            toolbar_row: 0,
+        };
+        assert_eq!(labelled.height(), 66);
+        let document = WindowChrome {
+            style: WindowStyle::Expanded,
+            labelled_toolbar: false,
+            toolbar_row: 22,
+        };
+        assert_eq!(document.height(), 70);
+    }
+
+    #[test]
+    fn traffic_light_geometry_is_style_derived() {
+        assert_eq!(traffic_lights::DIAMETER as i32, 16);
+        assert_eq!(traffic_lights::SPACING as i32, 23);
+        assert_eq!(
+            WindowChrome::new(WindowStyle::Titlebar).traffic_top_inset(),
+            8
+        );
+        assert_eq!(
+            WindowChrome::new(WindowStyle::Unified).traffic_top_inset(),
+            18
+        );
+        let content = rect(0, 100, 400, 300);
+        let titlebar = ssd_with_chrome(content, WindowChrome::new(WindowStyle::Unified));
+        assert_eq!(titlebar.titlebar.size.h, 52);
+        assert_eq!(titlebar.buttons[0].rect.loc.x, titlebar.titlebar.loc.x + 12);
+        assert_eq!(
+            titlebar.buttons[1].rect.loc.x - titlebar.buttons[0].rect.loc.x,
+            23
+        );
+        assert_eq!(titlebar.buttons[0].rect.loc.y - titlebar.titlebar.loc.y, 18);
+        for button in &titlebar.buttons {
+            assert!(titlebar.titlebar.contains_rect(button.rect));
+        }
+    }
+
+    #[test]
     fn csd_never_gets_a_compositor_titlebar() {
         assert_eq!(
             TitlebarElement::for_window(
@@ -802,6 +1023,7 @@ mod tests {
                 rect(0, 0, 200, 150),
                 DecorationTier::ClientSide,
                 WindowState::Floating,
+                WindowChrome::new(DEFAULT_WINDOW_STYLE),
                 true,
                 false,
             ),
@@ -818,6 +1040,7 @@ mod tests {
                 rect(0, 0, 200, 150),
                 DecorationTier::ServerSide,
                 WindowState::Minimized,
+                WindowChrome::new(DEFAULT_WINDOW_STYLE),
                 true,
                 true,
             ),
@@ -835,6 +1058,7 @@ mod tests {
                 content,
                 DecorationTier::ServerSide,
                 WindowState::Fullscreen,
+                WindowChrome::new(DEFAULT_WINDOW_STYLE),
                 true,
                 false,
             ),
@@ -847,12 +1071,16 @@ mod tests {
             content,
             DecorationTier::ServerSide,
             WindowState::Fullscreen,
+            WindowChrome::new(DEFAULT_WINDOW_STYLE),
             true,
             true,
         )
         .expect("hovered fullscreen titlebar");
         assert_eq!(revealed.insets, WindowInsets::NONE);
-        assert_eq!(revealed.titlebar, rect(0, 0, 1280, TITLEBAR_HEIGHT));
+        assert_eq!(
+            revealed.titlebar,
+            rect(0, 0, 1280, DEFAULT_WINDOW_STYLE.height())
+        );
         assert_eq!(revealed.titlebar.loc, revealed.content.loc);
         assert!(revealed.revealed());
     }
@@ -860,9 +1088,14 @@ mod tests {
     #[test]
     fn fullscreen_reveal_rect_is_the_top_strip() {
         let content = rect(10, 20, 800, 600);
+        let chrome = WindowChrome::new(WindowStyle::Unified);
         assert_eq!(
-            fullscreen_reveal_rect(content),
-            rect(10, 20, 800, TITLEBAR_HEIGHT)
+            fullscreen_reveal_rect(content, chrome),
+            rect(10, 20, 800, 52)
+        );
+        assert_eq!(
+            fullscreen_reveal_rect(content, WindowChrome::new(DEFAULT_WINDOW_STYLE)),
+            rect(10, 20, 800, 32)
         );
     }
 
@@ -948,12 +1181,11 @@ mod tests {
             titlebar.buttons[0].rect.loc.x,
             titlebar.titlebar.loc.x + inset
         );
-        // Gap between adjacent lights.
-        let gap = traffic_lights::GAP as i32;
-        let diameter = traffic_lights::DIAMETER as i32;
+        // The measured spacing is centre-to-centre.
+        let spacing = traffic_lights::SPACING as i32;
         assert_eq!(
             titlebar.buttons[1].rect.loc.x,
-            titlebar.buttons[0].rect.loc.x + diameter + gap
+            titlebar.buttons[0].rect.loc.x + spacing
         );
         // Vertically centered and inside the titlebar.
         for button in &titlebar.buttons {
@@ -1187,8 +1419,9 @@ mod tests {
         let shifted_bg = shifted.last().expect("background").geometry(1.0.into()).loc;
         let inset =
             CornerMask::titlebar().spans(titlebar.titlebar)[0].loc.x - titlebar.titlebar.loc.x;
-        assert_eq!(local_bg, (100 + inset, 160).into());
-        assert_eq!(shifted_bg, (inset, -40).into());
+        let height = DEFAULT_WINDOW_STYLE.height();
+        assert_eq!(local_bg, (100 + inset, 200 - height).into());
+        assert_eq!(shifted_bg, (inset, -height).into());
     }
 
     #[test]
@@ -1231,22 +1464,21 @@ mod tests {
     #[test]
     fn insets_shrink_and_offset_a_rectangle() {
         let insets = WindowInsets::for_tier(DecorationTier::ServerSide);
+        let height = DEFAULT_WINDOW_STYLE.height();
         assert_eq!(
             insets.inset(rect(0, 0, 200, 190)),
-            rect(0, TITLEBAR_HEIGHT, 200, 190 - TITLEBAR_HEIGHT)
+            rect(0, height, 200, 190 - height)
         );
     }
 
     #[test]
     fn outset_is_the_inverse_of_inset() {
         let insets = WindowInsets::for_tier(DecorationTier::ServerSide);
+        let height = DEFAULT_WINDOW_STYLE.height();
         let content = rect(10, 50, 400, 300);
         let window = insets.outset(content);
         // The whole decorated window grows upward by the titlebar strip.
-        assert_eq!(
-            window,
-            rect(10, 50 - TITLEBAR_HEIGHT, 400, 300 + TITLEBAR_HEIGHT)
-        );
+        assert_eq!(window, rect(10, 50 - height, 400, 300 + height));
         // Round-trips back to the client area.
         assert_eq!(insets.inset(window), content);
     }

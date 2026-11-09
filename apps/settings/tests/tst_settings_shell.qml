@@ -117,6 +117,13 @@ Item {
             verify(shell.searchField !== null);
             verify(shell.sidebar !== null);
             verify(shell.titleBar !== null);
+            compare(shell.titleBar.style, "unified",
+                    "Settings must declare the unified window style");
+            compare(shell.titleBar.height, WindowStyle.height("unified"),
+                    "the titlebar height must come from the style table");
+            compare(shell.titleBar.trafficLights.width,
+                    WindowStyle.trafficLightSize * 3
+                    + WindowStyle.trafficLightGap() * 2);
             compare(shell.titleBar.width, shell.width,
                     "the titlebar must span the window so the whole bar drags");
             compare(shell.sidebarPane.width, Theme.controls.sidebar.width,

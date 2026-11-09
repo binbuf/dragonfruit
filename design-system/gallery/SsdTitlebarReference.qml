@@ -8,14 +8,21 @@ import Dragonfruit
 // renders both and requires them to match, which is what makes the
 // "unable to drift apart" rule testable before T-13 exists. When the real
 // compositor renderer lands it replaces this reference in the diff.
+//
+// T230b: the reference resolves its height from the same `WindowStyle` table
+// and draws the 16 pt lights at the measured 23 pt centre spacing.
 Item {
     id: root
 
     property string title: ""
     property bool active: true
+    property string style: "titlebar"
+
+    readonly property real chromeHeight: WindowStyle.chromeHeight(style)
 
     implicitWidth: 360
-    implicitHeight: Theme.controls.titlebar.height
+    implicitHeight: root.chromeHeight
+    visible: root.chromeHeight > 0
 
     Item {
         id: chrome
@@ -39,15 +46,15 @@ Item {
 
     Row {
         anchors.left: parent.left
-        anchors.leftMargin: Theme.controls.trafficLights.inset
+        anchors.leftMargin: WindowStyle.trafficLightLeadingInset
         anchors.verticalCenter: parent.verticalCenter
-        spacing: Theme.controls.trafficLights.gap
+        spacing: WindowStyle.trafficLightGap()
 
         Repeater {
             model: [Theme.color.close, Theme.color.minimize, Theme.color.zoom]
             delegate: Rectangle {
                 required property var modelData
-                width: Theme.controls.trafficLights.diameter
+                width: WindowStyle.trafficLightSize
                 height: width
                 radius: width / 2
                 color: root.active ? modelData : Theme.color.controlActive
@@ -58,9 +65,9 @@ Item {
 
     Text {
         anchors.centerIn: parent
-        width: Math.max(0, parent.width - 2 * (Theme.controls.trafficLights.inset
-                       + Theme.controls.trafficLights.diameter * 3
-                       + Theme.controls.trafficLights.gap * 2
+        width: Math.max(0, parent.width - 2 * (WindowStyle.trafficLightLeadingInset
+                       + WindowStyle.trafficLightSize * 3
+                       + WindowStyle.trafficLightGap() * 2
                        + Theme.controls.titlebar.spacing))
         text: root.title
         horizontalAlignment: Text.AlignHCenter
