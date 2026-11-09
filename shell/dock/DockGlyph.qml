@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.VectorImage
+import QtQuick.Window
 import Dragonfruit
 
 // Dock entry artwork (T-10). The shapes:
@@ -31,6 +32,24 @@ Item {
     property bool trashFull: false
     property real size: Theme.controls.dock.iconSize
     property real rasterSize: size
+
+    // The source artwork is decoded at the physical size the Canvas paints,
+    // not at the icon's intrinsic size. Without this an SVG written for a
+    // 16/48px directory is decoded at that size and then magnified (the
+    // pixelated Konsole tile), and a raster icon is upscaled on a HiDPI
+    // screen. The Canvas itself already paints at the window DPR.
+    //
+    // The target is the largest tile the Dock can ever render, so an animated
+    // `iconSize` resize does not reload the artwork on every frame; a caller
+    // that asks for a larger raster (the QML tests) still wins.
+    readonly property real artworkPixelSize: Math.max(1, Math.ceil(
+        Math.max(Math.ceil(root.rasterSize),
+                 Math.ceil(Theme.controls.dock.iconSizeMax
+                           * Theme.controls.dock.magnifyPeakMax))
+        * Screen.devicePixelRatio))
+    // The URL and pixel size currently primed into the Canvas pixmap cache.
+    property string artworkCacheUrl: ""
+    property int artworkCachePixels: 0
 
     implicitWidth: size
     implicitHeight: size
@@ -145,13 +164,43 @@ Item {
         objectName: "iconLoader"
         visible: false
         source: root.hasAppArtwork ? root.iconUrl : ""
-        // No `sourceSize`: the loader and the Canvas drawImage share one
-        // natural-size pixmap-cache entry, so the artwork is decoded once.
+        // Render SVGs at the physical artwork size and bound large rasters.
+        // The Canvas `loadImage()` below uses the same sourceSize, so the
+        // loader and the Canvas share one pixmap-cache entry.
+        sourceSize.width: root.artworkPixelSize
+        sourceSize.height: root.artworkPixelSize
         onStatusChanged: {
             if (status === Image.Ready)
                 artwork.requestPaint();
         }
     }
+
+    // Prime the Canvas's own URL -> pixmap cache at the physical artwork size.
+    // `ctx.drawImage(url)` otherwise loads the source at its intrinsic size,
+    // which leaves SVG and magnified raster icons blurry. Canvas `loadImage`
+    // ignores a repeat call for the same URL, so a resize unloads first.
+    function syncArtworkPixmap() {
+        if (!root.hasAppArtwork) {
+            if (root.artworkCacheUrl.length > 0)
+                artwork.unloadImage(root.artworkCacheUrl);
+            root.artworkCacheUrl = "";
+            root.artworkCachePixels = 0;
+            return;
+        }
+        var pixels = Math.ceil(root.artworkPixelSize);
+        if (root.iconUrl === root.artworkCacheUrl
+                && pixels === root.artworkCachePixels)
+            return;
+        if (root.artworkCacheUrl.length > 0)
+            artwork.unloadImage(root.artworkCacheUrl);
+        root.artworkCacheUrl = root.iconUrl;
+        root.artworkCachePixels = pixels;
+        artwork.loadImage(root.iconUrl, Qt.size(pixels, pixels));
+    }
+
+    Component.onCompleted: root.syncArtworkPixmap()
+    onIconUrlChanged: root.syncArtworkPixmap()
+    onArtworkPixelSizeChanged: root.syncArtworkPixmap()
 
     readonly property bool maskedArtwork:
         root.hasAppArtwork && iconLoader.status === Image.Ready

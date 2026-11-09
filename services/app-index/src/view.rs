@@ -11,9 +11,13 @@ use crate::icons::IconTheme;
 use crate::index::{AppIndex, AppRecord, IdentitySource, IndexEvent};
 use crate::registry::{ActivityEvent, LaunchRegistry, RunningApp};
 
-/// The size at which records carry a resolved `iconPath` by default. The Dock
-/// and menu bar scale from here.
-pub const DEFAULT_ICON_SIZE: i32 = 128;
+/// The size at which records carry a resolved `iconPath` by default.
+///
+/// The Dock renders tiles up to `iconSizeMax * magnifyPeakMax` logical pixels
+/// (about 131) and its Canvas backs that at the window device-pixel ratio. A
+/// 256px source therefore stays sharp at 2x; smaller consumers (menu bar,
+/// apps drawer) bound their own decode with `sourceSize`.
+pub const DEFAULT_ICON_SIZE: i32 = 256;
 
 /// One record as a JSON object; `source` and `iconPath` are included when
 /// known. `iconPath` is empty when no theme provides the icon.
