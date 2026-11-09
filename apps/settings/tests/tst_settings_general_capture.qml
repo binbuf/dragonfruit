@@ -20,6 +20,7 @@ Item {
         when: windowShown
 
         Component { id: shellComponent; SettingsShell { } }
+        Component { id: panelComponent; AboutPanel { } }
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -60,15 +61,14 @@ Item {
             grabImage(shell).save("docs/captures/t226-general-list.png");
 
             // About + More Info.
-            pane.aboutDialog.show();
+            var panel = createTemporaryObject(panelComponent, stage);
             waitForRendering(stage);
-            grabImage(shell).save("docs/captures/t226-general-about.png");
-            pane.aboutDialog.accept();
-            wait(250);
-            pane.moreInfoDialog.show();
+            grabImage(panel).save("docs/captures/t226-general-about.png");
+            panel.destroy();
+            pane.openSubPane("about");
             waitForRendering(stage);
             grabImage(shell).save("docs/captures/t226-general-more-info.png");
-            pane.moreInfoDialog.accept();
+            pane.closeSubPane();
             wait(250);
 
             // Software Update: check, then install and the restart state.

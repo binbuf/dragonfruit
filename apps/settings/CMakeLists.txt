@@ -78,6 +78,10 @@ qt_add_qml_module(dragonfruit-settings-ui
         LockScreenPane.qml
         MenuBarPane.qml
         GeneralPane.qml
+        AboutHero.qml
+        AboutUtilityMaterial.qml
+        AboutPanel.qml
+        AboutPage.qml
         LoginItemsPane.qml
         LanguageRegionPane.qml
         DateTimePane.qml
@@ -98,6 +102,8 @@ qt_add_qml_module(dragonfruit-settings-ui
         SettingsSearchResults.qml
         SettingsShell.qml
         SettingsWindow.qml
+    RESOURCES
+        about-hero.svg
 )
 target_link_libraries(dragonfruit-settings-ui PUBLIC
     Qt6::Core Qt6::Gui Qt6::Quick
@@ -159,6 +165,10 @@ df_qml_lint(app-settings
     LockScreenPane.qml
     MenuBarPane.qml
     GeneralPane.qml
+    AboutHero.qml
+    AboutUtilityMaterial.qml
+    AboutPanel.qml
+    AboutPage.qml
     LoginItemsPane.qml
     LanguageRegionPane.qml
     DateTimePane.qml

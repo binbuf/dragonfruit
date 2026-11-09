@@ -21,6 +21,9 @@ Item {
         when: windowShown
 
         Component { id: shellComponent; SettingsShell { } }
+        Component { id: panelComponent; AboutPanel { } }
+        Component { id: pageComponent; AboutPage { } }
+        Component { id: windowComponent; SettingsWindow { startAboutPanel: true } }
 
         // The updates fixture is process-global; reset it before every case so
         // the pane always opens with one security update on offer.
@@ -67,21 +70,87 @@ Item {
             compare(pane.updateSummary, "1 Update Available");
         }
 
-        function test_about_dialog_shows_the_host_identity() {
+        function test_about_page_shows_the_host_identity() {
             var shell = make();
+            shell.openAboutPage();
             var pane = paneOf(shell);
-            pane.aboutDialog.show();
-            compare(pane.aboutDialog.open, true);
-            compare(findChild(pane, "generalAboutHeading").text, "Dragonfruit Book");
-            var os = findChild(pane, "generalAboutOsValue");
-            verify(os, "the OS value text exists");
-            compare(os.text, "Dragonfruit Linux 44");
-            compare(findChild(pane, "generalAboutMemoryValue").text, "16 GB");
-            compare(findChild(pane, "generalAboutChipValue").text, "Example CPU");
-            verify(pane.aboutSerialRow.visible, "the serial row shows when present");
-            compare(findChild(pane, "generalAboutSerialValue").text, "SERIAL-1");
-            pane.aboutDialog.accept();
-            compare(pane.aboutDialog.open, false);
+            tryVerify(function() { return pane.subPaneLoader.item !== null; });
+            compare(pane.subPaneId, "about");
+            var page = pane.subPaneLoader.item;
+            compare(page.width, pane.width);
+            compare(findChild(page, "aboutPageName").text, "Dragonfruit Book");
+            compare(findChild(page, "aboutPageOs").text, "Dragonfruit Linux 44");
+            compare(findChild(page, "aboutPageSerial").text, "Serial number: SERIAL-1");
+            compare(findChild(page, "aboutPageStorage").text, "Total: 512 GB");
+            pane.closeSubPane();
+            compare(pane.subPaneId, "");
+        }
+
+        function test_compact_panel_geometry_rows_and_absence() {
+            var panel = createTemporaryObject(panelComponent, stage);
+            verify(panel);
+            compare(panel.width, 280);
+            compare(panel.height, 503);
+            compare(panel.chromeHeight, 32);
+            compare(findChild(panel, "aboutPanelName").text, "Dragonfruit Book");
+            compare(findChild(panel, "aboutPanelValue0").text, "Example CPU");
+            compare(findChild(panel, "aboutPanelValue1").text, "16 GB");
+            compare(findChild(panel, "aboutPanelValue3").text, "SERIAL-1");
+            panel.identity = { deviceName: "A very long localized Dragonfruit machine name that exceeds the panel", hasSerial: false };
+            panel.productName = "Système Dragonfruit très long et localisé";
+            compare(findChild(panel, "aboutPanelName").text, panel.identity.deviceName);
+            compare(findChild(panel, "aboutPanelName").elide, Text.ElideRight);
+            compare(findChild(panel, "aboutPanelValue0").text, "Not available");
+            compare(findChild(panel, "aboutPanelValue3").text, "Not available");
+            var page = createTemporaryObject(pageComponent, stage);
+            page.identity = { deviceName: "Dragonfruit", hasSerial: false };
+            compare(findChild(page, "aboutPageSerial").text, "Serial number: Not available");
+            page.showDetails = true;
+            waitForRendering(stage);
+            compare(findChild(page, "aboutPageModel").text, "Model: Not available");
+        }
+
+        function test_full_page_window_geometry() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            shell.openAboutPage();
+            tryVerify(function() { return shell.paneBody.item
+                                            && shell.paneBody.item.subPaneId === "about"; });
+            compare(shell.appWindow.chromeHeight, 52);
+            compare(shell.detailScroll.height, 768);
+            compare(shell.aboutOpen, true);
+        }
+
+        function test_utility_window_more_info_transition() {
+            var window = createTemporaryObject(windowComponent, null);
+            verify(window);
+            compare(window.visible, false);
+            compare(window.aboutWindow.visible, true);
+            compare(window.aboutWindow.width, 280);
+            compare(window.aboutWindow.height, 503);
+            window.aboutPanel.moreInfoRequested();
+            tryVerify(function() { return window.visible; });
+            compare(window.aboutWindow.visible, false);
+            compare(window.width, 740);
+            compare(window.height, 820);
+            tryVerify(function() { return window.settingsShell.aboutOpen; });
+        }
+
+        function test_material_accessibility_and_dark() {
+            var shell = make();
+            var panel = createTemporaryObject(panelComponent, stage);
+            var material = findChild(panel, "aboutUtilityMaterial");
+            verify(material);
+            Settings.set("accessibility.reduceTransparency", true);
+            Settings.set("accessibility.increaseContrast", true);
+            compare(material.opaque, true);
+            compare(material.contrast, true);
+            Settings.set("appearance.colorScheme", "dark");
+            tryVerify(function() { return Theme.dark; });
+            verify(material.topColor.toString() !== material.bottomColor.toString());
+            Settings.set("appearance.colorScheme", "light");
+            Settings.set("accessibility.reduceTransparency", false);
+            Settings.set("accessibility.increaseContrast", false);
         }
 
         function test_update_dialog_check_install_restart_round_trip() {
@@ -157,13 +226,16 @@ Item {
             compare(pane.startupSummary, "/dev/nvme0n1 · UEFI");
         }
 
-        function test_more_info_shows_gpu_and_disk() {
+        function test_more_info_reaches_the_canonical_page() {
             var shell = make();
-            var pane = paneOf(shell);
-            pane.moreInfoDialog.show();
-            compare(pane.moreInfoDialog.open, true);
-            verify(findChild(pane, "generalMoreInfoDialog"));
-            pane.moreInfoDialog.accept();
+            var panel = createTemporaryObject(panelComponent, stage);
+            panel.moreInfoRequested.connect(function() { shell.openAboutPage(); });
+            findChild(panel, "aboutPanelMoreInfo").clicked();
+            tryVerify(function() { return paneOf(shell).subPaneId === "about"; });
+            compare(shell.currentPaneId, "general");
+            compare(paneOf(shell).subPaneLoader.item.showDetails, false);
+            paneOf(shell).subPaneLoader.item.showDetails = true;
+            verify(paneOf(shell).subPaneLoader.item.showDetails);
         }
 
         // -- Date & Time ---------------------------------------------------

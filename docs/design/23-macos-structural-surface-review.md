@@ -176,8 +176,16 @@ panel is a summary that links to it.
 5. Do not invent hardware values. A missing host value is an explicit
    “Not available” row, not a fake Apple value.
 
-**Owner:** T230c. T226 shipped the General group with About as a dialog; T230c
-replaces it with the measured two-surface anatomy.
+**Owner:** T230c. The Settings executable now exposes a separate
+`--about-system` utility window and a canonical General → About sub-pane.
+The compact surface is 280×503 pt with blank 32 pt titlebar and a 194 pt
+original vector hero; More Info opens the 740×820 pt Settings window with
+52 pt chrome, a 128 pt hero and 768 pt scroll viewport. Both read the host
+identity seam; missing rows remain explicit. The utility-window gradient and
+shadow are distinct from popover glass. Light/dark offscreen captures and
+1×/1.5×/2× geometry tests are available. Native dark material fit,
+localization review, long-name fit, and a system-menu live visual pass remain
+`OPEN` pending native reference/host evidence.
 
 ## 4. Applications drawer is Spotlight Apps
 
