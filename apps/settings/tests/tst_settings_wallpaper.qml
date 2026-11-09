@@ -335,12 +335,20 @@ Item {
             var shell = make();
             var pane = paneOf(shell);
 
-            pane.applyPhoto("/home/user/Pictures/holiday.jpg");
+            // A real, checked-in image so the apply state machine can load it;
+            // it is not a built-in or provider source, so it stays a custom
+            // photo.
+            var photo = Qt.resolvedUrl("../../../tests/glass/fixtures/checker.png")
+                    .toString().replace(/^file:\/\//, "");
+            pane.applyPhoto(photo);
+            verify(pane.pending, "the apply state starts immediately");
+            verify(pane.pendingPhotoNotice.length > 0,
+                   "a photo apply records its notice");
             waitForApply(pane);
-            compare(Settings.values["wallpaper.source"],
-                    "/home/user/Pictures/holiday.jpg");
-            compare(pane.currentName, "holiday.jpg");
-            verify(pane.photoNotice.text.length > 0);
+            compare(Settings.values["wallpaper.source"], photo);
+            compare(pane.currentName, "checker.png");
+            verify(pane.photoNotice.text.length > 0,
+                   "the apply notice survives a successful write");
             verify(!pane.hasAttribution, "a user photo carries no attribution");
             compare(pane.customTiles.length, 2,
                     "Add Photo plus the current custom photo");
