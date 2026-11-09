@@ -106,7 +106,7 @@ pub use corner::{
 };
 pub use decoration::{
     fullscreen_reveal_rect, ColorScheme, DoubleClickTracker, TitlebarDoubleClick, TitlebarElement,
-    TrafficLightKind, WindowInsets,
+    TrafficLightKind, WindowChrome, WindowInsets, WindowStyle, DEFAULT_WINDOW_STYLE,
 };
 #[allow(unused_imports)]
 pub use degrade::{
@@ -228,6 +228,9 @@ struct WindowEntry {
     app_id: Option<String>,
     title: Option<String>,
     decorations: DecorationTier,
+    /// T230b: the named chrome style. First-party CSD apps declare theirs in
+    /// QML; an SSD client gets the compositor default until a style is set.
+    style: WindowStyle,
     /// The in-flight (or last completed) lifecycle motion (T-02.1b/T-02.2):
     /// appear, minimize, or restore.
     motion: Option<WindowMotion>,
@@ -266,6 +269,7 @@ impl WindowModel {
                 app_id: None,
                 title: None,
                 decorations: DecorationTier::default(),
+                style: DEFAULT_WINDOW_STYLE,
                 motion: None,
             },
         );
@@ -427,6 +431,33 @@ impl WindowModel {
             return false;
         }
         entry.decorations = tier;
+        true
+    }
+
+    /// The named chrome style for `window` (T230b).
+    pub fn window_style(&self, window: &Window) -> WindowStyle {
+        self.entries
+            .get(window)
+            .map(|entry| entry.style)
+            .unwrap_or(DEFAULT_WINDOW_STYLE)
+    }
+
+    /// The final chrome configuration for `window`. The compositor draws an
+    /// SSD titlebar without a toolbar row; a future first-party declaration
+    /// can carry the labelled/extra row through the same struct.
+    pub fn window_chrome(&self, window: &Window) -> WindowChrome {
+        WindowChrome::new(self.window_style(window))
+    }
+
+    /// Set the chrome style; returns true if it changed.
+    pub fn set_window_style(&mut self, window: &Window, style: WindowStyle) -> bool {
+        let Some(entry) = self.entries.get_mut(window) else {
+            return false;
+        };
+        if entry.style == style {
+            return false;
+        }
+        entry.style = style;
         true
     }
 

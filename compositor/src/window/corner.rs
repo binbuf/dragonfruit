@@ -115,10 +115,7 @@ impl CornerRadii {
 
     /// Whether every corner is square.
     pub const fn is_square(self) -> bool {
-        self.top_left == 0
-            && self.top_right == 0
-            && self.bottom_right == 0
-            && self.bottom_left == 0
+        self.top_left == 0 && self.top_right == 0 && self.bottom_right == 0 && self.bottom_left == 0
     }
 }
 
@@ -255,12 +252,7 @@ pub fn rounded_rect_spans_with_radii(
 }
 
 /// One horizontal span of `rect` at row `y`, inset independently on each side.
-fn span(
-    rect: Rectangle<i32, Logical>,
-    y: i32,
-    left: i32,
-    right: i32,
-) -> Rectangle<i32, Logical> {
+fn span(rect: Rectangle<i32, Logical>, y: i32, left: i32, right: i32) -> Rectangle<i32, Logical> {
     let left = left.clamp(0, rect.size.w / 2);
     let right = right.clamp(0, rect.size.w / 2);
     let width = (rect.size.w - left - right).max(1);
@@ -406,7 +398,7 @@ mod tests {
 
     #[test]
     fn titlebar_rounds_only_the_top_corners_matching_the_qml_titlebar() {
-        let titlebar = rect(0, 40, 400, component::titlebar::HEIGHT as i32);
+        let titlebar = rect(0, 40, 400, component::window_style::titlebar::HEIGHT as i32);
         let spans = CornerMask::titlebar().spans(titlebar);
         let radius = TITLEBAR_RADIUS;
 
@@ -469,12 +461,15 @@ mod tests {
     fn per_corner_radii_keep_attached_corners_square() {
         // A menu attached to the menu bar: square top, rounded bottom.
         let attached = rect(10, 20, 200, 80);
-        let spans = rounded_rect_spans_with_radii(attached, CornerRadii {
-            top_left: 0,
-            top_right: 0,
-            bottom_right: 12,
-            bottom_left: 12,
-        });
+        let spans = rounded_rect_spans_with_radii(
+            attached,
+            CornerRadii {
+                top_left: 0,
+                top_right: 0,
+                bottom_right: 12,
+                bottom_left: 12,
+            },
+        );
         assert_eq!(spans.first().unwrap().loc.y, attached.loc.y);
         assert_eq!(
             spans.first().unwrap().size.w,
@@ -490,12 +485,15 @@ mod tests {
         // own radius. The left top corner is visibly narrower than the right
         // one on the first row.
         let detached = rect(10, 20, 200, 80);
-        let spans = rounded_rect_spans_with_radii(detached, CornerRadii {
-            top_left: 20,
-            top_right: 4,
-            bottom_right: 4,
-            bottom_left: 20,
-        });
+        let spans = rounded_rect_spans_with_radii(
+            detached,
+            CornerRadii {
+                top_left: 20,
+                top_right: 4,
+                bottom_right: 4,
+                bottom_left: 20,
+            },
+        );
         let top = spans.first().unwrap();
         assert!(top.loc.x > detached.loc.x, "left top corner is rounded");
         assert!(
@@ -520,10 +518,7 @@ mod tests {
         }
         let mask = CornerMask::titlebar();
         assert_eq!(
-            rounded_rect_spans_with_radii(
-                r,
-                CornerRadii::from_mask(mask.radius, mask.corners)
-            ),
+            rounded_rect_spans_with_radii(r, CornerRadii::from_mask(mask.radius, mask.corners)),
             rounded_rect_spans(r, mask.radius, mask.corners)
         );
     }

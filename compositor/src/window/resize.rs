@@ -10,6 +10,8 @@ use smithay::input::pointer::CursorIcon;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
+use super::decoration::WindowInsets;
+
 /// Width of the interactive resize border around an SSD window, in logical
 /// pixels. Matches the shared first-party `WindowResizeGrips` thickness so a
 /// compositor-drawn frame and a client-drawn frame feel the same.
@@ -262,6 +264,24 @@ pub fn clamp_move(
     ))
 }
 
+/// Clamp a move so the *whole decorated frame* stays inside `bounds`.
+///
+/// `location` and `content_size` describe the client area, while `insets`
+/// grow it into the frame the compositor actually draws (an SSD titlebar sits
+/// above the content). Passing the usable bounds — the output minus the
+/// reserved menu-bar/Dock strips — keeps a dragged window's titlebar out of
+/// the chrome, not just its client area.
+pub fn clamp_frame_move(
+    location: Point<i32, Logical>,
+    content_size: Size<i32, Logical>,
+    insets: WindowInsets,
+    bounds: Rectangle<i32, Logical>,
+) -> Point<i32, Logical> {
+    let frame = insets.outset(Rectangle::new(location, content_size));
+    let frame_location = clamp_move(frame.loc, frame.size, bounds);
+    insets.inset(Rectangle::new(frame_location, frame.size)).loc
+}
+
 /// Compute the geometry for an interactive resize of `start` along `edge`
 /// by `delta`, honoring client constraints and staying inside `output`.
 pub fn resize_geometry(
@@ -501,6 +521,63 @@ mod tests {
         assert_eq!(clamped, Point::from((1520, 780)));
         let clamped = clamp_move(Point::from((-50, -50)), window, output());
         assert_eq!(clamped, Point::from((0, 0)));
+    }
+
+    /// The usable area is the output minus the menu bar (top) and Dock
+    /// (bottom) reserved strips.
+    fn usable() -> Rectangle<i32, Logical> {
+        rect(0, 28, 1920, 1080 - 28 - 60)
+    }
+
+    #[test]
+    fn move_is_clamped_to_the_usable_area() {
+        let window = Size::from((400, 300));
+        let clamped = clamp_move(Point::from((100, -50)), window, usable());
+        assert_eq!(clamped, Point::from((100, 28)));
+        let clamped = clamp_move(Point::from((100, 2000)), window, usable());
+        assert_eq!(clamped.y + window.h, usable().loc.y + usable().size.h);
+    }
+
+    #[test]
+    fn decorated_frame_move_keeps_the_titlebar_out_of_reserved_chrome() {
+        let window = Size::from((400, 300));
+        let insets = WindowInsets {
+            top: 28,
+            ..WindowInsets::NONE
+        };
+        // The content would sit exactly below the menu bar, but the titlebar
+        // is drawn above it: the whole frame must stay inside the usable area.
+        let clamped = clamp_frame_move(Point::from((100, 28)), window, insets, usable());
+        assert_eq!(clamped, Point::from((100, 56)));
+        // A client-side-decorated window reserves no titlebar inset.
+        let clamped = clamp_frame_move(Point::from((100, 28)), window, WindowInsets::NONE, usable());
+        assert_eq!(clamped, Point::from((100, 28)));
+    }
+
+    #[test]
+    fn resize_is_clamped_to_the_usable_area() {
+        let start = rect(100, 200, 400, 300);
+        // Dragging the top edge up stops at the reserved menu-bar strip.
+        let resized = resize_geometry(
+            start,
+            ResizeEdge::Top,
+            (0.0, -500.0).into(),
+            no_constraints(),
+            usable(),
+        );
+        assert_eq!(resized.loc.y, usable().loc.y);
+        // Dragging the bottom edge down stops at the reserved Dock strip.
+        let resized = resize_geometry(
+            start,
+            ResizeEdge::Bottom,
+            (0.0, 2000.0).into(),
+            no_constraints(),
+            usable(),
+        );
+        assert_eq!(
+            resized.loc.y + resized.size.h,
+            usable().loc.y + usable().size.h
+        );
     }
 
     #[test]

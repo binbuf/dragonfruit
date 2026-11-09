@@ -28,7 +28,7 @@ TestCase {
         id: titleBarInSlotComponent
         Item {
             width: 640
-            height: Theme.controls.titlebar.height
+            height: WindowStyle.height("titlebar")
             TitleBar { }
         }
     }
@@ -120,10 +120,67 @@ TestCase {
     function test_tokens_have_three_tiers() {
         compare(Theme.primitive.radius.md, 10);
         compare(Theme.primitive.spacing.sm, 8);
-        compare(Theme.controls.titlebar.height, 40);
-        compare(Theme.controls.trafficLights.diameter, 12);
+        compare(WindowStyle.height("titlebar"), 32);
+        compare(Theme.controls.trafficLights.diameter, 16);
         compare(Theme.motion.menuOpen.fullDuration, 160);
         verify(Theme.color.accent !== undefined);
+    }
+
+    // -- T230b: window chrome style system ---------------------------------
+
+    function test_window_style_table_covers_the_measured_heights() {
+        var expected = {
+            borderless: 0, titlebar: 32, unifiedCompact: 40,
+            expanded: 48, unified: 52, preference: 88
+        };
+        compare(WindowStyle.styleIds.length, 6);
+        for (var i = 0; i < WindowStyle.styleIds.length; ++i) {
+            var id = WindowStyle.styleIds[i];
+            compare(WindowStyle.height(id), expected[id], id);
+            compare(WindowStyle.titleRowHeight(id)
+                    + WindowStyle.toolbarRowHeight(id),
+                    WindowStyle.height(id), id + " row sum");
+        }
+        compare(WindowStyle.chromeHeight("unified", { labelledToolbar: true }), 66);
+        compare(WindowStyle.chromeHeight("expanded", { toolbarRowHeight: 22 }), 70);
+        compare(WindowStyle.isBorderless("borderless"), true);
+        compare(WindowStyle.isBorderless("titlebar"), false);
+    }
+
+    function test_traffic_light_geometry_is_style_derived() {
+        compare(WindowStyle.trafficLightSize, 16);
+        compare(WindowStyle.trafficLightSpacing, 23);
+        compare(WindowStyle.trafficLightGap(), 7);
+        compare(WindowStyle.trafficTopInset(32), 8);
+        compare(WindowStyle.trafficTopInset(52), 18);
+        compare(WindowStyle.trafficTopInset(66), 25);
+    }
+
+    function test_titlebar_height_comes_from_the_named_style() {
+        var utility = make(titleBarComponent, { width: 320, style: "titlebar" });
+        compare(utility.implicitHeight, 32);
+        var unified = make(titleBarComponent, { width: 320, style: "unified" });
+        compare(unified.implicitHeight, 52);
+        var preference = make(titleBarComponent, { width: 320, style: "preference" });
+        compare(preference.implicitHeight, 88);
+        var borderless = make(titleBarComponent, { width: 320, style: "borderless" });
+        compare(borderless.implicitHeight, 0);
+        compare(borderless.visible, false);
+    }
+
+    function test_titlebar_drag_region_is_chrome_only() {
+        var bar = make(titleBarComponent, { width: 320, style: "titlebar" });
+        compare(bar.dragArea.height, bar.chromeHeight);
+        compare(bar.dragArea.height, 32);
+        // A toolbar row is part of the chrome; an accessory bar is not.
+        var unified = make(titleBarComponent, { width: 320, style: "unified" });
+        compare(unified.dragArea.height, 52);
+        compare(Theme.controls.accessoryBar.tab, 28);
+        compare(Theme.controls.accessoryBar.path, 30);
+        compare(Theme.controls.accessoryBar.status, 28);
+        compare(Theme.controls.accessoryBar.format, 20);
+        compare(WindowStyle.height("unified"), 52,
+                "an accessory bar must not increase the chrome height");
     }
 
     function test_light_and_dark_semantics() {
@@ -466,7 +523,7 @@ TestCase {
         var lights = make(lightsComponent, {});
         var img = grabImage(lights);
         var d = Theme.controls.trafficLights.diameter;
-        var gap = Theme.controls.trafficLights.gap;
+        var gap = WindowStyle.trafficLightGap();
         compare(img.red(d / 2, d / 2), channel(Theme.color.close.r));
         compare(img.red(d + gap + d / 2, d / 2), channel(Theme.color.minimize.r));
         compare(img.red(2 * (d + gap) + d / 2, d / 2), channel(Theme.color.zoom.r));
@@ -661,7 +718,7 @@ TestCase {
         // Prove the images are non-trivial (not two blank surfaces): the close
         // traffic light must be present at its token-derived position.
         var d = Theme.controls.trafficLights.diameter;
-        var cy = Math.round(Theme.controls.titlebar.height / 2);
+        var cy = Math.round(bar.chromeHeight / 2);
         compare(app.red(Theme.controls.trafficLights.inset + d / 2, cy),
                 channel(Theme.color.close.r));
         compare(ssd.red(Theme.controls.trafficLights.inset + d / 2, cy),

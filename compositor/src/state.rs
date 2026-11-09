@@ -128,7 +128,7 @@ use crate::window::{
     MotionFrame, ReservedZones, SceneTransformPass, ShellWindowEvent, TitlebarDoubleClick,
     TitlebarElement, TrafficLightKind, WindowDispatch, WindowEvent, WindowEventKind, WindowId,
     WindowInsets, WindowMenu, WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind,
-    WindowState, CASCADE_STEP,
+    WindowState, WindowStyle, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -2079,7 +2079,10 @@ impl DfState {
         if self.windows.state(window) == Some(crate::window::WindowState::Fullscreen) {
             return WindowInsets::NONE;
         }
-        WindowInsets::for_tier(self.windows.decorations(window))
+        WindowInsets::for_tier_with_chrome(
+            self.windows.decorations(window),
+            self.windows.window_chrome(window),
+        )
     }
 
     /// The SSD titlebar element for `window`, if the compositor must draw
@@ -2090,9 +2093,10 @@ impl DfState {
         let geometry = self.windows.geometry(window)?;
         let state = self.windows.state(window)?;
         let tier = self.windows.decorations(window);
+        let chrome = self.windows.window_chrome(window);
         let focused = self.active_window.as_ref() == Some(window);
         let hovered = self.hovered_titlebar == Some(id);
-        TitlebarElement::for_window(id, geometry, tier, state, focused, hovered).map(
+        TitlebarElement::for_window(id, geometry, tier, state, chrome, focused, hovered).map(
             |mut element| {
                 // The live scheme is compositor state (T-04.4b): the titlebar
                 // geometry is scheme-independent, the token fills are not.
@@ -2232,7 +2236,8 @@ impl DfState {
                 Some(WindowState::Fullscreen) => {
                     if fullscreen_reveal {
                         if let Some(content) = self.windows.geometry(window) {
-                            if fullscreen_reveal_rect(content).contains(point) {
+                            let chrome = self.windows.window_chrome(window);
+                            if fullscreen_reveal_rect(content, chrome).contains(point) {
                                 return Some((window.clone(), true));
                             }
                         }
@@ -3206,6 +3211,21 @@ impl DfState {
         self.needs_redraw = true;
     }
 
+    /// Set a mapped window's chrome style by id (T230b test/protocol seam).
+    /// A zoomed window reflows because its client area sits below the
+    /// titlebar; a floating window's titlebar is drawn above the content.
+    pub fn set_window_style(&mut self, id: WindowId, style: WindowStyle) -> bool {
+        let Some(window) = self.windows.window_by_id(id) else {
+            return false;
+        };
+        if !self.windows.set_window_style(&window, style) {
+            return false;
+        }
+        self.reapply_insets(&window);
+        self.needs_redraw = true;
+        true
+    }
+
     /// Recompute a zoomed window's geometry after its insets changed.
     ///
     /// This reuses the same usable-area/inset math as [`Self::zoom_window`]
@@ -3629,13 +3649,21 @@ impl DfState {
         let id = self.windows.id(window)?;
         let geometry = self.windows.geometry(window)?;
         let tier = self.windows.decorations(window);
+        let chrome = self.windows.window_chrome(window);
         let focused = self.active_window.as_ref() == Some(window);
-        TitlebarElement::for_window(id, geometry, tier, WindowState::Floating, focused, false).map(
-            |mut element| {
-                element.scheme = self.color_scheme;
-                element
-            },
+        TitlebarElement::for_window(
+            id,
+            geometry,
+            tier,
+            WindowState::Floating,
+            chrome,
+            focused,
+            false,
         )
+        .map(|mut element| {
+            element.scheme = self.color_scheme;
+            element
+        })
     }
 
     /// Advance every lifecycle motion one clock frame. Commits a visible

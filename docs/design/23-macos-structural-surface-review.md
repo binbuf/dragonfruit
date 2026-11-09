@@ -106,8 +106,11 @@ window means small chrome”).
 8. Fullscreen/auto-hide chrome is still `OPEN`: the review did not capture the
    hidden/revealed states, long titles, or RTL mirroring.
 
-**Owner:** T230b. The existing design-system `TitleBar` is a single 40 pt
-token; T230b introduces the style table and migrates first-party windows.
+**Owner:** T230b. Landed: the `WindowStyle` table
+(0/32/40/48/52/66/88 pt), the 16 pt traffic lights with 8/18 pt derived top
+insets and 23 pt centre spacing, content-layer accessory-bar tokens, and the
+Settings/Files `unified` migration. Long-title truncation and RTL mirroring
+remain `OPEN` (N-WIN-29/N-WIN-30).
 
 ## 3. About is two surfaces
 

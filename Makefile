@@ -65,7 +65,7 @@ endif
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update stage dist package \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -132,6 +132,7 @@ help:
 	@echo "  make notification-materials-capture — T205 live nested Light/Dark notification stills"
 	@echo "  make first-party-chrome-check — T206 Settings/Files sidebar and toolbar presets"
 	@echo "  make first-party-chrome-capture — T206 live Settings/Files chrome over neutral/saturated backdrops"
+	@echo "  make t230b-window-styles-capture — T230b 32/52/88 pt window chrome stills (headless gallery)"
 	@echo "  make nested-acceptance-check — T207 evidence matrix and per-surface report gate"
 	@echo "  make nested-acceptance-capture — T207 nested legacy/replacement A/B and interaction captures"
 	@echo "  make glass-reference-verify — T-19.4 optional reference checkout hash/revision check"
@@ -887,6 +888,12 @@ first-party-chrome-check:
 
 first-party-chrome-capture: build
 	bash scripts/capture-t206-first-party-chrome.sh
+
+# T230b: the measured window-chrome style capture. Headless gallery snapshots
+# of the 32 pt titlebar, 52 pt unified, and 88 pt preference windows under
+# docs/captures/t230b-window-styles-*.png. No host session required.
+t230b-window-styles-capture: build
+	bash scripts/capture-t230b-window-styles.sh
 
 # T207: the nested legacy/replacement acceptance matrix. `--check` is the
 # hardware-independent gate (case coverage, evidence rows, per-surface

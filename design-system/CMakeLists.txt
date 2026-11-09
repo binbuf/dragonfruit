@@ -19,6 +19,8 @@ set_source_files_properties(TablerGlyphs.qml PROPERTIES QT_QML_SINGLETON_TYPE TR
 set_source_files_properties(Material.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # The generated material-preset resolver (T195) is a singleton.
 set_source_files_properties(Glass.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# The window-chrome style model (T230b) is a singleton.
+set_source_files_properties(WindowStyle.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_library(dragonfruit-design-system STATIC)
 qt_add_qml_module(dragonfruit-design-system
@@ -28,6 +30,7 @@ qt_add_qml_module(dragonfruit-design-system
         Theme.qml
         Material.qml
         Glass.qml
+        WindowStyle.qml
         PhosphorGlyphs.qml
         TablerGlyphs.qml
         components/AppWindow.qml
@@ -120,6 +123,7 @@ df_qml_lint(design-system
     Theme.qml
     Material.qml
     Glass.qml
+    WindowStyle.qml
     PhosphorGlyphs.qml
     TablerGlyphs.qml
     components/AppWindow.qml

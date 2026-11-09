@@ -51,6 +51,7 @@
 //! query spaces
 //! query magnifier
 //! set titlebar-double-click zoom|minimize|none
+//! set window-style <window-id> borderless|titlebar|unifiedCompact|expanded|unified|preference
 //! set reduced-motion on|off
 //! set magnifier on|off
 //! set magnifier-zoom <factor>
@@ -91,7 +92,9 @@
 //!
 //! `set titlebar-double-click` sets the session's `dock.titlebarDoubleClick`
 //! behavior (T-01.3) so the conformance test can prove the configured
-//! action, not only the default `zoom`.
+//! action, not only the default `zoom`. `set window-style` applies one of the
+//! T230b named chrome styles to a window so the conformance test can assert
+//! every measured height.
 //!
 //! `minimize`/`restore <window-id>` drive the lifecycle motion for a window
 //! by its compositor id (T-02.2 test plumbing), the same primitive the
@@ -126,7 +129,7 @@ use crate::magnifier::MagnifierMode;
 use crate::state::DfState;
 use crate::window::{
     ColorScheme, DegradeTier, MaterialPath, MaterialRole, TitlebarDoubleClick, WindowEventKind,
-    WindowId,
+    WindowId, WindowStyle,
 };
 use crate::workspace::WallpaperFit;
 
@@ -779,6 +782,12 @@ pub enum SyntheticCommand {
     },
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
+    /// Set a window's named chrome style (T230b test plumbing): `borderless`,
+    /// `titlebar`, `unifiedCompact`, `expanded`, `unified`, or `preference`.
+    SetWindowStyle {
+        window: WindowId,
+        style: WindowStyle,
+    },
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
     SetReducedMotion(bool),
     /// Set the Dock tile origin an app's window appears from and minimizes
@@ -1069,6 +1078,24 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                     .ok_or_else(|| format!("expected zoom|minimize|none, got {value:?}"))?;
                 SyntheticCommand::SetTitlebarDoubleClick(mode)
             }
+            Some("window-style") => {
+                let window = WindowId(
+                    parts
+                        .next()
+                        .ok_or("set window-style requires a window id")?
+                        .parse()
+                        .map_err(|_| {
+                            "set window-style window id must be a non-negative integer".to_string()
+                        })?,
+                );
+                let value = parts.next().ok_or("set window-style requires a style")?;
+                let style = WindowStyle::parse(value).ok_or_else(|| {
+                    format!(
+                        "expected borderless|titlebar|unifiedCompact|expanded|unified|preference, got {value:?}"
+                    )
+                })?;
+                SyntheticCommand::SetWindowStyle { window, style }
+            }
             Some("reduced-motion") => match parts.next() {
                 Some("on") | Some("1") => SyntheticCommand::SetReducedMotion(true),
                 Some("off") | Some("0") => SyntheticCommand::SetReducedMotion(false),
@@ -1167,7 +1194,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             },
             _ => {
                 return Err(
-                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget, degrade-frames, material-path, material-blur-supported, color-scheme, magnifier, magnifier-zoom, magnifier-mode, magnifier-center)"
+                    "set requires a known subject (titlebar-double-click, window-style, reduced-motion, launch-origin, degrade-tier, degrade-budget, degrade-frames, material-path, material-blur-supported, color-scheme, magnifier, magnifier-zoom, magnifier-mode, magnifier-center)"
                         .into(),
                 );
             }
@@ -1331,6 +1358,9 @@ impl SyntheticCommand {
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
+            }
+            SyntheticCommand::SetWindowStyle { .. } => {
+                unreachable!("set window-style is handled by apply_datagram")
             }
             SyntheticCommand::SetReducedMotion(_) => {
                 unreachable!("set reduced-motion is handled by apply_datagram")
@@ -1649,6 +1679,11 @@ fn apply_datagram_reply(
                 state.set_titlebar_double_click(mode);
                 applied += 1;
             }
+            Ok(SyntheticCommand::SetWindowStyle { window, style }) => {
+                if state.set_window_style(window, style) {
+                    applied += 1;
+                }
+            }
             Ok(SyntheticCommand::SetDegradeTier(tier)) => {
                 state.set_degrade_tier(tier);
                 applied += 1;
@@ -1900,8 +1935,7 @@ fn scale_report(state: &DfState) -> String {
             // and output clipping. A legacy single-rect surface contributes
             // one `panel` region, so the report stays backward compatible.
             for region in &chrome.regions {
-                let phys: Rectangle<i32, Physical> =
-                    region.rect.to_physical_precise_round(scale);
+                let phys: Rectangle<i32, Physical> = region.rect.to_physical_precise_round(scale);
                 let corners = region.corners.unwrap_or_default();
                 out.push_str(&format!(
                     "scale region {} {} preset={} logical={},{},{},{} physical={},{},{},{} \

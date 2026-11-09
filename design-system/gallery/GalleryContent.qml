@@ -16,7 +16,8 @@ Item {
                                   "Segmented", "ContextMenu", "SearchField",
                                   "SourceList", "Dialog", "Sheet", "Popover",
                                   "ScrollView", "Slider", "Select", "Icons", "Tooltip",
-                                  "Skeleton", "Phosphor", "SettingsCategory", "Tabler"]
+                                  "Skeleton", "Phosphor", "SettingsCategory", "Tabler",
+                                  "WindowStyles"]
     property string scheme: "dark"
     property bool reducedMotion: false
 
@@ -69,6 +70,7 @@ Item {
             case 26: return phosphorPageComponent;
             case 27: return settingsCategoryPageComponent;
             case 28: return tablerPageComponent;
+            case 29: return windowStylesPageComponent;
             default: return iconsPageComponent;
             }        }
     }
@@ -102,6 +104,7 @@ Item {
     Component { id: phosphorPageComponent; PhosphorPage { } }
     Component { id: settingsCategoryPageComponent; SettingsCategoryPage { } }
     Component { id: tablerPageComponent; TablerPage { } }
+    Component { id: windowStylesPageComponent; WindowStylesPage { } }
 
     component Page: Column {
         spacing: Theme.primitive.spacing.lg
@@ -270,6 +273,102 @@ Item {
         Section {
             heading: qsTr("Traffic lights revealed")
             TitleBar { width: 520; title: qsTr("Hovered"); trafficLights.forceReveal: true }
+        }
+    }
+
+    // T230b: the measured chrome taxonomy at the three heights the task
+    // signs off — 32 pt utility, 52 pt unified, 88 pt preference. The styles
+    // come from `WindowStyle`; no height is hard-coded in the page.
+    component WindowStylesPage: Page {
+        Section {
+            heading: qsTr("Window chrome styles — 32 / 52 / 88 pt")
+            Row {
+                spacing: Theme.primitive.spacing.lg
+
+                Column {
+                    spacing: Theme.primitive.spacing.sm
+                    Text {
+                        text: qsTr("titlebar — 32 pt utility")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                    AppWindow {
+                        width: 300
+                        height: 220
+                        windowStyle: "titlebar"
+                        titleBarData: TitleBar { title: qsTr("Inspector") }
+                        contentData: Rectangle {
+                            anchors.fill: parent
+                            color: Theme.color.surface
+                            Text {
+                                anchors.centerIn: parent
+                                text: qsTr("32 pt chrome")
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                            }
+                        }
+                    }
+                }
+
+                Column {
+                    spacing: Theme.primitive.spacing.sm
+                    Text {
+                        text: qsTr("unified — 52 pt")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                    AppWindow {
+                        width: 300
+                        height: 220
+                        windowStyle: "unified"
+                        titleBarData: TitleBar {
+                            title: qsTr("Files")
+                        }
+                        contentData: Rectangle {
+                            anchors.fill: parent
+                            color: Theme.color.surface
+                            Text {
+                                anchors.centerIn: parent
+                                text: qsTr("52 pt chrome")
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                            }
+                        }
+                    }
+                }
+
+                Column {
+                    spacing: Theme.primitive.spacing.sm
+                    Text {
+                        text: qsTr("preference — 88 pt")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                    AppWindow {
+                        width: 300
+                        height: 220
+                        windowStyle: "preference"
+                        titleBarData: TitleBar {
+                            title: qsTr("Preferences")
+                            leadingData: Row {
+                                spacing: Theme.controls.toolbar.spacing
+                                Button { text: qsTr("General"); variant: "ghost" }
+                                Button { text: qsTr("Appearance"); variant: "ghost" }
+                            }
+                        }
+                        contentData: Rectangle {
+                            anchors.fill: parent
+                            color: Theme.color.surface
+                            Text {
+                                anchors.centerIn: parent
+                                text: qsTr("88 pt chrome")
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

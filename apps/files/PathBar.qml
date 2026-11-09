@@ -19,7 +19,9 @@ Item {
 
     signal navigated(string uri)
 
-    implicitHeight: Theme.controls.button.height + 2 * Theme.primitive.spacing.xs
+    // T230b: Finder's path bar is a 30 pt content-layer accessory, not
+    // window chrome.
+    implicitHeight: Theme.controls.accessoryBar.path
 
     ChromeSheet {
         anchors.fill: parent

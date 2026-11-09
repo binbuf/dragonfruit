@@ -18,12 +18,15 @@
 //!   CSD, and the `gtk-decoration-layout` steering in [`crate::toolkit`]
 //!   covers that case.
 //!
-//! Trusted processes additionally get `DRAGONFRUIT_LAUNCH_TOKEN`:
+//! Trusted processes additionally get launch tokens:
 //!
-//! * the **compositor** is the token issuer: it pre-mints the token it finds
-//!   in its environment instead of a random one, so the shell's token is the
-//!   one the session chose;
-//! * the **shell** presents the same token in the `df_core` handshake.
+//! * the **compositor** is the token issuer: it pre-mints the shell and
+//!   desktop tokens it finds in its environment instead of random ones, so
+//!   each client's token is the one the session chose;
+//! * the **shell** presents `DRAGONFRUIT_LAUNCH_TOKEN` in the `df_core`
+//!   handshake;
+//! * the **Files desktop** presents `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`, the
+//!   role-scoped token that may create the `background` layer (T-19.3).
 //!
 //! The environment is data; [`SessionEnvironment::base`] and
 //! [`SessionEnvironment::trusted`] return the exact pairs
@@ -51,8 +54,11 @@ pub const DISPLAY: &str = "DISPLAY";
 pub const GTK_CSD: &str = "GTK_CSD";
 /// The value that disables GTK client-side decorations.
 pub const GTK_CSD_DISABLED: &str = "0";
-/// `DRAGONFRUIT_LAUNCH_TOKEN`; the one-time private-protocol token.
+/// `DRAGONFRUIT_LAUNCH_TOKEN`; the shell's one-time private-protocol token.
 pub const LAUNCH_TOKEN: &str = "DRAGONFRUIT_LAUNCH_TOKEN";
+/// `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`; the Files desktop's role-scoped token
+/// (T-19.3). It may create only the compositor's `background` layer.
+pub const DESKTOP_LAUNCH_TOKEN: &str = "DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN";
 /// `DRAGONFRUIT_DEV_RETURN`; the desktop the real-session harness should
 /// restore, set only for a session the dev harness armed (T-12.6b).
 pub const DEV_RETURN: &str = crate::dev_session::DEV_RETURN;
@@ -78,6 +84,7 @@ pub struct SessionEnvironment {
     socket_name: String,
     x11_display: Option<String>,
     launch_token: Option<String>,
+    desktop_launch_token: Option<String>,
     dev_return: Option<String>,
     dev_bin: Option<String>,
 }
@@ -90,6 +97,7 @@ impl SessionEnvironment {
             socket_name: socket_name.into(),
             x11_display: None,
             launch_token: None,
+            desktop_launch_token: None,
             dev_return: None,
             dev_bin: None,
         }
@@ -114,6 +122,14 @@ impl SessionEnvironment {
         self
     }
 
+    /// Attach the Files desktop's role-scoped launch token (T-19.3). The
+    /// caller mints it once with [`generate_launch_token`]; never log the
+    /// value.
+    pub fn with_desktop_launch_token(mut self, token: impl Into<String>) -> Self {
+        self.desktop_launch_token = Some(token.into());
+        self
+    }
+
     /// Mark this session as started by the real-session harness and name the
     /// desktop to return to (T-12.6b). The shell shows **"Quit to \<session\>"**
     /// only when this is set.
@@ -135,6 +151,13 @@ impl SessionEnvironment {
         self.with_launch_token(generate_launch_token())
     }
 
+    /// Mint and attach both the shell and desktop launch tokens. This is the
+    /// normal session-start path: each role gets its own one-time value.
+    pub fn with_generated_tokens(self) -> Self {
+        self.with_generated_token()
+            .with_desktop_launch_token(generate_launch_token())
+    }
+
     /// The compositor's private socket basename (the `WAYLAND_DISPLAY` value).
     pub fn socket_name(&self) -> &str {
         &self.socket_name
@@ -148,6 +171,12 @@ impl SessionEnvironment {
     /// The launch token, if any. Never log the returned value.
     pub fn launch_token(&self) -> Option<&str> {
         self.launch_token.as_deref()
+    }
+
+    /// The Files desktop's role-scoped launch token, if any. Never log the
+    /// returned value.
+    pub fn desktop_launch_token(&self) -> Option<&str> {
+        self.desktop_launch_token.as_deref()
     }
 
     /// The desktop the harness should return to, if this is a harness-armed
@@ -179,12 +208,32 @@ impl SessionEnvironment {
         env
     }
 
-    /// The environment for a trusted process: [`SessionEnvironment::base`]
-    /// plus `DRAGONFRUIT_LAUNCH_TOKEN` when a token is attached.
+    /// The environment for the shell: [`SessionEnvironment::base`] plus
+    /// `DRAGONFRUIT_LAUNCH_TOKEN` when a token is attached.
     pub fn trusted(&self) -> Vec<(String, String)> {
         let mut env = self.base();
         if let Some(token) = &self.launch_token {
             env.push((LAUNCH_TOKEN.to_string(), token.clone()));
+        }
+        env
+    }
+
+    /// The environment for the Files desktop: [`SessionEnvironment::base`]
+    /// plus `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN` when a token is attached.
+    pub fn desktop_trusted(&self) -> Vec<(String, String)> {
+        let mut env = self.base();
+        if let Some(token) = &self.desktop_launch_token {
+            env.push((DESKTOP_LAUNCH_TOKEN.to_string(), token.clone()));
+        }
+        env
+    }
+
+    /// The environment for the compositor, which issues both tokens: the base
+    /// plus the shell and desktop tokens when attached.
+    pub fn issuer(&self) -> Vec<(String, String)> {
+        let mut env = self.trusted();
+        if let Some(token) = &self.desktop_launch_token {
+            env.push((DESKTOP_LAUNCH_TOKEN.to_string(), token.clone()));
         }
         env
     }
@@ -265,6 +314,11 @@ mod tests {
         assert_eq!(env.base_value(DISPLAY).as_deref(), Some(":0"));
         assert_eq!(env.base_value(GTK_CSD).as_deref(), Some("0"));
         assert_eq!(env.base_value(LAUNCH_TOKEN), None, "not trusted by default");
+        assert_eq!(
+            env.base_value(DESKTOP_LAUNCH_TOKEN),
+            None,
+            "not desktop-trusted by default"
+        );
     }
 
     #[test]
@@ -309,6 +363,52 @@ mod tests {
         assert!(trusted
             .iter()
             .any(|(key, value)| key == LAUNCH_TOKEN && value == &"ab".repeat(32)));
+        assert!(
+            !trusted.iter().any(|(key, _)| key == DESKTOP_LAUNCH_TOKEN),
+            "the shell does not receive the desktop role's token"
+        );
+    }
+
+    #[test]
+    fn desktop_environment_adds_the_role_scoped_token() {
+        let env = SessionEnvironment::default_socket().with_desktop_launch_token("cd".repeat(32));
+        assert_eq!(
+            env.base_value(DESKTOP_LAUNCH_TOKEN),
+            None,
+            "base stays untrusted"
+        );
+        let desktop = env.desktop_trusted();
+        assert!(desktop
+            .iter()
+            .any(|(key, value)| key == DESKTOP_LAUNCH_TOKEN && value == &"cd".repeat(32)));
+        assert!(
+            !desktop.iter().any(|(key, _)| key == LAUNCH_TOKEN),
+            "the desktop does not receive the shell's token"
+        );
+    }
+
+    #[test]
+    fn the_issuer_environment_carries_both_tokens() {
+        let env = SessionEnvironment::default_socket()
+            .with_launch_token("ab".repeat(32))
+            .with_desktop_launch_token("cd".repeat(32));
+        let issuer = env.issuer();
+        assert!(issuer
+            .iter()
+            .any(|(key, value)| key == LAUNCH_TOKEN && value == &"ab".repeat(32)));
+        assert!(issuer
+            .iter()
+            .any(|(key, value)| key == DESKTOP_LAUNCH_TOKEN && value == &"cd".repeat(32)));
+    }
+
+    #[test]
+    fn generated_sessions_mint_distinct_shell_and_desktop_tokens() {
+        let env = SessionEnvironment::default_socket().with_generated_tokens();
+        let shell = env.launch_token().expect("a shell token");
+        let desktop = env.desktop_launch_token().expect("a desktop token");
+        assert_eq!(shell.len(), TOKEN_BYTES * 2);
+        assert_eq!(desktop.len(), TOKEN_BYTES * 2);
+        assert_ne!(shell, desktop, "one token must not grant both roles");
     }
 
     #[test]

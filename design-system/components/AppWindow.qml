@@ -15,6 +15,11 @@ Item {
 
     property string title: ""
     property bool active: true
+    // T230b: the named chrome style. A `TitleBar` parented into
+    // `titleBarData` inherits it, so a window declares its style once.
+    property string windowStyle: "titlebar"
+    readonly property real chromeHeight:
+        WindowStyle.chromeHeight(root.windowStyle)
     property bool showShadow: true
     // The elevation level the window casts (component.elevation.*). The
     // compositor's SSD shadow uses the same level, so the two agree (FR-2).

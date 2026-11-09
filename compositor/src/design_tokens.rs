@@ -272,8 +272,43 @@ pub mod component {
         pub const RESIZE_CORNER: f32 = 12.0_f32;
         pub const SHADOW_BLUR: f32 = 40.0_f32;
     }
+    pub mod window_style {
+        pub const TRAFFIC_LIGHT_SIZE: f32 = 16.0_f32;
+        pub const TRAFFIC_LIGHT_SPACING: f32 = 23.0_f32;
+        pub const TRAFFIC_LIGHT_LEADING_INSET: f32 = 12.0_f32;
+        pub const LABELLED_TOOLBAR_ROW: f32 = 14.0_f32;
+        pub mod borderless {
+            pub const HEIGHT: f32 = 0.0_f32;
+            pub const TITLE_ROW: f32 = 0.0_f32;
+            pub const TOOLBAR_ROW: f32 = 0.0_f32;
+        }
+        pub mod titlebar {
+            pub const HEIGHT: f32 = 32.0_f32;
+            pub const TITLE_ROW: f32 = 32.0_f32;
+            pub const TOOLBAR_ROW: f32 = 0.0_f32;
+        }
+        pub mod unified_compact {
+            pub const HEIGHT: f32 = 40.0_f32;
+            pub const TITLE_ROW: f32 = 0.0_f32;
+            pub const TOOLBAR_ROW: f32 = 40.0_f32;
+        }
+        pub mod expanded {
+            pub const HEIGHT: f32 = 48.0_f32;
+            pub const TITLE_ROW: f32 = 28.0_f32;
+            pub const TOOLBAR_ROW: f32 = 20.0_f32;
+        }
+        pub mod unified {
+            pub const HEIGHT: f32 = 52.0_f32;
+            pub const TITLE_ROW: f32 = 0.0_f32;
+            pub const TOOLBAR_ROW: f32 = 52.0_f32;
+        }
+        pub mod preference {
+            pub const HEIGHT: f32 = 88.0_f32;
+            pub const TITLE_ROW: f32 = 32.0_f32;
+            pub const TOOLBAR_ROW: f32 = 56.0_f32;
+        }
+    }
     pub mod titlebar {
-        pub const HEIGHT: f32 = 40.0_f32;
         pub const PADDING_H: f32 = 8.0_f32;
         pub const PADDING_V: f32 = 4.0_f32;
         pub const SPACING: f32 = 8.0_f32;
@@ -282,10 +317,10 @@ pub mod component {
         pub const CORNER_RADIUS: f32 = 14.0_f32;
     }
     pub mod traffic_lights {
-        pub const DIAMETER: f32 = 12.0_f32;
-        pub const GAP: f32 = 8.0_f32;
+        pub const DIAMETER: f32 = 16.0_f32;
+        pub const SPACING: f32 = 23.0_f32;
         pub const INSET: f32 = 12.0_f32;
-        pub const GLYPH_SIZE: f32 = 6.0_f32;
+        pub const GLYPH_SIZE: f32 = 8.0_f32;
         pub const HOVER_REVEAL: bool = true;
     }
     pub mod toggle {
@@ -478,6 +513,12 @@ pub mod component {
         pub const SPACING: f32 = 8.0_f32;
         pub const BUTTON_SIZE: f32 = 28.0_f32;
         pub const RADIUS: f32 = 10.0_f32;
+    }
+    pub mod accessory_bar {
+        pub const TAB: f32 = 28.0_f32;
+        pub const PATH: f32 = 30.0_f32;
+        pub const STATUS: f32 = 28.0_f32;
+        pub const FORMAT: f32 = 20.0_f32;
     }
     pub mod split_view {
         pub const DIVIDER_WIDTH: f32 = 1.0_f32;
