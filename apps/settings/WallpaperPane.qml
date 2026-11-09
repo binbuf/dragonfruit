@@ -533,7 +533,7 @@ Item {
         root.loadPendingImage(root.pendingPreviewUrl);
     }
 
-    function onWriteFinished(key, value, ok, message) {
+    function onWriteFinished(key, ok, message) {
         if (key !== "wallpaper.source" || !root.pending
                 || !root.pendingWriteStarted)
             return;
@@ -1122,8 +1122,6 @@ Item {
                 model: section.visibleItems
                 delegate: WallpaperTile {
                     width: section.tileWidth
-                    modelData: modelData
-                    tileIndex: index
                     tileRepeater: tileRepeater
                     sectionColumns: section.columns
                 }
@@ -1164,7 +1162,8 @@ Item {
         id: tile
 
         required property var modelData
-        property int tileIndex: -1
+        required property int index
+        property int tileIndex: index
         property var tileRepeater: null
         property int sectionColumns: Theme.controls.wallpaper.columns
 
