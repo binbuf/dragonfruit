@@ -57,6 +57,7 @@ TestCase {
     Component { id: popoverComponent; Popover { } }
     Component { id: tooltipComponent; Tooltip { } }
     Component { id: skeletonComponent; Skeleton { width: 160; height: 24 } }
+    Component { id: spinnerComponent; Spinner { } }
     Component { id: phosphorIconComponent; PhosphorIcon { name: "gear"; weight: "fill" } }
     Component { id: tablerIconComponent; TablerIcon { name: "folder" } }
     Component { id: legacyIconComponent; Icon { name: "folder" } }
@@ -1449,6 +1450,46 @@ TestCase {
         waitForRendering(stage);
         compare(s.highlightX, first, "the static highlight must not move");
         compare(s.progress, 0.0, "no animation progress is recorded when reduced");
+        Theme.reducedMotion = saved;
+    }
+
+    // -- Spinner (ADR 0240) -------------------------------------------------
+    //
+    // The small progress indicator used by the Wallpaper pane. Indeterminate
+    // by default; a 0..1 `progress` draws a determinate arc and stops the
+    // rotation. Reduced motion freezes the arc.
+
+    function test_spinner_is_a_token_progress_indicator() {
+        var s = make(spinnerComponent, {});
+        compare(s.implicitWidth, Theme.controls.spinner.size);
+        compare(s.implicitHeight, Theme.controls.spinner.size);
+        compare(s.Accessible.role, Accessible.ProgressBar);
+        compare(s.Accessible.ignored, true,
+                "an unnamed spinner is presentational");
+        verify(s.spinning, "an indeterminate spinner rotates");
+        compare(s.sweepAngle, 270);
+    }
+
+    function test_spinner_accessible_name_is_announced() {
+        var s = make(spinnerComponent, { accessibleName: "Applying Nature" });
+        compare(s.Accessible.name, "Applying Nature");
+        compare(s.Accessible.ignored, false);
+    }
+
+    function test_spinner_determinate_progress_stops_rotation() {
+        var s = make(spinnerComponent, { progress: 0.5 });
+        verify(!s.spinning, "a determinate spinner does not rotate");
+        compare(s.sweepAngle, 180);
+    }
+
+    function test_spinner_reduced_motion_is_static() {
+        var saved = Theme.reducedMotion;
+        Theme.reducedMotion = true;
+        var s = make(spinnerComponent, {});
+        verify(!s.spinning, "reduced motion must stop the spinner");
+        wait(150);
+        waitForRendering(stage);
+        compare(s.rotation, 0, "the static spinner must not rotate");
         Theme.reducedMotion = saved;
     }
 

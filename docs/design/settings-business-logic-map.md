@@ -626,24 +626,32 @@ always available; Featured empty, never an error.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Current wallpaper | Current wallpaper | Preview | existing: `wallpaper.source` | Live |
+| Current wallpaper | Current wallpaper | Preview | existing: `wallpaper.source` | Live; effective source selects Default when empty |
 | Show on all Spaces | Show on all workspaces | Toggle | existing: `wallpaper.showOnAllSpaces` | Live |
 | — | Fit | Popup | existing: `wallpaper.fit` | Fill/fit/stretch/center; live |
 | Screen Saver… | Screen saver… | Button | `settingsd` | Deep link |
 | Clock Appearance… | Clock appearance… | Button | `settingsd` | Deep link |
-| Dynamic Wallpapers | Dynamic | Grid | `wallpaperd` | Our own assets; optional |
-| Your Photos | Your photos | Button | FileChooser portal | Add photo |
-| Landscape | Landscapes | Grid | `wallpaperd` | Featured/offline |
-| Cityscape | Cityscapes | Grid | `wallpaperd` | Featured/offline |
-| — | Built-in | Grid | shipped assets | Default; offline |
+| Dynamic Wallpapers | Abstract | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| Landscape | Nature | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| — | Water | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| Cityscape | Cityscapes | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| Earth | Earth | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| — | Space | Grid | `wallpaperd` (NASA Image and Video Library) | Thumbnail first; full image on demand |
+| — | Scenery | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| Underwater | Underwater | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| Your Photos | Your photos | Grid | FileChooser portal | Add Photo tile first; current custom photo |
+| — | Built-in | Grid | shipped assets | Default plus gradients; offline |
 
-**T229a status.** The pane ships the current preview, Show on all
-Workspaces, Fit, the Built-in default plus presets, the fetched Featured
-catalogue, and the portal Custom row. The two reference links are live:
-**Screen Saver…** and **Clock Appearance…** navigate to the Screen Saver
-pane, which owns `screenSaver.style`/`screenSaver.clock` and the lock scene's
-clock options. A provider that is offline, empty, or fetching shows the
-available-soon note or skeletons; the Built-in row is never empty (T-18).
+**T229a / ADR 0240 status.** The pane ships the flat hero, effective-source
+preview, Show on all Workspaces, Fit, the eight online category rows, the
+Built-in default plus presets, and the portal Your Photos row. The two
+reference links are live: **Screen Saver…** and **Clock Appearance…** navigate
+to the Screen Saver pane, which owns `screenSaver.style`/`screenSaver.clock`
+and the lock scene's clock options. Clicking a tile enters an explicit apply
+state (old preview retained, tile/hero progress ring, deferred full download
+when needed); a failure keeps the previous wallpaper. A provider that is
+offline, empty, or fetching shows the available-soon note with **Try Again** or
+skeleton rows; the Built-in row is never empty (T-18).
 
 <a id="pane-screen-saver"></a>
 ### 5.15 Screen Saver

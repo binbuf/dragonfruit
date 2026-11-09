@@ -78,6 +78,7 @@ trait Wallpaper {
 
     fn refresh(&self) -> zbus::Result<String>;
     fn preload(&self) -> zbus::Result<String>;
+    fn fetch_item(&self, pageid: u64) -> zbus::Result<String>;
 }
 
 /// Serve the interface on `bus` exactly as [`dragonfruit_wallpaperd::dbus::run`]
@@ -117,6 +118,23 @@ fn seed(source: &MockSource, category: Category, pageids: &[u64]) {
         );
     }
     source.with_items(category, items);
+}
+
+/// Seed one deferred Space item with separate thumb/full URLs.
+fn seed_deferred(source: &MockSource, pageid: u64) {
+    let thumb = format!("https://images-assets.nasa.gov/{pageid}-thumb.jpg");
+    let full = format!("https://images-assets.nasa.gov/{pageid}-orig.jpg");
+    source.with_download(&thumb, b"thumb-bytes");
+    source.with_download(&full, b"full-bytes");
+    source.with_items(
+        Category::Space,
+        vec![MockSource::parsed_deferred_item(
+            Category::Space,
+            pageid,
+            &thumb,
+            &full,
+        )],
+    );
 }
 
 #[test]
@@ -189,10 +207,61 @@ fn preload_round_trips_properties_and_fires_the_change_signals() {
     assert!(items.next().is_some(), "ItemsChanged fires after the fetch");
 
     // A second Preload is a no-op (the cache is fresh): no extra catalogue reads
-    // beyond the first refresh's six categories.
+    // beyond the first refresh's eight categories.
     let before = source.catalogue_calls().len();
     proxy.preload().unwrap();
     assert_eq!(source.catalogue_calls().len(), before);
+
+    // Refresh is the explicit retry and forces a fetch even when fresh.
+    proxy.refresh().unwrap();
+    assert_eq!(source.catalogue_calls().len(), before * 2);
+}
+
+#[test]
+fn fetch_item_downloads_a_deferred_full_image_and_fires_items_changed() {
+    let bus = PrivateBus::start();
+    let (_dir, source, state) = fixture(None);
+    seed_deferred(&source, 21);
+    let _service = serve(&bus, state);
+    let client = bus.connect();
+    let proxy = WallpaperProxyBlocking::builder(&client)
+        .build()
+        .expect("proxy builds");
+
+    let snapshot: serde_json::Value = serde_json::from_str(&proxy.preload().unwrap()).unwrap();
+    let item = &snapshot["items"].as_array().unwrap()[0];
+    assert_eq!(item["provider"], "nasa");
+    assert!(item["thumbPath"]
+        .as_str()
+        .unwrap()
+        .ends_with("space/21-thumb.jpg"));
+    assert!(item["localPath"].is_null(), "the full image is deferred");
+
+    let signals =
+        zbus::blocking::Proxy::new(&client, DBUS_NAME, DBUS_PATH, INTERFACE).expect("signal proxy");
+    let mut items_changed = signals.receive_signal("ItemsChanged").unwrap();
+    let reply: serde_json::Value = serde_json::from_str(&proxy.fetch_item(21).unwrap()).unwrap();
+    assert_eq!(reply["ok"], true);
+    assert!(reply["source"].as_str().unwrap().ends_with("space/21.jpg"));
+    assert!(
+        items_changed.next().is_some(),
+        "FetchItem emits ItemsChanged"
+    );
+
+    // The standard property notification invalidates the proxy cache; wait for
+    // it to catch up, as the Preload test does.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut refreshed: serde_json::Value = serde_json::from_str(&proxy.items().unwrap()).unwrap();
+    while refreshed.as_array().unwrap()[0]["localPath"].is_null()
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        refreshed = serde_json::from_str(&proxy.items().unwrap()).unwrap();
+    }
+    assert!(refreshed.as_array().unwrap()[0]["localPath"]
+        .as_str()
+        .unwrap()
+        .ends_with("space/21.jpg"));
 }
 
 #[test]
@@ -248,6 +317,7 @@ fn the_interface_constants_are_served() {
         "<interface name=\"org.dragonfruit.Wallpaper1\">",
         "name=\"Preload\"",
         "name=\"Refresh\"",
+        "name=\"FetchItem\"",
         "name=\"StatusChanged\"",
         "name=\"ItemsChanged\"",
         "name=\"BuiltinDefaultSource\"",

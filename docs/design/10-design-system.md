@@ -49,12 +49,13 @@ ScrollView
 Shadow
 FocusRing
 Skeleton
+Spinner
 DragonfruitLogo
 ```
 
 The inventory is the QML module's actual surface, not a wish list. `MenuRow`
-and `ShortcutHint` are the shared menu anatomy; `Shadow`, `FocusRing`, and
-`Skeleton` are shared primitives rather than app-local copies;
+and `ShortcutHint` are the shared menu anatomy; `Shadow`, `FocusRing`,
+`Skeleton`, and `Spinner` are shared primitives rather than app-local copies;
 `WindowResizeGrips` is the shared resize affordance used by first-party
 windows.
 

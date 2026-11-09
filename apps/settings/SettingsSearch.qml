@@ -51,7 +51,9 @@ QtObject {
                             "gestures"],
         "displays": ["monitor", "screen", "resolution", "scale", "rotation",
                      "brightness", "night light", "refresh rate", "color"],
-        "wallpaper": ["background", "desktop picture", "photo", "image"],
+        "wallpaper": ["background", "desktop picture", "photo", "image",
+                      "featured", "abstract", "nature", "water", "cityscape",
+                      "earth", "space", "nasa", "scenery", "underwater"],
         "screen-saver": ["screensaver", "idle", "clock"],
         "notifications": ["alerts", "banners", "previews", "badges", "sounds"],
         "sound": ["audio", "volume", "speaker", "microphone", "output", "input",
@@ -106,7 +108,20 @@ QtObject {
         "privacy/camera": ["webcam", "camera access"],
         "privacy/microphone": ["mic", "microphone access"],
         "lock-screen/requirePassword": ["require password", "lock delay"],
-        "users-groups/users": ["user accounts", "accounts"]
+        "users-groups/users": ["user accounts", "accounts"],
+        "wallpaper/abstract": ["abstract", "pattern", "texture"],
+        "wallpaper/nature": ["nature", "landscape", "landscapes", "wildlife"],
+        "wallpaper/water": ["water", "ocean", "sea", "wave"],
+        "wallpaper/cityscapes": ["city", "cityscape", "skyline", "urban"],
+        "wallpaper/earth": ["earth", "planet", "satellite"],
+        "wallpaper/space": ["space", "nasa", "nebula", "galaxy", "stars",
+                            "astronomy"],
+        "wallpaper/scenery": ["scenery", "mountains", "landscape"],
+        "wallpaper/underwater": ["underwater", "ocean", "reef", "diving"],
+        "wallpaper/photos": ["photo", "add photo", "custom", "your photos"],
+        "wallpaper/builtin": ["default", "gradient", "colors", "built-in"],
+        "wallpaper/fit": ["fill", "fit", "stretch", "center"],
+        "wallpaper/showAll": ["all workspaces", "show on all"]
     })
 
     // Built from the map/catalog and rebuilt when the optional Online Accounts

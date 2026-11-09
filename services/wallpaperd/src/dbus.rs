@@ -7,9 +7,9 @@
 //!   `DefaultSource` (the fetched Featured default/fallback),
 //!   `BuiltinDefaultSource` (the resolved shipped `Default.jpg`), and `Items`
 //!   (the cached catalogue as JSON).
-//! * Methods `Refresh` (explicit, user-driven) and `Preload` (eager foreground
-//!   load for an open Wallpapers pane); both refresh only when the cache is
-//!   empty or stale.
+//! * Methods `Refresh` (explicit, forced user retry), `Preload` (eager
+//!   foreground load for an open Wallpapers pane, empty/stale only), and
+//!   `FetchItem(pageid)` (download one deferred full-resolution image).
 //! * Signals `ItemsChanged` and `StatusChanged`.
 //!
 //! T-18.1b wires System Settings and the shell to this interface. The service
@@ -89,9 +89,11 @@ impl Wallpaper1 {
         self.state.items_json()
     }
 
-    /// Explicit, user-driven refresh. Returns the JSON snapshot.
+    /// Explicit, user-driven refresh. Unlike `Preload`, this forces a fetch
+    /// even when the cache is fresh, so the pane's "Try Again" can recover
+    /// from an offline or stale state. Returns the JSON snapshot.
     async fn refresh(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) -> String {
-        let report = self.state.refresh_if_needed(now_secs());
+        let report = self.state.refresh(true, now_secs());
         emit_report(self, &emitter, report).await;
         self.state.snapshot_json()
     }
@@ -102,6 +104,28 @@ impl Wallpaper1 {
         let report = self.state.refresh_if_needed(now_secs());
         emit_report(self, &emitter, report).await;
         self.state.snapshot_json()
+    }
+
+    /// Download one deferred item's full-resolution image and persist it.
+    ///
+    /// The reply is a small JSON object: `{"ok":true,"pageid":N,"source":…}`
+    /// or `{"ok":false,"pageid":N,"error":…}`. A successful fetch emits
+    /// `ItemsChanged` so a caching consumer refreshes its catalogue.
+    async fn fetch_item(
+        &self,
+        pageid: u64,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> String {
+        let reply = self.state.fetch_item_json(pageid);
+        let ok = serde_json::from_str::<serde_json::Value>(&reply)
+            .ok()
+            .and_then(|value| value.get("ok").and_then(|ok| ok.as_bool()))
+            .unwrap_or(false);
+        if ok {
+            let _ = self.items_changed(&emitter).await;
+            let _ = Wallpaper1::notify_items_changed(&emitter).await;
+        }
+        reply
     }
 
     /// The catalogue changed (a first fill, or a refreshed set). The Rust method

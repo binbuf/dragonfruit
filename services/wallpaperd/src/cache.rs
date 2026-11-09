@@ -84,10 +84,19 @@ impl CacheLayout {
         self.root.join(category.slug())
     }
 
-    /// The path for one image: `<root>/<slug>/<pageid>.<ext>`.
+    /// The path for one full-resolution image: `<root>/<slug>/<pageid>.<ext>`.
     pub fn image_path(&self, category: Category, pageid: u64, extension: &str) -> PathBuf {
         self.category_dir(category)
             .join(format!("{pageid}.{extension}"))
+    }
+
+    /// The path for one grid thumbnail: `<root>/<slug>/<pageid>-thumb.<ext>`.
+    ///
+    /// Deferred sources (NASA) download only this file during the catalogue
+    /// fetch and fetch the full-resolution image on demand.
+    pub fn thumb_path(&self, category: Category, pageid: u64, extension: &str) -> PathBuf {
+        self.category_dir(category)
+            .join(format!("{pageid}-thumb.{extension}"))
     }
 
     /// Read `index.json`, falling back to an empty index on a missing or
@@ -106,8 +115,8 @@ impl CacheLayout {
         std::fs::write(self.index_path(), text)
     }
 
-    /// Write one downloaded image to `<category>/<pageid>.<ext>` and return the
-    /// path written.
+    /// Write one downloaded full-resolution image to
+    /// `<category>/<pageid>.<ext>` and return the path written.
     pub fn write_image(
         &self,
         category: Category,
@@ -119,6 +128,23 @@ impl CacheLayout {
         let dir = self.category_dir(category);
         std::fs::create_dir_all(&dir)?;
         let path = self.image_path(category, pageid, extension_for(mime, source_url));
+        std::fs::write(&path, bytes)?;
+        Ok(path)
+    }
+
+    /// Write one downloaded grid thumbnail to
+    /// `<category>/<pageid>-thumb.<ext>` and return the path written.
+    pub fn write_thumb(
+        &self,
+        category: Category,
+        pageid: u64,
+        mime: &str,
+        source_url: &str,
+        bytes: &[u8],
+    ) -> io::Result<PathBuf> {
+        let dir = self.category_dir(category);
+        std::fs::create_dir_all(&dir)?;
+        let path = self.thumb_path(category, pageid, extension_for(mime, source_url));
         std::fs::write(&path, bytes)?;
         Ok(path)
     }
@@ -164,6 +190,7 @@ mod tests {
     fn item(pageid: u64, category: Category, last_fetch: u64) -> WallpaperItem {
         WallpaperItem {
             pageid,
+            provider: "wikimedia".to_owned(),
             title: "File:X.jpg".to_owned(),
             artist: "A".to_owned(),
             license_short_name: "CC BY-SA 4.0".to_owned(),
@@ -175,6 +202,8 @@ mod tests {
             height: 1,
             mime: "image/jpeg".to_owned(),
             source_url: "https://u/x.jpg".to_owned(),
+            full_url: "https://u/x.jpg".to_owned(),
+            thumb_path: None,
             local_path: None,
             fetched_at: last_fetch,
         }
@@ -190,6 +219,10 @@ mod tests {
         assert_eq!(
             cache.image_path(Category::Underwater, 42, "jpg"),
             Path::new("/cache/dragonfruit/wallpapers/underwater/42.jpg")
+        );
+        assert_eq!(
+            cache.thumb_path(Category::Space, 42, "jpg"),
+            Path::new("/cache/dragonfruit/wallpapers/space/42-thumb.jpg")
         );
     }
 
@@ -241,6 +274,23 @@ mod tests {
             .unwrap();
         assert_eq!(path, dir.path().join("water/9.jpg"));
         assert_eq!(std::fs::read(&path).unwrap(), b"img");
+    }
+
+    #[test]
+    fn write_thumb_uses_the_thumb_suffix() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CacheLayout::new(dir.path());
+        let path = cache
+            .write_thumb(
+                Category::Space,
+                9,
+                "image/jpeg",
+                "https://u/9.jpg",
+                b"thumb",
+            )
+            .unwrap();
+        assert_eq!(path, dir.path().join("space/9-thumb.jpg"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"thumb");
     }
 
     #[test]
