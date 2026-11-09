@@ -27,14 +27,18 @@ pub mod cache;
 pub mod dbus;
 pub mod defaults;
 pub mod model;
+pub mod nasa;
 pub mod provider;
 pub mod source;
 pub mod wikipedia;
 
 pub use cache::{CacheLayout, Index, WEEK_SECS};
 pub use defaults::{install_default, resolve_default, DefaultResolver};
-pub use model::{Catalogue, Category, Status, WallpaperItem};
+pub use model::{Catalogue, Category, SourceKind, Status, WallpaperItem};
+pub use nasa::NasaSource;
 pub use provider::{
     fetch, now_secs, Provider, RefreshReport, ServiceState, WarmDecision, WarmReason,
 };
-pub use source::{ContentSource, HttpClient, MockSource, ParsedItem, UreqHttp, WikipediaSource};
+pub use source::{
+    ContentSource, HttpClient, LiveSource, MockSource, ParsedItem, UreqHttp, WikipediaSource,
+};

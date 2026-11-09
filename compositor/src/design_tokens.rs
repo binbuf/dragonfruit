@@ -670,6 +670,20 @@ pub mod component {
         pub const HEIGHT: f32 = 72.0_f32;
         pub const HIGHLIGHT_RATIO: f32 = 0.4_f32;
     }
+    pub mod spinner {
+        pub const SIZE: f32 = 16.0_f32;
+        pub const STROKE_WIDTH: f32 = 2.0_f32;
+        pub const SPEED: f32 = 900.0_f32;
+        pub const TRACK_OPACITY: f32 = 0.35_f32;
+    }
+    pub mod wallpaper {
+        pub const COLUMNS: f32 = 4.0_f32;
+        pub const TILE_GAP: f32 = 10.0_f32;
+        pub const TILE_ASPECT: f32 = 1.5_f32;
+        pub const APPLY_MIN_MS: f32 = 450.0_f32;
+        pub const HERO_WIDTH: f32 = 160.0_f32;
+        pub const HERO_HEIGHT: f32 = 100.0_f32;
+    }
     pub mod settings_category {
         pub const SIZE: f32 = 32.0_f32;
         pub const RADIUS_RATIO: f32 = 0.24_f32;

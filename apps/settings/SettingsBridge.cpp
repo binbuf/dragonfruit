@@ -43,6 +43,7 @@
 #include <QPainter>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUrl>
 
 namespace {
@@ -78,15 +79,6 @@ const QString kWallpaperService = QStringLiteral("org.dragonfruit.Wallpaper1");
 const QString kWallpaperPath = QStringLiteral("/org/dragonfruit/Wallpaper1");
 const QString kWallpaperInterface = QStringLiteral("org.dragonfruit.Wallpaper1");
 
-// The deterministic provider catalogue used by `DF_WALLPAPER_FIXTURE` (mirrors
-// `DF_SETTINGS_FIXTURE`). The first entry's `artist` deliberately carries HTML
-// so the pane's sanitization is exercised; both `localPath`s are scratch paths
-// the Image loader never has to resolve for the tests to pass.
-const char *kWallpaperFixtureItems = R"JSON([
-  {"pageid":1,"title":"File:Alpine Lake.jpg","artist":"<a href=\"https://example.org/Alice\">Alice Example</a>","licenseShortName":"CC BY-SA 4.0","licenseUrl":"https://creativecommons.org/licenses/by-sa/4.0/","pageUrl":"https://commons.wikimedia.org/wiki/File:Alpine_Lake.jpg","description":"An alpine lake","category":"nature","width":3840,"height":2160,"mime":"image/jpeg","sourceUrl":"https://example.org/a.jpg","localPath":"/tmp/dragonfruit-fixture-nature.jpg","fetchedAt":1},
-  {"pageid":2,"title":"File:Ocean Wave.jpg","artist":"Bob","licenseShortName":"CC BY 4.0","licenseUrl":"https://creativecommons.org/licenses/by/4.0/","pageUrl":"https://commons.wikimedia.org/wiki/File:Ocean_Wave.jpg","description":"An ocean wave","category":"water","width":3840,"height":2160,"mime":"image/jpeg","sourceUrl":"https://example.org/b.jpg","localPath":"/tmp/dragonfruit-fixture-water.jpg","fetchedAt":2}
-])JSON";
-
 // Render one original gradient preset in-memory (the same pixels the QML
 // preview shows).
 QImage renderGradient(const QColor &top, const QColor &bottom)
@@ -99,6 +91,37 @@ QImage renderGradient(const QColor &top, const QColor &bottom)
     painter.fillRect(image.rect(), gradient);
     painter.end();
     return image;
+}
+
+// One deterministic provider fixture entry. The first Nature entry's `artist`
+// deliberately carries HTML so the pane's sanitization is exercised.
+QJsonObject wallpaperFixtureItem(int pageid, const QString &title, const QString &category,
+                                 const QString &provider, const QString &artist,
+                                 const QString &licenseShortName, const QString &licenseUrl,
+                                 const QString &pageUrl, const QString &description,
+                                 const QString &thumbPath, const QString &localPath,
+                                 const QString &sourceUrl, const QString &fullUrl,
+                                 int width, int height)
+{
+    return QJsonObject{
+        { QStringLiteral("pageid"), pageid },
+        { QStringLiteral("provider"), provider },
+        { QStringLiteral("title"), title },
+        { QStringLiteral("artist"), artist },
+        { QStringLiteral("licenseShortName"), licenseShortName },
+        { QStringLiteral("licenseUrl"), licenseUrl },
+        { QStringLiteral("pageUrl"), pageUrl },
+        { QStringLiteral("description"), description },
+        { QStringLiteral("category"), category },
+        { QStringLiteral("width"), width },
+        { QStringLiteral("height"), height },
+        { QStringLiteral("mime"), QStringLiteral("image/jpeg") },
+        { QStringLiteral("sourceUrl"), sourceUrl },
+        { QStringLiteral("fullUrl"), fullUrl },
+        { QStringLiteral("thumbPath"), thumbPath },
+        { QStringLiteral("localPath"), localPath },
+        { QStringLiteral("fetchedAt"), 1 },
+    };
 }
 
 } // namespace
@@ -336,16 +359,23 @@ SettingsBridge::SettingsBridge(QObject *parent)
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
-    if (m_wallpaperFixture)
-        // The fixture is deterministic and in-process: seed the ready
-        // catalogue so a pane that opens before any test drives a status
+    if (m_wallpaperFixture) {
+        // The fixture is deterministic and in-process: generate real local
+        // images (so the pane's preview/apply path is exercised), then seed the
+        // ready catalogue so a pane that opens before any test drives a status
         // still has tiles, never a bus round trip.
+        buildWallpaperFixtureImages();
         setWallpaperFixture(QStringLiteral("ready"));
-    else
+    } else {
         connectWallpaperProvider();
+    }
 }
 
-SettingsBridge::~SettingsBridge() = default;
+SettingsBridge::~SettingsBridge()
+{
+    if (!m_wallpaperFixtureDir.isEmpty())
+        QDir(m_wallpaperFixtureDir).removeRecursively();
+}
 
 QVariantMap SettingsBridge::values() const
 {
@@ -897,16 +927,30 @@ void SettingsBridge::applyProviderItems(const QString &json)
         QVariantMap entry = value.toObject().toVariantMap();
         // The pane renders the attribution as plain text, but never trust the
         // provider's HTML: strip tags from the free-text fields (T-18.2).
-        for (const char *key : { "artist", "description" }) {
+        for (const char *key : { "title", "artist", "description" }) {
             const QString name = QString::fromLatin1(key);
             if (entry.contains(name))
                 entry.insert(name, sanitizeHtmlText(entry.value(name).toString()));
         }
         const QString localPath = entry.value(QStringLiteral("localPath")).toString();
+        QString thumbPath = entry.value(QStringLiteral("thumbPath")).toString();
+        if (thumbPath.isEmpty())
+            thumbPath = localPath;
+        const QString thumbUrl = thumbPath.isEmpty()
+                ? QString()
+                : QUrl::fromLocalFile(thumbPath).toString();
+        const QString previewUrl = localPath.isEmpty()
+                ? thumbUrl
+                : QUrl::fromLocalFile(localPath).toString();
+        // `source` stays the full-resolution path the compositor consumes;
+        // `url` is the grid thumbnail. `previewUrl` is the best image the hero
+        // can show before a deferred full-resolution download.
         entry.insert(QStringLiteral("source"), localPath);
-        entry.insert(QStringLiteral("url"),
-                     localPath.isEmpty() ? QString()
-                                         : QUrl::fromLocalFile(localPath).toString());
+        entry.insert(QStringLiteral("url"), thumbUrl);
+        entry.insert(QStringLiteral("thumbUrl"), thumbUrl);
+        entry.insert(QStringLiteral("previewUrl"), previewUrl);
+        if (!entry.contains(QStringLiteral("provider")))
+            entry.insert(QStringLiteral("provider"), QStringLiteral("wikimedia"));
         items.append(entry);
     }
     if (items == m_providerItems)
@@ -1705,20 +1749,255 @@ void SettingsBridge::setNetworkFixture(const QString &mode)
         m_network->setFixture(mode);
 }
 
+void SettingsBridge::buildWallpaperFixtureImages()
+{
+    m_wallpaperFixtureDir =
+        QDir::tempPath()
+        + QStringLiteral("/dragonfruit-wallpaper-fixture-%1")
+              .arg(QCoreApplication::applicationPid());
+    QDir().mkpath(m_wallpaperFixtureDir);
+    for (int pageid = 1; pageid <= 12; ++pageid) {
+        const QColor top = QColor::fromHsv((pageid * 37) % 360, 150, 190);
+        const QColor bottom = QColor::fromHsv((pageid * 37 + 42) % 360, 205, 95);
+        const QImage full = renderGradient(top, bottom)
+                                .scaled(480, 300, Qt::IgnoreAspectRatio,
+                                        Qt::SmoothTransformation);
+        full.save(wallpaperFixturePath(pageid, false));
+        full.scaled(240, 150, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+            .save(wallpaperFixturePath(pageid, true));
+    }
+}
+
+QString SettingsBridge::wallpaperFixturePath(int pageid, bool thumb) const
+{
+    return m_wallpaperFixtureDir
+        + QStringLiteral("/%1%2.png")
+              .arg(pageid)
+              .arg(thumb ? QStringLiteral("-thumb") : QString());
+}
+
+QString SettingsBridge::wallpaperFixtureJson(const QString &mode) const
+{
+    QJsonArray items;
+    const auto add = [this, &items](int pageid, const QString &title,
+                                    const QString &category, const QString &provider,
+                                    const QString &artist, const QString &license,
+                                    const QString &licenseUrl, const QString &pageUrl,
+                                    const QString &description, bool deferred) {
+        const QString thumb = wallpaperFixturePath(pageid, true);
+        const QString local = deferred ? QString() : wallpaperFixturePath(pageid, false);
+        items.append(wallpaperFixtureItem(
+            pageid, title, category, provider, artist, license, licenseUrl, pageUrl,
+            description, thumb, local,
+            QStringLiteral("https://example.org/%1-thumb.jpg").arg(pageid),
+            QStringLiteral("https://example.org/%1.jpg").arg(pageid), 3840, 2160));
+    };
+
+    if (mode == QStringLiteral("ready")) {
+        add(1, QStringLiteral("File:Alpine Lake.jpg"), QStringLiteral("nature"),
+            QStringLiteral("wikimedia"),
+            QStringLiteral("<a href=\"https://example.org/Alice\">Alice Example</a>"),
+            QStringLiteral("CC BY-SA 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by-sa/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Alpine_Lake.jpg"),
+            QStringLiteral("An alpine lake"), false);
+        add(2, QStringLiteral("File:Ocean Wave.jpg"), QStringLiteral("water"),
+            QStringLiteral("wikimedia"), QStringLiteral("Bob"),
+            QStringLiteral("CC BY 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Ocean_Wave.jpg"),
+            QStringLiteral("An ocean wave"), false);
+    } else if (mode == QStringLiteral("categories")) {
+        add(1, QStringLiteral("File:Alpine Lake.jpg"), QStringLiteral("nature"),
+            QStringLiteral("wikimedia"), QStringLiteral("Alice Example"),
+            QStringLiteral("CC BY-SA 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by-sa/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Alpine_Lake.jpg"),
+            QStringLiteral("An alpine lake"), false);
+        add(2, QStringLiteral("File:Ocean Wave.jpg"), QStringLiteral("water"),
+            QStringLiteral("wikimedia"), QStringLiteral("Bob"),
+            QStringLiteral("CC BY 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Ocean_Wave.jpg"),
+            QStringLiteral("An ocean wave"), false);
+        add(3, QStringLiteral("File:Abstract Glass.jpg"), QStringLiteral("abstract"),
+            QStringLiteral("wikimedia"), QStringLiteral("Carol"),
+            QStringLiteral("CC0"), QStringLiteral("https://creativecommons.org/publicdomain/zero/1.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Abstract_Glass.jpg"),
+            QStringLiteral("Abstract glass"), false);
+        add(4, QStringLiteral("File:Night City.jpg"), QStringLiteral("cityscapes"),
+            QStringLiteral("wikimedia"), QStringLiteral("Dan"),
+            QStringLiteral("CC BY 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Night_City.jpg"),
+            QStringLiteral("A city at night"), false);
+        add(5, QStringLiteral("File:Blue Marble.jpg"), QStringLiteral("earth"),
+            QStringLiteral("wikimedia"), QStringLiteral("NASA"),
+            QStringLiteral("Public domain"), QStringLiteral("https://commons.wikimedia.org/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Blue_Marble.jpg"),
+            QStringLiteral("Earth from space"), false);
+        add(6, QStringLiteral("Space Nebula"), QStringLiteral("space"),
+            QStringLiteral("nasa"), QStringLiteral("NASA/JPL-Caltech"),
+            QStringLiteral("Public domain (NASA)"),
+            QStringLiteral("https://www.nasa.gov/nasa-brand-center/images-and-media/"),
+            QStringLiteral("https://images.nasa.gov/details/PIA14417"),
+            QStringLiteral("A nebula seen by NASA"), true);
+        add(7, QStringLiteral("File:Mountain Range.jpg"), QStringLiteral("scenery"),
+            QStringLiteral("wikimedia"), QStringLiteral("Eve"),
+            QStringLiteral("CC BY-SA 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by-sa/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Mountain_Range.jpg"),
+            QStringLiteral("A mountain range"), false);
+        add(8, QStringLiteral("File:Coral Reef.jpg"), QStringLiteral("underwater"),
+            QStringLiteral("wikimedia"), QStringLiteral("Frank"),
+            QStringLiteral("CC BY 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Coral_Reef.jpg"),
+            QStringLiteral("A coral reef"), false);
+    } else if (mode == QStringLiteral("many")) {
+        for (int i = 1; i <= 6; ++i) {
+            add(i, QStringLiteral("File:Alpine Lake %1.jpg").arg(i),
+                QStringLiteral("nature"), QStringLiteral("wikimedia"),
+                QStringLiteral("Alice Example"), QStringLiteral("CC BY-SA 4.0"),
+                QStringLiteral("https://creativecommons.org/licenses/by-sa/4.0/"),
+                QStringLiteral("https://commons.wikimedia.org/wiki/File:Alpine_Lake.jpg"),
+                QStringLiteral("An alpine lake"), false);
+        }
+        add(7, QStringLiteral("File:Ocean Wave.jpg"), QStringLiteral("water"),
+            QStringLiteral("wikimedia"), QStringLiteral("Bob"),
+            QStringLiteral("CC BY 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Ocean_Wave.jpg"),
+            QStringLiteral("An ocean wave"), false);
+    } else if (mode == QStringLiteral("deferred")
+               || mode == QStringLiteral("deferred-fail")) {
+        add(1, QStringLiteral("File:Alpine Lake.jpg"), QStringLiteral("nature"),
+            QStringLiteral("wikimedia"), QStringLiteral("Alice Example"),
+            QStringLiteral("CC BY-SA 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by-sa/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Alpine_Lake.jpg"),
+            QStringLiteral("An alpine lake"), false);
+        add(2, QStringLiteral("File:Ocean Wave.jpg"), QStringLiteral("water"),
+            QStringLiteral("wikimedia"), QStringLiteral("Bob"),
+            QStringLiteral("CC BY 4.0"),
+            QStringLiteral("https://creativecommons.org/licenses/by/4.0/"),
+            QStringLiteral("https://commons.wikimedia.org/wiki/File:Ocean_Wave.jpg"),
+            QStringLiteral("An ocean wave"), false);
+        add(6, QStringLiteral("Space Nebula"), QStringLiteral("space"),
+            QStringLiteral("nasa"), QStringLiteral("NASA/JPL-Caltech"),
+            QStringLiteral("Public domain (NASA)"),
+            QStringLiteral("https://www.nasa.gov/nasa-brand-center/images-and-media/"),
+            QStringLiteral("https://images.nasa.gov/details/PIA14417"),
+            QStringLiteral("A nebula seen by NASA"), true);
+    }
+    return QString::fromUtf8(QJsonDocument(items).toJson(QJsonDocument::Compact));
+}
+
 void SettingsBridge::setWallpaperFixture(const QString &status)
 {
     if (!m_wallpaperFixture)
         return;
-    const bool ready = status == QStringLiteral("ready");
-    applyProviderStatus(status);
-    applyProviderItems(ready ? QString::fromLatin1(kWallpaperFixtureItems)
-                             : QStringLiteral("[]"));
-    const QString firstPath =
-        ready ? QStringLiteral("/tmp/dragonfruit-fixture-nature.jpg") : QString();
-    applyProviderDefault(firstPath);
+    m_wallpaperFixtureMode = status;
+    QString providerStatus = status;
+    if (status == QStringLiteral("categories") || status == QStringLiteral("many")
+        || status == QStringLiteral("deferred")
+        || status == QStringLiteral("deferred-fail")) {
+        providerStatus = QStringLiteral("ready");
+    }
+    applyProviderStatus(providerStatus);
+    const bool withItems = providerStatus == QStringLiteral("ready");
+    applyProviderItems(withItems ? wallpaperFixtureJson(status) : QStringLiteral("[]"));
+    applyProviderDefault(withItems ? wallpaperFixturePath(1, false) : QString());
     // Leave `BuiltinDefaultSource` empty so the shared shipped-asset resolver
     // supplies the Built-in "Default" tile exactly as production does.
     applyProviderBuiltin(QString());
+}
+
+void SettingsBridge::refreshWallpapers()
+{
+    if (m_wallpaperFixture) {
+        const QString mode = (m_wallpaperFixtureMode == QStringLiteral("offline")
+                              || m_wallpaperFixtureMode == QStringLiteral("fetching")
+                              || m_wallpaperFixtureMode == QStringLiteral("error"))
+                ? QStringLiteral("ready")
+                : m_wallpaperFixtureMode;
+        applyProviderStatus(QStringLiteral("fetching"));
+        QTimer::singleShot(500, this, [this, mode] { setWallpaperFixture(mode); });
+        return;
+    }
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    const QDBusMessage call = QDBusMessage::createMethodCall(
+        kWallpaperService, kWallpaperPath, kWallpaperInterface, QStringLiteral("Refresh"));
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call, 120000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this](QDBusPendingCallWatcher *watcher) {
+                watcher->deleteLater();
+                refreshWallpaperProvider();
+            });
+}
+
+void SettingsBridge::fetchWallpaperItem(int pageid)
+{
+    if (m_wallpaperFixture) {
+        if (m_wallpaperFixtureMode == QStringLiteral("deferred-fail")) {
+            QTimer::singleShot(300, this, [this, pageid] {
+                emit wallpaperFetchFinished(
+                    pageid, false, QStringLiteral("fixture download failed"));
+            });
+            return;
+        }
+        const QString path = wallpaperFixturePath(pageid, false);
+        bool found = false;
+        for (int i = 0; i < m_providerItems.size(); ++i) {
+            QVariantMap entry = m_providerItems.at(i).toMap();
+            if (entry.value(QStringLiteral("pageid")).toInt() != pageid)
+                continue;
+            entry.insert(QStringLiteral("localPath"), path);
+            entry.insert(QStringLiteral("source"), path);
+            entry.insert(QStringLiteral("previewUrl"), QUrl::fromLocalFile(path).toString());
+            m_providerItems.replace(i, entry);
+            found = true;
+            break;
+        }
+        if (found)
+            emit providerChanged();
+        QTimer::singleShot(300, this, [this, pageid, found] {
+            emit wallpaperFetchFinished(
+                pageid, found,
+                found ? QString() : QStringLiteral("fixture item not found"));
+        });
+        return;
+    }
+
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        emit wallpaperFetchFinished(
+            pageid, false, QStringLiteral("The wallpaper service is not available."));
+        return;
+    }
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        kWallpaperService, kWallpaperPath, kWallpaperInterface, QStringLiteral("FetchItem"));
+    call << QVariant::fromValue<qulonglong>(pageid);
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call, 60000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, pageid](QDBusPendingCallWatcher *watcher) {
+                const QDBusMessage reply = watcher->reply();
+                bool ok = false;
+                QString message;
+                if (reply.type() == QDBusMessage::ErrorMessage) {
+                    message = reply.errorMessage();
+                } else if (!reply.arguments().isEmpty()) {
+                    const QJsonObject object = QJsonDocument::fromJson(
+                        reply.arguments().first().toString().toUtf8()).object();
+                    ok = object.value(QStringLiteral("ok")).toBool();
+                    message = object.value(QStringLiteral("error")).toString();
+                }
+                refreshWallpaperProvider();
+                emit wallpaperFetchFinished(pageid, ok, message);
+                watcher->deleteLater();
+            });
 }
 
 QString SettingsBridge::sanitizeHtmlText(const QString &value)

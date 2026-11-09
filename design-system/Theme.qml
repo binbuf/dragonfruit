@@ -1457,6 +1457,20 @@ QtObject {
             readonly property int height: 72
             readonly property real highlightRatio: 0.4
         }
+        readonly property var spinner: QtObject {
+            readonly property int size: 16
+            readonly property int strokeWidth: 2
+            readonly property int speed: 900
+            readonly property real trackOpacity: 0.35
+        }
+        readonly property var wallpaper: QtObject {
+            readonly property int columns: 4
+            readonly property int tileGap: 10
+            readonly property real tileAspect: 1.5
+            readonly property int applyMinMs: 450
+            readonly property int heroWidth: 160
+            readonly property int heroHeight: 100
+        }
         readonly property var settingsCategory: QtObject {
             readonly property int size: 32
             readonly property real radiusRatio: 0.24
