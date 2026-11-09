@@ -8,6 +8,9 @@
 CARGO ?= cargo
 CMAKE ?= cmake
 CTEST ?= ctest
+# Parallel ctest level for `qml-test`/`verify-fast`. Four keeps the QML and
+# animation suites from fighting over the CPU; raise it on a quiet host.
+CTEST_JOBS ?= 4
 BUILD_DIR ?= build
 SOAK_CYCLES ?= 100
 DEMO_ARGS ?=
@@ -58,8 +61,8 @@ export RUSTFLAGS := $(RUSTFLAGS) -L $(DF_DEVROOT)
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates \
+.PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test qml-test-serial \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast gate-checks \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
         t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare \
@@ -72,7 +75,8 @@ help:
 	@echo "  make build    — build everything (Rust workspace + Qt/CMake)"
 	@echo "  make test     — run all tests (cargo + ctest + gallery visual regression)"
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
-	@echo "  make gates    — the full release gate: e2e + qml-test"
+	@echo "  make gates    — the full release gate: e2e + serial qml-test"
+	@echo "  make verify-fast — same gate, parallel qml-test (CTEST_JOBS=$(CTEST_JOBS))"
 	@echo "  make t21-doctor — preflight a T-21 nested/host capture session"
 	@echo "  make idle-trace — T-03.1a 60 s idle/animation frame budget trace"
 	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
@@ -179,10 +183,9 @@ configure:
 
 test: cargo-test qml-test visual-test
 
-# The release gate pair. `make e2e` is the harness verify; `make qml-test`
-# covers the shell/QML half. Run it once on the final tree, not after
-# docs-only edits.
-gates:
+# The checks that do not need a built tree or a display. Kept in one target so
+# `gates`, `verify-fast`, and any future gate cannot drift apart.
+gate-checks:
 	$(MAKE) glass-selftest
 	$(MAKE) glass-presets-check
 	$(MAKE) menubar-veil-check
@@ -195,6 +198,18 @@ gates:
 	$(MAKE) check-naming
 	$(MAKE) check-assets
 	$(MAKE) distro-contract-check
+
+# The release gate. ctest stays serial so a release run has deterministic
+# timing and no two QML/animation suites compete for the CPU. Run it once on
+# the final tree, not after docs-only edits.
+gates: gate-checks
+	$(MAKE) e2e
+	$(MAKE) qml-test-serial
+
+# The per-task verify: the same coverage as `gates`, but ctest runs in
+# parallel. This is the harness `verifyCommand`; `gates` remains the
+# deterministic release/phase-boundary run.
+verify-fast: gate-checks
 	$(MAKE) e2e
 	$(MAKE) qml-test
 
@@ -825,6 +840,11 @@ dock-icon-mask-capture: build
 	bash scripts/capture-dock-icon-mask.sh
 
 qml-test:
+	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
+	$(CMAKE) --build $(BUILD_DIR) >/dev/null
+	$(CTEST) --test-dir $(BUILD_DIR) -j$(CTEST_JOBS) --output-on-failure
+
+qml-test-serial:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
 	$(CMAKE) --build $(BUILD_DIR) >/dev/null
 	$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure
