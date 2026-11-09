@@ -1875,6 +1875,23 @@ Item {
             fuzzyCompare(art.x, tile.x, 0.001);
         }
 
+        // A themed SVG is decoded at the physical artwork size, not at its
+        // intrinsic size, so a 16/48px source is never upscaled into a
+        // pixelated tile. The Canvas primes the same cache entry.
+        function test_themed_artwork_decodes_at_the_physical_icon_size() {
+            var glyph = make(glyphComponent, {
+                kind: "app", name: "Square", size: 48,
+                iconPath: assetPath("icon-square.svg")
+            });
+            var loader = findChild(glyph, "iconLoader");
+            verify(loader !== null);
+            compare(loader.sourceSize.width, Math.ceil(glyph.artworkPixelSize));
+            compare(loader.sourceSize.height, Math.ceil(glyph.artworkPixelSize));
+            verify(loader.sourceSize.width >= glyph.size * 2,
+                   "the source is at least 2x the resting tile");
+            glyph.destroy();
+        }
+
         // T-14.7w: a full-bleed square icon is clipped to the tile squircle —
         // the corners are transparent, the artwork reaches the tile edge, and
         // the centre is painted. The mask is a Canvas clip, so the headless

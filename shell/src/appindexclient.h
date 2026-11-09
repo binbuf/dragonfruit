@@ -64,8 +64,8 @@ public:
     QString subscribe(const QString &interests = QStringLiteral("identity")) const;
 
     // Resolve an icon name to a themed file path for `size` (default: the
-    // service's record size). Empty when no theme provides it.
-    QString iconPath(const QString &name, int size = 128) const;
+    // service's record size, 256). Empty when no theme provides it.
+    QString iconPath(const QString &name, int size = 256) const;
 
     // T230: bind a focused window's DBusMenu registration to the compositor's
     // app identity. app-index re-keys and re-publishes the bridge model so the

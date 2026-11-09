@@ -12,24 +12,60 @@
 //! 3. `hicolor` is always the final theme fallback;
 //! 4. the `pixmaps` directories are the last resort.
 //!
-//! Within a theme, a size directory closest to the requested size wins
-//! (an exact match first, then `scalable`); `.svg` beats `.png` beats `.xpm`.
-//! The lookup is pure over the filesystem so tests drive it against a fixture
-//! theme tree.
+//! Within a theme, the highest-fidelity directory wins: a `Type=Scalable`
+//! directory (rendered from SVG at any size), then the smallest raster at or
+//! above the requested size (downscaling keeps detail), then the largest
+//! available raster. Directory metadata comes from `index.theme`, so themes
+//! such as Breeze that name directories `apps/16`, `apps/48`, ... rank by
+//! their declared `Size=` instead of index order. `.svg` beats `.png` beats
+//! `.xpm`. The lookup is pure over the filesystem so tests drive it against a
+//! fixture theme tree.
 //!
 //! `Enumerate` resolves the icon for every installed entry, so the lookup is
 //! memoized and its per-theme size directories and directory listings are
 //! cached; without that, a cold enumeration of ~265 entries took ~8s.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// The memoized result of one lookup.
 type LookupCache = Arc<Mutex<HashMap<(String, i32), Option<PathBuf>>>>;
-/// Per-theme candidate size directories: `(size base, directory path)`, where
-/// the base is what `size_rank` parses (`48x48`, `scalable`, ...).
-type SizeDirCache = Arc<Mutex<HashMap<PathBuf, Vec<(String, PathBuf)>>>>;
+/// One icon directory declared by a theme, with the metadata that ranks it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SizeDir {
+    path: PathBuf,
+    /// The nominal logical size from `index.theme` (`Size=`), or parsed from
+    /// the directory name when the theme has no section for it.
+    size: i32,
+    /// The pixel scale from `index.theme` (`Scale=`, e.g. `2` for `@2x`).
+    scale: i32,
+    /// True for `Type=Scalable`: the directory holds resolution-independent
+    /// artwork (normally SVG).
+    scalable: bool,
+}
+
+impl SizeDir {
+    /// Rank this directory for a request in pixels. Lower is better.
+    ///
+    /// A scalable directory always wins: it can be rendered at the requested
+    /// size without upscaling. Among rasters, a source at or above the request
+    /// wins (downscaling preserves detail); the smallest such source is best,
+    /// and when none is large enough the largest available is the least bad.
+    fn rank(&self, requested: i32) -> (u8, u8, i32, i32) {
+        let effective = self.size.max(1) * self.scale.max(1);
+        if self.scalable {
+            (0, 0, (effective - requested).abs(), -effective)
+        } else if effective >= requested {
+            (1, 0, effective - requested, -effective)
+        } else {
+            (1, 1, requested - effective, -effective)
+        }
+    }
+}
+
+/// Per-theme candidate icon directories, ranked per request.
+type SizeDirCache = Arc<Mutex<HashMap<PathBuf, Vec<SizeDir>>>>;
 /// Immediate subdirectory listings, so repeated lookups do not re-scan.
 type ListingCache = Arc<Mutex<HashMap<PathBuf, Vec<PathBuf>>>>;
 
@@ -108,9 +144,10 @@ impl IconTheme {
         }
     }
 
-    /// Resolve `name` to a file, preferring an icon directory nearest `size`.
-    /// Returns `None` when no theme or pixmap provides the name. Results are
-    /// memoized for the life of the resolver.
+    /// Resolve `name` to a file, preferring the highest-fidelity icon
+    /// directory for `size` (scalable, then the smallest raster at or above
+    /// `size`). Returns `None` when no theme or pixmap provides the name.
+    /// Results are memoized for the life of the resolver.
     pub fn lookup(&self, name: &str, size: i32) -> Option<PathBuf> {
         let key = (name.to_owned(), size);
         if let Some(cached) = lock(&self.hits).get(&key) {
@@ -156,19 +193,14 @@ impl IconTheme {
     }
 
     fn find_in_theme(&self, theme_dir: &Path, name: &str, size: i32) -> Option<PathBuf> {
-        let mut candidates: Vec<(i32, bool, PathBuf)> = self
+        let mut candidates: Vec<((u8, u8, i32, i32), PathBuf)> = self
             .size_dirs(theme_dir)
             .into_iter()
-            .map(|(base, dir)| {
-                let (distance, scalable) = size_rank(&base, size);
-                (distance, scalable, dir)
-            })
+            .map(|dir| (dir.rank(size), dir.path))
             .collect();
-        // Closest size first; an exact raster match, then scalable, then
-        // nearer raster directories.
-        candidates.sort_by_key(|(distance, scalable, _)| (*distance, !*scalable));
+        candidates.sort_by_key(|(rank, _)| *rank);
 
-        for (_, _, dir) in candidates {
+        for (_, dir) in candidates {
             if let Some(path) = self.lookup_in_dir(&dir, name) {
                 return Some(path);
             }
@@ -180,35 +212,30 @@ impl IconTheme {
         None
     }
 
-    /// The candidate size directories of a theme, cached. An `index.theme`
-    /// names the real subdirectories (e.g. `48x48/apps`); without one, the
-    /// immediate subdirectories are scanned. The returned base is the size
-    /// component the caller ranks against the requested size.
-    fn size_dirs(&self, theme_dir: &Path) -> Vec<(String, PathBuf)> {
+    /// The candidate icon directories of a theme, cached. An `index.theme`
+    /// names the real subdirectories (e.g. `48x48/apps`, `apps/48`) together
+    /// with their declared `Size`/`Scale`/`Type`; without one, the immediate
+    /// subdirectories are scanned and their names parsed.
+    fn size_dirs(&self, theme_dir: &Path) -> Vec<SizeDir> {
         if let Some(cached) = lock(&self.size_dirs).get(theme_dir) {
             return cached.clone();
         }
-        let mut candidates: Vec<(String, PathBuf)> = Vec::new();
-        match index_theme_directories(theme_dir) {
-            Some(directories) => {
-                for rel in directories {
-                    let base = rel.split('/').next().unwrap_or(&rel).to_owned();
-                    let dir = theme_dir.join(&rel);
-                    candidates.push((base, dir));
-                }
-            }
+        let candidates = match index_theme_size_dirs(theme_dir) {
+            Some(directories) => directories,
             None => {
+                let mut scanned = Vec::new();
                 if let Ok(read) = std::fs::read_dir(theme_dir) {
                     for item in read.flatten() {
                         if !item.path().is_dir() {
                             continue;
                         }
                         let name = item.file_name().to_string_lossy().into_owned();
-                        candidates.push((name, item.path()));
+                        scanned.push(size_dir_from_name(theme_dir, &name));
                     }
                 }
+                scanned
             }
-        }
+        };
         lock(&self.size_dirs).insert(theme_dir.to_path_buf(), candidates.clone());
         candidates
     }
@@ -313,24 +340,133 @@ fn read_gtk_icon_theme(path: &Path) -> Option<String> {
     None
 }
 
-/// The `Directories=` list of an `index.theme`, if present and non-empty.
-fn index_theme_directories(theme_dir: &Path) -> Option<Vec<String>> {
+/// The icon directories declared by an `index.theme`, with their metadata.
+///
+/// `Directories=` and `ScaledDirectories=` name the real paths; each path's
+/// own section carries `Size=`, `Scale=`, and `Type=`. Themes such as Breeze
+/// use `apps/16`, `apps/48`, ... so parsing only the first path component
+/// cannot rank them (the first component is always `apps`). Without this
+/// metadata the lookup fell back to index order and picked `apps/16`.
+fn index_theme_size_dirs(theme_dir: &Path) -> Option<Vec<SizeDir>> {
     let contents = std::fs::read_to_string(theme_dir.join("index.theme")).ok()?;
+
+    #[derive(Default)]
+    struct Meta {
+        size: Option<i32>,
+        scale: Option<i32>,
+        scalable: Option<bool>,
+    }
+
+    let mut section = String::new();
+    let mut sections: HashMap<String, Meta> = HashMap::new();
+    let mut directories: Vec<String> = Vec::new();
+    let mut scaled_directories: Vec<String> = Vec::new();
+
     for line in contents.lines() {
         let line = line.trim();
-        if let Some(value) = line.strip_prefix("Directories=") {
-            let dirs: Vec<String> = value
-                .split(',')
-                .map(str::trim)
-                .filter(|part| !part.is_empty())
-                .map(str::to_owned)
-                .collect();
-            if !dirs.is_empty() {
-                return Some(dirs);
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            section = name.trim().to_owned();
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        if section == "Icon Theme" {
+            match key {
+                "Directories" => directories = comma_list(value),
+                "ScaledDirectories" => scaled_directories = comma_list(value),
+                _ => {}
+            }
+        } else if !section.is_empty() {
+            let meta = sections.entry(section.clone()).or_default();
+            match key {
+                "Size" => meta.size = value.parse().ok(),
+                "Scale" => meta.scale = value.parse().ok(),
+                "Type" => meta.scalable = Some(value.eq_ignore_ascii_case("Scalable")),
+                _ => {}
             }
         }
     }
-    None
+
+    if directories.is_empty() && scaled_directories.is_empty() {
+        return None;
+    }
+
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for rel in directories.into_iter().chain(scaled_directories) {
+        if !seen.insert(rel.clone()) {
+            continue;
+        }
+        let from_name = size_dir_from_name(theme_dir, &rel);
+        let meta = sections.get(&rel);
+        out.push(SizeDir {
+            path: from_name.path,
+            size: meta.and_then(|m| m.size).unwrap_or(from_name.size),
+            scale: meta.and_then(|m| m.scale).unwrap_or(from_name.scale),
+            scalable: meta.and_then(|m| m.scalable).unwrap_or(from_name.scalable),
+        });
+    }
+    Some(out)
+}
+
+fn comma_list(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Build a [`SizeDir`] from a theme-relative directory name when the theme
+/// does not describe it. Both `48x48/apps` and Breeze's `apps/48` are
+/// understood, as are `@2x`/`@3x` scaled directories.
+fn size_dir_from_name(theme_dir: &Path, rel: &str) -> SizeDir {
+    let mut size = 0;
+    let mut scale = 1;
+    let mut scalable = false;
+    for part in rel.split('/') {
+        let lower = part.to_ascii_lowercase();
+        if lower == "scalable" || lower == "symbolic" {
+            scalable = true;
+            continue;
+        }
+        let (base, part_scale) = match lower.split_once('@') {
+            Some((base, suffix)) => {
+                let factor = suffix
+                    .trim_end_matches('x')
+                    .parse::<i32>()
+                    .ok()
+                    .filter(|value| *value > 0);
+                (base, factor)
+            }
+            None => (lower.as_str(), None),
+        };
+        if let Some(factor) = part_scale {
+            scale = factor;
+        }
+        if size == 0 {
+            if let Some(value) = base
+                .split(|c: char| !c.is_ascii_digit())
+                .find(|part| !part.is_empty())
+                .and_then(|part| part.parse::<i32>().ok())
+            {
+                size = value;
+            }
+        }
+    }
+    SizeDir {
+        path: theme_dir.join(rel),
+        size,
+        scale,
+        scalable,
+    }
 }
 
 /// The `Inherits=` list of an `index.theme`.
@@ -351,31 +487,6 @@ fn index_theme_inherits(index: &Path) -> Option<Vec<String>> {
         }
     }
     None
-}
-
-/// Rank a size directory: exact matches first, then `scalable`, then the
-/// nearest raster directory. `size` is the requested size; a `0` request only
-/// orders exact-vs-scalable, and the caller re-sorts per request.
-fn size_rank(dir_name: &str, size: i32) -> (i32, bool) {
-    let base = dir_name.split('/').next().unwrap_or(dir_name);
-    if base.eq_ignore_ascii_case("scalable") || base.eq_ignore_ascii_case("symbolic") {
-        return (1, true);
-    }
-    let number: Option<i32> = base
-        .split(|c: char| !c.is_ascii_digit())
-        .find(|part| !part.is_empty())
-        .and_then(|part| part.parse().ok());
-    match number {
-        Some(value) => {
-            let distance = (value - size).abs();
-            if distance == 0 {
-                (0, false)
-            } else {
-                (2 + distance, false)
-            }
-        }
-        None => (i32::MAX / 2, false),
-    }
 }
 
 #[cfg(test)]
@@ -424,40 +535,113 @@ mod tests {
     }
 
     #[test]
-    fn an_exact_size_beats_scalable_and_the_nearest_raster_wins_without_one() {
-        let root = temp_dir("near");
+    fn scalable_artwork_beats_a_raster_even_at_the_exact_size() {
+        let root = temp_dir("scalable-wins");
         touch(&root.join("hicolor/16x16/apps/firefox.png"));
-        touch(&root.join("hicolor/64x64/apps/firefox.png"));
+        touch(&root.join("hicolor/48x48/apps/firefox.png"));
         touch(&root.join("hicolor/scalable/apps/firefox.svg"));
 
-        let scalable_only = IconTheme::from_roots([root.clone()], ["hicolor".to_owned()], []);
-        // No exact 48: scalable wins over the 64px raster.
+        let theme = IconTheme::from_roots([root.clone()], ["hicolor".to_owned()], []);
+        // The SVG can be rendered at any size, including the 2x physical size
+        // the Dock needs; a fixed 48px raster cannot.
         assert_eq!(
-            scalable_only.lookup("firefox", 48).unwrap(),
+            theme.lookup("firefox", 48).unwrap(),
             root.join("hicolor/scalable/apps/firefox.svg")
         );
 
-        // With an exact 48px directory the raster exact match wins (a fresh
-        // resolver; the live theme does not change during a session).
-        touch(&root.join("hicolor/48x48/apps/firefox.png"));
-        let with_exact = IconTheme::from_roots([root.clone()], ["hicolor".to_owned()], []);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn prefers_the_smallest_raster_at_or_above_the_request_then_the_largest() {
+        let root = temp_dir("raster-quality");
+        touch(&root.join("hicolor/16x16/apps/small.png"));
+        touch(&root.join("hicolor/128x128/apps/small.png"));
+        touch(&root.join("hicolor/512x512/apps/small.png"));
+        let theme = IconTheme::from_roots([root.clone()], ["hicolor".to_owned()], []);
+
+        // 256 has no exact match: 512 downscales, 128 would upscale.
         assert_eq!(
-            with_exact.lookup("firefox", 48).unwrap(),
-            root.join("hicolor/48x48/apps/firefox.png")
+            theme.lookup("small", 256).unwrap(),
+            root.join("hicolor/512x512/apps/small.png")
+        );
+        // 128 is exact.
+        assert_eq!(
+            theme.lookup("small", 128).unwrap(),
+            root.join("hicolor/128x128/apps/small.png")
         );
 
-        // Without any scalable icon, the nearest raster directory wins.
-        let raster = temp_dir("raster");
-        touch(&raster.join("hicolor/16x16/apps/thing.png"));
-        touch(&raster.join("hicolor/64x64/apps/thing.png"));
-        let theme = IconTheme::from_roots([raster.clone()], ["hicolor".to_owned()], []);
+        // With no source large enough, the largest available is the least bad.
+        let tiny = temp_dir("raster-tiny");
+        touch(&tiny.join("hicolor/16x16/apps/tiny.png"));
+        touch(&tiny.join("hicolor/64x64/apps/tiny.png"));
+        let theme = IconTheme::from_roots([tiny.clone()], ["hicolor".to_owned()], []);
         assert_eq!(
-            theme.lookup("thing", 48).unwrap(),
-            raster.join("hicolor/64x64/apps/thing.png")
+            theme.lookup("tiny", 256).unwrap(),
+            tiny.join("hicolor/64x64/apps/tiny.png")
         );
 
         fs::remove_dir_all(&root).ok();
-        fs::remove_dir_all(&raster).ok();
+        fs::remove_dir_all(&tiny).ok();
+    }
+
+    #[test]
+    fn breeze_style_app_directories_rank_by_index_theme_metadata() {
+        // Breeze names application directories `apps/16`, `apps/22`, ... and
+        // declares each one's Size/Type in index.theme. Parsing only the first
+        // path component saw `apps` for all of them, tied, and returned
+        // `apps/16` — the pixelated Konsole tile.
+        let root = temp_dir("breeze");
+        write_text(
+            &root.join("Breeze/index.theme"),
+            "[Icon Theme]\nName=Breeze\nInherits=hicolor\n\
+             Directories=apps/16,apps/22,apps/32,apps/48\n\
+             \n[apps/16]\nSize=16\nContext=Applications\nType=Fixed\n\
+             \n[apps/22]\nSize=22\nContext=Applications\nType=Fixed\n\
+             \n[apps/32]\nSize=32\nContext=Applications\nType=Fixed\n\
+             \n[apps/48]\nSize=48\nContext=Applications\nType=Scalable\n\
+             MinSize=48\nMaxSize=256\n",
+        );
+        touch(&root.join("Breeze/apps/16/utilities-terminal.svg"));
+        touch(&root.join("Breeze/apps/48/utilities-terminal.svg"));
+        // An icon only present in the 32px directory still resolves there.
+        touch(&root.join("Breeze/apps/32/only-32.svg"));
+
+        let theme = IconTheme::from_roots([root.clone()], ["Breeze".to_owned()], []);
+        assert_eq!(
+            theme.lookup("utilities-terminal", 128).unwrap(),
+            root.join("Breeze/apps/48/utilities-terminal.svg"),
+            "the scalable 48px artwork must beat the 16px variant"
+        );
+        assert_eq!(
+            theme.lookup("only-32", 128).unwrap(),
+            root.join("Breeze/apps/32/only-32.svg")
+        );
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn scaled_directories_are_ranked_by_their_effective_pixel_size() {
+        let root = temp_dir("scaled");
+        write_text(
+            &root.join("HiDpi/index.theme"),
+            "[Icon Theme]\nName=HiDpi\nDirectories=apps/48\n\
+             ScaledDirectories=apps/48@2x\n\
+             \n[apps/48]\nSize=48\nType=Fixed\n\
+             \n[apps/48@2x]\nSize=48\nScale=2\nType=Fixed\n",
+        );
+        touch(&root.join("HiDpi/apps/48/thing.png"));
+        touch(&root.join("HiDpi/apps/48@2x/thing.png"));
+
+        let theme = IconTheme::from_roots([root.clone()], ["HiDpi".to_owned()], []);
+        // The 96px @2x source is closer to a 96px request than the 48px one.
+        assert_eq!(
+            theme.lookup("thing", 96).unwrap(),
+            root.join("HiDpi/apps/48@2x/thing.png")
+        );
+
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]
