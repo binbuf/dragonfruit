@@ -120,16 +120,26 @@ Settings page with 52 pt chrome and a scrolling 768 pt content area. Software
 Update stays a dialog. T230c replaced the two About dialogs with an original
 Dragonfruit 280×503 utility panel and the canonical in-place About page. The
 system menu launches the Settings executable with `--about-system`; its blank
-32 pt chrome, 194 pt vector hero, five host rows, and More Info action belong
-to `AboutPanel.qml`. More Info reveals the 740×820 Settings window and opens
+32 pt chrome, 194 pt vector hero at 29 pt, five host rows, and More Info action
+belong to `AboutPanel.qml`. The panel follows the measured row block: the rows
+start at 291 pt with a 16 pt pitch, right-aligned labels, and elided values;
+More Info sits at 391 pt (94×26 pt), the regulatory link at 429 pt, and the
+footer at 466 pt. More Info reveals the 740×820 Settings window and opens
 `AboutPage.qml` under General. The page uses 52 pt unified chrome, a 128 pt
 hero and a 768 pt scroll viewport. Both surfaces read the existing Updates
 identity view; startup disk/free space use the existing General host view.
-Missing fields, including serial/model/display, say “Not available”. The
-utility material is a separate near-opaque vertical gradient with a shadow,
-and reduced transparency makes it opaque. Warranty/parts rows are omitted:
-no Linux service owns those values. The license/regulatory actions disclose
-the available local information without inventing certifications. See
+Startup disk prefers the root-volume label, then the parent disk, the root
+device, and the mount point, so a btrfs/LUKS root reports a host value rather
+than “Not available”. Missing fields, including serial/model/display, say
+“Not available”. The utility material is a separate near-opaque vertical
+gradient with a shadow, and reduced transparency makes it opaque. Warranty/
+parts rows are omitted: no Linux service owns those values. The
+license/regulatory actions disclose the available local information without
+inventing certifications. Local captures of the live system-menu journey in
+light/dark and the long/localized surfaces at 1× are under the repository's
+gitignored `docs/captures/`; the same surfaces are tested at 1×/1.5×/2×.
+Controlled material fit over the 21 reference backgrounds and a live localized
+host remain explicit `OPEN` rows. See
 [ADR 0246](adr/0246-about-two-surfaces.md).
 Storage is the existing top-level pane; Login Items, Language & Region,
 Date & Time, Sharing, Backup, Startup Disk, and Reset open in place with a

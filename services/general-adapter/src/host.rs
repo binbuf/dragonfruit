@@ -981,8 +981,11 @@ pub fn parse_startup(text: &str) -> StartupDiskData {
     if fields.len() < 4 {
         return StartupDiskData::default();
     }
+    // A btrfs root reports `SOURCE` as `/dev/mapper/luks-…[/root]`; the
+    // bracketed suffix is the subvolume, not part of the block device.
+    let device = fields[0].split('[').next().unwrap_or(fields[0]);
     StartupDiskData {
-        device: fields[0].to_owned(),
+        device: device.to_owned(),
         mount_point: fields[1].to_owned(),
         filesystem: fields[2].to_owned(),
         total_bytes: fields[3].parse::<u64>().unwrap_or(0),
@@ -1170,6 +1173,19 @@ mod tests {
         assert_eq!(disk.device, "/dev/nvme0n1p3");
         assert_eq!(disk.filesystem, "btrfs");
         assert_eq!(disk.total_bytes, 509_332_160_512);
+    }
+
+    #[test]
+    fn startup_disk_strips_a_btrfs_subvolume_source() {
+        let disk = parse_startup(
+            "/dev/mapper/luks-8bb932c4-a425-4856-96c0-689339748a0e[/root] / btrfs 509315383296\n",
+        );
+        assert_eq!(
+            disk.device,
+            "/dev/mapper/luks-8bb932c4-a425-4856-96c0-689339748a0e"
+        );
+        assert_eq!(disk.mount_point, "/");
+        assert_eq!(disk.total_bytes, 509_315_383_296);
     }
 
     #[test]

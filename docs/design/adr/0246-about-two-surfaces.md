@@ -14,9 +14,10 @@ system menu's About action logged a stub. The structural review measures a
   utility window; More Info reveals the regular Settings window at the measured
   size and opens General → About in place. The General row opens the page.
 - The existing Updates identity view remains the one machine identity source.
-  Startup disk and free space use the existing General host snapshot. A missing
-  field is labelled “Not available”; warranty and parts rows have no Linux
-  owner and are omitted.
+  Startup disk and free space use the existing General host snapshot; the
+  startup-disk row prefers the root-volume label, then the parent disk, root
+  device, and mount point. A missing field is labelled “Not available”;
+  warranty and parts rows have no Linux owner and are omitted.
 - The compact surface uses a dedicated near-opaque utility gradient and its
   own shadow. It does not inherit popup glass. Reduced transparency forces an
   opaque backing; increased contrast strengthens its edge.
@@ -28,5 +29,7 @@ system menu's About action logged a stub. The structural review measures a
 The system menu may launch another process of the same Settings executable
 when a full Settings window is already running. A future single-instance
 handoff may reuse the running process without changing the two QML surfaces.
-Native material fit in dark, long localized names, and the live system-menu
-journey remain open evidence items.
+The live system-menu journey and dark surfaces are captured. Long/localized
+names are captured at 1× and tested at 1×/1.5×/2×. Controlled material fit over
+the 21 reference backgrounds and a live localized host remain open evidence
+items.
