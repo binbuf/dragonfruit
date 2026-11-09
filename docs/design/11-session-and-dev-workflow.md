@@ -215,6 +215,7 @@ dragonfruit-session.target (started directly by dragonfruit-session-entry)
   ├── dragonfruit-compositor.service     # starts first, owns the seat
   ├── dragonfruit-settingsd.service      # Type=dbus, Restart=on-failure
   ├── dragonfruit-shell.service          # After=compositor + settingsd, Restart=always
+  ├── dragonfruit-files-desktop.service  # After=compositor + settingsd, Restart=always
   ├── dragonfruit-menu-broker.service   # Restart=on-failure
   ├── dragonfruit-app-index.service      # Restart=on-failure
   ├── dragonfruit-notifications.service  # Restart=on-failure
@@ -238,9 +239,10 @@ dragonfruit-session.target (started directly by dragonfruit-session-entry)
   semantics); no crash path unlocks a locked session.
 - **Session environment** exported at startup: `XDG_CURRENT_DESKTOP=dragonfruit`,
   `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY` pointing at the session
-  socket, `DISPLAY` when Xwayland is up, and — for the compositor and shell
-  only — `DRAGONFRUIT_LAUNCH_TOKEN`, the one-time private-protocol token. The
-  desktop name is what toolkits, `portals.conf`, and
+  socket, `DISPLAY` when Xwayland is up, and the role-scoped private-protocol
+  tokens — `DRAGONFRUIT_LAUNCH_TOKEN` for the shell and
+  `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN` for the Files desktop; the compositor
+  issues both. The desktop name is what toolkits, `portals.conf`, and
   `XDG_CURRENT_DESKTOP`-sensitive libraries use to find DE-specific behavior
   and our portal backend — it is a public contract, chosen once (see
   [12-packaging.md](12-packaging.md)). The variable names and the token
@@ -266,6 +268,7 @@ dragonfruit-session.target                 # started by the session entry
   ├── dragonfruit-compositor.service       # --backend drm, Restart=no (anchor)
   ├── dragonfruit-settingsd.service        # Type=dbus, Restart=on-failure
   ├── dragonfruit-shell.service            # After=settingsd, Restart=always
+  ├── dragonfruit-files-desktop.service    # After=settingsd, Restart=always
   ├── dragonfruit-menu-broker.service
   ├── dragonfruit-app-index.service
   ├── dragonfruit-notifications.service
@@ -276,22 +279,28 @@ dragonfruit-session.target                 # started by the session entry
 Each service waits for the compositor's private socket with
 `ExecStartPre=/usr/bin/dragonfruit-session --wait-socket dragonfruit-wayland`
 — the unit-level form of the supervisor's `set_ready("compositor")` gate — and
-passes the dynamic session variables
-(`PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN`) to the child. The session
-entry (T-12.2) imports the environment, including a fresh token, before
-starting the target:
+passes the dynamic session variables to the child. The compositor gets both
+role tokens (`PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`); the shell gets the shell token, and the
+Files desktop gets the role-scoped desktop token. The session entry (T-12.2)
+exports and imports the environment, including fresh tokens, before starting
+the target:
 
 ```bash
+set -a
 eval "$(dragonfruit-session --print-env --socket-name dragonfruit-wayland)"
+set +a
 systemctl --user import-environment \
     XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY \
-    DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+    DISPLAY DRAGONFRUIT_LAUNCH_TOKEN DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN
 systemctl --user start dragonfruit-session.target
 ```
 
-The compositor pre-mints the `DRAGONFRUIT_LAUNCH_TOKEN` it finds in its own
-environment (rather than a random one) and writes the shell's hand-off file,
-so the token the shell presents is the one the session chose.
+The compositor pre-mints the tokens it finds in its own environment (rather
+than random ones) and writes the shell and desktop hand-off files, so the
+tokens each client presents are the ones the session chose. It still mints a
+desktop token when none was imported, so the desktop unit works even if only
+the shell token reached the manager.
 
 ### The display-manager session entry (T-12.2)
 
@@ -304,14 +313,15 @@ SDDM, LightDM, or any spec-compliant greeter. Its `Exec` is the entry script
 
 ```text
 DM greeter → dragonfruit-session-entry
-  1. eval "$(dragonfruit-session --print-env …)"   # base env + fresh token
+  1. eval "$(dragonfruit-session --print-env …)"   # base env + fresh tokens
   2. dragonfruit-session --sync-toolkit             # GTK left-side controls
   3. systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_TYPE \
-         WAYLAND_DISPLAY DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+         WAYLAND_DISPLAY DISPLAY DRAGONFRUIT_LAUNCH_TOKEN \
+         DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN
   4. systemctl --user start dragonfruit-session.target
   5. wait for dragonfruit-compositor.service to leave the active state
   6. systemctl --user stop dragonfruit-session.target; reset-failed
-  7. rm "$XDG_RUNTIME_DIR/<socket>"{,.lock,.x11-display,.launch-token}
+  7. rm "$XDG_RUNTIME_DIR/<socket>"{,.lock,.x11-display,.launch-token,.desktop-launch-token}
 ```
 
 The toolkit step is the GTK steering compatibility bridge: the session
@@ -629,7 +639,7 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 eval "$(dragonfruit-session --print-env --socket-name dragonfruit-wayland)"
 systemctl --user import-environment \
     XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY \
-    DRAGONFRUIT_LAUNCH_TOKEN
+    DRAGONFRUIT_LAUNCH_TOKEN DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN
 systemctl --user start dragonfruit-session.target
 ```
 

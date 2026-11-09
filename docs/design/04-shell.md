@@ -523,15 +523,18 @@ The plate's material is layered (T-14.7j, ADR
 [0102](adr/0102-dock-material-role-and-qml-glass-layers.md)): the compositor
 frosts the declared panel with the Dock's own `material.dockBlur`/`dockOpacity`
 tokens — selected by the `dock` namespace, so it is independent of the menu
-bar's `chrome*` frost — and `Dock.qml` draws a translucent `dockFill`, a bright
-inner rim, an interior gloss band just inside it
-(`plate.glossHeight`/`.glossOpacity`, sharing the rim's corner-following path),
-a hairline `dockBorder`, a bright lip along the flat middle of the anchored
-(screen-edge) side (`plate.edgeHeight`/`.edgeOpacity`), and a soft shadow above
-it — the reference capture's glass stack (ADR
-[0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)). Every
-value is a `controls.dock.plate` token. The plate group is clipped at its top
-edge so the shadow never bleeds into the transparent magnify band above it
+bar's `chrome*` frost — and `Dock.qml` draws a translucent `dockFill` and a
+**directional** perimeter: a bright rim on the horizontal (top/bottom) edges,
+a darker hairline on the vertical sides, a narrow top lift
+(`plate.topGlowHeight`/`.topGlowOpacity`), a slightly wider bottom brightening
+(`plate.bottomGlowHeight`/`.bottomGlowOpacity`), a faint interior gloss, a
+bottom rim that follows the bottom corner arcs, and a minimal contact shadow.
+The sampled path paints the same directional rim and edge lifts in the
+compositor shader from the `dock` glass preset (`edgeSide`, `topGlow`,
+`bottomGlow`), so the production and fallback paths agree. Every value is a
+`controls.dock.plate` or `glass.presets.dock` token. The plate group is
+clipped at its top edge so the shadow never bleeds into the transparent
+magnify band above it
 (T-10 section 2). Icon tiles are rounded squares at
 `controls.dock.icon.radiusRatio`, and the themed artwork is **masked** into
 that tile rather than inset (T-14.7w): `component.dock.icon.inset` is 0, so the
@@ -904,10 +907,10 @@ owns the desktop — rendered through a compositor desktop-layer surface. The
 T-19.3 implementation ships `dragonfruit-files --desktop`, the `background`
 layer between wallpaper and windows, icon view, click/Cmd/Shift multi-select,
 rubber-band selection, open, and a background menu (see
-[09-files.md](09-files.md#desktop-icons-owned-by-files)). The remaining gap is
-session provisioning: the dev tool writes the desktop token, but the systemd
-session plan/units do not yet start the desktop process
-([STATUS.md](STATUS.md) G-09). The Desktop Reveal hot corner works regardless:
+[09-files.md](09-files.md#desktop-icons-owned-by-files)). The session plan
+provisions the desktop token and starts
+`dragonfruit-files-desktop.service` after the compositor socket and settings
+bus gates. The Desktop Reveal hot corner works regardless:
 it moves windows aside to expose the background and its icons. Desktop Reveal
 shares the one overview pipeline and scene transform: the live surfaces slide
 out of their nearest screen edge (reduced motion fades them in place), and

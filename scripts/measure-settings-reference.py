@@ -17,7 +17,7 @@ Usage::
 
 Absolute point values need a display scale, which a capture does not record.
 The script therefore reports distances in *traffic-light units* (px / red
-button diameter) and converts them with our 12 px
+button diameter) and converts them with our 14 pt
 ``component.trafficLights.diameter`` token, which is what the layout actually
 clones. Ratios and traffic-light units are the scale-independent numbers.
 """
@@ -34,9 +34,9 @@ from collections import Counter
 
 from PIL import Image, ImageFilter
 
-# Our design-system traffic-light diameter; macOS's close button is 12 pt, so
-# one "unit" is the same physical size in both.
-UNIT_PX = 12.0
+# Our design-system drawn traffic-light diameter. AppKit reports a 16 pt AX
+# frame around a 14 pt circle, so one "unit" is the 14 pt visible circle.
+UNIT_PX = 14.0
 
 
 def find_reference(pattern: str) -> str:
@@ -126,7 +126,7 @@ def main() -> int:
     x0, y0, x1, y1 = window_bounds(px, w, h)
     win_w, win_h = x1 - x0 + 1, y1 - y0 + 1
     red, diameter = traffic_light(px, x0, y0, x1)
-    unit = (diameter or 24) / UNIT_PX  # px per one 12-unit (≈2.3 at Retina)
+    unit = (diameter or 28) / UNIT_PX  # px per one 14 pt unit (≈2 at Retina)
 
     def units(px_len):
         return round(px_len / unit, 1)
@@ -228,7 +228,7 @@ def main() -> int:
 
     print(f"# {report['file']}  ({w}x{h} px)")
     print(f"window        {win_w}x{win_h} px  = {units(win_w)}x{units(win_h)} units")
-    print(f"traffic light {diameter}px -> {unit:.2f} px/unit (12-unit token)")
+    print(f"traffic light {diameter}px -> {unit:.2f} px/unit (14 pt token)")
     print(f"sidebar       {sidebar_px} px = {sidebar_w} units "
           f"({report['ratio']['sidebar_over_window']*100:.0f}% of window)")
     print(f"toolbar       {toolbar_px} px = {toolbar_h} units "

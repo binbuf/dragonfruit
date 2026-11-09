@@ -193,7 +193,8 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
          'XDG_CURRENT_DESKTOP=dragonfruit' \
          'XDG_SESSION_TYPE=wayland' \
          \"WAYLAND_DISPLAY=$DF_SESSION_SOCKET\" \
-         'DRAGONFRUIT_LAUNCH_TOKEN=deadbeef'\n",
+         'DRAGONFRUIT_LAUNCH_TOKEN=deadbeef' \
+         'DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN=feedface'\n",
     )
     .expect("write fake session");
     make_executable(&fake_session);
@@ -210,6 +211,7 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
             "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{record}'\n\
              if [ \"$1\" = '--user' ] && [ \"$2\" = 'import-environment' ]; then\n\
                printf 'QML_IMPORT_PATH=%s\\n' \"$QML_IMPORT_PATH\" >> '{record}'\n\
+               printf 'DESKTOP_TOKEN_SEEN=%s\\n' \"${{DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN:-missing}}\" >> '{record}'\n\
                exit 0\n\
              fi\n\
              if [ \"$1\" = '--user' ] && [ \"$2\" = 'start' ]; then\n\
@@ -258,6 +260,10 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
             && calls.contains("XDG_CURRENT_DESKTOP")
             && calls.contains("DRAGONFRUIT_LAUNCH_TOKEN"),
         "the session environment is imported: {calls}"
+    );
+    assert!(
+        calls.contains("DESKTOP_TOKEN_SEEN=feedface"),
+        "the entry exports the desktop token before importing it: {calls}"
     );
     // The entry script appends the install-prefix root to any inherited
     // QML_IMPORT_PATH (the native session exports the build-tree root), so

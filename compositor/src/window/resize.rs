@@ -283,7 +283,8 @@ pub fn clamp_frame_move(
 }
 
 /// Compute the geometry for an interactive resize of `start` along `edge`
-/// by `delta`, honoring client constraints and staying inside `output`.
+/// by `delta`, honoring client constraints and staying inside `output`
+/// (the caller passes the interactive content bounds).
 pub fn resize_geometry(
     start: Rectangle<i32, Logical>,
     edge: ResizeEdge,
@@ -523,14 +524,20 @@ mod tests {
         assert_eq!(clamped, Point::from((0, 0)));
     }
 
-    /// The usable area is the output minus the menu bar (top) and Dock
-    /// (bottom) reserved strips.
+    /// Placement and Zoom subtract both the menu bar (top) and the Dock
+    /// (bottom) reserves.
     fn usable() -> Rectangle<i32, Logical> {
         rect(0, 28, 1920, 1080 - 28 - 60)
     }
 
+    /// Interactive move/resize subtracts only the menu bar; the Dock's
+    /// reserve remains part of the draggable area.
+    fn interactive() -> Rectangle<i32, Logical> {
+        rect(0, 28, 1920, 1080 - 28)
+    }
+
     #[test]
-    fn move_is_clamped_to_the_usable_area() {
+    fn move_is_clamped_to_the_given_bounds() {
         let window = Size::from((400, 300));
         let clamped = clamp_move(Point::from((100, -50)), window, usable());
         assert_eq!(clamped, Point::from((100, 28)));
@@ -546,38 +553,61 @@ mod tests {
             ..WindowInsets::NONE
         };
         // The content would sit exactly below the menu bar, but the titlebar
-        // is drawn above it: the whole frame must stay inside the usable area.
-        let clamped = clamp_frame_move(Point::from((100, 28)), window, insets, usable());
+        // is drawn above it: the whole frame must stay below the menu bar.
+        let clamped = clamp_frame_move(Point::from((100, 28)), window, insets, interactive());
         assert_eq!(clamped, Point::from((100, 56)));
         // A client-side-decorated window reserves no titlebar inset.
-        let clamped = clamp_frame_move(Point::from((100, 28)), window, WindowInsets::NONE, usable());
+        let clamped = clamp_frame_move(
+            Point::from((100, 28)),
+            window,
+            WindowInsets::NONE,
+            interactive(),
+        );
         assert_eq!(clamped, Point::from((100, 28)));
+        // The Dock does not block a move: the frame may sit over it.
+        let clamped = clamp_frame_move(
+            Point::from((100, 2000)),
+            window,
+            WindowInsets::NONE,
+            interactive(),
+        );
+        assert_eq!(clamped, Point::from((100, 780)));
     }
 
     #[test]
-    fn resize_is_clamped_to_the_usable_area() {
+    fn resize_stops_at_the_menu_bar_but_may_overlap_the_dock() {
         let start = rect(100, 200, 400, 300);
-        // Dragging the top edge up stops at the reserved menu-bar strip.
+        let insets = WindowInsets {
+            top: 28,
+            ..WindowInsets::NONE
+        };
+        // `resize_geometry` works on the client area; the caller passes the
+        // content bounds inside the interactive bounds (insets removed).
+        let bounds = insets.inset(interactive());
+        // Dragging the top edge up stops below the reserved menu-bar strip
+        // and leaves room for the titlebar drawn above the content.
         let resized = resize_geometry(
             start,
             ResizeEdge::Top,
             (0.0, -500.0).into(),
             no_constraints(),
-            usable(),
+            bounds,
         );
-        assert_eq!(resized.loc.y, usable().loc.y);
-        // Dragging the bottom edge down stops at the reserved Dock strip.
+        assert_eq!(resized.loc.y, interactive().loc.y + insets.top);
+        // Dragging the bottom edge down can extend over the Dock, but not
+        // past the output.
         let resized = resize_geometry(
             start,
             ResizeEdge::Bottom,
             (0.0, 2000.0).into(),
             no_constraints(),
-            usable(),
+            bounds,
         );
         assert_eq!(
             resized.loc.y + resized.size.h,
-            usable().loc.y + usable().size.h
+            interactive().loc.y + interactive().size.h
         );
+        assert!(resized.loc.y + resized.size.h > usable().loc.y + usable().size.h);
     }
 
     #[test]

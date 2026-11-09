@@ -993,6 +993,13 @@ impl CompositorProcess {
             .to_string()
     }
 
+    fn read_desktop_token(&self) -> String {
+        std::fs::read_to_string(self.socket_path.with_extension("desktop-launch-token"))
+            .expect("desktop token file readable")
+            .trim()
+            .to_string()
+    }
+
     /// The compositor's stdout log so far (frame-timing traces, stats).
     fn read_stdout(&self) -> String {
         std::fs::read_to_string(&self.stdout_path).unwrap_or_default()
@@ -2858,6 +2865,28 @@ fn shell_disconnect_reissues_a_usable_token() {
         |state| state.authenticated.is_some(),
     );
     assert_eq!(state.authenticated, Some(1));
+    proc.shutdown();
+}
+
+/// T-19.3: the real session starts `dragonfruit-files --desktop` from a unit
+/// that is handed no token of its own. The compositor must therefore always
+/// mint and write the role-scoped desktop token, not only when the dev tool
+/// supplies one.
+#[test]
+fn desktop_token_is_always_provisioned() {
+    let shell_token = "55".repeat(32);
+    let proc = CompositorProcess::start(
+        "dragonfruit-conformance-desktop-token",
+        std::slice::from_ref(&shell_token),
+    );
+    let desktop = proc.read_desktop_token();
+    assert_eq!(desktop.len(), 64, "{desktop}");
+    assert!(desktop.chars().all(|c| c.is_ascii_hexdigit()), "{desktop}");
+    assert_ne!(
+        desktop,
+        proc.read_token(),
+        "the desktop role must not reuse the shell token"
+    );
     proc.shutdown();
 }
 

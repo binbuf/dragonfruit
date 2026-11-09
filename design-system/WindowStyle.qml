@@ -29,12 +29,16 @@ QtObject {
         preference: Theme.controls.windowStyle.preference
     })
 
+    // AppKit's accessibility/hit frame is 16 pt; on the 2× reference build
+    // the close button measures 28 px, so the drawn circle is 14 pt. Keeping
+    // both values separate stops the review's "16×16 pt traffic lights" (an
+    // AX frame measurement) from becoming a visibly oversized 16 pt circle.
     readonly property int trafficLightSize:
         Theme.controls.windowStyle.trafficLightSize
+    readonly property int trafficLightDiameter:
+        Theme.controls.windowStyle.trafficLightDiameter
     readonly property int trafficLightSpacing:
         Theme.controls.windowStyle.trafficLightSpacing
-    readonly property int trafficLightLeadingInset:
-        Theme.controls.windowStyle.trafficLightLeadingInset
     readonly property int labelledToolbarRow:
         Theme.controls.windowStyle.labelledToolbarRow
 
@@ -73,14 +77,29 @@ QtObject {
         return model.height(style) + Math.max(0, extra);
     }
 
-    // The measured top inset centres a 16 pt light in the bar: 8 pt in a
-    // 32 pt bar, 18 pt in a 52 pt bar. Derived from the final height so the
-    // 66/70 pt variants stay centred too.
-    function trafficTopInset(chromeHeight) {
-        return Math.max(0, (chromeHeight - model.trafficLightSize) / 2);
+    // The row the lights live in. A style with an explicit title row
+    // (expanded/preference) keeps the lights in that top row; unified styles
+    // have one merged row, so the full chrome height is the row.
+    function effectiveTitleRowHeight(style, options) {
+        var titleRow = model.titleRowHeight(style);
+        return titleRow > 0 ? titleRow : model.chromeHeight(style, options);
     }
 
-    // Row spacing is centre-to-centre (23 pt); Qt's Row uses the edge gap.
+    // The measured 8/18 pt insets are to the 16 pt AX frame, and the same
+    // inset applies on both axes: 8 pt in a 32 pt row, 18 pt in a 52 pt row.
+    // The drawn 14 pt circle sits 1 pt further in because it is centred in
+    // that frame.
+    function trafficLightInset(rowHeight) {
+        return Math.max(0, (rowHeight - model.trafficLightSize) / 2);
+    }
+
+    function trafficLightInsetFor(style, options) {
+        return model.trafficLightInset(
+                    model.effectiveTitleRowHeight(style, options));
+    }
+
+    // Row spacing is centre-to-centre (23 pt); Qt's Row uses the edge gap
+    // between the 16 pt frames.
     function trafficLightGap() {
         return model.trafficLightSpacing - model.trafficLightSize;
     }

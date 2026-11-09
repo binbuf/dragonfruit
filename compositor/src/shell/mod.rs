@@ -2764,15 +2764,17 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
 
 // --- session provisioning --------------------------------------------------
 
-/// Provision launch tokens at session start and write the shell hand-off
-/// file. `DRAGONFRUIT_LAUNCH_TOKENS` (comma-separated `[role:]hex`) lets the
-/// session manager (T-24) or the conformance tests supply pre-minted tokens;
-/// otherwise one random shell token is minted.
+/// Provision launch tokens at session start and write the shell and desktop
+/// hand-off files. `DRAGONFRUIT_LAUNCH_TOKENS` (comma-separated `[role:]hex`)
+/// lets the session manager (T-24) or the conformance tests supply pre-minted
+/// tokens; otherwise one random token per role is minted.
 ///
 /// A `desktop:`-tagged entry mints a [`TrustedRole::DesktopIcons`] token for
 /// the Files desktop process (T-19.3), written to its own hand-off file. The
 /// single `DRAGONFRUIT_LAUNCH_TOKEN`/`DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN` vars
-/// are the session-manager fallbacks.
+/// are the session-manager fallbacks. The desktop token is always written so a
+/// real session can start the desktop process even when the session entry only
+/// imported the shell token.
 pub fn provision(state: &mut DfState) {
     let mut shell_token: Option<trust::LaunchToken> = None;
     let mut desktop_token: Option<trust::LaunchToken> = None;
@@ -2818,14 +2820,14 @@ pub fn provision(state: &mut DfState) {
         trust::TOKEN_FILE_SUFFIX,
         "launch token",
     );
-    if let Some(token) = &desktop_token {
-        write_token_file(
-            state,
-            token,
-            trust::DESKTOP_TOKEN_FILE_SUFFIX,
-            "desktop launch token",
-        );
-    }
+    let desktop_token =
+        desktop_token.unwrap_or_else(|| state.shell.trust.mint(TrustedRole::DesktopIcons));
+    write_token_file(
+        state,
+        &desktop_token,
+        trust::DESKTOP_TOKEN_FILE_SUFFIX,
+        "desktop launch token",
+    );
 }
 
 /// Write one token hand-off file (`0600`) and log its path.

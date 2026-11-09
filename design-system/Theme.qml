@@ -166,6 +166,11 @@ QtObject {
                     readonly property real edge: 0.397
                     readonly property real edgeWidth: 1.0
                     readonly property real edgeTail: 6.0
+                    readonly property real edgeSide: -0.08
+                    readonly property real topGlow: 0.06
+                    readonly property real topGlowHeight: 10.0
+                    readonly property real bottomGlow: 0.1
+                    readonly property real bottomGlowHeight: 12.0
                     readonly property real sharpFraction: 0.12
                     readonly property real cornerLensPeak: 9.6
                     readonly property real cornerLensDistance: 15.0
@@ -187,6 +192,11 @@ QtObject {
                     readonly property real edge: 0.397
                     readonly property real edgeWidth: 1.0
                     readonly property real edgeTail: 6.0
+                    readonly property real edgeSide: -0.06
+                    readonly property real topGlow: 0.04
+                    readonly property real topGlowHeight: 10.0
+                    readonly property real bottomGlow: 0.07
+                    readonly property real bottomGlowHeight: 12.0
                     readonly property real sharpFraction: 0.12
                     readonly property real cornerLensPeak: 9.6
                     readonly property real cornerLensDistance: 15.0
@@ -1051,8 +1061,8 @@ QtObject {
         }
         readonly property var windowStyle: QtObject {
             readonly property int trafficLightSize: 16
+            readonly property int trafficLightDiameter: 14
             readonly property int trafficLightSpacing: 23
-            readonly property int trafficLightLeadingInset: 12
             readonly property int labelledToolbarRow: 14
             readonly property var borderless: QtObject {
                 readonly property int height: 0
@@ -1094,10 +1104,10 @@ QtObject {
             readonly property int cornerRadius: 14
         }
         readonly property var trafficLights: QtObject {
-            readonly property int diameter: 16
+            readonly property int buttonSize: 16
+            readonly property int diameter: 14
             readonly property int spacing: 23
-            readonly property int inset: 12
-            readonly property int glyphSize: 8
+            readonly property int glyphSize: 7
             readonly property bool hoverReveal: true
         }
         readonly property var toggle: QtObject {
@@ -1176,14 +1186,18 @@ QtObject {
                 readonly property real rimOpacity: 0.7
                 readonly property int rimHeight: 1
                 readonly property int glossHeight: 6
-                readonly property real glossOpacity: 0.22
+                readonly property real glossOpacity: 0.1
                 readonly property int edgeHeight: 1
-                readonly property real edgeOpacity: 0.5
+                readonly property real edgeOpacity: 0.7
+                readonly property int topGlowHeight: 10
+                readonly property real topGlowOpacity: 0.06
+                readonly property int bottomGlowHeight: 12
+                readonly property real bottomGlowOpacity: 0.1
                 readonly property int borderWidth: 1
                 readonly property real borderOpacity: 0.55
-                readonly property int shadowBlur: 20
-                readonly property real shadowOpacity: 0.3
-                readonly property int shadowOffsetY: 6
+                readonly property int shadowBlur: 6
+                readonly property real shadowOpacity: 0.12
+                readonly property int shadowOffsetY: 2
             }
             readonly property var icon: QtObject {
                 readonly property real radiusRatio: 0.24

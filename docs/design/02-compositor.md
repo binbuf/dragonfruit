@@ -1150,6 +1150,12 @@ complete the track:
   — the display under the pointer, else the active window's output, else the
   primary — inside that output's usable area (minus its reserved zones, so
   windows clear the menu bar and Dock) with a per-output cascade offset.
+  Interactive move and resize subtract only the top menu-bar reserve
+  (including the SSD titlebar drawn above the client area), so a floating
+  window cannot be dragged or grown into the bar. The Dock keeps its reserve
+  for placement and Zoom, but a dragged or resized window may overlap it —
+  the Dock still composites above the window. A concealed menu bar reserves
+  nothing, so the strip becomes draggable until it is revealed.
   Transient dialogs center on their parent, stay above it, and minimize with
   it (T-16.1b).
 - **Output hotplug.** Attaching a display gives it a fresh Space list that

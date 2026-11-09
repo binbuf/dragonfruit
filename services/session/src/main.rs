@@ -170,9 +170,11 @@ fn print_env(args: &[String]) -> ExitCode {
     if let Some(path) = dev_bin {
         environment = environment.with_dev_bin(path);
     }
-    // The trusted environment is the base plus the token; the base variables
-    // are also what a non-trusted client sees.
-    for (key, value) in environment.trusted() {
+    // The issuer environment is the base plus both role tokens; the base
+    // variables are also what a non-trusted client sees. The entry imports
+    // every line into the user manager, and each unit passes only its role's
+    // token through to the process.
+    for (key, value) in environment.issuer() {
         println!("{key}={value}");
     }
     ExitCode::SUCCESS

@@ -150,12 +150,23 @@ impl WindowChrome {
             }
     }
 
-    /// The measured top inset centres a 16 pt light in the final bar: 8 pt in
-    /// a 32 pt bar, 18 pt in a 52 pt bar, and the same rule for the 66/70 pt
-    /// variants.
-    pub const fn traffic_top_inset(self) -> i32 {
-        let diameter = traffic_lights::DIAMETER as i32;
-        let inset = (self.height() - diameter) / 2;
+    /// The row the lights live in: the explicit title row for
+    /// `expanded`/`preference`, or the whole merged row for the unified
+    /// styles. Using the final chrome height would push a preference window's
+    /// lights down into its toolbar row.
+    pub const fn title_row_height(self) -> i32 {
+        if self.style.title_row() > 0 {
+            self.style.title_row()
+        } else {
+            self.height()
+        }
+    }
+
+    /// The measured 8/18 pt inset is to the 16 pt AppKit accessibility frame,
+    /// and it applies on both axes. The drawn 14 pt circle is centred inside
+    /// that frame, so its visible edge sits 1 pt further in.
+    pub const fn traffic_inset(self) -> i32 {
+        let inset = (self.title_row_height() - traffic_lights::BUTTON_SIZE as i32) / 2;
         if inset > 0 {
             inset
         } else {
@@ -532,7 +543,7 @@ impl TitlebarElement {
             }
             WindowState::Minimized => return None,
         };
-        let buttons = Self::layout_buttons(titlebar);
+        let buttons = Self::layout_buttons(titlebar, chrome);
         Some(TitlebarElement {
             window,
             content,
@@ -546,17 +557,22 @@ impl TitlebarElement {
         })
     }
 
-    fn layout_buttons(titlebar: Rectangle<i32, Logical>) -> Vec<TrafficLightButton> {
-        let diameter = traffic_lights::DIAMETER as i32;
+    fn layout_buttons(
+        titlebar: Rectangle<i32, Logical>,
+        chrome: WindowChrome,
+    ) -> Vec<TrafficLightButton> {
+        // The 16 pt token is the AX/hit frame; the visible circle is 14 pt
+        // and is drawn centred inside it.
+        let size = traffic_lights::BUTTON_SIZE as i32;
         // The token is centre-to-centre; advance by exactly that much.
         let spacing = traffic_lights::SPACING as i32;
-        let inset = traffic_lights::INSET as i32;
-        let y = titlebar.loc.y + (titlebar.size.h - diameter) / 2;
+        let inset = chrome.traffic_inset();
+        let y = titlebar.loc.y + inset;
         let mut x = titlebar.loc.x + inset;
         TrafficLightKind::ALL
             .iter()
             .map(|kind| {
-                let rect = Rectangle::new((x, y).into(), (diameter, diameter).into());
+                let rect = Rectangle::new((x, y).into(), (size, size).into());
                 x += spacing;
                 TrafficLightButton {
                     kind: *kind,
@@ -662,25 +678,32 @@ impl TitlebarElement {
         }
 
         let reveal = self.revealed();
+        // The 16 pt button rect is the AX/hit frame; AppKit draws a 14 pt
+        // circle centred inside it. Draw the inner circle, not the frame.
         for button in &self.buttons {
             let fill = self.fill_color(button);
+            let visual = traffic_light_visual_rect(button.rect);
             // Apply the lifecycle transform to the button once, then
             // rasterize the transformed circle in physical pixels. Scaling
             // individual logical strips (as this used to) snapped every edge
             // to the logical grid, which read as a low-resolution circle.
-            let (button_rect, button_fill) = motion_transform(button.rect, fill, target, motion);
+            let (button_rect, button_fill) = motion_transform(visual, fill, target, motion);
             for span in circle_spans(button_rect, scale, origin) {
                 push(span.rect, button_fill * span.coverage);
             }
             if button.enabled && reveal {
-                for glyph in glyph_rects(button.kind, button.rect) {
-                    let (rect, color) = motion_transform(
-                        glyph,
-                        color_from_rgba(self.scheme.traffic_glyph()),
-                        target,
-                        motion,
-                    );
-                    push(to_physical(local(rect)), color);
+                // Scale the glyph with the same lifecycle frame as the
+                // circle, then rasterize its antialiased strokes.
+                let (glyph_frame, glyph_color) = motion_transform(
+                    visual,
+                    color_from_rgba(self.scheme.traffic_glyph()),
+                    target,
+                    motion,
+                );
+                let glyph_scale = f64::from(glyph_frame.size.w) / f64::from(visual.size.w);
+                let glyph_size = traffic_lights::GLYPH_SIZE as f64 * glyph_scale;
+                for span in glyph_spans(button.kind, glyph_frame, glyph_size, scale, origin) {
+                    push(span.rect, glyph_color * span.coverage);
                 }
             }
         }
@@ -759,17 +782,27 @@ fn solid_element(
     )
 }
 
+/// The visible circle rect inside a traffic light's 16 pt AX/hit frame.
+fn traffic_light_visual_rect(button: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    let diameter = traffic_lights::DIAMETER as i32;
+    let pad = ((button.size.w - diameter) / 2).max(0);
+    Rectangle::new(
+        (button.loc.x + pad, button.loc.y + pad).into(),
+        (diameter, diameter).into(),
+    )
+}
+
 /// Rasterize the filled circle inscribed in `button` as antialiased physical
 /// pixel spans.
 ///
 /// The compositor has no vector rasterizer yet, so the macOS-style round
-/// traffic lights are built from solid rectangles like the glyphs. The old
-/// implementation produced one *logical* row per strip; at 1x that is a
-/// 12-row staircase, and at fractional/HiDPI scales each strip snapped to the
-/// logical grid, so the circles read as low-resolution blocks. This
-/// rasterizer works in physical pixels: it emits one row per physical pixel
-/// (so the circle gains detail with the output scale), and gives the partial
-/// edge pixels a coverage alpha so the silhouette is smooth.
+/// traffic lights are built from per-pixel spans. The old implementation
+/// produced one *logical* row per strip; at 1x that is a 12-row staircase,
+/// and at fractional/HiDPI scales each strip snapped to the logical grid, so
+/// the circles read as low-resolution blocks. This rasterizer works in
+/// physical pixels: it emits one row per physical pixel (so the circle gains
+/// detail with the output scale), and gives the partial edge pixels a
+/// coverage alpha so the silhouette is smooth.
 ///
 /// `button` is already in output-local logical coordinates (the caller applies
 /// any lifecycle motion), and the returned rects are output-local physical
@@ -854,41 +887,105 @@ fn circle_spans(
     spans
 }
 
-/// Axis-aligned marks approximating the control glyphs at token scale. The
-/// compositor has no vector rasterizer yet, so glyphs are built from solid
-/// rectangles; T-04's material pass may replace them with a real icon atlas.
-fn glyph_rects(
+/// Rasterize one of the traffic-light glyphs as antialiased physical pixel
+/// spans. The marks follow Tabler's 24-unit geometry: the path spans 12 units
+/// and the stroke is 4 units, so a 7 pt box is a ~4.7 pt mark with a ~1.2 pt
+/// stroke. The old implementation drew 2 pt rectangles over the full glyph
+/// box, which read as oversized and blocky next to the QML Tabler icons.
+fn glyph_spans(
     kind: TrafficLightKind,
-    button: Rectangle<i32, Logical>,
-) -> Vec<Rectangle<i32, Logical>> {
-    let size = (traffic_lights::GLYPH_SIZE as i32).max(2);
-    let thickness = (size / 3).max(1);
-    let cx = button.loc.x + button.size.w / 2;
-    let cy = button.loc.y + button.size.h / 2;
-    let half = size / 2;
-    let mark = |x: i32, y: i32, w: i32, h: i32| Rectangle::new((x, y).into(), (w, h).into());
+    frame: Rectangle<i32, Logical>,
+    glyph_size: f64,
+    scale: Scale<f64>,
+    output_origin: Point<i32, Logical>,
+) -> Vec<CircleSpan> {
+    let size = glyph_size.max(1.0);
+    // Tabler's path spans 12 of 24 units; its stroke is 4 of 24.
+    let half = size / 4.0;
+    let stroke = (size * 4.0 / 24.0).max(0.5);
+
+    let center_x = (f64::from(frame.loc.x) + f64::from(frame.size.w) / 2.0
+        - f64::from(output_origin.x))
+        * scale.x;
+    let center_y = (f64::from(frame.loc.y) + f64::from(frame.size.h) / 2.0
+        - f64::from(output_origin.y))
+        * scale.y;
+
+    let half_x = half * scale.x;
+    let half_y = half * scale.y;
+    let stroke_px = (stroke * scale.x + stroke * scale.y) / 2.0;
+
+    // The Tabler `maximize` glyph is four corner brackets whose outer
+    // corners sit at 4/24 and 20/24 of the box, so it reaches size/3 from
+    // the centre. The minus and cross reach size/4.
+    let bracket_x = size / 3.0 * scale.x;
+    let bracket_y = size / 3.0 * scale.y;
+    let arm_x = size / 6.0 * scale.x;
+    let arm_y = size / 6.0 * scale.y;
+    let zoom = matches!(kind, TrafficLightKind::Zoom);
+    let reach_half_x = if zoom { bracket_x } else { half_x };
+    let reach_half_y = if zoom { bracket_y } else { half_y };
+    let reach_x = reach_half_x + stroke_px / 2.0 + 1.0;
+    let reach_y = reach_half_y + stroke_px / 2.0 + 1.0;
+
+    // Each glyph is one or more line segments in frame-local physical space.
+    let mut segments: Vec<(f64, f64, f64, f64)> = Vec::new();
     match kind {
-        TrafficLightKind::Minimize => vec![mark(cx - half, cy - thickness / 2, size, thickness)],
-        TrafficLightKind::Zoom => vec![
-            mark(cx - half, cy - thickness / 2, size, thickness),
-            mark(cx - thickness / 2, cy - half, thickness, size),
-        ],
-        // A staircase approximation of the diagonal cross.
-        TrafficLightKind::Close => {
-            let mut rects = Vec::new();
-            for step in 0..3 {
-                let offset = -half + step * thickness;
-                rects.push(mark(cx + offset, cy + offset, thickness, thickness));
-                rects.push(mark(
-                    cx + offset,
-                    cy - offset - thickness,
-                    thickness,
-                    thickness,
-                ));
+        TrafficLightKind::Minimize => segments.push((-half_x, 0.0, half_x, 0.0)),
+        TrafficLightKind::Zoom => {
+            // Four L-shaped corner brackets, matching Tabler's `maximize`.
+            for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                let x = sx * bracket_x;
+                let y = sy * bracket_y;
+                segments.push((x, y, x, y - sy * arm_y));
+                segments.push((x, y, x - sx * arm_x, y));
             }
-            rects
+        }
+        TrafficLightKind::Close => {
+            segments.push((-half_x, -half_y, half_x, half_y));
+            segments.push((-half_x, half_y, half_x, -half_y));
         }
     }
+
+    let first_x = (center_x - reach_x).floor() as i32;
+    let last_x = (center_x + reach_x).ceil() as i32;
+    let first_y = (center_y - reach_y).floor() as i32;
+    let last_y = (center_y + reach_y).ceil() as i32;
+    let mut spans = Vec::new();
+    for y in first_y..last_y {
+        for x in first_x..last_x {
+            let px = f64::from(x) + 0.5;
+            let py = f64::from(y) + 0.5;
+            let distance = segments
+                .iter()
+                .map(|&(ax, ay, bx, by)| {
+                    distance_to_segment(px - center_x, py - center_y, ax, ay, bx, by)
+                })
+                .fold(f64::INFINITY, f64::min);
+            let coverage = (stroke_px / 2.0 - distance + 0.5).clamp(0.0, 1.0);
+            if coverage > 0.0 {
+                spans.push(CircleSpan {
+                    rect: Rectangle::new((x, y).into(), (1, 1).into()),
+                    coverage: coverage as f32,
+                });
+            }
+        }
+    }
+    spans
+}
+
+/// Shortest distance from a point to a line segment, in physical pixels.
+fn distance_to_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
+    let dx = bx - ax;
+    let dy = by - ay;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq <= f64::EPSILON {
+        return (px * px + py * py).sqrt();
+    }
+    let t = (((px - ax) * dx + (py - ay) * dy) / len_sq).clamp(0.0, 1.0);
+    let qx = ax + t * dx;
+    let qy = ay + t * dy;
+    ((px - qx).powi(2) + (py - qy).powi(2)).sqrt()
 }
 
 #[cfg(test)]
@@ -991,20 +1088,26 @@ mod tests {
 
     #[test]
     fn traffic_light_geometry_is_style_derived() {
-        assert_eq!(traffic_lights::DIAMETER as i32, 16);
+        // The 16 pt AX frame and 14 pt drawn circle are separate tokens; the
+        // reference measured the frame, and drawing it made the lights too
+        // large.
+        assert_eq!(traffic_lights::BUTTON_SIZE as i32, 16);
+        assert_eq!(traffic_lights::DIAMETER as i32, 14);
         assert_eq!(traffic_lights::SPACING as i32, 23);
+        assert_eq!(WindowChrome::new(WindowStyle::Titlebar).traffic_inset(), 8);
+        assert_eq!(WindowChrome::new(WindowStyle::Unified).traffic_inset(), 18);
+        // Expanded and preference keep the lights in their title row, not in
+        // the middle of the full chrome.
+        assert_eq!(WindowChrome::new(WindowStyle::Expanded).traffic_inset(), 6);
         assert_eq!(
-            WindowChrome::new(WindowStyle::Titlebar).traffic_top_inset(),
+            WindowChrome::new(WindowStyle::Preference).traffic_inset(),
             8
-        );
-        assert_eq!(
-            WindowChrome::new(WindowStyle::Unified).traffic_top_inset(),
-            18
         );
         let content = rect(0, 100, 400, 300);
         let titlebar = ssd_with_chrome(content, WindowChrome::new(WindowStyle::Unified));
         assert_eq!(titlebar.titlebar.size.h, 52);
-        assert_eq!(titlebar.buttons[0].rect.loc.x, titlebar.titlebar.loc.x + 12);
+        assert_eq!(titlebar.buttons[0].rect.loc.x, titlebar.titlebar.loc.x + 18);
+        assert_eq!(titlebar.buttons[0].rect.size.w, 16);
         assert_eq!(
             titlebar.buttons[1].rect.loc.x - titlebar.buttons[0].rect.loc.x,
             23
@@ -1176,7 +1279,7 @@ mod tests {
                 TrafficLightKind::Zoom
             ]
         );
-        let inset = traffic_lights::INSET as i32;
+        let inset = WindowChrome::new(DEFAULT_WINDOW_STYLE).traffic_inset();
         assert_eq!(
             titlebar.buttons[0].rect.loc.x,
             titlebar.titlebar.loc.x + inset
@@ -1254,7 +1357,14 @@ mod tests {
         titlebar
             .buttons
             .iter()
-            .map(|button| circle_spans(button.rect, scale, Point::from((0, 0))).len())
+            .map(|button| {
+                circle_spans(
+                    traffic_light_visual_rect(button.rect),
+                    scale,
+                    Point::from((0, 0)),
+                )
+                .len()
+            })
             .sum()
     }
 
@@ -1274,6 +1384,95 @@ mod tests {
         assert_eq!(
             elements.len(),
             titlebar_fill_count(&titlebar) + light_span_count(&titlebar, 1.0.into())
+        );
+    }
+
+    #[test]
+    fn traffic_light_draws_a_14_pt_circle_inside_the_16_pt_frame() {
+        let titlebar = ssd(rect(0, 40, 200, 150));
+        let close = titlebar.buttons[0].rect;
+        assert_eq!(close.size.w, traffic_lights::BUTTON_SIZE as i32);
+        assert_eq!(close.size.h, traffic_lights::BUTTON_SIZE as i32);
+
+        let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)), None);
+        let fill = titlebar_fill_count(&titlebar);
+        let close_physical = close.to_physical_precise_round(Scale::from(1.0));
+        let rects: Vec<_> = elements[..elements.len() - fill]
+            .iter()
+            .map(|element| element.geometry(1.0.into()))
+            .filter(|rect| close_physical.contains_rect(*rect))
+            .collect();
+
+        let left = rects.iter().map(|rect| rect.loc.x).min().unwrap();
+        let right = rects
+            .iter()
+            .map(|rect| rect.loc.x + rect.size.w)
+            .max()
+            .unwrap();
+        assert_eq!(
+            right - left,
+            traffic_lights::DIAMETER as i32,
+            "the drawn circle is 14 pt, not the 16 pt AX frame"
+        );
+        assert_eq!(
+            left,
+            close.loc.x + 1,
+            "the circle is centred 1 pt inside the frame"
+        );
+        assert_eq!(
+            rects.iter().map(|rect| rect.loc.y).min().unwrap(),
+            close.loc.y + 1,
+            "the circle is centred 1 pt inside the frame"
+        );
+    }
+
+    #[test]
+    fn traffic_light_glyphs_are_small_and_antialiased() {
+        let titlebar = ssd(rect(0, 40, 200, 150));
+        let visual = traffic_light_visual_rect(titlebar.buttons[0].rect);
+        let spans = glyph_spans(
+            TrafficLightKind::Close,
+            visual,
+            traffic_lights::GLYPH_SIZE as f64,
+            1.0.into(),
+            Point::from((0, 0)),
+        );
+        let solid: Vec<_> = spans.iter().filter(|span| span.coverage >= 0.5).collect();
+        let left = solid.iter().map(|span| span.rect.loc.x).min().unwrap();
+        let right = solid
+            .iter()
+            .map(|span| span.rect.loc.x + span.rect.size.w)
+            .max()
+            .unwrap();
+        // Tabler's 12-of-24 path plus its 4-of-24 stroke is ~4.7 pt, not the
+        // full 7 pt box the old rectangle marks used.
+        assert!(right - left <= 5, "glyph must be ~4.7 pt wide");
+        assert!(
+            spans
+                .iter()
+                .any(|span| span.coverage > 0.0 && span.coverage < 1.0),
+            "glyph edges must be antialiased"
+        );
+    }
+
+    #[test]
+    fn zoom_glyph_draws_corner_brackets_not_a_plus() {
+        let titlebar = ssd(rect(0, 40, 200, 150));
+        let visual = traffic_light_visual_rect(titlebar.buttons[2].rect);
+        let spans = glyph_spans(
+            TrafficLightKind::Zoom,
+            visual,
+            traffic_lights::GLYPH_SIZE as f64,
+            1.0.into(),
+            Point::from((0, 0)),
+        );
+        let center_x = visual.loc.x + visual.size.w / 2;
+        let center_y = visual.loc.y + visual.size.h / 2;
+        assert!(
+            !spans.iter().any(|span| span.rect.loc.x == center_x
+                && span.rect.loc.y == center_y
+                && span.coverage > 0.5),
+            "the zoom glyph must be Tabler's corner brackets, not a plus"
         );
     }
 
@@ -1387,13 +1586,20 @@ mod tests {
         let lit = titlebar.fill_color(&titlebar.buttons[0]);
         let enabled = color_from_rgba(titlebar.scheme.light(TrafficLightKind::Close));
         assert_ne!(lit, enabled, "disabled light must not use its lit color");
-        // The disabled light contributes no glyph rects.
+        // The disabled light contributes no glyph spans.
         let glyphs: usize = titlebar
             .buttons
             .iter()
             .map(|b| {
                 if b.enabled {
-                    glyph_rects(b.kind, b.rect).len()
+                    glyph_spans(
+                        b.kind,
+                        traffic_light_visual_rect(b.rect),
+                        traffic_lights::GLYPH_SIZE as f64,
+                        1.0.into(),
+                        Point::from((0, 0)),
+                    )
+                    .len()
                 } else {
                     0
                 }

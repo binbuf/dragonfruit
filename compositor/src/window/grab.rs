@@ -16,11 +16,12 @@ use smithay::input::pointer::{
 };
 use smithay::utils::{Logical, Point, Rectangle};
 
-use super::resize::{clamp_move, resize_geometry, ResizeEdge};
+use super::resize::{clamp_frame_move, resize_geometry, ResizeEdge};
 use crate::state::DfState;
 
-/// An interactive window move. The window follows the pointer, clamped to
-/// its output.
+/// An interactive window move. The window follows the pointer, clamped below
+/// the top menu-bar reserve. The Dock's reserve still shapes placement and
+/// Zoom, but a dragged window may overlap the Dock.
 pub struct MoveGrab {
     start_data: GrabStartData<DfState>,
     window: Window,
@@ -54,13 +55,14 @@ impl PointerGrab<DfState> for MoveGrab {
     ) {
         let delta = event.location - self.start_data.location;
         let mut location = self.initial_location + delta.to_i32_round();
-        if let Some(output) = data.output_bounds_for(&self.window) {
+        if let Some(bounds) = data.interactive_bounds_for(&self.window) {
             let size = data
                 .windows
                 .floating_geometry(&self.window)
                 .map(|geo| geo.size)
                 .unwrap_or_default();
-            location = clamp_move(location, size, output);
+            let insets = data.insets_for(&self.window);
+            location = clamp_frame_move(location, size, insets, bounds);
         }
         data.move_window(&self.window, location);
         handle.motion(data, None, event);
@@ -220,15 +222,17 @@ impl PointerGrab<DfState> for ResizeGrab {
     ) {
         let delta = event.location - self.start_data.location;
         let constraints = data.window_size_constraints(&self.window);
-        let output = data
-            .output_bounds_for(&self.window)
+        let insets = data.insets_for(&self.window);
+        let bounds = data
+            .interactive_bounds_for(&self.window)
+            .map(|bounds| insets.inset(bounds))
             .unwrap_or(self.initial_geometry);
         let geometry = resize_geometry(
             self.initial_geometry,
             self.edges,
             delta,
             constraints,
-            output,
+            bounds,
         );
         data.resize_window(&self.window, geometry);
         handle.motion(data, None, event);

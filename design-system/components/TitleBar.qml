@@ -142,7 +142,7 @@ Item {
         visible: root.showTrafficLights && root.chromeHeight > 0
         active: root.active
         anchors.left: parent.left
-        anchors.leftMargin: WindowStyle.trafficLightLeadingInset
+        anchors.leftMargin: WindowStyle.trafficLightInset(root.titleRowHeight)
         anchors.verticalCenter: titleRow.verticalCenter
 
         onCloseClicked: root.closeRequested()
@@ -151,7 +151,7 @@ Item {
     }
 
     readonly property real titleSideReserve:
-        WindowStyle.trafficLightLeadingInset
+        WindowStyle.trafficLightInset(root.titleRowHeight)
         + (lights.visible ? lights.width + Theme.controls.titlebar.spacing : 0)
         + (root.toolbarRowHeight > 0
            ? 0 : Math.max(leadingRow.implicitWidth, trailingRow.implicitWidth))
@@ -181,7 +181,7 @@ Item {
         anchors.left: root.showTrafficLights ? lights.right : parent.left
         anchors.leftMargin: root.showTrafficLights
             ? Theme.controls.titlebar.spacing
-            : WindowStyle.trafficLightLeadingInset
+            : WindowStyle.trafficLightInset(root.titleRowHeight)
         anchors.verticalCenter: root.toolbarRowHeight > 0
             ? toolbarRow.verticalCenter : titleRow.verticalCenter
         spacing: Theme.controls.toolbar.spacing

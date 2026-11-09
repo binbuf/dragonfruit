@@ -67,11 +67,17 @@ window means small chrome”).
 
 ### 2.3 Anatomy
 
-- **Traffic lights:** 16×16 pt.
-  - Title-bar-only window: 8 pt inset from the top, centring them in a 32 pt
-    bar.
-  - Unified toolbar: 18 pt inset, centring them in a 52 pt bar.
-  - Horizontal spacing is 23 pt between close, minimise and zoom.
+- **Traffic lights:** a 16×16 pt AppKit accessibility/hit frame containing a
+  14 pt drawn circle. The 16 pt figure is the AX frame, not the visible dot:
+  on the 2× reference build the close button measures 28 px (14 pt).
+  - Title-bar-only window: 8 pt frame inset from the top, centring them in a
+    32 pt bar.
+  - Unified toolbar: 18 pt frame inset, centring them in a 52 pt bar.
+  - The same frame inset applies horizontally; the drawn circle sits 1 pt
+    inside it. `expanded`/`preference` derive the inset from their 28/32 pt
+    title row, not the full chrome height.
+  - Horizontal spacing is 23 pt centre-to-centre between close, minimise and
+    zoom.
 - **Inline title:** vertically centred in the toolbar, at the leading edge
   after the traffic lights and navigation group. Finder's title occupies a
   227×52 pt region in a 900 pt-wide window.
@@ -107,10 +113,11 @@ window means small chrome”).
    hidden/revealed states, long titles, or RTL mirroring.
 
 **Owner:** T230b. Landed: the `WindowStyle` table
-(0/32/40/48/52/66/88 pt), the 16 pt traffic lights with 8/18 pt derived top
-insets and 23 pt centre spacing, content-layer accessory-bar tokens, and the
-Settings/Files `unified` migration. Long-title truncation and RTL mirroring
-remain `OPEN` (N-WIN-29/N-WIN-30).
+(0/32/40/48/52/66/88 pt), the 16 pt AX frame with a 14 pt drawn traffic-light
+circle, 8/18 pt title-row-derived insets on both axes, 23 pt centre spacing,
+content-layer accessory-bar tokens, and the Settings/Files `unified`
+migration. Long-title truncation and RTL mirroring remain `OPEN`
+(N-WIN-29/N-WIN-30).
 
 ## 3. About is two surfaces
 

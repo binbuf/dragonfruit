@@ -20,8 +20,9 @@ const STATIC_ENV: [(&str, &str); 4] = [
     ("GTK_CSD", "0"),
 ];
 /// Dynamic values the session entry imports into the user manager; every unit
-/// passes them through.
-const PASS_ENV: [&str; 2] = ["DISPLAY", "DRAGONFRUIT_LAUNCH_TOKEN"];
+/// passes `DISPLAY` through, and the trusted units pass their role's token.
+const SHELL_TOKEN_ENV: &str = "DRAGONFRUIT_LAUNCH_TOKEN";
+const DESKTOP_TOKEN_ENV: &str = "DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN";
 
 /// A parsed unit file: section -> repeated key entries.
 type Sections = BTreeMap<String, Vec<(String, String)>>;
@@ -104,6 +105,7 @@ fn the_shipped_unit_set_is_complete() {
         "dragonfruit-compositor.service",
         "dragonfruit-shell.service",
         "dragonfruit-settingsd.service",
+        "dragonfruit-files-desktop.service",
         "dragonfruit-menu-broker.service",
         "dragonfruit-app-index.service",
         "dragonfruit-notifications.service",
@@ -127,6 +129,7 @@ fn the_target_pulls_the_whole_composition() {
     for service in [
         "dragonfruit-shell.service",
         "dragonfruit-settingsd.service",
+        "dragonfruit-files-desktop.service",
         "dragonfruit-menu-broker.service",
         "dragonfruit-app-index.service",
         "dragonfruit-notifications.service",
@@ -210,10 +213,46 @@ fn the_shell_waits_for_the_settings_bus_name() {
 }
 
 #[test]
+fn the_files_desktop_is_the_role_scoped_background_client() {
+    let desktop = load("dragonfruit-files-desktop.service");
+    assert_eq!(
+        one(&desktop, "Service", "ExecStart"),
+        "/usr/bin/dragonfruit-files --desktop"
+    );
+    let after = values(&desktop, "Unit", "After").join(" ");
+    for unit in [
+        "dragonfruit-compositor.service",
+        "dragonfruit-settingsd.service",
+    ] {
+        assert!(
+            after.split_whitespace().any(|ordered| ordered == unit),
+            "the desktop is ordered after {unit}: {after}"
+        );
+    }
+    let pass = values(&desktop, "Service", "PassEnvironment").join(" ");
+    assert!(
+        pass.split_whitespace().any(|key| key == DESKTOP_TOKEN_ENV),
+        "the desktop receives its role token: {pass}"
+    );
+    assert!(
+        !pass.split_whitespace().any(|key| key == SHELL_TOKEN_ENV),
+        "the desktop does not receive the shell token: {pass}"
+    );
+    let env: BTreeSet<String> = values(&desktop, "Service", "Environment")
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    for pair in ["QT_QPA_PLATFORM=offscreen", "QT_QUICK_BACKEND=software"] {
+        assert!(env.contains(pair), "the desktop renders offscreen: {pair}");
+    }
+}
+
+#[test]
 fn restart_policies_match_the_plan() {
     // services/session/src/plan.rs: shell Always; everything else OnFailure.
     let expectations = [
         ("dragonfruit-shell.service", "always"),
+        ("dragonfruit-files-desktop.service", "always"),
         ("dragonfruit-settingsd.service", "on-failure"),
         ("dragonfruit-menu-broker.service", "on-failure"),
         ("dragonfruit-app-index.service", "on-failure"),
@@ -245,10 +284,25 @@ fn every_service_carries_the_session_environment() {
             );
         }
         let pass = values(&unit, "Service", "PassEnvironment").join(" ");
-        for key in PASS_ENV {
+        assert!(
+            pass.split_whitespace().any(|k| k == "DISPLAY"),
+            "{file} passes DISPLAY"
+        );
+        if file == "dragonfruit-files-desktop.service" {
             assert!(
-                pass.split_whitespace().any(|k| k == key),
-                "{file} passes {key}"
+                pass.split_whitespace().any(|k| k == DESKTOP_TOKEN_ENV),
+                "{file} passes {DESKTOP_TOKEN_ENV}"
+            );
+        } else {
+            assert!(
+                pass.split_whitespace().any(|k| k == SHELL_TOKEN_ENV),
+                "{file} passes {SHELL_TOKEN_ENV}"
+            );
+        }
+        if file == "dragonfruit-compositor.service" {
+            assert!(
+                pass.split_whitespace().any(|k| k == DESKTOP_TOKEN_ENV),
+                "{file} passes both role tokens"
             );
         }
         // The compositor's socket gate: the shell and the stage services wait

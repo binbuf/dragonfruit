@@ -31,8 +31,9 @@ WALL_TOL = 3
 # The minimum number of sampled background pixels across a row for that row to
 # count as inside the nested window (sampling every 4th column).
 WALL_ROW_MIN = 200
-# Traffic-light geometry from component.trafficLights tokens (T-01.2).
-LIGHT_DIAMETER, LIGHT_GAP, LIGHT_INSET = 12, 8, 12
+# Traffic-light geometry from component.trafficLights tokens (T-01.2). The
+# 16 pt value is the AX/hit frame; the drawn circle is 14 pt inside it.
+LIGHT_DIAMETER, LIGHT_GAP, LIGHT_INSET = 16, 7, 8
 BTN_LEFT, BTN_RIGHT = 272, 273
 KEY_ESCAPE = 1
 

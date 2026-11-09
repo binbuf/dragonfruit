@@ -148,7 +148,8 @@ it never claims a source that is not installed.
 - Do not invent a second autostart format; XDG autostart and systemd user units
   are both first-class.
 - The session manager starts the shell, compositor, and services as user units;
-  the desktop process is a unit, not a dev-only token (G-09).
+  the Files desktop is a unit (`dragonfruit-files-desktop.service`), not a
+  dev-only token.
 
 ### 5.3 Per-distro differences
 

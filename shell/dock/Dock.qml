@@ -3699,6 +3699,34 @@ Rectangle {
              + " L " + (w - r) + " 0 A " + r + " " + r + " 0 0 1 " + w + " " + r;
     }
 
+    // The full plate silhouette as an SVG path. The fallback fill gradients
+    // are clipped to this same rounded rect, so the top/bottom lifts cannot
+    // leak past the corner arcs.
+    function platePath(w, h) {
+        var r = Math.max(0, Math.min(Theme.controls.dock.radius, Math.min(w, h) / 2));
+        return "M " + r + " 0"
+             + " L " + (w - r) + " 0 A " + r + " " + r + " 0 0 1 " + w + " " + r
+             + " L " + w + " " + (h - r) + " A " + r + " " + r + " 0 0 1 "
+             + (w - r) + " " + h
+             + " L " + r + " " + h + " A " + r + " " + r + " 0 0 1 0 " + (h - r)
+             + " L 0 " + r + " A " + r + " " + r + " 0 0 1 " + r + " 0 Z";
+    }
+
+    // The bottom edge plus both bottom corner arcs, inset by half the stroke.
+    // Used for the bottom brightening rim on a bottom Dock; the straight
+    // middle is already painted by `dockEdge`, so this path adds the corner
+    // arcs without changing the anchored-edge lip.
+    function bottomOutlinePath(w, h, strokeWidth) {
+        if (strokeWidth === undefined)
+            strokeWidth = Theme.controls.dock.plate.rimHeight;
+        var d = strokeWidth / 2;
+        var r = Math.max(0, Math.min(Theme.controls.dock.radius - d,
+                                      Math.min(w, h) / 2));
+        return "M 0 " + (h - r) + " A " + r + " " + r + " 0 0 1 " + r + " " + h
+             + " L " + (w - r) + " " + h + " A " + r + " " + r + " 0 0 1 "
+             + w + " " + (h - r);
+    }
+
     // The surface input region: the visible bar plus the currently magnified
     // or bouncing icon rectangles. The transparent magnified band passes
     // clicks through to the windows beneath. A hidden auto-hide Dock keeps
@@ -3831,6 +3859,106 @@ Rectangle {
             }
         }
 
+        // The top and bottom interior lifts. The reference plate is flat in
+        // the centre but brightens over ~10 px at the top and ~12 px at the
+        // bottom; these gradients are clipped to the same silhouette as the
+        // fill, so they follow the corner arcs.
+        Shape {
+            id: dockTopGlow
+            objectName: "dockTopGlow"
+            visible: !dock.sampledPlate && dock.position === "bottom"
+            x: dockPlate.plateX
+            y: dockPlate.plateY
+            width: dockPlate.plateW
+            height: dockPlate.plateH
+            preferredRendererType: Shape.GeometryRenderer
+            antialiasing: true
+            ShapePath {
+                strokeWidth: 0
+                fillGradient: LinearGradient {
+                    x1: 0
+                    y1: 0
+                    x2: 0
+                    y2: dockPlate.plateH
+                    GradientStop {
+                        position: 0.0
+                        color: Qt.rgba(1, 1, 1,
+                                       Theme.controls.dock.plate.topGlowOpacity)
+                    }
+                    GradientStop {
+                        position: Math.min(1.0,
+                            Theme.controls.dock.plate.topGlowHeight
+                            / Math.max(1, dockPlate.plateH))
+                        color: "transparent"
+                    }
+                    GradientStop { position: 1.0; color: "transparent" }
+                }
+                PathSvg { path: dock.platePath(dockPlate.plateW, dockPlate.plateH) }
+            }
+        }
+
+        Shape {
+            id: dockBottomGlow
+            objectName: "dockBottomGlow"
+            visible: !dock.sampledPlate && dock.position === "bottom"
+            x: dockPlate.plateX
+            y: dockPlate.plateY
+            width: dockPlate.plateW
+            height: dockPlate.plateH
+            preferredRendererType: Shape.GeometryRenderer
+            antialiasing: true
+            ShapePath {
+                strokeWidth: 0
+                fillGradient: LinearGradient {
+                    x1: 0
+                    y1: 0
+                    x2: 0
+                    y2: dockPlate.plateH
+                    GradientStop { position: 0.0; color: "transparent" }
+                    GradientStop {
+                        position: Math.max(0.0,
+                            1.0 - Theme.controls.dock.plate.bottomGlowHeight
+                            / Math.max(1, dockPlate.plateH))
+                        color: "transparent"
+                    }
+                    GradientStop {
+                        position: 1.0
+                        color: Qt.rgba(1, 1, 1,
+                                       Theme.controls.dock.plate.bottomGlowOpacity)
+                    }
+                }
+                PathSvg { path: dock.platePath(dockPlate.plateW, dockPlate.plateH) }
+            }
+        }
+
+        // The bottom edge highlight follows the two bottom corner arcs; the
+        // straight middle is the anchored-edge lip below.
+        Shape {
+            id: dockBottomRim
+            objectName: "dockBottomRim"
+            z: 1
+            visible: !dock.sampledPlate && dock.position === "bottom"
+            readonly property real inset: Theme.controls.dock.plate.rimHeight / 2
+            x: dockPlate.plateX + inset
+            y: dockPlate.plateY + inset
+            width: Math.max(0, dockPlate.plateW - 2 * inset)
+            height: Math.max(0, dockPlate.plateH - 2 * inset)
+            preferredRendererType: Shape.GeometryRenderer
+            antialiasing: true
+            opacity: Theme.controls.dock.plate.edgeOpacity
+            ShapePath {
+                objectName: "dockBottomRimStroke"
+                strokeColor: Theme.color.dockRim
+                strokeWidth: Theme.controls.dock.plate.rimHeight
+                fillColor: "transparent"
+                capStyle: ShapePath.FlatCap
+                PathSvg {
+                    path: dock.bottomOutlinePath(dockBottomRim.width,
+                                                 dockBottomRim.height)
+                }
+            }
+        }
+
         // The bright inner highlight: a stroked path along the interior edge
         // that follows the plate's corner arcs instead of a straight hairline
         // poking into them (T-14.7z). It is inset by half the stroke so every
@@ -3840,6 +3968,7 @@ Rectangle {
         Shape {
             id: dockRim
             objectName: "dockRim"
+            z: 1
             visible: !dock.sampledPlate
             readonly property real inset: Theme.controls.dock.plate.rimHeight / 2
             x: dockPlate.plateX + inset
@@ -3867,6 +3996,7 @@ Rectangle {
         // orientation-aware like the interior rim.
         Rectangle {
             objectName: "dockEdge"
+            z: 1
             readonly property real corner: Theme.controls.dock.radius
             readonly property bool horizontal: dock.position === "bottom"
             color: Theme.color.dockRim

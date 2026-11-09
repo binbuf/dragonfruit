@@ -17,14 +17,15 @@ Type=simple
 ExecStart=/usr/bin/dragonfruit-compositor --backend drm --socket-name dragonfruit-wayland
 Restart=no
 # The session environment (T-12.1b). The session entry imports the dynamic
-# values (DISPLAY, DRAGONFRUIT_LAUNCH_TOKEN) into the user manager before
-# starting the target; the compositor pre-mints the launch token it finds
-# here so it can hand the same one to the shell.
+# values (DISPLAY, DRAGONFRUIT_LAUNCH_TOKEN,
+# DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN) into the user manager before starting the
+# target; the compositor pre-mints the launch tokens it finds here so it can
+# hand the same ones to the shell and the Files desktop.
 Environment=XDG_CURRENT_DESKTOP=dragonfruit
 Environment=XDG_SESSION_TYPE=wayland
 Environment=WAYLAND_DISPLAY=dragonfruit-wayland
 Environment=GTK_CSD=0
-PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN
 
 [Install]
 WantedBy=dragonfruit-session.target

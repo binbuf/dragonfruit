@@ -30,9 +30,10 @@ without per-app constants.
 3. `WindowStyle` resolves the table in QML; the compositor has the matching
    `WindowStyle`/`WindowChrome` types generated from the same tokens. A
    first-party `TitleBar` inside an `AppWindow` inherits the window's style.
-4. Traffic lights are 16×16 pt, 23 pt centre-to-centre, with a leading inset
-   token. The top inset is derived from the final height
-   (`(height - diameter) / 2`): 8 pt in a 32 pt bar, 18 pt in a 52 pt bar.
+4. Traffic lights use a 16 pt AppKit AX/hit frame with a 14 pt drawn circle,
+   23 pt centre-to-centre. The inset is derived from the title row on both
+   axes (`(titleRow - buttonSize) / 2`): 8 pt in a 32 pt bar, 18 pt in a
+   52 pt bar, and expanded/preference stay in their 28/32 pt title row.
 5. Tab/path/status/format bars are content-layer accessory bars
    (`component.accessoryBar`: 28/30/28/20 pt), never part of chrome height.
 6. The compositor's SSD default is `titlebar` (32 pt); it draws no toolbar.
@@ -49,8 +50,9 @@ without per-app constants.
   Files are 52 pt `unified` windows; their main toolbar is the titlebar row,
   so the window is not a 40 + 52 pt stack.
 - The compositor and QML cannot drift: the same generated table drives both,
-  and tests assert every baseline, the 8/18 pt insets, the 23 pt spacing, the
-  fullscreen reveal, and that accessory bars do not change chrome height.
+  and tests assert every baseline, the 16/14 pt frame/circle split, the
+  8/18 pt insets, the 23 pt spacing, the fullscreen reveal, and that accessory
+  bars do not change chrome height.
 - Changing a style at runtime reflows a zoomed client through the existing
   inset/configure path.
 - `_NET_FRAME_EXTENTS` remains a separate X11 gap (G-16).

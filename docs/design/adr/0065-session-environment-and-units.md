@@ -69,3 +69,16 @@ covered by the `gtk-decoration-layout` steering in
 [05-window-decorations.md](../05-window-decorations.md). The session entry
 imports `GTK_CSD` with the other base variables. This is a toolkit
 compatibility default, not a session-identity variable.
+
+## Amendment (2026-11, T-19.3 / G-09)
+
+The session also mints a second, role-scoped token,
+`DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`, for the Files desktop process. The
+compositor receives both tokens and pre-mints each role; the shell receives
+only the shell token and the Files desktop only the desktop token
+(`SessionEnvironment::{trusted,desktop_trusted,issuer}` and
+`ServiceSpec::{trusted,desktop_trusted}`). The desktop unit
+`dragonfruit-files-desktop.service` is part of the shipped composition and
+restarts in place like the shell. The compositor still writes the desktop
+hand-off file when no token was imported, so a missing environment hand-off
+degrades to the file hand-off rather than a desktop that never starts.

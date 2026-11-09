@@ -134,8 +134,8 @@ pub use placement::{
 };
 #[allow(unused_imports)]
 pub use resize::{
-    apply_aspect, clamp_move, clamp_within_output, resize_edge_at, resize_geometry, ResizeEdge,
-    SizeConstraints, RESIZE_BORDER, RESIZE_CORNER,
+    apply_aspect, clamp_frame_move, clamp_move, clamp_within_output, resize_edge_at,
+    resize_geometry, ResizeEdge, SizeConstraints, RESIZE_BORDER, RESIZE_CORNER,
 };
 pub use scanout::{covers_output, direct_scanout_candidate};
 #[allow(unused_imports)]
@@ -183,6 +183,21 @@ impl ReservedZones {
         Rectangle::new(
             (output.loc.x + self.left, output.loc.y + self.top).into(),
             (w, h).into(),
+        )
+    }
+
+    /// The bounds an interactive move or resize may use: the output with only
+    /// the top reserve (the menu bar) subtracted.
+    ///
+    /// The Dock's reserve still shapes placement and Zoom through
+    /// [`Self::usable`], but a dragged or resized window may overlap the Dock,
+    /// matching macOS. The Dock anchors to the bottom, left, or right edge, so
+    /// `top` is the menu bar.
+    pub fn interactive_bounds(&self, output: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+        let top = self.top.max(0).min((output.size.h - 1).max(0));
+        Rectangle::new(
+            (output.loc.x, output.loc.y + top).into(),
+            (output.size.w.max(1), (output.size.h - top).max(1)).into(),
         )
     }
 }
@@ -674,6 +689,22 @@ mod tests {
         };
         let usable = zones.usable(rect(0, 0, 1920, 1080));
         assert!(usable.size.w >= 1 && usable.size.h >= 1);
+    }
+
+    #[test]
+    fn interactive_bounds_only_reserve_the_top_menu_bar() {
+        let zones = ReservedZones {
+            top: 28,
+            bottom: 80,
+            left: 12,
+            right: 12,
+        };
+        // The Dock's bottom/left/right reserves keep shaping placement and
+        // Zoom, but a dragged window may overlap them.
+        assert_eq!(
+            zones.interactive_bounds(rect(0, 0, 1920, 1080)),
+            rect(0, 28, 1920, 1052)
+        );
     }
 
     #[test]

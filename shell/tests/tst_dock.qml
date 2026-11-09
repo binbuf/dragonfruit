@@ -2129,6 +2129,35 @@ Item {
                          left.panelRect.h - 2 * Theme.controls.dock.radius, 0.001);
         }
 
+        // The plate perimeter is directional: a top lift, a wider bottom lift,
+        // and a bottom rim that follows the two bottom corner arcs. The
+        // sampled path paints the same terms in the compositor shader; this
+        // pins the shell fallback.
+        function test_plate_has_directional_perimeter_treatment() {
+            var bottom = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                materialBlurActive: false,
+                entries: [ app("a", "A", true) ]
+            });
+            var topGlow = findChild(bottom, "dockTopGlow");
+            var bottomGlow = findChild(bottom, "dockBottomGlow");
+            var bottomRim = findChild(bottom, "dockBottomRim");
+            verify(topGlow !== null && bottomGlow !== null && bottomRim !== null);
+            verify(topGlow.visible && bottomGlow.visible && bottomRim.visible);
+            compare(findChild(bottom, "dockBottomRimStroke").strokeColor,
+                    Theme.color.dockRim);
+            fuzzyCompare(bottomRim.opacity,
+                         Theme.controls.dock.plate.edgeOpacity, 0.001);
+
+            var left = make(dockComponent, {
+                width: 240, height: 800, position: "left",
+                materialBlurActive: false,
+                entries: [ app("a", "A", true) ]
+            });
+            verify(!findChild(left, "dockBottomRim").visible,
+                   "the bottom rim is bottom-Dock only");
+        }
+
         // -- T-14.7z plate corners and frost alignment -----------------------
 
         // Point-in-rounded-rect, inflated by `slop` so a stroke's anti-aliased

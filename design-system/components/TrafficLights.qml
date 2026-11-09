@@ -21,14 +21,15 @@ Item {
     signal zoomClicked()
 
     implicitWidth: row.implicitWidth
-    implicitHeight: Theme.controls.trafficLights.diameter
+    // The 16 pt button frame is the hit target; the visible circle is 14 pt.
+    implicitHeight: Theme.controls.trafficLights.buttonSize
 
     readonly property bool reveal: root.forceReveal || root.hovered
 
     Row {
         id: row
         // The measured 23 pt spacing is centre-to-centre; Qt's Row wants the
-        // edge gap between two 16 pt lights.
+        // edge gap between two 16 pt button frames.
         spacing: WindowStyle.trafficLightGap()
         anchors.verticalCenter: parent.verticalCenter
 
@@ -65,7 +66,7 @@ Item {
         property string label: ""
         signal activated()
 
-        width: Theme.controls.trafficLights.diameter
+        width: Theme.controls.trafficLights.buttonSize
         height: width
         activeFocusOnTab: true
 
@@ -75,7 +76,11 @@ Item {
         Accessible.onPressAction: light.activated()
 
         Rectangle {
-            anchors.fill: parent
+            // The AX frame is 16 pt, but AppKit draws a 14 pt circle centred
+            // inside it. Drawing the frame itself made the lights too big.
+            anchors.centerIn: parent
+            width: Theme.controls.trafficLights.diameter
+            height: width
             radius: width / 2
             color: root.active ? light.baseColor : Theme.color.controlActive
             border.width: root.active ? 0 : 1
@@ -92,12 +97,15 @@ Item {
         }
 
         Icon {
-            anchors.centerIn: parent
+            // A 7 pt glyph centred in a 16 pt frame lands on a half pixel;
+            // rounding keeps it crisp at 1x and at fractional scales.
+            x: Math.round((parent.width - width) / 2)
+            y: Math.round((parent.height - height) / 2)
             name: light.kind === "zoom" ? "zoom" : light.kind
             size: Theme.controls.trafficLights.glyphSize
-            // The traffic-light glyphs are 6 px; a 4-unit Tabler stroke keeps
-            // them at roughly 1 logical pixel, matching the old hand-drawn
-            // optical weight.
+            // The 7 pt token is Tabler's 24-unit box: the 12-unit path plus
+            // the 4-unit stroke is a ~4.7 pt mark with a ~1.2 pt stroke,
+            // matching the compositor's rasterized SSD glyphs.
             strokeWidth: 4
             color: Theme.color.trafficGlyph
             opacity: root.reveal ? 1 : 0
@@ -119,7 +127,7 @@ Item {
 
         FocusRing {
             target: light
-            cornerRadius: light.width / 2
+            cornerRadius: Theme.controls.trafficLights.diameter / 2
             shown: light.activeFocus
         }
 

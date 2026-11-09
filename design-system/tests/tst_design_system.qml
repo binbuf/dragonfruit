@@ -121,7 +121,8 @@ TestCase {
         compare(Theme.primitive.radius.md, 10);
         compare(Theme.primitive.spacing.sm, 8);
         compare(WindowStyle.height("titlebar"), 32);
-        compare(Theme.controls.trafficLights.diameter, 16);
+        compare(Theme.controls.trafficLights.buttonSize, 16);
+        compare(Theme.controls.trafficLights.diameter, 14);
         compare(Theme.motion.menuOpen.fullDuration, 160);
         verify(Theme.color.accent !== undefined);
     }
@@ -148,12 +149,20 @@ TestCase {
     }
 
     function test_traffic_light_geometry_is_style_derived() {
+        // 16 pt is the AppKit AX/hit frame; 14 pt is the drawn circle.
         compare(WindowStyle.trafficLightSize, 16);
+        compare(WindowStyle.trafficLightDiameter, 14);
         compare(WindowStyle.trafficLightSpacing, 23);
         compare(WindowStyle.trafficLightGap(), 7);
-        compare(WindowStyle.trafficTopInset(32), 8);
-        compare(WindowStyle.trafficTopInset(52), 18);
-        compare(WindowStyle.trafficTopInset(66), 25);
+        compare(WindowStyle.trafficLightInset(32), 8);
+        compare(WindowStyle.trafficLightInset(52), 18);
+        compare(WindowStyle.trafficLightInset(66), 25);
+        compare(WindowStyle.trafficLightInset(28), 6);
+        // Preference/expanded keep the lights in the title row, not the
+        // middle of the full chrome.
+        compare(WindowStyle.trafficLightInsetFor("preference"), 8);
+        compare(WindowStyle.trafficLightInsetFor("expanded"), 6);
+        compare(WindowStyle.trafficLightInsetFor("unified"), 18);
     }
 
     function test_titlebar_height_comes_from_the_named_style() {
@@ -514,19 +523,19 @@ TestCase {
 
         closeSpy.target = lights;
         closeSpy.clear();
-        var d = Theme.controls.trafficLights.diameter;
-        mouseClick(lights, d / 2, d / 2);
+        var s = Theme.controls.trafficLights.buttonSize;
+        mouseClick(lights, s / 2, s / 2);
         compare(closeSpy.count, 1);
     }
 
     function test_traffic_light_visual_colors() {
         var lights = make(lightsComponent, {});
         var img = grabImage(lights);
-        var d = Theme.controls.trafficLights.diameter;
+        var s = Theme.controls.trafficLights.buttonSize;
         var gap = WindowStyle.trafficLightGap();
-        compare(img.red(d / 2, d / 2), channel(Theme.color.close.r));
-        compare(img.red(d + gap + d / 2, d / 2), channel(Theme.color.minimize.r));
-        compare(img.red(2 * (d + gap) + d / 2, d / 2), channel(Theme.color.zoom.r));
+        compare(img.red(s / 2, s / 2), channel(Theme.color.close.r));
+        compare(img.red(s + gap + s / 2, s / 2), channel(Theme.color.minimize.r));
+        compare(img.red(2 * (s + gap) + s / 2, s / 2), channel(Theme.color.zoom.r));
     }
 
     // -- Popup (FR-1, FR-5) -------------------------------------------------
@@ -703,7 +712,8 @@ TestCase {
         var bar = slot.children[0];
         compare(bar.width, slot.width,
                 "a parented TitleBar must span its chrome slot (the window width)");
-        compare(bar.trafficLights.x, Theme.controls.trafficLights.inset);
+        compare(bar.trafficLights.x,
+                WindowStyle.trafficLightInset(bar.titleRowHeight));
     }
 
     // -- FR-3: app TitleBar vs compositor SSD reference ---------------------
@@ -717,12 +727,11 @@ TestCase {
         compare(app.height, ssd.height);
         // Prove the images are non-trivial (not two blank surfaces): the close
         // traffic light must be present at its token-derived position.
-        var d = Theme.controls.trafficLights.diameter;
+        var inset = WindowStyle.trafficLightInset(bar.titleRowHeight);
+        var cx = inset + WindowStyle.trafficLightSize / 2;
         var cy = Math.round(bar.chromeHeight / 2);
-        compare(app.red(Theme.controls.trafficLights.inset + d / 2, cy),
-                channel(Theme.color.close.r));
-        compare(ssd.red(Theme.controls.trafficLights.inset + d / 2, cy),
-                channel(Theme.color.close.r));
+        compare(app.red(cx, cy), channel(Theme.color.close.r));
+        compare(ssd.red(cx, cy), channel(Theme.color.close.r));
         verify(app.equals(ssd),
                "app TitleBar and compositor SSD reference must render identically at the same tokens");
     }

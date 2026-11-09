@@ -28,8 +28,9 @@
 //! * the **Files desktop** presents `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`, the
 //!   role-scoped token that may create the `background` layer (T-19.3).
 //!
-//! The environment is data; [`SessionEnvironment::base`] and
-//! [`SessionEnvironment::trusted`] return the exact pairs
+//! The environment is data; [`SessionEnvironment::base`],
+//! [`SessionEnvironment::trusted`], [`SessionEnvironment::desktop_trusted`],
+//! and [`SessionEnvironment::issuer`] return the exact pairs
 //! [`crate::ServiceSpec::env`] carries, and [`crate::SessionPlan::with_environment`]
 //! attaches them to a plan. The systemd user units in `services/session/units`
 //! mirror the same contract (see

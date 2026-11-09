@@ -58,12 +58,15 @@ Four things had to be decided once:
   `background` layer; its death leaves the compositor, shell, and browser
   running, and vice versa. The protocol half is asserted by
   `shell_protocol_conformance::desktop_client_death_leaves_the_shell_and_session_alive`.
-- **Dev-tool provisioning now; session manager later.** The compositor only
-  writes `<socket>.desktop-launch-token` when it is handed a desktop token, so
-  `dragonfruit` (`make dev`/`make demo`) starts the compositor with a random
-  `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`, then launches
-  `dragonfruit-files --desktop` with the hand-off file's token. The systemd
-  session entry does not yet mint the token; that is the remaining follow-up.
+- **Provisioned by both the dev tool and the session manager.** The compositor
+  mints a role-scoped desktop token (or reuses the one it is handed) and writes
+  `<socket>.desktop-launch-token`. `dragonfruit` (`make dev`/`make demo`)
+  starts the compositor with a random `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`, then
+  launches `dragonfruit-files --desktop` with the hand-off file's token. A
+  real login does the same through the session plan:
+  `dragonfruit-session --print-env` mints the role-scoped token, the entry
+  exports/imports it, and `dragonfruit-files-desktop.service` starts the
+  process after the compositor socket and settings bus gates.
 
 ## Consequences
 

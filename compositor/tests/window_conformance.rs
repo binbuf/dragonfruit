@@ -889,10 +889,12 @@ fn parse_material(report: &str) -> MaterialReport {
 }
 
 /// Traffic-light geometry from `component.trafficLights` tokens, used to aim
-/// the synthetic pointer at each control (T-01.2/T230b).
+/// the synthetic pointer at each control (T-01.2/T230b). These tests run the
+/// default `titlebar` style, whose 16 pt AX frame is inset 8 pt; the drawn
+/// circle is 14 pt inside that frame, but the click target is the frame.
 const LIGHT_DIAMETER: i32 = 16;
 const LIGHT_SPACING: i32 = 23;
-const LIGHT_INSET: i32 = 12;
+const LIGHT_INSET: i32 = 8;
 
 /// The global-space center of a traffic light on a reported titlebar.
 fn light_center(report: &DecorationReport, index: i32) -> (i32, i32) {

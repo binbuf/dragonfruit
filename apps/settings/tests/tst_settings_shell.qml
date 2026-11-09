@@ -316,9 +316,9 @@ Item {
             var shell = make();
             closeSpy.target = shell;
             closeSpy.clear();
-            var d = Theme.controls.trafficLights.diameter;
+            var s = Theme.controls.trafficLights.buttonSize;
             var lights = shell.titleBar.trafficLights;
-            mouseClick(lights, d / 2, d / 2);
+            mouseClick(lights, s / 2, s / 2);
             compare(closeSpy.count, 1);
         }
 

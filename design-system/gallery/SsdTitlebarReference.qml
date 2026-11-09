@@ -10,7 +10,8 @@ import Dragonfruit
 // compositor renderer lands it replaces this reference in the diff.
 //
 // T230b: the reference resolves its height from the same `WindowStyle` table
-// and draws the 16 pt lights at the measured 23 pt centre spacing.
+// and draws the measured 14 pt circles in their 16 pt AX frames at 23 pt
+// centre spacing.
 Item {
     id: root
 
@@ -19,6 +20,11 @@ Item {
     property string style: "titlebar"
 
     readonly property real chromeHeight: WindowStyle.chromeHeight(style)
+    readonly property real titleRowHeight:
+        WindowStyle.titleRowHeight(style) > 0
+            ? WindowStyle.titleRowHeight(style) : root.chromeHeight
+    readonly property real trafficInset:
+        WindowStyle.trafficLightInset(root.titleRowHeight)
 
     implicitWidth: 360
     implicitHeight: root.chromeHeight
@@ -44,28 +50,44 @@ Item {
         }
     }
 
+    Item {
+        id: titleRow
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: root.titleRowHeight
+    }
+
     Row {
         anchors.left: parent.left
-        anchors.leftMargin: WindowStyle.trafficLightLeadingInset
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.top: parent.top
+        anchors.leftMargin: root.trafficInset
+        anchors.topMargin: root.trafficInset
         spacing: WindowStyle.trafficLightGap()
 
         Repeater {
             model: [Theme.color.close, Theme.color.minimize, Theme.color.zoom]
-            delegate: Rectangle {
+            delegate: Item {
+                id: slot
                 required property var modelData
                 width: WindowStyle.trafficLightSize
                 height: width
-                radius: width / 2
-                color: root.active ? modelData : Theme.color.controlActive
-                antialiasing: true
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: WindowStyle.trafficLightDiameter
+                    height: width
+                    radius: width / 2
+                    color: root.active ? slot.modelData : Theme.color.controlActive
+                    antialiasing: true
+                }
             }
         }
     }
 
     Text {
-        anchors.centerIn: parent
-        width: Math.max(0, parent.width - 2 * (WindowStyle.trafficLightLeadingInset
+        anchors.centerIn: titleRow
+        width: Math.max(0, titleRow.width - 2 * (root.trafficInset
                        + WindowStyle.trafficLightSize * 3
                        + WindowStyle.trafficLightGap() * 2
                        + Theme.controls.titlebar.spacing))

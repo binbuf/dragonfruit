@@ -61,7 +61,7 @@ export RUSTFLAGS := $(RUSTFLAGS) -L $(DF_DEVROOT)
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test qml-test-serial \
+.PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test qml-test-serial glass-shader-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast gate-checks \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
         t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
@@ -128,6 +128,7 @@ help:
 	@echo "  make distro-contract-check — T221 distro adapter contract tests + live capability probe"
 	@echo "  make check-phosphor — Phosphor registry and glyph-reference gate"
 	@echo "  make glass-selftest — T-19.4 deterministic colour/geometry/MTF/motion self-test"
+	@echo "  make glass-shader-test — GPU glass precision, sampling and span regression tests"
 	@echo "  make menubar-veil-check — T200 menu-bar depth LUT/readability/fallback fixture"
 	@echo "  make menubar-veil-capture — T200 live nested veil over dark/light windows + fallback"
 	@echo "  make menu-families-check — T202 attached/detached/status menu presets and motion"
@@ -862,6 +863,11 @@ gallery-snapshot: cmake-build
 # reference checkout is required.
 glass-selftest:
 	python3 tests/glass/run_selftest.py
+
+# Exercises the actual compositor GLSL in a private EGL context. Explicitly
+# skips if surfaceless GLES is unavailable; hardware FP16 coverage matters.
+glass-shader-test:
+	python3 tests/glass/test_glass_shader.py
 
 # T195: the material-preset schema and resolution policy. This is the
 # hardware-independent check for variant precedence, range/finite validation,
