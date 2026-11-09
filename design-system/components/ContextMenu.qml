@@ -24,7 +24,8 @@ Item {
     property int preferredWidth: Theme.controls.contextMenu.minWidth
     property string accessibleName: ""
     // T202: the shared detached-menu preset and backdrop ownership. App-owned
-    // menus keep `local` and paint the deterministic opaque plate; the shell
+    // content menus keep `local` and paint the opaque plate; desktop menus
+    // use `desktop` for an alpha-only wallpaper fallback. The shell
     // tray menu and the Dock set `trusted` because the compositor owns their
     // sampled backdrop.
     property string materialPreset: "menuDetached"
@@ -32,8 +33,10 @@ Item {
     readonly property bool trustedBackdrop: materialBackdrop === "trusted"
     readonly property real cornerRadius: Material.menuRadius(materialPreset)
     readonly property color surfaceFill:
-        Material.menuFill(materialPreset, materialBlurActive, materialTier,
-                          materialFallback, trustedBackdrop)
+        materialBackdrop === "desktop"
+            ? Material.desktopMenuFill(materialBlurActive, materialTier, materialFallback)
+            : Material.menuFill(materialPreset, materialBlurActive, materialTier,
+                                materialFallback, trustedBackdrop)
     readonly property var glassResolution:
         Material.menuResolution(materialPreset, materialBlurActive, materialTier,
                                 materialFallback, trustedBackdrop)

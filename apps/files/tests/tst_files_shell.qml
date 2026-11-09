@@ -470,17 +470,26 @@ Item {
             shell.contextMenu.hide();
         }
 
-        function test_context_menus_use_the_local_menu_fallback() {
+        function test_context_menus_distinguish_desktop_and_app_content() {
             var shell = make({});
             var menu = shell.contextMenu;
             compare(menu.materialPreset, "menuDetached");
             compare(menu.materialBackdrop, "local",
                     "Files has no trusted compositor backdrop");
             var desktop = makeDesktop();
-            compare(desktop.contextMenu.materialBackdrop, "local");
+            compare(desktop.contextMenu.materialBackdrop, "desktop");
             var savedRollout = Glass.rollout;
+            var savedReduce = Settings.values["accessibility.reduceTransparency"];
             try {
                 Glass.rollout = "replacement";
+                Settings.set("accessibility.reduceTransparency", false);
+                verify(desktop.contextMenu.surfaceFill.a < 0.9);
+                Settings.set("accessibility.reduceTransparency", true);
+                tryCompare(Glass, "reduceTransparency", true);
+                fuzzyCompare(desktop.contextMenu.surfaceFill.a,
+                             Theme.glass.accessibility.reduceTransparency[
+                                 Theme.dark ? "dark" : "light"].alpha, 1e-4);
+                Settings.set("accessibility.reduceTransparency", false);
                 var resolved = Glass.resolve("menuDetached", {
                     scheme: Theme.dark ? "dark" : "light",
                     rollout: "replacement", backend: "software", tier: "full"
@@ -489,6 +498,7 @@ Item {
                 verify(menu.surfaceFill.a >= 0.9,
                        "an app-owned menu paints the opaque local plate");
             } finally {
+                Settings.set("accessibility.reduceTransparency", savedReduce);
                 Glass.rollout = savedRollout;
             }
         }

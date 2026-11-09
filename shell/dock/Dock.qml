@@ -425,7 +425,7 @@ Rectangle {
     property var tooltipEntry: null
     property Item tooltipAnchor: null
     property bool tooltipOpen: false
-    readonly property int tooltipDwell: Theme.controls.tooltip.dwell
+    readonly property int tooltipDwell: Theme.controls.dock.tooltipDwell
     // "above" for a bottom Dock; the interior side for a vertical Dock so the
     // label never crosses the screen edge.
     readonly property string tooltipPlacement:
@@ -684,19 +684,13 @@ Rectangle {
             return;
 
         if (chooserEligible(entry)) {
-            // One Tooltip at a time: the chooser suppresses the name label.
-            hideTooltip();
+            // The name appears while the grouped-window chooser dwells.
             chooserCloseTimer.stop();
             if (chooserOpen && chooserHoverEntry === entry)
                 return;
             chooserHoverEntry = entry;
             chooserHoverTimer.restart();
-            return;
-        }
-
-        // Not a chooser target: a hover-opened chooser closes after the delay,
-        // so releasing onto a single-window entry dismisses it cleanly.
-        if (chooserHoverOpened) {
+        } else if (chooserHoverOpened) {
             chooserHoverEntry = null;
             chooserCloseTimer.restart();
         }
@@ -714,10 +708,13 @@ Rectangle {
         }
         if (tooltipAnchor === entryItem && (tooltipOpen || tooltipDwellTimer.running))
             return;
-        hideTooltip();
+        tooltipDwellTimer.stop();
         tooltipEntry = entry;
         tooltipAnchor = entryItem;
-        tooltipDwellTimer.restart();
+        if (tooltipDwell <= 0)
+            showTooltip();
+        else if (!tooltipOpen)
+            tooltipDwellTimer.restart();
     }
 
     // The pointer left an entry. A leave from an entry that is no longer the
@@ -4575,6 +4572,7 @@ Rectangle {
     Tooltip {
         id: dockTooltip
         objectName: "dockTooltip"
+        openDuration: 0
         open: dock.tooltipOpen
         anchorItem: dock.tooltipAnchor
         // The controlled reference capsule sits 8 pt above the plate; its

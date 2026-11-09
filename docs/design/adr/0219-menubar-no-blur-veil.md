@@ -1,5 +1,7 @@
 # 0219 — The menu-bar veil is a sharp depth LUT, not a blur
 
+> Updated by [ADR 0243](0243-shell-material-focus-and-hover-corrections.md): see the current shell material, focus and hover policy.
+
 ## Status
 
 accepted (T200)

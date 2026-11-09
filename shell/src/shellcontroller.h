@@ -12,6 +12,7 @@
 #include <QImage>
 #include <QRect>
 #include <QSet>
+#include <QThreadPool>
 #include <QSize>
 #include <QString>
 #include <QStringList>
@@ -1153,9 +1154,9 @@ private:
     bool m_appIndexSubscribed = false;
     // The global-menu broker (T-14.2a): the shell pushes focus/window state
     // and reads the resolved fixed + exported menus (T-14.7).
-    MenuBrokerClient m_menuBroker;
-    // One-shot diagnostic: the broker answered at least once this session.
-    bool m_menuBrokerLogged = false;
+    QThreadPool m_menuWorker;
+    quint64 m_menuRefreshGeneration = 0;
+    bool m_menuRefreshInFlight = false;
     // StatusNotifier/AppIndicator tray (T-14.3): the app-index client, the
     // last item list, and the short refresh timer that keeps the bar live
     // (there is no compositor-side tray event; the watcher's own signals are
@@ -1298,5 +1299,4 @@ private:
     int m_menuRecentItems = 10;
     QString m_systemUserName;
     QString m_devReturnDesktop;
-    bool m_dbusMenuFallbackLogged = false;
 };

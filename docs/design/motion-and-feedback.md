@@ -42,18 +42,18 @@ and reduced-motion behaviour.
 
 ## 3. Measured baseline
 
-These values are already measured and must be preserved:
+These measurements remain reference values; explicit policy updates are noted below.
 
 | Transition | Measured | Source |
 |---|---|---|
 | Dock magnification envelope | 135 ms smoothstep (`3u² − 2u³`), no overshoot | ADR 0218 |
 | Dock magnification spatial profile | raised cosine, R = 125.1 pt, peak 1.217× default / 2.047× diagnostic | ADR 0218 |
-| Dock tooltip | ~1.4 s dwell, 128×33 pt, 16.5 pt radius, 8 pt above plate | ADR 0218 |
+| Dock tooltip | Immediate opening/retargeting; 33 pt capsule, 16.5 pt radius, 8 pt above plate | [ADR 0243](adr/0243-shell-material-focus-and-hover-corrections.md) supersedes the earlier 1.4 s delay |
 | Dock launch lift | 15 pt over ~0.3 s (full multi-bounce unresolved) | ADR 0218 |
 | Genie minimize/restore | ~0.45–0.5 s each way | ADR 0218 |
 | Menu close | ~183 ms, ~5% shrink, translate toward anchor | Liquid Glass report |
 | Menu open | unresolved within one 60 fps frame | Liquid Glass report |
-| Menu bar veil | no blur; alpha 0.451 at top over black, zero by 95 pt | Liquid Glass report |
+| Menu bar veil | No blur; measured light/dark LUTs, zero by 95 pt; polarity follows wallpaper brightness | Liquid Glass report; ADR 0243 |
 | Window open/close | T-02 measured; preserve current tokens | T-02 |
 | Workspace switch / overview | T-05 measured; preserve current tokens | T-05 |
 | App switcher | T-06 measured; preserve current tokens | T-06 |

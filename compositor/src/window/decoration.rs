@@ -747,10 +747,14 @@ pub(crate) fn motion_transform(
                     (f64::from(rel.x) * frame.scale.x).round() as i32,
                     (f64::from(rel.y) * frame.scale.y).round() as i32,
                 ));
-            let scaled_w = (f64::from(rect.size.w) * frame.scale.x).round() as i32;
-            let scaled_h = (f64::from(rect.size.h) * frame.scale.y).round() as i32;
+            // Transform shared edges, not independent sizes: independent
+            // rounding leaves cracks between adjacent translucent spans.
+            let scaled_w = (f64::from(rel.x + rect.size.w) * frame.scale.x).round() as i32
+                - (f64::from(rel.x) * frame.scale.x).round() as i32;
+            let scaled_h = (f64::from(rel.y + rect.size.h) * frame.scale.y).round() as i32
+                - (f64::from(rel.y) * frame.scale.y).round() as i32;
             (
-                Rectangle::new(scaled_loc, (scaled_w.max(1), scaled_h.max(1)).into()),
+                Rectangle::new(scaled_loc, (scaled_w.max(0), scaled_h.max(0)).into()),
                 color * frame.alpha,
             )
         }

@@ -329,7 +329,7 @@ bool ShellProtocol::createMenuBarSurface(int height, int exclusiveZone)
 }
 
 void ShellProtocol::setMenuBarFrameGeometry(bool active, int width, int height,
-                                             int cornerRadius)
+                                             int cornerRadius, bool lightVeil)
 {
     if (!m_layer)
         return;
@@ -354,9 +354,14 @@ void ShellProtocol::setMenuBarFrameGeometry(bool active, int width, int height,
     const int radius = qMax(0, cornerRadius);
     if (m_menuBarPanelActive && panelWidth == m_menuBarPanelWidth
             && panelHeight == m_menuBarPanelHeight
-            && radius == m_menuBarPanelRadius)
+        && radius == m_menuBarPanelRadius && lightVeil == m_menuBarLightVeil)
         return;
-    df_layer_surface_set_panel_region(m_layer, "veil", "menuBarVeil", 0, 0,
+    // Polarity travels with the content commit so lettering and veil agree.
+    // Clear the previous key when polarity changes; regions otherwise append.
+    if (m_menuBarPanelActive && lightVeil != m_menuBarLightVeil)
+        df_layer_surface_clear_panel_regions(m_layer);
+    df_layer_surface_set_panel_region(m_layer, lightVeil ? "veil-light" : "veil-dark",
+                                     "menuBarVeil", 0, 0,
                                       panelWidth, panelHeight, radius, radius,
                                       radius, radius, 0);
     m_menuBarPanelInitialized = true;
@@ -365,6 +370,7 @@ void ShellProtocol::setMenuBarFrameGeometry(bool active, int width, int height,
     m_menuBarPanelWidth = panelWidth;
     m_menuBarPanelHeight = panelHeight;
     m_menuBarPanelRadius = radius;
+    m_menuBarLightVeil = lightVeil;
 }
 
 void ShellProtocol::setMenuBarAutoHide(const QString &mode)

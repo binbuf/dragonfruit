@@ -31,6 +31,7 @@ Item {
     // The recommended hover delay before opening. The owner owns the timer;
     // exposing the token here (overridable) keeps every consumer on one value.
     property int dwell: Theme.controls.tooltip.dwell
+    property int openDuration: Theme.motion.popupOpen.duration
     // Optional surface to clamp inside (usually the Dock). When null the
     // capsule is positioned freely and the owner must guarantee headroom.
     property Item bounds: null
@@ -123,7 +124,7 @@ Item {
 
     Behavior on opacity {
         NumberAnimation {
-            duration: root.open ? Theme.motion.popupOpen.duration
+            duration: root.open ? root.openDuration
                                 : Theme.motion.popupClose.duration
             easing.type: Easing.Bezier
             easing.bezierCurve: root.open ? Theme.motion.popupOpen.curve
@@ -132,7 +133,7 @@ Item {
     }
     Behavior on scale {
         NumberAnimation {
-            duration: root.open ? Theme.motion.popupOpen.duration
+            duration: root.open ? root.openDuration
                                 : Theme.motion.popupClose.duration
             easing.type: Easing.Bezier
             easing.bezierCurve: root.open ? Theme.motion.popupOpen.curve

@@ -105,7 +105,7 @@ public:
     // explicit empty panel set so a hidden/fallback bar contributes no
     // sampled or feather material.
     void setMenuBarFrameGeometry(bool active, int width, int height,
-                                 int cornerRadius);
+                                 int cornerRadius, bool lightVeil);
 
     // T201: forward the `menu.autoHide` policy. The compositor owns the
     // per-output reveal; `mode` is `never`, `always`, or `full-screen`.
@@ -1307,6 +1307,7 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     int m_menuBarPanelWidth = 0;
     int m_menuBarPanelHeight = 0;
     int m_menuBarPanelRadius = 0;
+    bool m_menuBarLightVeil = false;
     // T201: the menu-bar auto-hide wire value. Kept so the request can be
     // sent once the layer surface exists.
     uint32_t m_menuBarAutoHide = 2; // full-screen; see df_layer_surface.auto_hide_mode

@@ -1841,11 +1841,8 @@ Item {
             compare(dock.activePopoverPreset, "menuDetached");
             compare(dock.popoverInputActive, false,
                     "a closed Dock popover must not intercept clicks");
-            var resolved = Glass.resolve("menuDetached", {
-                scheme: Theme.dark ? "dark" : "light", rollout: "replacement",
-                slider: Glass.slider, backend: "gpu-sampled", tier: "full"
-            });
-            fuzzyCompare(menu.surfaceFill.a, resolved.alpha, 1e-4);
+
+            compare(menu.surfaceFill.a, 0, "the compositor owns the menu tint");
             fuzzyCompare(menu.closeScale, 0.95, 1e-6);
             } finally {
                 Glass.rollout = savedRollout;
@@ -4127,9 +4124,10 @@ Item {
             compare(dock.chooserOnHover, true);
             dock.entryHoverBegan(dock.items[0], dock.itemAt(0));
             compare(dock.chooserOpen, false, "the chooser waits for the dwell");
-            compare(dock.tooltipOpen, false, "hover-open suppresses the name label");
+            compare(dock.tooltipOpen, true, "the name appears while the chooser dwells");
             tryCompare(dock, "chooserOpen", true);
             compare(dock.chooserHoverOpened, true);
+            compare(dock.tooltipOpen, false, "the open chooser replaces the name");
             var chooser = findChild(dock, "windowChooser");
             compare(chooser.entry.id, "files");
         }
@@ -6601,14 +6599,14 @@ Item {
 
         // -- T-14.7i hover name label ---------------------------------------
 
-        function test_tooltip_shows_the_name_after_the_dwell() {
+        function test_tooltip_shows_the_name_immediately() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
                 entries: [ app("a", "Safari", true) ]
             });
             var entry = dock.itemAt(0);
             dock.entryHoverBegan(dock.entries[0], entry);
-            compare(dock.tooltipOpen, false, "the label waits for the dwell");
+            compare(dock.tooltipOpen, true, "the label appears on the hover event");
             compare(dock.tooltipText, "Safari");
             tryCompare(dock, "tooltipOpen", true);
             compare(dock.tooltipAnchor, entry);
@@ -6772,17 +6770,18 @@ Item {
                          entry.y + entry.height / 2, 1.0);
         }
 
-        // The dwell is the controlled 1.4 s, not the old 250 ms shortcut.
-        function test_tooltip_waits_the_measured_dwell() {
+        function test_tooltip_retargets_immediately_between_tiles() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
-                entries: [ app("a", "Safari", true) ]
+                entries: [ app("a", "Safari", true), app("b", "Music", true) ]
             });
+            compare(dock.tooltipDwell, 0);
             dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
-            wait(500);
-            compare(dock.tooltipOpen, false,
-                    "the label must not appear before the 1.4 s dwell");
-            tryCompare(dock, "tooltipOpen", true);
+            compare(dock.tooltipOpen, true);
+            dock.entryHoverBegan(dock.entries[1], dock.itemAt(1));
+            compare(dock.tooltipOpen, true);
+            compare(dock.tooltipText, "Music");
+            compare(dock.tooltipAnchor, dock.itemAt(1));
         }
 
         // A projection that moves a different tile under the pointer must not
@@ -6795,9 +6794,9 @@ Item {
             dock.pointerAlong = dock._baseline.centers[0];
             dock.smoothPointerAlong = dock.pointerAlong;
             dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
-            compare(dock.tooltipOpen, false);
-            // Reorder while the dwell is pending: Music is now under the
-            // pointer, so Safari's pending label is stale.
+            compare(dock.tooltipOpen, true);
+            // Reorder while the label is open: Music is now under the
+            // pointer, so Safari's open label is stale.
             dock.entries = [ app("b", "Music", true), app("a", "Safari", true) ];
             waitForRendering(stage);
             wait(dock.tooltipDwell + 100);

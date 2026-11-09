@@ -18,6 +18,40 @@ FocusScope {
     // The `file://` directory the desktop lists, set by `FilesDesktop` from
     // `FilesArguments.filesDesktopDirectory()` (xdg-user-dirs).
     property string location: ""
+    // This surface runs in its own process; it must consume appearance and
+    // accessibility settings independently of the Files window.
+    Binding {
+        target: Theme; property: "dark"
+        value: Settings.values["appearance.colorScheme"] === "dark" ? true
+             : Settings.values["appearance.colorScheme"] === "light" ? false
+             : Application.styleHints.colorScheme === Qt.Dark
+    }
+    Binding {
+        target: Theme; property: "reducedMotion"
+        value: Settings.values["accessibility.reduceMotion"] === true
+    }
+    Binding {
+        target: Glass; property: "reduceTransparency"
+        value: Settings.values["accessibility.reduceTransparency"] === true
+    }
+    Binding {
+        target: Glass; property: "increaseContrast"
+        value: Settings.values["accessibility.increaseContrast"] === true
+    }
+    Binding {
+        target: Glass; property: "appChromeSupported"
+        value: Settings.appChromeSupported
+    }
+    Binding {
+        target: Glass; property: "rollout"
+        value: Settings.glassRollout || Theme.glass.rollout.defaultMode
+    }
+    Binding {
+        target: Glass; property: "slider"
+        value: Settings.values["appearance.transparency"] !== undefined
+             ? Number(Settings.values["appearance.transparency"])
+             : Theme.glass.slider.defaultPosition
+    }
 
     // T227: `desktop.showItems`. "On Desktop" shows the Files icons;
     // "In Stage Manager" hides them for the Stage Manager host (T242).
@@ -257,6 +291,7 @@ FocusScope {
     ContextMenu {
         id: contextMenu
         accessibleName: qsTr("Desktop menu")
+        materialBackdrop: "desktop"
         onTriggered: (index, item) => root.contextAction(item.action)
     }
 

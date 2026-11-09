@@ -465,7 +465,7 @@ Item {
                             state.label);
                     var panel = findChild(drawer, "appsDrawerPanel");
                     verify(panel !== null);
-                    compareColor(panel.color, Material.drawerFill(state.blur),
+                    compareColor(panel.color, Material.drawerFill(state.blur, state.tier, state.fallback),
                                  state.label);
                     verify(panel.color.a >= 0.9 || state.blur,
                            state.label + " fallback must read as a plate");

@@ -367,14 +367,15 @@ pub mod component {
         pub const CLOCK_GAP: f32 = 8.0_f32;
         pub const RADIUS: f32 = 10.0_f32;
         pub const HOVER_RADIUS: f32 = 6.0_f32;
-        pub const FOREGROUND_ON_LIGHT: [u8; 4] = [0x11, 0x11, 0x11, 0xff];
-        pub const FOREGROUND_ON_DARK: [u8; 4] = [0xf8, 0xf6, 0xfa, 0xff];
-        pub const FOREGROUND_SECONDARY_ON_LIGHT: [u8; 4] = [0x5b, 0x4e, 0x66, 0xff];
-        pub const FOREGROUND_SECONDARY_ON_DARK: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
-        pub const FOREGROUND_FLIP_THRESHOLD_LIGHT: f32 = 0.3_f32;
-        pub const FOREGROUND_FLIP_THRESHOLD_DARK: f32 = 0.65_f32;
+        pub const FOREGROUND_ON_LIGHT: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
+        pub const FOREGROUND_ON_DARK: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+        pub const FOREGROUND_SECONDARY_ON_LIGHT: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
+        pub const FOREGROUND_SECONDARY_ON_DARK: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+        pub const FOREGROUND_FLIP_THRESHOLD_LIGHT: f32 = 0.78_f32;
+        pub const FOREGROUND_FLIP_THRESHOLD_DARK: f32 = 0.78_f32;
     }
     pub mod dock {
+        pub const TOOLTIP_DWELL: f32 = 0.0_f32;
         pub const ICON_SIZE: f32 = 48.0_f32;
         pub const ICON_SIZE_MIN: f32 = 32.0_f32;
         pub const ICON_SIZE_MAX: f32 = 64.0_f32;

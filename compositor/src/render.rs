@@ -34,9 +34,9 @@ use crate::material_preset::{Preset, RenderMode, Rollout};
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
 use crate::window::{
-    backdrop_elements_with_corners, is_backdrop_panel, shadow_elements_outside, BlurSpec, CornerRadii,
-    DegradeTier, DockOptics, GlassSpec, MaterialRole, PanelKey, RegionFilter, SceneTransform,
-    ShadowLevel, ShadowSpec, WindowState,
+    backdrop_elements_with_corners, is_backdrop_panel, shadow_elements_outside, BlurSpec,
+    CornerRadii, DegradeTier, DockOptics, GlassSpec, MaterialRole, PanelKey, RegionFilter,
+    SceneTransform, ShadowLevel, ShadowSpec, WindowState,
 };
 
 // The two kinds of wallpaper element a backend can composite (T-05.4): a
@@ -377,9 +377,7 @@ impl BlurPanel {
     /// region is clamped to the output by [`crate::window::MaterialRegion`].
     pub fn sample_padding_px(&self) -> i32 {
         let kernel = if self.filter.schedules_blur() {
-            self.spec
-                .padding_px()
-                .max(self.glass.sample_padding_px())
+            self.spec.padding_px().max(self.glass.sample_padding_px())
         } else {
             1
         };
@@ -405,7 +403,7 @@ pub fn default_preset(namespace: &str, layer: u32) -> Preset {
         "notification" => Preset::NotificationBanner,
         "notification-center" => Preset::NotificationStack,
         "osd" => Preset::Tooltip,
-        "apps-drawer" => Preset::WindowChrome,
+        "apps-drawer" => Preset::MenuDetached,
         _ if layer >= 3 => Preset::MenuDetached,
         _ => Preset::WindowChrome,
     }
@@ -468,7 +466,13 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             let preset = region
                 .preset
                 .unwrap_or_else(|| default_preset(&chrome.namespace, chrome.layer));
-            let resolved = state.resolve_glass_preset(preset);
+            let resolved = match (preset, region.key.as_str()) {
+                (Preset::MenuBarVeil, "veil-light") => state
+                    .resolve_glass_preset_for_scheme(preset, crate::material_preset::Scheme::Light),
+                (Preset::MenuBarVeil, "veil-dark") => state
+                    .resolve_glass_preset_for_scheme(preset, crate::material_preset::Scheme::Dark),
+                _ => state.resolve_glass_preset(preset),
+            };
             let filter = match resolved.render_mode {
                 RenderMode::Solid | RenderMode::SoftwareFallback => continue,
                 RenderMode::NoBlurVeil => RegionFilter::Sharp,
@@ -490,6 +494,9 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 && matches!(
                     preset,
                     Preset::Dock
+                        | Preset::MenuAttached
+                        | Preset::MenuDetached
+                        | Preset::StatusMenu
                         | Preset::ControlCenterOuter
                         | Preset::ControlCenterModule
                         | Preset::ControlCenterExpanded
@@ -499,10 +506,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 );
             let dock_fit = flat_fit && preset == Preset::Dock;
             let base_spec = if dock_fit {
-                BlurSpec::for_dock(
-                    resolved.blur,
-                    role.corner_radius(&chrome.namespace),
-                )
+                BlurSpec::for_dock(resolved.blur, role.corner_radius(&chrome.namespace))
             } else if flat_fit {
                 BlurSpec::new(resolved.blur, role.corner_radius(&chrome.namespace))
             } else {
@@ -533,10 +537,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 glass.rim_half_width = resolved.edge_width;
                 glass.specular = resolved.edge;
                 glass.specular_width = resolved.edge_width;
-                material
-                    .tier
-                    .glass(glass)
-                    .unwrap_or(glass)
+                material.tier.glass(glass).unwrap_or(glass)
             } else if flat_fit {
                 // T203: every field is the resolver's own-layer value. The
                 // outer, module and expanded-list regions are drawn in that
@@ -553,10 +554,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 glass.corner_peak = resolved.corner_lens_peak;
                 glass.corner_distance = resolved.corner_lens_distance;
                 glass.corner_tail = resolved.corner_lens_tail;
-                material
-                    .tier
-                    .glass(glass)
-                    .unwrap_or(glass)
+                material.tier.glass(glass).unwrap_or(glass)
             } else {
                 material
                     .tier

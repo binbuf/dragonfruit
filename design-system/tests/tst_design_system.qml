@@ -554,12 +554,7 @@ TestCase {
         compare(attached.cornerTopRadius, 0);
         fuzzyCompare(attached.cornerRadius,
                      Theme.controls.contextMenu.attachedRadius, 0.001);
-        var resolved = Glass.resolve("menuAttached", {
-            scheme: Theme.dark ? "dark" : "light", rollout: "replacement",
-            slider: Glass.slider, backend: "gpu-sampled", tier: "full"
-        });
-        fuzzyCompare(attached.surfaceFill.a, resolved.alpha, 1e-4);
-        fuzzyCompare(attached.surfaceFill.r, resolved.tint, 1e-4);
+        compare(attached.surfaceFill.a, 0, "sampled menus do not double-tint the backdrop");
 
         var detached = make(popupComponent, {
             open: true, materialPreset: "menuDetached",
