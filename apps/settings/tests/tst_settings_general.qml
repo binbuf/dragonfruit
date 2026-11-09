@@ -101,10 +101,14 @@ Item {
             compare(findChild(panel, "aboutPanelName").height, 28);
             compare(findChild(panel, "aboutPanelLabel0").width, 93);
             compare(findChild(panel, "aboutPanelLabel0").horizontalAlignment, Text.AlignRight);
+            compare(findChild(panel, "aboutPanelLabel0").mapToItem(panel, 0, 0).y, 291);
+            compare(findChild(panel, "aboutPanelLabel1").mapToItem(panel, 0, 0).y, 307);
             compare(findChild(panel, "aboutPanelValue0").mapToItem(panel, 0, 0).x, 126);
             compare(findChild(panel, "aboutPanelButtonBacking").y, 391);
             compare(findChild(panel, "aboutPanelButtonBacking").width, 94);
             compare(findChild(panel, "aboutPanelButtonBacking").height, 26);
+            compare(findChild(panel, "aboutPanelRegulatory").y, 429);
+            compare(findChild(panel, "aboutPanelFooter").y, 466);
             compare(findChild(panel, "aboutPanelName").text, "Dragonfruit Book");
             compare(findChild(panel, "aboutPanelValue0").text, "Example CPU");
             compare(findChild(panel, "aboutPanelValue1").text, "16 GB");
