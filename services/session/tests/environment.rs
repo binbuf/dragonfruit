@@ -190,6 +190,20 @@ fn print_env_lists_the_contract_and_a_fresh_token() {
         .expect("a launch token is exported");
     assert_eq!(token.len(), env::TOKEN_BYTES * 2, "{token}");
     assert!(token.chars().all(|c| c.is_ascii_hexdigit()), "{token}");
+
+    let desktop_token = text
+        .lines()
+        .find_map(|line| line.strip_prefix("DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN="))
+        .expect("a desktop launch token is exported");
+    assert_eq!(desktop_token.len(), env::TOKEN_BYTES * 2, "{desktop_token}");
+    assert!(
+        desktop_token.chars().all(|c| c.is_ascii_hexdigit()),
+        "{desktop_token}"
+    );
+    assert_ne!(
+        token, desktop_token,
+        "the shell and desktop roles get distinct tokens"
+    );
 }
 
 #[test]

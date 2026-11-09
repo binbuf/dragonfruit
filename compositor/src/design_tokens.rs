@@ -274,8 +274,8 @@ pub mod component {
     }
     pub mod window_style {
         pub const TRAFFIC_LIGHT_SIZE: f32 = 16.0_f32;
+        pub const TRAFFIC_LIGHT_DIAMETER: f32 = 14.0_f32;
         pub const TRAFFIC_LIGHT_SPACING: f32 = 23.0_f32;
-        pub const TRAFFIC_LIGHT_LEADING_INSET: f32 = 12.0_f32;
         pub const LABELLED_TOOLBAR_ROW: f32 = 14.0_f32;
         pub mod borderless {
             pub const HEIGHT: f32 = 0.0_f32;
@@ -317,10 +317,10 @@ pub mod component {
         pub const CORNER_RADIUS: f32 = 14.0_f32;
     }
     pub mod traffic_lights {
-        pub const DIAMETER: f32 = 16.0_f32;
+        pub const BUTTON_SIZE: f32 = 16.0_f32;
+        pub const DIAMETER: f32 = 14.0_f32;
         pub const SPACING: f32 = 23.0_f32;
-        pub const INSET: f32 = 12.0_f32;
-        pub const GLYPH_SIZE: f32 = 8.0_f32;
+        pub const GLYPH_SIZE: f32 = 7.0_f32;
         pub const HOVER_REVEAL: bool = true;
     }
     pub mod toggle {
@@ -399,14 +399,18 @@ pub mod component {
             pub const RIM_OPACITY: f32 = 0.7_f32;
             pub const RIM_HEIGHT: f32 = 1.0_f32;
             pub const GLOSS_HEIGHT: f32 = 6.0_f32;
-            pub const GLOSS_OPACITY: f32 = 0.22_f32;
+            pub const GLOSS_OPACITY: f32 = 0.1_f32;
             pub const EDGE_HEIGHT: f32 = 1.0_f32;
-            pub const EDGE_OPACITY: f32 = 0.5_f32;
+            pub const EDGE_OPACITY: f32 = 0.7_f32;
+            pub const TOP_GLOW_HEIGHT: f32 = 10.0_f32;
+            pub const TOP_GLOW_OPACITY: f32 = 0.06_f32;
+            pub const BOTTOM_GLOW_HEIGHT: f32 = 12.0_f32;
+            pub const BOTTOM_GLOW_OPACITY: f32 = 0.1_f32;
             pub const BORDER_WIDTH: f32 = 1.0_f32;
             pub const BORDER_OPACITY: f32 = 0.55_f32;
-            pub const SHADOW_BLUR: f32 = 20.0_f32;
-            pub const SHADOW_OPACITY: f32 = 0.3_f32;
-            pub const SHADOW_OFFSET_Y: f32 = 6.0_f32;
+            pub const SHADOW_BLUR: f32 = 6.0_f32;
+            pub const SHADOW_OPACITY: f32 = 0.12_f32;
+            pub const SHADOW_OFFSET_Y: f32 = 2.0_f32;
         }
         pub mod icon {
             pub const RADIUS_RATIO: f32 = 0.24_f32;
@@ -760,6 +764,11 @@ pub mod glass {
                 pub const EDGE: f32 = 0.397_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
                 pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const EDGE_SIDE: f32 = -0.08_f32;
+                pub const TOP_GLOW: f32 = 0.06_f32;
+                pub const TOP_GLOW_HEIGHT: f32 = 10.0_f32;
+                pub const BOTTOM_GLOW: f32 = 0.1_f32;
+                pub const BOTTOM_GLOW_HEIGHT: f32 = 12.0_f32;
                 pub const SHARP_FRACTION: f32 = 0.12_f32;
                 pub const CORNER_LENS_PEAK: f32 = 9.6_f32;
                 pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;
@@ -781,6 +790,11 @@ pub mod glass {
                 pub const EDGE: f32 = 0.397_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
                 pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const EDGE_SIDE: f32 = -0.06_f32;
+                pub const TOP_GLOW: f32 = 0.04_f32;
+                pub const TOP_GLOW_HEIGHT: f32 = 10.0_f32;
+                pub const BOTTOM_GLOW: f32 = 0.07_f32;
+                pub const BOTTOM_GLOW_HEIGHT: f32 = 12.0_f32;
                 pub const SHARP_FRACTION: f32 = 0.12_f32;
                 pub const CORNER_LENS_PEAK: f32 = 9.6_f32;
                 pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;

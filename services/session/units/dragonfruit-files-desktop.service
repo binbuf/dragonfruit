@@ -1,0 +1,34 @@
+[Unit]
+Description=Dragonfruit desktop (Files-owned desktop icons)
+Documentation=https://github.com/dragonfruit-desktop/dragonfruit
+# The Files desktop is its own crash domain: it owns the compositor's
+# `background` layer and renders ~/Desktop, while the shell keeps the chrome.
+# It needs the settings owner for the persisted desktop preference, but a
+# missing or failed settingsd never blocks it.
+Wants=dragonfruit-settingsd.service
+After=dragonfruit-compositor.service dragonfruit-settingsd.service
+PartOf=dragonfruit-session.target
+
+[Service]
+Type=simple
+# The compositor writes <socket>.desktop-launch-token before it binds the
+# socket, so the socket gate is also the token hand-off gate (T-19.3).
+ExecStartPre=/usr/bin/dragonfruit-session --wait-socket dragonfruit-wayland --timeout 10
+ExecStart=/usr/bin/dragonfruit-files --desktop
+Restart=always
+RestartSec=1
+Environment=XDG_CURRENT_DESKTOP=dragonfruit
+Environment=XDG_SESSION_TYPE=wayland
+Environment=WAYLAND_DISPLAY=dragonfruit-wayland
+Environment=GTK_CSD=0
+# The desktop speaks the private protocol and renders QML offscreen into its
+# buffer, exactly like the dev tool (`make dev`/`make demo`).
+Environment=QT_QPA_PLATFORM=offscreen
+Environment=QT_QUICK_BACKEND=software
+# The desktop presents the role-scoped token that may create the background
+# layer. It normally reads the 0600 hand-off file; the environment copy is the
+# fallback when the compositor was handed the token directly.
+PassEnvironment=DISPLAY DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN
+
+[Install]
+WantedBy=dragonfruit-session.target

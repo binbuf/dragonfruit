@@ -27,8 +27,9 @@ import time
 from PIL import Image
 
 NESTED_W, NESTED_H = 1920, 1200
-# Traffic-light geometry from component.trafficLights tokens (T-01.2).
-LIGHT_DIAMETER, LIGHT_GAP, LIGHT_INSET = 12, 8, 12
+# Traffic-light geometry from component.trafficLights tokens (T-01.2). The
+# 16 pt value is the AX/hit frame; the drawn circle is 14 pt inside it.
+LIGHT_DIAMETER, LIGHT_GAP, LIGHT_INSET = 16, 7, 8
 BTN_LEFT, BTN_RIGHT = 272, 273
 DOCK_BAND_H = 150
 

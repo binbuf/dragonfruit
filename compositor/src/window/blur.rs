@@ -94,10 +94,10 @@ void main() {
 ///
 /// It is compiled once per renderer like [`BLUR_SHADER`] and used on the final
 /// compose of a blurred panel (the built-in texture program would otherwise do
-/// a plain bilinear sample). `v_coords` is the panel-normalized coordinate
-/// because the element maps the whole blurred panel texture onto the panel, so
-/// the shader can reconstruct panel-local pixels and evaluate the rounded-rect
-/// signed distance field. On top of the blurred backdrop it adds:
+/// a plain bilinear sample). `v_coords` is normalized over the sampled texture;
+/// the coverage uniforms reconstruct panel-local pixels even when the texture
+/// or draw span only covers part of the panel. The shader evaluates a
+/// rounded-rect signed distance field. On top of the blurred backdrop it adds:
 ///
 /// * an **edge lens** — the sample is pulled toward the panel centre near the
 ///   rim by `refraction * lens_falloff`, so the backdrop reads refracted
@@ -119,7 +119,10 @@ pub const GLASS_SHADER: &str = r#"#version 100
 #extension GL_OES_EGL_image_external : require
 #endif
 
-precision mediump float;
+// Geometry is in output physical pixels. With mediump/FP16, squared corner
+// distances overflow in the middle of a wide or scaled panel; inf * 0 in the
+// faded lens then poisons the sample UV. Keep geometry and UV arithmetic highp.
+precision highp float;
 #if defined(EXTERNAL)
 uniform samplerExternalOES tex;
 #else
@@ -143,6 +146,11 @@ uniform float flat_alpha;
 uniform float rim_peak;
 uniform float rim_half_width;
 uniform float rim_tail;
+uniform float rim_side;
+uniform float top_glow;
+uniform float top_glow_height;
+uniform float bottom_glow;
+uniform float bottom_glow_height;
 uniform float corner_peak;
 uniform float corner_distance;
 uniform float corner_tail;
@@ -159,7 +167,8 @@ float luminance(vec3 c) {
 }
 
 void main() {
-    // `v_coords` is the texture coordinate of the visible slice. Reconstruct
+    // `v_coords` is normalized over the entire texture, including when this
+    // draw only covers one rounded span. Reconstruct
     // the panel-normalized coordinate so a panel clipped by the output edge
     // still evaluates the same SDF, rim and corner lens.
     vec2 panel_uv = panel_uv_offset + v_coords * panel_uv_scale;
@@ -170,10 +179,11 @@ void main() {
     float dist = length(outside) + min(max(q.x, q.y), 0.0) - glass_radius;
     float inside = max(-dist, 0.0);
 
-    // The outward SDF normal, used as the lens bend direction.
+    // Nearest-edge SDF normal for rim lighting. Refraction has its own smooth
+    // direction: the SDF normal jumps across interior medial axes.
     float ol = length(outside);
-    vec2 normal = (ol > 0.0) ? outside / ol : normalize(p + vec2(1e-5));
-    normal = normal * sign(p + vec2(1e-6));
+    vec2 rim_normal = (ol > 0.0) ? outside / ol
+        : ((q.x > q.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
 
     vec2 uv = v_coords;
     if (flat_band > 0.5) {
@@ -181,13 +191,31 @@ void main() {
         // drives a bump that peaks 15 pt in and decays by 50 pt. A flat-edge
         // midpoint is far outside the corner field, so it does not bend.
         vec2 corner_delta = abs(p) - half_size;
-        float corner_distance_px = length(corner_delta);
-        float t = corner_distance_px / max(corner_distance, 1.0);
-        float bump = t * t * t * exp(3.0 * (1.0 - t));
-        float fade = 1.0 - smoothstep(corner_tail * 0.75, max(corner_tail, 1.0), corner_distance_px);
-        uv -= normal * (corner_peak * bump * fade) * uv_per_px;
+        // Reject outside the finite support before length/pow/exp. Besides
+        // avoiding invalid far-field arithmetic, the broad flat middle needs
+        // no corner-lens square root or exponential at all.
+        if (corner_peak > 0.0 && max(abs(corner_delta.x), abs(corner_delta.y)) < corner_tail) {
+            float corner_distance_px = length(corner_delta);
+            if (corner_distance_px < corner_tail) {
+                float t = corner_distance_px / max(corner_distance, 1.0);
+                float bump = t * t * t * exp(3.0 * (1.0 - t));
+                float fade = 1.0 - smoothstep(corner_tail * 0.75, max(corner_tail, 1.0), corner_distance_px);
+                // Blend the interior's centre-directed bend into the exact
+                // corner normal at the perimeter. Switching directions at
+                // ol == 0 causes visible jumps as a fractional-scale corner
+                // crosses a pixel centre. Normalize safely, including p == 0.
+                vec2 centre_direction = p / max(length(p), 1e-5);
+                vec2 edge_direction = outside * sign(p) / max(ol, 1e-5);
+                vec2 direction = mix(centre_direction, edge_direction,
+                    smoothstep(0.0, max(glass_radius, 1.0), ol));
+                direction /= max(length(direction), 1e-5);
+                uv -= direction * (corner_peak * bump * fade) * uv_per_px;
+            }
+        }
     } else {
         // Edge lens: falloff is one at the rim and reaches zero at lens_falloff.
+        vec2 normal = (ol > 0.0) ? outside / ol : normalize(p + vec2(1e-5));
+        normal = normal * sign(p + vec2(1e-6));
         float lens = clamp(1.0 - inside / max(lens_falloff, 1.0), 0.0, 1.0);
         lens = lens * lens * (3.0 - 2.0 * lens);
         uv -= normal * (refraction * lens) * uv_per_px;
@@ -200,9 +228,24 @@ void main() {
         // tint level, then add the sharp rim profile. The exponential has its
         // half-amplitude at `rim_half_width` and a ~6 pt tail.
         color.rgb = mix(color.rgb, tint_color, clamp(flat_alpha, 0.0, 1.0));
-        float rim = rim_peak * exp(-0.693147 * inside / max(rim_half_width, 1.0));
+
+        // Directional rim: the horizontal (top/bottom) edges catch the light,
+        // while the vertical sides sit in a darker outline. `rim_normal` is the
+        // outward SDF normal, so abs(rim_normal.y) is 1 on the horizontal edges
+        // and 0 on the sides; the corners blend continuously.
+        float vertical = abs(rim_normal.y);
+        float rim_strength = mix(rim_side, rim_peak, vertical);
+        float rim = rim_strength * exp(-0.693147 * inside / max(rim_half_width, 1.0));
         float rim_fade = 1.0 - smoothstep(rim_tail * 0.75, max(rim_tail, 1.0), inside);
         color.rgb += vec3(rim * rim_fade);
+
+        // Interior edge lifts: a narrow top gradient and a slightly wider
+        // bottom brightening that fades into the flat centre.
+        float from_top = p.y + glass_size.y * 0.5;
+        float top = top_glow * (1.0 - smoothstep(0.0, max(top_glow_height, 1.0), from_top));
+        float from_bottom = glass_size.y * 0.5 - p.y;
+        float bottom = bottom_glow * (1.0 - smoothstep(0.0, max(bottom_glow_height, 1.0), from_bottom));
+        color.rgb += vec3(top + bottom);
     } else {
         // Adaptive tint: 3x3 mean luminance of the blurred backdrop.
         vec3 mean = vec3(0.0);
@@ -384,6 +427,16 @@ pub const GLASS_RIM_PEAK_UNIFORM: &str = "rim_peak";
 pub const GLASS_RIM_HALF_UNIFORM: &str = "rim_half_width";
 /// T198: rim tail (physical px).
 pub const GLASS_RIM_TAIL_UNIFORM: &str = "rim_tail";
+/// Directional rim addition on the vertical sides (negative darkens).
+pub const GLASS_RIM_SIDE_UNIFORM: &str = "rim_side";
+/// Additive lift along the top interior edge.
+pub const GLASS_TOP_GLOW_UNIFORM: &str = "top_glow";
+/// Distance over which the top lift fades into the interior (physical px).
+pub const GLASS_TOP_GLOW_HEIGHT_UNIFORM: &str = "top_glow_height";
+/// Additive lift along the bottom interior edge.
+pub const GLASS_BOTTOM_GLOW_UNIFORM: &str = "bottom_glow";
+/// Distance over which the bottom lift fades into the interior (physical px).
+pub const GLASS_BOTTOM_GLOW_HEIGHT_UNIFORM: &str = "bottom_glow_height";
 /// T198: corner-lens peak displacement (physical px).
 pub const GLASS_CORNER_PEAK_UNIFORM: &str = "corner_peak";
 /// T198: corner-lens peak distance (physical px).
@@ -455,7 +508,7 @@ pub fn blur_uniform_names() -> [UniformName<'static>; 2] {
 
 /// The additional uniform descriptors [`GLASS_SHADER`] declares, passed to
 /// `GlesRenderer::compile_custom_texture_shader`.
-pub fn glass_uniform_names() -> [UniformName<'static>; 20] {
+pub fn glass_uniform_names() -> [UniformName<'static>; 25] {
     [
         UniformName::new(GLASS_SIZE_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_RADIUS_UNIFORM, UniformType::_1f),
@@ -471,6 +524,11 @@ pub fn glass_uniform_names() -> [UniformName<'static>; 20] {
         UniformName::new(GLASS_RIM_PEAK_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_RIM_HALF_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_RIM_TAIL_UNIFORM, UniformType::_1f),
+        UniformName::new(GLASS_RIM_SIDE_UNIFORM, UniformType::_1f),
+        UniformName::new(GLASS_TOP_GLOW_UNIFORM, UniformType::_1f),
+        UniformName::new(GLASS_TOP_GLOW_HEIGHT_UNIFORM, UniformType::_1f),
+        UniformName::new(GLASS_BOTTOM_GLOW_UNIFORM, UniformType::_1f),
+        UniformName::new(GLASS_BOTTOM_GLOW_HEIGHT_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_CORNER_PEAK_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_CORNER_DISTANCE_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_CORNER_TAIL_UNIFORM, UniformType::_1f),
@@ -594,6 +652,16 @@ pub struct GlassSpec {
     pub rim_half_width: f32,
     /// T198: rim tail in logical pixels.
     pub rim_tail: f32,
+    /// Directional rim addition on the vertical sides (negative darkens).
+    pub rim_side: f32,
+    /// Additive lift along the top interior edge.
+    pub top_glow: f32,
+    /// Distance over which the top lift fades into the interior.
+    pub top_glow_height: f32,
+    /// Additive lift along the bottom interior edge.
+    pub bottom_glow: f32,
+    /// Distance over which the bottom lift fades into the interior.
+    pub bottom_glow_height: f32,
     /// T198: corner-lens peak displacement in logical pixels.
     pub corner_peak: f32,
     /// T198: corner-lens peak distance from the corner in logical pixels.
@@ -615,6 +683,11 @@ impl Default for GlassSpec {
             rim_peak: 0.0,
             rim_half_width: 0.0,
             rim_tail: 0.0,
+            rim_side: 0.0,
+            top_glow: 0.0,
+            top_glow_height: 0.0,
+            bottom_glow: 0.0,
+            bottom_glow_height: 0.0,
             corner_peak: 0.0,
             corner_distance: 0.0,
             corner_tail: 0.0,
@@ -625,7 +698,8 @@ impl Default for GlassSpec {
 impl GlassSpec {
     /// The measured T198 Dock optics, including the flat band, rim profile and
     /// corner lens. The tint is a neutral sRGB level, not a scheme hue.
-    pub fn for_dock(optics: crate::window::dock_optics::DockOptics) -> Self {        GlassSpec {
+    pub fn for_dock(optics: crate::window::dock_optics::DockOptics) -> Self {
+        GlassSpec {
             refraction: optics.corner_lens_peak,
             specular: optics.edge,
             specular_width: optics.edge_width,
@@ -636,6 +710,11 @@ impl GlassSpec {
             rim_peak: optics.edge,
             rim_half_width: optics.edge_width,
             rim_tail: optics.edge_tail,
+            rim_side: optics.edge_side,
+            top_glow: optics.top_glow,
+            top_glow_height: optics.top_glow_height,
+            bottom_glow: optics.bottom_glow,
+            bottom_glow_height: optics.bottom_glow_height,
             corner_peak: optics.corner_lens_peak,
             corner_distance: optics.corner_lens_distance,
             corner_tail: optics.corner_lens_tail,
@@ -662,33 +741,34 @@ impl GlassSpec {
     /// The shader uniforms for a panel of `physical` size at output `scale`.
     /// The logical tokens are scaled to physical pixels so the SDF, the lens,
     /// and the specular band are device-pixel consistent. `panel` and
-    /// `visible` are logical rects: the visible slice is what the texture
-    /// covers, while the SDF and corner lens use the whole panel.
+    /// `texture_region` are logical rects: the region is what the entire
+    /// texture covers, while the SDF and corner lens use the whole panel.
+    /// This mapping is independent of the draw span and texture downsampling.
     pub fn uniforms(
         &self,
         physical: Size<i32, Physical>,
         corner_radius: i32,
         scale: Scale<f64>,
         panel: Rectangle<i32, Logical>,
-        visible: Rectangle<i32, Logical>,
-    ) -> Vec<Uniform<'static>> {
+        texture_region: Rectangle<i32, Logical>,
+    ) -> [Uniform<'static>; 25] {
         let w = physical.w.max(1) as f32;
         let h = physical.h.max(1) as f32;
         let sx = scale.x.max(f64::EPSILON) as f32;
         let sy = scale.y.max(f64::EPSILON) as f32;
         let panel_w = panel.size.w.max(1) as f32;
         let panel_h = panel.size.h.max(1) as f32;
-        let visible_w = visible.size.w.max(1) as f32;
-        let visible_h = visible.size.h.max(1) as f32;
-        let offset_x = (visible.loc.x - panel.loc.x) as f32 / panel_w;
-        let offset_y = (visible.loc.y - panel.loc.y) as f32 / panel_h;
-        let uv_scale_x = visible_w / panel_w;
-        let uv_scale_y = visible_h / panel_h;
-        // A displacement in output physical pixels maps to UV over the visible
-        // logical slice, independent of the blur texture's downsample factor.
-        let uv_per_px_x = 1.0 / (visible_w * sx);
-        let uv_per_px_y = 1.0 / (visible_h * sy);
-        vec![
+        let texture_w = texture_region.size.w.max(1) as f32;
+        let texture_h = texture_region.size.h.max(1) as f32;
+        let offset_x = (texture_region.loc.x - panel.loc.x) as f32 / panel_w;
+        let offset_y = (texture_region.loc.y - panel.loc.y) as f32 / panel_h;
+        let uv_scale_x = texture_w / panel_w;
+        let uv_scale_y = texture_h / panel_h;
+        // A displacement in output physical pixels maps to UV over the whole
+        // texture's logical coverage, never over a single rounded draw row.
+        let uv_per_px_x = 1.0 / (texture_w * sx);
+        let uv_per_px_y = 1.0 / (texture_h * sy);
+        [
             Uniform::new(GLASS_SIZE_UNIFORM, (w, h)),
             Uniform::new(GLASS_RADIUS_UNIFORM, corner_radius as f32 * sx),
             Uniform::new(REFRACTION_UNIFORM, self.refraction * sx),
@@ -706,6 +786,11 @@ impl GlassSpec {
             Uniform::new(GLASS_RIM_PEAK_UNIFORM, self.rim_peak),
             Uniform::new(GLASS_RIM_HALF_UNIFORM, self.rim_half_width * sx),
             Uniform::new(GLASS_RIM_TAIL_UNIFORM, self.rim_tail * sx),
+            Uniform::new(GLASS_RIM_SIDE_UNIFORM, self.rim_side),
+            Uniform::new(GLASS_TOP_GLOW_UNIFORM, self.top_glow),
+            Uniform::new(GLASS_TOP_GLOW_HEIGHT_UNIFORM, self.top_glow_height * sy),
+            Uniform::new(GLASS_BOTTOM_GLOW_UNIFORM, self.bottom_glow),
+            Uniform::new(GLASS_BOTTOM_GLOW_HEIGHT_UNIFORM, self.bottom_glow_height * sy),
             Uniform::new(GLASS_CORNER_PEAK_UNIFORM, self.corner_peak * sx),
             Uniform::new(GLASS_CORNER_DISTANCE_UNIFORM, self.corner_distance * sx),
             Uniform::new(GLASS_CORNER_TAIL_UNIFORM, self.corner_tail * sx),
@@ -952,36 +1037,42 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
         // its slice of the panel onto the corresponding slice of the texture.
         // The texture may cover only the visible part of a panel clipped by
         // the material region, so the span is intersected with that part.
-        // The glass uniforms carry the per-span panel mapping so the SDF and
-        // corner lens stay panel-relative even when the texture is a slice.
+        // The glass uniforms describe the entire texture's coverage so the
+        // SDF and corner lens stay panel-relative even when drawing a slice.
         let program = self
             .veil
             .as_ref()
             .map(|(_, program)| program)
             .or_else(|| self.glass.as_ref().map(|(_, program)| program));
+        // Resolve once per element, rather than per rounded row. Glass has
+        // a fixed-size uniform array and needs no heap allocation.
+        let veil_uniforms;
+        let glass_uniforms;
+        let uniforms: &[Uniform<'static>] = if let Some((spec, _)) = self.veil.as_ref() {
+            veil_uniforms = spec.uniforms(
+                self.scale,
+                self.panel,
+                self.texture_region,
+                self.texture_size,
+            );
+            &veil_uniforms
+        } else if let Some((spec, _)) = self.glass.as_ref() {
+            glass_uniforms = spec.uniforms(
+                panel_physical.size,
+                self.corners.max(),
+                self.scale,
+                self.panel,
+                self.texture_region,
+            );
+            &glass_uniforms
+        } else {
+            &[]
+        };
         for span in self.spans() {
             let Some((visible, src)) =
                 map_span_to_texture(span, self.texture_region, self.texture_size)
             else {
                 continue;
-            };
-            let uniforms = if let Some((spec, _)) = self.veil.as_ref() {
-                spec.uniforms(
-                    self.scale,
-                    self.panel,
-                    self.texture_region,
-                    self.texture_size,
-                )
-            } else if let Some((spec, _)) = self.glass.as_ref() {
-                spec.uniforms(
-                    panel_physical.size,
-                    self.corners.max(),
-                    self.scale,
-                    self.panel,
-                    visible,
-                )
-            } else {
-                Vec::new()
             };
             let dst = physical_span(visible, self.panel, panel_physical);
             // Smithay hands the element damage in the element's local
@@ -1002,7 +1093,7 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
                 dst,
                 &span_damage,
                 program,
-                &uniforms,
+                uniforms,
                 1.0,
             )?;
         }
@@ -1252,6 +1343,11 @@ mod tests {
             TINT_COLOR_UNIFORM,
             LENS_FALLOFF_UNIFORM,
             TINT_SCALE_UNIFORM,
+            GLASS_RIM_SIDE_UNIFORM,
+            GLASS_TOP_GLOW_UNIFORM,
+            GLASS_TOP_GLOW_HEIGHT_UNIFORM,
+            GLASS_BOTTOM_GLOW_UNIFORM,
+            GLASS_BOTTOM_GLOW_HEIGHT_UNIFORM,
         ] {
             assert!(GLASS_SHADER.contains(name), "shader is missing {name}");
         }
@@ -1261,6 +1357,27 @@ mod tests {
         assert!(GLASS_SHADER.contains("refraction"));
         assert!(GLASS_SHADER.contains("specular_width"));
         assert!(GLASS_SHADER.contains("tint_amount"));
+    }
+
+    #[test]
+    fn every_glass_uniform_has_a_compiled_descriptor() {
+        // Smithay only exposes the uniforms named in `glass_uniform_names()`.
+        // A spec that sets an undeclared uniform fails the whole material
+        // frame with `UnknownUniform` and disables the sampled path, so the
+        // descriptor list and the resolved uniform list must stay in sync.
+        let optics = crate::window::dock_optics::DockOptics::light();
+        let spec = GlassSpec::for_dock(optics);
+        let panel = Rectangle::new((0, 0).into(), (800, 80).into());
+        let uniforms = spec.uniforms(Size::from((800, 80)), 27, Scale::from(1.0), panel, panel);
+        let descriptors = glass_uniform_names();
+        for uniform in &uniforms {
+            assert!(
+                descriptors.iter().any(|desc| desc.name == uniform.name),
+                "missing compiled descriptor for glass uniform {}",
+                uniform.name
+            );
+        }
+        assert_eq!(descriptors.len(), uniforms.len());
     }
 
     #[test]
@@ -1319,7 +1436,7 @@ mod tests {
             panel,
             panel,
         );
-        assert_eq!(uniforms.len(), 20);
+        assert_eq!(uniforms.len(), 25);
         assert_eq!(
             uniforms[0].value,
             UniformValue::_2f(1600.0, 56.0),
@@ -1367,6 +1484,11 @@ mod tests {
         assert_eq!(spec.flat_alpha, optics.alpha);
         assert_eq!(spec.rim_peak, optics.edge);
         assert_eq!(spec.rim_half_width, optics.edge_width);
+        assert_eq!(spec.rim_side, optics.edge_side);
+        assert_eq!(spec.top_glow, optics.top_glow);
+        assert_eq!(spec.top_glow_height, optics.top_glow_height);
+        assert_eq!(spec.bottom_glow, optics.bottom_glow);
+        assert_eq!(spec.bottom_glow_height, optics.bottom_glow_height);
         assert_eq!(spec.corner_peak, optics.corner_lens_peak);
         assert_eq!(spec.corner_distance, optics.corner_lens_distance);
         assert_eq!(spec.tint_color, [optics.tint; 3]);
@@ -1384,7 +1506,7 @@ mod tests {
             smithay::backend::renderer::gles::UniformValue::_1f(1.0)
         );
         assert_eq!(
-            uniforms[14].value,
+            uniforms[19].value,
             smithay::backend::renderer::gles::UniformValue::_1f(19.2)
         );
     }
@@ -1502,6 +1624,63 @@ mod tests {
                 next_y += physical.size.h;
             }
             assert_eq!(next_y, dst.loc.y + dst.size.h);
+        }
+    }
+
+    #[test]
+    fn glass_coordinates_follow_texture_coverage_across_rounded_spans() {
+        use smithay::backend::renderer::gles::UniformValue;
+
+        let panel = Rectangle::new((100, 200).into(), (483, 78).into());
+        let clipped = Rectangle::new((120, 210).into(), (400, 60).into());
+        let spec = GlassSpec::for_dock(crate::window::dock_optics::DockOptics::light());
+        for scale in [1.0, 1.5, 2.0] {
+            for region in [panel, clipped] {
+                let uniforms = spec.uniforms(
+                    panel.to_physical_precise_round(Scale::from(scale)).size,
+                    27,
+                    Scale::from(scale),
+                    panel,
+                    region,
+                );
+                let pair =
+                    |name: &str| match uniforms.iter().find(|u| u.name == name).unwrap().value {
+                        UniformValue::_2f(x, y) => (f64::from(x), f64::from(y)),
+                        _ => panic!("expected vec2 for {name}"),
+                    };
+                let offset = pair(GLASS_PANEL_UV_OFFSET_UNIFORM);
+                let uv_scale = pair(GLASS_PANEL_UV_SCALE_UNIFORM);
+                let per_px = pair(GLASS_UV_PER_PX_UNIFORM);
+                assert!((per_px.0 * f64::from(region.size.w) * scale - 1.0).abs() < 1e-6);
+                assert!((per_px.1 * f64::from(region.size.h) * scale - 1.0).abs() < 1e-6);
+
+                // Changing the texture resolution (Kawase downsampling) or
+                // the rounded draw span must not change panel coordinates.
+                for divisor in [1, 4] {
+                    let texture = Size::from((region.size.w / divisor, region.size.h / divisor));
+                    for span in crate::window::corner::rounded_rect_spans_with_radii(
+                        panel,
+                        CornerRadii::uniform(27),
+                    ) {
+                        let Some((visible, src)) = map_span_to_texture(span, region, texture)
+                        else {
+                            continue;
+                        };
+                        for fraction in [0.0, 0.5, 1.0] {
+                            let u = (src.loc.x + src.size.w * fraction) / f64::from(texture.w);
+                            let v = (src.loc.y + src.size.h * fraction) / f64::from(texture.h);
+                            let expected_x = (f64::from(visible.loc.x - panel.loc.x)
+                                + f64::from(visible.size.w) * fraction)
+                                / f64::from(panel.size.w);
+                            let expected_y = (f64::from(visible.loc.y - panel.loc.y)
+                                + f64::from(visible.size.h) * fraction)
+                                / f64::from(panel.size.h);
+                            assert!((offset.0 + u * uv_scale.0 - expected_x).abs() < 1e-6);
+                            assert!((offset.1 + v * uv_scale.1 - expected_y).abs() < 1e-6);
+                        }
+                    }
+                }
+            }
         }
     }
 

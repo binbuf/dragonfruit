@@ -33,8 +33,9 @@
 # and — when run from a text console — restart the login manager so the host
 # desktop is selectable again.
 #
-# UNIT is a shorthand (`shell`, `settings`, `notifications`, `wallpaper`,
-# `apps`, `menu`, `portal`, `services`, `all`) or a systemd user unit name.
+# UNIT is a shorthand (`shell`, `desktop`, `settings`, `notifications`,
+# `wallpaper`, `apps`, `menu`, `portal`, `services`, `all`) or a systemd user
+# unit name.
 # `all` deliberately excludes the compositor: it is the session anchor, so
 # restarting it ends the session. Rebuild and use `return` + `start` for
 # compositor changes (or use the nested `make dev` loop).
@@ -121,12 +122,14 @@ CAPTURE_TARGET_DROPIN="$HOME/.config/systemd/user/dragonfruit-session.target.d/2
 CAPTURE_STATE_DIR="${DF_CAPTURE_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/dragonfruit/native-captures}"
 
 # The units that need the dev-build loader path. The Qt shell pulls in the
-# toolchain Qt; the Qt apps it launches inherit this environment. The
+# toolchain Qt; the Qt apps it launches inherit this environment. The Files
+# desktop is a second offscreen Qt process and needs the same tree. The
 # compositor pulls in the user-space DRM sysroot and the local libxkbcommon.
 # Keep the path off the Rust session services so it cannot shadow their libs.
 ENV_UNITS=(
     dragonfruit-compositor.service
     dragonfruit-shell.service
+    dragonfruit-files-desktop.service
 )
 
 NO_BUILD=0
@@ -178,8 +181,8 @@ Profile:
   --release         — explicit inverse; the default.
   CLI flags win over DF_NATIVE_PROFILE; the environment wins over the default.
 
-UNIT is a shorthand (shell, settings, notifications, wallpaper, apps, menu,
-portal, services, all) or a systemd user unit name. `all` deliberately
+UNIT is a shorthand (shell, desktop, settings, notifications, wallpaper, apps,
+menu, portal, services, all) or a systemd user unit name. `all` deliberately
 excludes the compositor: it is the session anchor, so restarting it ends the
 session. Rebuild and use `return` + `start` for compositor changes (or use
 the nested `make dev` loop).
@@ -723,6 +726,7 @@ elevate() {
 unit_for() {
     case "$1" in
         shell) printf '%s\n' dragonfruit-shell.service ;;
+        desktop|files|files-desktop) printf '%s\n' dragonfruit-files-desktop.service ;;
         settings|settingsd) printf '%s\n' dragonfruit-settingsd.service ;;
         notifications|notification) printf '%s\n' dragonfruit-notifications.service ;;
         wallpaper|wallpaperd) printf '%s\n' dragonfruit-wallpaperd.service ;;
@@ -1326,6 +1330,7 @@ cmd_restart() {
             all)
                 units+=(
                     dragonfruit-shell.service
+                    dragonfruit-files-desktop.service
                     dragonfruit-settingsd.service
                     dragonfruit-menu-broker.service
                     dragonfruit-app-index.service
@@ -1429,6 +1434,7 @@ cmd_status() {
         dragonfruit-session.target \
         dragonfruit-compositor.service \
         dragonfruit-shell.service \
+        dragonfruit-files-desktop.service \
         dragonfruit-settingsd.service \
         dragonfruit-menu-broker.service \
         dragonfruit-app-index.service \

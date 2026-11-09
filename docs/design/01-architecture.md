@@ -90,7 +90,7 @@ the compositor is special:
 | Notifications | Rust | User session bus | Restartable; transient state may be lost |
 | OSD | Shell surface | Private protocol | Restartable with the shell; transient state may be lost |
 | Idle service | **design-only** | User session bus + `ext-idle-notify` | The engine/inhibitors exist in `services/session`; no production idle process ships yet (G-10) |
-| Files desktop | Qt / Files | Private compositor protocol | Separate crash domain from the browser; not yet provisioned by the systemd session (G-09) |
+| Files desktop | Qt / Files | Private compositor protocol | Separate crash domain from the browser; provisioned by the systemd session |
 | Portal backend | Rust | User session bus + private compositor protocol | Restartable; portals fail soft |
 | Lock screen | Compositor-enforced | Inside the compositor | Fail-secure: no code path, including a crash, unlocks a locked session |
 
@@ -234,7 +234,7 @@ logind session
                                        uses the persisted settings)
       → menu-broker / app-index / notifications / wallpaperd / system-status
                                        (in parallel)
-      → Files desktop process         (dev tool today; systemd provisioning open)
+      → Files desktop process         (dragonfruit-files-desktop.service)
       → portal backend                (registers with xdg-desktop-portal)
 ```
 

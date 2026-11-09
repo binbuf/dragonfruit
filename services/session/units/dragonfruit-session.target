@@ -9,6 +9,7 @@ Documentation=https://github.com/dragonfruit-desktop/dragonfruit
 Requires=dragonfruit-compositor.service
 Wants=dragonfruit-shell.service
 Wants=dragonfruit-settingsd.service
+Wants=dragonfruit-files-desktop.service
 Wants=dragonfruit-menu-broker.service
 Wants=dragonfruit-app-index.service
 Wants=dragonfruit-notifications.service

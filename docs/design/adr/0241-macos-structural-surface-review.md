@@ -46,9 +46,10 @@ order:
 1. **Window chrome is a style taxonomy**, not one height. Use
    `borderless`, `titlebar`, `unifiedCompact`, `expanded`, `unified`,
    `preference` with the measured baselines 0/32/40/48/52/88 pt and the 66 pt
-   unified icon-and-label variant. Traffic lights are 16×16 pt with 8 pt
-   insets in a 32 pt bar, 18 pt insets in a 52 pt bar, and 23 pt spacing.
-   Tab/path/status/format bars are content, not chrome.
+   unified icon-and-label variant. Traffic lights are a 16 pt AppKit AX/hit
+   frame with a 14 pt drawn circle, 8 pt frame insets in a 32 pt bar, 18 pt
+   frame insets in a 52 pt bar, and 23 pt centre spacing. Tab/path/status/
+   format bars are content, not chrome.
 2. **About has two surfaces**: a compact 280×503 pt, 32 pt-chrome utility
    panel and a 740×820 pt, 52 pt-chrome Settings page. The page is the
    canonical machine identity; the panel is a summary. Both use original

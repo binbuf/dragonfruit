@@ -182,12 +182,12 @@ impl SessionPlan {
         SessionPlan { services }
     }
 
-    /// The composition from the design doc: compositor first; the shell and
-    /// the user services once its private socket exists; the portal last. The
-    /// shipped units additionally order the shell after settingsd's bus name
-    /// so its first paint reads the persisted settings (a missing daemon never
-    /// blocks it). The compositor ends the session when it exits; everything
-    /// else restarts in place.
+    /// The composition from the design doc: compositor first; the shell, the
+    /// Files desktop, and the user services once its private socket exists;
+    /// the portal last. The shipped units additionally order the shell and the
+    /// desktop after settingsd's bus name so their first paint reads the
+    /// persisted settings (a missing daemon never blocks them). The compositor
+    /// ends the session when it exits; everything else restarts in place.
     pub fn default_session() -> SessionPlan {
         SessionPlan::new(vec![
             ServiceSpec::new("compositor", "dragonfruit-compositor")

@@ -754,9 +754,11 @@ The macOS model: **the file manager owns the desktop.**
   `FilesIconView`) offscreen, and commits each frame. It shares `files-core`
   and the views with the browser but not its crash domain. Its right-click
   background menu offers `Open in Files` and `New Folder` (the latter through
-  the ops engine), and it is provisioned by the dev tool
-  (`make dev`/`make demo`); the systemd session entry still needs the token
-  (ADR [0169](adr/0169-desktop-process-client.md)). Because the private protocol
+  the ops engine). The dev tool (`make dev`/`make demo`) and the real session
+  both provision it: `dragonfruit-session --print-env` mints the role-scoped
+  desktop token, the compositor writes the hand-off file, and
+  `dragonfruit-files-desktop.service` starts the process after the socket and
+  settings gates (ADR [0169](adr/0169-desktop-process-client.md)). Because the private protocol
   delivers raw press pairs, the process synthesizes Qt's double-click from a
   second press in the platform window, and a directory open launches the
   browser with the desktop's forced `offscreen` platform removed so the new
@@ -766,11 +768,8 @@ The macOS model: **the file manager owns the desktop.**
   `QT_QPA_PLATFORM` removed (ADR 0190). `QDesktopServices` in the offscreen
   desktop has no platform services and only logs that `openDocument()` is
   unsupported, so it is never used there.
-- **Still deferred:** Desktop Reveal icon exposure, selection/focus transfer
-  between the desktop, chrome, and windows, and the session-manager
-  provisioning of the desktop token (see the T-19.3 hand-off and
-  [STATUS.md](STATUS.md) G-09). The dev tool starts the desktop process; a real
-  login does not yet.
+- **Still deferred:** Desktop Reveal icon exposure and selection/focus transfer
+  between the desktop, chrome, and windows (see the T-19.3 hand-off).
 - The Desktop Reveal hot corner moves windows aside to expose the background
   and its icons (see [04-shell.md](04-shell.md)). The desktop surface is
   implemented, not "plain wallpaper".

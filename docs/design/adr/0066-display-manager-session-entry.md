@@ -26,10 +26,12 @@ desktop ([ADR 0053](0053-real-session-dev-harness.md)).
   `services/session/dragonfruit-session-entry` imports the T-12.1b session
   environment (`--print-env` + `systemctl --user import-environment` over
   `XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY DISPLAY
-  DRAGONFRUIT_LAUNCH_TOKEN`), starts `dragonfruit-session.target`, blocks
+  DRAGONFRUIT_LAUNCH_TOKEN DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`), starts
+  `dragonfruit-session.target`, blocks
   until the compositor anchor unit leaves the active state, then stops the
   target, `reset-failed`s it, and removes
-  `$XDG_RUNTIME_DIR/<socket>{,.lock,.x11-display,.launch-token}`. It only
+  `$XDG_RUNTIME_DIR/<socket>{,.lock,.x11-display,.launch-token,.desktop-launch-token}`.
+  It only
   speaks to our own user units; the host DE and its display manager are never
   touched.
 - **Logout tears down process groups.** Every supervised service is spawned as

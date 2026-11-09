@@ -184,7 +184,8 @@ concrete where the profile is not enough:
 - `A-*`: motion/latency/performance only; material, geometry, typography, and
   contrast are measured on the owning surface.
 - `N-WIN` (T230a): chrome heights 0/32/40/48/52/66/88 pt ±1 pt; traffic
-  lights 16×16 pt ±1 pt; 8/18 pt top insets ±1 pt; 23 pt spacing ±1 pt;
+  lights 16 pt AX frame / 14 pt drawn circle ±1 pt; 8/18 pt insets ±1 pt;
+  23 pt centre spacing ±1 pt;
   accessory bars 28/30/28 pt (format 20 pt) in the content layer.
 - `SET-GENERAL` / About (T230a): panel 280×503 pt ±1 pt with 32 pt chrome;
   page 740×820 pt ±1 pt with 52 pt chrome and a 768 pt scroll column.

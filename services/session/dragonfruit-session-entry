@@ -55,9 +55,12 @@ for candidate in \
 done
 
 # 1. The session environment. `--print-env` prints KEY=VALUE lines for the
-#    base variables plus a fresh DRAGONFRUIT_LAUNCH_TOKEN; `eval` puts them in
-#    this shell, then the user manager carries them to every unit.
+#    base variables plus fresh launch tokens; `eval` puts them in this shell,
+#    and `set -a` exports them so `systemctl import-environment` can carry
+#    them to every unit.
+set -a
 eval "$("$session_bin" --print-env --socket-name "$socket")"
+set +a
 
 # Third-party toolkit defaults: GTK-family CSD apps read their window-control
 # layout from the toolkit settings, not from the compositor. Apply the

@@ -331,8 +331,9 @@ Divider
   clock and motion tokens; each has a reduced-motion path.
 - Window chrome is a style variant, not a per-app constant: `borderless`,
   `titlebar`, `unifiedCompact`, `expanded`, `unified`, `preference` with the
-  measured 0/32/40/48/52/66/88 pt baselines. Traffic lights are 16×16 pt with
-  8 pt insets in a 32 pt bar, 18 pt insets in a 52 pt bar, and 23 pt spacing.
+  measured 0/32/40/48/52/66/88 pt baselines. Traffic lights use a 16 pt
+  AX/hit frame with a 14 pt drawn circle, 8 pt frame insets in a 32 pt bar,
+  18 pt frame insets in a 52 pt bar, and 23 pt centre spacing.
   Tab/path/status/format bars are content, not chrome.
 - Minimize target follows `dock.minimizeIntoTileIcon` and
   `dock.minimizedAnimation`; the Dock icon reacts if enabled.

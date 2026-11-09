@@ -51,6 +51,16 @@ pub struct DockOptics {
     pub edge_width: f32,
     /// Rim tail in logical points.
     pub edge_tail: f32,
+    /// Signed rim addition on the vertical sides (negative darkens).
+    pub edge_side: f32,
+    /// Additive lift along the top interior edge.
+    pub top_glow: f32,
+    /// Distance over which the top lift fades into the interior.
+    pub top_glow_height: f32,
+    /// Additive lift along the bottom interior edge.
+    pub bottom_glow: f32,
+    /// Distance over which the bottom lift fades into the interior.
+    pub bottom_glow_height: f32,
     /// Sharp scene weight in the filtered composite.
     pub sharp_fraction: f32,
     /// Corner-lens peak displacement in logical points.
@@ -71,6 +81,11 @@ impl DockOptics {
             dock::light::EDGE,
             dock::light::EDGE_WIDTH,
             dock::light::EDGE_TAIL,
+            dock::light::EDGE_SIDE,
+            dock::light::TOP_GLOW,
+            dock::light::TOP_GLOW_HEIGHT,
+            dock::light::BOTTOM_GLOW,
+            dock::light::BOTTOM_GLOW_HEIGHT,
             dock::light::SHARP_FRACTION,
             dock::light::CORNER_LENS_PEAK,
             dock::light::CORNER_LENS_DISTANCE,
@@ -87,6 +102,11 @@ impl DockOptics {
             dock::dark::EDGE,
             dock::dark::EDGE_WIDTH,
             dock::dark::EDGE_TAIL,
+            dock::dark::EDGE_SIDE,
+            dock::dark::TOP_GLOW,
+            dock::dark::TOP_GLOW_HEIGHT,
+            dock::dark::BOTTOM_GLOW,
+            dock::dark::BOTTOM_GLOW_HEIGHT,
             dock::dark::SHARP_FRACTION,
             dock::dark::CORNER_LENS_PEAK,
             dock::dark::CORNER_LENS_DISTANCE,
@@ -102,6 +122,11 @@ impl DockOptics {
         edge: f32,
         edge_width: f32,
         edge_tail: f32,
+        edge_side: f32,
+        top_glow: f32,
+        top_glow_height: f32,
+        bottom_glow: f32,
+        bottom_glow_height: f32,
         sharp_fraction: f32,
         corner_lens_peak: f32,
         corner_lens_distance: f32,
@@ -114,6 +139,11 @@ impl DockOptics {
             edge,
             edge_width,
             edge_tail,
+            edge_side,
+            top_glow,
+            top_glow_height,
+            bottom_glow,
+            bottom_glow_height,
             sharp_fraction,
             corner_lens_peak,
             corner_lens_distance,
@@ -226,6 +256,21 @@ fn level_mtf(period: f32, level: u32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_dock_perimeter_carries_directional_rim_and_edge_lifts() {
+        let light = DockOptics::light();
+        assert!(light.edge_side < 0.0, "the sides are a darker outline");
+        assert!(light.top_glow > 0.0);
+        assert!(light.bottom_glow > light.top_glow);
+        assert_eq!(light.top_glow_height, 10.0);
+        assert_eq!(light.bottom_glow_height, 12.0);
+
+        let dark = DockOptics::dark();
+        assert!(dark.edge_side < 0.0);
+        assert!(dark.top_glow > 0.0);
+        assert!(dark.bottom_glow > 0.0);
+    }
 
     #[test]
     fn the_dock_fit_matches_every_measured_checker_period() {

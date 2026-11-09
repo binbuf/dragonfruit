@@ -2058,7 +2058,9 @@ impl DfState {
     }
 
     /// The usable geometry (output minus reserved zones) of the output
-    /// `window` occupies — the Zoom target (FR-1).
+    /// `window` occupies — the Zoom target (FR-1) and the bound for
+    /// placement. The Dock keeps its reserve here even though a dragged
+    /// window may overlap it.
     pub fn usable_geometry_for(&self, window: &Window) -> Option<Rectangle<i32, Logical>> {
         let output = self.output_bounds_for(window)?;
         // Reserved zones are per-output (T-16.1a): a Zoom target on one
@@ -2068,6 +2070,21 @@ impl DfState {
             .map(|name| self.shell.reserved_zones_for(&name))
             .unwrap_or(self.reserved_zones);
         Some(zones.usable(output))
+    }
+
+    /// The bounds an interactive move or resize of `window` may use: its
+    /// output minus the top menu-bar reserve only.
+    ///
+    /// Unlike [`Self::usable_geometry_for`], the Dock's reserve is not
+    /// subtracted: the Dock keeps its reserved space for placement and Zoom,
+    /// but a dragged or resized window may pass over the Dock.
+    pub fn interactive_bounds_for(&self, window: &Window) -> Option<Rectangle<i32, Logical>> {
+        let output = self.output_bounds_for(window)?;
+        let zones = self
+            .output_name_for(window)
+            .map(|name| self.shell.reserved_zones_for(&name))
+            .unwrap_or(self.reserved_zones);
+        Some(zones.interactive_bounds(output))
     }
 
     /// The decoration insets the compositor reserves for `window` (T-01.1).
@@ -2793,7 +2810,9 @@ impl DfState {
         }
     }
 
-    /// Move a floating window to `location` (the caller clamps to output).
+    /// Move a floating window to `location` (the caller clamps to the
+    /// interactive bounds, keeping it below the menu bar while still allowing
+    /// it to overlap the Dock).
     pub fn move_window(&mut self, window: &Window, location: Point<i32, Logical>) {
         let Some(size) = self.windows.floating_geometry(window).map(|geo| geo.size) else {
             return;

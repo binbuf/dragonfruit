@@ -197,7 +197,7 @@ value with a design note; never silently loosen one.
 | Material checker | MTF within ±0.05 per frequency |
 | Rim/lens | peak ±5%, half-height ±0.5 pt, displacement ±2 pt |
 | Geometry | ±1 pt for radius/padding/row height; hit targets ≥ 24×24 pt |
-| Window chrome | height 0/32/40/48/52/66/88 pt ±1 pt; traffic lights 16×16 pt ±1 pt; 8/18 pt insets ±1 pt; 23 pt spacing ±1 pt |
+| Window chrome | height 0/32/40/48/52/66/88 pt ±1 pt; traffic lights 16 pt AX frame / 14 pt drawn circle ±1 pt; 8/18 pt insets ±1 pt; 23 pt spacing ±1 pt |
 | Structural surfaces | About 280×503/740×820 pt ±1 pt; drawer 7 columns/115×92 pt cell/77 pt icon; Notification Center 344 pt width; Control Center 64 pt cells/12 pt gaps/292 pt field; Finder 52/198/28/30/28 pt bars and Get Info 328×1034 pt |
 | Typography | exact size/weight/line height; truncation matches |
 | Motion duration | ±10% or ±1 frame, whichever is larger |

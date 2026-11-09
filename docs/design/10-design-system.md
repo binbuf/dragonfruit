@@ -390,10 +390,11 @@ a named style once instead of hard-coding a height. Settings and Files are
 `unified`; the compositor's SSD renderer reads the same table and defaults to
 `titlebar`.
 
-Traffic lights are 16×16 pt with 23 pt centre spacing and a 12 pt leading
-inset token. Their top inset is derived from the final chrome height:
-`(height - 16) / 2`, which is the measured 8 pt in a 32 pt bar and 18 pt in a
-52 pt bar. Tab/path/status/format bars are content, not chrome;
+Traffic lights use a 16 pt AppKit AX/hit frame with a 14 pt drawn circle and
+23 pt centre spacing. The inset is derived from the title row on both axes:
+`(titleRow - 16) / 2`, which is the measured 8 pt in a 32 pt bar and 18 pt in
+a 52 pt bar, and keeps expanded/preference lights in their title row.
+Tab/path/status/format bars are content, not chrome;
 `component.accessoryBar` carries the 28/30/28 pt Finder bars and the 20 pt
 TextEdit format bar. The Files path bar consumes the 30 pt token. See
 [05-window-decorations.md](05-window-decorations.md) and
