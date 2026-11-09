@@ -193,8 +193,8 @@ Item {
         popup.show();
     }
 
-    function closeMenu() {
-        popup.hide();
+    function closeMenu(immediate) {
+        popup.hide(immediate);
     }
 
     function activate(index) {
@@ -211,6 +211,8 @@ Item {
     }
 
     function moveHighlight(delta) {
+        submenuTimer.stop();
+        pendingHoverIndex = -1;
         var count = root.entries.length;
         if (count === 0)
             return;
@@ -229,6 +231,8 @@ Item {
         var e = root.entries[index];
         if (!e || e.type !== "submenu" || !e.enabled)
             return;
+        submenuTimer.stop();
+        root.highlightedIndex = index;
         root.openSubmenuIndex = index;
         root.submenuHighlightedIndex = -1;
         root.moveSubmenuHighlight(1);
@@ -236,11 +240,14 @@ Item {
 
     function closeSubmenu() {
         submenuTimer.stop();
+        pendingHoverIndex = -1;
         root.openSubmenuIndex = -1;
         root.submenuHighlightedIndex = -1;
     }
 
     function moveSubmenuHighlight(delta) {
+        submenuTimer.stop();
+        pendingHoverIndex = -1;
         var count = root.submenuEntries.length;
         if (count === 0)
             return;
@@ -285,6 +292,8 @@ Item {
         return -1;
     }
     function typeAhead(text) {
+        submenuTimer.stop();
+        pendingHoverIndex = -1;
         if (!text || text.length === 0)
             return;
         var lower = text.toLocaleLowerCase();
@@ -312,21 +321,47 @@ Item {
         typeAheadBuffer = "";
     }
 
-    // A hover on a main-menu row highlights it and, after the submenu delay,
-    // opens its submenu; hovering a plain row closes any open submenu. Moving
-    // the pointer from the row into the nested panel fires no main-row hover,
-    // so the submenu stays open (the drag-through rule).
+    // Keep the parent selected while the pointer crosses toward its submenu.
+    // Entering the child cancels this pending change, including a diagonal
+    // crossing through another row. A stationary sibling still wins on dwell.
+    property int pendingHoverIndex: -1
     function onMainRowHovered(index) {
-        root.highlightedIndex = index;
+        if (!root.open)
+            return;
+        if (pendingHoverIndex === index && submenuTimer.running)
+            return;
+        submenuTimer.stop();
+        pendingHoverIndex = index;
+        if (root.openSubmenuIndex >= 0 && root.openSubmenuIndex !== index) {
+            submenuTimer.start();
+            return;
+        }
         var e = root.entries[index];
-        if (e && e.type === "submenu" && e.enabled) {
-            if (root.openSubmenuIndex !== index)
-                submenuTimer.restart();
-        } else {
-            root.closeSubmenu();
+        root.highlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
+        if (e && e.type === "submenu" && e.enabled && root.openSubmenuIndex !== index)
+            submenuTimer.start();
+    }
+    function onMainRowLeft() {
+        if (root.openSubmenuIndex < 0) {
+            submenuTimer.stop();
+            pendingHoverIndex = -1;
         }
     }
-
+    function enterSubmenu() {
+        submenuTimer.stop();
+        pendingHoverIndex = -1;
+        root.highlightedIndex = root.openSubmenuIndex;
+    }
+    function commitHover() {
+        if (!root.open)
+            return;
+        var index = pendingHoverIndex;
+        root.closeSubmenu();
+        var e = root.entries[index];
+        root.highlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
+        if (e && e.enabled && e.type === "submenu")
+            root.openSubmenu(index);
+    }
     // The row's top offset in popup coordinates, matching the Column layout.
     function rowY(index) {
         var y = Theme.controls.menuBarMenu.padding;
@@ -505,6 +540,7 @@ Item {
                 checkSize: Theme.controls.titlebar.fontSize
                 shortcutGap: Theme.controls.menuBarMenu.shortcutGap
                 onRowHovered: (index) => root.onMainRowHovered(index)
+                onRowLeft: root.onMainRowLeft()
                 onRowActivated: (index) => root.activate(index)
             }
         }
@@ -514,7 +550,7 @@ Item {
         id: submenuTimer
         interval: Theme.controls.contextMenu.submenuDelay
         repeat: false
-        onTriggered: root.openSubmenu(root.highlightedIndex)
+        onTriggered: root.commitHover()
     }
 
     Timer {
@@ -530,6 +566,7 @@ Item {
     SubmenuPanel {
         id: submenuPanel
         objectName: "submenuPanel"
+        enabled: root.open && root.openSubmenuIndex >= 0
         entriesList: root.submenuEntries
         highlightIndex: root.submenuHighlightedIndex
         x: popup.x + (root.submenuFlips
@@ -541,7 +578,14 @@ Item {
         scale: root.openSubmenuIndex >= 0 ? 1.0 : 0.97
         transformOrigin: Item.TopLeft
         z: popup.z + 1
-        onRowHovered: (index) => root.submenuHighlightedIndex = index
+        HoverHandler {
+            onHoveredChanged: if (hovered) root.enterSubmenu()
+        }
+        onRowHovered: (index) => {
+            root.enterSubmenu();
+            var e = root.submenuEntries[index];
+            root.submenuHighlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
+        }
         onRowActivated: (index) => root.activateSubmenu(index)
 
         Behavior on opacity {
@@ -588,7 +632,7 @@ Item {
             // resolved detached fill as the context/tray family.
             color: root.submenuFill
             border.width: Theme.controls.window.borderWidth
-            border.color: Theme.color.border
+            border.color: Glass.increaseContrast ? Theme.color.textPrimary : Theme.color.border
             antialiasing: true
         }
 

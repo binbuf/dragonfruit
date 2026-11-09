@@ -11,7 +11,8 @@
 //!    (`design-system/Theme.qml`) are parsed. Both are generated from one
 //!    source (`design-system/tokens/tokens.json`), so the sweep also
 //!    cross-checks that the two lists name exactly the same motions. Every
-//!    motion must have a real full duration and a reduced duration of `0`.
+//!    motion must have a real full duration (except the deliberately instant
+//!    menu opening) and a reduced duration of `0`.
 //! 2. **Every QML animation site.** Every `Behavior`/`*Animation`/`*Animator`
 //!    block in the shipped QML (`shell/`, `design-system/`, `apps/`) must
 //!    either resolve its duration through `Theme.motion` (which collapses to
@@ -331,7 +332,7 @@ fn every_motion_token_has_a_reduced_motion_variant() {
 
     for (name, token) in &rust_tokens {
         assert!(
-            token.full_ms > 0,
+            token.full_ms > 0 || name == "MENU_OPEN",
             "{name}: a motion with no full duration is not an animation"
         );
         assert_eq!(

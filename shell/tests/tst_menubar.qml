@@ -575,6 +575,10 @@ Item {
             compare(bar.dropdownPreset, "menuAttached");
             verify(bar.dropdownRegions.length >= 1);
             compare(bar.dropdownRegions[0].preset, "menuAttached");
+            compare(bar.dropdownSurfaceRegions[0].x,
+                    bar.dropdownX - Math.floor(bar.dropdownX));
+            compare(bar.dropdownSurfaceRegions[0].y,
+                    bar.dropdownY - Math.floor(bar.dropdownY));
             compare(bar.dropdownRegions[0].tl, 0);
             compare(bar.dropdownRegions[0].tr, 0);
             fuzzyCompare(bar.dropdownRegions[0].br,
@@ -583,18 +587,29 @@ Item {
             compare(popup.materialPreset, "menuAttached");
             compare(popup.materialBackdrop, "trusted");
             compare(popup.motionPreset, "menu");
-            compare(popup.surfaceFill.a, 0, "the compositor owns the menu tint");
+            fuzzyCompare(popup.surfaceFill.a, Glass.resolve("menuAttached", {scheme: Theme.dark ? "dark" : "light"}).alpha, 1e-4);
 
             bar.appMenuAt(2).openSubmenu(0);
             waitForRendering(stage);
             verify(bar.dropdownRegions.length >= 2);
             compare(bar.dropdownRegions[1].preset, "menuDetached");
+            for (var i = 0; i < bar.dropdownRegions.length; ++i) {
+                var local = bar.dropdownSurfaceRegions[i];
+                compare(local.x + Math.floor(bar.dropdownX), bar.dropdownRegions[i].x);
+                compare(local.y + Math.floor(bar.dropdownY), bar.dropdownRegions[i].y);
+                verify(local.x >= 0 && local.x + local.w <= Math.ceil(bar.dropdownX + bar.dropdownWidth) - Math.floor(bar.dropdownX));
+                verify(local.y >= 0 && local.y + local.h <= Math.ceil(bar.dropdownY + bar.dropdownHeight) - Math.floor(bar.dropdownY));
+            }
 
             bar.closeMenus();
             bar.openStatusMenu("wifi");
             waitForRendering(stage);
             compare(bar.dropdownPreset, "statusMenu");
             compare(bar.dropdownRegions[0].preset, "statusMenu");
+            compare(bar.dropdownSurfaceRegions[0].x,
+                    bar.dropdownX - Math.floor(bar.dropdownX));
+            compare(bar.dropdownSurfaceRegions[0].y,
+                    bar.dropdownY - Math.floor(bar.dropdownY));
             compare(findChild(bar, "wifiMenu").popup.materialPreset,
                     "statusMenu");
             bar.closeStatusMenu();
@@ -989,6 +1004,8 @@ Item {
             compare(bar.openMenuIndex, 1);
             compare(bar.appMenuAt(0).open, false);
             compare(bar.appMenuAt(1).open, true);
+            compare(bar.appMenuAt(0).popup.opacity, 0,
+                    "retargeting must not composite the old dropdown's fade over the new one");
 
             bar.closeMenus();
             waitForRendering(stage);

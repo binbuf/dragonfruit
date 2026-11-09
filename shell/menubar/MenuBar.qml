@@ -241,6 +241,21 @@ Rectangle {
         return out;
     }
 
+    // The compositor adds the popup surface origin. Publish coordinates
+    // relative to the same integer crop used for its buffer, not the bar.
+    readonly property var dropdownSurfaceRegions: {
+        var dx = Math.max(0, Math.floor(dropdownX));
+        var dy = Math.max(0, Math.floor(dropdownY));
+        return dropdownRegions.map(function(region) {
+            return { key: region.key, preset: region.preset,
+                     x: region.x - dx, y: region.y - dy,
+                     w: region.w, h: region.h,
+                     tl: region.tl, tr: region.tr,
+                     br: region.br, bl: region.bl,
+                     overscan: region.overscan };
+        });
+    }
+
     signal appMenuTriggered(int menuIndex, int itemIndex, var item)
     signal appMenuOpened(int menuIndex)
     signal appMenuClosed()
@@ -405,7 +420,7 @@ Rectangle {
         if (previous >= 0) {
             var previousItem = menuRepeater.itemAt(previous);
             if (previousItem)
-                previousItem.closeMenu();
+                previousItem.closeMenu(true);
         }
         var item = menuRepeater.itemAt(index);
         if (item)
@@ -597,8 +612,8 @@ Rectangle {
         }
     }
 
-    // Delayed-hover drag-through: while a menu is open, hovering a sibling
-    // top-level title switches to it after a short delay (FR-3).
+    // An open menu session tracks sibling titles on the next event-loop turn.
+    // Only submenus need dwell; delaying titles makes horizontal sweeps lag.
     function scheduleMenuSwitch(index) {
         if (openMenuIndex >= 0 && openMenuIndex !== index) {
             hoverMenuIndex = index;
@@ -634,7 +649,7 @@ Rectangle {
 
     Timer {
         id: switchTimer
-        interval: 140
+        interval: 0
         repeat: false
         onTriggered: {
             if (menuBar.hoverMenuIndex >= 0 && menuBar.openMenuIndex >= 0
@@ -752,6 +767,9 @@ Rectangle {
                         if (hovered) {
                             menuBar.hoverMenuIndex = index;
                             menuBar.scheduleMenuSwitch(index);
+                        } else if (menuBar.hoverMenuIndex === index) {
+                            menuBar.hoverMenuIndex = -1;
+                            switchTimer.stop();
                         }
                     }
                 }

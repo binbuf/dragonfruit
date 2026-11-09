@@ -63,10 +63,17 @@ Item {
     signal escapePressed()
 
     function show() { root.open = true; }
-    function hide() { root.open = false; }
+    function hide(immediate) {
+        root.open = false;
+        if (immediate === true) {
+            opacityAnimation.complete();
+            scaleAnimation.complete();
+        }
+    }
     function toggle() { root.open = !root.open; }
 
     focus: open
+    enabled: open
     activeFocusOnTab: open
     visible: opacity > 0
     z: 1000
@@ -120,6 +127,7 @@ Item {
     Behavior on opacity {
         enabled: !Theme.reducedMotion
         NumberAnimation {
+            id: opacityAnimation
             duration: root.open ? root.openMotion.duration : root.closeMotion.duration
             easing.type: Easing.Bezier
             easing.bezierCurve: root.open ? root.openMotion.curve : root.closeMotion.curve
@@ -128,6 +136,7 @@ Item {
     Behavior on scale {
         enabled: !Theme.reducedMotion
         NumberAnimation {
+            id: scaleAnimation
             duration: root.open ? root.openMotion.duration : root.closeMotion.duration
             easing.type: Easing.Bezier
             easing.bezierCurve: root.open ? root.openMotion.curve : root.closeMotion.curve
@@ -145,35 +154,18 @@ Item {
         objectName: "popupSurface"
         anchors.fill: parent
         radius: root.cornerRadius
+        topLeftRadius: root.cornerTopRadius
+        topRightRadius: root.cornerTopRadius
         // The panel is the compositor material's scrim: the fill carries the
         // resolved preset alpha/tint so the sampled backdrop blur and
         // liquid-glass pass show through; the rim/hairline stays opaque.
         // Without the sampled pass it switches to the milky complement.
         color: root.surfaceFill
         border.width: Theme.controls.window.borderWidth
-        border.color: Theme.color.border
+        border.color: Glass.increaseContrast ? Theme.color.textPrimary : Theme.color.border
         antialiasing: true
     }
 
-    // Square the attached menu's top corners while keeping the bottom pair
-    // rounded. The compositor region carries the same per-corner geometry.
-    Rectangle {
-        visible: root.cornerTopRadius < root.cornerRadius
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        height: root.cornerRadius
-        color: root.surfaceFill
-        antialiasing: true
-    }
-    Rectangle {
-        visible: root.cornerTopRadius < root.cornerRadius
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        height: Theme.controls.window.borderWidth
-        color: Theme.color.border
-    }
 
     Column {
         id: contentColumn

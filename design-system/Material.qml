@@ -74,10 +74,8 @@ QtObject {
         var resolved = menuResolution(preset, blurActive, tier, fallback, trusted);
         if (resolved === null)
             return popupFill(blurActive);
-        // Sampled shell menus are painted once, by the compositor. Adding
-        // this tint again here turns a translucent menu into a chalky plate.
-        if (trusted && resolved.renderMode === "sampled-glass")
-            return Qt.rgba(0, 0, 0, 0);
+        // The compositor supplies only the frosted backdrop for menus. Keep
+        // tint with the content so opening/closing cannot flash a bare plate.
         return Qt.rgba(resolved.tint, resolved.tint, resolved.tint,
                        resolved.alpha);
     }
@@ -159,6 +157,17 @@ QtObject {
                 : Qt.rgba(Theme.color.chromeFallbackFill.r, Theme.color.chromeFallbackFill.g,
                           Theme.color.chromeFallbackFill.b, Theme.material.popupFallbackOpacity);
         }
-        return menuFill("menuDetached", blurActive, tier, fallback, true);
+        var resolved = menuResolution("menuDetached", blurActive, tier, fallback, true);
+        // Apps is a predominantly opaque browsing surface. Its material fit
+        // remains unmeasured; keep the existing card-opacity token, with the
+        // menu slider's relative change and the shared accessibility override.
+        var alpha = resolved.alpha;
+        if (resolved.renderMode === "sampled-glass") {
+            var baseline = Theme.glass.presets.menuDetached[
+                Theme.dark ? "dark" : "light"].calibration.neutralAlpha;
+            alpha = Math.max(0, Math.min(1, 1 - (1 - Theme.controls.appsDrawer.panelOpacity)
+                                       * (1 - alpha) / (1 - baseline)));
+        }
+        return Qt.rgba(resolved.tint, resolved.tint, resolved.tint, alpha);
     }
 }

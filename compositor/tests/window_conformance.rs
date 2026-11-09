@@ -4944,7 +4944,7 @@ fn overview_grid_keeps_live_video_advancing_and_applies_degrade_tier() {
     assert_eq!(full.tier, "full");
     assert!(full.blur, "Full keeps the material blur on");
     assert_eq!(
-        full.shadow_layers, 8,
+        full.shadow_layers, 24,
         "the high elevation token layer count"
     );
     assert!(full.shadow_radius > 0.0 && full.shadow_opacity > 0.0);
@@ -4995,7 +4995,10 @@ fn overview_grid_keeps_live_video_advancing_and_applies_degrade_tier() {
     );
 
     // --- the degrade tier is selectable and applied to the grid -----------
-    for (tier, blur, layers) in [("reduced", true, 4u32), ("minimal", false, 2u32)] {
+    for (tier, blur, layers) in [
+        ("reduced", true, full.shadow_layers / 2),
+        ("minimal", false, full.shadow_layers / 4),
+    ] {
         input.send(&format!("set degrade-tier {tier}"));
         let report = wait_for_grid(&input, Duration::from_secs(5), |grid| {
             grid.active && grid.material.as_ref().is_some_and(|m| m.tier == tier)

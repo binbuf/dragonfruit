@@ -148,8 +148,8 @@ Item {
         var y = 0;
         var w = root.width;
         var h = root.height;
-        if (submenuPanel.visible && submenuPanel.width > 0) {
-            var p = submenuPanel.mapToItem(root, 0, 0);
+        if (root.openSubmenuIndex >= 0 && submenuPanel.width > 0) {
+            var p = Qt.point(submenuPanel.x, submenuPanel.y);
             x = Math.min(x, p.x);
             y = Math.min(y, p.y);
             w = Math.max(w, p.x + submenuPanel.width) - x;
@@ -194,6 +194,8 @@ Item {
             root.hide();
     }
     function moveHighlight(delta) {
+        submenuTimer.stop();
+        pendingHoverIndex = -1;
         var count = root.entries.length;
         if (count === 0)
             return;
@@ -211,16 +213,21 @@ Item {
         var e = root.entries[index];
         if (!e || e.type !== "submenu" || !e.enabled)
             return;
+        submenuTimer.stop();
+        root.highlightedIndex = index;
         root.openSubmenuIndex = index;
         root.submenuHighlightedIndex = -1;
         root.moveSubmenuHighlight(1);
     }
     function closeSubmenu() {
         submenuTimer.stop();
+        pendingHoverIndex = -1;
         root.openSubmenuIndex = -1;
         root.submenuHighlightedIndex = -1;
     }
     function moveSubmenuHighlight(delta) {
+        submenuTimer.stop();
+        pendingHoverIndex = -1;
         var count = root.submenuEntries.length;
         if (count === 0)
             return;
@@ -246,19 +253,46 @@ Item {
         if (!e.keepOpen)
             root.hide();
     }
-    // A hover on a main-menu row highlights it and, after the submenu delay,
-    // opens its submenu; hovering a plain row closes any open submenu. Moving
-    // the pointer from the row into the nested panel fires no main-row hover,
-    // so the submenu stays open (the drag-through rule).
+    // Keep the parent selected while the pointer crosses toward its submenu.
+    // Entering the child cancels this pending change, including a diagonal
+    // crossing through another row. A stationary sibling still wins on dwell.
+    property int pendingHoverIndex: -1
     function onMainRowHovered(index) {
-        root.highlightedIndex = index;
-        var e = root.entries[index];
-        if (e && e.type === "submenu" && e.enabled) {
-            if (root.openSubmenuIndex !== index)
-                submenuTimer.restart();
-        } else {
-            root.closeSubmenu();
+        if (!root.open)
+            return;
+        if (pendingHoverIndex === index && submenuTimer.running)
+            return;
+        submenuTimer.stop();
+        pendingHoverIndex = index;
+        if (root.openSubmenuIndex >= 0 && root.openSubmenuIndex !== index) {
+            submenuTimer.start();
+            return;
         }
+        var e = root.entries[index];
+        root.highlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
+        if (e && e.type === "submenu" && e.enabled && root.openSubmenuIndex !== index)
+            submenuTimer.start();
+    }
+    function onMainRowLeft() {
+        if (root.openSubmenuIndex < 0) {
+            submenuTimer.stop();
+            pendingHoverIndex = -1;
+        }
+    }
+    function enterSubmenu() {
+        submenuTimer.stop();
+        pendingHoverIndex = -1;
+        root.highlightedIndex = root.openSubmenuIndex;
+    }
+    function commitHover() {
+        if (!root.open)
+            return;
+        var index = pendingHoverIndex;
+        root.closeSubmenu();
+        var e = root.entries[index];
+        root.highlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
+        if (e && e.enabled && e.type === "submenu")
+            root.openSubmenu(index);
     }
     // The row's top offset in root coordinates, matching the Column layout.
     function rowY(index) {
@@ -271,6 +305,7 @@ Item {
         return y;
     }
 
+    enabled: root.open
     visible: opacity > 0
     width: Math.max(root.preferredWidth,
                     rowColumn.implicitWidth + 2 * Theme.controls.contextMenu.padding)
@@ -332,7 +367,7 @@ Item {
         id: submenuTimer
         interval: Theme.controls.contextMenu.submenuDelay
         repeat: false
-        onTriggered: root.openSubmenu(root.highlightedIndex)
+        onTriggered: root.commitHover()
     }
 
     Shadow {
@@ -350,7 +385,7 @@ Item {
         // fill so the sampled backdrop and liquid-glass pass read through.
         color: root.surfaceFill
         border.width: Theme.controls.window.borderWidth
-        border.color: Theme.color.border
+        border.color: Glass.increaseContrast ? Theme.color.textPrimary : Theme.color.border
         antialiasing: true
     }
 
@@ -368,6 +403,7 @@ Item {
                 entry: modelData
                 highlighted: root.highlightedIndex === modelData.index
                 onRowHovered: (index) => root.onMainRowHovered(index)
+                onRowLeft: root.onMainRowLeft()
                 onRowActivated: (index) => root.activate(index)
             }
         }
@@ -377,6 +413,7 @@ Item {
     SubmenuPanel {
         id: submenuPanel
         objectName: "submenuPanel"
+        enabled: root.open && root.openSubmenuIndex >= 0
         entriesList: root.submenuEntries
         highlightIndex: root.submenuHighlightedIndex
         x: root.submenuFlips
@@ -388,7 +425,14 @@ Item {
         scale: root.openSubmenuIndex >= 0 ? 1.0 : 0.97
         transformOrigin: Item.TopLeft
         z: 1
-        onRowHovered: (index) => root.submenuHighlightedIndex = index
+        HoverHandler {
+            onHoveredChanged: if (hovered) root.enterSubmenu()
+        }
+        onRowHovered: (index) => {
+            root.enterSubmenu();
+            var e = root.submenuEntries[index];
+            root.submenuHighlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
+        }
         onRowActivated: (index) => root.activateSubmenu(index)
 
         Behavior on opacity {
@@ -493,7 +537,7 @@ Item {
             // they use the same resolved detached fill and rounded corners.
             color: root.surfaceFill
             border.width: Theme.controls.window.borderWidth
-            border.color: Theme.color.border
+            border.color: Glass.increaseContrast ? Theme.color.textPrimary : Theme.color.border
             antialiasing: true
         }
 

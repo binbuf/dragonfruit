@@ -607,29 +607,29 @@ pub mod component {
         pub const RIM_OPACITY: f32 = 0.5_f32;
     }
     pub mod shadow {
-        pub const LAYERS: f32 = 8.0_f32;
+        pub const LAYERS: f32 = 24.0_f32;
         pub const OFFSET_Y: f32 = 5.0_f32;
     }
     pub mod elevation {
         pub mod low {
             pub const BLUR: f32 = 8.0_f32;
             pub const OFFSET_Y: f32 = 5.0_f32;
-            pub const LAYERS: f32 = 8.0_f32;
+            pub const LAYERS: f32 = 24.0_f32;
         }
         pub mod med {
             pub const BLUR: f32 = 20.0_f32;
             pub const OFFSET_Y: f32 = 5.0_f32;
-            pub const LAYERS: f32 = 8.0_f32;
+            pub const LAYERS: f32 = 24.0_f32;
         }
         pub mod high {
             pub const BLUR: f32 = 40.0_f32;
             pub const OFFSET_Y: f32 = 5.0_f32;
-            pub const LAYERS: f32 = 8.0_f32;
+            pub const LAYERS: f32 = 24.0_f32;
         }
         pub mod overlay {
             pub const BLUR: f32 = 64.0_f32;
             pub const OFFSET_Y: f32 = 5.0_f32;
-            pub const LAYERS: f32 = 8.0_f32;
+            pub const LAYERS: f32 = 24.0_f32;
         }
     }
     pub mod scroll_view {
@@ -692,7 +692,7 @@ pub mod component {
         pub const GRID_ROW_GAP: f32 = 16.0_f32;
         pub const LABEL_SIZE: f32 = 12.0_f32;
         pub const SCRIM_OPACITY: f32 = 0.35_f32;
-        pub const PANEL_OPACITY: f32 = 0.88_f32;
+        pub const PANEL_OPACITY: f32 = 0.78_f32;
         pub const FALLBACK_GLYPH_RATIO: f32 = 0.6_f32;
         pub const EMPTY_GLYPH_SIZE: f32 = 40.0_f32;
     }
@@ -1468,7 +1468,7 @@ pub struct Motion {
 pub mod motion {
     use super::Motion;
     pub const MENU_OPEN: Motion = Motion {
-        duration_ms: 160_u32,
+        duration_ms: 0_u32,
         curve: [0.2_f32, 0.0_f32, 0.0_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };

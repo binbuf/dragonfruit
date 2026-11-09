@@ -13,6 +13,7 @@
 #include <utility>
 
 #include <QElapsedTimer>
+#include <QtMath>
 #include <QVariantMap>
 #include <QSocketNotifier>
 
@@ -426,6 +427,10 @@ bool ShellProtocol::setPopupGeometry(int x, int y, int width, int height)
 {
     if (!m_popupLayer || !m_popupSurface)
         return false;
+    const QRect geometry(x, y, width, height);
+    if (m_popupGeometry == geometry)
+        return true;
+    m_popupGeometry = geometry;
     m_popupX = x;
     m_popupY = y;
     df_layer_surface_set_margin(m_popupLayer, y, 0, 0, x);
@@ -435,23 +440,26 @@ bool ShellProtocol::setPopupGeometry(int x, int y, int width, int height)
     return true;
 }
 
-void ShellProtocol::setPopupPanelRegions(const QVariantList &regions)
+static void setMenuPanelRegions(df_layer_surface *layer, const QVariantList &regions)
 {
-    if (!m_popupLayer)
+    if (!layer)
         return;
-    df_layer_surface_clear_panel_regions(m_popupLayer);
+    df_layer_surface_clear_panel_regions(layer);
     for (const QVariant &value : regions) {
         const QVariantMap region = value.toMap();
         const QString key = region.value(QStringLiteral("key")).toString();
         const QString preset = region.value(QStringLiteral("preset")).toString();
-        const int width = qRound(region.value(QStringLiteral("w")).toReal());
-        const int height = qRound(region.value(QStringLiteral("h")).toReal());
+        const qreal regionX = region.value(QStringLiteral("x")).toReal();
+        const qreal regionY = region.value(QStringLiteral("y")).toReal();
+        const int x = qFloor(regionX);
+        const int y = qFloor(regionY);
+        const int width = qCeil(regionX + region.value(QStringLiteral("w")).toReal()) - x;
+        const int height = qCeil(regionY + region.value(QStringLiteral("h")).toReal()) - y;
         if (key.isEmpty() || width <= 0 || height <= 0)
             continue;
         df_layer_surface_set_panel_region(
-            m_popupLayer, key.toUtf8().constData(), preset.toUtf8().constData(),
-            qRound(region.value(QStringLiteral("x")).toReal()),
-            qRound(region.value(QStringLiteral("y")).toReal()), width, height,
+            layer, key.toUtf8().constData(), preset.toUtf8().constData(),
+            x, y, width, height,
             qRound(region.value(QStringLiteral("tl")).toReal()),
             qRound(region.value(QStringLiteral("tr")).toReal()),
             qRound(region.value(QStringLiteral("br")).toReal()),
@@ -460,10 +468,17 @@ void ShellProtocol::setPopupPanelRegions(const QVariantList &regions)
     }
 }
 
+void ShellProtocol::setPopupPanelRegions(const QVariantList &regions)
+{
+    if (!m_popupLayer || m_popupPanelRegions == regions)
+        return;
+    setMenuPanelRegions(m_popupLayer, regions);
+    m_popupPanelRegions = regions;
+}
+
 void ShellProtocol::clearPopupPanelRegions()
 {
-    if (m_popupLayer)
-        df_layer_surface_clear_panel_regions(m_popupLayer);
+    setPopupPanelRegions({});
 }
 
 void ShellProtocol::setPopupInputActive(bool active)
@@ -2230,6 +2245,12 @@ bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int lef
     if (!m_dockPopupLayer || !m_dockPopupSurface)
         return false;
     m_nextDockPopupPanel = panel;
+    // Hover repaints do not change layout. Avoid reconfiguring the overlay
+    // and rebuilding its material metadata for every highlight/animation frame.
+    const std::array<int, 6> geometry{top, right, bottom, left, width, height};
+    if (m_dockPopupGeometry == geometry)
+        return true;
+    m_dockPopupGeometry = geometry;
     // set_margin(top, right, bottom, left)
     df_layer_surface_set_margin(m_dockPopupLayer, top, right, bottom, left);
     df_layer_surface_set_size(m_dockPopupLayer, width, height);
@@ -2238,22 +2259,17 @@ bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int lef
     return true;
 }
 
-void ShellProtocol::setDockPopupPanelRegion(const QString &preset, const QRect &rect,
-                                            int radius)
+void ShellProtocol::setDockPopupPanelRegions(const QVariantList &regions)
 {
-    if (!m_dockPopupLayer || rect.isEmpty())
+    if (!m_dockPopupLayer || m_dockPopupPanelRegions == regions)
         return;
-    df_layer_surface_clear_panel_regions(m_dockPopupLayer);
-    const int r = qMax(0, radius);
-    df_layer_surface_set_panel_region(
-        m_dockPopupLayer, "menu", preset.toUtf8().constData(),
-        rect.x(), rect.y(), rect.width(), rect.height(), r, r, r, r, 20);
+    setMenuPanelRegions(m_dockPopupLayer, regions);
+    m_dockPopupPanelRegions = regions;
 }
 
 void ShellProtocol::clearDockPopupPanelRegions()
 {
-    if (m_dockPopupLayer)
-        df_layer_surface_clear_panel_regions(m_dockPopupLayer);
+    setDockPopupPanelRegions({});
 }
 
 void ShellProtocol::setDockPopupInputActive(bool active)
@@ -3357,6 +3373,8 @@ void ShellProtocol::teardown()
     m_popupSurface = nullptr;
     m_popupMapped = false;
     m_dockLayer = nullptr;
+    m_popupGeometry.reset();
+    m_popupPanelRegions.reset();
     m_dockSurface = nullptr;
     m_dockMapped = false;
     m_nextDockGeometry.reset();
@@ -3365,6 +3383,8 @@ void ShellProtocol::teardown()
     m_dockPopupSurface = nullptr;
     m_dockPopupMapped = false;
     m_nextDockPopupPanel.reset();
+    m_dockPopupGeometry.reset();
+    m_dockPopupPanelRegions.reset();
     m_committedDockPopupPanel.reset();
     m_overviewLayer = nullptr;
     m_overviewSurface = nullptr;

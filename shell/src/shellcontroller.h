@@ -79,6 +79,7 @@ public:
     QString lastError() const;
 
 private slots:
+    void schedulePopupGeometry();
     // T-18.1b: the wallpaper provider's source properties and restart. Reading
     // them is cheap (no network); absence is normal.
     void refreshWallpaperProvider();
@@ -883,6 +884,7 @@ private:
     int m_appsDrawerWidth = 0;
     int m_appsDrawerHeight = 0;
     bool m_appsDrawerOpen = false;
+    bool m_appsDrawerKeyboardFocused = false;
     bool m_appsDrawerPending = false;
     bool m_appsDrawerRenderPending = false;
     Qt::MouseButtons m_appsDrawerButtons = Qt::NoButton;
@@ -1157,6 +1159,9 @@ private:
     QThreadPool m_menuWorker;
     quint64 m_menuRefreshGeneration = 0;
     bool m_menuRefreshInFlight = false;
+    bool m_menuRefreshDeferred = false;
+    QVariantList m_appliedApplicationMenu;
+    QVariantList m_appliedAppMenu;
     // StatusNotifier/AppIndicator tray (T-14.3): the app-index client, the
     // last item list, and the short refresh timer that keeps the bar live
     // (there is no compositor-side tray event; the watcher's own signals are
@@ -1276,6 +1281,7 @@ private:
     // 20), so key events are routed to the Dock scene for navigation.
     bool m_dockKeyboardFocused = false;
     // The open dropdown's window-space rectangle (valid while a menu is open).
+    bool m_popupGeometryPending = false;
     int m_popupX = 0;
     int m_popupY = 0;
     int m_popupWidth = 0;

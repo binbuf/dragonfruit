@@ -1842,7 +1842,7 @@ Item {
             compare(dock.popoverInputActive, false,
                     "a closed Dock popover must not intercept clicks");
 
-            compare(menu.surfaceFill.a, 0, "the compositor owns the menu tint");
+            fuzzyCompare(menu.surfaceFill.a, Glass.resolve("menuDetached", {scheme: Theme.dark ? "dark" : "light"}).alpha, 1e-4);
             fuzzyCompare(menu.closeScale, 0.95, 1e-6);
             } finally {
                 Glass.rollout = savedRollout;
@@ -3142,6 +3142,17 @@ Item {
             verify(optionsIndex >= 0);
             menu.openSubmenu(optionsIndex);
             waitForRendering(stage);
+            var regions = dock.activePopoverSurfaceRegions;
+            compare(regions.length, 2, "the parent and submenu own separate glass cards");
+            compare(regions[0].key, "menu");
+            compare(regions[1].key, "submenu");
+            verify(regions[0].x + regions[0].w <= regions[1].x
+                   || regions[1].x + regions[1].w <= regions[0].x,
+                   "glass must not fill the gap between cards");
+            fuzzyCompare(regions[0].x,
+                         menu.x - Math.floor(dock.popoverRect.x), 0.001);
+            fuzzyCompare(regions[0].y,
+                         menu.y - Math.floor(dock.popoverRect.y), 0.001);
             var subLabels = [];
             for (var j = 0; j < menu.submenuEntries.length; ++j)
                 subLabels.push(menu.submenuEntries[j].label);
