@@ -148,6 +148,8 @@ Item {
             Settings.set("appearance.colorScheme", "dark");
             tryVerify(function() { return Theme.dark; });
             verify(material.topColor.toString() !== material.bottomColor.toString());
+            compare(findChild(panel, "aboutPanelButtonBacking").color.toString(),
+                    Theme.color.controlFill.toString());
             Settings.set("appearance.colorScheme", "light");
             Settings.set("accessibility.reduceTransparency", false);
             Settings.set("accessibility.increaseContrast", false);

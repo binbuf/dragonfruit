@@ -505,6 +505,8 @@ t226-general-panes-capture: build
 
 t230c-about-capture: build
 	bash scripts/capture-t230c-about.sh
+t230c-about-live-capture: build
+	bash scripts/capture-t230c-about-live.sh
 
 # T227: headless Settings Appearance/Quick Settings/Search/Screen Saver/
 # Desktop & Stage/Displays-advanced visual check, plus the live Control Center
