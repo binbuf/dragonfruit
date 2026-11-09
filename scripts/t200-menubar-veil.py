@@ -187,30 +187,26 @@ def evaluate(data: dict) -> tuple[list[str], dict]:
           "Dark adaptation ends at 0.0 over white")
     report["dark_background_adaptation"] = dark_backgrounds
 
-    # Text/glyph colour: the reference flips to black when the rendered menu
-    # bar is light enough, and uses white on the dark/mid Dark backgrounds.
+    # Wallpaper polarity selects the pair independently of app appearance.
+    # Retain the measured optics above; white is preferred until very bright.
     menu_bar = data["component"]["menuBar"]
     foreground = {}
-    for label, scheme, entry, bg, veil_luma, expected in (
-        ("light-black", "light", light, 0.0, 1.0, "dark"),
-        ("light-white", "light", light, 1.0, 1.0, "dark"),
-        ("dark-mid", "dark", dark, 0.502, 0.0, "light"),
-        ("dark-white", "dark", dark, 1.0, 0.0, "dark"),
-    ):
-        alpha = adapted_alpha(alpha_at(light_lut if scheme == "light" else dark_lut, 5),
-                              bg, entry["veil"]["adaptLuma"],
-                              entry["veil"]["adaptScale"])
-        rendered = output_luminance(bg, alpha, veil_luma)
-        threshold = menu_bar["foregroundFlipThresholdLight" if scheme == "light"
-                             else "foregroundFlipThresholdDark"]
-        chosen = "light" if rendered < threshold else "dark"
-        foreground[label] = {
-            "rendered_luma": round(rendered, 6),
-            "threshold": threshold,
-            "foreground": chosen,
-        }
-        check(chosen == expected,
-              f"{label}: foreground {chosen} != reference {expected}")
+    for scheme in ("light", "dark"):
+        for bg, expected in ((0.0, "light"), (0.502, "light"),
+                             (0.77, "light"), (0.8, "dark"), (1.0, "dark")):
+            threshold = menu_bar["foregroundFlipThresholdLight"]
+            chosen = "light" if bg < threshold else "dark"
+            entry = dark if chosen == "light" else light
+            lut = dark_lut if chosen == "light" else light_lut
+            alpha = adapted_alpha(alpha_at(lut, 5), bg,
+                                  entry["veil"]["adaptLuma"], entry["veil"]["adaptScale"])
+            label = f"{scheme}-{bg}"
+            foreground[label] = {
+                "rendered_luma": round(output_luminance(bg, alpha, entry["tint"]), 6),
+                "threshold": threshold,
+                "foreground": chosen,
+            }
+            check(chosen == expected, f"{label}: foreground {chosen} != {expected}")
     report["foreground"] = foreground
 
     # Fallback colours are scheme-appropriate and opaque enough to read.

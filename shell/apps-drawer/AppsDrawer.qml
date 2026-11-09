@@ -383,7 +383,8 @@ Item {
         // scrim/desktop ghost through, while the children (search, pills,
         // tiles) stay fully opaque because the opacity is in the fill, not on
         // the item. Without the sampled pass it takes the milky complement.
-        color: Material.drawerFill(root.materialBlurActive)
+        color: Material.drawerFill(root.materialBlurActive, root.materialTier,
+                                   root.materialFallback)
         opacity: root.reveal
         scale: 0.97 + 0.03 * root.reveal
         border.width: Theme.controls.window.borderWidth

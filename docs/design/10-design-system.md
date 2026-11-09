@@ -61,10 +61,12 @@ windows.
 `Tooltip` (T-14.7i) is the passive hover label: pointer-anchored,
 non-focusable, token-driven, and used first by the Dock name labels (ADR
 [0093](adr/0093-tooltip-joins-the-design-system.md)). Since T-14.7aa it is a
-pill with an opt-in pointer tail (`tailVisible`, the Dock's shipping form) and
+pill with an opt-in pointer tail (`tailVisible`) and
 a token inner rim; the tail aims at the anchor centre and rides the owner's
 overlay rect (ADR
 [0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)).
+The Dock now uses immediate labels without a pointer tail; generic tooltip
+dwell remains separate ([ADR 0243](adr/0243-shell-material-focus-and-hover-corrections.md)).
 
 `TablerIcon` (ADR [0185](adr/0185-tabler-line-icons.md)) is the foreground
 line-glyph primitive: [MIT-licensed Tabler Icons](https://tabler.io/icons)
@@ -257,8 +259,9 @@ white; Dark is the same depth shape at a 0.48 peak with a best-guess coverage
 curve (0.286 of the Light response), giving a subtler black wash that also
 disappears over white. A bounded local luminance probe supplies the adaptation,
 but the displayed backdrop is always the sharp centre sample. The shell injects
-the wallpaper's top-band luma so the bar's text and glyphs flip between black
-and white on the rendered bar. The QML surface paints no fill on the
+the wallpaper's top-band luma to choose white glyphs with the dark wash by default,
+or black glyphs with the light lift on very bright backgrounds, independently
+of app appearance (ADR 0243). The QML surface paints no fill on the
 replacement rail; the compositor veil sits below the foreground and popups.
 When the veil cannot run, QML keeps the scheme-appropriate milky fallback.
 

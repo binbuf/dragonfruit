@@ -1,5 +1,7 @@
 # 0218 — Dock motion: raised-cosine magnification, 135 ms smoothstep, and the controlled tooltip
 
+> Updated by [ADR 0243](0243-shell-material-focus-and-hover-corrections.md): see the current shell material, focus and hover policy.
+
 ## Status
 
 accepted — amends [0162](0162-dock-hover-zoom-profile-and-label-tail.md) and

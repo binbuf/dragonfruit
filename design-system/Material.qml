@@ -43,7 +43,7 @@ QtObject {
     // T202: the menu family uses the shared optical presets. `preset` is one
     // of `menuAttached`, `menuDetached` or `statusMenu`; `trusted` says the
     // surface has the compositor's sampled backdrop behind it. App-owned
-    // surfaces (Files, the desktop, Select) pass false and get the
+    // surfaces (Files content and Select) pass false and get the
     // deterministic opaque plate, never a translucent slab over unfrosted
     // content. The legacy rollout keeps the existing `popupFill` values.
     function _menuTierName(tier) {
@@ -74,6 +74,10 @@ QtObject {
         var resolved = menuResolution(preset, blurActive, tier, fallback, trusted);
         if (resolved === null)
             return popupFill(blurActive);
+        // Sampled shell menus are painted once, by the compositor. Adding
+        // this tint again here turns a translucent menu into a chalky plate.
+        if (trusted && resolved.renderMode === "sampled-glass")
+            return Qt.rgba(0, 0, 0, 0);
         return Qt.rgba(resolved.tint, resolved.tint, resolved.tint,
                        resolved.alpha);
     }
@@ -82,6 +86,18 @@ QtObject {
         if (Glass.rollout === "replacement" && preset === "menuAttached")
             return Theme.controls.contextMenu.attachedRadius;
         return Theme.controls.contextMenu.radius;
+    }
+
+    // The desktop is an alpha-composited surface, but cannot sample the
+    // compositor's scene. Preserve some wallpaper transmission without
+    // claiming it is blurred glass. App content menus retain the solid plate.
+    function desktopMenuFill(blurActive, tier, fallback) {
+        if (!Glass.appChromeSupported || Glass.software || !blurActive)
+            return menuFill("menuDetached", false, tier, fallback, false);
+        var resolved = menuResolution("menuDetached", true, tier, fallback, true);
+        if (resolved === null)
+            return popupFill(true);
+        return Qt.rgba(resolved.tint, resolved.tint, resolved.tint, resolved.alpha);
     }
 
     function menuCloseScale(preset) {
@@ -135,11 +151,14 @@ QtObject {
     // The Applications drawer's card keeps its own translucent surface tone on
     // the sampled path; without the pass it takes the same milky plate as the
     // popup family.
-    function drawerFill(blurActive) {
-        return blurActive
-            ? Qt.rgba(Theme.color.surface.r, Theme.color.surface.g,
-                      Theme.color.surface.b, Theme.controls.appsDrawer.panelOpacity)
-            : Qt.rgba(Theme.color.chromeFallbackFill.r, Theme.color.chromeFallbackFill.g,
-                      Theme.color.chromeFallbackFill.b, Theme.material.popupFallbackOpacity);
+    function drawerFill(blurActive, tier, fallback) {
+        if (Glass.rollout !== "replacement") {
+            return blurActive
+                ? Qt.rgba(Theme.color.surface.r, Theme.color.surface.g,
+                          Theme.color.surface.b, Theme.controls.appsDrawer.panelOpacity)
+                : Qt.rgba(Theme.color.chromeFallbackFill.r, Theme.color.chromeFallbackFill.g,
+                          Theme.color.chromeFallbackFill.b, Theme.material.popupFallbackOpacity);
+        }
+        return menuFill("menuDetached", blurActive, tier, fallback, true);
     }
 }

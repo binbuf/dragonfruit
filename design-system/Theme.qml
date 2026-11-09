@@ -1154,14 +1154,15 @@ QtObject {
             readonly property int clockGap: 8
             readonly property int radius: 10
             readonly property int hoverRadius: 6
-            readonly property color foregroundOnLight: "#111111"
-            readonly property color foregroundOnDark: "#f8f6fa"
-            readonly property color foregroundSecondaryOnLight: "#5b4e66"
-            readonly property color foregroundSecondaryOnDark: "#c3b8cc"
-            readonly property real foregroundFlipThresholdLight: 0.3
-            readonly property real foregroundFlipThresholdDark: 0.65
+            readonly property color foregroundOnLight: "#000000"
+            readonly property color foregroundOnDark: "#ffffff"
+            readonly property color foregroundSecondaryOnLight: "#000000"
+            readonly property color foregroundSecondaryOnDark: "#ffffff"
+            readonly property real foregroundFlipThresholdLight: 0.78
+            readonly property real foregroundFlipThresholdDark: 0.78
         }
         readonly property var dock: QtObject {
+            readonly property int tooltipDwell: 0
             readonly property int iconSize: 48
             readonly property int iconSizeMin: 32
             readonly property int iconSizeMax: 64

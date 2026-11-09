@@ -310,7 +310,7 @@ Item {
             Glass.rollout = "replacement";
             Theme.dark = false;
             var bar = make(menuBarComponent, {
-                width: 600,
+                width: 600, backgroundLuma: 1.0,
                 materialBlurActive: true
             });
             compare(bar.veilResolution.renderMode, "no-blur-veil");
@@ -332,6 +332,7 @@ Item {
 
             // Dark uses the documented black wash, still with no QML fill.
             Theme.dark = true;
+            bar.backgroundLuma = 0.5;
             bar.materialBlurActive = true;
             compare(bar.veilActive, true);
             compare(bar.color.a, 0);
@@ -343,10 +344,8 @@ Item {
         }
 
         function test_menu_bar_foreground_follows_the_wallpaper() {
-            // The reference flips the text/glyphs to black when the rendered
-            // bar is light. In Light the white veil keeps it light over black;
-            // in Dark the black wash stays dark over mid-grey and disappears
-            // over white.
+            // Wallpaper brightness selects the pair in both app appearances;
+            // dark and mid-grey backgrounds prefer white glyphs.
             Glass.rollout = "replacement";
             Theme.dark = false;
             var bar = make(menuBarComponent, {
@@ -355,8 +354,8 @@ Item {
             });
             bar.backgroundLuma = 0.0;
             compare(bar.foreground.toString(),
-                    Theme.controls.menuBar.foregroundOnLight.toString(),
-                    "Light over black stays dark text");
+                    Theme.controls.menuBar.foregroundOnDark.toString(),
+                    "Light appearance still uses white text over black");
             bar.backgroundLuma = 1.0;
             compare(bar.foreground.toString(),
                     Theme.controls.menuBar.foregroundOnLight.toString(),
@@ -584,13 +583,7 @@ Item {
             compare(popup.materialPreset, "menuAttached");
             compare(popup.materialBackdrop, "trusted");
             compare(popup.motionPreset, "menu");
-            verify(Math.abs(popup.surfaceFill.a
-                            - Glass.resolve("menuAttached", {
-                                  scheme: Theme.dark ? "dark" : "light",
-                                  rollout: "replacement",
-                                  slider: Glass.slider,
-                                  backend: "gpu-sampled", tier: "full"
-                              }).alpha) < 1e-4);
+            compare(popup.surfaceFill.a, 0, "the compositor owns the menu tint");
 
             bar.appMenuAt(2).openSubmenu(0);
             waitForRendering(stage);

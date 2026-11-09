@@ -295,6 +295,7 @@ Rectangle {
         : (menuBar.materialTier === 1 ? "reduced" : "minimal")
     readonly property var veilResolution:
         Glass.resolve("menuBarVeil", {
+            scheme: menuBar.veilScheme,
             backend: menuBar.materialBackend,
             tier: menuBar.materialTierName,
             reduceTransparency: menuBar.reduceTransparency,
@@ -315,11 +316,16 @@ Rectangle {
     readonly property int compositorPanelRadius:
         menuBar.veilActive ? 0 : Theme.controls.menuBar.radius
 
-    // T200: the shell injects the wallpaper's top-band sRGB luma. Text and
-    // glyphs follow the *rendered* bar (post-veil), not the scheme alone: the
-    // Light white lift keeps dark text readable over any wallpaper, while the
-    // Dark wash flips to black when it disappears over a light one.
+    // Cached wallpaper top-band sRGB luminance selects one foreground/veil
+    // pair. The compositor receives the same polarity with the content frame.
     property real backgroundLuma: 0.5
+    // Wallpaper polarity, not the app appearance, owns the menu-bar pair.
+    // Prefer white lettering with a dark wash except on very bright scenes.
+    readonly property string veilScheme:
+        backgroundLuma >= Theme.controls.menuBar.foregroundFlipThresholdLight
+            ? "light" : "dark"
+    readonly property bool darkForeground:
+        showBackground && !veilActive ? !Theme.dark : veilScheme === "light"
 
     function veilAlphaAt(depth) {
         if (!menuBar.veilActive)
@@ -373,13 +379,11 @@ Rectangle {
         Theme.dark ? Theme.controls.menuBar.foregroundFlipThresholdDark
                    : Theme.controls.menuBar.foregroundFlipThresholdLight
     readonly property color foreground:
-        menuBar.renderedLuma < menuBar.foregroundFlipThreshold
-            ? Theme.controls.menuBar.foregroundOnDark
-            : Theme.controls.menuBar.foregroundOnLight
+        menuBar.darkForeground ? Theme.controls.menuBar.foregroundOnLight
+                               : Theme.controls.menuBar.foregroundOnDark
     readonly property color secondaryForeground:
-        menuBar.renderedLuma < menuBar.foregroundFlipThreshold
-            ? Theme.controls.menuBar.foregroundSecondaryOnDark
-            : Theme.controls.menuBar.foregroundSecondaryOnLight
+        menuBar.darkForeground ? Theme.controls.menuBar.foregroundSecondaryOnLight
+                               : Theme.controls.menuBar.foregroundSecondaryOnDark
 
     readonly property color glassFill: Qt.rgba(
         menuBar.chromeFill.r, menuBar.chromeFill.g, menuBar.chromeFill.b,

@@ -1,5 +1,7 @@
 # 0221 — Menu families share three glass presets and one measured exit
 
+> Updated by [ADR 0243](0243-shell-material-focus-and-hover-corrections.md): see the current shell material, focus and hover policy.
+
 - Status: Accepted
 - Date: 2026-11-06
 - Task: T202

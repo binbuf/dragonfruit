@@ -4608,11 +4608,20 @@ impl DfState {
         &self,
         preset: crate::material_preset::Preset,
     ) -> crate::material_preset::ResolvedPreset {
-        use crate::material_preset::{Accessibility, Backend, ResolveInput, Scheme, Tier};
+        use crate::material_preset::Scheme;
         let scheme = match self.color_scheme {
             ColorScheme::Light => Scheme::Light,
             ColorScheme::Dark => Scheme::Dark,
         };
+        self.resolve_glass_preset_for_scheme(preset, scheme)
+    }
+
+    pub fn resolve_glass_preset_for_scheme(
+        &self,
+        preset: crate::material_preset::Preset,
+        scheme: crate::material_preset::Scheme,
+    ) -> crate::material_preset::ResolvedPreset {
+        use crate::material_preset::{Accessibility, Backend, ResolveInput, Tier};
         let backend = match (self.material_path, self.material_blur_supported) {
             (MaterialPath::Software, _) => Backend::Software,
             (MaterialPath::Gpu, false) => Backend::GpuNoSampledBlur,

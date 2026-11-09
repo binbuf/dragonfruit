@@ -382,6 +382,8 @@ ShellController::ShellController(QObject *parent)
 
 ShellController::~ShellController()
 {
+    // Jobs only queue results back here; finish before destroying the receiver.
+    m_menuWorker.waitForDone();
     // The opt-in transport counters land on the clean-exit path too; SIGUSR1
     // remains the per-scenario trigger (T-21.1a).
     ChromeStats::instance().emitStats(QStringLiteral("exit"));
@@ -2749,153 +2751,169 @@ void ShellController::applyFocusedApp()
         return;
     if (m_protocol)
         m_focusedWindowId = m_protocol->focusedWindowId();
-    // The application menu is always present. With no focused window the
-    // desktop is Files (the macOS "Finder owns the desktop" model, see
-    // design/09-files.md), so the default application menu is Files.
-    QString name = m_appId;
-    if (name.isEmpty())
-        name = m_appTitle;
-    if (name.isEmpty())
-        name = QStringLiteral("Files");
-
     const QString rawId = m_appId;
-    QString canonicalId = rawId;
-    if (!rawId.isEmpty()) {
-        const DesktopEntry entry = m_index.resolve(rawId);
-        if (entry.valid && !entry.id.isEmpty())
-            canonicalId = entry.id;
-    }
-    const QString brokerId = canonicalId.isEmpty() ? rawId : canonicalId;
-
-    // The menu-broker owns global-menu resolution and the fixed application
-    // menu's live Hide/Hide Others/Show All state (T-14.2a). The shell pushes
-    // the focus and the running-window projection, then reads the resolved
-    // model: the fixed menu plus any menus the focused app exported (natively
-    // or through the DBusMenu bridge). The local fixed menu is only the
-    // fallback when the service is absent (T-14.7).
-    QVariantList applicationMenu;
-    QVariantList appMenu;
-    QString tier;
-    quint32 dbusWindow = 0;
-
-    // T230: focus → app identity → AppMenu.Registrar registration. A
-    // registration can arrive under the app's bus name (the standard
-    // `RegisterWindow` call); focus is the first moment the shell knows the
-    // canonical desktop id, so it re-keys the bridge model to that identity
-    // before resolving it. The registration's own window id is kept for click
-    // routing.
-    if (m_appIndexClient.available()) {
-        const QList<AppMenuWindow> windows = m_appIndexClient.appMenuWindows();
-        const AppMenuWindow *registration = findAppMenuWindow(windows, rawId, canonicalId);
-        // A standard `RegisterWindow` keys the bridge by the caller's bus name,
-        // so the app-id lookup cannot see it. The compositor's focused window
-        // id is the second, authoritative match; `FocusWindow` then re-keys the
-        // registration under the canonical desktop id.
-        if (!registration && m_focusedWindowId != 0) {
-            for (const AppMenuWindow &window : windows) {
-                if (window.windowId == m_focusedWindowId) {
-                    registration = &window;
-                    break;
-                }
-            }
-        }
-        if (registration) {
-            dbusWindow = registration->windowId;
-            const QString key = canonicalId.isEmpty() ? registration->appId : canonicalId;
-            m_appIndexClient.focusWindow(QString::number(registration->windowId), key);
-            if (m_menuBroker.available()) {
-                m_menuBroker.setFocusedApp(key);
-                m_menuBroker.setWindowStates(windowStatesJson(m_runningEntries));
-                ResolvedMenu resolved = m_menuBroker.resolve(key);
-                if (!resolved.valid)
-                    resolved = m_menuBroker.resolveFocused();
-                if (resolved.valid) {
-                    if (!resolved.appName.isEmpty())
-                        name = resolved.appName;
-                    applicationMenu = resolved.applicationMenuItems;
-                    appMenu = resolved.menus;
-                    tier = resolved.tier;
-                }
-            }
-            // A fresh `WindowMenu` read runs `AboutToShow` first, so a dynamic
-            // menu (recent files, window lists) reflects the state at open
-            // time instead of the registration snapshot. A native publication
-            // still wins the tier priority (native → DBusMenu → none).
-            if (tier != QLatin1String("native")) {
-                const QVariantList fresh =
-                    m_appIndexClient.windowMenu(QString::number(registration->windowId));
-                if (!fresh.isEmpty()) {
-                    appMenu = fresh;
-                    tier = QStringLiteral("dbusmenu");
-                } else if (tier.isEmpty()) {
-                    tier = QStringLiteral("dbusmenu");
-                }
-            }
-            if (applicationMenu.isEmpty()) {
-                const AppMenuLiveState live = appMenuLiveState(rawId, m_runningEntries);
-                applicationMenu = fixedApplicationMenu(name, live);
-            }
-            if (!m_dbusMenuFallbackLogged) {
-                m_dbusMenuFallbackLogged = true;
-                qInfo() << "shell: DBusMenu registration" << registration->windowId
-                        << "resolved for" << key << "tier" << tier;
-            }
-        }
-    }
-
-    if (applicationMenu.isEmpty() && m_menuBroker.available()) {
-        m_menuBroker.setFocusedApp(brokerId);
-        m_menuBroker.setWindowStates(windowStatesJson(m_runningEntries));
-        ResolvedMenu resolved = m_menuBroker.resolve(brokerId);
-        if (!resolved.valid)
-            resolved = m_menuBroker.resolveFocused();
-        if (resolved.valid) {
-            if (!m_menuBrokerLogged) {
-                m_menuBrokerLogged = true;
-                qInfo() << "shell: global menu resolved by org.dragonfruit.MenuBroker1"
-                        << "tier" << resolved.tier << "for" << resolved.appId;
-            }
-            if (!resolved.appName.isEmpty())
-                name = resolved.appName;
-            applicationMenu = resolved.applicationMenuItems;
-            appMenu = resolved.menus;
-            tier = resolved.tier;
-        }
-    }
-    if (applicationMenu.isEmpty()) {
-        const AppMenuLiveState live = appMenuLiveState(rawId, m_runningEntries);
-        applicationMenu = fixedApplicationMenu(name, live);
-        tier = QStringLiteral("none");
-    }
-    // T230: no-export and DBusMenu apps get the dynamic Window menu from the
-    // live compositor projection. A published Window menu wins. The broker
-    // already appends its synthesized menu when it owns the model, so never
-    // duplicate it.
-    if (!rawId.isEmpty() && !hasMenuTitle(appMenu, QStringLiteral("Window"))) {
-        const QVariantList dynamicWindow = windowMenu(m_runningEntries, rawId, name);
-        if (!dynamicWindow.isEmpty()) {
-            QVariantMap menu;
-            menu.insert(QStringLiteral("title"), QStringLiteral("Window"));
-            menu.insert(QStringLiteral("items"), dynamicWindow);
-            appMenu.append(menu);
-        }
-    }
-    m_dbusMenuWindowId = dbusWindow;
-    m_item->setProperty("appId", m_appId);
+    const DesktopEntry entry = m_index.resolve(rawId);
+    const bool hasDisplayName = entry.valid && !entry.name.isEmpty();
+    QString name = rawId.isEmpty() ? QStringLiteral("Files")
+        : hasDisplayName ? entry.name : displayNameForIdentity(rawId);
+    const QString canonicalId = entry.valid && !entry.id.isEmpty() ? entry.id : rawId;
+    const QString brokerId = canonicalId;
+    const bool focusChanged = m_item->property("appId").toString() != rawId;
+    if (!focusChanged && !hasDisplayName && !rawId.isEmpty()
+        && !m_item->property("appName").toString().isEmpty())
+        name = m_item->property("appName").toString();
+    m_item->setProperty("appId", rawId);
     m_item->setProperty("appName", name);
-    m_item->setProperty("applicationMenuItems", applicationMenu);
-    m_item->setProperty("appMenuModel", appMenu);
-    // T-14.2b: register the focused app's accelerators with the compositor,
-    // focus-scoped. The table carries the fixed menu's Shell-owned actions and
-    // the app menu's actions; the compositor only matches them while this app
-    // is focused, and its system shortcuts always win. The desktop (no focus)
-    // clears the table.
-    if (m_protocol) {
-        const QList<MenuAccelerator> accelerators =
-            publishedAccelerators(applicationMenu, appMenu);
-        m_protocol->setAppAccelerators(m_appId, acceleratorWireTable(accelerators));
+    if (focusChanged || m_item->property("applicationMenuItems").toList().isEmpty()) {
+        m_dbusMenuWindowId = 0;
+        const QVariantList localMenu =
+            fixedApplicationMenu(name, appMenuLiveState(rawId, m_runningEntries));
+        m_item->setProperty("applicationMenuItems", localMenu);
+        m_item->setProperty("appMenuModel", QVariantList{});
+        if (m_protocol)
+            m_protocol->setAppAccelerators(rawId, acceleratorWireTable(
+                publishedAccelerators(localMenu, {})));
     }
     refreshSystemMenu();
+
+    // D-Bus exporters may take seconds to answer AboutToShow. Keep them off
+    // the scene/input thread shared by the Dock. One bounded worker coalesces
+    // bursts of title/state/focus events; only the newest snapshot can publish.
+    const quint64 generation = ++m_menuRefreshGeneration;
+    if (m_menuRefreshInFlight)
+        return;
+    m_menuRefreshInFlight = true;
+    m_menuWorker.setMaxThreadCount(1);
+    const QVariantList runningEntries = m_runningEntries;
+    const quintptr focusedWindowId = m_focusedWindowId;
+    m_menuWorker.start([this, generation, rawId, canonicalId, brokerId,
+                        name, hasDisplayName, runningEntries, focusedWindowId]() mutable {
+        const AppIndexClient indexClient;
+        const MenuBrokerClient broker;
+        QVariantList applicationMenu;
+        QVariantList appMenu;
+        QString tier;
+        quint32 dbusWindow = 0;
+
+        // T230: focus → app identity → AppMenu.Registrar registration. A
+        // registration can arrive under the app's bus name (the standard
+        // `RegisterWindow` call); focus is the first moment the shell knows the
+        // canonical desktop id, so it re-keys the bridge model to that identity
+        // before resolving it. The registration's own window id is kept for click
+        // routing.
+        if (indexClient.available()) {
+            const QList<AppMenuWindow> windows = indexClient.appMenuWindows();
+            const AppMenuWindow *registration = findAppMenuWindow(windows, rawId, canonicalId);
+            // A standard `RegisterWindow` keys the bridge by the caller's bus name,
+            // so the app-id lookup cannot see it. The compositor's focused window
+            // id is the second, authoritative match; `FocusWindow` then re-keys the
+            // registration under the canonical desktop id.
+            if (!registration && focusedWindowId != 0) {
+                for (const AppMenuWindow &window : windows) {
+                    if (window.windowId == focusedWindowId) {
+                        registration = &window;
+                        break;
+                    }
+                }
+            }
+            if (registration) {
+                dbusWindow = registration->windowId;
+                const QString key = canonicalId.isEmpty() ? registration->appId : canonicalId;
+                indexClient.focusWindow(QString::number(registration->windowId), key);
+                if (broker.available()) {
+                    broker.setFocusedApp(key);
+                    broker.setWindowStates(windowStatesJson(runningEntries));
+                    ResolvedMenu resolved = broker.resolve(key);
+                    if (!resolved.valid)
+                        resolved = broker.resolveFocused();
+                    if (resolved.valid) {
+                        if (!hasDisplayName && !resolved.appName.isEmpty()
+                        && resolved.appName != rawId && resolved.appName != canonicalId
+                        && !resolved.appName.endsWith(QLatin1String(".desktop")))
+                            name = resolved.appName;
+                        applicationMenu = resolved.applicationMenuItems;
+                        appMenu = resolved.menus;
+                        tier = resolved.tier;
+                    }
+                }
+                // A fresh `WindowMenu` read runs `AboutToShow` first, so a dynamic
+                // menu (recent files, window lists) reflects the state at open
+                // time instead of the registration snapshot. A native publication
+                // still wins the tier priority (native → DBusMenu → none).
+                if (tier != QLatin1String("native")) {
+                    const QVariantList fresh =
+                        indexClient.windowMenu(QString::number(registration->windowId));
+                    if (!fresh.isEmpty()) {
+                        appMenu = fresh;
+                        tier = QStringLiteral("dbusmenu");
+                    } else if (tier.isEmpty()) {
+                        tier = QStringLiteral("dbusmenu");
+                    }
+                }
+                if (applicationMenu.isEmpty() || tier != QLatin1String("native")) {
+                    const AppMenuLiveState live = appMenuLiveState(rawId, runningEntries);
+                    applicationMenu = fixedApplicationMenu(name, live);
+                }
+
+            }
+        }
+
+        if (applicationMenu.isEmpty() && broker.available()) {
+            broker.setFocusedApp(brokerId);
+            broker.setWindowStates(windowStatesJson(runningEntries));
+            ResolvedMenu resolved = broker.resolve(brokerId);
+            if (!resolved.valid)
+                resolved = broker.resolveFocused();
+            if (resolved.valid) {
+
+                if (!hasDisplayName && !resolved.appName.isEmpty()
+                        && resolved.appName != rawId && resolved.appName != canonicalId
+                        && !resolved.appName.endsWith(QLatin1String(".desktop")))
+                    name = resolved.appName;
+                applicationMenu = resolved.applicationMenuItems;
+                appMenu = resolved.menus;
+                tier = resolved.tier;
+            }
+        }
+        if (applicationMenu.isEmpty() || tier != QLatin1String("native")) {
+            const AppMenuLiveState live = appMenuLiveState(rawId, runningEntries);
+            applicationMenu = fixedApplicationMenu(name, live);
+            if (tier.isEmpty())
+                tier = QStringLiteral("none");
+        }
+        // T230: no-export and DBusMenu apps get the dynamic Window menu from the
+        // live compositor projection. A published Window menu wins. The broker
+        // already appends its synthesized menu when it owns the model, so never
+        // duplicate it.
+        if (!rawId.isEmpty() && !hasMenuTitle(appMenu, QStringLiteral("Window"))) {
+            const QVariantList dynamicWindow = windowMenu(runningEntries, rawId, name);
+            if (!dynamicWindow.isEmpty()) {
+                QVariantMap menu;
+                menu.insert(QStringLiteral("title"), QStringLiteral("Window"));
+                menu.insert(QStringLiteral("items"), dynamicWindow);
+                appMenu.append(menu);
+            }
+        }
+        QMetaObject::invokeMethod(this,
+            [this, generation, rawId, name, dbusWindow, applicationMenu, appMenu]() {
+                m_menuRefreshInFlight = false;
+                if (generation != m_menuRefreshGeneration) {
+                    applyFocusedApp();
+                    return;
+                }
+                if (!m_item)
+                    return;
+                m_dbusMenuWindowId = dbusWindow;
+                m_item->setProperty("appName", rawId.isEmpty() ? QStringLiteral("Files") : name);
+                m_item->setProperty("applicationMenuItems", applicationMenu);
+                m_item->setProperty("appMenuModel", appMenu);
+                if (m_protocol) {
+                    m_protocol->setAppAccelerators(rawId, acceleratorWireTable(
+                        publishedAccelerators(applicationMenu, appMenu)));
+                }
+                render();
+            }, Qt::QueuedConnection);
+    });
 }
 
 void ShellController::hideAppWindows(const QString &appId)
@@ -6715,6 +6733,8 @@ void ShellController::applyDisplayPolicy()
 
 void ShellController::onDockStateChanged(const QVariantList &entries)
 {
+    if (entries == m_runningEntries)
+        return;
     m_runningEntries = entries;
     // T230: a window that closed while hidden must not stay in the Show All
     // set (the compositor handle is gone).
@@ -9308,7 +9328,9 @@ void ShellController::render()
     const int panelRadius =
         m_item->property("compositorPanelRadius").toInt();
     m_protocol->setMenuBarFrameGeometry(panelActive, m_width, panelHeight,
-                                        panelRadius);
+                                        panelRadius,
+                                        m_item->property("veilScheme").toString()
+                                            == QLatin1String("light"));
     const QRect barRect(0, 0, m_width, m_barHeight);
     const QRect barSource = chromeBufferRect(barRect);
     QList<ChromeSceneTarget> targets;

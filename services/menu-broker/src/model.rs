@@ -274,6 +274,7 @@ pub const DESKTOP_APP_NAME: &str = "Files";
 /// capitalized (`org.dragonfruit.Settings` → `Settings`). Empty is the
 /// desktop (`Files`).
 pub fn default_app_name(app_id: &str) -> String {
+    let app_id = app_id.strip_suffix(".desktop").unwrap_or(app_id);
     if app_id.is_empty() {
         return DESKTOP_APP_NAME.to_owned();
     }
@@ -1095,6 +1096,8 @@ mod tests {
 
     #[test]
     fn default_app_name_capitalizes_the_last_segment() {
+        assert_eq!(default_app_name("org.dragonfruit.Files.desktop"), "Files");
+        assert_eq!(default_app_name("firefox.desktop"), "Firefox");
         assert_eq!(default_app_name("org.dragonfruit.Settings"), "Settings");
         assert_eq!(default_app_name("firefox"), "Firefox");
         assert_eq!(default_app_name(""), "Files");

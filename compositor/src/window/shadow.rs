@@ -25,7 +25,8 @@ use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::Color32F;
-use smithay::utils::{Logical, Point, Rectangle, Scale};
+use smithay::utils::{Logical, Physical, Point, Rectangle, Scale};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use crate::design_tokens::{component, semantic};
 use crate::window::corner::{rounded_rect_spans, RoundedCorners};
@@ -230,49 +231,98 @@ fn shadow_elements_with_occluder(
     occluder: Option<(Rectangle<i32, Logical>, i32)>,
 ) -> Vec<SolidColorRenderElement> {
     const SHADOW_SALT: u64 = 0x7368_6164_6f77_7773; // "shadowws"
-    let occluder_spans = occluder.map(|(window, radius)| {
-        rounded_rect_spans(window, radius, RoundedCorners::All)
-    });
-    let mut elements = Vec::new();
-    for (index, layer) in shadow_layers(rect, spec).into_iter().enumerate() {
-        let radius = layer.radius.round() as i32;
-        let mut spans = rounded_rect_spans(layer.rect, radius, RoundedCorners::All);
-        if let Some(cuts) = &occluder_spans {
-            spans = spans
-                .into_iter()
-                .flat_map(|span| {
-                    cuts.iter().fold(vec![span], |pieces, cut| {
-                        pieces
-                            .into_iter()
-                            .flat_map(|piece| subtract_rect(piece, *cut))
-                            .collect()
-                    })
-                })
-                .collect();
+    let geometry = cached_shadow_geometry(rect, spec, occluder);
+    let mut elements = Vec::with_capacity(geometry.len());
+    for &(index, span, layer_color) in geometry.iter() {
+        let (span_rect, color) = motion_transform(span, layer_color, rect, motion);
+        let local = Rectangle::new(
+            (
+                span_rect.loc.x - output_origin.x,
+                span_rect.loc.y - output_origin.y,
+            )
+            .into(),
+            span_rect.size,
+        );
+        let physical = physical_span(local, scale);
+        if physical.is_empty() {
+            continue;
         }
-        for span in spans {
-            let (span_rect, color) = motion_transform(span, layer.color, rect, motion);
-            let local = Rectangle::new(
-                (
-                    span_rect.loc.x - output_origin.x,
-                    span_rect.loc.y - output_origin.y,
-                )
-                    .into(),
-                span_rect.size,
-            );
-            let physical = local.to_physical_precise_round(scale);
-            elements.push(SolidColorRenderElement::new(
-                crate::window::stable_solid_id(SHADOW_SALT ^ index as u64, physical, color),
-                physical,
-                CommitCounter::default(),
-                color,
-                Kind::Unspecified,
-            ));
-        }
+        elements.push(SolidColorRenderElement::new(
+            crate::window::stable_solid_id(SHADOW_SALT ^ index as u64, physical, color),
+            physical,
+            CommitCounter::default(),
+            color,
+            Kind::Unspecified,
+        ));
     }
     // `shadow_layers` is back-to-front; Smithay consumes front-to-back.
     elements.reverse();
     elements
+}
+
+// Adjacent spans share the same rounded endpoint at fractional output scales.
+fn physical_span(rect: Rectangle<i32, Logical>, scale: Scale<f64>) -> Rectangle<i32, Physical> {
+    let left = (f64::from(rect.loc.x) * scale.x).round() as i32;
+    let top = (f64::from(rect.loc.y) * scale.y).round() as i32;
+    let right = (f64::from(rect.loc.x + rect.size.w) * scale.x).round() as i32;
+    let bottom = (f64::from(rect.loc.y + rect.size.h) * scale.y).round() as i32;
+    Rectangle::new((left, top).into(), (right - left, bottom - top).into())
+}
+
+type ShadowGeometry = Vec<(usize, Rectangle<i32, Logical>, Color32F)>;
+type ShadowGeometryKey = (
+    Rectangle<i32, Logical>,
+    ShadowSpec,
+    Option<(Rectangle<i32, Logical>, i32)>,
+);
+thread_local! {
+    // Keep settled windows out of CPU clipping when unrelated chrome animates.
+    static SHADOW_GEOMETRY: RefCell<VecDeque<(ShadowGeometryKey, Rc<ShadowGeometry>)>> =
+        const { RefCell::new(VecDeque::new()) };
+}
+
+fn cached_shadow_geometry(
+    rect: Rectangle<i32, Logical>,
+    spec: ShadowSpec,
+    occluder: Option<(Rectangle<i32, Logical>, i32)>,
+) -> Rc<ShadowGeometry> {
+    let key = (rect, spec, occluder);
+    SHADOW_GEOMETRY.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(index) = cache.iter().position(|(candidate, _)| *candidate == key) {
+            let entry = cache.remove(index).unwrap();
+            let geometry = Rc::clone(&entry.1);
+            cache.push_back(entry);
+            return geometry;
+        }
+        let occluder_spans = occluder
+            .map(|(window, radius)| rounded_rect_spans(window, radius, RoundedCorners::All));
+        let mut geometry = Vec::new();
+        for (index, layer) in shadow_layers(rect, spec).into_iter().enumerate() {
+            let radius = layer.radius.round() as i32;
+            let mut spans = rounded_rect_spans(layer.rect, radius, RoundedCorners::All);
+            if let Some(cuts) = &occluder_spans {
+                spans = spans
+                    .into_iter()
+                    .flat_map(|span| {
+                        cuts.iter().fold(vec![span], |pieces, cut| {
+                            pieces
+                                .into_iter()
+                                .flat_map(|piece| subtract_rect(piece, *cut))
+                                .collect()
+                        })
+                    })
+                    .collect();
+            }
+            geometry.extend(spans.into_iter().map(|span| (index, span, layer.color)));
+        }
+        let geometry = Rc::new(geometry);
+        if cache.len() >= 32 {
+            cache.pop_front();
+        }
+        cache.push_back((key, Rc::clone(&geometry)));
+        geometry
+    })
 }
 
 /// Subtract `cut` from `rect`, returning the remaining non-overlapping
@@ -296,8 +346,12 @@ fn subtract_rect(
         }
     };
     push(rect.loc.x, rect.loc.y, rect.size.w, top - rect.loc.y);
-    push(rect.loc.x, bottom, rect.size.w,
-         rect.loc.y + rect.size.h - bottom);
+    push(
+        rect.loc.x,
+        bottom,
+        rect.size.w,
+        rect.loc.y + rect.size.h - bottom,
+    );
     push(rect.loc.x, top, left - rect.loc.x, bottom - top);
     push(right, top, rect.loc.x + rect.size.w - right, bottom - top);
     pieces
@@ -308,6 +362,20 @@ mod tests {
     use super::*;
     use smithay::backend::renderer::element::Element;
     use smithay::utils::{Physical, Size};
+
+    #[test]
+    fn fractional_scale_shadow_spans_share_edges_without_overdraw() {
+        // The old location+size rounding produces alternating overlaps at
+        // 1.5x; stacking translucent spans makes those rows dark stripes.
+        for scale in [1.25, 1.5, 1.75, 2.0] {
+            for y in -20..20 {
+                let a = physical_span(rect(-3, y, 40, 1), scale.into());
+                let b = physical_span(rect(-3, y + 1, 40, 1), scale.into());
+                assert_eq!(a.loc.y + a.size.h, b.loc.y);
+                assert!(a.intersection(b).is_none());
+            }
+        }
+    }
 
     fn rect(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
         Rectangle::new(Point::from((x, y)), Size::from((w, h)))

@@ -1,5 +1,7 @@
 # 0240 — Focus maps to the canonical app identity; DBusMenu clicks and hide verbs are real
 
+> Updated by [ADR 0243](0243-shell-material-focus-and-hover-corrections.md): see the current shell material, focus and hover policy.
+
 ## Status
 
 accepted — completes the shell half of [06-global-menu.md](../06-global-menu.md)
