@@ -85,13 +85,22 @@ Item {
             }
         }
     }
-    Button {
-        id: moreInfo
-        objectName: "aboutPanelMoreInfo"
+    Rectangle {
+        objectName: "aboutPanelButtonBacking"
         x: (root.width - width) / 2; y: 404
         width: 94; height: 26
-        text: qsTr("More Info…")
-        onClicked: root.moreInfoRequested()
+        radius: Theme.controls.button.radius
+        color: Theme.color.controlFill
+        border.width: Theme.controls.window.borderWidth
+        border.color: Theme.color.border
+        Button {
+            id: moreInfo
+            objectName: "aboutPanelMoreInfo"
+            anchors.fill: parent
+            variant: "ghost"
+            text: qsTr("More Info…")
+            onClicked: root.moreInfoRequested()
+        }
     }
     Text {
         x: 20; y: 439; width: root.width - 40; height: 18
