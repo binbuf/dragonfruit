@@ -17,4 +17,6 @@ for scheme in light dark; do
         test -s "docs/captures/t230c-about-$surface-$scheme.png"
     done
 done
-echo "capture-t230c-about: wrote panel/page light/dark at 1x"
+test -s "docs/captures/t230c-about-panel-long.png"
+test -s "docs/captures/t230c-about-page-long.png"
+echo "capture-t230c-about: wrote panel/page light/dark plus the long localized surfaces at 1x"

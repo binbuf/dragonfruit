@@ -177,7 +177,13 @@ panel is a summary that links to it.
    “Not available” row, not a fake Apple value.
 
 **Owner:** T230c. The Settings executable now exposes a separate
-`--about-system` utility window and a canonical General → About sub-pane.
+`--about-system` utility window and a canonical General → About sub-pane. The
+panel matches the measured hero (29/194 pt), row block (291 pt start, 16 pt
+pitch, right-aligned labels), More Info (391 pt), regulatory link (429 pt) and
+footer (466 pt). The live system-menu journey is captured in light/dark; the
+long/localized panel and page are captured at 1× and tested at 1×/1.5×/2×.
+Controlled material fit over the 21 reference backgrounds and a live localized
+host remain `OPEN`.
 The compact surface is 280×503 pt with blank 32 pt titlebar and a 194 pt
 original vector hero; More Info opens the 740×820 pt Settings window with
 52 pt chrome, a 128 pt hero and 768 pt scroll viewport. Both read the host
@@ -505,8 +511,8 @@ The structural review still leaves these rows open:
 |---|---|---|
 | OPEN-CHROME-02 | Fullscreen/auto-hide title bar hidden/revealed states | T230b |
 | OPEN-CHROME-03 | RTL and long-title truncation/mirroring | T230b |
-| OPEN-ABOUT-01 | Dark mode and controlled material fit for the About panel | T230c |
-| OPEN-ABOUT-02 | Localization and long machine names | T230c |
+| OPEN-ABOUT-01 | Controlled material fit for the About panel over the 21 reference backgrounds (dark mode is captured live) | T230c |
+| OPEN-ABOUT-02 | Live localized host capture; long/localized surfaces are captured at 1× and tested at 1×/1.5×/2× | T230c |
 | OPEN-DRAWER-01 | Drawer open/close/launch motion | T248 |
 | OPEN-DRAWER-02 | Full keyboard, empty/no-results, iPhone-app rows, multi-display | T248 |
 | OPEN-NC-01 | Empty, actions, Focus, Weather/Calendar variants | T234 |

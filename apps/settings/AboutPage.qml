@@ -31,7 +31,7 @@ Item {
         spacing: 18
         Row {
             width: parent.width; height: 140; spacing: 20
-            AboutHero { artworkSize: 128 }
+            AboutHero { objectName: "aboutPageHero"; artworkSize: 128 }
             Column {
                 width: parent.width - 148
                 spacing: 7
@@ -45,11 +45,24 @@ Item {
                     maximumLineCount: 2
                     elide: Text.ElideRight
                 }
-                Text { text: root.productName; color: Theme.color.textSecondary; font.pixelSize: 13 }
-                Text { text: qsTr("Chip: %1").arg(root.value("processor")); color: Theme.color.textSecondary; font.pixelSize: 12 }
-                Text { text: qsTr("Memory: %1").arg(root.value("memoryLabel")); color: Theme.color.textSecondary; font.pixelSize: 12 }
+                Text {
+                    objectName: "aboutPageProduct"
+                    width: parent.width; elide: Text.ElideRight
+                    text: root.productName; color: Theme.color.textSecondary; font.pixelSize: 13
+                }
+                Text {
+                    width: parent.width; elide: Text.ElideRight
+                    text: qsTr("Chip: %1").arg(root.value("processor"))
+                    color: Theme.color.textSecondary; font.pixelSize: 12
+                }
+                Text {
+                    width: parent.width; elide: Text.ElideRight
+                    text: qsTr("Memory: %1").arg(root.value("memoryLabel"))
+                    color: Theme.color.textSecondary; font.pixelSize: 12
+                }
                 Text {
                     objectName: "aboutPageSerial"
+                    width: parent.width; elide: Text.ElideRight
                     text: qsTr("Serial number: %1").arg(root.identity.hasSerial === true ? root.value("serial") : qsTr("Not available"))
                     color: Theme.color.textSecondary; font.pixelSize: 12
                 }
