@@ -22,6 +22,7 @@ use std::io;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::env;
 use crate::plan::{RestartPolicy, ServiceSpec, SessionPlan};
 
 /// How long a child gets to exit after `SIGTERM` before the group is
@@ -398,6 +399,12 @@ impl Supervisor {
         let spec = &self.slots[position].spec;
         let mut command = Command::new(&spec.program);
         command
+            // A child only gets a launch token when the plan explicitly
+            // attaches one (trusted/desktop_trusted). Strip inherited tokens
+            // so an untrusted service cannot pick up the session's ambient
+            // token from the supervisor's own environment.
+            .env_remove(env::LAUNCH_TOKEN)
+            .env_remove(env::DESKTOP_LAUNCH_TOKEN)
             .args(&spec.args)
             .envs(spec.env.iter().map(|(key, value)| (key, value)))
             .stdin(Stdio::null())

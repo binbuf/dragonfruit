@@ -71,6 +71,8 @@ Item {
         to: 360
         duration: root.speed
         loops: Animation.Infinite
-        running: root.spinning
+        // `spinning` already folds in reduced motion; repeat the guard here so
+        // the animation sweep can see it on the animation block itself.
+        running: root.spinning && !Theme.reducedMotion
     }
 }
