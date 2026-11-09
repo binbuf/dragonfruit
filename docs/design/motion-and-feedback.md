@@ -52,7 +52,8 @@ These measurements remain reference values; explicit policy updates are noted be
 | Dock launch lift | 15 pt over ~0.3 s (full multi-bounce unresolved) | ADR 0218 |
 | Genie minimize/restore | ~0.45–0.5 s each way | ADR 0218 |
 | Menu close | ~183 ms, ~5% shrink, translate toward anchor | Liquid Glass report |
-| Menu open | unresolved within one 60 fps frame | Liquid Glass report |
+| Menu open | Immediate; reference appears fully open within one 60 fps frame | Liquid Glass report; ADR 0244 |
+| Menu tracking | Top-level switch on the next event-loop turn; submenu crossing grace 150 ms | Product policy, ADR 0245 |
 | Menu bar veil | No blur; measured light/dark LUTs, zero by 95 pt; polarity follows wallpaper brightness | Liquid Glass report; ADR 0243 |
 | Window open/close | T-02 measured; preserve current tokens | T-02 |
 | Workspace switch / overview | T-05 measured; preserve current tokens | T-05 |

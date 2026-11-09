@@ -23,6 +23,7 @@ Item {
     // False when app-index is absent: render the explicit absence row.
     property bool available: true
     property bool active: false
+    enabled: active
     // The selected category pill key; "all" (the default) includes everything.
     property string category: "all"
     // The live search text.
@@ -360,14 +361,27 @@ Item {
     // The faint scrim behind the panel.
     Rectangle {
         objectName: "appsDrawerScrim"
+        // A full-output scrim would also darken the compositor backdrop under
+        // the card; sampled mode already supplies its own readable material.
+        visible: !root.materialBlurActive || Glass.rollout !== "replacement"
         anchors.fill: parent
         color: Theme.color.shadowColor
         opacity: Theme.controls.appsDrawer.scrimOpacity * root.reveal
     }
 
-    // A click outside the panel dismisses. The panel consumes its own clicks.
-    TapHandler {
-        onTapped: root.dismissRequested()
+    // Handle dismissal on press for every mouse button. Keeping this behind
+    // the card lets its controls/Flickable own their gestures normally.
+    MouseArea {
+        objectName: "appsDrawerDismissArea"
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        onPressed: (mouse) => {
+            var p = panel.mapFromItem(root, mouse.x, mouse.y);
+            if (!panel.contains(p))
+                root.dismissRequested();
+            else
+                mouse.accepted = false;
+        }
     }
 
     Rectangle {
@@ -386,17 +400,19 @@ Item {
         color: Material.drawerFill(root.materialBlurActive, root.materialTier,
                                    root.materialFallback)
         opacity: root.reveal
-        scale: 0.97 + 0.03 * root.reveal
+        scale: 1.0
         border.width: Theme.controls.window.borderWidth
-        border.color: Theme.color.border
+        border.color: Glass.increaseContrast ? Theme.color.textPrimary : Theme.color.border
         antialiasing: true
 
 
         // Consume clicks on the panel so a miss on a tile does not dismiss,
         // and return typing to the search field (a click on the pills or the
         // empty grid should not strand keyboard focus).
-        TapHandler {
-            onTapped: root.focusSearch()
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onPressed: root.focusSearch()
         }
 
         // The search bar is the card's top section. It is flat (no pill
@@ -477,9 +493,10 @@ Item {
             // strip map it sideways so a narrow output can still reach the
             // last category without discovering a horizontal drag.
             WheelHandler {
+                target: null
                 onWheel: (event) => {
-                    const delta = event.angleDelta.y !== 0
-                            ? event.angleDelta.y : event.angleDelta.x;
+                    const delta = event.pixelDelta.y || event.pixelDelta.x
+                            || event.angleDelta.y || event.angleDelta.x;
                     if (delta === 0)
                         return;
                     const maxX = Math.max(0, pillScroller.contentWidth
@@ -526,6 +543,20 @@ Item {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
 
+            WheelHandler {
+                target: null
+                onWheel: (event) => {
+                    var delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y
+                        : event.angleDelta.y / 120 * (root.tileHeight + root.gridRowGap);
+                    if (delta === 0)
+                        return;
+                    gridFlick.cancelFlick();
+                    gridFlick.contentY = Math.max(0, Math.min(
+                        Math.max(0, gridFlick.contentHeight - gridFlick.height),
+                        gridFlick.contentY - delta));
+                    event.accepted = true;
+                }
+            }
             Grid {
                 id: grid
                 objectName: "appsDrawerTiles"

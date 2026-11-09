@@ -7,17 +7,15 @@
 //! cannot drift (FR-2). The same formula the design system's `Shadow.qml`
 //! approximation uses is reproduced here in logical pixels:
 //!
-//! * the shadow is `layer` translucent rectangles of `shadow color × opacity`
-//!   stacked with a growing spread, which reads as a soft edge without a
-//!   shader or a blur pass;
+//! * rounded layers integrate a truncated Gaussian falloff with source-over
+//!   alpha, producing a soft edge without equal-opacity terraces;
 //! * `blur`, `offset_y`, and `layers` come from
 //!   `component::elevation::{low,med,high,overlay}` (which reference
 //!   `primitive.elevation.*`); `opacity` and `color` come from the active
 //!   scheme's `material.shadowOpacity` / `color.shadowColor`.
 //!
-//! Rounded corners and a real backdrop blur are T-04.1b/T-04.2; this slice
-//! deliberately stays a layered-rectangle approximation so the same geometry
-//! is testable headless, and it is transformed with the window's lifecycle
+//! Geometry is cached and clipped outside the translucent window body. The
+//! approximation is testable headless and follows the window's lifecycle
 //! [`MotionFrame`](crate::window::MotionFrame) so an appearing/minimizing
 //! window's shadow shrinks with it.
 
@@ -145,9 +143,10 @@ pub struct ShadowLayer {
 /// corner follows the window it belongs to.
 pub fn shadow_layers(rect: Rectangle<i32, Logical>, spec: ShadowSpec) -> Vec<ShadowLayer> {
     let layers = spec.layers.max(1);
-    // Each layer carries `shadowOpacity / layers`; stacked, the centre is the
-    // full shadow opacity and the outer fringe is a single faint layer.
-    let per_layer = spec.opacity / layers as f32;
+    // Integrate a truncated Gaussian falloff instead of equal-alpha terraces.
+    // Correct for source-over so the combined centre reaches the token alpha.
+    let mut previous_alpha = 0.0;
+    let opacity = spec.opacity.clamp(0.0, 1.0) * f32::from(spec.color[3]) / 255.0;
     let base = color_from_rgba(spec.color);
     let mut result = Vec::with_capacity(layers as usize);
     for index in 0..layers {
@@ -156,12 +155,25 @@ pub fn shadow_layers(rect: Rectangle<i32, Logical>, spec: ShadowSpec) -> Vec<Sha
         let blur = f64::from(spec.blur) * spread;
         let x = (f64::from(rect.loc.x) - blur).round() as i32;
         let y = (f64::from(rect.loc.y) + f64::from(spec.offset_y) - blur).round() as i32;
-        let w = (f64::from(rect.size.w) + 2.0 * blur).round() as i32;
-        let h = (f64::from(rect.size.h) + 2.0 * blur).round() as i32;
+        let right = (f64::from(rect.loc.x + rect.size.w) + blur).round() as i32;
+        let bottom =
+            (f64::from(rect.loc.y + rect.size.h) + f64::from(spec.offset_y) + blur).round() as i32;
+        let w = right - x;
+        let h = bottom - y;
+        let distance = (layers - index - 1) as f32 / layers as f32;
+        let cutoff = (-4.5_f32).exp();
+        let alpha = opacity * ((-4.5 * distance * distance).exp() - cutoff) / (1.0 - cutoff);
+        let layer_alpha = (alpha - previous_alpha) / (1.0 - previous_alpha).max(f32::EPSILON);
+        let multiplier = if base.a() > 0.0 {
+            layer_alpha / base.a()
+        } else {
+            0.0
+        };
+        previous_alpha = alpha;
         result.push(ShadowLayer {
             rect: Rectangle::new((x, y).into(), (w.max(1), h.max(1)).into()),
             radius: spec.radius + blur as f32,
-            color: base * per_layer,
+            color: base * multiplier,
         });
     }
     result
@@ -240,7 +252,7 @@ fn shadow_elements_with_occluder(
                 span_rect.loc.x - output_origin.x,
                 span_rect.loc.y - output_origin.y,
             )
-            .into(),
+                .into(),
             span_rect.size,
         );
         let physical = physical_span(local, scale);
@@ -401,7 +413,7 @@ mod tests {
         assert_eq!(dark.offset_y, component::elevation::high::OFFSET_Y);
         assert_eq!(dark.offset_y, 5.0);
         assert_eq!(dark.layers, component::elevation::high::LAYERS as u32);
-        assert_eq!(dark.layers, 8);
+        assert_eq!(dark.layers, 24);
         assert_eq!(dark.radius, component::window::RADIUS);
         assert_eq!(dark.radius, 14.0);
         assert_eq!(dark.opacity, semantic::dark::material::SHADOW_OPACITY);
@@ -448,7 +460,11 @@ mod tests {
         }
         let last = layers.last().unwrap().rect;
         assert!(last.size.w < first.size.w && last.size.h < first.size.h);
-        assert!(last.contains_rect(window));
+        let shifted_window = Rectangle::new(
+            (window.loc.x, window.loc.y + spec.offset_y as i32).into(),
+            window.size,
+        );
+        assert!(last.contains_rect(shifted_window));
 
         // The rounded corner follows the window radius plus each layer's blur
         // spread (matching `Shadow.qml`), so the softest layer is roundest.
@@ -464,9 +480,17 @@ mod tests {
             );
         }
 
-        // Each layer is one `shadowOpacity / layers` slice of the color.
-        let expected = color_from_rgba(spec.color) * (spec.opacity / spec.layers as f32);
-        assert_eq!(layers[0].color, expected);
+        // The tail starts almost transparent; source-over reaches the token
+        // opacity without uniform dark bands at each layer boundary.
+        assert!(layers[0].color.a() < 0.003);
+        let mut alpha = 0.0;
+        for layer in &layers {
+            assert!(layer.color.a().is_finite() && layer.color.a() >= 0.0);
+            let next = layer.color.a() + alpha * (1.0 - layer.color.a());
+            assert!(next >= alpha && next - alpha < 0.04);
+            alpha = next;
+        }
+        assert!((alpha - spec.opacity).abs() < 1e-6);
 
         // The bounds are the softest layer.
         assert_eq!(shadow_bounds(window, spec), first);

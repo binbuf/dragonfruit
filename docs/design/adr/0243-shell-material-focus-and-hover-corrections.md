@@ -1,5 +1,7 @@
 # 0243 — Shell material, focus and hover corrections
 
+> Menu/drawer rendering and dismissal are corrected by [ADR 0244](0244-frosted-menu-and-drawer-stability.md).
+
 Status: accepted (2026-11-09)
 
 The component review uses the sibling `macos-design-review` repository's

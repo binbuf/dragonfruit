@@ -505,8 +505,16 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                         | Preset::NotificationLowerPanel
                 );
             let dock_fit = flat_fit && preset == Preset::Dock;
+            let client_tinted = resolved.look == Rollout::Replacement
+                && matches!(
+                    preset,
+                    Preset::MenuAttached | Preset::MenuDetached | Preset::StatusMenu
+                );
+
             let base_spec = if dock_fit {
                 BlurSpec::for_dock(resolved.blur, role.corner_radius(&chrome.namespace))
+            } else if client_tinted {
+                BlurSpec::for_frosted(resolved.blur, role.corner_radius(&chrome.namespace))
             } else if flat_fit {
                 BlurSpec::new(resolved.blur, role.corner_radius(&chrome.namespace))
             } else {
@@ -561,6 +569,16 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                     .glass(role.glass_spec(scheme))
                     .unwrap_or_else(|| role.glass_spec(scheme))
             };
+            if client_tinted {
+                // QML owns the tint and its animation. The compositor owns
+                // only frosting, so the two surfaces never fade independently.
+                glass.flat_band = true;
+                glass.flat_alpha = 0.0;
+                glass.refraction = 0.0;
+                glass.specular = 0.0;
+                glass.rim_peak = 0.0;
+                glass.corner_peak = 0.0;
+            }
             if let Some(veil) = veil {
                 // If the veil program is unavailable, the flat-band glass
                 // compose is the safe scheme-appropriate plate. Keep the

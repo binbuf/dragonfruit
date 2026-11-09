@@ -673,6 +673,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onStatusItemActivated(QString)));
     connect(m_item, SIGNAL(appMenuOpened(int)), this, SLOT(onAppMenuOpened(int)));
     connect(m_item, SIGNAL(appMenuClosed()), this, SLOT(onAppMenuClosed()));
+    connect(m_item, SIGNAL(dropdownSurfaceRegionsChanged()),
+            this, SLOT(schedulePopupGeometry()));
     connect(m_item, SIGNAL(appMenuTriggered(int,int,QVariant)), this,
             SLOT(onAppMenuTriggered(int,int,QVariant)));
     if (QObject *clock = m_item->findChild<QObject *>(QStringLiteral("clock")))
@@ -927,6 +929,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_dockItem, SIGNAL(pinnedOrderChanged(QVariant)), this,
             SLOT(onDockPinnedOrderChanged(QVariant)));
     connect(m_dockItem, SIGNAL(popoverChanged()), this, SLOT(onDockPopoverChanged()));
+    // Column sizes can settle during polish, after this frame's crop was
+    // chosen. Ordinary re-entrant sceneChanged signals are suppressed by the
+    // pacer, so queue layout changes explicitly for the next presentation.
+    connect(m_dockItem, SIGNAL(popoverRectChanged()), this, SLOT(scheduleDockRender()),
+            Qt::QueuedConnection);
+    connect(m_dockItem, SIGNAL(activePopoverSurfaceRegionsChanged()),
+            this, SLOT(scheduleDockRender()), Qt::QueuedConnection);
     connect(m_dockItem, SIGNAL(inputRectsChanged()), this, SLOT(scheduleDockRender()));
     connect(m_dockItem, SIGNAL(revealStateChanged()), this,
             SLOT(onDockRevealStateChanged()));
@@ -2543,14 +2552,8 @@ void ShellController::openTrayMenu(const QString &name)
     m_item->setProperty("trayMenu", m_trayClient.menu(name));
     QMetaObject::invokeMethod(m_item, "openTrayMenu", Q_ARG(QVariant, name));
     m_menuOpen = true;
-    updatePopupGeometry();
-    // The tray menu's size is content-derived (the other popups have a fixed
-    // preferred width), so its QML layout settles a frame or two after it
-    // opens. Re-commit the overlay rectangle once the layout is real, or the
-    // surface would stay at its first (near-empty) size.
-    QTimer::singleShot(0, this, &ShellController::updatePopupGeometry);
-    QTimer::singleShot(60, this, &ShellController::updatePopupGeometry);
-    QTimer::singleShot(160, this, &ShellController::updatePopupGeometry);
+    schedulePopupGeometry();
+
 }
 
 void ShellController::onTrayMenuTriggered(const QString &service, int id)
@@ -2579,7 +2582,7 @@ void ShellController::onTrayMenuClosed()
 void ShellController::onStatusMenuOpened()
 {
     m_menuOpen = true;
-    updatePopupGeometry();
+    schedulePopupGeometry();
 }
 
 void ShellController::onStatusMenuClosed()
@@ -2762,12 +2765,16 @@ void ShellController::applyFocusedApp()
     if (!focusChanged && !hasDisplayName && !rawId.isEmpty()
         && !m_item->property("appName").toString().isEmpty())
         name = m_item->property("appName").toString();
+    if (focusChanged)
+        QMetaObject::invokeMethod(m_item, "closeMenus");
     m_item->setProperty("appId", rawId);
     m_item->setProperty("appName", name);
-    if (focusChanged || m_item->property("applicationMenuItems").toList().isEmpty()) {
+    if (focusChanged || m_appliedApplicationMenu.isEmpty()) {
         m_dbusMenuWindowId = 0;
         const QVariantList localMenu =
             fixedApplicationMenu(name, appMenuLiveState(rawId, m_runningEntries));
+        m_appliedApplicationMenu = localMenu;
+        m_appliedAppMenu.clear();
         m_item->setProperty("applicationMenuItems", localMenu);
         m_item->setProperty("appMenuModel", QVariantList{});
         if (m_protocol)
@@ -2903,10 +2910,20 @@ void ShellController::applyFocusedApp()
                 }
                 if (!m_item)
                     return;
+                if (m_menuOpen) {
+                    m_menuRefreshDeferred = true;
+                    return;
+                }
                 m_dbusMenuWindowId = dbusWindow;
                 m_item->setProperty("appName", rawId.isEmpty() ? QStringLiteral("Files") : name);
-                m_item->setProperty("applicationMenuItems", applicationMenu);
-                m_item->setProperty("appMenuModel", appMenu);
+                if (m_appliedApplicationMenu != applicationMenu) {
+                    m_appliedApplicationMenu = applicationMenu;
+                    m_item->setProperty("applicationMenuItems", applicationMenu);
+                }
+                if (m_appliedAppMenu != appMenu) {
+                    m_appliedAppMenu = appMenu;
+                    m_item->setProperty("appMenuModel", appMenu);
+                }
                 if (m_protocol) {
                     m_protocol->setAppAccelerators(rawId, acceleratorWireTable(
                         publishedAccelerators(applicationMenu, appMenu)));
@@ -3357,6 +3374,8 @@ void ShellController::showControlCenter()
     // The two top-right ambient panels are mutually exclusive.
     if (m_notificationCenterOpen)
         hideNotificationCenter(QStringLiteral("competing"));
+    if (m_appsDrawerOpen)
+        hideAppsDrawer();
     m_controlCenterOpen = true;
     m_controlCenterPending = true;
     updateControlCenterGeometry();
@@ -5293,7 +5312,7 @@ void ShellController::onClockTick()
 void ShellController::onAppMenuOpened(int)
 {
     m_menuOpen = true;
-    updatePopupGeometry();
+    schedulePopupGeometry();
     // The popup's fade/scale-in is QML-driven; the scene-graph hook commits
     // every frame it renders (FR-14).
 }
@@ -5309,8 +5328,13 @@ void ShellController::onAppMenuClosed()
     // the overlay keeps rendering the visual tail so a reopen/retarget can
     // take over before the timer expires.
     QTimer::singleShot(210, this, [this]() {
-        if (!m_menuOpen)
+        if (!m_menuOpen) {
             updatePopupGeometry();
+            if (m_menuRefreshDeferred) {
+                m_menuRefreshDeferred = false;
+                applyFocusedApp();
+            }
+        }
     });
 }
 
@@ -5468,6 +5492,20 @@ void ShellController::scheduleRender()
 }
 
 
+void ShellController::schedulePopupGeometry()
+{
+    if (!m_menuOpen || m_popupGeometryPending)
+        return;
+    m_popupGeometryPending = true;
+    // opened() is delivered before dependent QML region bindings settle.
+    // Read once after that transaction, including submenu/layout changes.
+    QTimer::singleShot(0, this, [this]() {
+        m_popupGeometryPending = false;
+        if (m_menuOpen)
+            updatePopupGeometry();
+    });
+}
+
 void ShellController::updatePopupGeometry()
 {
     if (!m_item) {
@@ -5487,8 +5525,10 @@ void ShellController::updatePopupGeometry()
     // surface placed at exactly this rectangle.
     const int x = qMax(0, qFloor(m_item->property("dropdownX").toReal()));
     const int y = qMax(0, qFloor(m_item->property("dropdownY").toReal()));
-    const int width = qCeil(m_item->property("dropdownWidth").toReal());
-    const int height = qCeil(m_item->property("dropdownHeight").toReal());
+    const int width = qCeil(m_item->property("dropdownX").toReal()
+                            + m_item->property("dropdownWidth").toReal()) - x;
+    const int height = qCeil(m_item->property("dropdownY").toReal()
+                             + m_item->property("dropdownHeight").toReal()) - y;
     if (width <= 0 || height <= 0) {
         m_popupWidth = 0;
         m_popupHeight = 0;
@@ -5505,7 +5545,7 @@ void ShellController::updatePopupGeometry()
     // menu. The popup surface accepts input only while it is logically open;
     // the close path clears both before the visual exit.
     m_protocol->setPopupPanelRegions(
-        m_item->property("dropdownRegions").toList());
+        m_item->property("dropdownSurfaceRegions").toList());
     m_protocol->setPopupInputActive(true);
     render();
 }
@@ -5624,17 +5664,17 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
     // down/right. Qt wheel deltas are 1/8 degree (120 per notch) for
     // angleDelta and device pixels for pixelDelta; provide both so a
     // Flickable scrolls smoothly and a discrete wheel still steps a notch.
-    const int delta = qRound(-value);
+    const qreal delta = -value;
     int pixelX = 0;
     int pixelY = 0;
     int angleX = 0;
     int angleY = 0;
     if (axis == 0) {
-        pixelY = delta * 2;
-        angleY = delta * 12;
+        pixelY = qRound(delta * 2);
+        angleY = qRound(delta * 12);
     } else if (axis == 1) {
-        pixelX = delta * 2;
-        angleX = delta * 12;
+        pixelX = qRound(delta * 2);
+        angleX = qRound(delta * 12);
     } else {
         return;
     }
@@ -7540,6 +7580,8 @@ void ShellController::onOverviewConfigured(int width, int height, quint32)
 void ShellController::onOverviewChanged(bool active)
 {
     m_overviewActive = active;
+    if (active && m_appsDrawerOpen)
+        hideAppsDrawer();
     if (active && m_notificationCenterOpen)
         hideNotificationCenter(QStringLiteral("competing"));
     if (!m_overviewItem)
@@ -8004,6 +8046,14 @@ void ShellController::showAppsDrawer()
         return;
     if (m_notificationCenterOpen)
         hideNotificationCenter(QStringLiteral("competing"));
+    if (m_controlCenterOpen)
+        hideControlCenter();
+    if (m_item) {
+        QMetaObject::invokeMethod(m_item, "closeMenus");
+        QMetaObject::invokeMethod(m_item, "closeStatusMenu");
+    }
+    if (m_overviewActive && m_protocol)
+        m_protocol->exitMissionControl();
     m_appsDrawerOpen = true;
     m_appsDrawerPending = true;
     refreshAppsDrawer(true);
@@ -8031,8 +8081,11 @@ void ShellController::showAppsDrawer()
 
 void ShellController::hideAppsDrawer()
 {
+    const bool heldKeyboard = m_appsDrawerKeyboardFocused;
+    m_appsDrawerKeyboardFocused = false;
     m_appsDrawerOpen = false;
     m_appsDrawerPending = false;
+    m_appsDrawerButtons = Qt::NoButton;
     if (m_appsDrawerItem)
         m_appsDrawerItem->setProperty("active", false);
     if (m_protocol) {
@@ -8041,7 +8094,8 @@ void ShellController::hideAppsDrawer()
         // Unmapping the layer does not itself move keyboard focus. Release
         // the chrome focus we took on open so the active window gets the
         // keyboard back instead of the keys landing on a hidden surface.
-        m_protocol->releaseKeyboardFocus();
+        if (heldKeyboard)
+            m_protocol->releaseKeyboardFocus();
         m_protocol->hideAppsDrawer();
     }
 }
@@ -8189,12 +8243,14 @@ void ShellController::onAppsDrawerPointerLeft()
 
 void ShellController::onAppsDrawerKeyboardFocused(bool focused)
 {
-    if (!focused)
+    m_appsDrawerKeyboardFocused = focused;
+    if (!focused) {
+        QTimer::singleShot(0, this, [this]() {
+            if (m_appsDrawerOpen && !m_appsDrawerKeyboardFocused)
+                hideAppsDrawer();
+        });
         return;
-    // The compositor owns the focus transfer (the surface is OnDemand). The
-    // search field is the drawer's one keyboard owner, so restore it whenever
-    // the surface regains the keyboard (a reopened drawer used to land on the
-    // root item, where Backspace/Delete and editing keys were dropped).
+    }
     if (m_appsDrawerItem && m_appsDrawerOpen && m_appsDrawerWindow)
         QMetaObject::invokeMethod(m_appsDrawerItem, "focusSearch");
 }
@@ -9163,10 +9219,13 @@ void ShellController::renderDock()
     // popover's `open || visible` so the open/close fade is still captured.
     const auto dockRectProperty = [this](const char *name) {
         const QVariantMap rect = m_dockItem->property(name).toMap();
-        return QRect(qFloor(rect.value(QStringLiteral("x")).toReal()),
-                     qFloor(rect.value(QStringLiteral("y")).toReal()),
-                     qCeil(rect.value(QStringLiteral("w")).toReal()),
-                     qCeil(rect.value(QStringLiteral("h")).toReal()));
+        const qreal x = rect.value(QStringLiteral("x")).toReal();
+        const qreal y = rect.value(QStringLiteral("y")).toReal();
+        const int left = qFloor(x);
+        const int top = qFloor(y);
+        return QRect(left, top,
+                     qCeil(x + rect.value(QStringLiteral("w")).toReal()) - left,
+                     qCeil(y + rect.value(QStringLiteral("h")).toReal()) - top);
     };
     const QRect popover = dockRectProperty("popoverRect");
     const int px = popover.x();
@@ -9261,24 +9320,12 @@ void ShellController::renderDock()
             left = px;
             break;
         }
-        // The overlay buffer can contain a tooltip as well as a menu. Only
-        // the menu's bounds get a material panel. The tooltip paints its own
-        // capsule and tail and would expose glass in its transparent pixels.
-        const QRect card = dockRectProperty("activePopoverRect").intersected(popover);
-        const QRect backdrop = card.isEmpty() ? QRect() : card.translated(-popover.topLeft());
-        // T202: explicit detached-menu regions replace the legacy single
-        // panel rect. The material and input are live only while a popover is
-        // logically open; the close tail keeps rendering but passes clicks.
+        // Each menu card owns a material region in overlay-local coordinates.
+        // The transparent gap and tooltip remain outside those regions.
         const bool popoverInputActive =
             m_dockItem->property("popoverInputActive").toBool();
-        if (popoverInputActive && !backdrop.isEmpty()) {
-            m_protocol->setDockPopupPanelRegion(
-                m_dockItem->property("activePopoverPreset").toString(),
-                backdrop,
-                qRound(m_dockItem->property("activePopoverRadius").toReal()));
-        } else {
-            m_protocol->clearDockPopupPanelRegions();
-        }
+        m_protocol->setDockPopupPanelRegions(
+            m_dockItem->property("activePopoverSurfaceRegions").toList());
         m_protocol->setDockPopupInputActive(popoverInputActive);
         m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph, QRect());
         const QRect popupRect(leftGutter + px, headroom + py, pw, ph);

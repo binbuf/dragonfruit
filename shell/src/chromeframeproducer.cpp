@@ -2,6 +2,7 @@
 #include "chromeframeproducer.h"
 
 #include <QQuickRenderControl>
+#include <QQuickItem>
 #include <QQuickRenderTarget>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
@@ -90,6 +91,13 @@ void ChromeFrameProducer::resize(const QSize &bufferSize)
         || m_window->height() != bufferSize.height()) {
         m_window->resize(bufferSize);
         invalidateImages();
+    }
+    // Hidden render-control windows do not receive an expose/resize event.
+    // Keep their scene root in sync when Dock popovers add headroom, just as
+    // the GPU producer does, or the software renderer clips the larger scene.
+    if (m_window->contentItem()
+        && m_window->contentItem()->size() != QSizeF(bufferSize)) {
+        m_window->contentItem()->setSize(QSizeF(bufferSize));
     }
     if (!m_renderControl && !m_window->isVisible())
         m_window->show();

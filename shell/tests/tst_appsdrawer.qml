@@ -129,6 +129,34 @@ Item {
             compare(launchedSpy.signalArguments[0][0], "org.example.Browser.desktop");
         }
 
+        function test_outside_press_dismisses_for_every_mouse_button() {
+            var drawer = make({ apps: sampleApps });
+            for (var button of [Qt.LeftButton, Qt.RightButton, Qt.MiddleButton]) {
+                dismissedSpy.clear();
+                mousePress(drawer, 2, 2, button);
+                compare(dismissedSpy.count, 1);
+                mouseRelease(drawer, 2, 2, button);
+            }
+            dismissedSpy.clear();
+            var panel = findChild(drawer, "appsDrawerPanel");
+            mouseClick(panel, 2, panel.height / 2);
+            compare(dismissedSpy.count, 0, "empty card space is not outside");
+        }
+
+        function test_wheel_scrolls_grid_and_stays_open() {
+            var apps = [];
+            for (var i = 0; i < 100; ++i)
+                apps.push({ desktopId: "app" + i, name: "App " + i, categories: [] });
+            var drawer = make({ apps: apps });
+            var grid = findChild(drawer, "appsDrawerGrid");
+            verify(grid.contentHeight > grid.height);
+            mouseWheel(grid, grid.width / 2, grid.height / 2, 0, -120);
+            verify(grid.contentY > 0);
+            compare(dismissedSpy.count, 0);
+            mouseWheel(grid, grid.width / 2, grid.height / 2, 0, 120);
+            compare(grid.contentY, 0);
+        }
+
         function test_escape_dismisses() {
             var drawer = make({ apps: sampleApps });
             drawer.forceActiveFocus();

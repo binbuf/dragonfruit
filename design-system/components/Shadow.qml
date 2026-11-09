@@ -27,18 +27,32 @@ Item {
     property point offset: Qt.point(0, elevation.offsetY)
     property int layers: elevation.layers
 
+    // Match the compositor's truncated Gaussian and source-over integration.
+    function cumulativeAlpha(distance) {
+        var cutoff = Math.exp(-4.5);
+        return Math.max(0, Math.min(1, root.shadowOpacity)) * root.shadowColor.a
+            * (Math.exp(-4.5 * distance * distance) - cutoff) / (1 - cutoff);
+    }
+    function layerOpacity(index) {
+        var count = Math.max(1, root.layers);
+        var previous = cumulativeAlpha((count - index) / count);
+        var next = cumulativeAlpha((count - index - 1) / count);
+        return root.shadowColor.a > 0 && previous < 1
+            ? (next - previous) / (1 - previous) / root.shadowColor.a : 0;
+    }
+
     Repeater {
-        model: root.layers
+        model: Math.max(1, root.layers)
         delegate: Rectangle {
             required property int index
-            readonly property real spread: (root.layers - index) / root.layers
+            readonly property real spread: (Math.max(1, root.layers) - index) / Math.max(1, root.layers)
             x: root.offset.x - root.blur * spread
             y: root.offset.y - root.blur * spread
             width: root.width + 2 * root.blur * spread
             height: root.height + 2 * root.blur * spread
             radius: root.radius + root.blur * spread
             color: root.shadowColor
-            opacity: root.shadowOpacity / root.layers
+            opacity: root.layerOpacity(index)
             antialiasing: true
         }
     }

@@ -23,6 +23,7 @@ Item {
     property int shortcutGap: Theme.controls.contextMenu.shortcutGap
 
     signal rowHovered(int index)
+    signal rowLeft()
     signal rowActivated(int index)
 
     readonly property bool isSeparator: root.entry.type === "separator"
@@ -127,8 +128,11 @@ Item {
 
     HoverHandler {
         onHoveredChanged: {
-            if (hovered && !root.isSeparator && root.entry.enabled !== false)
+            // Disabled rows and separators also retire the previous selection.
+            if (hovered)
                 root.rowHovered(root.entry.index);
+            else
+                root.rowLeft();
         }
     }
 

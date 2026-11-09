@@ -123,7 +123,7 @@ TestCase {
         compare(WindowStyle.height("titlebar"), 32);
         compare(Theme.controls.trafficLights.buttonSize, 16);
         compare(Theme.controls.trafficLights.diameter, 14);
-        compare(Theme.motion.menuOpen.fullDuration, 160);
+        compare(Theme.motion.menuOpen.fullDuration, 0);
         verify(Theme.color.accent !== undefined);
     }
 
@@ -554,7 +554,7 @@ TestCase {
         compare(attached.cornerTopRadius, 0);
         fuzzyCompare(attached.cornerRadius,
                      Theme.controls.contextMenu.attachedRadius, 0.001);
-        compare(attached.surfaceFill.a, 0, "sampled menus do not double-tint the backdrop");
+        fuzzyCompare(attached.surfaceFill.a, Glass.resolve("menuAttached", {scheme: Theme.dark ? "dark" : "light"}).alpha, 1e-4);
 
         var detached = make(popupComponent, {
             open: true, materialPreset: "menuDetached",
@@ -599,7 +599,82 @@ TestCase {
         Theme.reducedMotion = savedReduced;
     }
 
-    function test_context_menu_regions_keep_the_submenu_detached() {
+        function test_submenu_pointer_corridor_data() {
+            return [{ tag: "context", component: contextMenuComponent },
+                    { tag: "menubar", component: menuComponent }];
+        }
+
+        function test_submenu_pointer_corridor(data) {
+            var menu = make(data.component, {
+                x: 10, y: 10,
+                model: [{ label: "Options", type: "submenu",
+                          submenu: [{ label: "One" }, { label: "Two" }] },
+                        { label: "Other" }, { label: "Unavailable", enabled: false },
+                        { type: "separator" }]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var row = findChild(menu, "menuRow0");
+            mouseMove(row, row.width / 2, row.height / 2);
+            tryCompare(menu, "openSubmenuIndex", 0);
+            var sibling = findChild(menu, "menuRow1");
+            mouseMove(sibling, sibling.width - 2, sibling.height / 2);
+            compare(menu.openSubmenuIndex, 0, "diagonal crossing retains the child");
+            compare(menu.highlightedIndex, 0, "the parent stays selected during crossing");
+            var sub = findChild(menu, "submenuPanel");
+            mouseMove(sub, 12, 12);
+            wait(Theme.controls.contextMenu.submenuDelay + 50);
+            compare(menu.openSubmenuIndex, 0, "entering child cancels sibling dwell");
+            compare(menu.highlightedIndex, 0);
+            mouseMove(sibling, sibling.width / 2, sibling.height / 2);
+            tryCompare(menu, "openSubmenuIndex", -1);
+            compare(menu.highlightedIndex, 1, "a deliberate sibling dwell wins");
+            var disabled = findChild(menu, "menuRow2");
+            mouseMove(disabled, disabled.width / 2, disabled.height / 2);
+            compare(menu.highlightedIndex, -1, "disabled rows retire stale selection");
+        }
+
+        function test_submenu_hover_is_cancelled_on_leave_data() {
+            return test_submenu_pointer_corridor_data();
+        }
+
+        function test_keyboard_navigation_cancels_pending_submenu_data() {
+            return test_submenu_pointer_corridor_data();
+        }
+
+        function test_keyboard_navigation_cancels_pending_submenu(data) {
+            var menu = make(data.component, {
+                x: 10, y: 10,
+                model: [{ label: "Options", type: "submenu", submenu: [{ label: "One" }] },
+                        { label: "Other" }]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var row = findChild(menu, "menuRow0");
+            mouseMove(row, 20, row.height / 2);
+            tryCompare(menu, "pendingHoverIndex", 0);
+            keyClick(Qt.Key_Down);
+            compare(menu.highlightedIndex, 1);
+            wait(Theme.controls.contextMenu.submenuDelay + 50);
+            compare(menu.openSubmenuIndex, -1, "keyboard input supersedes hover dwell");
+            compare(menu.highlightedIndex, 1);
+        }
+
+        function test_submenu_hover_is_cancelled_on_leave(data) {
+            var menu = make(data.component, {
+                x: 10, y: 10,
+                model: [{ label: "Options", type: "submenu", submenu: [{ label: "One" }] }]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var row = findChild(menu, "menuRow0");
+            mouseMove(row, 20, row.height / 2);
+            mouseMove(stage, stage.width - 1, stage.height - 1);
+            wait(Theme.controls.contextMenu.submenuDelay + 50);
+            compare(menu.openSubmenuIndex, -1, "a departed row cannot open a child later");
+        }
+
+        function test_context_menu_regions_keep_the_submenu_detached() {
         var cm = make(contextMenuComponent, {
             model: [ { label: "Options", type: "submenu",
                        submenu: [ { label: "A" }, { label: "B" } ] } ]

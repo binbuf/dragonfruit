@@ -1394,29 +1394,29 @@ QtObject {
             readonly property real rimOpacity: 0.5
         }
         readonly property var shadow: QtObject {
-            readonly property int layers: 8
+            readonly property int layers: 24
             readonly property int offsetY: 5
         }
         readonly property var elevation: QtObject {
             readonly property var low: QtObject {
                 readonly property int blur: 8
                 readonly property int offsetY: 5
-                readonly property int layers: 8
+                readonly property int layers: 24
             }
             readonly property var med: QtObject {
                 readonly property int blur: 20
                 readonly property int offsetY: 5
-                readonly property int layers: 8
+                readonly property int layers: 24
             }
             readonly property var high: QtObject {
                 readonly property int blur: 40
                 readonly property int offsetY: 5
-                readonly property int layers: 8
+                readonly property int layers: 24
             }
             readonly property var overlay: QtObject {
                 readonly property int blur: 64
                 readonly property int offsetY: 5
-                readonly property int layers: 8
+                readonly property int layers: 24
             }
         }
         readonly property var scrollView: QtObject {
@@ -1479,7 +1479,7 @@ QtObject {
             readonly property int gridRowGap: 16
             readonly property int labelSize: 12
             readonly property real scrimOpacity: 0.35
-            readonly property real panelOpacity: 0.88
+            readonly property real panelOpacity: 0.78
             readonly property real fallbackGlyphRatio: 0.6
             readonly property int emptyGlyphSize: 40
         }
@@ -1487,8 +1487,8 @@ QtObject {
 
     readonly property var motion: QtObject {
         readonly property QtObject menuOpen: QtObject {
-            readonly property int fullDuration: 160
-            readonly property int duration: tokens.reducedMotion ? 0 : 160
+            readonly property int fullDuration: 0
+            readonly property int duration: tokens.reducedMotion ? 0 : 0
             readonly property var curve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0]
         }
         readonly property QtObject menuClose: QtObject {

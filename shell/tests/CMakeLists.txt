@@ -144,6 +144,16 @@ set_tests_properties(tst_dmabufcommit PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Hidden software scenes must resize with the Dock's overlay headroom.
+qt_add_executable(tst_chromeframeproducer tst_chromeframeproducer.cpp)
+target_link_libraries(tst_chromeframeproducer PRIVATE
+    Qt6::Test dragonfruit-shell-chromegpu
+)
+add_test(NAME tst_chromeframeproducer COMMAND tst_chromeframeproducer)
+set_tests_properties(tst_chromeframeproducer PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+)
+
 # Nested GL smoke rail (T-21.1d). Not a ctest: it needs a host Wayland/GL
 # compositor and writes docs/captures/t21-gpu-smoke.png through
 # scripts/t21-gpu-probe.sh. It links the same producer/probe library as the

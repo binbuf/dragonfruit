@@ -1113,7 +1113,7 @@ where
     // the chain in panel space: a panel-sized source stretched to the output
     // base would make the blur radius effectively `panel/output` too small and
     // misalign every level with the sharp scene.
-    let mut chain = if spec.sharp_weights.is_some() {
+    let mut chain = if spec.sharp_weights.is_some() || spec.sigma.is_some() {
         texture_panel.to_physical_precise_round(scale).size
     } else {
         chain_size
@@ -1157,7 +1157,7 @@ where
                     crate::window::BLUR_TEXEL_UNIFORM,
                     (1.0f32 / src_size.w as f32, 1.0f32 / src_size.h as f32),
                 ),
-                Uniform::new(crate::window::BLUR_RADIUS_UNIFORM, 1.0f32),
+                Uniform::new(crate::window::BLUR_RADIUS_UNIFORM, spec.tap_offset(scale.x)),
             ];
             R::draw_texture_from_to(
                 &mut frame,

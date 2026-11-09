@@ -3156,6 +3156,32 @@ Rectangle {
     // resolve the same optics.
     readonly property string activePopoverPreset: "menuDetached"
     readonly property real activePopoverRadius: Theme.controls.contextMenu.radius
+    // A submenu is a separate card. Blurring the bounding union paints an
+    // unwanted glass slab through the gap and below the shorter panel.
+    readonly property var activePopoverSurfaceRegions: {
+        if (!popoverInputActive)
+            return [];
+        var regions;
+        if (entryMenu.open) {
+            regions = entryMenu.regions.map(function(region) {
+                return Object.assign({}, region, {
+                    x: entryMenu.x + region.x, y: entryMenu.y + region.y
+                });
+            });
+        } else {
+            var rect = activePopoverRect;
+            var radius = activePopoverRadius;
+            regions = [{ key: "menu", preset: activePopoverPreset,
+                         x: rect.x, y: rect.y, w: rect.w, h: rect.h,
+                         tl: radius, tr: radius, br: radius, bl: radius,
+                         overscan: 20 }];
+        }
+        var dx = Math.floor(popoverRect.x);
+        var dy = Math.floor(popoverRect.y);
+        return regions.map(function(region) {
+            return Object.assign({}, region, { x: region.x - dx, y: region.y - dy });
+        });
+    }
     // A popover accepts pointer input only while logically open; the visible
     // close tail must not intercept clicks (T202).
     readonly property bool popoverInputActive:

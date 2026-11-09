@@ -551,6 +551,8 @@ pub struct BlurSpec {
     /// T198: a convex mix of the sharp scene and Kawase levels. `None` keeps
     /// the single final-level path every other role uses.
     pub sharp_weights: Option<[f32; 6]>,
+    /// Logical sigma for frosted cards, separate from legacy blur radii.
+    pub sigma: Option<f32>,
 }
 
 impl BlurSpec {
@@ -561,7 +563,28 @@ impl BlurSpec {
             iterations: iterations_for_radius(radius),
             corner_radius,
             sharp_weights: None,
+            sigma: None,
         }
+    }
+
+    /// Frosted cards use a low-pass kernel calibrated in logical pixels.
+    /// Half-weight diagonal taps accumulate variance (4^n - 1) / 6;
+    /// compensate their distance for output scale without stretching the card.
+    pub fn for_frosted(sigma: f32, corner_radius: f32) -> Self {
+        let sigma = sigma.max(0.1);
+        Self {
+            radius: sigma * 3.0,
+            iterations: ((sigma * 6.0f32.sqrt()).log2().ceil() as u32).clamp(1, 5),
+            corner_radius,
+            sharp_weights: None,
+            sigma: Some(sigma),
+        }
+    }
+
+    pub fn tap_offset(&self, scale: f64) -> f32 {
+        self.sigma.map_or(1.0, |sigma| {
+            sigma * scale as f32 / ((4.0f32.powi(self.iterations as i32) - 1.0) / 6.0).sqrt()
+        })
     }
 
     /// The T198 Dock fit: five Kawase levels plus the sharp scene composite.
@@ -571,6 +594,7 @@ impl BlurSpec {
             iterations: crate::window::dock_optics::DOCK_BLUR_ITERATIONS,
             corner_radius,
             sharp_weights: Some(crate::window::dock_optics::DOCK_SCALE_WEIGHTS),
+            sigma: None,
         }
     }
 
@@ -578,7 +602,9 @@ impl BlurSpec {
     /// multi-scale levels (re-deriving iterations from the scaled radius would
     /// silently drop the measured shoulder).
     pub fn scaled(self, scale: f32) -> Self {
-        if self.sharp_weights.is_some() {
+        if let Some(sigma) = self.sigma {
+            Self::for_frosted(sigma * scale, self.corner_radius * scale)
+        } else if self.sharp_weights.is_some() {
             BlurSpec {
                 radius: self.radius * scale,
                 corner_radius: self.corner_radius * scale,
@@ -1254,6 +1280,19 @@ impl<R: TextureRenderer> RenderElement<R> for SceneTextureElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frosting_preserves_logical_sigma_at_fractional_output_scales() {
+        let spec = BlurSpec::for_frosted(10.0, 12.5);
+        assert_eq!(spec.iterations, 5, "a one-level menu is barely blurred");
+        for scale in [1.0, 1.5, 2.0] {
+            let variance = (4.0f32.powi(spec.iterations as i32) - 1.0) / 6.0;
+            let logical_sigma = variance.sqrt() * spec.tap_offset(scale) / scale as f32;
+            assert!((logical_sigma - 10.0).abs() < 0.001);
+        }
+        assert_eq!(spec.scaled(0.5).sigma, Some(5.0));
+        assert_eq!(BlurSpec::new(10.0, 12.5).tap_offset(2.0), 1.0);
+    }
 
     #[test]
     fn the_blur_radius_maps_to_bounded_kawase_iterations() {

@@ -21,6 +21,7 @@
 #include <QVariantList>
 
 #include <cstdint>
+#include <array>
 #include <optional>
 
 #include "chromebufferpool.h"
@@ -173,7 +174,7 @@ public:
                               const QRect &panel);
     // T202: one detached-menu material region for the active Dock popover,
     // plus the same open-only input contract as the menu-bar popup.
-    void setDockPopupPanelRegion(const QString &preset, const QRect &rect, int radius);
+    void setDockPopupPanelRegions(const QVariantList &regions);
     void clearDockPopupPanelRegions();
     void setDockPopupInputActive(bool active);
 
@@ -1313,6 +1314,8 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     uint32_t m_menuBarAutoHide = 2; // full-screen; see df_layer_surface.auto_hide_mode
     wl_surface *m_popupSurface = nullptr;
     df_layer_surface *m_popupLayer = nullptr;
+    std::optional<QRect> m_popupGeometry;
+    std::optional<QVariantList> m_popupPanelRegions;
     wl_surface *m_dockSurface = nullptr;
     df_layer_surface *m_dockLayer = nullptr;
     bool m_dockMapped = false;
@@ -1325,6 +1328,8 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // The Dock's transient popover surface (context menus, window chooser).
     wl_surface *m_dockPopupSurface = nullptr;
     df_layer_surface *m_dockPopupLayer = nullptr;
+    std::optional<std::array<int, 6>> m_dockPopupGeometry;
+    std::optional<QVariantList> m_dockPopupPanelRegions;
     bool m_dockPopupMapped = false;
     std::optional<QRect> m_nextDockPopupPanel;
     std::optional<QRect> m_committedDockPopupPanel;

@@ -206,6 +206,11 @@ compositor's window-shadow pass read, so surface shadow geometry is identical
 across the process boundary by construction (see
 [ADR 0011](adr/0011-elevation-shadow-tokens.md)).
 
+The shared shadow now uses 24 Gaussian-weighted layers with source-over alpha
+integration, replacing the eight uniform bands. Geometry remains cached in the
+compositor and excludes translucent window interiors; see
+[ADR 0245](adr/0245-menu-tracking-and-soft-window-shadows.md).
+
 The semantic `material` group (`chromeOpacity`/`chromeBlur`,
 `dockOpacity`/`dockBlur`, `popupOpacity`/`popupBlur`, `shadowOpacity`, plus
 the `chromeFallbackOpacity`/`dockFallbackOpacity`/`popupFallbackOpacity`
@@ -286,6 +291,13 @@ token and the close motion is the measured 183 ms with a 0.95 terminal scale
 toward the anchor. The logical close and input release are immediate; a
 reopen/retarget before the exit timer cancels the pending unmap. Reduce Motion
 collapses the duration and terminal scale.
+
+Switching top-level menus finishes the old dropdown immediately. Submenu hover
+keeps the parent selected during the 150 ms crossing grace interval; entering
+the child cancels a pending sibling change. Dock submenus publish independent
+glass regions, leaving the gap clear. The Apps card uses a 0.78 baseline alpha
+over frosting, with existing accessibility fallbacks; see
+[ADR 0245](adr/0245-menu-tracking-and-soft-window-shadows.md).
 
 `Material.menuFill()`/`menuResolution()` are the QML complement. Trusted shell
 surfaces (`MenuBarMenu`, the tray context menu, Dock popovers and the status
@@ -632,3 +644,8 @@ package are recorded in ADR
   source is `apps/settings/SettingsMenu.qml`.
 - Settings and Files are built entirely from these components (see
   [08-settings.md](08-settings.md), [09-files.md](09-files.md)).
+
+Menu and drawer correction: [ADR 0244](adr/0244-frosted-menu-and-drawer-stability.md)
+keeps frosting in panel-sized compositor textures and the single tint with
+animated client content. Apps uses a predominantly opaque card, no sampled-path
+fullscreen scrim, and explicit wheel/outside-press/focus-loss handling.
