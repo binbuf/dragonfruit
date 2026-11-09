@@ -126,6 +126,7 @@ Item {
         }
     }
     Text {
+        objectName: "aboutPanelRegulatory"
         x: 20; y: 429; width: root.width - 40; height: 16
         text: qsTr("Regulatory information")
         color: Theme.color.accent
@@ -136,6 +137,7 @@ Item {
         MouseArea { anchors.fill: parent; onClicked: root.regulatoryOpen = true }
     }
     Text {
+        objectName: "aboutPanelFooter"
         x: 18; y: 466; width: root.width - 36; height: 30
         text: qsTr("Dragonfruit Linux\nOpen source system software")
         color: Theme.color.textTertiary
