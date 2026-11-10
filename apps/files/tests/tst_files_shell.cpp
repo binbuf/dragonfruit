@@ -70,12 +70,14 @@ int main(int argc, char **argv)
     QDir(mutationRoot).mkpath(QStringLiteral("New"));
     QDir(mutationRoot).mkpath(QStringLiteral("Revert"));
     QDir(mutationRoot).mkpath(QStringLiteral("Empty"));
+    QDir(mutationRoot).mkpath(QStringLiteral("Info"));
     writeFile(mutationRoot + QStringLiteral("/Rename/one.txt"), QByteArray("one"));
     writeFile(mutationRoot + QStringLiteral("/Trash/one.txt"), QByteArray("one"));
     writeFile(mutationRoot + QStringLiteral("/Revert/a.txt"), QByteArray("a"));
     writeFile(mutationRoot + QStringLiteral("/Revert/b.txt"), QByteArray("b"));
     writeFile(mutationRoot + QStringLiteral("/Empty/x.txt"), QByteArray("x"));
     writeFile(mutationRoot + QStringLiteral("/Empty/y.txt"), QByteArray("y"));
+    writeFile(mutationRoot + QStringLiteral("/Info/item.txt"), QByteArray("item"));
     qputenv("DF_FILES_MUTATION_FIXTURE", mutationRoot.toUtf8());
 
     // Keep the trash backend's store inside the test temp dir, never the real

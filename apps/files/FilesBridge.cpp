@@ -6,6 +6,8 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QLocale>
+#include <QMimeDatabase>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QUrl>
@@ -97,6 +99,7 @@ FilesBridge::FilesBridge(QObject *parent)
     if (m_startView != QStringLiteral("list"))
         m_startView = m_startView == QStringLiteral("icon") ? m_startView
                                                             : QString();
+    m_captureDir = qEnvironmentVariable("DF_FILES_CAPTURE_DIR");
     m_startMenu = qEnvironmentVariable("DF_FILES_START_MENU");
     if (m_startMenu != QStringLiteral("item") && m_startMenu != QStringLiteral("background"))
         m_startMenu.clear();
@@ -267,4 +270,70 @@ QVariantMap FilesBridge::resolveOpenTarget(const QString &argument) const
 bool FilesBridge::open(const QString &uri) const
 {
     return filesOpen(uri);
+}
+
+QVariantMap FilesBridge::volumeInfo(const QString &uri) const
+{
+    QVariantMap info;
+    info.insert(QStringLiteral("available"), false);
+    info.insert(QStringLiteral("freeBytes"), QVariant::fromValue<qulonglong>(0));
+    info.insert(QStringLiteral("freeText"), QString());
+
+    const QUrl url(uri);
+    QString path;
+    if (url.isLocalFile())
+        path = url.toLocalFile();
+    else if (url.scheme() == QStringLiteral("trash"))
+        path = m_homePath;
+    else if (url.scheme() == QStringLiteral("file"))
+        path = QStringLiteral("/");
+    if (path.isEmpty())
+        return info;
+
+    if (m_fixture) {
+        // Deterministic headless value; the live path reads QStorageInfo.
+        info.insert(QStringLiteral("available"), true);
+        info.insert(QStringLiteral("freeBytes"),
+                    QVariant::fromValue<qulonglong>(274877906944ULL));
+        info.insert(QStringLiteral("freeText"),
+                    QStringLiteral("256 GB available"));
+        return info;
+    }
+
+    const QStorageInfo storage(path);
+    if (!storage.isValid() || !storage.isReady())
+        return info;
+    const qint64 free = storage.bytesAvailable();
+    if (free < 0)
+        return info;
+    info.insert(QStringLiteral("available"), true);
+    info.insert(QStringLiteral("freeBytes"),
+                QVariant::fromValue<qulonglong>(quint64(free)));
+    info.insert(QStringLiteral("freeText"),
+                QLocale().formattedDataSize(free, 1,
+                                            QLocale::DataSizeTraditionalFormat)
+                    + QLatin1Char(' ') + tr("available"));
+    return info;
+}
+
+QString FilesBridge::defaultHandler(const QString &uri) const
+{
+    const QUrl url(uri);
+    if (!url.isLocalFile())
+        return {};
+    const QFileInfo info(url.toLocalFile());
+    if (info.isDir())
+        return tr("Folder");
+    if (!info.isFile())
+        return {};
+    if (m_fixture)
+        return QStringLiteral("Text Editor");
+
+    const QMimeType mime = QMimeDatabase().mimeTypeForFile(info);
+    if (!mime.isValid())
+        return {};
+    const QString id = filesDefaultDesktopId(mime.name());
+    if (id.isEmpty())
+        return tr("No default application");
+    return id;
 }

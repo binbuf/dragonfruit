@@ -8,6 +8,7 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QLocale>
+#include <QUrl>
 
 #include <utility>
 
@@ -256,6 +257,68 @@ QVariantList FilesDirectoryModel::allNodeIds() const
     for (const Node &node : m_nodes)
         ids.append(node.id);
     return ids;
+}
+
+QVariantMap FilesDirectoryModel::nodeInfo(quint64 nodeId) const
+{
+    const int row = rowForNodeId(nodeId);
+    if (row < 0)
+        return {};
+    const Node &node = m_nodes[size_t(row)];
+    const QUrl url(node.uri);
+    const QFileInfo fileInfo(url.isLocalFile() ? url.toLocalFile() : QString());
+
+    QVariantMap info;
+    info.insert(QStringLiteral("id"), node.id);
+    info.insert(QStringLiteral("name"), node.name);
+    info.insert(QStringLiteral("uri"), node.uri);
+    info.insert(QStringLiteral("isDir"), node.isDir);
+    info.insert(QStringLiteral("kindText"), node.kindText);
+    info.insert(QStringLiteral("icon"), node.icon);
+    info.insert(QStringLiteral("size"), node.size);
+    info.insert(QStringLiteral("hasSize"), node.hasSize);
+    info.insert(QStringLiteral("sizeText"), node.sizeText);
+    info.insert(QStringLiteral("modified"), node.modifiedMs);
+    info.insert(QStringLiteral("hasModified"), node.hasModified);
+    info.insert(QStringLiteral("modifiedText"), node.modifiedText);
+    info.insert(QStringLiteral("symlinkTarget"), node.symlinkTarget);
+    info.insert(QStringLiteral("thumbnail"), node.thumbnail);
+    info.insert(QStringLiteral("extension"), fileInfo.suffix());
+    info.insert(QStringLiteral("whereText"),
+                url.isLocalFile() ? fileInfo.absolutePath() : QString());
+    return info;
+}
+
+QVariantMap FilesDirectoryModel::selectionInfo(const QVariantList &nodeIds) const
+{
+    int folderCount = 0;
+    int fileCount = 0;
+    quint64 totalSize = 0;
+    bool hasTotalSize = false;
+    for (const QVariant &value : nodeIds) {
+        const int row = rowForNodeId(value.toULongLong());
+        if (row < 0)
+            continue;
+        const Node &node = m_nodes[size_t(row)];
+        if (node.isDir)
+            ++folderCount;
+        else
+            ++fileCount;
+        if (node.hasSize) {
+            totalSize += node.size;
+            hasTotalSize = true;
+        }
+    }
+
+    QVariantMap info;
+    info.insert(QStringLiteral("count"), folderCount + fileCount);
+    info.insert(QStringLiteral("folderCount"), folderCount);
+    info.insert(QStringLiteral("fileCount"), fileCount);
+    info.insert(QStringLiteral("totalSize"), QVariant::fromValue(totalSize));
+    info.insert(QStringLiteral("hasTotalSize"), hasTotalSize);
+    info.insert(QStringLiteral("totalSizeText"),
+                hasTotalSize ? formatSize(totalSize) : QString());
+    return info;
 }
 
 void FilesDirectoryModel::sortBy(const QString &key)

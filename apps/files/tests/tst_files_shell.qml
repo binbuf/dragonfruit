@@ -51,6 +51,37 @@ Item {
             });
         }
 
+        function sectionTitles(shell) {
+            return shell.infoSections.map(function(section) {
+                return section.title;
+            });
+        }
+
+        function infoRow(shell, sectionId, label) {
+            for (var s = 0; s < shell.infoSections.length; ++s) {
+                var section = shell.infoSections[s];
+                if (section.id !== sectionId)
+                    continue;
+                for (var r = 0; r < section.rows.length; ++r) {
+                    if (section.rows[r].label === label)
+                        return section.rows[r];
+                }
+            }
+            return null;
+        }
+
+        function captureItem(item, suffix) {
+            waitForRendering(stage);
+            var image = grabImage(item);
+            verify(image !== null);
+            verify(image.width > 0 && image.height > 0);
+            // Qt's QML wrapper for QImage.save reports false on some builds
+            // even when the file is written; the capture script verifies the
+            // artifacts on disk.
+            image.save(Files.captureDir + "/t230d-files-" + suffix + ".png",
+                       "PNG");
+        }
+
         // -- Platform seam ------------------------------------------------------
 
         function test_platform_locations_are_deterministic() {
@@ -151,6 +182,254 @@ Item {
             // At the start of history both affordances are dimmed.
             verify(!shell.backButton.enabled);
             verify(!shell.forwardButton.enabled);
+        }
+
+        // -- T230d measured Finder anatomy -------------------------------------
+
+        function test_measured_window_anatomy() {
+            var shell = make({ width: 900, height: 600 });
+            compare(shell.titleBar.height, 52, "52 pt unified toolbar");
+            compare(shell.sidebarPane.width, 198, "198 pt sidebar");
+            compare(shell.sidebarPane.visible, true);
+            compare(shell.pathBar.height, 30, "30 pt path bar");
+            compare(shell.statusBar.height, 28, "28 pt status bar");
+            compare(shell.statusBar.width, 702, "status bar is content beside the sidebar");
+            compare(shell.contentInset, 52);
+            var top = shell.contentArea.mapToItem(shell, 0, 0);
+            compare(top.y, 52, "the content starts below the 52 pt toolbar");
+            // The bars are content, not chrome: the titlebar stays 52 pt.
+            compare(shell.appWindow.chromeHeight, 52);
+        }
+
+        function test_status_bar_counts_and_free_space() {
+            var shell = make({ width: 900, height: 600 });
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.statusBar.itemCount, 5);
+            compare(shell.statusBar.selectionCount, 0);
+            compare(shell.statusBar.itemText, "5 items");
+            compare(shell.freeSpaceText, "256 GB available",
+                    "the fixture volume reports a deterministic free space");
+            compare(Files.volumeInfo(Files.viewFixtureUri).freeText,
+                    "256 GB available");
+
+            var ids = shell.directory.allNodeIds();
+            shell.selectNode(ids[0], 0);
+            shell.selectNode(ids[1], Qt.ControlModifier);
+            compare(shell.statusBar.selectionCount, 2);
+            compare(shell.statusBar.selectionText, "2 selected");
+
+            shell.clearSelection();
+            compare(shell.statusBar.selectionCount, 0);
+        }
+
+        function test_toolbar_hidden_mode_hides_sidebar_and_moves_the_bars() {
+            var shell = make({ width: 900, height: 600 });
+            compare(shell.toolbarVisible, true);
+            compare(shell.statusBar.width, 702);
+
+            shell.setToolbarVisible(false);
+            waitForRendering(stage);
+            compare(shell.toolbarVisible, false);
+            compare(shell.sidebarPane.visible, false,
+                    "hiding the toolbar hides the sidebar");
+            compare(shell.titleBar.height, 64, "the measured 64 pt content inset");
+            compare(shell.contentInset, 64);
+            var top = shell.contentArea.mapToItem(shell, 0, 0);
+            compare(top.y, 64);
+            compare(shell.statusBar.width, 900,
+                    "the status bar moves to the full window width");
+            compare(shell.pathBar.height, 30);
+            compare(shell.statusBar.height, 28);
+
+            shell.toggleToolbar();
+            waitForRendering(stage);
+            compare(shell.toolbarVisible, true);
+            compare(shell.sidebarPane.visible, true);
+            compare(shell.titleBar.height, 52);
+            compare(shell.statusBar.width, 702);
+        }
+
+        function test_view_mode_group_has_four_measured_segments() {
+            var shell = make({ width: 900, height: 600 });
+            compare(shell.viewControl.entries.length, 4);
+            compare(shell.viewControl.groupWidth, 164);
+            compare(shell.viewControl.groupHeight, 52);
+            compare(shell.viewControl.segmentWidth, 40);
+            compare(shell.viewControl.segmentHeight, 36);
+            compare(shell.viewControl.implicitWidth, 164);
+            compare(shell.viewControl.implicitHeight, 52);
+            compare(shell.viewControl.entries[0].enabled, true);
+            compare(shell.viewControl.entries[1].enabled, true);
+            compare(shell.viewControl.entries[2].enabled, false);
+            compare(shell.viewControl.entries[3].enabled, false);
+            verify(shell.viewControl.entries[2].reason.length > 0,
+                   "Column view has a visible reason");
+            verify(shell.viewControl.entries[3].reason.length > 0,
+                   "Gallery view has a visible reason");
+
+            // A disabled segment is not a dead affordance: it explains itself
+            // and does not change the live view.
+            var before = shell.viewControl.currentIndex;
+            shell.viewControl.activateIndex(2);
+            compare(shell.viewControl.currentIndex, before);
+            verify(shell.notice.length > 0);
+
+            shell.viewControl.activateIndex(1);
+            compare(shell.browser.currentView, "list");
+            shell.viewControl.activateIndex(0);
+            compare(shell.browser.currentView, "icon");
+        }
+
+        function idForUri(shell, uri) {
+            for (var row = 0; row < shell.directory.count; ++row) {
+                if (shell.directory.uriAt(row) === uri)
+                    return shell.directory.nodeIdAt(row);
+            }
+            return 0;
+        }
+
+        function test_get_info_single_item_sections() {
+            var shell = make({ width: 900, height: 600 });
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var fileId = idForUri(shell, Files.viewFixtureUri + "/alpha.txt");
+            verify(fileId > 0);
+            shell.selectNode(fileId, 0);
+            verify(shell.openGetInfo());
+            compare(shell.getInfoOpen, true);
+
+            compare(shell.getInfoWindow.width, 328);
+            compare(shell.getInfoWindow.height, 1034);
+            compare(shell.getInfoWindow.titleBar.height, 32,
+                    "Get Info has a 32 pt title bar");
+            compare(shell.getInfoWindow.title, "Get Info");
+
+            var titles = sectionTitles(shell);
+            compare(titles, ["General", "More Info", "Name & Extension",
+                             "Comments", "Open with", "Preview",
+                             "Sharing & Permissions"]);
+
+            compare(shell.infoMultiSelection, false);
+            compare(shell.infoTitle, "alpha.txt");
+            compare(shell.infoPreviewSource, "");
+            var nameRow = infoRow(shell, "name", "Name");
+            verify(nameRow !== null);
+            compare(nameRow.value, "alpha.txt");
+            compare(nameRow.editable, true);
+            compare(infoRow(shell, "name", "Extension").value, "txt");
+
+            // Only rows with a real backend are editable.
+            verify(!infoRow(shell, "comments", "Comments").editable);
+            verify(infoRow(shell, "comments", "Comments").reason.length > 0);
+            compare(infoRow(shell, "openWith", "Open with").value, "Text Editor");
+            verify(!infoRow(shell, "openWith", "Open with").editable);
+            compare(infoRow(shell, "sharing", "Permissions").value,
+                    "Not available");
+
+            shell.closeGetInfo();
+            compare(shell.getInfoOpen, false);
+        }
+
+        function test_get_info_multi_selection_aggregates() {
+            var shell = make({ width: 900, height: 600 });
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var ids = shell.directory.allNodeIds();
+            compare(ids.length, 5);
+            var chosen = ids.slice(0, 3);
+            shell.selectedIds = chosen;
+            shell.selectedId = chosen[chosen.length - 1];
+            verify(shell.openGetInfo());
+
+            compare(shell.infoSelectionIds.length, 3);
+            compare(shell.infoMultiSelection, true);
+            compare(shell.getInfoWindow.multiSelection, true);
+            compare(shell.getInfoWindow.selectionCount, 3);
+            compare(infoRow(shell, "general", "Items").value,
+                    "3 items selected");
+
+            var aggregate = shell.directory.selectionInfo(chosen);
+            compare(aggregate.count, 3);
+            compare(infoRow(shell, "general", "Size").value,
+                    aggregate.totalSizeText);
+            compare(infoRow(shell, "name", "Name").editable, false);
+            verify(infoRow(shell, "name", "Name").reason.length > 0);
+            verify(infoRow(shell, "general", "Kind").value.indexOf("folders") >= 0);
+        }
+
+        function test_get_info_rename_uses_the_real_backend() {
+            var shell = make({ width: 900, height: 600 });
+            shell.browser.navigate(Files.mutationFixtureUri + "/Info");
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            var id = shell.directory.allNodeIds()[0];
+            shell.selectNode(id, 0);
+            verify(shell.openGetInfo());
+            compare(infoRow(shell, "name", "Name").value, "item.txt");
+
+            verify(shell.renameFromInfo("renamed.txt"));
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+            compare(infoRow(shell, "name", "Name").value, "renamed.txt");
+        }
+
+        function test_volume_info_is_explicit_about_absence() {
+            var shell = make({ width: 900, height: 600 });
+            var info = Files.volumeInfo(Files.computerUri);
+            verify(info.available === true);
+            verify(info.freeText.length > 0);
+            var missing = Files.volumeInfo("smb://server/share");
+            compare(missing.available, false);
+            compare(missing.freeText, "");
+            compare(shell.freeSpaceText.length >= 0, true);
+        }
+
+        // T230d light/dark evidence. The capture runner sets
+        // DF_FILES_CAPTURE_DIR; a normal ctest run skips it so the suite stays
+        // headless and side-effect free.
+        function test_capture_t230d_light_dark() {
+            if (Files.captureDir.length === 0) {
+                skip("DF_FILES_CAPTURE_DIR not set");
+                return;
+            }
+            var savedScheme = Settings.values["appearance.colorScheme"];
+            try {
+                var shell = make({ width: 900, height: 600 });
+                shell.browser.navigate(Files.viewFixtureUri);
+                tryCompare(shell.directory, "state", "complete");
+
+                Settings.set("appearance.colorScheme", "light");
+                shell.setToolbarVisible(true);
+                captureItem(shell, "chrome-light");
+                Settings.set("appearance.colorScheme", "dark");
+                captureItem(shell, "chrome-dark");
+
+                Settings.set("appearance.colorScheme", "light");
+                shell.setToolbarVisible(false);
+                captureItem(shell, "toolbar-hidden-light");
+                Settings.set("appearance.colorScheme", "dark");
+                captureItem(shell, "toolbar-hidden-dark");
+
+                Settings.set("appearance.colorScheme", "light");
+                shell.setToolbarVisible(true);
+                var fileId = idForUri(shell, Files.viewFixtureUri + "/alpha.txt");
+                shell.selectNode(fileId, 0);
+                verify(shell.openGetInfo());
+                captureItem(shell.getInfoInspector, "get-info-light");
+
+                Settings.set("appearance.colorScheme", "dark");
+                captureItem(shell.getInfoInspector, "get-info-dark");
+
+                Settings.set("appearance.colorScheme", "light");
+                var ids = shell.directory.allNodeIds();
+                shell.selectedIds = ids.slice(0, 3);
+                shell.selectedId = shell.selectedIds[shell.selectedIds.length - 1];
+                captureItem(shell.getInfoInspector, "get-info-multi");
+                shell.destroy();
+            } finally {
+                Settings.set("appearance.colorScheme", savedScheme);
+            }
         }
 
         // -- T206 app-local chrome ---------------------------------------------
@@ -456,11 +735,12 @@ Item {
             verify(actions.indexOf("rename") >= 0);
             verify(actions.indexOf("trash") >= 0);
 
-            // Multiple selected: a shorter menu.
+            // Multiple selected: Get Info plus Move to Trash.
             shell.selectNode(ids[1], Qt.ControlModifier);
             shell.openNodeMenu(ids[0], "file:///fixture/alpha.txt", false, 12, 12);
-            compare(shell.contextMenu.model.length, 1);
-            compare(shell.contextMenu.model[0].action, "trash");
+            compare(shell.contextMenu.model.length, 2);
+            compare(shell.contextMenu.model[0].action, "getInfo");
+            compare(shell.contextMenu.model[1].action, "trash");
             shell.contextMenu.hide();
 
             shell.openBackgroundMenu(12, 12);

@@ -58,6 +58,15 @@ Item {
     property string startUri: Files.startUri
     property string revealUri: Files.revealUri
     property bool revealApplied: false
+    // T230d: Finder's toolbar-hidden mode. Hiding the toolbar also hides the
+    // sidebar; the content inset grows to the measured 64 pt and the status
+    // bar spans the full window width. A mode change, not a visibility flag.
+    property bool toolbarVisible: true
+    // The Get Info auxiliary window is open. It follows the live selection.
+    property bool getInfoOpen: false
+    // Bumped on every model repaint so the inspector's data binding re-reads
+    // the current row (rename, watcher update, optimistic edit).
+    property int directoryRevision: 0
 
     property alias browser: browser
     property alias sidebar: sidebar
@@ -72,6 +81,7 @@ Item {
     property alias forwardButton: forwardButton
     property alias viewControl: viewControl
     property alias pathBar: pathBar
+    property alias statusBar: statusBar
     property alias emptyState: emptyState
     property alias directory: directory
     property alias iconView: iconView
@@ -80,6 +90,10 @@ Item {
     property alias emptyTrashDialog: emptyTrashDialog
     property alias detailSheet: detailSheet
     property alias resizeEdges: resizeEdges
+    property alias contentArea: contentArea
+    property alias getInfoWindow: getInfoWindow
+    property alias getInfoInspector: getInfoWindow.inspector
+    property alias viewReasonTip: viewReasonTip
 
     signal closeRequested()
     signal minimizeRequested()
@@ -99,6 +113,55 @@ Item {
     readonly property bool hasSearch: root.searchText.length > 0
     // Whether the window is at the Trash location, which owns Empty Trash.
     readonly property bool inTrash: browser.currentUri === Files.trashUri
+    // T230d: the measured Finder content inset. Visible: the 52 pt unified
+    // toolbar. Hidden: the 64 pt content start (the toolbar is a mode, and the
+    // sidebar goes with it).
+    readonly property real contentInset: root.toolbarVisible
+        ? WindowStyle.height("unified")
+        : Theme.controls.files.toolbarHiddenInset
+    // The status bar's volume free space. A missing volume is an empty label,
+    // never an invented number.
+    readonly property string freeSpaceText: {
+        var info = Files.volumeInfo(root.browser.currentUri);
+        return info.available ? info.freeText : "";
+    }
+    // T230d: the live Get Info model. The selection is the same shell-owned
+    // set the views paint; a single id and a multi-selection share one
+    // aggregation surface.
+    readonly property var infoSelectionIds: root.selectionForInfo()
+    readonly property var infoSummary: {
+        var revision = root.directoryRevision;
+        var ids = root.infoSelectionIds;
+        if (!root.directory || ids.length === 0)
+            return ({});
+        if (ids.length === 1)
+            return root.directory.nodeInfo(ids[0]);
+        return root.directory.selectionInfo(ids);
+    }
+    readonly property var infoSections: root.buildInfoSections()
+    readonly property bool infoMultiSelection: root.infoSelectionIds.length > 1
+    readonly property string infoTitle: {
+        var info = root.infoSummary;
+        if (root.infoMultiSelection)
+            return qsTr("%1 items").arg(root.infoSelectionIds.length);
+        return info.name || "";
+    }
+    readonly property string infoKind: root.infoMultiSelection
+        ? qsTr("%1 items selected").arg(root.infoSelectionIds.length)
+        : (root.infoSummary.kindText || "")
+    readonly property string infoPreviewSource:
+        root.infoMultiSelection ? "" : (root.infoSummary.thumbnail || "")
+    readonly property string infoPreviewIcon:
+        root.infoMultiSelection ? "folder" : (root.infoSummary.icon || "file")
+    readonly property string defaultHandlerText: {
+        var info = root.infoSummary;
+        if (root.infoMultiSelection)
+            return qsTr("Multiple applications");
+        if (!info.uri)
+            return qsTr("Not available");
+        var handler = Files.defaultHandler(info.uri);
+        return handler.length > 0 ? handler : qsTr("Not available");
+    }
     // Cmd is Super/Mod4 system-wide, but Qt desktop tests and muscle memory
     // both use Control; accept either as "command".
     readonly property int commandMask: Qt.ControlModifier | Qt.MetaModifier
@@ -268,6 +331,159 @@ Item {
         root.anchorId = root.selectedId;
     }
 
+    // T230d: Get Info targets the whole selection; a lone primary id is the
+    // fallback for a caller that only set `selectedId`.
+    function selectionForInfo() {
+        var ids = root.selectedIds.slice();
+        if (ids.length === 0 && root.selectedId > 0)
+            ids = [root.selectedId];
+        return ids;
+    }
+
+    function openGetInfo() {
+        if (root.selectionForInfo().length === 0)
+            return false;
+        root.getInfoOpen = true;
+        return true;
+    }
+
+    function closeGetInfo() {
+        root.getInfoOpen = false;
+    }
+
+    function toggleToolbar() {
+        root.toolbarVisible = !root.toolbarVisible;
+    }
+
+    function setToolbarVisible(visible) {
+        root.toolbarVisible = visible === true;
+    }
+
+    // Rename from the inspector. Only one item has a real backend; a
+    // multi-selection says why instead of editing a fake aggregate name.
+    function renameFromInfo(newName) {
+        var ids = root.selectionForInfo();
+        if (ids.length !== 1) {
+            root.notice = qsTr("Rename one item at a time.");
+            noticeTimer.restart();
+            return false;
+        }
+        if (newName.length === 0 || !directory)
+            return false;
+        return directory.rename(ids[0], newName);
+    }
+
+    // The single scrolling column's data. Section ids are stable for tests and
+    // for the "edit only a real backend" rule; rows carry an explicit reason
+    // when a control is not backed yet.
+    function buildInfoSections() {
+        var revision = root.directoryRevision;
+        var ids = root.infoSelectionIds;
+        var info = root.infoSummary;
+        var sections = [];
+        if (!directory || ids.length === 0)
+            return sections;
+        var single = ids.length === 1;
+
+        var general = [];
+        if (single) {
+            general.push({ label: qsTr("Name"), value: info.name || "" });
+            general.push({ label: qsTr("Kind"), value: info.kindText || "" });
+            general.push({ label: qsTr("Size"),
+                           value: info.hasSize ? info.sizeText
+                                               : qsTr("Not available") });
+            general.push({ label: qsTr("Where"),
+                           value: info.whereText || qsTr("Not available") });
+        } else {
+            general.push({ label: qsTr("Items"),
+                           value: qsTr("%1 items selected").arg(info.count) });
+            general.push({ label: qsTr("Kind"),
+                           value: qsTr("%1 folders, %2 files")
+                                  .arg(info.folderCount).arg(info.fileCount) });
+            general.push({ label: qsTr("Size"),
+                           value: info.hasTotalSize ? info.totalSizeText
+                                                    : qsTr("Not available") });
+        }
+        sections.push({ id: "general", title: qsTr("General"), rows: general });
+
+        var moreInfo = [];
+        if (single) {
+            moreInfo.push({ label: qsTr("Modified"),
+                            value: info.hasModified ? info.modifiedText
+                                                    : qsTr("Not available") });
+            if ((info.symlinkTarget || "").length > 0) {
+                moreInfo.push({ label: qsTr("Original"),
+                                value: info.symlinkTarget });
+            }
+            moreInfo.push({ label: qsTr("Content created"),
+                            value: qsTr("Not available"),
+                            reason: qsTr("files-core exposes the modification time only.") });
+        } else {
+            moreInfo.push({ label: qsTr("Modified"),
+                            value: qsTr("Multiple values") });
+        }
+        sections.push({ id: "moreInfo", title: qsTr("More Info"),
+                        rows: moreInfo });
+
+        var name = [];
+        name.push({
+            label: qsTr("Name"),
+            value: single ? (info.name || "") : qsTr("%1 items").arg(info.count),
+            editable: single && info.id > 0,
+            reason: single ? "" : qsTr("Rename one item at a time.")
+        });
+        if (single) {
+            name.push({ label: qsTr("Extension"),
+                        value: info.extension || qsTr("None") });
+        }
+        name.push({ label: qsTr("Hide extension"),
+                    value: qsTr("Not available"),
+                    reason: qsTr("files-core does not store the hide-extension flag.") });
+        sections.push({ id: "name", title: qsTr("Name & Extension"),
+                        rows: name });
+
+        sections.push({
+            id: "comments",
+            title: qsTr("Comments"),
+            rows: [{
+                label: qsTr("Comments"),
+                value: qsTr("Not available"),
+                reason: qsTr("The comments backend is not implemented.")
+            }]
+        });
+
+        sections.push({
+            id: "openWith",
+            title: qsTr("Open with"),
+            rows: [{
+                label: qsTr("Open with"),
+                value: root.defaultHandlerText,
+                reason: qsTr("Choosing a default application is not implemented.")
+            }]
+        });
+
+        sections.push({
+            id: "preview",
+            title: qsTr("Preview"),
+            rows: [{
+                label: single ? qsTr("Preview") : qsTr("Selection"),
+                value: single ? (info.kindText || "") : qsTr("%1 items").arg(info.count)
+            }]
+        });
+
+        sections.push({
+            id: "sharing",
+            title: qsTr("Sharing & Permissions"),
+            rows: [
+                { label: qsTr("Owner"), value: qsTr("Not available") },
+                { label: qsTr("Group"), value: qsTr("Not available") },
+                { label: qsTr("Permissions"), value: qsTr("Not available"),
+                  reason: qsTr("files-core does not expose POSIX ownership yet.") }
+            ]
+        });
+        return sections;
+    }
+
     function activateNode(uri, isDir) {
         if (!uri)
             return;
@@ -338,12 +554,16 @@ Item {
     function nodeMenu(node) {
         if (root.selectedIds.length > 1) {
             return [
+                { label: qsTr("Get Info"), shortcut: "Super+I",
+                  action: "getInfo" },
                 { label: qsTr("Move to Trash"), shortcut: "Delete",
                   action: "trash" }
             ];
         }
         var entries = [
-            { label: qsTr("Open"), action: "open", enabled: node !== null }
+            { label: qsTr("Open"), action: "open", enabled: node !== null },
+            { label: qsTr("Get Info"), shortcut: "Super+I",
+              action: "getInfo", enabled: node !== null }
         ];
         if (node && node.isDir) {
             entries.push({ label: qsTr("Open in New Window"), action: "noop",
@@ -358,11 +578,16 @@ Item {
     }
 
     function backgroundMenu() {
+        var toolbarRow = { label: root.toolbarVisible ? qsTr("Hide Toolbar")
+                                                       : qsTr("Show Toolbar"),
+                           shortcut: "Ctrl+Alt+T",
+                           action: "toggleToolbar" };
         if (root.inTrash) {
             return [
                 { label: qsTr("Empty Trash"), shortcut: "Shift+Super+Delete",
                   action: "emptyTrash", enabled: directory.count > 0 },
                 { type: "separator" },
+                toolbarRow,
                 { label: qsTr("Select All"), shortcut: "Super+A",
                   action: "selectAll" }
             ];
@@ -371,6 +596,7 @@ Item {
             { label: qsTr("New Folder"), shortcut: "Shift+Super+N",
               action: "newFolder" },
             { type: "separator" },
+            toolbarRow,
             { label: qsTr("Select All"), shortcut: "Super+A",
               action: "selectAll" }
         ];
@@ -406,6 +632,12 @@ Item {
             break;
         case "selectAll":
             root.selectAll();
+            break;
+        case "getInfo":
+            root.openGetInfo();
+            break;
+        case "toggleToolbar":
+            root.toggleToolbar();
             break;
         case "emptyTrash":
             root.confirmEmptyTrash();
@@ -533,6 +765,18 @@ Item {
                 event.accepted = true;
             }
             break;
+        case Qt.Key_I:
+            if (command) {
+                root.openGetInfo();
+                event.accepted = true;
+            }
+            break;
+        case Qt.Key_T:
+            if (command && (event.modifiers & Qt.AltModifier)) {
+                root.toggleToolbar();
+                event.accepted = true;
+            }
+            break;
         case Qt.Key_Down:
             if (command) {
                 root.openSelection();
@@ -654,11 +898,19 @@ Item {
             id: titleBar
             title: root.locationTitle
             active: root.windowActive
+            // T230d: toolbar-hidden mode keeps a drag/traffic-light strip and
+            // grows the chrome to the measured 64 pt content inset; the
+            // toolbar controls and sidebar are removed together.
+            extraToolbarRow: root.toolbarVisible
+                ? 0
+                : Theme.controls.files.toolbarHiddenInset
+                  - WindowStyle.height("unified")
             fillColor: Material.appChromeFill("filesToolbar",
                                               Theme.color.chrome)
             borderColor: Material.appChromeBorder("filesToolbar",
                                                   Theme.color.border)
             leadingData: Row {
+                visible: root.toolbarVisible
                 spacing: Theme.controls.toolbar.spacing
                 Button {
                     id: backButton
@@ -678,16 +930,38 @@ Item {
                 }
                 SegmentedControl {
                     id: viewControl
+                    // Finder's measured 164×52 pt group with four 40×36 pt
+                    // segments. Icon and List are live; Column and Gallery
+                    // are explicit disabled states until T244a lands them.
+                    groupWidth: Theme.controls.files.viewGroupWidth
+                    groupHeight: Theme.controls.files.viewGroupHeight
+                    segmentWidth: Theme.controls.files.viewSegmentWidth
+                    segmentHeight: Theme.controls.files.viewSegmentHeight
+                    paddingX: Theme.controls.files.viewGroupPaddingX
+                    paddingY: Theme.controls.files.viewGroupPaddingY
                     model: [
-                        { label: qsTr("Icon View"), icon: "icon-view" },
-                        { label: qsTr("List View"), icon: "list-view" }
+                        { label: qsTr("Icon View"), icon: "icon-view",
+                          enabled: true },
+                        { label: qsTr("List View"), icon: "list-view",
+                          enabled: true },
+                        { label: qsTr("Column View"), icon: "column-view",
+                          enabled: false,
+                          reason: qsTr("Column view arrives with T244a.") },
+                        { label: qsTr("Gallery View"), icon: "gallery-view",
+                          enabled: false,
+                          reason: qsTr("Gallery view arrives with T244a.") }
                     ]
                     onActivated: (index) => browser.setView(index === 1
                                                             ? "list" : "icon")
+                    onRejected: (index, reason) => {
+                        root.notice = reason;
+                        noticeTimer.restart();
+                    }
                 }
             }
             trailingData: SearchField {
                 id: searchField
+                visible: root.toolbarVisible
                 width: 220
                 placeholderText: qsTr("Search")
                 onTextChanged: root.searchText = searchField.text
@@ -707,8 +981,10 @@ Item {
             // Sidebar: the Favorites and Locations source lists.
             ChromeSheet {
                 id: sidebarPane
-                width: 240
+                // Finder's measured 198 pt source-list width (T230d).
+                width: Theme.controls.files.sidebarWidth
                 height: parent.height
+                visible: root.toolbarVisible
                 color: Material.appChromeFill("filesSidebar",
                                              Theme.color.surfaceMuted)
                 bottomLeftRadius: Theme.controls.window.radius
@@ -736,10 +1012,10 @@ Item {
                 }
             }
 
-            // Detail: the location's content and the path bar (both below the
-            // unified chrome).
+            // Detail: the location's content, path bar and status bar (all
+            // below the unified chrome).
             Rectangle {
-                width: parent.width - sidebarPane.width
+                width: parent.width - (sidebarPane.visible ? sidebarPane.width : 0)
                 height: parent.height
                 color: "transparent"
 
@@ -768,7 +1044,8 @@ Item {
                     Item {
                         id: contentArea
                         width: parent.width
-                        height: Math.max(0, parent.height - pathBar.height)
+                        height: Math.max(0, parent.height - pathBar.height
+                                            - statusBar.height)
 
                         FilesDirectoryModel {
                             id: directory
@@ -898,6 +1175,18 @@ Item {
                         bottomRightRadius: Theme.controls.window.radius
                         onNavigated: (uri) => browser.navigate(uri)
                     }
+
+                    // T230d: item count, selection count and the volume's
+                    // free space. A 28 pt content-layer bar; when the toolbar
+                    // is hidden it spans the full window width because the
+                    // sidebar is gone.
+                    StatusBar {
+                        id: statusBar
+                        width: parent.width
+                        itemCount: directory ? directory.count : 0
+                        selectionCount: root.selectedIds.length
+                        freeSpaceText: root.freeSpaceText
+                    }
                 }
             }
         }
@@ -921,6 +1210,42 @@ Item {
         onTriggered: (index, item) => root.contextAction(item.action)
     }
 
+    // T230d: a disabled view segment explains itself on hover; a click also
+    // raises the inline notice. No segment is a dead glyph.
+    Tooltip {
+        id: viewReasonTip
+        anchorRect: {
+            var p = viewControl.mapToItem(root, 0, 0);
+            return { x: p.x, y: p.y, w: viewControl.width, h: viewControl.height };
+        }
+        placement: "below"
+        bounds: root
+        text: {
+            var index = viewControl.hoveredIndex;
+            if (index < 0 || index >= viewControl.entries.length)
+                return "";
+            var entry = viewControl.entries[index];
+            return entry && !entry.enabled ? entry.reason : "";
+        }
+        open: text.length > 0
+    }
+
+    // T230d: the Get Info auxiliary window. It is a separate 328×1034 pt
+    // window with a 32 pt title bar; its data follows the live selection.
+    GetInfoWindow {
+        id: getInfoWindow
+        visible: root.getInfoOpen
+        itemName: root.infoTitle
+        itemKind: root.infoKind
+        previewSource: root.infoPreviewSource
+        previewIcon: root.infoPreviewIcon
+        multiSelection: root.infoMultiSelection
+        selectionCount: root.infoSelectionIds.length
+        sections: root.infoSections
+        onCloseRequested: root.getInfoOpen = false
+        onRenameRequested: (name) => root.renameFromInfo(name)
+    }
+
     // A failed operation records a message; show it briefly, then fade.
     Connections {
         target: directory
@@ -935,8 +1260,12 @@ Item {
             root.applyReveal();
         }
         function onCountChanged() {
+            root.directoryRevision += 1;
             root.applyCaptureSeam();
             root.applyReveal();
+        }
+        function onDataChanged() {
+            root.directoryRevision += 1;
         }
     }
 

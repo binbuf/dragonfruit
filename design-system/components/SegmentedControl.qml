@@ -12,31 +12,52 @@ Item {
     property var model: []
     property int currentIndex: 0
     property alias hoveredIndex: hoverTracker.index
+    // Optional measured geometry. Zero keeps the generic control's intrinsic
+    // size; a consumer with a reference measurement (Files' 164×52 pt group
+    // with 40×36 pt segments) sets these without a second component.
+    property real groupWidth: 0
+    property real groupHeight: 0
+    property real segmentWidth: 0
+    property real segmentHeight: 0
+    property real paddingX: Theme.controls.segmentedControl.padding
+    property real paddingY: Theme.controls.segmentedControl.padding
 
     signal activated(int index)
+    // A disabled segment is a real state, not a dead glyph: consumers show
+    // the reason (hover label or inline notice).
+    signal rejected(int index, string reason)
 
     readonly property var entries: {
         var out = [];
         for (var i = 0; i < root.model.length; ++i) {
             var m = root.model[i];
             if (typeof m === "string")
-                out.push({ label: m, icon: "", enabled: true });
+                out.push({ label: m, icon: "", enabled: true, reason: "" });
             else
                 out.push({ label: m.label || "", icon: m.icon || "",
-                           enabled: m.enabled !== false });
+                           enabled: m.enabled !== false,
+                           reason: m.reason || "" });
         }
         return out;
     }
     readonly property Item currentSegment: segmentRepeater.count >= 0
                                            ? segmentRepeater.itemAt(root.currentIndex) : null
 
-    implicitWidth: segmentRow.implicitWidth + 2 * Theme.controls.segmentedControl.padding
-    implicitHeight: Theme.controls.segmentedControl.height
+    implicitWidth: root.groupWidth > 0
+                   ? root.groupWidth
+                   : segmentRow.implicitWidth + 2 * root.paddingX
+    implicitHeight: root.groupHeight > 0
+                    ? root.groupHeight
+                    : Theme.controls.segmentedControl.height
 
     function activateIndex(index) {
         var e = root.entries[index];
-        if (!e || !e.enabled)
+        if (!e)
             return;
+        if (!e.enabled) {
+            root.rejected(index, e.reason);
+            return;
+        }
         root.currentIndex = index;
         root.activated(index);
     }
@@ -69,12 +90,12 @@ Item {
 
     Rectangle {
         id: indicator
-        y: Theme.controls.segmentedControl.padding
-        height: parent.height - 2 * Theme.controls.segmentedControl.padding
-        x: root.currentSegment ? root.currentSegment.x : Theme.controls.segmentedControl.padding
+        y: root.paddingY
+        height: parent.height - 2 * root.paddingY
+        x: root.currentSegment ? root.currentSegment.x : root.paddingX
         width: root.currentSegment ? root.currentSegment.width : 0
         radius: Math.max(0, Theme.controls.segmentedControl.radius
-                            - Theme.controls.segmentedControl.padding)
+                            - root.paddingY)
         color: Theme.color.surfaceElevated
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
@@ -98,8 +119,8 @@ Item {
 
     Row {
         id: segmentRow
-        x: Theme.controls.segmentedControl.padding
-        y: Theme.controls.segmentedControl.padding
+        x: root.paddingX
+        y: root.paddingY
         spacing: 0
 
         Repeater {
@@ -123,11 +144,15 @@ Item {
         readonly property bool hovered: segmentHover.hovered
         readonly property bool hasIcon: segment.modelData.icon.length > 0
 
-        width: Math.max(Theme.controls.segmentedControl.segmentMinWidth,
-                        (segment.hasIcon
-                         ? Theme.controls.button.iconSize
-                         : label.implicitWidth) + 2 * Theme.primitive.spacing.md)
-        height: root.height - 2 * Theme.controls.segmentedControl.padding
+        width: root.segmentWidth > 0
+               ? root.segmentWidth
+               : Math.max(Theme.controls.segmentedControl.segmentMinWidth,
+                          (segment.hasIcon
+                           ? Theme.controls.button.iconSize
+                           : label.implicitWidth) + 2 * Theme.primitive.spacing.md)
+        height: root.segmentHeight > 0
+                ? root.segmentHeight
+                : root.height - 2 * root.paddingY
         activeFocusOnTab: true
         opacity: segment.modelData.enabled ? 1.0 : 0.4
 
@@ -195,6 +220,7 @@ Item {
 
         Accessible.role: Accessible.RadioButton
         Accessible.name: segment.modelData.label
+        Accessible.description: segment.modelData.reason
         Accessible.checkable: true
         Accessible.checked: segment.current
         Accessible.focusable: true

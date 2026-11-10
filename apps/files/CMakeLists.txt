@@ -26,6 +26,9 @@ qt_add_qml_module(dragonfruit-files-ui
         FilesIconView.qml
         FilesListView.qml
         PathBar.qml
+        StatusBar.qml
+        GetInfoInspector.qml
+        GetInfoWindow.qml
         FilesShell.qml
         FilesWindow.qml
         DesktopSurface.qml
@@ -144,6 +147,9 @@ df_qml_lint(app-files
     FilesIconView.qml
     FilesListView.qml
     PathBar.qml
+    StatusBar.qml
+    GetInfoInspector.qml
+    GetInfoWindow.qml
     FilesShell.qml
     FilesWindow.qml
     DesktopSurface.qml

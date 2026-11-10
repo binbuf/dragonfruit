@@ -1306,6 +1306,19 @@ QtObject {
             readonly property int buttonSize: 28
             readonly property int radius: 10
         }
+        readonly property var files: QtObject {
+            readonly property int sidebarWidth: 198
+            readonly property int viewGroupWidth: 164
+            readonly property int viewGroupHeight: 52
+            readonly property int viewSegmentWidth: 40
+            readonly property int viewSegmentHeight: 36
+            readonly property int viewGroupPaddingX: 2
+            readonly property int viewGroupPaddingY: 8
+            readonly property int toolbarHiddenInset: 64
+            readonly property int getInfoWidth: 328
+            readonly property int getInfoHeight: 1034
+            readonly property int getInfoChromeHeight: 32
+        }
         readonly property var accessoryBar: QtObject {
             readonly property int tab: 28
             readonly property int path: 30
