@@ -205,6 +205,9 @@ if scheme in ("light", "dark"):
 keys["accessibility.reduceTransparency"] = os.environ.get("REDUCE_TRANSPARENCY", "0") == "1"
 keys["accessibility.increaseContrast"] = os.environ.get("INCREASE_CONTRAST", "0") == "1"
 keys["accessibility.reduceMotion"] = os.environ.get("REDUCE_MOTION", "0") == "1"
+dock_position = os.environ.get("DOCK_POSITION", "")
+if dock_position in ("bottom", "left", "right"):
+    keys["dock.position"] = dock_position
 transparency = os.environ.get("TRANSPARENCY", "")
 if transparency:
     keys["appearance.transparency"] = float(transparency)
@@ -353,10 +356,18 @@ elif state == "desktop-context":
     send("button 0x111 up")
     time.sleep(1.0)
 elif state == "motion":
-    # Keep the Dock spring moving across the capture instant.
+    # Keep the Dock spring moving across the capture instant. The sweep axis
+    # follows the Dock position (T235a): a bottom Dock sweeps x, a vertical
+    # Dock sweeps y along its edge.
+    position = os.environ.get("DOCK_POSITION", "bottom")
     for index in range(600):
-        x = 486 + (806 - 486) * (0.5 + 0.5 * __import__("math").sin(index / 7))
-        motion(x, 770)
+        t = 0.5 + 0.5 * __import__("math").sin(index / 7)
+        if position == "left":
+            motion(60, 200 + (600 - 200) * t)
+        elif position == "right":
+            motion(1220, 200 + (600 - 200) * t)
+        else:
+            motion(486 + (806 - 486) * t, 770)
         time.sleep(0.05)
 elif state == "lock":
     # One character reaches the lock surface's password buffer; Return is

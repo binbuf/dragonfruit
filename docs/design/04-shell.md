@@ -536,25 +536,31 @@ keeps the same inset from both plate edges and the dot sits 8 pt below it. The
 artwork is anchored on the anchored-edge side, so under magnification it grows
 toward the screen interior while the dot stays put. `indicatorSpace` never
 exceeds `padding`, so no entry (dot included) clips the plate at
-`iconSizeMin`/`iconSizeMax`. The plate fill/rim opacity values are unchanged.
+`iconSizeMin`/`iconSizeMax`. The fill opacity is unchanged; the fallback rim
+opacity is calibrated to the measured perimeter (T235a).
 
 The plate's material is layered (T-14.7j, ADR
 [0102](adr/0102-dock-material-role-and-qml-glass-layers.md)): the compositor
 frosts the declared panel with the Dock's own `material.dockBlur`/`dockOpacity`
 tokens — selected by the `dock` namespace, so it is independent of the menu
 bar's `chrome*` frost — and `Dock.qml` draws a translucent `dockFill` and a
-**directional** perimeter: a bright rim on the horizontal (top/bottom) edges,
-a darker hairline on the vertical sides, a narrow top lift
-(`plate.topGlowHeight`/`.topGlowOpacity`), a slightly wider bottom brightening
-(`plate.bottomGlowHeight`/`.bottomGlowOpacity`), a faint interior gloss, a
-bottom rim that follows the bottom corner arcs, and a minimal contact shadow.
-The sampled path paints the same directional rim and edge lifts in the
-compositor shader from the `dock` glass preset (`edgeSide`, `topGlow`,
-`bottomGlow`), so the production and fallback paths agree. Every value is a
-`controls.dock.plate` or `glass.presets.dock` token. The plate group is
-clipped at its top edge so the shadow never bleeds into the transparent
-magnify band above it
-(T-10 section 2). Icon tiles are rounded squares at
+**uniform** perimeter (T235a, ADR
+[0255](adr/0255-dock-uniform-perimeter-and-corner-gate.md)): one 1 px specular
+rim around the whole rounded rectangle, a ~6 pt inner glow, no darker side and
+no outer shadow. The sampled path paints the same single rim and glow in the
+compositor shader from the `dock` glass preset (`edge`/`edgeWidth`/`edgeTail`),
+so the production and fallback paths agree; `edgeSide`, `topGlow` and
+`bottomGlow` are gone. The first covered pixel carries the measured +0.397: a
+narrow specular line on that physical pixel plus a super-exponential tail
+(half-amplitude 1 pt, 10 % at ~2.5 pt, zero by 6 pt). The QML fallback
+approximates the same tail with three concentric full-perimeter strokes
+(`plate.glowOuter*`/`glowMid*`/`glowInner*`) and an Increase Contrast-only
+uniform border; it has no `position` branch, so bottom, left and right Docks
+draw the same perimeter. The corner lens is corner-only: it is parameterized by
+distance inside the rim, directed by the outward SDF normal, and gated by
+`4·nx²·ny²`, so flat edges and flat sides are exactly unbent. The plate group
+is clipped at its top edge so no paint bleeds into the transparent magnify band
+above it (T-10 section 2). Icon tiles are rounded squares at
 `controls.dock.icon.radiusRatio`, and the themed artwork is **masked** into
 that tile rather than inset (T-14.7w): `component.dock.icon.inset` is 0, so the
 artwork reaches the tile edge, and `DockGlyph.qml` draws it into a `Canvas`

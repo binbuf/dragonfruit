@@ -399,21 +399,16 @@ pub mod component {
         pub const HIDE_DELAY: f32 = 350.0_f32;
         pub mod plate {
             pub const FILL_OPACITY: f32 = 0.42_f32;
-            pub const RIM_OPACITY: f32 = 0.7_f32;
+            pub const RIM_OPACITY: f32 = 0.84_f32;
             pub const RIM_HEIGHT: f32 = 1.0_f32;
-            pub const GLOSS_HEIGHT: f32 = 6.0_f32;
-            pub const GLOSS_OPACITY: f32 = 0.1_f32;
-            pub const EDGE_HEIGHT: f32 = 1.0_f32;
-            pub const EDGE_OPACITY: f32 = 0.7_f32;
-            pub const TOP_GLOW_HEIGHT: f32 = 10.0_f32;
-            pub const TOP_GLOW_OPACITY: f32 = 0.06_f32;
-            pub const BOTTOM_GLOW_HEIGHT: f32 = 12.0_f32;
-            pub const BOTTOM_GLOW_OPACITY: f32 = 0.1_f32;
+            pub const GLOW_OUTER_HEIGHT: f32 = 6.0_f32;
+            pub const GLOW_OUTER_OPACITY: f32 = 0.03_f32;
+            pub const GLOW_MID_HEIGHT: f32 = 3.0_f32;
+            pub const GLOW_MID_OPACITY: f32 = 0.06_f32;
+            pub const GLOW_INNER_HEIGHT: f32 = 1.0_f32;
+            pub const GLOW_INNER_OPACITY: f32 = 0.1_f32;
             pub const BORDER_WIDTH: f32 = 1.0_f32;
-            pub const BORDER_OPACITY: f32 = 0.55_f32;
-            pub const SHADOW_BLUR: f32 = 6.0_f32;
-            pub const SHADOW_OPACITY: f32 = 0.12_f32;
-            pub const SHADOW_OFFSET_Y: f32 = 2.0_f32;
+            pub const BORDER_OPACITY: f32 = 0.18_f32;
         }
         pub mod icon {
             pub const RADIUS_RATIO: f32 = 0.24_f32;
@@ -781,7 +776,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; rim peak 0.397 on mid-grey; blur sigma 3.86pt first fit";
+                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur sigma 3.86pt first fit";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.253_f32;
@@ -794,20 +789,15 @@ pub mod glass {
                 pub const EDGE: f32 = 0.397_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
                 pub const EDGE_TAIL: f32 = 6.0_f32;
-                pub const EDGE_SIDE: f32 = -0.08_f32;
-                pub const TOP_GLOW: f32 = 0.06_f32;
-                pub const TOP_GLOW_HEIGHT: f32 = 10.0_f32;
-                pub const BOTTOM_GLOW: f32 = 0.1_f32;
-                pub const BOTTOM_GLOW_HEIGHT: f32 = 12.0_f32;
                 pub const SHARP_FRACTION: f32 = 0.12_f32;
-                pub const CORNER_LENS_PEAK: f32 = 9.6_f32;
+                pub const CORNER_LENS_PEAK: f32 = 13.6_f32;
                 pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;
                 pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; blur and rim reuse the light fit because the dark rim was not separately fitted";
+                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur and rim reuse the light fit because the dark rim was not separately fitted";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.149_f32;
@@ -820,13 +810,8 @@ pub mod glass {
                 pub const EDGE: f32 = 0.397_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
                 pub const EDGE_TAIL: f32 = 6.0_f32;
-                pub const EDGE_SIDE: f32 = -0.06_f32;
-                pub const TOP_GLOW: f32 = 0.04_f32;
-                pub const TOP_GLOW_HEIGHT: f32 = 10.0_f32;
-                pub const BOTTOM_GLOW: f32 = 0.07_f32;
-                pub const BOTTOM_GLOW_HEIGHT: f32 = 12.0_f32;
                 pub const SHARP_FRACTION: f32 = 0.12_f32;
-                pub const CORNER_LENS_PEAK: f32 = 9.6_f32;
+                pub const CORNER_LENS_PEAK: f32 = 13.6_f32;
                 pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;
                 pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;

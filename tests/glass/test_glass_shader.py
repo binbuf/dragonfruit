@@ -182,13 +182,11 @@ class GPU:
         data = (c.c_ubyte * len(pixels)).from_buffer(pixels)
         upload(0x0DE1, 0, 0x1908, width, height, 0, 0x1908, 0x1401, data)
         alpha, tone = (.149, .207) if dark else (.253, .604)
-        scalars = dict(alpha=1, glass_radius=27 * scale, refraction=9.6 * scale,
+        scalars = dict(alpha=1, glass_radius=27 * scale, refraction=13.6 * scale,
                        specular=.397, specular_width=scale, tint_amount=alpha,
                        lens_falloff=24 * scale, tint_scale=1, flat_band=float(flat_band),
                        flat_alpha=alpha, rim_peak=.397, rim_half_width=scale,
-                       rim_tail=6 * scale, rim_side=-.08, top_glow=.06,
-                       top_glow_height=10 * scale, bottom_glow=.1,
-                       bottom_glow_height=12 * scale, corner_peak=peak * scale,
+                       rim_tail=6 * scale, corner_peak=peak * scale,
                        corner_distance=15 * scale, corner_tail=50 * scale, tint=0)
         for name, value in scalars.items():
             self.uniform(name, value)
@@ -273,6 +271,121 @@ class GlassShaderTests(unittest.TestCase):
             a, b = (y * w + 200) * 4, (y * w + w - 200) * 4
             self.assertEqual(lens[a:b], plain[a:b])
         self.assertGreater(max(abs(a - b) for a, b in zip(lens, plain)), 20)
+
+    def test_uniform_rim_peak_on_every_edge(self):
+        # T235a: the reference plate has one specular rim on the whole
+        # perimeter. The first covered pixel must reach the measured +0.397 on
+        # 50 % grey at the top, bottom, left and right, at every output scale.
+        for scale in (1, 1.5, 2):
+            w, h = round(483 * scale), round(78 * scale)
+            out, _ = self.gpu.render(w, h, scale, solid=True)
+            alpha, tone = .253, .604
+            interior = 127 * (1 - alpha) + tone * 255 * alpha
+
+            def value(x, y):
+                return out[(y * w + x) * 4]
+
+            with self.subTest(scale=scale):
+                for name, (x, y) in {
+                    "top": (w // 2, 0),
+                    "bottom": (w // 2, h - 1),
+                    "left": (0, h // 2),
+                    "right": (w - 1, h // 2),
+                }.items():
+                    delta = (value(x, y) - interior) / 255.0
+                    self.assertLessEqual(
+                        abs(delta - 0.397), 0.02,
+                        f"{name} first-pixel delta {delta:.3f} at {scale}x")
+
+    def test_rim_half_ten_percent_and_tail_match_the_measured_lut(self):
+        for scale in (1, 1.5, 2):
+            w, h = round(483 * scale), round(78 * scale)
+            out, _ = self.gpu.render(w, h, scale, solid=True)
+            alpha, tone = .253, .604
+            interior = 127 * (1 - alpha) + tone * 255 * alpha
+            cx = w // 2
+            rows = [out[(y * w + cx) * 4] for y in range(h // 2)]
+            delta = [(value - interior) / 255.0 for value in rows]
+            peak = delta[0]
+
+            def crossing(fraction):
+                target = peak * fraction
+                for index in range(1, len(delta)):
+                    if delta[index] <= target:
+                        previous = delta[index - 1]
+                        span = previous - delta[index]
+                        t = (previous - target) / span if span > 1e-9 else 0.0
+                        # Sample centres are (index + 0.5) physical px inside.
+                        return (index - 1 + t + 0.5) / scale
+                return None
+
+            with self.subTest(scale=scale):
+                half = crossing(0.5)
+                ten = crossing(0.1)
+                self.assertIsNotNone(half)
+                self.assertIsNotNone(ten)
+                self.assertLessEqual(abs(half - 1.0), 0.25,
+                                     f"half amplitude {half:.2f} pt")
+                self.assertLessEqual(abs(ten - 2.5), 0.5,
+                                     f"10 % point {ten:.2f} pt")
+                # The profile is gone by the measured 6 pt tail.
+                tail_row = int(6 * scale) + 1
+                self.assertLess(max(delta[tail_row:]), 0.01,
+                                "the rim tail must end by 6 pt")
+
+    def test_corner_arc_rim_is_continuous(self):
+        # The rim must not fade to a dark side through the corner arc. Sample
+        # the first covered pixel around the top-left corner and require it to
+        # stay a bright rim at every angle.
+        w, h, scale = 966, 156, 2
+        out, _ = self.gpu.render(w, h, scale, solid=True)
+        alpha, tone = .253, .604
+        interior = 127 * (1 - alpha) + tone * 255 * alpha
+        radius = 27 * scale
+        values = []
+        for degrees in range(90, 181, 10):
+            angle = math.radians(degrees)
+            nx, ny = math.cos(angle), -math.sin(angle)
+            x = radius + radius * nx - nx * 0.5
+            y = radius - radius * math.sin(angle) - ny * 0.5
+            value = out[(round(y) * w + round(x)) * 4]
+            values.append((value - interior) / 255.0)
+        self.assertGreaterEqual(min(values), 0.4 * 0.397,
+                                f"the corner rim darkened: {values}")
+        # No monotonic bright-to-dark fade: the left side is as bright as the
+        # top, so the arc cannot end in a darker vertical outline.
+        self.assertLessEqual(abs(values[-1] - values[0]), 0.08)
+
+    def test_flat_edge_and_flat_side_lens_are_identity(self):
+        # The corner gate is exactly zero on a flat top/bottom edge and on a
+        # flat side, so the lens cannot warp the end caps.
+        w, h, scale = 966, 156, 2
+        lens, _ = self.gpu.render(w, h, scale)
+        plain, _ = self.gpu.render(w, h, scale, peak=0)
+        for name, (x, y) in {
+            "top": (w // 2, 2),
+            "bottom": (w // 2, h - 3),
+            "left": (2, h // 2),
+            "right": (w - 3, h // 2),
+        }.items():
+            with self.subTest(edge=name):
+                a = (y * w + x) * 4
+                self.assertEqual(lens[a:a + 3], plain[a:a + 3],
+                                 f"{name} lens is not an identity map")
+
+    def test_corner_lens_still_displaces_the_corner(self):
+        w, h, scale = 966, 156, 2
+        lens, _ = self.gpu.render(w, h, scale)
+        plain, _ = self.gpu.render(w, h, scale, peak=0)
+        # 15 pt inside the rim on the 45-degree diagonal (top-left corner).
+        radius = 27 * scale
+        inside = 15 * scale
+        point = radius - radius / math.sqrt(2) + inside / math.sqrt(2)
+        x = y = round(point)
+        a = (y * w + x) * 4
+        self.assertGreater(
+            max(abs(lens[a + c] - plain[a + c]) for c in range(3)), 20,
+            "the corner lens must still magnify the corner")
 
     def test_horizontal_rim_has_consistent_normal(self):
         out, _ = self.gpu.render(966, 156, 2, solid=True)

@@ -1517,11 +1517,12 @@ Item {
         // -- Glass plate and squircles (T-14.7j) ----------------------------
 
         function test_plate_is_a_layered_glass_not_a_flat_slab() {
-            // T198: the sampled path is compositor-painted. The QML plate
-            // layers are hidden there so the compositor's flat band, rim and
-            // corner lens are not duplicated. The unsupported path keeps the
-            // coherent shell-painted plate: a translucent fill, a bright
-            // inner top-edge rim, a hairline border, and a soft shadow.
+            // T198/T235a: the sampled path is compositor-painted. The QML
+            // plate layers are hidden there so the compositor's flat band, one
+            // full-perimeter rim and corner lens are not duplicated. The
+            // unsupported path keeps the coherent shell-painted plate: a
+            // translucent fill, one full-perimeter rim, concentric inner-glow
+            // strokes, and no outer shadow.
             var sampled = make(dockComponent, {
                 width: 400, height: 240,
                 materialBlurActive: true,
@@ -1532,8 +1533,8 @@ Item {
                    "the sampled plate does not repaint its tint");
             verify(!findChild(sampled, "dockRim").visible,
                    "the sampled plate does not repaint its rim");
-            verify(!findChild(sampled, "dockPlateShadow").visible,
-                   "the sampled plate does not repaint an outer shadow");
+            verify(findChild(sampled, "dockPlateShadow") === null,
+                   "the Dock never draws an outer shadow");
             verify(!findChild(sampled, "dockBorder").visible);
             sampled.destroy();
 
@@ -1546,26 +1547,43 @@ Item {
             var bar = findChild(dock, "dockBar");
             var rim = findChild(dock, "dockRim");
             var stroke = findChild(dock, "dockRimStroke");
-            var border = findChild(dock, "dockBorder");
-            var shadow = findChild(dock, "dockPlateShadow");
             verify(plate !== null && bar !== null && rim !== null);
-            verify(stroke !== null && border !== null && shadow !== null);
-            verify(bar.visible && rim.visible && shadow.visible && border.visible);
+            verify(stroke !== null);
+            verify(bar.visible && rim.visible);
+            verify(findChild(dock, "dockPlateShadow") === null,
+                   "the fallback has no outer shadow either");
 
             compare(bar.radius, Theme.controls.dock.radius);
             compare(bar.color, Theme.color.dockFallbackFill);
             fuzzyCompare(bar.opacity, Theme.material.dockFallbackOpacity, 0.0001);
-            // The rim is a stroked path along the interior edge, inset by half
-            // the stroke so no rim pixel leaves the plate (T-14.7z).
+            // The rim is one stroked full perimeter, inset by half the stroke
+            // so no rim pixel leaves the plate (T-14.7z, T235a).
             compare(stroke.strokeColor, Theme.color.dockRim);
             fuzzyCompare(stroke.strokeWidth,
                          Theme.controls.dock.plate.rimHeight, 0.0001);
             fuzzyCompare(rim.opacity, Theme.controls.dock.plate.rimOpacity, 0.0001);
+            fuzzyCompare(rim.width, plate.plateW - stroke.strokeWidth, 0.001);
             fuzzyCompare(rim.height, plate.plateH - stroke.strokeWidth, 0.001);
-            compare(border.border.width, Theme.controls.dock.plate.borderWidth);
-            compare(border.border.color, Theme.color.dockBorder);
-            fuzzyCompare(border.opacity, Theme.controls.dock.plate.borderOpacity, 0.0001);
-            compare(shadow.blur, Theme.controls.dock.plate.shadowBlur);
+            verify(!findChild(dock, "dockBorder").visible,
+                   "the normal fallback uses no dark border");
+
+            // The three glow strokes are full-perimeter and concentric.
+            var glowOuter = findChild(dock, "dockGlowOuter");
+            var glowMid = findChild(dock, "dockGlowMid");
+            var glowInner = findChild(dock, "dockGlowInner");
+            verify(glowOuter !== null && glowMid !== null && glowInner !== null);
+            fuzzyCompare(findChild(dock, "dockGlowOuterStroke").strokeWidth,
+                         Theme.controls.dock.plate.glowOuterHeight, 0.001);
+            fuzzyCompare(findChild(dock, "dockGlowMidStroke").strokeWidth,
+                         Theme.controls.dock.plate.glowMidHeight, 0.001);
+            fuzzyCompare(findChild(dock, "dockGlowInnerStroke").strokeWidth,
+                         Theme.controls.dock.plate.glowInnerHeight, 0.001);
+            fuzzyCompare(glowOuter.opacity,
+                         Theme.controls.dock.plate.glowOuterOpacity, 0.001);
+            fuzzyCompare(glowMid.opacity,
+                         Theme.controls.dock.plate.glowMidOpacity, 0.001);
+            fuzzyCompare(glowInner.opacity,
+                         Theme.controls.dock.plate.glowInnerOpacity, 0.001);
 
             // Pixel: the rim row reads brighter than the plate body just below
             // it, so there is a visible highlight rather than a flat fill.
@@ -1582,6 +1600,65 @@ Item {
             }
             verify(rimLuma > bodyLuma,
                    "the top rim must be brighter than the body");
+        }
+
+        function test_fallback_rim_is_uniform_on_every_edge() {
+            // T235a: the fallback approximates the sampled perimeter with one
+            // full-perimeter stroke. Its absolute additive delta cannot match
+            // the measured +0.397 on the opaque accessibility plate (whose
+            // body is already near-white); the sampled path is authoritative
+            // for that photometric threshold. This pins the property the
+            // fallback can guarantee: the same rim delta on every edge, with
+            // no darker side and no outer shadow.
+            var previous = Glass.rollout;
+            Glass.rollout = "replacement";
+            var backdrop = createTemporaryObject(backdropComponent, stage, {
+                x: 0, y: 0, width: stage.width, height: stage.height,
+                color: "#808080"
+            });
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                materialBlurActive: false,
+                entries: [ app("a", "A", true) ]
+            });
+            var rim = findChild(dock, "dockRim");
+            verify(rim !== null && rim.visible);
+            waitForRendering(stage);
+            var before = grabImage(stage);
+            rim.visible = false;
+            waitForRendering(stage);
+            var after = grabImage(stage);
+            rim.visible = true;
+            waitForRendering(stage);
+
+            var r = dock.panelRect;
+            var cx = Math.round(r.x + r.w / 2);
+            var cy = Math.round(r.y + r.h / 2);
+            var top = Math.round(r.y);
+            var bottom = Math.round(r.y + r.h) - 1;
+            var left = Math.round(r.x);
+            var right = Math.round(r.x + r.w) - 1;
+            var deltas = [
+                before.red(cx, top) - after.red(cx, top),
+                before.red(cx, bottom) - after.red(cx, bottom),
+                before.red(left, cy) - after.red(left, cy),
+                before.red(right, cy) - after.red(right, cy)
+            ];
+            var lowest = Math.min.apply(null, deltas);
+            var highest = Math.max.apply(null, deltas);
+            verify(lowest > 0, "the fallback rim is visible on every edge");
+            verify(highest - lowest <= 1,
+                   "the fallback rim is directional: " + deltas);
+
+            // No outer shadow: the backdrop one pixel above the plate keeps
+            // its exact value.
+            var outside = before.red(cx, top - 1);
+            verify(Math.abs(outside - 128) <= 1,
+                   "the Dock must not paint an outer shadow (got " + outside + ")");
+
+            dock.destroy();
+            backdrop.destroy();
+            Glass.rollout = previous;
         }
 
         function test_replacement_plate_uses_the_resolved_fallback_optics() {
@@ -1603,8 +1680,8 @@ Item {
                                        resolved.tint, 1));
             verify(bar.opacity >= 0.9, "the fallback must read as a material");
             verify(findChild(dock, "dockRim").visible);
-            verify(findChild(dock, "dockBorder").visible);
-            verify(findChild(dock, "dockPlateShadow").visible);
+            verify(findChild(dock, "dockGlowOuter").visible);
+            verify(findChild(dock, "dockPlateShadow") === null);
             dock.destroy();
             Glass.rollout = previous;
         }
@@ -1649,8 +1726,8 @@ Item {
             fuzzyCompare(bar.opacity, Theme.material.dockFallbackOpacity, 0.0001);
             verify(bar.opacity >= 0.8, "the fallback must read as a material");
             verify(findChild(dock, "dockRim") !== null);
-            verify(findChild(dock, "dockBorder") !== null);
-            verify(findChild(dock, "dockPlateShadow").visible);
+            verify(findChild(dock, "dockGlowOuter") !== null);
+            verify(findChild(dock, "dockPlateShadow") === null);
             var lightFallback = String(bar.color);
 
             // The fallback is scheme-aware, not a hardcoded gray.
@@ -2078,100 +2155,103 @@ Item {
                          Theme.controls.dock.hover.shadowOpacity, 0.001);
         }
 
-        function test_plate_rim_is_on_the_interior_edge() {
-            // The bright rim faces the screen interior on every Dock position,
-            // never the anchored edge.
-            var bottom = make(dockComponent, {
-                width: 1280, height: 240, position: "bottom",
-                entries: [ app("a", "A", true) ]
-            });
-            var bRim = findChild(bottom, "dockRim");
-            verify(bRim.width > bRim.height, "the bottom rim is horizontal");
-
-            var left = make(dockComponent, {
-                width: 240, height: 800, position: "left",
-                entries: [ app("a", "A", true) ]
-            });
-            var lRim = findChild(left, "dockRim");
-            var lPlate = findChild(left, "dockPlate");
-            verify(lRim.height > lRim.width, "the left rim is vertical");
-            fuzzyCompare(lRim.x + lRim.width, lPlate.plateX + lPlate.plateW, 1.5);
-
-            var right = make(dockComponent, {
-                width: 240, height: 800, position: "right",
-                entries: [ app("a", "A", true) ]
-            });
-            var rRim = findChild(right, "dockRim");
-            var rPlate = findChild(right, "dockPlate");
-            verify(rRim.height > rRim.width, "the right rim is vertical");
-            fuzzyCompare(rRim.x, rPlate.plateX, 1.5);
+        function test_plate_rim_is_one_full_perimeter_on_every_orientation() {
+            // T235a: the rim is one continuous full-perimeter stroke, not an
+            // interior-edge-only path. It is orientation-agnostic: the same
+            // box (plate minus the stroke) on a bottom, left and right Dock.
+            var positions = ["bottom", "left", "right"];
+            for (var i = 0; i < positions.length; ++i) {
+                var position = positions[i];
+                var dock = make(dockComponent, {
+                    width: 1280, height: 800, position: position,
+                    entries: [ app("a", "A", true) ]
+                });
+                var rim = findChild(dock, "dockRim");
+                var plate = findChild(dock, "dockPlate");
+                var stroke = findChild(dock, "dockRimStroke");
+                verify(rim !== null, position + " rim exists");
+                fuzzyCompare(rim.width, plate.plateW - stroke.strokeWidth, 0.001,
+                             position + " rim spans the full width");
+                fuzzyCompare(rim.height, plate.plateH - stroke.strokeWidth, 0.001,
+                             position + " rim spans the full height");
+                // No directional layers survive.
+                verify(findChild(dock, "dockTopGlow") === null, position);
+                verify(findChild(dock, "dockBottomGlow") === null, position);
+                verify(findChild(dock, "dockBottomRim") === null, position);
+                verify(findChild(dock, "dockEdge") === null, position);
+            }
         }
 
-        // The reference plate is glass, not a slab: a soft interior gloss band
-        // under the hairline rim and a bright lip along the anchored edge
-        // (Dock_Tile_Mouseover.png, T-14.7aa).
-        function test_plate_has_a_gloss_band_and_an_anchored_edge_lip() {
-            var bottom = make(dockComponent, {
-                width: 1280, height: 240, position: "bottom",
-                entries: [ app("a", "A", true) ]
-            });
-            var gloss = findChild(bottom, "dockGloss");
-            var glossStroke = findChild(bottom, "dockGlossStroke");
-            verify(gloss !== null && glossStroke !== null, "the gloss band exists");
-            fuzzyCompare(gloss.opacity, Theme.controls.dock.plate.glossOpacity, 0.001);
-            fuzzyCompare(glossStroke.strokeWidth,
-                         Theme.controls.dock.plate.glossHeight, 0.001);
-            compare(glossStroke.strokeColor, Theme.color.dockRim);
-            var edge = findChild(bottom, "dockEdge");
-            verify(edge !== null, "the anchored-edge lip exists");
-            fuzzyCompare(edge.opacity, Theme.controls.dock.plate.edgeOpacity, 0.001);
-            compare(edge.color, Theme.color.dockRim);
-            fuzzyCompare(edge.height, Theme.controls.dock.plate.edgeHeight, 0.001);
-            verify(edge.width > 0 && edge.width < bottom.panelRect.w);
-            // The lip hugs the anchored (bottom) edge, inset past the corners.
-            // The plate group's origin is the plate itself on a bottom Dock,
-            // so the lip's local y is the plate height.
-            fuzzyCompare(edge.y + edge.height, bottom.panelRect.h, 0.001);
-            fuzzyCompare(edge.x, Theme.controls.dock.radius, 0.001);
-
-            var left = make(dockComponent, {
-                width: 240, height: 800, position: "left",
-                entries: [ app("a", "A", true) ]
-            });
-            var lEdge = findChild(left, "dockEdge");
-            fuzzyCompare(lEdge.width, Theme.controls.dock.plate.edgeHeight, 0.001);
-            fuzzyCompare(lEdge.x, left.panelRect.x, 0.001);
-            fuzzyCompare(lEdge.height,
-                         left.panelRect.h - 2 * Theme.controls.dock.radius, 0.001);
+        // T235a: the fallback approximates the sampled perimeter with one
+        // full-perimeter rim plus concentric inner-glow strokes. There is no
+        // anchored-edge lip and no directional lift.
+        function test_plate_has_full_perimeter_glow_strokes() {
+            var positions = ["bottom", "left", "right"];
+            for (var i = 0; i < positions.length; ++i) {
+                var position = positions[i];
+                var dock = make(dockComponent, {
+                    width: 1280, height: 800, position: position,
+                    materialBlurActive: false,
+                    entries: [ app("a", "A", true) ]
+                });
+                var outer = findChild(dock, "dockGlowOuter");
+                var mid = findChild(dock, "dockGlowMid");
+                var inner = findChild(dock, "dockGlowInner");
+                verify(outer !== null && mid !== null && inner !== null,
+                       position + " glow strokes exist");
+                verify(outer.visible && mid.visible && inner.visible,
+                       position + " glow strokes are visible");
+                compare(findChild(dock, "dockGlowOuterStroke").strokeColor,
+                        Theme.color.dockRim, position);
+                fuzzyCompare(outer.opacity,
+                             Theme.controls.dock.plate.glowOuterOpacity, 0.001);
+                fuzzyCompare(mid.opacity,
+                             Theme.controls.dock.plate.glowMidOpacity, 0.001);
+                fuzzyCompare(inner.opacity,
+                             Theme.controls.dock.plate.glowInnerOpacity, 0.001);
+                // Each glow follows the full plate silhouette, not one edge.
+                var plate = findChild(dock, "dockPlate");
+                fuzzyCompare(outer.width, plate.plateW
+                             - Theme.controls.dock.plate.glowOuterHeight, 0.001);
+                fuzzyCompare(outer.height, plate.plateH
+                             - Theme.controls.dock.plate.glowOuterHeight, 0.001);
+            }
         }
 
-        // The plate perimeter is directional: a top lift, a wider bottom lift,
-        // and a bottom rim that follows the two bottom corner arcs. The
-        // sampled path paints the same terms in the compositor shader; this
-        // pins the shell fallback.
-        function test_plate_has_directional_perimeter_treatment() {
+        // T235a: the directional perimeter is gone from the fallback: no top
+        // or bottom lift, no bottom-only rim, no anchored-edge lip and no
+        // double-painted bottom centre.
+        function test_plate_fallback_has_no_directional_perimeter() {
             var bottom = make(dockComponent, {
                 width: 1280, height: 240, position: "bottom",
                 materialBlurActive: false,
                 entries: [ app("a", "A", true) ]
             });
-            var topGlow = findChild(bottom, "dockTopGlow");
-            var bottomGlow = findChild(bottom, "dockBottomGlow");
-            var bottomRim = findChild(bottom, "dockBottomRim");
-            verify(topGlow !== null && bottomGlow !== null && bottomRim !== null);
-            verify(topGlow.visible && bottomGlow.visible && bottomRim.visible);
-            compare(findChild(bottom, "dockBottomRimStroke").strokeColor,
-                    Theme.color.dockRim);
-            fuzzyCompare(bottomRim.opacity,
-                         Theme.controls.dock.plate.edgeOpacity, 0.001);
+            verify(findChild(bottom, "dockTopGlow") === null);
+            verify(findChild(bottom, "dockBottomGlow") === null);
+            verify(findChild(bottom, "dockBottomRim") === null);
+            verify(findChild(bottom, "dockEdge") === null);
+            // One rim and one set of glow strokes: no second bottom stroke.
+            var rim = findChild(bottom, "dockRim");
+            verify(rim.visible);
+            var strokes = 0;
+            var plate = findChild(bottom, "dockPlate");
+            for (var i = 0; i < plate.children.length; ++i) {
+                var child = plate.children[i];
+                if (child.objectName === "dockRim")
+                    ++strokes;
+            }
+            compare(strokes, 1, "the bottom centre is painted once");
 
             var left = make(dockComponent, {
                 width: 240, height: 800, position: "left",
                 materialBlurActive: false,
                 entries: [ app("a", "A", true) ]
             });
-            verify(!findChild(left, "dockBottomRim").visible,
-                   "the bottom rim is bottom-Dock only");
+            verify(findChild(left, "dockRim").visible,
+                   "the left Dock has the same full perimeter");
+            verify(findChild(left, "dockGlowOuter").visible,
+                   "the left Dock has the same glow");
         }
 
         // -- T-14.7z plate corners and frost alignment -----------------------

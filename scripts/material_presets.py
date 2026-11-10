@@ -370,16 +370,6 @@ def validate(data: dict) -> list[str]:
                 _number(entry, "cornerLensPeak", scheme_path, errors, low=0.0, high=64.0)
                 _number(entry, "cornerLensDistance", scheme_path, errors, low=0.1, high=64.0)
                 _number(entry, "cornerLensTail", scheme_path, errors, low=1.0, high=128.0)
-            # The Dock plate's directional perimeter: the vertical sides are
-            # darker than the top/bottom edges, and the lower edge lifts toward
-            # white over a short gradient. These are signed/additive terms, so
-            # they are validated separately from the unsigned rim peak.
-            if name == "dock":
-                _number(entry, "edgeSide", scheme_path, errors, low=-1.0, high=1.0)
-                _number(entry, "topGlow", scheme_path, errors, low=0.0, high=1.0)
-                _number(entry, "topGlowHeight", scheme_path, errors, low=0.0, high=32.0)
-                _number(entry, "bottomGlow", scheme_path, errors, low=0.0, high=1.0)
-                _number(entry, "bottomGlowHeight", scheme_path, errors, low=0.0, high=32.0)
 
     # The measured File anchors are the light attached-menu calibration. A
     # mismatch here would silently move the slider midpoint off the measured
@@ -502,11 +492,6 @@ def resolve(
             "edge": 0.0,
             "edgeWidth": 0.0,
             "edgeTail": 0.0,
-            "edgeSide": 0.0,
-            "topGlow": 0.0,
-            "topGlowHeight": 0.0,
-            "bottomGlow": 0.0,
-            "bottomGlowHeight": 0.0,
             "sharpFraction": 0.0,
             "cornerLensPeak": 0.0,
             "cornerLensDistance": 0.0,
@@ -529,11 +514,6 @@ def resolve(
         edge_width = 0.0
         foreground = 0.0
         edge_tail = 0.0
-        edge_side = 0.0
-        top_glow = 0.0
-        top_glow_height = 0.0
-        bottom_glow = 0.0
-        bottom_glow_height = 0.0
         sharp_fraction = 0.0
         corner_lens_peak = 0.0
         corner_lens_distance = 0.0
@@ -552,11 +532,6 @@ def resolve(
         edge_width = float(entry["edgeWidth"])
         foreground = float(entry["foreground"])
         edge_tail = float(entry.get("edgeTail", 0.0))
-        edge_side = float(entry.get("edgeSide", 0.0))
-        top_glow = float(entry.get("topGlow", 0.0))
-        top_glow_height = float(entry.get("topGlowHeight", 0.0))
-        bottom_glow = float(entry.get("bottomGlow", 0.0))
-        bottom_glow_height = float(entry.get("bottomGlowHeight", 0.0))
         sharp_fraction = float(entry.get("sharpFraction", 0.0))
         corner_lens_peak = float(entry.get("cornerLensPeak", 0.0))
         corner_lens_distance = float(entry.get("cornerLensDistance", 0.0))
@@ -665,11 +640,6 @@ def resolve(
         "edge": edge,
         "edgeWidth": edge_width,
         "edgeTail": edge_tail,
-        "edgeSide": edge_side,
-        "topGlow": top_glow,
-        "topGlowHeight": top_glow_height,
-        "bottomGlow": bottom_glow,
-        "bottomGlowHeight": bottom_glow_height,
         "sharpFraction": sharp_fraction,
         "cornerLensPeak": corner_lens_peak,
         "cornerLensDistance": corner_lens_distance,

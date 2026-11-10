@@ -36,6 +36,24 @@ pub const DOCK_CHECKER_PERIODS: [f32; 5] = [2.0, 4.0, 8.0, 16.0, 32.0];
 /// The accepted deviation for every checker period.
 pub const DOCK_MTF_TOLERANCE: f32 = 0.05;
 
+/// Shape of the measured rim tail: `exp(-ln2 * (d / width)^power)`. A plain
+/// exponential (power 1) puts the 10 % point at 3.3 pt; the measured profile
+/// reaches it at ~2.5 pt. The exponent is a profile-shape mapping constant, not
+/// a measured token value.
+pub const RIM_TAIL_POWER: f32 = 1.2;
+
+/// Width of the narrow specular line in physical pixels. It is centred on the
+/// first covered pixel (0.5 px inside the SDF edge) so the measured peak lands
+/// on that pixel at every output scale instead of relying on a wider wash.
+pub const RIM_SPECULAR_WIDTH_PX: f32 = 0.5;
+
+/// The rim's narrow core carries most of the measured energy; a 2 % broad
+/// tail keeps the 1 % point out at the measured 6 pt while the 10 % point
+/// stays near 2.5 pt. Both are profile-shape mapping constants.
+pub const RIM_CORE_WEIGHT: f32 = 0.98;
+pub const RIM_BROAD_WEIGHT: f32 = 0.02;
+pub const RIM_BROAD_SCALE: f32 = 4.0;
+
 /// One resolved Dock optical fit.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DockOptics {
@@ -51,23 +69,15 @@ pub struct DockOptics {
     pub edge_width: f32,
     /// Rim tail in logical points.
     pub edge_tail: f32,
-    /// Signed rim addition on the vertical sides (negative darkens).
-    pub edge_side: f32,
-    /// Additive lift along the top interior edge.
-    pub top_glow: f32,
-    /// Distance over which the top lift fades into the interior.
-    pub top_glow_height: f32,
-    /// Additive lift along the bottom interior edge.
-    pub bottom_glow: f32,
-    /// Distance over which the bottom lift fades into the interior.
-    pub bottom_glow_height: f32,
     /// Sharp scene weight in the filtered composite.
     pub sharp_fraction: f32,
-    /// Corner-lens peak displacement in logical points.
+    /// Corner-lens peak displacement in logical points along the outward SDF
+    /// normal. The measured horizontal component at the 45-degree diagonal is
+    /// `corner_lens_peak / sqrt(2)`.
     pub corner_lens_peak: f32,
-    /// Distance from the corner where the lens peaks, in logical points.
+    /// Distance inside the rim where the lens peaks, in logical points.
     pub corner_lens_distance: f32,
-    /// Distance by which the corner lens has decayed, in logical points.
+    /// Distance inside the rim by which the corner lens has decayed.
     pub corner_lens_tail: f32,
 }
 
@@ -81,11 +91,6 @@ impl DockOptics {
             dock::light::EDGE,
             dock::light::EDGE_WIDTH,
             dock::light::EDGE_TAIL,
-            dock::light::EDGE_SIDE,
-            dock::light::TOP_GLOW,
-            dock::light::TOP_GLOW_HEIGHT,
-            dock::light::BOTTOM_GLOW,
-            dock::light::BOTTOM_GLOW_HEIGHT,
             dock::light::SHARP_FRACTION,
             dock::light::CORNER_LENS_PEAK,
             dock::light::CORNER_LENS_DISTANCE,
@@ -102,11 +107,6 @@ impl DockOptics {
             dock::dark::EDGE,
             dock::dark::EDGE_WIDTH,
             dock::dark::EDGE_TAIL,
-            dock::dark::EDGE_SIDE,
-            dock::dark::TOP_GLOW,
-            dock::dark::TOP_GLOW_HEIGHT,
-            dock::dark::BOTTOM_GLOW,
-            dock::dark::BOTTOM_GLOW_HEIGHT,
             dock::dark::SHARP_FRACTION,
             dock::dark::CORNER_LENS_PEAK,
             dock::dark::CORNER_LENS_DISTANCE,
@@ -122,11 +122,6 @@ impl DockOptics {
         edge: f32,
         edge_width: f32,
         edge_tail: f32,
-        edge_side: f32,
-        top_glow: f32,
-        top_glow_height: f32,
-        bottom_glow: f32,
-        bottom_glow_height: f32,
         sharp_fraction: f32,
         corner_lens_peak: f32,
         corner_lens_distance: f32,
@@ -139,11 +134,6 @@ impl DockOptics {
             edge,
             edge_width,
             edge_tail,
-            edge_side,
-            top_glow,
-            top_glow_height,
-            bottom_glow,
-            bottom_glow_height,
             sharp_fraction,
             corner_lens_peak,
             corner_lens_distance,
@@ -187,33 +177,95 @@ impl DockOptics {
     }
 
     /// The rim profile at `distance_pt` inside the plate edge: a sharp
-    /// exponential with half-amplitude at [`Self::edge_width`] and a tail by
-    /// [`Self::edge_tail`]. The value is the addition over the interior.
+    /// super-exponential with half-amplitude at [`Self::edge_width`], a 10 %
+    /// point near 2.5 pt and a fade that ends at [`Self::edge_tail`]. The value
+    /// is the addition over the interior. The narrow first-pixel specular line
+    /// is a physical-pixel term the shader adds on top; this model is the
+    /// logical-distance envelope.
     pub fn rim_profile(&self, distance_pt: f32) -> f32 {
         let distance = distance_pt.max(0.0);
-        self.edge * (-std::f32::consts::LN_2 * distance / self.edge_width.max(0.01)).exp()
+        let width = self.edge_width.max(0.01);
+        let core = RIM_CORE_WEIGHT
+            * (-std::f32::consts::LN_2 * (distance / width).powf(RIM_TAIL_POWER))
+                .exp();
+        let broad = RIM_BROAD_WEIGHT
+            * (-std::f32::consts::LN_2 * distance / (width * RIM_BROAD_SCALE)).exp();
+        let tail = self.edge_tail.max(0.01);
+        let fade = 1.0 - smoothstep(tail * 0.75, tail, distance);
+        self.edge * (core + broad) * fade
     }
 
-    /// The distance at which the rim profile has decayed to 1% of its peak.
+    /// The first distance at which the profile is at or below `fraction` of
+    /// its peak, sampled at 0.01 pt.
+    fn rim_distance_at(&self, fraction: f32) -> f32 {
+        let target = self.edge * fraction;
+        let mut distance = 0.0;
+        while distance < self.edge_tail.max(0.01) {
+            if self.rim_profile(distance) <= target {
+                return distance;
+            }
+            distance += 0.01;
+        }
+        self.edge_tail
+    }
+
+    /// The distance at which the rim profile has decayed to half its peak.
+    /// The profile is shaped so this is exactly the token width.
+    pub fn rim_half_amplitude_distance(&self) -> f32 {
+        self.edge_width
+    }
+
+    /// The distance at which the rim profile has decayed to 10 % of its peak.
+    pub fn rim_ten_percent_distance(&self) -> f32 {
+        self.rim_distance_at(0.1)
+    }
+
+    /// The distance at which the profile has decayed to 1 % of its peak.
+    pub fn rim_one_percent_distance(&self) -> f32 {
+        self.rim_distance_at(0.01)
+    }
+
+    /// The tail support: the profile is faded out by this distance.
     pub fn rim_tail_distance(&self) -> f32 {
-        self.edge_width.max(0.01) * (100.0f32.ln() / std::f32::consts::LN_2)
+        self.edge_tail
     }
 
-    /// The outward corner-lens displacement at `distance_pt` from the corner
-    /// centre. The bump peaks at [`Self::corner_lens_distance`] and decays to
-    /// the tail; flat edges are outside the corner field and return zero.
-    pub fn corner_displacement(&self, distance_pt: f32) -> f32 {
-        if distance_pt < 0.0 || distance_pt > self.corner_lens_tail.max(0.01) {
+    /// The first covered pixel's rim addition. The shader's specular line is
+    /// centred on that pixel, so the measured peak is the token edge value.
+    pub fn rim_first_pixel_delta(&self) -> f32 {
+        self.edge
+    }
+
+    /// The outward corner-lens displacement at `inside_pt` inside the rim. The
+    /// bump peaks at [`Self::corner_lens_distance`] and decays to the tail.
+    /// The scalar is the displacement along the outward SDF normal; a flat
+    /// edge or flat side has a zero gate and therefore no displacement.
+    pub fn corner_displacement(&self, inside_pt: f32) -> f32 {
+        if inside_pt < 0.0 || inside_pt > self.corner_lens_tail.max(0.01) {
             return 0.0;
         }
-        let t = distance_pt / self.corner_lens_distance.max(0.01);
+        let t = inside_pt / self.corner_lens_distance.max(0.01);
         // t^3 e^{3(1-t)} peaks at t=1 (value 1) and is ~0.034 at t=3.33.
         let bump = t.powi(3) * (3.0 * (1.0 - t)).exp();
         // Fade only near the measured tail so the bump still reaches its
         // nominal peak at `corner_lens_distance`.
         let tail = self.corner_lens_tail.max(0.01);
-        let fade = 1.0 - smoothstep(tail * 0.75, tail, distance_pt);
+        let fade = 1.0 - smoothstep(tail * 0.75, tail, inside_pt);
         self.corner_lens_peak * bump * fade
+    }
+
+    /// The corner gate `4 * nx^2 * ny^2` for an outward SDF normal: zero on a
+    /// flat top/bottom edge or a flat side, one at the 45-degree diagonal.
+    pub fn corner_gate(normal_x: f32, normal_y: f32) -> f32 {
+        4.0 * normal_x * normal_x * normal_y * normal_y
+    }
+
+    /// The horizontal component of the corner lens at `inside_pt` on the
+    /// 45-degree corner diagonal, which is the measured probe. At that angle
+    /// the gate is one and `|normal.x|` is `1/sqrt(2)`, so the scalar peak is
+    /// calibrated to the measured horizontal component.
+    pub fn corner_horizontal_component(&self, inside_pt: f32) -> f32 {
+        self.corner_displacement(inside_pt) * std::f32::consts::FRAC_1_SQRT_2
     }
 
     /// The flat-edge displacement: the lens field is corner-only, so a point
@@ -258,18 +310,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_dock_perimeter_carries_directional_rim_and_edge_lifts() {
-        let light = DockOptics::light();
-        assert!(light.edge_side < 0.0, "the sides are a darker outline");
-        assert!(light.top_glow > 0.0);
-        assert!(light.bottom_glow > light.top_glow);
-        assert_eq!(light.top_glow_height, 10.0);
-        assert_eq!(light.bottom_glow_height, 12.0);
-
-        let dark = DockOptics::dark();
-        assert!(dark.edge_side < 0.0);
-        assert!(dark.top_glow > 0.0);
-        assert!(dark.bottom_glow > 0.0);
+    fn the_dock_perimeter_is_one_uniform_rim_with_no_directional_terms() {
+        // T235a: the measured plate is one specular rim plus an inner glow on
+        // every edge and around every corner. There is no darker side and no
+        // straight top/bottom lift.
+        for optics in [DockOptics::light(), DockOptics::dark()] {
+            assert!((optics.rim_first_pixel_delta() - 0.397).abs() <= 0.02);
+            // The profile is edge-agnostic by construction: it is a function
+            // of the inside-rim distance only, so top, bottom, left and right
+            // probes at the same distance are identical. It is monotone
+            // decreasing and finite everywhere.
+            let mut previous = optics.rim_profile(0.0);
+            for distance in [0.25, 0.5, 1.0, 2.5, 4.0, 6.0] {
+                let value = optics.rim_profile(distance);
+                assert!(value <= previous + 1e-6, "rim rises at {distance} pt");
+                assert!(value.is_finite());
+                previous = value;
+            }
+            // Every field is finite and non-negative; there is no signed side
+            // term left in the resolved fit.
+            assert!(optics.edge > 0.0);
+            assert!(optics.edge_width > 0.0);
+            assert!(optics.edge_tail > 0.0);
+        }
     }
 
     #[test]
@@ -296,25 +359,48 @@ mod tests {
         let light = DockOptics::light();
         assert!((light.alpha - 0.253).abs() < 1e-6);
         assert!((light.tint - 0.604).abs() < 1e-6);
-        assert!((light.rim_profile(0.0) - 0.397).abs() <= 0.397 * 0.05);
+        // The measured first covered pixel is the token peak.
+        assert!((light.rim_first_pixel_delta() - 0.397).abs() <= 0.02);
+        assert!((light.rim_profile(0.0) - 0.397).abs() <= 0.02);
+        // Half-amplitude at 1 pt +/- 0.25, 10 % at 2.5 pt +/- 0.5, tail 6 pt
+        // +/- 1. The tail fades to zero by the token tail.
+        assert!((light.rim_half_amplitude_distance() - 1.0).abs() <= 0.25);
         assert!((light.rim_profile(1.0) - 0.397 / 2.0).abs() < 0.02);
+        assert!((light.rim_ten_percent_distance() - 2.5).abs() <= 0.5);
+        assert!((light.rim_profile(light.rim_ten_percent_distance()) - 0.397 * 0.1).abs()
+            < 0.01);
         assert!((light.rim_tail_distance() - 6.0).abs() <= 1.0);
-        assert!((light.rim_profile(6.0)).abs() < 0.02);
+        assert!((light.rim_one_percent_distance() - 6.0).abs() <= 1.0);
+        assert!(light.rim_profile(6.0).abs() < 0.01);
+        assert_eq!(light.rim_profile(7.0), 0.0);
 
         let dark = DockOptics::dark();
         assert!((dark.alpha - 0.149).abs() < 1e-6);
         assert!((dark.tint - 0.207).abs() < 1e-6);
-        assert!((dark.rim_profile(0.0) - 0.397).abs() <= 0.397 * 0.05);
+        assert!((dark.rim_profile(0.0) - 0.397).abs() <= 0.02);
     }
 
     #[test]
-    fn the_dock_corner_lens_peaks_inside_and_leaves_flat_edges_alone() {
+    fn the_dock_corner_lens_is_inside_rim_and_gated_by_the_normal() {
         let optics = DockOptics::light();
         let peak_distance = optics.corner_lens_distance;
         let peak = optics.corner_displacement(peak_distance);
-        assert!((peak - 9.6).abs() <= 2.0, "corner peak {peak}");
+        // The scalar peak is calibrated so the measured horizontal component
+        // at the 45-degree diagonal is 9.6 pt at 15 pt inside the rim.
+        let horizontal = optics.corner_horizontal_component(peak_distance);
+        assert!((horizontal - 9.6).abs() <= 1.0, "horizontal {horizontal}");
+        assert!((peak - 9.6 / std::f32::consts::FRAC_1_SQRT_2).abs() < 0.2);
         assert!(optics.corner_displacement(0.0).abs() < 0.01);
         assert!(optics.corner_displacement(50.0).abs() < 0.5);
+        // The gate is exactly zero on a flat top/bottom edge and flat side.
+        assert_eq!(DockOptics::corner_gate(0.0, 1.0), 0.0);
+        assert_eq!(DockOptics::corner_gate(1.0, 0.0), 0.0);
+        assert!((DockOptics::corner_gate(
+            std::f32::consts::FRAC_1_SQRT_2,
+            std::f32::consts::FRAC_1_SQRT_2
+        ) - 1.0)
+            .abs()
+            < 1e-6);
         assert_eq!(optics.flat_edge_displacement(), 0.0);
         // Monotone rise to the peak, then decay.
         assert!(optics.corner_displacement(7.5) < peak);

@@ -146,11 +146,6 @@ uniform float flat_alpha;
 uniform float rim_peak;
 uniform float rim_half_width;
 uniform float rim_tail;
-uniform float rim_side;
-uniform float top_glow;
-uniform float top_glow_height;
-uniform float bottom_glow;
-uniform float bottom_glow_height;
 uniform float corner_peak;
 uniform float corner_distance;
 uniform float corner_tail;
@@ -187,29 +182,24 @@ void main() {
 
     vec2 uv = v_coords;
     if (flat_band > 0.5) {
-        // Corner-only lens: the distance to the nearest rounded-corner centre
-        // drives a bump that peaks 15 pt in and decays by 50 pt. A flat-edge
-        // midpoint is far outside the corner field, so it does not bend.
-        vec2 corner_delta = abs(p) - half_size;
-        // Reject outside the finite support before length/pow/exp. Besides
-        // avoiding invalid far-field arithmetic, the broad flat middle needs
-        // no corner-lens square root or exponential at all.
-        if (corner_peak > 0.0 && max(abs(corner_delta.x), abs(corner_delta.y)) < corner_tail) {
-            float corner_distance_px = length(corner_delta);
-            if (corner_distance_px < corner_tail) {
-                float t = corner_distance_px / max(corner_distance, 1.0);
+        // Corner-only lens (T235a). The field is parameterized by the measured
+        // coordinate: distance *inside* the rounded rim. The outward SDF
+        // normal supplies the direction, and `4*nx^2*ny^2` is the corner gate:
+        // exactly zero on a flat top/bottom edge (normal (0,1)) and on a flat
+        // side (normal (1,0)), one at the 45-degree corner diagonal. That
+        // keeps the flat ends of a short Dock unbent without a hard distance
+        // gate. The displacement is sampled inward (`-normal`) so the backdrop
+        // reads magnified.
+        if (corner_peak > 0.0 && inside < corner_tail) {
+            float corner_gate = 4.0 * rim_normal.x * rim_normal.x
+                              * rim_normal.y * rim_normal.y;
+            if (corner_gate > 0.0) {
+                float t = inside / max(corner_distance, 1.0);
                 float bump = t * t * t * exp(3.0 * (1.0 - t));
-                float fade = 1.0 - smoothstep(corner_tail * 0.75, max(corner_tail, 1.0), corner_distance_px);
-                // Blend the interior's centre-directed bend into the exact
-                // corner normal at the perimeter. Switching directions at
-                // ol == 0 causes visible jumps as a fractional-scale corner
-                // crosses a pixel centre. Normalize safely, including p == 0.
-                vec2 centre_direction = p / max(length(p), 1e-5);
-                vec2 edge_direction = outside * sign(p) / max(ol, 1e-5);
-                vec2 direction = mix(centre_direction, edge_direction,
-                    smoothstep(0.0, max(glass_radius, 1.0), ol));
-                direction /= max(length(direction), 1e-5);
-                uv -= direction * (corner_peak * bump * fade) * uv_per_px;
+                float fade = 1.0 - smoothstep(corner_tail * 0.75,
+                                              max(corner_tail, 1.0), inside);
+                uv -= rim_normal * (corner_peak * bump * fade * corner_gate)
+                      * uv_per_px;
             }
         }
     } else {
@@ -225,27 +215,27 @@ void main() {
 
     if (flat_band > 0.5) {
         // Measured flat band: mix the filtered composite toward the neutral
-        // tint level, then add the sharp rim profile. The exponential has its
-        // half-amplitude at `rim_half_width` and a ~6 pt tail.
+        // tint level, then add one uniform specular rim. The rim is the same
+        // on every edge and around every corner: there is no vertical mix, no
+        // darker side and no straight top/bottom lift.
         color.rgb = mix(color.rgb, tint_color, clamp(flat_alpha, 0.0, 1.0));
 
-        // Directional rim: the horizontal (top/bottom) edges catch the light,
-        // while the vertical sides sit in a darker outline. `rim_normal` is the
-        // outward SDF normal, so abs(rim_normal.y) is 1 on the horizontal edges
-        // and 0 on the sides; the corners blend continuously.
-        float vertical = abs(rim_normal.y);
-        float rim_strength = mix(rim_side, rim_peak, vertical);
-        float rim = rim_strength * exp(-0.693147 * inside / max(rim_half_width, 1.0));
-        float rim_fade = 1.0 - smoothstep(rim_tail * 0.75, max(rim_tail, 1.0), inside);
+        // The measured LUT is a 1 px specular line plus an exponential tail.
+        // The line is centered on the first covered physical pixel (0.5 px
+        // inside the SDF edge), so the first-pixel delta is the token peak at
+        // every output scale. The tail is a narrow core (half-amplitude at the
+        // token width, slightly super-exponential so the 10 % point lands near
+        // 2.5 pt) plus a 2 % broad shoulder that carries the measured 1 %
+        // point out to the 6 pt tail.
+        float rim_line = exp(-2.7725887 * (inside - 0.5) * (inside - 0.5));
+        float rim_core = 0.98 * exp(-0.693147
+            * pow(inside / max(rim_half_width, 1.0), 1.2));
+        float rim_broad = 0.02 * exp(-0.693147
+            * inside / max(rim_half_width * 4.0, 1.0));
+        float rim = rim_peak * max(rim_line, rim_core + rim_broad);
+        float rim_fade = 1.0 - smoothstep(rim_tail * 0.75,
+                                          max(rim_tail, 1.0), inside);
         color.rgb += vec3(rim * rim_fade);
-
-        // Interior edge lifts: a narrow top gradient and a slightly wider
-        // bottom brightening that fades into the flat centre.
-        float from_top = p.y + glass_size.y * 0.5;
-        float top = top_glow * (1.0 - smoothstep(0.0, max(top_glow_height, 1.0), from_top));
-        float from_bottom = glass_size.y * 0.5 - p.y;
-        float bottom = bottom_glow * (1.0 - smoothstep(0.0, max(bottom_glow_height, 1.0), from_bottom));
-        color.rgb += vec3(top + bottom);
     } else {
         // Adaptive tint: 3x3 mean luminance of the blurred backdrop.
         vec3 mean = vec3(0.0);
@@ -427,16 +417,6 @@ pub const GLASS_RIM_PEAK_UNIFORM: &str = "rim_peak";
 pub const GLASS_RIM_HALF_UNIFORM: &str = "rim_half_width";
 /// T198: rim tail (physical px).
 pub const GLASS_RIM_TAIL_UNIFORM: &str = "rim_tail";
-/// Directional rim addition on the vertical sides (negative darkens).
-pub const GLASS_RIM_SIDE_UNIFORM: &str = "rim_side";
-/// Additive lift along the top interior edge.
-pub const GLASS_TOP_GLOW_UNIFORM: &str = "top_glow";
-/// Distance over which the top lift fades into the interior (physical px).
-pub const GLASS_TOP_GLOW_HEIGHT_UNIFORM: &str = "top_glow_height";
-/// Additive lift along the bottom interior edge.
-pub const GLASS_BOTTOM_GLOW_UNIFORM: &str = "bottom_glow";
-/// Distance over which the bottom lift fades into the interior (physical px).
-pub const GLASS_BOTTOM_GLOW_HEIGHT_UNIFORM: &str = "bottom_glow_height";
 /// T198: corner-lens peak displacement (physical px).
 pub const GLASS_CORNER_PEAK_UNIFORM: &str = "corner_peak";
 /// T198: corner-lens peak distance (physical px).
@@ -508,7 +488,7 @@ pub fn blur_uniform_names() -> [UniformName<'static>; 2] {
 
 /// The additional uniform descriptors [`GLASS_SHADER`] declares, passed to
 /// `GlesRenderer::compile_custom_texture_shader`.
-pub fn glass_uniform_names() -> [UniformName<'static>; 25] {
+pub fn glass_uniform_names() -> [UniformName<'static>; 20] {
     [
         UniformName::new(GLASS_SIZE_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_RADIUS_UNIFORM, UniformType::_1f),
@@ -524,11 +504,6 @@ pub fn glass_uniform_names() -> [UniformName<'static>; 25] {
         UniformName::new(GLASS_RIM_PEAK_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_RIM_HALF_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_RIM_TAIL_UNIFORM, UniformType::_1f),
-        UniformName::new(GLASS_RIM_SIDE_UNIFORM, UniformType::_1f),
-        UniformName::new(GLASS_TOP_GLOW_UNIFORM, UniformType::_1f),
-        UniformName::new(GLASS_TOP_GLOW_HEIGHT_UNIFORM, UniformType::_1f),
-        UniformName::new(GLASS_BOTTOM_GLOW_UNIFORM, UniformType::_1f),
-        UniformName::new(GLASS_BOTTOM_GLOW_HEIGHT_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_CORNER_PEAK_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_CORNER_DISTANCE_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_CORNER_TAIL_UNIFORM, UniformType::_1f),
@@ -678,17 +653,9 @@ pub struct GlassSpec {
     pub rim_half_width: f32,
     /// T198: rim tail in logical pixels.
     pub rim_tail: f32,
-    /// Directional rim addition on the vertical sides (negative darkens).
-    pub rim_side: f32,
-    /// Additive lift along the top interior edge.
-    pub top_glow: f32,
-    /// Distance over which the top lift fades into the interior.
-    pub top_glow_height: f32,
-    /// Additive lift along the bottom interior edge.
-    pub bottom_glow: f32,
-    /// Distance over which the bottom lift fades into the interior.
-    pub bottom_glow_height: f32,
-    /// T198: corner-lens peak displacement in logical pixels.
+    /// T198: corner-lens peak displacement in logical pixels along the
+    /// outward SDF normal. The measured horizontal component at the 45-degree
+    /// corner diagonal is `peak * sqrt(1/2)`.
     pub corner_peak: f32,
     /// T198: corner-lens peak distance from the corner in logical pixels.
     pub corner_distance: f32,
@@ -709,11 +676,6 @@ impl Default for GlassSpec {
             rim_peak: 0.0,
             rim_half_width: 0.0,
             rim_tail: 0.0,
-            rim_side: 0.0,
-            top_glow: 0.0,
-            top_glow_height: 0.0,
-            bottom_glow: 0.0,
-            bottom_glow_height: 0.0,
             corner_peak: 0.0,
             corner_distance: 0.0,
             corner_tail: 0.0,
@@ -736,11 +698,6 @@ impl GlassSpec {
             rim_peak: optics.edge,
             rim_half_width: optics.edge_width,
             rim_tail: optics.edge_tail,
-            rim_side: optics.edge_side,
-            top_glow: optics.top_glow,
-            top_glow_height: optics.top_glow_height,
-            bottom_glow: optics.bottom_glow,
-            bottom_glow_height: optics.bottom_glow_height,
             corner_peak: optics.corner_lens_peak,
             corner_distance: optics.corner_lens_distance,
             corner_tail: optics.corner_lens_tail,
@@ -777,7 +734,7 @@ impl GlassSpec {
         scale: Scale<f64>,
         panel: Rectangle<i32, Logical>,
         texture_region: Rectangle<i32, Logical>,
-    ) -> [Uniform<'static>; 25] {
+    ) -> [Uniform<'static>; 20] {
         let w = physical.w.max(1) as f32;
         let h = physical.h.max(1) as f32;
         let sx = scale.x.max(f64::EPSILON) as f32;
@@ -812,11 +769,6 @@ impl GlassSpec {
             Uniform::new(GLASS_RIM_PEAK_UNIFORM, self.rim_peak),
             Uniform::new(GLASS_RIM_HALF_UNIFORM, self.rim_half_width * sx),
             Uniform::new(GLASS_RIM_TAIL_UNIFORM, self.rim_tail * sx),
-            Uniform::new(GLASS_RIM_SIDE_UNIFORM, self.rim_side),
-            Uniform::new(GLASS_TOP_GLOW_UNIFORM, self.top_glow),
-            Uniform::new(GLASS_TOP_GLOW_HEIGHT_UNIFORM, self.top_glow_height * sy),
-            Uniform::new(GLASS_BOTTOM_GLOW_UNIFORM, self.bottom_glow),
-            Uniform::new(GLASS_BOTTOM_GLOW_HEIGHT_UNIFORM, self.bottom_glow_height * sy),
             Uniform::new(GLASS_CORNER_PEAK_UNIFORM, self.corner_peak * sx),
             Uniform::new(GLASS_CORNER_DISTANCE_UNIFORM, self.corner_distance * sx),
             Uniform::new(GLASS_CORNER_TAIL_UNIFORM, self.corner_tail * sx),
@@ -1382,11 +1334,12 @@ mod tests {
             TINT_COLOR_UNIFORM,
             LENS_FALLOFF_UNIFORM,
             TINT_SCALE_UNIFORM,
-            GLASS_RIM_SIDE_UNIFORM,
-            GLASS_TOP_GLOW_UNIFORM,
-            GLASS_TOP_GLOW_HEIGHT_UNIFORM,
-            GLASS_BOTTOM_GLOW_UNIFORM,
-            GLASS_BOTTOM_GLOW_HEIGHT_UNIFORM,
+            GLASS_RIM_PEAK_UNIFORM,
+            GLASS_RIM_HALF_UNIFORM,
+            GLASS_RIM_TAIL_UNIFORM,
+            GLASS_CORNER_PEAK_UNIFORM,
+            GLASS_CORNER_DISTANCE_UNIFORM,
+            GLASS_CORNER_TAIL_UNIFORM,
         ] {
             assert!(GLASS_SHADER.contains(name), "shader is missing {name}");
         }
@@ -1475,7 +1428,7 @@ mod tests {
             panel,
             panel,
         );
-        assert_eq!(uniforms.len(), 25);
+        assert_eq!(uniforms.len(), 20);
         assert_eq!(
             uniforms[0].value,
             UniformValue::_2f(1600.0, 56.0),
@@ -1523,11 +1476,6 @@ mod tests {
         assert_eq!(spec.flat_alpha, optics.alpha);
         assert_eq!(spec.rim_peak, optics.edge);
         assert_eq!(spec.rim_half_width, optics.edge_width);
-        assert_eq!(spec.rim_side, optics.edge_side);
-        assert_eq!(spec.top_glow, optics.top_glow);
-        assert_eq!(spec.top_glow_height, optics.top_glow_height);
-        assert_eq!(spec.bottom_glow, optics.bottom_glow);
-        assert_eq!(spec.bottom_glow_height, optics.bottom_glow_height);
         assert_eq!(spec.corner_peak, optics.corner_lens_peak);
         assert_eq!(spec.corner_distance, optics.corner_lens_distance);
         assert_eq!(spec.tint_color, [optics.tint; 3]);
@@ -1545,8 +1493,8 @@ mod tests {
             smithay::backend::renderer::gles::UniformValue::_1f(1.0)
         );
         assert_eq!(
-            uniforms[19].value,
-            smithay::backend::renderer::gles::UniformValue::_1f(19.2)
+            uniforms[14].value,
+            smithay::backend::renderer::gles::UniformValue::_1f(27.2)
         );
     }
 

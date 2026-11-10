@@ -473,26 +473,42 @@ unfocused, Reduce Transparency, Increase Contrast and solid-fallback rows over
 neutral and saturated backdrops, with `scripts/t206-first-party-chrome.py`
 scoring the sidebar, toolbar, opaque detail sheet and path bar independently.
 
-### Dock optics fit (T198)
+### Dock optics fit (T198, T235a)
 
 The Dock preset carries the measured optical fit beyond the flat band:
 `sharpFraction` 0.12, `edgeTail` 6 pt, and the corner lens
-`cornerLensPeak`/`Distance`/`Tail` 9.6/15/50 pt, in both schemes. The
+`cornerLensPeak`/`Distance`/`Tail` 13.6/15/50 pt, in both schemes. The
 compositor's `window::dock_optics` model mirrors the renderer: a convex mix of
 the sharp scene (12%) and Kawase levels 1, 2 and 5 (26/40/22%) at 2/4/8/16/32 pt
-checker periods. The 1x capture matches every resolved period within 0.05, the
-rim peak 0.399 vs 0.397, half-amplitude 0.75 pt and tail 5.5 pt. The shader
-applies the measured flat band (alpha 0.253 light / 0.149 dark, neutral tint
-0.604/0.207), the exponential rim and the corner-only lens; Increase Contrast
-raises the resolved rim peak/width after the fit. The QML plate layers are
-hidden on the sampled path, so tint, rim and outer shadow are painted once;
-unsupported paths and Reduce Transparency keep the shell-painted plate.
+checker periods. The 1x capture matches every resolved period within 0.05.
+
+The perimeter is one uniform model (ADR
+[0255](adr/0255-dock-uniform-perimeter-and-corner-gate.md)): a single specular
+rim plus inner glow on every edge and around every corner, with no directional
+side, no straight top/bottom lift and no outer shadow. The shader places a
+narrow specular line on the first covered physical pixel so the measured
++0.397 lands there at 1×/1.5×/2×; the tail is a super-exponential with
+half-amplitude at the token 1 pt, 10 % at ~2.5 pt and zero by the 6 pt tail.
+The corner lens is parameterized by distance *inside* the rim, directed by the
+outward SDF normal and gated by `4·nx²·ny²`: exactly zero on flat edges and
+flat sides, one at the 45° corner. `cornerLensPeak` 13.6 is the displacement
+along the normal, whose horizontal component at 15 pt inside is the measured
+9.6 pt. The shader applies the measured flat band (alpha 0.253 light / 0.149
+dark, neutral tint 0.604/0.207); Increase Contrast raises the resolved rim
+peak/width after the fit. The QML plate layers are hidden on the sampled path,
+so tint and rim are painted once; unsupported paths and Reduce Transparency
+keep the shell-painted plate with one full-perimeter rim and three concentric
+glow strokes.
 
 `make dock-optics-capture` records the 1x light/dark/Reduce
 Transparency/Increase Contrast runs, the 1.5x/2x captures and a Dock sweep with
 the material-cache counters. The 1x reference layout passes; the 1.5x/2x MTF
 rows remain OPEN on the nested scene-texture scale path and are recorded in
 `docs/captures/t198-dock-optics.md` (ADR [0217](adr/0217-dock-optics-fit.md)).
+The fallback's absolute rim peak is bounded by its near-white opaque
+accessibility body; its perimeter is pinned to a uniform delta on every edge
+and the calibrated stroke opacity, and the sampled path remains authoritative
+for the +0.397 photometric threshold.
 
 The one internal rollout switch is `DRAGONFRUIT_GLASS_ROLLOUT=legacy|replacement`.
 The shipped default is `replacement`; `DRAGONFRUIT_GLASS_ROLLOUT=legacy`

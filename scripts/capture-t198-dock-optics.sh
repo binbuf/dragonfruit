@@ -97,21 +97,23 @@ EOF
 fi
 
 checker_for() {
-    local scale="$1" width="$2" height="$3"
-    local path="$SCRATCH/checker-${scale}.png"
+    local scale="$1" width="$2" height="$3" background="${4:-multi}"
+    local path="$SCRATCH/${background}-${scale}.png"
     if [ ! -s "$path" ]; then
         python3 scripts/t198-dock-optics.py wallpaper --out "$path" \
-            --width "$((width))" --height "$((height))" --scale "$scale"
+            --width "$((width))" --height "$((height))" --scale "$scale" \
+            --background "$background"
     fi
     printf '%s\n' "$path"
 }
 
 run_case() {
     local label="$1" scale="$2" scheme="$3" reduce="$4" contrast="$5"
+    local background="${6:-multi}"
     local width height wallpaper socket case_scratch out capture query score
     width="$(python3 -c "print(round(1920*$scale))")"
     height="$(python3 -c "print(round(1200*$scale))")"
-    wallpaper="$(checker_for "$scale" "$width" "$height")"
+    wallpaper="$(checker_for "$scale" "$width" "$height" "$background")"
     socket="df-t198-${label}-$$"
     case_scratch="$SCRATCH/$label"
     out="$OUTDIR/t198-dock-optics-${label}.png"
@@ -145,7 +147,8 @@ run_case() {
            "$HOST_RUNTIME/$socket.lock" "$HOST_RUNTIME/$socket.launch-token" \
            "$HOST_RUNTIME/$socket.desktop-launch-token" 2>/dev/null || true
     python3 scripts/t198-dock-optics.py score --capture "$out" --query "$query" \
-        --out "$score" >"$SCRATCH/$label-score.txt" 2>&1 || true
+        --out "$score" --background "$background" \
+        >"$SCRATCH/$label-score.txt" 2>&1 || true
     echo "capture-t198: $label -> $out"
 }
 
@@ -155,6 +158,24 @@ run_case reduce-transparency-1x 1 light 1 0
 run_case increase-contrast-1x 1 light 0 1
 run_case light-1_5x 1.5 light 0 0
 run_case light-2x 2 light 0 0
+
+# T235a: the review background matrix. It is opt-in because it is a large
+# sweep; the default run above stays the fast T198 evidence set. Each case is
+# named `t235a-<background>-<scale>x-<condition>` and the scorer records the
+# background it measured.
+if [ "${T235A_MATRIX:-0}" = "1" ]; then
+    for background in checker_4 checker_8 checker_16 checker_32 checker_64 \
+            lines_grid stripes_h stripes_v; do
+        for scale in 1 1.5 2; do
+            run_case "t235a-${background}-${scale}x-light" "$scale" light 0 0 "$background"
+            run_case "t235a-${background}-${scale}x-dark" "$scale" dark 0 0 "$background"
+        done
+    done
+    for scale in 1 1.5 2; do
+        run_case "t235a-checker_16-${scale}x-reduce-transparency" "$scale" light 1 0 checker_16
+        run_case "t235a-checker_16-${scale}x-increase-contrast" "$scale" light 0 1 checker_16
+    done
+fi
 
 # Cache behaviour during a Dock sweep. The motion state keeps the pointer
 # moving across the capture instant; the two material snapshots one second
