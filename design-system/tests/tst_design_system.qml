@@ -1674,7 +1674,8 @@ TestCase {
                      "folder-images.svg", "folder-music.svg", "folder-videos.svg",
                      "folder-public.svg", "folder-templates.svg",
                      "user-home.svg", "user-desktop.svg", "user-trash.svg",
-                     "user-trash-full.svg", "computer.svg", "drive-harddisk.svg",
+                     "user-trash-full.svg", "user-trash-dark.svg",
+                     "user-trash-full-dark.svg", "computer.svg", "drive-harddisk.svg",
                      "drive-removable-media.svg", "file-manager.svg",
                      "view-app-grid.svg"];
         for (var i = 0; i < files.length; ++i) {
@@ -1699,7 +1700,7 @@ TestCase {
 
         var trash = make(legacyIconComponent, { name: "trash" });
         compare(trash.isPlaceIcon, true);
-        compare(trash.placeSource, "qrc:/icons/whitesur/user-trash.svg");
+        verify(trash.placeSource.indexOf("/user-trash") >= 0);
         compare(trash.resolved, true);
         trash.destroy();
 
