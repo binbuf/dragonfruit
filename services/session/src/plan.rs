@@ -210,6 +210,7 @@ impl SessionPlan {
             ServiceSpec::new("menu-broker", "dragonfruit-menu-broker").stage(1),
             ServiceSpec::new("app-index", "dragonfruit-app-index").stage(1),
             ServiceSpec::new("notifications", "dragonfruit-notifications").stage(1),
+            ServiceSpec::new("system-status", "dragonfruit-system-status").stage(1),
             ServiceSpec::new("wallpaperd", "dragonfruit-wallpaperd").stage(1),
             ServiceSpec::new("portal", "xdg-desktop-portal-dragonfruit").stage(2),
         ])
@@ -350,6 +351,17 @@ mod tests {
                 assert_eq!(spec.policy, RestartPolicy::OnFailure, "{}", spec.name);
             }
         }
+
+        // The system-status bridge host is part of the shipped session: the
+        // menu-bar extras and the Settings adapter panes read it.
+        let status = plan
+            .services
+            .iter()
+            .find(|spec| spec.name == "system-status")
+            .expect("the system-status bridge host is in the session");
+        assert_eq!(status.program, PathBuf::from("dragonfruit-system-status"));
+        assert_eq!(status.stage, 1);
+        assert_eq!(status.policy, RestartPolicy::OnFailure);
 
         let desktop = plan
             .services

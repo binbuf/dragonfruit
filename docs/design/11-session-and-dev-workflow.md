@@ -219,6 +219,7 @@ dragonfruit-session.target (started directly by dragonfruit-session-entry)
   ├── dragonfruit-menu-broker.service   # Restart=on-failure
   ├── dragonfruit-app-index.service      # Restart=on-failure
   ├── dragonfruit-notifications.service  # Restart=on-failure
+  ├── dragonfruit-system-status.service  # Type=dbus, Restart=on-failure
   ├── dragonfruit-wallpaperd.service     # Restart=on-failure
   └── dragonfruit-portal.service         # Restart=on-failure
         └── graphical-session.target      # dependency, not a parent
@@ -272,6 +273,7 @@ dragonfruit-session.target                 # started by the session entry
   ├── dragonfruit-menu-broker.service
   ├── dragonfruit-app-index.service
   ├── dragonfruit-notifications.service
+  ├── dragonfruit-system-status.service    # Type=dbus, BusName=org.dragonfruit.SystemStatus1
   ├── dragonfruit-wallpaperd.service
   └── dragonfruit-portal.service           # pulls graphical-session.target + xdg-desktop-portal
 ```

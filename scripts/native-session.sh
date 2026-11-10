@@ -105,6 +105,7 @@ BIN_NAMES=(
     dragonfruit-menu-broker
     dragonfruit-app-index
     dragonfruit-notifications
+    dragonfruit-system-status
     dragonfruit-wallpaperd
     xdg-desktop-portal-dragonfruit
     dragonfruit-pam-helper
@@ -729,6 +730,7 @@ unit_for() {
         desktop|files|files-desktop) printf '%s\n' dragonfruit-files-desktop.service ;;
         settings|settingsd) printf '%s\n' dragonfruit-settingsd.service ;;
         notifications|notification) printf '%s\n' dragonfruit-notifications.service ;;
+        system-status|status) printf '%s\n' dragonfruit-system-status.service ;;
         wallpaper|wallpaperd) printf '%s\n' dragonfruit-wallpaperd.service ;;
         apps|app-index|index) printf '%s\n' dragonfruit-app-index.service ;;
         menu|menu-broker) printf '%s\n' dragonfruit-menu-broker.service ;;
@@ -1335,6 +1337,7 @@ cmd_restart() {
                     dragonfruit-menu-broker.service
                     dragonfruit-app-index.service
                     dragonfruit-notifications.service
+                    dragonfruit-system-status.service
                     dragonfruit-wallpaperd.service
                     dragonfruit-portal.service
                 )
@@ -1345,6 +1348,7 @@ cmd_restart() {
                     dragonfruit-menu-broker.service
                     dragonfruit-app-index.service
                     dragonfruit-notifications.service
+                    dragonfruit-system-status.service
                     dragonfruit-wallpaperd.service
                     dragonfruit-portal.service
                 )

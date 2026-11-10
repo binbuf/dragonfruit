@@ -230,8 +230,14 @@ forgotten.
 - **Tabler Icons** (MIT) — line glyphs for menus, status items, and controls.
 - **Phosphor Icons** (MIT) — filled glyphs for Settings category tiles and app
   tiles.
-- **Original app icons** — first-party apps use original artwork; no Apple
-  app-icon shapes or colours.
+- **WhiteSur** (GPL-3.0-only) — colored place/app artwork: folder icons,
+  home/desktop, Trash, computer/volumes, the Files app icon, and the
+  Applications launcher. Vendored as a separable runtime data asset under
+  `assets/icons/whitesur/`; see [ADR 0251](adr/0251-whitesur-place-icons.md).
+  This is the one recorded copyleft asset exception.
+- **Original app icons** — the Settings app mark is original artwork; the
+  Files app mark is the recorded WhiteSur `file-manager.svg`. No Apple
+  artwork is copied.
 - **Third-party app icons** — loaded from the app's desktop entry/theme; never
   redrawn or recoloured.
 - **System symbols** — no SF Symbols. If a symbol has no Tabler/Phosphor
@@ -357,6 +363,7 @@ desktop works without it.
 | Cursors | Capitaine Cursors | LGPL | Asset | Existing |
 | Icons | Tabler | MIT | Asset | Existing |
 | Icons | Phosphor | MIT | Asset | Existing |
+| Icons | WhiteSur | GPL-3.0-only | Asset (separable data) | Existing; recorded exception (ADR 0251) |
 | Font | Inter | OFL-1.1 | Asset | Existing |
 | Wallpaper | Wikimedia Commons | asset-specific | Provider | Existing |
 
@@ -407,6 +414,8 @@ Before a release:
 - [ ] No Apple trademark appears in UI, desktop files, package metadata, or
       screenshots (except historical design docs marked local-only).
 - [ ] Every new asset has a source/license entry.
+- [ ] The separable WhiteSur GPL-3.0 asset ships its license, provenance, and
+      corresponding source (ADR 0251).
 - [ ] `NOTICE` matches the dependency and asset manifests.
 - [ ] Every optional dependency has an absence test.
 - [ ] Every GPL/LGPL service is separate-process or dynamically linked with

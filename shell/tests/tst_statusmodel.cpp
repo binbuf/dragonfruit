@@ -20,6 +20,7 @@ private slots:
     void volumeIsClampedToTheUnitRange();
     void muteRaisesTheRequest();
     void audioDecodesOutputsInputsAndRouting();
+    void audioWithoutAnOutputStaysVisibleAsMuted();
     void outcomeOfReadsTheHostReport();
 
     void theWifiMenuModelExposesOneJoinRowPerNetwork();
@@ -198,6 +199,22 @@ void TestStatusModel::audioDecodesOutputsInputsAndRouting()
     QCOMPARE(view.value(QStringLiteral("sources")).toList().at(0).toMap()
                  .value(QStringLiteral("description")).toString(),
              QStringLiteral("Built-in Microphone"));
+}
+
+void TestStatusModel::audioWithoutAnOutputStaysVisibleAsMuted()
+{
+    // A running audio daemon with an empty output graph is `available`, not
+    // absent: the Sound extra stays in the bar with the muted speaker so the
+    // user can open it and see "No output device".
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"audio","state":"available","glyph":"volume-muted",
+            "label":"No output device","volume":0,"percent":0,"muted":false,
+            "sinkCount":0,"sourceCount":0,"sinks":[],"sources":[]})",
+        QStringLiteral("audio"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("glyph")).toString(), QStringLiteral("volume-muted"));
+    QCOMPARE(view.value(QStringLiteral("label")).toString(), QStringLiteral("No output device"));
 }
 
 void TestStatusModel::outcomeOfReadsTheHostReport()

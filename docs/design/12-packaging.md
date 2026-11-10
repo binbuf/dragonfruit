@@ -93,15 +93,18 @@ shared with Debian and recorded in `NOTICE`. Rules:
   as the default `inode/directory` handler, so folder-opening from any app or
   portal routes to Files (see [09-files.md](09-files.md)). The current
   in-tree desktop file already carries that id.
-- **First-party app icons (T-19.1d):** each app installs its Tabler-derived
-  SVG (`org.dragonfruit.Files.svg`, `org.dragonfruit.Settings.svg`, generated
-  by `scripts/gen-app-icons.py`) into `share/icons/hicolor/scalable/apps/`, and
-  its `.desktop` `Icon=` carries the same id. A launcher, the global menu, and
-  the portal file chooser therefore resolve the same artwork the shell bundles
-  at `qrc:/icons/apps/` for nested dev. The design-system resource payload and
-  the installed file are generated from one source and guarded by
+- **First-party app icons (T-19.1d):** each app installs its SVG
+  (`org.dragonfruit.Files.svg`, `org.dragonfruit.Settings.svg`) into
+  `share/icons/hicolor/scalable/apps/`, and its `.desktop` `Icon=` carries the
+  same id. The Settings mark is generated from Tabler; the Files mark is copied
+  byte-for-byte from WhiteSur's `file-manager.svg` by
+  `scripts/gen-app-icons.py`. A launcher, the global menu, and the portal file
+  chooser therefore resolve the same artwork the shell bundles at
+  `qrc:/icons/apps/` for nested dev. The design-system resource payload and the
+  installed file are generated from one source and guarded by
   `make check-tabler` (ADR [0166](adr/0166-first-party-app-icons.md), ADR
-  [0185](adr/0185-tabler-line-icons.md)).
+  [0185](adr/0185-tabler-line-icons.md), ADR
+  [0251](adr/0251-whitesur-place-icons.md)).
 
 ## Hardware baseline
 

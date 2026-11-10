@@ -112,9 +112,9 @@ pub fn panel_region(
 pub fn valid_region_key(key: &str) -> bool {
     !key.is_empty()
         && key.len() <= MAX_PANEL_REGION_KEY
-        && key.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')
-        })
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 /// Anchor bit for the top edge.
@@ -855,7 +855,17 @@ mod tests {
     fn panel_region_metadata_is_validated_and_bounded() {
         // Attached menu: square top, rounded bottom, a known preset.
         let attached = panel_region(
-            "attached", "menuAttached", 10, 20, 240, 300, 0, 0, 12, 12, 20,
+            "attached",
+            "menuAttached",
+            10,
+            20,
+            240,
+            300,
+            0,
+            0,
+            12,
+            12,
+            20,
         )
         .expect("valid attached region");
         assert_eq!(attached.preset, Some(Preset::MenuAttached));
@@ -877,8 +887,20 @@ mod tests {
         assert!(panel_region("card", "not-a-preset", 0, 0, 10, 10, 4, 4, 4, 4, 0).is_none());
         assert!(panel_region("", "", 0, 0, 10, 10, 4, 4, 4, 4, 0).is_none());
         assert!(panel_region("bad key", "", 0, 0, 10, 10, 4, 4, 4, 4, 0).is_none());
-        assert!(panel_region(&"x".repeat(MAX_PANEL_REGION_KEY + 1), "", 0, 0, 10, 10, 4, 4, 4, 4, 0)
-            .is_none());
+        assert!(panel_region(
+            &"x".repeat(MAX_PANEL_REGION_KEY + 1),
+            "",
+            0,
+            0,
+            10,
+            10,
+            4,
+            4,
+            4,
+            4,
+            0
+        )
+        .is_none());
 
         // Negative extents clamp; radii and overscan are bounded.
         let clamped = panel_region("clamped", "", 1, 2, -8, -9, -4, 99_999, -1, 7, 99_999)

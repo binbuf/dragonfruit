@@ -1669,9 +1669,40 @@ TestCase {
                "the vendored filled SVG must be reachable under /icons/tabler");
     }
 
+    function test_whitesur_place_resources_are_reachable() {
+        var files = ["folder.svg", "folder-documents.svg", "folder-download.svg",
+                     "folder-images.svg", "folder-music.svg", "folder-videos.svg",
+                     "folder-public.svg", "folder-templates.svg",
+                     "user-home.svg", "user-desktop.svg", "user-trash.svg",
+                     "user-trash-full.svg", "computer.svg", "drive-harddisk.svg",
+                     "drive-removable-media.svg", "file-manager.svg",
+                     "view-app-grid.svg"];
+        for (var i = 0; i < files.length; ++i) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "qrc:/icons/whitesur/" + files[i], false);
+            xhr.send();
+            compare(xhr.status, 200);
+            verify(xhr.responseText.indexOf("<svg") >= 0,
+                   "the vendored WhiteSur resource must be reachable: " + files[i]);
+        }
+    }
+
     function test_icon_facade_maps_the_inherited_vocabulary() {
         // Files/Settings/shell still name the inherited vocabulary; the facade
-        // must resolve each name to a vendored Tabler outline glyph.
+        // must resolve each name to a vendored Tabler outline glyph or a
+        // colored WhiteSur place resource.
+        var folder = make(legacyIconComponent, { name: "folder" });
+        compare(folder.isPlaceIcon, true);
+        compare(folder.placeSource, "qrc:/icons/whitesur/folder.svg");
+        compare(folder.resolved, true);
+        folder.destroy();
+
+        var trash = make(legacyIconComponent, { name: "trash" });
+        compare(trash.isPlaceIcon, true);
+        compare(trash.placeSource, "qrc:/icons/whitesur/user-trash.svg");
+        compare(trash.resolved, true);
+        trash.destroy();
+
         var close = make(legacyIconComponent, { name: "close" });
         compare(close.tablerName, "x");
         compare(close.resolved, true);

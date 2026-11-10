@@ -21,7 +21,7 @@
 //! | Killed | Outcome |
 //! |---|---|
 //! | shell / lock UI, Files desktop | restart (`always`); the session keeps running |
-//! | settingsd, menu-broker, app-index, notifications, wallpaperd | restart (`on-failure`); the session keeps running |
+//! | settingsd, menu-broker, app-index, notifications, system-status, wallpaperd | restart (`on-failure`); the session keeps running |
 //! | portal backend | restarts (`on-failure`) and fails soft; the session keeps running |
 //! | app (a user-launched client) | a plain client exit: not restarted, never a session event; the session keeps running |
 //! | compositor | the session ends; every other service is stopped; never restarted |
@@ -148,6 +148,7 @@ fn the_kill_matrix_plan_matches_the_shipped_restart_policies() {
         "menu-broker",
         "app-index",
         "notifications",
+        "system-status",
         "wallpaperd",
     ] {
         assert_eq!(policy(name), RestartPolicy::OnFailure, "{name}");
@@ -217,6 +218,7 @@ fn the_restartable_set_is_exactly_the_shipped_services() {
             "portal",
             "settingsd",
             "shell",
+            "system-status",
             "wallpaperd",
         ],
         "the kill matrix must cover every restartable shipped service"

@@ -37,6 +37,7 @@ Every component in the DE is a build vs buy argument. We try to "buy" (in this a
 | **Inter** (SIL OFL 1.1) | Typography |
 | **Tabler Icons** (MIT) | Interface line icons |
 | **Phosphor Icons** (MIT) | Filled interface and Settings glyphs |
+| **WhiteSur icon theme** (GPL-3.0-only, separable data) | Colored folder, Trash, place, Files, and Applications-launcher artwork |
 | **Capitaine Cursors** (LGPL) | Cursor theme |
 | **Wikimedia Commons** (asset-specific licenses) | Optional online wallpaper discovery |
 

@@ -2568,8 +2568,10 @@ void ShellController::applyStatusItems()
         m_notificationClient && m_notificationClient->isAvailable();
     const int activeNotifications =
         m_notificationCenter ? m_notificationCenter->activeCount() : 0;
+    // `icon` is a StatusGlyph state name, not a raw Tabler glyph name:
+    // "notifications" maps to the bell in StatusGlyph.
     QVariantMap notificationItem =
-        statusItem(QStringLiteral("notifications"), QStringLiteral("bell"),
+        statusItem(QStringLiteral("notifications"), QStringLiteral("notifications"),
                    activeNotifications > 0 ? QString::number(activeNotifications)
                                            : QString(),
                    tr("Notifications"), notificationsAvailable, 0.8, true,

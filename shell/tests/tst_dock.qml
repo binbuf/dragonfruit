@@ -3263,8 +3263,7 @@ Item {
             var glyph = make(glyphComponent, { kind: "launcher", size: 48 });
             var artwork = findChild(glyph, "launcherArtwork");
             verify(artwork !== null);
-            verify(findChild(glyph, "launcherTile") !== null);
-            verify(findChild(glyph, "launcherGlyph") !== null);
+            verify(artwork.source.toString().endsWith("whitesur/view-app-grid.svg"));
             var img = grabImage(glyph);
             verify(img.width > 0);
             verify(countForegroundAll(img) > 0, "the launcher tile renders");
@@ -5993,8 +5992,7 @@ Item {
             // The folder name lives in the hover label and the popover, never
             // in the artwork (the aesthetic fix of T-14.7h).
             compare(countTextDescendants(artwork), 0);
-            verify(findChild(glyph, "stackFolderTab") !== null);
-            verify(findChild(glyph, "stackFolderFront") !== null);
+            verify(artwork.source.toString().endsWith("whitesur/folder.svg"));
             var img = grabImage(glyph);
             verify(img.width > 0);
             glyph.destroy();
@@ -6217,9 +6215,9 @@ Item {
             themed.destroy();
         }
 
-        // T-19.1d: our own apps render their bundled Tabler artwork keyed by
-        // desktop id, so nested dev (before an install) shows the right tile
-        // even with no app-index themed path.
+        // T-19.1d: our own apps render their bundled artwork keyed by desktop
+        // id, so nested dev (before an install) shows the right tile even with
+        // no app-index themed path.
         function test_first_party_app_uses_bundled_tile() {
             var files = make(glyphComponent, {
                 kind: "app", name: "Files", appId: "org.dragonfruit.Files",
@@ -6233,10 +6231,10 @@ Item {
             waitForRendering(stage);
             wait(60);
             var img = grabImage(files);
-            // The Files tile is our flat blue rounded square; a point above
-            // the centred folder glyph is a real bundled pixel, not the
+            // The Files tile is WhiteSur's white rounded square with the blue
+            // folder mark; the centre is a real bundled pixel, not the
             // placeholder initial.
-            verify(nearColor(img, 24, 4, 59, 130, 246, 40),
+            verify(nearColor(img, 24, 24, 76, 190, 251, 80),
                    "the bundled Files artwork renders");
             files.destroy();
 
