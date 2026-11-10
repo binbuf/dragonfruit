@@ -34,7 +34,7 @@ use crate::material_preset::{Preset, RenderMode, Rollout};
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
 use crate::window::{
-    backdrop_elements_with_corners, is_backdrop_panel, shadow_elements_outside, BlurSpec,
+    backdrop_elements_with_corners, is_backdrop_panel, shadow_elements_outside_bounds, BlurSpec,
     CornerRadii, DegradeTier, DockOptics, GlassSpec, MaterialRole, PanelKey, RegionFilter,
     SceneTransform, ShadowLevel, ShadowSpec, WindowState,
 };
@@ -873,14 +873,13 @@ fn push_window_shadow<E>(
     };
     let window_rect = state.insets_for(window).outset(geometry);
     elements.extend(
-        shadow_elements_outside(
+        shadow_elements_outside_bounds(
             window_rect,
             spec,
             scale,
             output_geometry.loc,
             motion,
             window_rect,
-            spec.radius.round() as i32,
         )
         .into_iter()
         .map(E::from),

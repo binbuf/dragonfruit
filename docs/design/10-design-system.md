@@ -458,9 +458,13 @@ detail sheet below the toolbar with the correct bottom-right radius. The new
 the sidebar (bottom-left), detail sheet (bottom-right), and path bar
 (bottom-right) round exactly one window corner without stacking translucent
 overlays. The compositor's window shadow is emitted as a ring outside the
-window's rounded body (`shadow_elements_outside`), so it cannot show through
-the translucent sidebar/toolbar and darken the measured material; the QML
-`Shadow` is hidden on this path because the compositor owns the real shadow.
+decorated window bounds (`shadow_elements_outside_bounds`), so it cannot show
+through the translucent sidebar/toolbar and darken the measured material; the
+QML `Shadow` is hidden on this path because the compositor owns the real
+shadow. Cutting at the bounds (rather than the rounded body) keeps the corner
+pixels between the rounded titlebar arc and the window's bounding box fully
+transparent: no translucent shadow square remains where the window surface is
+transparent.
 
 The preset transport stores a scalar neutral alpha/tint. The reference's small
 sidebar chroma pickup is therefore **not** carried: captures report the

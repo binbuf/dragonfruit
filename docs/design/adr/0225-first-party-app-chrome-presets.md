@@ -39,11 +39,13 @@ alpha and neutral tint; the muted sidebar's small chroma pickup has no channel.
   Transparency takes the shared opaque accessibility plate. Increase Contrast
   raises the separator ink. Focus is a controls/text state; the material is
   focus-invariant.
-- **The window shadow is a ring.** The compositor now subtracts the window's
-  rounded body from its shadow spans (`shadow_elements_outside`), so a
-  translucent sidebar/toolbar cannot sample its own shadow and darken the
-  measured result. The QML `Shadow` is hidden on this path because the
-  compositor owns the real window shadow.
+- **The window shadow is a ring.** The compositor subtracts the window body
+  from its shadow spans, so a translucent sidebar/toolbar cannot sample its
+  own shadow and darken the measured result. The QML `Shadow` is hidden on
+  this path because the compositor owns the real window shadow. ADR
+  [0257](0257-window-corner-cutout-transparency.md) refines the cutout to the
+  decorated window bounds so the rounded-corner cutout stays fully
+  transparent instead of carrying a faint shadow square.
 - **Chroma stays open.** The presets carry alpha/tint only. Captures report
   the rendered channel spread separately; reproducing the reference's small
   sidebar chroma pickup needs a future chroma/tint transport.
