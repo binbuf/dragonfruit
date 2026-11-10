@@ -1773,6 +1773,10 @@ impl DfState {
             }
         }
         let mut names = BTreeSet::new();
+        // T233: a menu-bar reveal/hide only moves the output it belongs to.
+        for name in self.shell.menu_bar.animating_outputs(self.now_msec()) {
+            names.insert(name);
+        }
         for (window, _) in self.windows.active_motions() {
             let mut found = false;
             for output in self.space.outputs_for_element(window) {
@@ -3483,7 +3487,9 @@ impl DfState {
     /// exactly while this is true, so an idle desktop runs no timer and
     /// produces no damage (FR-2).
     pub fn animations_active(&self) -> bool {
-        self.overview.is_discrete() || self.animation_clock.is_active()
+        self.overview.is_discrete()
+            || self.animation_clock.is_active()
+            || self.shell.menu_bar.is_animating(self.now_msec())
     }
 
     /// Start a clock-driven animation and arm the frame clock.
@@ -4451,6 +4457,10 @@ impl DfState {
     pub fn set_reduced_motion(&mut self, reduced: bool) {
         self.overview.set_reduced_motion(reduced);
         self.animation_clock.set_reduced_motion(reduced);
+        if self.shell.menu_bar.set_reduced_motion(reduced) {
+            self.refresh_reserved_zones();
+            self.needs_redraw = true;
+        }
     }
 
     /// The live magnifier policy (T-16.6b).

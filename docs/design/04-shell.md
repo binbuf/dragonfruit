@@ -204,6 +204,22 @@ the foreground fill and the compositor veil; with it off the items remain
 interactive but no material panel is committed. See
 [ADR 0220](adr/0220-menu-bar-auto-hide-visibility.md).
 
+T233 adds the measured transition (ADR [0250](adr/0250-menubar-reveal-motion-and-measured-overflow.md)):
+the compositor keeps the bar up for `menuBar.hideDelay` (350 ms) after the
+pointer leaves, then slides it out over `motion.menuBarReveal` (160 ms); the
+top-edge reveal is immediate by reference and a nonzero reveal delay is
+supported. Reduced motion collapses both delays and the slide. The surface
+moves, but the top strip remains the input target, and the reservation is
+present only while the bar is on screen. The status row's budget is measured
+from the live width (minus the app menu, padding, the notch inset, and the
+overflow slot); items leave third-party first, then optional system items, then
+the lowest-priority essentials, and every removed item appears in the overflow
+menu. On multiple displays the compositor composites one bar per output from
+the one all-output surface; `MenuBarDisplayPolicy.qml` names the active display
+that owns the application menu and lets status items follow all displays or
+the active one. The Menu Bar pane lists every live `menu.control.*` key and the
+overflow rule.
+
 The system menu and application menu are **shell-owned chrome**, not part of
 the application's exported model: an app that exports nothing still gets a
 complete menu bar, and an app that exports menus gets them *after* the fixed

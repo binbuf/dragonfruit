@@ -150,7 +150,9 @@ where
         if !crate::shell::layer::above_windows(chrome.layer) {
             continue;
         }
-        let location = chrome.location.to_physical_precise_round(scale);
+        // T233: the menu bar's measured reveal slides the whole surface
+        // (including its veil) while input stays on the top strip.
+        let location = (chrome.location + chrome.render_offset).to_physical_precise_round(scale);
         elements.extend(render_elements_from_surface_tree::<R, E>(
             renderer,
             &chrome.surface,

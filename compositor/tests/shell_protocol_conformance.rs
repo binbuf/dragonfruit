@@ -1139,6 +1139,29 @@ fn wait_for(
     }
 }
 
+/// Poll the synthetic-input `query menubar` report until `pred` matches.
+/// Animation frames do not produce Wayland events for the test client, so the
+/// generic `wait_for` (which waits for a protocol event) cannot observe a
+/// reveal/hide that is only advancing on the compositor's clock.
+fn wait_for_menubar(
+    input: &SyntheticInput,
+    timeout: Duration,
+    mut pred: impl FnMut(&str) -> bool,
+) -> String {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let report = input.query("query menubar");
+        if pred(&report) {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for menu-bar state: {report}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 fn bind_core(
     state: &mut TestClient,
     queue: &EventQueue<TestClient>,
@@ -2293,13 +2316,9 @@ fn menu_bar_auto_hide_reveals_on_the_top_edge_and_reserves_nothing_while_conceal
     // Park the pointer away from the top edge so a policy change starts from
     // the resting state rather than the pointer's initial (0,0) position.
     input.send("motion-abs 0.5 0.5");
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| input.query("query menubar").contains("revealed=0"),
-    );
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("revealed=0")
+    });
 
     // Default `full-screen` policy: normal on the desktop.
     let report = input.query("query menubar");
@@ -2319,51 +2338,40 @@ fn menu_bar_auto_hide_reveals_on_the_top_edge_and_reserves_nothing_while_conceal
         report.contains("revealed=0 active=0 visible=0 reserved-top=0"),
         "a concealed bar must reserve nothing: {report}"
     );
+    assert!(
+        report.contains("progress=0 offset=28 input-top=0"),
+        "a concealed bar has no input region and is fully translated out: {report}"
+    );
 
     // The top edge reveals it on the output under the pointer.
     input.send("motion-abs 0.5 0.005");
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| {
-            input
-                .query("query menubar")
-                .contains("revealed=1 active=0 visible=1")
-        },
-    );
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("revealed=1 active=0 visible=1") && report.contains("progress=1000")
+    });
     let report = input.query("query menubar");
     assert!(
         report.contains("visible=1 reserved-top=28"),
         "a revealed bar restores its strip: {report}"
     );
-
-    // Leaving the top band conceals it again.
-    input.send("motion-abs 0.5 0.5");
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| {
-            input
-                .query("query menubar")
-                .contains("revealed=0 active=0 visible=0")
-        },
+    assert!(
+        report.contains("progress=1000 offset=0 input-top=1"),
+        "a settled revealed bar is fully on screen with a top input strip: {report}"
     );
+
+    // Leaving the top band conceals it again after the measured hide delay
+    // and slide.
+    input.send("motion-abs 0.5 0.5");
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("revealed=0 active=0 visible=0") && report.contains("progress=0")
+    });
 
     // A live policy toggle applies immediately: `never` is always visible.
     bar_layer.set_auto_hide(df_layer_surface::AutoHideMode::Never);
     bar.commit();
     let _ = queue.roundtrip(&mut state);
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| input.query("query menubar").contains("mode=never"),
-    );
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("mode=never")
+    });
     let report = input.query("query menubar");
     assert!(
         report.contains("visible=1 reserved-top=28"),
@@ -2375,13 +2383,9 @@ fn menu_bar_auto_hide_reveals_on_the_top_edge_and_reserves_nothing_while_conceal
     bar.commit();
     let _ = queue.roundtrip(&mut state);
     input.send("motion-abs 0.5 0.005");
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| input.query("query menubar").contains("revealed=1"),
-    );
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("revealed=1")
+    });
     state.keyboard_enters = 0;
     input.send("button 272 down\nbutton 272 up");
     wait_for(
@@ -2392,22 +2396,15 @@ fn menu_bar_auto_hide_reveals_on_the_top_edge_and_reserves_nothing_while_conceal
         |state| state.keyboard_enters > 0,
     );
     input.send("motion-abs 0.5 0.5");
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| input.query("query menubar").contains("active=1 visible=1"),
-    );
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("active=1 visible=1")
+    });
     // Releasing the chrome focus ends the interaction; the bar conceals.
     manager.release_keyboard_focus();
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| input.query("query menubar").contains("active=0 visible=0"),
-    );
+    let _ = queue.roundtrip(&mut state);
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("active=0 visible=0") && report.contains("progress=0")
+    });
 
     // Fullscreen: `full-screen` conceals, reveals on demand, and `never`
     // remains a real composition requirement (visible + reserved).
@@ -2436,47 +2433,25 @@ fn menu_bar_auto_hide_reveals_on_the_top_edge_and_reserves_nothing_while_conceal
     bar.commit();
     let _ = queue.roundtrip(&mut state);
     input.send("motion-abs 0.5 0.5");
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| {
-            input.query("query menubar").contains("fullscreen=1")
-                && input
-                    .query("query menubar")
-                    .contains("visible=0 reserved-top=0")
-        },
-    );
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("fullscreen=1")
+            && report.contains("visible=0 reserved-top=0")
+            && report.contains("progress=0")
+    });
     input.send("motion-abs 0.5 0.005");
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| {
-            let report = input.query("query menubar");
-            report.contains("fullscreen=1")
-                && report.contains("revealed=1")
-                && report.contains("visible=1")
-        },
-    );
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("fullscreen=1")
+            && report.contains("revealed=1")
+            && report.contains("visible=1")
+            && report.contains("progress=1000")
+    });
     bar_layer.set_auto_hide(df_layer_surface::AutoHideMode::Never);
     bar.commit();
     let _ = queue.roundtrip(&mut state);
     input.send("motion-abs 0.5 0.5");
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |_| {
-            input.query("query menubar").contains("fullscreen=1")
-                && input
-                    .query("query menubar")
-                    .contains("visible=1 reserved-top=28")
-        },
-    );
+    wait_for_menubar(&input, Duration::from_secs(5), |report| {
+        report.contains("fullscreen=1") && report.contains("visible=1 reserved-top=28")
+    });
 
     window.unset_fullscreen();
     manager.destroy();

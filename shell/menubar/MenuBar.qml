@@ -41,9 +41,32 @@ Rectangle {
     //    controller supplies live entries; `StatusItemRegistry` owns order,
     //    visibility and overflow.
     property var statusItems: []
-    // The row's slot budget. -1 keeps every item; a finite value moves
-    // third-party items into the overflow affordance first (T231/T233).
+    // The row's slot budget. -1 derives the budget from the measured bar
+    // width (T233); a finite value is an explicit override used by tests and
+    // captures. The registry moves third-party items into the overflow
+    // affordance first, then optional system items, and finally the
+    // lowest-priority essential items on a very narrow display.
     property int statusOverflowCapacity: -1
+    // T233: a notch/safe-area inset. It is not a hit target; it only reduces
+    // the width the status row may use, so items move to overflow rather than
+    // being clipped around a camera housing.
+    property int notchWidth: 0
+    // T233 multi-display policy. One all-output surface is composited per
+    // display; the active display owns the application menu and may be the
+    // only one that shows status items. `MenuBarDisplayPolicy` is the pure
+    // resolver the shell can use when it gains per-display surfaces.
+    property bool activeDisplay: true
+    property bool showStatusItems: true
+    // T233: the compositor-owned reveal fraction, mirrored here so the scene
+    // and its captures can show the measured slide. Production motion is
+    // applied by the compositor to the surface; this property is the QML
+    // introspection/test seam, like `visibleIn()`.
+    property real revealProgress: 1.0
+    readonly property real revealOffset:
+        (1.0 - Math.max(0.0, Math.min(1.0, revealProgress)))
+        * Theme.controls.menuBar.height
+    readonly property bool revealMotionActive:
+        revealProgress > 0.0 && revealProgress < 1.0
     // The built-in fallbacks keep the bar usable in QML tests and before the
     // controller's first status snapshot. The controller's entries win by id.
     property bool showClock: true
@@ -155,8 +178,66 @@ Rectangle {
     StatusItemRegistry {
         id: statusRegistry
         items: menuBar._statusSource
-        maxVisible: menuBar.statusOverflowCapacity
+        maxVisible: menuBar.effectiveStatusCapacity
     }
+
+    // T233: the status-row budget is measured, not guessed. The hidden
+    // measurement row lays out one real `StatusItem` per registry entry (the
+    // same delegate the visible row uses), so a localized clock, a tray icon
+    // or a label changes the capacity exactly as it changes the row. The
+    // registry's ordered list does not depend on the budget, so there is no
+    // binding cycle.
+    readonly property var _statusSlotWidths: {
+        var widths = [];
+        for (var i = 0; i < statusMeasureRepeater.count; ++i) {
+            var item = statusMeasureRepeater.itemAt(i);
+            widths.push(item ? item.implicitWidth : 0);
+        }
+        return widths;
+    }
+    readonly property real _statusAvailableWidth:
+        Math.max(0, width - appMenuRow.implicitWidth
+                 - 2 * Theme.controls.menuBar.paddingH - notchWidth)
+    readonly property int measuredStatusCapacity: {
+        var widths = _statusSlotWidths;
+        var gap = Theme.controls.menuBar.statusItemGap;
+        var visibleCount = 0;
+        var total = 0;
+        for (var i = 0; i < widths.length; ++i) {
+            if (widths[i] <= 0)
+                continue;
+            total += widths[i] + (visibleCount > 0 ? gap : 0);
+            visibleCount++;
+        }
+        if (visibleCount === 0)
+            return 0;
+        if (total <= _statusAvailableWidth)
+            return visibleCount;
+        // Overflow needs one slot of its own. Reserve it, then count the
+        // leading items that still fit. The registry decides which items
+        // leave (third-party first); this is only the slot count.
+        var overflowWidth = Theme.controls.menuBar.iconSize
+            + 2 * Theme.controls.menuBar.statusItemPaddingH;
+        var budget = Math.max(0, _statusAvailableWidth - overflowWidth - gap);
+        var fit = 0;
+        var used = 0;
+        for (var j = 0; j < widths.length; ++j) {
+            if (widths[j] <= 0)
+                continue;
+            var need = widths[j] + (fit > 0 ? gap : 0);
+            if (used + need > budget)
+                break;
+            used += need;
+            fit++;
+        }
+        return fit;
+    }
+    readonly property int effectiveStatusCapacity:
+        statusOverflowCapacity >= 0 ? statusOverflowCapacity : measuredStatusCapacity
+    readonly property var statusRowEntries: statusRegistry.statusRowItems
+    readonly property var statusOverflowEntries: statusRegistry.overflowItems
+    readonly property bool statusHasOverflow: statusRegistry.hasOverflow
+    readonly property bool statusRowVisible: showStatusItems
 
     // The bar's top-level menus, left to right: the fixed system menu, the
     // fixed application menu, then whatever the focused app exported. Keeping
@@ -164,8 +245,13 @@ Rectangle {
     // focus rules span all three groups. `kind` selects the rendering
     // treatment ("system" -> brand mark, "app" -> bold title).
     readonly property var topLevelMenus: {
-        var out = [{ kind: "system", title: qsTr("System"), items: systemMenuItems },
-                   { kind: "app", title: appName, items: applicationMenuItems }];
+        var out = [{ kind: "system", title: qsTr("System"), items: systemMenuItems }];
+        // T233 multi-display: only the active display owns the application
+        // menu and the focused app's exported menus. A secondary display
+        // keeps the shell-owned system menu and its status items.
+        if (!activeDisplay)
+            return out;
+        out.push({ kind: "app", title: appName, items: applicationMenuItems });
         // The global-menu toggle (T-14.2b) suppresses the app's exported menus
         // only; the fixed system and application menus are always present.
         if (!globalMenuEnabled)
@@ -374,8 +460,15 @@ Rectangle {
     signal missionControlRequested()
 
     implicitHeight: Theme.controls.menuBar.height
-    implicitWidth: appMenuRow.implicitWidth + statusRow.implicitWidth
+    // Use the measurement row, not the budget-dependent visible row, so an
+    // unset width resolves to "every item fits" instead of feeding the
+    // overflow capacity back into the bar's own width.
+    implicitWidth: appMenuRow.implicitWidth
+                   + (showStatusItems ? statusMeasureRow.implicitWidth : 0)
                    + 2 * Theme.controls.menuBar.paddingH
+    // T233: the measured slide, mirrored from the compositor's reveal
+    // progress. At 1.0 this is a no-op.
+    transform: Translate { y: -menuBar.revealOffset }
 
     // T-20.1: the bar's fill is the translucent chrome material (the same
     // `material.chromeOpacity` the compositor reads), so its sampled backdrop
@@ -965,6 +1058,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         height: Theme.controls.menuBar.height
         spacing: Theme.controls.menuBar.statusItemGap
+        visible: menuBar.showStatusItems
 
         Repeater {
             id: statusRepeater
@@ -997,6 +1091,47 @@ Rectangle {
                 backgroundColor: menuBar.color
 
                 onActivated: (id) => menuBar.activateStatusItem(id)
+            }
+        }
+    }
+
+    // T233: the offscreen measurement row. It uses the same `StatusItem`
+    // delegate as the visible row so the capacity reflects the real glyph,
+    // clock text and tray icon widths. It is never rendered or hit-tested.
+    Row {
+        id: statusMeasureRow
+        objectName: "statusMeasureRow"
+        visible: false
+        height: Theme.controls.menuBar.height
+        spacing: Theme.controls.menuBar.statusItemGap
+
+        Repeater {
+            id: statusMeasureRepeater
+            objectName: "statusMeasureRepeater"
+            model: statusRegistry.orderedItems
+
+            delegate: StatusItem {
+                required property var modelData
+
+                itemId: modelData.id !== undefined ? modelData.id : ""
+                icon: modelData.icon !== undefined ? modelData.icon : ""
+                iconSource: modelData.iconSource !== undefined ? modelData.iconSource : ""
+                label: modelData.label !== undefined ? modelData.label : ""
+                tooltip: modelData.tooltip !== undefined ? modelData.tooltip : ""
+                accessibleName: modelData.accessibleName !== undefined ? modelData.accessibleName : ""
+                kind: modelData.kind !== undefined ? modelData.kind : "status"
+                state: modelData.state !== undefined ? modelData.state : "ok"
+                available: modelData.available !== false
+                enabled: false
+                selected: false
+                level: modelData.level !== undefined ? modelData.level : 0.8
+                showDate: menuBar.showDate
+                showSeconds: menuBar.showSeconds
+                use24Hour: menuBar.use24Hour
+                tint: modelData.tint !== undefined ? modelData.tint : menuBar.foreground
+                foreground: menuBar.foreground
+                secondaryForeground: menuBar.secondaryForeground
+                backgroundColor: "transparent"
             }
         }
     }

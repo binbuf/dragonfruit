@@ -136,7 +136,8 @@ QtObject {
             }
         }
         // Only then do optional system items leave. `essential` items
-        // (clock, Quick Settings, the overflow affordance itself) stay put.
+        // (clock, Quick Settings, the overflow affordance itself) stay put
+        // while there is room.
         for (var j = row.length - 1; j >= 0 && visibleCount > maxVisible; --j) {
             if (!row[j].essential && row[j].available) {
                 overflow.unshift(row[j]);
@@ -144,6 +145,21 @@ QtObject {
                 visibleCount--;
             }
         }
+        // T233 hard notch/width fallback: when even the essential system
+        // items cannot fit, the lowest-priority ones join the overflow list.
+        // The row never clips, and the synthesized overflow affordance still
+        // makes every removed item reachable. A budget of zero therefore
+        // renders only the overflow affordance.
+        for (var k = row.length - 1; k >= 0 && visibleCount > maxVisible; --k) {
+            if (row[k].available) {
+                overflow.unshift(row[k]);
+                row.splice(k, 1);
+                visibleCount--;
+            }
+        }
+        // Re-sort the overflow block so items removed by the two passes keep
+        // the registry's deterministic system-first order.
+        overflow.sort(_compare);
         return { row: row, overflow: overflow };
     }
 

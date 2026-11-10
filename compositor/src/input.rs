@@ -1157,6 +1157,10 @@ fn poll_animations(state: &mut DfState) {
         Vec::new()
     };
     state.step_animations(now);
+    // T233: the menu-bar reveal/hide delay and slide share this clock. A
+    // settled transition still owes the frame that was requested before the
+    // step, so the final-output capture above already contains it.
+    state.step_menu_bar_visibility(now);
     if !final_outputs.is_empty() && !state.animations_active() {
         for output in &final_outputs {
             state.frame_scheduler.request_animation(output);

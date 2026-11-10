@@ -19,6 +19,11 @@ Item {
         when: windowShown
 
         Component { id: menuBarComponent; MenuBar { } }
+        Component { id: displayPolicyComponent; MenuBarDisplayPolicy { } }
+        Component {
+            id: backdropComponent
+            Rectangle { }
+        }
         Component { id: statusItemComponent; StatusItem { } }
         Component { id: registryComponent; StatusItemRegistry { } }
         Component { id: dateTimePanelComponent; DateTimePanel { } }
@@ -536,6 +541,159 @@ Item {
             full.destroy();
             always.destroy();
             never.destroy();
+        }
+
+        // -- T233: measured overflow, notch, reveal motion, multi-display ---
+
+        function t233Status() {
+            return [
+                { id: "wifi", icon: "wifi", priority: 10, accessibleName: "Wi-Fi" },
+                { id: "bluetooth", icon: "bluetooth", priority: 20,
+                  accessibleName: "Bluetooth" },
+                { id: "battery", icon: "battery", priority: 30,
+                  accessibleName: "Battery" },
+                { id: "volume", icon: "volume", priority: 40,
+                  accessibleName: "Volume" },
+                { id: "search", icon: "search", priority: 50,
+                  accessibleName: "Search" },
+                { id: "notifications", icon: "notifications", priority: 60,
+                  accessibleName: "Notifications" },
+                { id: "clock", kind: "clock", menu: "clock", priority: 70,
+                  essential: true, accessibleName: "Date & Time",
+                  tooltip: "Date & Time" },
+                { id: "control-center", icon: "control-center", priority: 80,
+                  essential: true, accessibleName: "Quick Settings" },
+                { id: "mission-control", icon: "mission-control", priority: 90,
+                  essential: true, accessibleName: "Overview" },
+                { id: "tray:one", icon: "application", priority: 1000,
+                  thirdParty: true, accessibleName: "Tray One" },
+                { id: "tray:two", icon: "application", priority: 1001,
+                  thirdParty: true, accessibleName: "Tray Two" }
+            ];
+        }
+
+        function test_measured_overflow_follows_width_notch_and_priority() {
+            var wide = make(menuBarComponent, {
+                width: 1400, statusItems: t233Status()
+            });
+            compare(wide.statusHasOverflow, false,
+                    "a wide bar keeps every item in the row");
+            compare(wide.effectiveStatusCapacity,
+                    wide.statusRowEntries.length);
+
+            var narrow = make(menuBarComponent, {
+                width: 420, statusItems: t233Status()
+            });
+            verify(narrow.statusHasOverflow,
+                   "a narrow bar moves extras into overflow");
+            verify(narrow.measuredStatusCapacity < wide.measuredStatusCapacity,
+                   "the capacity follows the measured width");
+            compare(narrow.statusRowEntries[narrow.statusRowEntries.length - 1].id,
+                    "overflow");
+            for (var i = 0; i < narrow.statusRowEntries.length - 1; ++i) {
+                compare(narrow.statusRowEntries[i].thirdParty, false,
+                        "no third-party item stays while a system item is pushed out");
+            }
+            var overflowIds = [];
+            for (var j = 0; j < narrow.statusOverflowEntries.length; ++j)
+                overflowIds.push(narrow.statusOverflowEntries[j].id);
+            verify(overflowIds.indexOf("tray:one") >= 0);
+            verify(overflowIds.indexOf("tray:two") >= 0);
+
+            // A notch is a safe-area inset, not a hit target: it reduces the
+            // budget and therefore can only move more items to overflow.
+            var notched = make(menuBarComponent, {
+                width: 420, notchWidth: 120, statusItems: t233Status()
+            });
+            verify(notched.measuredStatusCapacity <= narrow.measuredStatusCapacity,
+                   "the notch reduces the measured status budget");
+            verify(notched.statusRowEntries.length > 0);
+        }
+
+        function test_a_tiny_bar_keeps_every_item_reachable_through_overflow() {
+            var bar = make(menuBarComponent, {
+                width: 40, statusItems: t233Status()
+            });
+            compare(bar.measuredStatusCapacity, 0);
+            compare(bar.statusRowEntries.length, 1,
+                    "the overflow affordance is the only slot that fits");
+            compare(bar.statusRowEntries[0].id, "overflow");
+            verify(bar.statusOverflowEntries.length >= 9,
+                   "every item that did not fit is listed, not clipped");
+
+            bar.openOverflowMenu();
+            waitForRendering(stage);
+            compare(bar.overflowMenuOpen, true);
+            verify(bar.overflowMenu.length >= 9);
+            bar.closeOverflowMenu();
+        }
+
+        function test_active_display_owns_the_application_menu() {
+            var active = make(menuBarComponent, {
+                width: 800, activeDisplay: true,
+                appName: "Files",
+                applicationMenuItems: [ { label: "About Files" } ]
+            });
+            verify(active.appMenuAt(0), "the system menu is always present");
+            verify(active.appMenuAt(1), "the active display owns the app menu");
+            compare(active.appMenuAt(1).title, "Files");
+
+            var secondary = make(menuBarComponent, {
+                width: 800, activeDisplay: false, showStatusItems: false,
+                appName: "Files",
+                applicationMenuItems: [ { label: "About Files" } ]
+            });
+            verify(secondary.appMenuAt(0), "the system menu stays on every display");
+            compare(secondary.appMenuAt(1), null,
+                    "a secondary display does not duplicate the app menu");
+            compare(secondary.statusRowVisible, false,
+                    "status items follow the per-display policy");
+        }
+
+        function test_display_policy_resolves_one_bar_per_display_and_hotplug() {
+            var policy = make(displayPolicyComponent, {
+                displays: [
+                    { name: "eDP-1", active: true, notchWidth: 0 },
+                    { name: "HDMI-A-1", active: false, notchWidth: 90 }
+                ]
+            });
+            compare(policy.barCount, 2, "one bar per online display");
+            compare(policy.activeDisplay, "eDP-1");
+            compare(policy.bars[0].ownsAppMenu, true);
+            compare(policy.bars[1].ownsAppMenu, false);
+            compare(policy.bars[1].showStatusItems, true,
+                    "the default policy shows status items on every display");
+            compare(policy.bars[1].notchWidth, 90);
+
+            policy.statusPolicy = "active";
+            compare(policy.bars[0].showStatusItems, true);
+            compare(policy.bars[1].showStatusItems, false,
+                    "the active-only policy hides the secondary status row");
+
+            // Hotplug: removing the active display re-homes the app menu to
+            // the remaining online display; an offline entry has no bar.
+            policy.displays = [
+                { name: "eDP-1", active: true, online: false },
+                { name: "HDMI-A-1", active: false, online: true }
+            ];
+            compare(policy.barCount, 1);
+            compare(policy.activeDisplay, "HDMI-A-1");
+            compare(policy.ownsAppMenu("HDMI-A-1"), true);
+            compare(policy.barFor("eDP-1").present, false);
+        }
+
+        function test_reveal_progress_mirrors_the_measured_slide() {
+            var bar = make(menuBarComponent, { width: 800 });
+            compare(bar.revealProgress, 1);
+            compare(bar.revealOffset, 0);
+            bar.revealProgress = 0;
+            compare(bar.revealOffset, Theme.controls.menuBar.height);
+            compare(bar.revealMotionActive, false);
+            bar.revealProgress = 0.5;
+            fuzzyCompare(bar.revealOffset, Theme.controls.menuBar.height / 2, 0.001);
+            compare(bar.revealMotionActive, true);
+            bar.revealProgress = 1;
+            compare(bar.revealOffset, 0);
         }
 
         function compareColor(actual, expected, label) {
@@ -1123,7 +1281,7 @@ Item {
                     { id: "wifi", icon: "wifi", priority: 10 },
                     { id: "search", icon: "search", priority: 50,
                       accessibleName: "Search" },
-                    { id: "notifications", icon: "bell", priority: 60,
+                    { id: "notifications", icon: "notifications", priority: 60,
                       accessibleName: "Notifications" },
                     { id: "tray:one", icon: "application", priority: 1000,
                       thirdParty: true, accessibleName: "Tray One" }
@@ -1256,7 +1414,7 @@ Item {
                   accessibleName: "Volume" },
                 { id: "search", icon: "search", priority: 50,
                   accessibleName: "Search" },
-                { id: "notifications", icon: "bell", priority: 60,
+                { id: "notifications", icon: "notifications", priority: 60,
                   accessibleName: "Notifications" },
                 { id: "clock", kind: "clock", menu: "clock", priority: 70,
                   essential: true, accessibleName: "Date & Time",
@@ -1335,6 +1493,63 @@ Item {
             grabImage(stage).save(dir + "/t231-extras-tray.png");
             trayBar.closeTrayMenu();
             trayBar.destroy();
+        }
+
+        // T233 evidence: auto-hide reveal (mid-slide and full), the concealed
+        // resting state, and a measured overflow menu on a narrow display.
+        // The runner (`scripts/capture-t233-menubar.sh`) sets the directory.
+        function test_t233_capture_states() {
+            if (typeof TestEnvironment === "undefined"
+                    || TestEnvironment.captureDir.length === 0)
+                skip("DF_MENUBAR_CAPTURE_DIR not set");
+            var dir = TestEnvironment.captureDir;
+            var backdrop = createTemporaryObject(backdropComponent, stage, {
+                width: stage.width, height: stage.height,
+                color: "#0d1016", z: -10
+            });
+            var status = t233Status();
+
+            // 1. Auto-hide reveal mid-slide: the bar is partly on screen.
+            var reveal = make(menuBarComponent, {
+                width: 1000, autoHideMode: "always", revealProgress: 0.35,
+                appName: "Files",
+                applicationMenuItems: [ { label: "About Files" } ],
+                statusItems: status
+            });
+            reveal.y = 0;
+            waitForRendering(stage);
+            grabImage(stage).save(dir + "/t233-menubar-reveal.png");
+            reveal.revealProgress = 1;
+            waitForRendering(stage);
+            grabImage(stage).save(dir + "/t233-menubar-revealed.png");
+            reveal.destroy();
+
+            // 2. Concealed: nothing is reserved and the bar is off-screen.
+            var concealed = make(menuBarComponent, {
+                width: 1000, autoHideMode: "always", revealProgress: 0,
+                statusItems: status
+            });
+            concealed.y = 0;
+            waitForRendering(stage);
+            grabImage(stage).save(dir + "/t233-menubar-concealed.png");
+            concealed.destroy();
+
+            // 3. Overflow on a narrow display, with the overflow menu open.
+            var overflow = make(menuBarComponent, {
+                width: 420, revealProgress: 1, appName: "Files",
+                applicationMenuItems: [ { label: "About Files" } ],
+                statusItems: status
+            });
+            overflow.y = 0;
+            waitForRendering(stage);
+            overflow.openOverflowMenu();
+            waitForRendering(stage);
+            wait(350);
+            waitForRendering(stage);
+            grabImage(stage).save(dir + "/t233-menubar-overflow.png");
+            overflow.closeOverflowMenu();
+            overflow.destroy();
+            backdrop.destroy();
         }
 
         function test_t232_capture_states() {

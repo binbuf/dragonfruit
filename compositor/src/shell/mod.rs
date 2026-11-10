@@ -43,7 +43,7 @@ use crate::window::{
 use crate::workspace::{SpaceId, Wallpaper, WallpaperFit};
 
 use layer::{aggregate_reserved_for, Edge, KeyboardInteraction, LayerSurfaceState};
-use menubar::{AutoHideMode, MenuBarVisibility};
+use menubar::{menu_bar_visible, AutoHideMode, MenuBarVisibility, MENU_BAR_REVEAL_HEIGHT};
 use trust::{Refusal, TrustModel, TrustedRole};
 
 /// The version of every private interface this compositor implements.
@@ -136,6 +136,12 @@ pub struct ChromeSurface {
     /// to the owning output. A legacy single-rect surface contributes exactly
     /// one region with the key `panel`.
     pub regions: Vec<ChromeRegion>,
+    /// A compositor-owned visual translation applied on top of `location`.
+    /// The menu bar uses it for the measured reveal/hide slide (T233); every
+    /// other surface leaves it at zero. Input hit-testing still uses
+    /// `location`, so the top strip stays the reveal target while the bar
+    /// slides into place.
+    pub render_offset: Point<i32, Logical>,
     /// The layer the surface requested (`df_shell.layer`).
     pub layer: u32,
     /// The `df_layer_surface` namespace (e.g. `menubar`, `dock`). The
@@ -652,12 +658,39 @@ impl DfState {
                         (panel, regions)
                     }
                 };
+                // T233: the menu bar is the one surface whose visual position
+                // is translated by the measured reveal progress. Keep the
+                // panel/region metadata with the visual so the veil cannot be
+                // left behind at the top edge.
+                let render_offset = if entry.state.namespace == "menubar" {
+                    Point::from((
+                        0,
+                        -self.menu_bar_hide_offset_on(output_name, geometry.size.h),
+                    ))
+                } else {
+                    Point::from((0, 0))
+                };
+                let (panel, regions) = if render_offset != Point::from((0, 0)) {
+                    (
+                        Rectangle::new(panel.loc + render_offset, panel.size),
+                        regions
+                            .into_iter()
+                            .map(|mut region| {
+                                region.rect.loc += render_offset;
+                                region
+                            })
+                            .collect(),
+                    )
+                } else {
+                    (panel, regions)
+                };
                 ChromeSurface {
                     surface: entry.surface.clone(),
                     location: geometry.loc,
                     geometry,
                     panel,
                     regions,
+                    render_offset,
                     layer: entry.state.layer,
                     namespace: entry.state.namespace.clone(),
                     keyboard: entry.state.keyboard,
@@ -783,7 +816,20 @@ impl DfState {
         }
         // A live policy change starts from the resting state: `always` is
         // concealed until the next edge/keyboard reveal even if the pointer
-        // happens to sit at the top edge.
+        // happens to sit at the top edge. Settle each output against its
+        // current fullscreen/active state so a `never`/desktop bar does not
+        // play a reveal animation on a settings toggle.
+        let names: Vec<String> = self.space.outputs().map(|output| output.name()).collect();
+        for name in names {
+            let fullscreen = self.fullscreen_client_covers_output(&name);
+            let visible = menu_bar_visible(
+                self.shell.menu_bar.mode(),
+                fullscreen,
+                false,
+                self.menu_bar_active_on(&name),
+            );
+            self.shell.menu_bar.settle(&name, visible);
+        }
         self.refresh_reserved_zones();
         self.needs_redraw = true;
     }
@@ -791,6 +837,74 @@ impl DfState {
     /// Whether the menu bar is revealed on `output` right now.
     pub fn menu_bar_revealed_on(&self, output: &str) -> bool {
         self.shell.menu_bar.is_revealed(output)
+    }
+
+    /// The rendered reveal fraction (`0.0..=1.0`) for `output`. An output the
+    /// reveal state has not seen yet rests at the policy's visible/invisible
+    /// state, so the default `full-screen` bar is fully on screen before the
+    /// first pointer motion and a concealed `always` bar starts at zero.
+    pub fn menu_bar_progress_on(&self, output: &str) -> f64 {
+        if self.shell.menu_bar.has_output(output) {
+            return self.shell.menu_bar.progress_on(output);
+        }
+        let fullscreen = self.fullscreen_client_covers_output(output);
+        let active = self.menu_bar_active_on(output);
+        if menu_bar_visible(self.shell.menu_bar.mode(), fullscreen, false, active) {
+            1.0
+        } else {
+            0.0
+        }
+    }
+
+    /// The upward visual translation of the menu-bar surface for `output`.
+    pub fn menu_bar_hide_offset_on(&self, output: &str, surface_height: i32) -> i32 {
+        let progress = self.menu_bar_progress_on(output);
+        if progress >= 1.0 {
+            return 0;
+        }
+        ((1.0 - progress) * f64::from(surface_height.max(0))).round() as i32
+    }
+
+    /// The configured menu-bar surface height (the bar strip or its veil
+    /// extent), used by diagnostics for the reveal translation.
+    pub fn menu_bar_surface_height(&self) -> i32 {
+        self.shell
+            .layers
+            .iter()
+            .find(|entry| entry.state.namespace == "menubar")
+            .and_then(|entry| {
+                entry
+                    .state
+                    .configured
+                    .map(|(_, height)| height)
+                    .or(Some(entry.state.height))
+            })
+            .unwrap_or(MENU_BAR_REVEAL_HEIGHT)
+    }
+
+    /// Whether the menu bar contributes an input region on `output` this
+    /// frame. A concealed bar is filtered out of the visible chrome list, so
+    /// the reveal strip and the top bar strip are the only hit areas.
+    pub fn menu_bar_input_on(&self, output: &str, fullscreen: bool) -> bool {
+        self.menu_bar_visible_on(output, fullscreen)
+            && self
+                .shell
+                .layers
+                .iter()
+                .any(|entry| entry.state.namespace == "menubar")
+    }
+
+    /// Advance the menu-bar reveal/hide transitions to `now_ms`. Returns
+    /// whether the rendered progress changed. A visibility flip refreshes the
+    /// per-output reserved zones; the caller requests a frame while the
+    /// transition is live.
+    pub fn step_menu_bar_visibility(&mut self, now_ms: u64) -> bool {
+        if !self.shell.menu_bar.tick(now_ms) {
+            return false;
+        }
+        self.refresh_reserved_zones();
+        self.needs_redraw = true;
+        true
     }
 
     /// Whether the menu bar is visible on `output` under the live policy.
@@ -839,7 +953,9 @@ impl DfState {
         let fullscreen = self.fullscreen_client_covers_output(&name);
         let active = self.menu_bar_active_on(&name);
         let local_y = location.y - f64::from(geometry.loc.y);
+        let now_ms = self.now_msec();
         if !self.shell.menu_bar.update_pointer(
+            now_ms,
             &name,
             local_y,
             fullscreen,
@@ -850,6 +966,9 @@ impl DfState {
         }
         self.refresh_reserved_zones();
         self.needs_redraw = true;
+        // The reveal/hide delay and slide run on the shared animation clock;
+        // arm it now that a transition is live.
+        crate::input::schedule_animation_timer(self);
         true
     }
 
@@ -872,9 +991,11 @@ impl DfState {
     pub fn focus_menu_bar(&mut self) -> bool {
         let (output, _) = self.focused_output();
         if let Some(output) = output {
-            self.shell.menu_bar.reveal(&output);
+            let now_ms = self.now_msec();
+            self.shell.menu_bar.reveal_at(&output, now_ms);
             self.refresh_reserved_zones();
             self.needs_redraw = true;
+            crate::input::schedule_animation_timer(self);
         }
         let Some(surface) = self.chrome_surface_by_namespace("menubar") else {
             return false;

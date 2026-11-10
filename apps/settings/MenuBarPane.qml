@@ -75,15 +75,21 @@ Item {
         { value: 50, label: qsTr("50") }
     ]
 
-    // The Menu Bar Controls list: every control the adapter can project, in
-    // the reference order. The key gates the shell's status row.
+    // The Menu Bar Controls list: every live `menu.control.*` key, in the
+    // registry's reference order. The key gates the shell's status row; an
+    // item that does not fit moves into the overflow menu instead of being
+    // clipped (T233).
     readonly property var controlRows: [
         { key: "menu.control.wifi", label: qsTr("Wi-Fi") },
         { key: "menu.control.bluetooth", label: qsTr("Bluetooth") },
         { key: "menu.control.battery", label: qsTr("Battery") },
-        { key: "menu.control.focus", label: qsTr("Focus") },
         { key: "menu.control.volume", label: qsTr("Sound") },
-        { key: "menu.control.accessibility", label: qsTr("Accessibility") }
+        { key: "menu.control.search", label: qsTr("Search") },
+        { key: "menu.control.notifications", label: qsTr("Notifications") },
+        { key: "menu.control.focus", label: qsTr("Focus") },
+        { key: "menu.control.clock", label: qsTr("Date & Time") },
+        { key: "menu.control.accessibility", label: qsTr("Accessibility") },
+        { key: "menu.control.controlCenter", label: qsTr("Quick Settings") }
     ]
 
     function controlVisible(key) {
@@ -196,6 +202,21 @@ Item {
                 width: parent.width
                 text: qsTr("System and app controls can be configured to "
                            + "appear in both Quick Settings and the menu bar.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                leftPadding: Theme.controls.settingsRow.paddingH
+                rightPadding: Theme.controls.settingsRow.paddingH
+                topPadding: Theme.primitive.spacing.xs
+                bottomPadding: Theme.primitive.spacing.xs
+            }
+
+            Text {
+                objectName: "menuBarOverflowDescription"
+                width: parent.width
+                text: qsTr("Items that do not fit move into the overflow "
+                           + "menu; they are never clipped. Only the active "
+                           + "display owns the application menu.")
                 color: Theme.color.textTertiary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
