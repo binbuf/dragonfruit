@@ -101,6 +101,14 @@ DockConfig dockConfigFromValues(const QVariantMap &values)
     return config;
 }
 
+QStringList dockRecentIds(const DockConfig &config, const QStringList &recentIds)
+{
+    // `dock.showRecentApps` is the single policy switch for the suggested
+    // entries; the recency list is still kept while off so toggling it on is
+    // immediate (T-10 section 17, T236).
+    return config.showRecentApps ? recentIds : QStringList();
+}
+
 int dockIconSize(double size, int iconMin, int iconMax)
 {
     return qRound(iconMin + qBound(0.0, size, 1.0) * (iconMax - iconMin));
@@ -182,6 +190,35 @@ double dockMinimizeReactionPhase(qint64 elapsedMs)
     if (elapsedMs < 0 || elapsedMs >= kMinimizeReactionMs)
         return -1.0;
     return static_cast<double>(elapsedMs) / static_cast<double>(kMinimizeReactionMs);
+}
+
+DockActivationFallback dockActivationFallback(bool found, bool launchable)
+{
+    if (found)
+        return DockActivationFallback::None;
+    return launchable ? DockActivationFallback::Launch : DockActivationFallback::Notice;
+}
+
+QVariantList filterDockQuittingEntries(const QVariantList &running,
+                                       const QStringList &quittingAppIds)
+{
+    if (quittingAppIds.isEmpty())
+        return running;
+    const QSet<QString> quitting(quittingAppIds.begin(), quittingAppIds.end());
+    QVariantList kept;
+    kept.reserve(running.size());
+    for (const QVariant &value : running) {
+        const QVariantMap map = value.toMap();
+        const QString kind = map.value(QStringLiteral("kind")).toString();
+        if (kind != QLatin1String("temporary")
+            && kind != QLatin1String("minimized")) {
+            kept.append(value);
+            continue;
+        }
+        if (!quitting.contains(map.value(QStringLiteral("appId")).toString()))
+            kept.append(value);
+    }
+    return kept;
 }
 
 QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList &pinnedIds,

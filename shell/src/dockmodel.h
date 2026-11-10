@@ -90,6 +90,12 @@ struct DockConfig {
 // the schema defaults). Pure and unit-testable.
 DockConfig dockConfigFromValues(const QVariantMap &values);
 
+// The recency list the Dock should render (T236): `recentIds` when
+// `dock.showRecentApps` is on, empty when it is off. One place decides the
+// policy so a QML/controller branch cannot drift. Pure and unit-tested
+// (tst_dockcore).
+QStringList dockRecentIds(const DockConfig &config, const QStringList &recentIds);
+
 // Map `dock.size` (0..1) onto the icon-size token range. Pure: the QML token
 // bounds are passed in by the caller.
 int dockIconSize(double size, int iconMin, int iconMax);
@@ -142,6 +148,25 @@ struct AppOpenPlan {
 };
 AppOpenPlan planAppOpen(const DesktopEntryIndex &index, const QVariantList &running,
                         const QString &desktopId);
+
+// T236: what the shell does when the compositor answers `activate_app`. A
+// found window is the activation itself; a vanished app falls back to a launch
+// when its installed entry is still launchable, otherwise to a visible notice.
+// Pure and unit-tested (tst_dockcore).
+enum class DockActivationFallback {
+    None,
+    Launch,
+    Notice,
+};
+DockActivationFallback dockActivationFallback(bool found, bool launchable);
+
+// Drop the app-level running groups (`kind: "temporary"`) and per-window
+// `minimized` rows for apps whose quit is in flight (T236). A quit removes the
+// temporary Dock entry immediately instead of leaving it until the compositor's
+// close ghost settles; pinned entries and suggestions are untouched. Pure and
+// unit-tested (tst_dockcore).
+QVariantList filterDockQuittingEntries(const QVariantList &running,
+                                       const QStringList &quittingAppIds);
 
 // Recent/suggested apps (T-10 section 17): up to `limit` entries for the
 // recency-ordered `recentIds` that are not pinned and not already running.

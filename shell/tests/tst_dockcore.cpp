@@ -486,6 +486,20 @@ private slots:
         QCOMPARE(config.showRecentApps, false);
     }
 
+    void dockRecentIdsFollowTheShowRecentAppsPolicy()
+    {
+        DockConfig config;
+        const QStringList recent{QStringLiteral("a.desktop"), QStringLiteral("b.desktop")};
+        QVERIFY(dockRecentIds(config, recent).isEmpty());
+        config.showRecentApps = true;
+        QCOMPARE(dockRecentIds(config, recent), recent);
+        config.showRecentApps = false;
+        QVERIFY(dockRecentIds(config, recent).isEmpty());
+        // An empty history is empty either way.
+        config.showRecentApps = true;
+        QVERIFY(dockRecentIds(config, {}).isEmpty());
+    }
+
     void dockIconSizeMapsTheRange()
     {
         QCOMPARE(dockIconSize(0.0, 32, 64), 32);
@@ -1477,6 +1491,42 @@ private slots:
         QVERIFY(QDir().mkpath(folder));
         QCOMPARE(folderDisplayName(folder), QStringLiteral("My Stuff"));
         QCOMPARE(folderDisplayName(QStringLiteral("/")), QStringLiteral("Downloads"));
+    }
+
+    void activationFallbackLaunchesOrRaisesANotice()
+    {
+        QCOMPARE(dockActivationFallback(true, true), DockActivationFallback::None);
+        QCOMPARE(dockActivationFallback(true, false), DockActivationFallback::None);
+        // The app vanished between the projection and the click.
+        QCOMPARE(dockActivationFallback(false, true), DockActivationFallback::Launch);
+        QCOMPARE(dockActivationFallback(false, false), DockActivationFallback::Notice);
+    }
+
+    void filterQuittingRemovesOnlyTheAppsRunningRows()
+    {        const QVariantList running{
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("files")},
+                        {QStringLiteral("appId"), QStringLiteral("files")},
+                        {QStringLiteral("kind"), QStringLiteral("temporary")}},
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("win:1")},
+                        {QStringLiteral("appId"), QStringLiteral("files")},
+                        {QStringLiteral("kind"), QStringLiteral("minimized")}},
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("term")},
+                        {QStringLiteral("appId"), QStringLiteral("term")},
+                        {QStringLiteral("kind"), QStringLiteral("temporary")}},
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("pin")},
+                        {QStringLiteral("appId"), QStringLiteral("pin")},
+                        {QStringLiteral("kind"), QStringLiteral("pinned")}},
+        };
+        const QVariantList kept = filterDockQuittingEntries(
+            running, {QStringLiteral("files")});
+        QCOMPARE(kept.size(), 2);
+        QCOMPARE(kept.at(0).toMap().value(QStringLiteral("appId")).toString(),
+                 QStringLiteral("term"));
+        QCOMPARE(kept.at(1).toMap().value(QStringLiteral("kind")).toString(),
+                 QStringLiteral("pinned"));
+        // An empty quitting set is the identity, so the common path does not
+        // rebuild the list.
+        QCOMPARE(filterDockQuittingEntries(running, {}).size(), running.size());
     }
 
     // -- recent/suggested apps (T-10 section 17) -------------------------
@@ -2490,6 +2540,55 @@ private slots:
                                  QSet<QString>{QStringLiteral("1"),
                                                QStringLiteral("99")}),
                  QStringList{QStringLiteral("1")});
+    }
+
+    void perAppShowRestoresOnlyThatAppsWindows()
+    {
+        const QVariantList entries{
+            QVariantMap{ { QStringLiteral("kind"), QStringLiteral("temporary") },
+                         { QStringLiteral("appId"), QStringLiteral("a") },
+                         { QStringLiteral("windowList"),
+                           QVariantList{
+                               QVariantMap{ { QStringLiteral("windowId"), QStringLiteral("1") },
+                                            { QStringLiteral("minimized"), true } },
+                               QVariantMap{ { QStringLiteral("windowId"), QStringLiteral("2") },
+                                            { QStringLiteral("minimized"), false } } } } },
+            QVariantMap{ { QStringLiteral("kind"), QStringLiteral("temporary") },
+                         { QStringLiteral("appId"), QStringLiteral("b") },
+                         { QStringLiteral("windowList"),
+                           QVariantList{QVariantMap{
+                               { QStringLiteral("windowId"), QStringLiteral("3") },
+                               { QStringLiteral("minimized"), true } }} } },
+        };
+        QCOMPARE(minimizedWindowIdsForApp(entries, QStringLiteral("a")),
+                 QStringList{QStringLiteral("1")});
+        QCOMPARE(minimizedWindowIdsForApp(entries, QStringLiteral("b")),
+                 QStringList{QStringLiteral("3")});
+        QVERIFY(minimizedWindowIdsForApp(entries, QString()).isEmpty());
+        QVERIFY(minimizedWindowIdsForApp(entries, QStringLiteral("missing")).isEmpty());
+
+        // Tracked ids are scoped to the app that owns the window, so Show
+        // never restores another app's hidden window.
+        QCOMPARE(trackedWindowIdsForApp(
+                     entries, QSet<QString>{QStringLiteral("1"), QStringLiteral("3")},
+                     QStringLiteral("a")),
+                 QStringList{QStringLiteral("1")});
+        QVERIFY(trackedWindowIdsForApp(entries, {}, QStringLiteral("a")).isEmpty());
+
+        QVERIFY(appInProjection(entries, QStringLiteral("a")));
+        QVERIFY(!appInProjection(entries, QStringLiteral("gone")));
+        QVERIFY(!appInProjection(entries, QString()));
+
+        // The hidden mark survives the frame before the compositor applies the
+        // minimize (the visible window is still tracked), but a window the
+        // shell did not hide clears it.
+        QVERIFY(appStillHidden(entries, QSet<QString>{QStringLiteral("2")},
+                               QStringLiteral("a")));
+        QVERIFY(!appStillHidden(entries, {}, QStringLiteral("a")));
+        QVERIFY(appStillHidden(entries, QSet<QString>{QStringLiteral("2")},
+                               QStringLiteral("b")));
+        QVERIFY(!appStillHidden(entries, QSet<QString>{QStringLiteral("2")},
+                                QStringLiteral("gone")));
     }
 
     void recentItemsMenuRowsCarryTheirLaunchAction()

@@ -74,6 +74,29 @@ QStringList retainWindowIds(const QVariantList &entries, const QSet<QString> &wi
 // enabled verb is never inert.
 QStringList minimizedWindowIds(const QVariantList &entries);
 
+// T236: every minimized window id belonging to `appId`, in projection order.
+// The Dock's per-app "Show" restores exactly this app's hidden windows when the
+// shell has no tracked Hide ids (e.g. the app was hidden before this session's
+// first projection). Empty when the app has no minimized windows.
+QStringList minimizedWindowIdsForApp(const QVariantList &entries, const QString &appId);
+
+// T236: the tracked ids (`windowIds`) whose app-level entry still belongs to
+// `appId`. Used to keep the per-app hidden set scoped to the app the user hid.
+QStringList trackedWindowIdsForApp(const QVariantList &entries,
+                                   const QSet<QString> &windowIds,
+                                   const QString &appId);
+
+// T236: whether the projection still carries any window for `appId` (visible or
+// minimized). A quit or hide mark is dropped once the app is gone.
+bool appInProjection(const QVariantList &entries, const QString &appId);
+
+// T236: whether `appId` should stay marked hidden. True while the app is in the
+// projection and has no visible window that the shell did not ask to hide;
+// `hiddenWindowIds` is the tracked Hide set, so a minimize that has not reached
+// the compositor yet cannot clear the mark.
+bool appStillHidden(const QVariantList &entries, const QSet<QString> &hiddenWindowIds,
+                    const QString &appId);
+
 // A publishable application accelerator (T-14.2b): the opaque action the owner
 // handles and the chord that triggers it. The chord keeps the published
 // spelling (`Super+H`, `Ctrl+Super+F`), which the compositor's keymap parser

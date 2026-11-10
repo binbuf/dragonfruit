@@ -111,6 +111,9 @@ Rectangle {
     property bool autoHide: false
     property bool animateOpening: true
     property bool showRecentApps: false
+    // Apps the shell's Hide verb has hidden (T236): the running dot dims and
+    // the app menu offers Show instead of Hide. The shell is the one writer.
+    property var hiddenApps: []
     // Opt-in minimize-to-icon reaction (T-14.7s): a bounded one-hop bounce on
     // the acting app's entry when one of its windows minimizes. Default off;
     // the shell only publishes a `minimize` phase when the key is on, and the
@@ -1706,6 +1709,15 @@ Rectangle {
         return -1;
     }
 
+    // T236: an app is hidden when the shell's Hide verb minimized every
+    // window and recorded it. The app id is the projection key; a pinned
+    // entry and its running group share it.
+    function isAppHidden(appId) {
+        if (!appId || hiddenApps === undefined || hiddenApps === null)
+            return false;
+        return hiddenApps.indexOf(String(appId)) >= 0;
+    }
+
     function closePopovers() {
         entryMenu.hide();
         windowChooser.hide();
@@ -1861,6 +1873,31 @@ Rectangle {
             openEntryMenu(entry);
             return;
         }
+    }
+
+    // Capture/demo seam (T236): open a *running* app's context menu so the
+    // lifecycle rows (Hide/Show, Quit, Force Quit) are visible. A hidden
+    // running app wins so the Show row is captured after a Hide.
+    function openRunningEntryMenuFixture() {
+        var hidden = null;
+        var running = null;
+        for (var i = 0; i < entries.length; ++i) {
+            var entry = entries[i];
+            if (!entry || entry.running !== true || entry.kind === "divider"
+                    || entry.kind === "overflow")
+                continue;
+            if (running === null)
+                running = entry;
+            if (dock.isAppHidden(entry.appId)) {
+                hidden = entry;
+                break;
+            }
+        }
+        var target = hidden !== null ? hidden : running;
+        if (target === null)
+            return;
+        entryContextMenuRequested(target, 0, 0);
+        openEntryMenu(target);
     }
 
     // Open the window chooser on `entry`. A click passes no second argument;
@@ -2890,11 +2927,16 @@ Rectangle {
             // Keep/Remove or Options.
             out.push({
                 type: "item", label: qsTr("Quit"),
-                action: "quit", payload: { appId: e.appId }
+                action: "quit", payload: { appId: e.appId, desktopId: e.desktopId }
+            });
+            out.push({
+                type: "item", label: qsTr("Force Quit"),
+                action: "force_quit", payload: { appId: e.appId, desktopId: e.desktopId }
             });
             return out;
         }
         if (running) {
+            var hidden = dock.isAppHidden(e.appId);
             if (e.pinned === true) {
                 out.push({
                     type: "item", label: qsTr("Remove from Dock"),
@@ -2910,9 +2952,25 @@ Rectangle {
                 type: "submenu", label: qsTr("Options"), submenu: optionsMenuModel(e)
             });
             out.push({ type: "separator" });
+            // T236: the app-level visibility verbs. Hide minimizes every
+            // visible window through the shell's one tracked Hide path; Show
+            // restores exactly the windows that Hide minimized.
+            out.push({
+                type: "item", label: hidden ? qsTr("Show") : qsTr("Hide"),
+                action: hidden ? "show_app" : "hide_app",
+                payload: { appId: e.appId, desktopId: e.desktopId }
+            });
             out.push({
                 type: "item", label: qsTr("Quit"),
-                action: "quit", payload: { appId: e.appId }
+                action: "quit",
+                payload: { appId: e.appId, desktopId: e.desktopId,
+                           temporary: e.kind === "temporary" }
+            });
+            out.push({
+                type: "item", label: qsTr("Force Quit"),
+                action: "force_quit",
+                payload: { appId: e.appId, desktopId: e.desktopId,
+                           temporary: e.kind === "temporary" }
             });
         } else if (e.missing !== true) {
             out.push({
@@ -3966,6 +4024,7 @@ Rectangle {
             artworkRasterSize: Math.ceil(dock.iconSize * dock.effectiveMagnifyPeakFactor)
             indicatorEdge: dock.indicatorEdge
             showIndicator: dock.showIndicators
+            hidden: dock.isAppHidden(modelData.appId)
             keyboardFocused: dock.keyboardFocused && modelData.id === dock.focusedItemId
             reorderHint: dock.reorderHintFor(modelData)
             externalDropTarget: dock.externalDragActive

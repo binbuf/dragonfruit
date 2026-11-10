@@ -89,11 +89,15 @@ Item {
     // a brief highlight makes the no-op visible.
     property bool duplicateFlash: false
     readonly property bool running: entry.running === true
+    // T236: the app is hidden by the shell's Hide verb. The running dot dims
+    // to the inactive state and the accessible name says so; the artwork stays
+    // present (the Dock is how a hidden app is found again).
+    property bool hidden: false
     // The app owns the focused window (T-14.7ac). macOS distinguishes the
     // active app's running dot from a merely running one; an entry that does
     // not carry the flag is treated as active so direct-model callers and
     // single-app fixtures keep their previous full-strength dot.
-    readonly property bool active: entry.active !== false
+    readonly property bool active: entry.active !== false && !hidden
     readonly property string name: entry.name !== undefined ? entry.name : ""
     readonly property string appId: entry.appId !== undefined ? entry.appId : ""
     // The app-index record id ("org.dragonfruit.Files.desktop"); the first-party
@@ -186,7 +190,8 @@ Item {
                   : launching ? qsTr(", launching")
                   : failed ? qsTr(", failed to launch")
                   : running ? qsTr(", running")
-                              + (active ? " " + qsTr("(active)") : "")
+                              + (hidden ? " " + qsTr("(hidden)")
+                                        : active ? " " + qsTr("(active)") : "")
                   : qsTr(", not running");
         if (attention && !missing && !launching)
             label += qsTr(", needs attention");
