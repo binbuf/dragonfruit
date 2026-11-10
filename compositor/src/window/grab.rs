@@ -16,7 +16,7 @@ use smithay::input::pointer::{
 };
 use smithay::utils::{Logical, Point, Rectangle};
 
-use super::resize::{clamp_frame_move, resize_geometry, ResizeEdge};
+use super::resize::{clamp_frame_move_offscreen, resize_geometry, ResizeEdge};
 use crate::state::DfState;
 
 /// An interactive window move. The window follows the pointer, clamped below
@@ -62,7 +62,7 @@ impl PointerGrab<DfState> for MoveGrab {
                 .map(|geo| geo.size)
                 .unwrap_or_default();
             let insets = data.insets_for(&self.window);
-            location = clamp_frame_move(location, size, insets, bounds);
+            location = clamp_frame_move_offscreen(location, size, insets, bounds);
         }
         data.move_window(&self.window, location);
         handle.motion(data, None, event);

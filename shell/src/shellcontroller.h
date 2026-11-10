@@ -211,7 +211,7 @@ private slots:
     void onPolkitPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onPolkitPointerLeft();
     void onPolkitKeyboardFocused(bool focused);
-    void onPolkitKeyEvent(quint32 key, bool pressed, bool shift);
+    void onPolkitKeyEvent(quint32 key, bool pressed, bool shift, const QString &text);
     void onPolkitStarted();
     void onPolkitFinished(bool success);
     void onPolkitChanged();
@@ -234,7 +234,7 @@ private slots:
     void onLockAuthFailed(const QString &message);
     // T-12.3c: a key captured by the lock surface. Typed characters append to
     // the password buffer, Backspace deletes, Return submits, Escape clears.
-    void onLockKeyEvent(quint32 key, bool pressed, bool shift);
+    void onLockKeyEvent(quint32 key, bool pressed, bool shift, const QString &text);
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
@@ -454,6 +454,7 @@ private slots:
                              quint32 axis, qreal value);
     void onAppsDrawerActivated(const QString &desktopId, qreal x, qreal y, qreal w, qreal h);
     void onAppsDrawerDismissed();
+    void onAppsDrawerRefreshRequested();
     void onAppsDrawerRequested();
     // Notification banners and history (T-11.1a).
     void onNotificationAvailable(bool available);

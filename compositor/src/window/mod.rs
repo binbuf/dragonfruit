@@ -134,8 +134,9 @@ pub use placement::{
 };
 #[allow(unused_imports)]
 pub use resize::{
-    apply_aspect, clamp_frame_move, clamp_move, clamp_within_output, resize_edge_at,
-    resize_geometry, ResizeEdge, SizeConstraints, RESIZE_BORDER, RESIZE_CORNER,
+    apply_aspect, clamp_frame_move, clamp_frame_move_offscreen, clamp_move, clamp_within_output,
+    resize_edge_at, resize_geometry, ResizeEdge, SizeConstraints, MIN_VISIBLE_EDGE, RESIZE_BORDER,
+    RESIZE_CORNER,
 };
 pub use scanout::{covers_output, direct_scanout_candidate};
 #[allow(unused_imports)]
@@ -186,13 +187,15 @@ impl ReservedZones {
         )
     }
 
-    /// The bounds an interactive move or resize may use: the output with only
-    /// the top reserve (the menu bar) subtracted.
+    /// The bounds an interactive move or resize uses as its anchor: the output
+    /// with only the top reserve (the menu bar) subtracted.
     ///
     /// The Dock's reserve still shapes placement and Zoom through
     /// [`Self::usable`], but a dragged or resized window may overlap the Dock,
-    /// matching macOS. The Dock anchors to the bottom, left, or right edge, so
-    /// `top` is the menu bar.
+    /// matching macOS. A move may additionally hang off the left, right, or
+    /// bottom edge while keeping a grab strip visible; the top stays a hard
+    /// floor. The Dock anchors to the bottom, left, or right edge, so `top` is
+    /// the menu bar.
     pub fn interactive_bounds(&self, output: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
         let top = self.top.max(0).min((output.size.h - 1).max(0));
         Rectangle::new(

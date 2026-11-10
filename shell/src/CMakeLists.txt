@@ -11,6 +11,9 @@
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(WAYLAND_CLIENT IMPORTED_TARGET wayland-client)
+    # The shell keeps the compositor keymap so lock/polkit password input uses
+    # the user's actual layout (Caps Lock, AltGr, non-US, keypad).
+    pkg_check_modules(XKBCOMMON IMPORTED_TARGET xkbcommon)
 endif()
 
 get_filename_component(DF_QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
@@ -24,6 +27,20 @@ if(NOT WAYLAND_CLIENT_FOUND)
         PATHS /usr/lib64 /usr/lib /usr/lib/x86_64-linux-gnu)
     if(WAYLAND_CLIENT_INCLUDE_DIR AND WAYLAND_CLIENT_LIBRARY)
         set(WAYLAND_CLIENT_FOUND TRUE)
+    endif()
+endif()
+
+if(NOT XKBCOMMON_FOUND)
+    find_path(XKBCOMMON_INCLUDE_DIR xkbcommon/xkbcommon.h
+        HINTS "${DF_QT_PREFIX}/include"
+        PATHS /usr/include /usr/local/include)
+    # Some hosts ship only the runtime soname (no -devel linker name), so
+    # accept `libxkbcommon.so.0` as a fallback like the wayland-client probe.
+    find_library(XKBCOMMON_LIBRARY NAMES xkbcommon libxkbcommon.so.0
+        HINTS "${DF_QT_PREFIX}/lib64" "${DF_QT_PREFIX}/lib"
+        PATHS /usr/lib64 /usr/lib /usr/lib/x86_64-linux-gnu)
+    if(XKBCOMMON_INCLUDE_DIR AND XKBCOMMON_LIBRARY)
+        set(XKBCOMMON_FOUND TRUE)
     endif()
 endif()
 
@@ -45,6 +62,12 @@ if(NOT WAYLAND_CLIENT_FOUND OR NOT WAYLAND_SCANNER)
         "dragonfruit-shell: libwayland-client or wayland-scanner not found; "
         "the shell process target is skipped")
     return()
+endif()
+
+if(NOT XKBCOMMON_FOUND)
+    message(FATAL_ERROR
+        "dragonfruit-shell: xkbcommon headers/library not found; lock and "
+        "polkit password input need it to translate the compositor keymap")
 endif()
 
 if(NOT EGL_INCLUDE_DIR OR NOT EGL_LIBRARY)
@@ -282,5 +305,11 @@ if(TARGET PkgConfig::WAYLAND_CLIENT)
 else()
     target_include_directories(dragonfruit-shell PRIVATE "${WAYLAND_CLIENT_INCLUDE_DIR}")
     target_link_libraries(dragonfruit-shell PRIVATE "${WAYLAND_CLIENT_LIBRARY}")
+endif()
+if(TARGET PkgConfig::XKBCOMMON)
+    target_link_libraries(dragonfruit-shell PRIVATE PkgConfig::XKBCOMMON)
+else()
+    target_include_directories(dragonfruit-shell PRIVATE "${XKBCOMMON_INCLUDE_DIR}")
+    target_link_libraries(dragonfruit-shell PRIVATE "${XKBCOMMON_LIBRARY}")
 endif()
 qt_import_qml_plugins(dragonfruit-shell)

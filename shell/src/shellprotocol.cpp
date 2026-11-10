@@ -27,6 +27,7 @@
 #endif
 
 #include <wayland-client.h>
+#include <xkbcommon/xkbcommon.h>
 
 #include "chromescale.h"
 #include "chromestats.h"
@@ -3431,6 +3432,18 @@ void ShellProtocol::teardown()
         wl_pointer_destroy(m_pointer);
     if (m_keyboard)
         wl_keyboard_destroy(m_keyboard);
+    if (m_xkbState) {
+        xkb_state_unref(m_xkbState);
+        m_xkbState = nullptr;
+    }
+    if (m_xkbKeymap) {
+        xkb_keymap_unref(m_xkbKeymap);
+        m_xkbKeymap = nullptr;
+    }
+    if (m_xkbContext) {
+        xkb_context_unref(m_xkbContext);
+        m_xkbContext = nullptr;
+    }
     if (m_seat)
         wl_seat_destroy(m_seat);
     if (m_manager)
@@ -4698,10 +4711,65 @@ void ShellProtocol::onPointerAxis(void *data, wl_pointer *, uint32_t, uint32_t a
                            wl_fixed_to_double(value));
 }
 
-void ShellProtocol::onKeyboardKeymap(void *, wl_keyboard *, uint32_t, int32_t fd, uint32_t)
+void ShellProtocol::onKeyboardKeymap(void *data, wl_keyboard *, uint32_t format, int32_t fd,
+                                     uint32_t size)
 {
-    if (fd >= 0)
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (fd < 0)
+        return;
+    if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 || size == 0) {
         ::close(fd);
+        return;
+    }
+    // Keep the compositor's keymap so locked/polkit input uses the user's
+    // actual layout instead of the fixed US/ASCII fallback table.
+    void *mapped = ::mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    ::close(fd);
+    if (mapped == MAP_FAILED)
+        return;
+    if (!self->m_xkbContext)
+        self->m_xkbContext = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    xkb_keymap *keymap = self->m_xkbContext
+            ? xkb_keymap_new_from_buffer(self->m_xkbContext,
+                                         static_cast<const char *>(mapped), size,
+                                         XKB_KEYMAP_FORMAT_TEXT_V1,
+                                         XKB_KEYMAP_COMPILE_NO_FLAGS)
+            : nullptr;
+    ::munmap(mapped, size);
+    if (!keymap)
+        return;
+    xkb_state *state = xkb_state_new(keymap);
+    if (!state) {
+        xkb_keymap_unref(keymap);
+        return;
+    }
+    if (self->m_xkbState)
+        xkb_state_unref(self->m_xkbState);
+    if (self->m_xkbKeymap)
+        xkb_keymap_unref(self->m_xkbKeymap);
+    self->m_xkbKeymap = keymap;
+    self->m_xkbState = state;
+    // A keymap can arrive after the modifiers event; replay the last state so
+    // the first translated key already honours Caps Lock and the layout group.
+    xkb_state_update_mask(state, self->m_keyboardModsDepressed,
+                          self->m_keyboardModsLatched, self->m_keyboardModsLocked, 0, 0,
+                          self->m_keyboardGroup);
+}
+
+QString ShellProtocol::keyText(quint32 key) const
+{
+    // Null means "no keymap yet" and tells the controller to use the fixed
+    // fallback table. An empty non-null string means the key produces no text
+    // under the current layout (a dead key or a navigation key).
+    if (!m_xkbState)
+        return QString();
+    char buffer[64];
+    const int length =
+        xkb_state_key_get_utf8(m_xkbState, static_cast<xkb_keycode_t>(key + 8), buffer,
+                               sizeof(buffer));
+    if (length <= 0 || length >= static_cast<int>(sizeof(buffer)))
+        return QStringLiteral("");
+    return QString::fromUtf8(buffer, length);
 }
 
 void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surface *surface,
@@ -4813,16 +4881,16 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
                                   uint32_t state)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    const bool pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
+    const QString text = self->keyText(key);
     // While locked, keys are the lock UI's password input and are never
     // routed to the chrome scenes (T-12.3c).
     if (self->m_keyboardOnLock) {
-        emit self->lockKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED,
-                                self->m_keyboardShift);
+        emit self->lockKeyEvent(key, pressed, self->m_keyboardShift, text);
         return;
     }
     if (self->m_keyboardOnPolkit) {
-        emit self->polkitKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED,
-                                  self->m_keyboardShift);
+        emit self->polkitKeyEvent(key, pressed, self->m_keyboardShift, text);
         return;
     }
     if (self->m_keyboardOnAppsDrawer) {
@@ -4854,14 +4922,24 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
                         self->m_keyboardModifiers);
 }
 
-void ShellProtocol::onKeyboardModifiers(void *data, wl_keyboard *, uint32_t, uint32_t depressed,
-                                        uint32_t, uint32_t, uint32_t)
+void ShellProtocol::onKeyboardModifiers(void *data, wl_keyboard *, uint32_t,
+                                        uint32_t depressed, uint32_t latched, uint32_t locked,
+                                        uint32_t group)
 {
     auto *self = static_cast<ShellProtocol *>(data);
     // WL_KEYBOARD_MODIFIER_MASK_SHIFT is bit 0.
     self->m_keyboardShift = (depressed & 0x1u) != 0;
     // Keep the full mask for the chrome chords (T-14.7t).
     self->m_keyboardModifiers = depressed;
+    self->m_keyboardModsDepressed = depressed;
+    self->m_keyboardModsLatched = latched;
+    self->m_keyboardModsLocked = locked;
+    self->m_keyboardGroup = group;
+    // Feed the live modifier/layout state to xkb so the next key's text
+    // honours Shift, Caps Lock, AltGr, and the active keyboard group.
+    if (self->m_xkbState) {
+        xkb_state_update_mask(self->m_xkbState, depressed, latched, locked, 0, 0, group);
+    }
 }
 
 // --- df_toplevel_manager ----------------------------------------------------

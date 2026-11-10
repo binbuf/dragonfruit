@@ -157,6 +157,55 @@ Item {
             compare(grid.contentY, 0);
         }
 
+        // A wheel over the search field, the chip row, or the card's side
+        // gutter must still scroll the grid. The reported bug was that
+        // vertical scrolling only worked when the pointer was exactly over
+        // the narrow grid band.
+        function test_wheel_scrolls_from_the_card_chrome() {
+            var apps = [];
+            for (var i = 0; i < 100; ++i)
+                apps.push({ desktopId: "app" + i, name: "App " + i,
+                            iconPath: "", categories: [] });
+            var drawer = make({ apps: apps });
+            var grid = findChild(drawer, "appsDrawerGrid");
+            var panel = findChild(drawer, "appsDrawerPanel");
+            var search = findChild(drawer, "appsDrawerSearch");
+            verify(grid.contentHeight > grid.height);
+
+            mouseWheel(search, search.width / 2, search.height / 2, 0, -120);
+            verify(grid.contentY > 0, "wheel over the search field did not scroll");
+
+            grid.contentY = 0;
+            mouseWheel(panel, panel.width - 4, panel.height / 2, 0, -120);
+            verify(grid.contentY > 0, "wheel over the card gutter did not scroll");
+
+            grid.contentY = 0;
+            var pills = findChild(drawer, "appsDrawerPills");
+            mouseWheel(pills, pills.width / 2, pills.height / 2, 0, -120);
+            verify(grid.contentY > 0, "wheel over the chip row did not scroll");
+        }
+
+        // The More button opens the measured options menu and the Back button
+        // is a real dismiss affordance.
+        function test_more_menu_opens_and_back_dismisses() {
+            var drawer = make({ apps: sampleApps });
+            var more = findChild(drawer, "appsDrawerMoreButton");
+            var back = findChild(drawer, "appsDrawerBackButton");
+            verify(more !== null);
+            verify(back !== null);
+
+            mouseClick(more, more.width / 2, more.height / 2);
+            waitForRendering(stage);
+            var menu = findChild(drawer, "appsDrawerMoreMenu");
+            verify(menu.open);
+            menu.hide();
+            waitForRendering(stage);
+
+            dismissedSpy.clear();
+            mouseClick(back, back.width / 2, back.height / 2);
+            compare(dismissedSpy.count, 1);
+        }
+
         function test_escape_dismisses() {
             var drawer = make({ apps: sampleApps });
             drawer.forceActiveFocus();
@@ -214,8 +263,10 @@ Item {
             compare(firstRow, 7);
         }
 
-        // The card wraps the grid with at least `panelPadding` on both ends and
-        // equal left/right padding.
+        // The card wraps the measured grid with equal left/right padding.
+        // The Flickable spans the card so a wheel anywhere over the column
+        // band scrolls; the Grid itself keeps the measured width and is
+        // centred inside it.
         function test_panel_gives_the_grid_equal_padding() {
             var seven = [];
             for (var i = 0; i < 7; ++i)
@@ -223,11 +274,14 @@ Item {
                              iconPath: "", categories: [] });
             var drawer = make({ apps: seven });
             var panel = findChild(drawer, "appsDrawerPanel");
-            var grid = findChild(drawer, "appsDrawerGrid");
+            var flick = findChild(drawer, "appsDrawerGrid");
+            var grid = findChild(drawer, "appsDrawerTiles");
             verify(panel !== null);
+            verify(flick !== null);
             verify(grid !== null);
-            var leftPad = grid.x;
-            var rightPad = panel.width - (grid.x + grid.width);
+            var origin = grid.mapToItem(panel, 0, 0);
+            var leftPad = origin.x;
+            var rightPad = panel.width - (origin.x + grid.width);
             compare(Math.abs(leftPad - rightPad) <= 1, true);
             verify(leftPad >= drawer.panelPadding,
                    "left padding at least panelPadding, got " + leftPad);
@@ -236,7 +290,7 @@ Item {
             // The card is the grid plus the padding on each side.
             verify(panel.width >= grid.width + 2 * drawer.panelPadding);
             // And the grid keeps the vertical padding below it.
-            var bottomPad = panel.height - (grid.y + grid.height);
+            var bottomPad = panel.height - (flick.y + flick.height);
             verify(bottomPad >= drawer.panelPaddingV,
                    "bottom padding at least panelPaddingV, got " + bottomPad);
         }
@@ -274,16 +328,21 @@ Item {
             verify(!findChild(small, "appsDrawerScrollTrack").visible);
         }
 
-        // The drawer's top section is a flat search bar (no pill background)
-        // over the card, framed by the two hairline separators.
-        function test_top_section_is_flat_with_separators() {
+        // The drawer's top section follows the measured Spotlight Apps row:
+        // a Back button, a large rounded search field, and a More button.
+        function test_top_section_is_the_measured_search_row() {
             var drawer = make({ apps: sampleApps });
             var search = findChild(drawer, "appsDrawerSearch");
             verify(search !== null);
-            compare(search.flat, true);
+            compare(search.flat, false);
             compare(search.placeholderText, "Applications");
-            verify(findChild(drawer, "appsDrawerTopSeparator") !== null);
-            verify(findChild(drawer, "appsDrawerPillsSeparator") !== null);
+            compare(search.height, drawer.searchHeight);
+            verify(findChild(drawer, "appsDrawerBackButton") !== null);
+            verify(findChild(drawer, "appsDrawerMoreButton") !== null);
+            // The old hairline rules are gone; the field is a real rounded
+            // control on the glass card.
+            compare(findChild(drawer, "appsDrawerTopSeparator"), null);
+            compare(findChild(drawer, "appsDrawerPillsSeparator"), null);
         }
 
         // Opening the drawer puts active focus in the search field, so the
@@ -495,7 +554,7 @@ Item {
                     verify(panel !== null);
                     compareColor(panel.color, Material.drawerFill(state.blur, state.tier, state.fallback),
                                  state.label);
-                    verify(panel.color.a >= 0.9 || state.blur,
+                    verify(panel.color.a >= 0.85 || state.blur,
                            state.label + " fallback must read as a plate");
                 }
             }

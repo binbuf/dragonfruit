@@ -325,6 +325,13 @@ are now cut from it.
 > [`docs/tasks/0.1.1/`](../tasks/0.1.1/README.md) (T183–T193), under
 > [Track 21](tracks/21-presentation-foundation.md).
 
+> **Chrome stability (2026-11-10):** the menu bar, Dock, and context menus have
+> a separate stack-ranked proposal in
+> [proposals/chrome-stability-and-performance.md](proposals/chrome-stability-and-performance.md).
+> It is the current plan for removing GUI-thread blocking I/O, popover scene
+> resize churn, GPU fence stalls, focus-inferred menu dismissal, and the
+> missing shell watchdog. S1–S4 are the P0 slice.
+
 ### P0 — presentation foundation (next)
 
 1. **P0-A Shell transport + HiDPI.** Render chrome at the output's physical

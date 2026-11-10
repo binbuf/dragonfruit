@@ -122,17 +122,23 @@ def write_wallpaper(path: Path, width: int, height: int, scale: float,
         # and scale with the output so the same logical pattern is measured at
         # 1x/1.5x/2x.
         if background.startswith("checker_"):
-            period = max(2.0, float(background.split("_", 1)[1]) * scale)
+            # Review `checker_N` is an N-capture-pixel square at 2x, i.e.
+            # N/2 pt. The scorer's `period_pt` is the square size, so the
+            # physical square is `period_pt * scale`; the fundamental
+            # frequency of a checkerboard is twice that.
+            period = max(2.0, float(background.split("_", 1)[1]) * scale / 2.0)
             for y in range(height):
                 for x in range(width):
                     value = 235 if (int(x // period) + int(y // period)) % 2 else 45
                     pixels[x, y] = (value, value, value)
         elif background == "lines_grid":
-            period = max(4.0, 8.0 * scale)
+            # Review `lines_grid`: 48 capture px period and 2 px lines at 2x,
+            # i.e. 24 pt period and 1 pt line, scaled to the output.
+            period = max(8.0, 24.0 * scale)
+            line = max(1, round(scale))
             for y in range(height):
                 for x in range(width):
-                    on = int(x % period) < max(1, round(scale)) \
-                        or int(y % period) < max(1, round(scale))
+                    on = int(x % period) < line or int(y % period) < line
                     value = 235 if on else 45
                     pixels[x, y] = (value, value, value)
         elif background in ("stripes_h", "stripes_v"):
@@ -238,7 +244,12 @@ def score(capture: Path, query: Path, out: Path,
 
     mtf = {}
     for period_pt in PERIODS:
-        period_px = period_pt * scale
+        # `period_pt` is the review's square size for checker backgrounds and
+        # the fundamental period for the multi-sine, line and stripe fields.
+        # A checkerboard's fundamental is twice its square size.
+        square_px = period_pt * scale
+        period_px = 2.0 * square_px if background_name.startswith("checker_") \
+            else square_px
         # At 1x a 2 pt period is one capture pixel; report it as unresolved
         # instead of pretending the DFT saw a checker.
         if not sampled or period_px < 4.0:
@@ -252,6 +263,7 @@ def score(capture: Path, query: Path, out: Path,
         mtf[f"{period_pt:g}"] = {
             "period_pt": period_pt,
             "period_px": period_px,
+            "square_px": square_px,
             "input_amplitude": input_amp,
             "output_amplitude": output_amp,
             "raw_ratio": raw,

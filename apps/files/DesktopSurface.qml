@@ -52,6 +52,19 @@ FocusScope {
              ? Number(Settings.values["appearance.transparency"])
              : Theme.glass.slider.defaultPosition
     }
+    Binding {
+        target: Theme; property: "accentOverride"
+        value: Settings.values["appearance.accent"] || ""
+    }
+    Binding {
+        target: Theme; property: "highlightOverride"
+        value: Settings.values["appearance.highlight"] || ""
+    }
+
+    // Desktop labels sit directly on the wallpaper, so they use the same
+    // sampled luminance/polarity pair as the menu bar instead of the scheme's
+    // app text colour.
+    property real backgroundLuma: Settings.wallpaperLuminance
 
     // T227: `desktop.showItems`. "On Desktop" shows the Files icons;
     // "In Stage Manager" hides them for the Stage Manager host (T242).
@@ -108,11 +121,22 @@ FocusScope {
     }
 
     // Rubber band: the view reports the enclosed ids; Cmd toggles, Shift
-    // extends, otherwise the band replaces (an empty band clears).
-    function selectMarquee(nodeIds, modifiers) {
+    // extends, otherwise the band replaces (an empty band clears). The live
+    // path snapshots the pre-drag selection so Cmd/Shift previews toggle from
+    // a stable base while the pointer is still moving.
+    property var marqueeBaseIds: []
+    property bool marqueeLive: false
+
+    function beginMarquee(modifiers) {
+        root.marqueeBaseIds = root.selectedIds.slice();
+        root.marqueeLive = true;
+    }
+
+    function updateMarquee(nodeIds, modifiers) {
         var command = modifiers & root.commandMask;
         var shift = modifiers & Qt.ShiftModifier;
-        var ids = root.selectedIds.slice();
+        var ids = (root.marqueeLive ? root.marqueeBaseIds
+                                    : root.selectedIds).slice();
         if (command) {
             for (var i = 0; i < nodeIds.length; ++i) {
                 var at = ids.indexOf(nodeIds[i]);
@@ -133,6 +157,18 @@ FocusScope {
         if (!command && ids.length > 0)
             root.anchorId = ids[0];
         root.selectedId = ids.length > 0 ? ids[ids.length - 1] : 0;
+    }
+
+    function endMarquee(nodeIds, modifiers) {
+        root.updateMarquee(nodeIds, modifiers);
+        root.marqueeLive = false;
+        root.marqueeBaseIds = [];
+    }
+
+    function selectMarquee(nodeIds, modifiers) {
+        if (!root.marqueeLive)
+            root.beginMarquee(modifiers);
+        root.endMarquee(nodeIds, modifiers);
     }
 
     function rangeTo(fromId, toId) {
@@ -172,7 +208,8 @@ FocusScope {
             { label: qsTr("Open in Files"), action: "openInFiles" },
             { type: "separator" },
             { label: qsTr("New Folder"), shortcut: "Shift+Super+N",
-              action: "newFolder" }
+              action: "newFolder" },
+            { label: qsTr("Clean Up"), action: "cleanUp" }
         ];
     }
 
@@ -213,6 +250,10 @@ FocusScope {
         case "newFolder":
             if (directory)
                 directory.newFolder(root.location);
+            break;
+        case "cleanUp":
+            if (root.iconView)
+                root.iconView.cleanUp();
             break;
         case "selectAll":
             root.selectAll();
@@ -265,6 +306,9 @@ FocusScope {
         directory: directory
         selectedId: root.selectedId
         selectedIds: root.selectedIds
+        desktopStyle: true
+        hoverHighlight: false
+        backgroundLuma: root.backgroundLuma
         onSelected: (nodeId, modifiers) => root.selectNode(nodeId, modifiers)
         onActivated: (uri, isDir) => root.openRequested(uri, isDir)
         onContextRequested: (nodeId, uri, isDir, x, y) => {
@@ -275,7 +319,9 @@ FocusScope {
             var p = iconView.mapToItem(root, x, y);
             root.openBackgroundMenu(p.x, p.y);
         }
-        onMarqueeSelected: (nodeIds, modifiers) => root.selectMarquee(nodeIds, modifiers)
+        onMarqueeStarted: (modifiers) => root.beginMarquee(modifiers)
+        onMarqueeUpdated: (nodeIds, modifiers) => root.updateMarquee(nodeIds, modifiers)
+        onMarqueeSelected: (nodeIds, modifiers) => root.endMarquee(nodeIds, modifiers)
     }
 
     // Clicking anywhere outside the menu dismisses it; the menu itself sits

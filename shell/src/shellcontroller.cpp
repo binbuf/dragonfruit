@@ -321,10 +321,10 @@ Qt::KeyboardModifiers qtModifiersFromXkb(quint32 mask)
 }
 
 // One chrome key event: the Qt key plus the text a QML TextInput/TextField
-// inserts. The shell is not an xkb client (it closes the keymap fd), so the
-// fixed US/ASCII table in lockinput.cpp is the source of printable text. The
-// old chrome path only mapped navigation keys and dropped letters, which is
-// why the applications drawer's search field could not be typed into.
+// inserts. The lock and polkit password paths use the compositor's xkb keymap
+// (see ShellProtocol::keyText); the chrome scenes still use the fixed
+// US/ASCII table in lockinput.cpp, which is why the applications drawer's
+// search field can be typed into but does not follow a non-US layout.
 // (Qt key, text) for one evdev key. A QPair alias rather than a local named
 // type keeps the translation extractor's context scan on the file's own name.
 using ChromeKey = QPair<Qt::Key, QString>;
@@ -335,8 +335,9 @@ ChromeKey chromeKeyFromEvdev(quint32 key, Qt::KeyboardModifiers modifiers)
     const dragonfruit::LockKey mapped = dragonfruit::lockKeyFromEvdev(key, shift);
     switch (mapped.kind) {
     case dragonfruit::LockKeyKind::Character:
-        return ChromeKey(Qt::Key(mapped.character.unicode()),
-                         QString(mapped.character));
+        return ChromeKey(Qt::Key(mapped.text.isEmpty()
+                                 ? 0 : mapped.text.at(0).unicode()),
+                         mapped.text);
     case dragonfruit::LockKeyKind::Backspace:
         return ChromeKey(Qt::Key_Backspace, QStringLiteral("\b"));
     case dragonfruit::LockKeyKind::Return:
@@ -1201,6 +1202,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onAppsDrawerActivated(QString,qreal,qreal,qreal,qreal)));
     connect(appsDrawerObject, SIGNAL(dismissRequested()), this,
             SLOT(onAppsDrawerDismissed()));
+    // The drawer's More menu refreshes the corpus without closing the launcher.
+    connect(appsDrawerObject, SIGNAL(refreshRequested()), this,
+            SLOT(onAppsDrawerRefreshRequested()));
     bindChromePacing(m_producers.value(m_appsDrawerWindow),
                      QStringLiteral("apps-drawer"),
                      [this]() { renderAppsDrawer(); });
@@ -5636,16 +5640,24 @@ void ShellController::onPolkitKeyboardFocused(bool focused)
         m_polkit->cancel();
 }
 
-void ShellController::onPolkitKeyEvent(quint32 key, bool pressed, bool shift)
+void ShellController::onPolkitKeyEvent(quint32 key, bool pressed, bool shift,
+                                       const QString &text)
 {
     if (!m_polkitActive || !m_polkitItem || !pressed)
         return;
-    // A PAM attempt in flight owns the field: keys are ignored until it
-    // returns, so a password cannot be edited mid-authentication.
+    // A PAM verification owns the field: keys are ignored until it returns,
+    // so a password cannot be edited mid-authentication. The agent clears
+    // `busy` while it is waiting for the user's answer, so typing works as
+    // soon as the prompt is on screen.
     if (m_polkitItem->property("busy").toBool())
         return;
 
-    const dragonfruit::LockKey mapped = dragonfruit::lockKeyFromEvdev(key, shift);
+    // Use the compositor's live xkb text when available (Caps Lock, AltGr,
+    // non-US layouts, keypad); fall back to the fixed table only before the
+    // keymap arrives.
+    const dragonfruit::LockKey mapped = text.isNull()
+            ? dragonfruit::lockKeyFromEvdev(key, shift)
+            : dragonfruit::lockKeyFromText(key, text);
     switch (mapped.kind) {
     case dragonfruit::LockKeyKind::Escape:
         if (m_polkit)
@@ -5661,7 +5673,7 @@ void ShellController::onPolkitKeyEvent(quint32 key, bool pressed, bool shift)
         return;
     }
     case dragonfruit::LockKeyKind::Character:
-        m_polkitResponse.append(mapped.character);
+        m_polkitResponse.append(mapped.text);
         break;
     case dragonfruit::LockKeyKind::Ignore:
         return;
@@ -6006,7 +6018,7 @@ void ShellController::onLockAuthFailed(const QString &message)
     repaintLockSurfaces();
 }
 
-void ShellController::onLockKeyEvent(quint32 key, bool pressed, bool shift)
+void ShellController::onLockKeyEvent(quint32 key, bool pressed, bool shift, const QString &text)
 {
     if (!m_lockActive || !m_lockItem || !pressed)
         return;
@@ -6015,7 +6027,12 @@ void ShellController::onLockKeyEvent(quint32 key, bool pressed, bool shift)
     if (m_lockItem->property("authBusy").toBool())
         return;
 
-    const dragonfruit::LockKey mapped = dragonfruit::lockKeyFromEvdev(key, shift);
+    // Use the compositor's live xkb text when available (Caps Lock, AltGr,
+    // non-US layouts, keypad); fall back to the fixed table only before the
+    // keymap arrives.
+    const dragonfruit::LockKey mapped = text.isNull()
+            ? dragonfruit::lockKeyFromEvdev(key, shift)
+            : dragonfruit::lockKeyFromText(key, text);
     switch (mapped.kind) {
     case dragonfruit::LockKeyKind::Escape:
         m_lockPassword.clear();
@@ -6035,7 +6052,7 @@ void ShellController::onLockKeyEvent(quint32 key, bool pressed, bool shift)
         return;
     }
     case dragonfruit::LockKeyKind::Character:
-        m_lockPassword.append(mapped.character);
+        m_lockPassword.append(mapped.text);
         break;
     case dragonfruit::LockKeyKind::Ignore:
         return;
@@ -9043,6 +9060,14 @@ void ShellController::onAppsDrawerDismissed()
 {
     if (m_appsDrawerOpen)
         hideAppsDrawer();
+}
+
+void ShellController::onAppsDrawerRefreshRequested()
+{
+    if (!m_appsDrawerOpen)
+        return;
+    m_index.loadFromAppIndex(m_appIndexClient);
+    refreshAppsDrawer(false);
 }
 
 void ShellController::refreshAppsDrawer(bool reloadCorpus)

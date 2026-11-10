@@ -428,6 +428,10 @@ void PolkitAgent::showNext()
     m_promptEcho = false;
     m_info.clear();
     m_errorText.clear();
+    // Starting the helper opens the conversation; it does not mean a
+    // verification is in flight. The field stays editable until the user
+    // submits an answer (`respond`) and PAM is checking it.
+    m_busy = false;
     emit started();
     emit changed();
 
@@ -442,7 +446,6 @@ void PolkitAgent::showNext()
     connect(m_session, &PolkitHelperSession::info, this, &PolkitAgent::onInfo);
     connect(m_session, &PolkitHelperSession::errorMessage, this, &PolkitAgent::onErrorMessage);
     connect(m_session, &PolkitHelperSession::completed, this, &PolkitAgent::onHelperCompleted);
-    m_busy = true;
     if (!m_session->start(request.username, request.cookie)) {
         m_errorText = tr("The host authentication stack is unavailable.");
         onHelperCompleted(false);
@@ -453,6 +456,9 @@ void PolkitAgent::onPrompt(const QString &text, bool echo)
 {
     m_prompt = text.isEmpty() ? tr("Password:") : text;
     m_promptEcho = echo;
+    // PAM is asking for input again (the first prompt, or a second factor
+    // after a response): the field is the user's again.
+    m_busy = false;
     emit changed();
 }
 
@@ -501,6 +507,9 @@ void PolkitAgent::respond(const QString &response)
     if (!m_active || !m_session)
         return;
     m_errorText.clear();
+    // The answer is now with PAM: lock the field until the next prompt or
+    // the final result, so the buffer cannot change mid-verification.
+    m_busy = true;
     m_session->respond(response);
     emit changed();
 }

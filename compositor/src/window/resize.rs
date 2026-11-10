@@ -282,6 +282,38 @@ pub fn clamp_frame_move(
     insets.inset(Rectangle::new(frame_location, frame.size)).loc
 }
 
+/// How much of a dragged window must remain inside the output. macOS lets a
+/// window hang off the left, right, or bottom edge, but keeps a grab strip on
+/// screen so it can always be pulled back. The top edge is different: the menu
+/// bar reserve is a hard floor.
+pub const MIN_VISIBLE_EDGE: i32 = 48;
+
+/// Clamp an interactive move so the window may hang partially off the left,
+/// right, or bottom of `bounds`, but never crosses the top menu-bar reserve.
+///
+/// `location` and `content_size` describe the client area; `insets` grow it
+/// into the decorated frame. The frame keeps at least [`MIN_VISIBLE_EDGE`] on
+/// screen on the horizontal and bottom edges (or its whole extent when it is
+/// smaller), and its top is clamped to `bounds.loc.y`.
+pub fn clamp_frame_move_offscreen(
+    location: Point<i32, Logical>,
+    content_size: Size<i32, Logical>,
+    insets: WindowInsets,
+    bounds: Rectangle<i32, Logical>,
+) -> Point<i32, Logical> {
+    let frame = insets.outset(Rectangle::new(location, content_size));
+    let visible_x = frame.size.w.max(1).min(MIN_VISIBLE_EDGE);
+    let visible_y = frame.size.h.max(1).min(MIN_VISIBLE_EDGE);
+    let min_x = bounds.loc.x - frame.size.w + visible_x;
+    let max_x = bounds.loc.x + bounds.size.w - visible_x;
+    let max_y = (bounds.loc.y + bounds.size.h - visible_y).max(bounds.loc.y);
+    let frame_location = Point::from((
+        frame.loc.x.clamp(min_x, max_x.max(min_x)),
+        frame.loc.y.clamp(bounds.loc.y, max_y),
+    ));
+    insets.inset(Rectangle::new(frame_location, frame.size)).loc
+}
+
 /// Compute the geometry for an interactive resize of `start` along `edge`
 /// by `delta`, honoring client constraints and staying inside `output`
 /// (the caller passes the interactive content bounds).
@@ -572,6 +604,66 @@ mod tests {
             interactive(),
         );
         assert_eq!(clamped, Point::from((100, 780)));
+    }
+
+    #[test]
+    fn offscreen_move_keeps_the_menu_bar_clear_and_a_grab_strip_visible() {
+        let window = Size::from((400, 300));
+        // Up is the one hard stop: the frame top never crosses the menu bar.
+        let clamped = clamp_frame_move_offscreen(
+            Point::from((100, -500)),
+            window,
+            WindowInsets::NONE,
+            interactive(),
+        );
+        assert_eq!(clamped.y, interactive().loc.y);
+        // The titlebar inset is part of the frame, so the content sits below
+        // the bar by the same amount.
+        let insets = WindowInsets {
+            top: 28,
+            ..WindowInsets::NONE
+        };
+        let clamped =
+            clamp_frame_move_offscreen(Point::from((100, -500)), window, insets, interactive());
+        assert_eq!(clamped.y, interactive().loc.y + insets.top);
+
+        // Left/right/bottom may hang off the output, keeping 48 px on screen.
+        let clamped = clamp_frame_move_offscreen(
+            Point::from((-500, 100)),
+            window,
+            WindowInsets::NONE,
+            interactive(),
+        );
+        assert_eq!(clamped.x, -window.w + MIN_VISIBLE_EDGE);
+        let clamped = clamp_frame_move_offscreen(
+            Point::from((5000, 100)),
+            window,
+            WindowInsets::NONE,
+            interactive(),
+        );
+        assert_eq!(
+            clamped.x,
+            interactive().loc.x + interactive().size.w - MIN_VISIBLE_EDGE
+        );
+        let clamped = clamp_frame_move_offscreen(
+            Point::from((100, 5000)),
+            window,
+            WindowInsets::NONE,
+            interactive(),
+        );
+        assert_eq!(
+            clamped.y,
+            interactive().loc.y + interactive().size.h - MIN_VISIBLE_EDGE
+        );
+
+        // A window that still fits is not moved.
+        let clamped = clamp_frame_move_offscreen(
+            Point::from((100, 100)),
+            window,
+            WindowInsets::NONE,
+            interactive(),
+        );
+        assert_eq!(clamped, Point::from((100, 100)));
     }
 
     #[test]

@@ -13,9 +13,19 @@ FocusScope {
     property alias input: input
     property alias hovered: fieldHover.hovered
     // A flat field draws no background/border so it blends into its host
-    // surface (the Applications drawer's top section); the caret still shows
-    // focus. Default keeps the standard pill field.
+    // surface; the caret still shows focus. Default keeps the standard pill
+    // field. Hosts with a larger measured field (the Applications drawer)
+    // override the geometry/colour properties below instead of re-rolling the
+    // search anatomy.
     property bool flat: false
+    property real fieldHeight: Theme.controls.searchField.height
+    property real fieldRadius: Theme.controls.searchField.radius
+    property color fieldFill: Theme.color.controlFill
+    property color fieldBorder: root.activeFocus ? Theme.color.focusRing
+                                                 : Theme.color.border
+    property real iconSize: Theme.controls.searchField.iconSize
+    property real paddingH: Theme.controls.searchField.paddingH
+    property real fontSize: Theme.controls.button.fontSize
 
     signal accepted(string text)
     signal cleared()
@@ -24,7 +34,7 @@ FocusScope {
     signal escapePressed()
 
     implicitWidth: Theme.controls.searchField.minWidth
-    implicitHeight: Theme.controls.searchField.height
+    implicitHeight: root.fieldHeight
     activeFocusOnTab: true
 
     function clear() {
@@ -37,10 +47,10 @@ FocusScope {
     Rectangle {
         anchors.fill: parent
         visible: !root.flat
-        radius: Theme.controls.searchField.radius
-        color: Theme.color.controlFill
+        radius: root.fieldRadius
+        color: root.fieldFill
         border.width: Theme.controls.window.borderWidth
-        border.color: root.activeFocus ? Theme.color.focusRing : Theme.color.border
+        border.color: root.fieldBorder
         antialiasing: true
 
         Behavior on border.color {
@@ -55,10 +65,10 @@ FocusScope {
     Icon {
         id: searchGlyph
         name: "search"
-        size: Theme.controls.searchField.iconSize
+        size: root.iconSize
         color: Theme.color.textTertiary
         anchors.left: parent.left
-        anchors.leftMargin: Theme.controls.searchField.paddingH
+        anchors.leftMargin: root.paddingH
         anchors.verticalCenter: parent.verticalCenter
     }
 
@@ -66,14 +76,14 @@ FocusScope {
         id: input
         focus: true
         anchors.left: searchGlyph.right
-        anchors.leftMargin: Theme.controls.searchField.paddingH
+        anchors.leftMargin: root.paddingH
         anchors.right: clearArea.visible ? clearArea.left : parent.right
-        anchors.rightMargin: Theme.controls.searchField.paddingH
+        anchors.rightMargin: root.paddingH
         anchors.verticalCenter: parent.verticalCenter
         color: Theme.color.textPrimary
         selectionColor: Theme.color.selection
         selectedTextColor: Theme.color.textPrimary
-        font.pixelSize: Theme.controls.button.fontSize
+        font.pixelSize: root.fontSize
         clip: true
         selectByMouse: true
 
@@ -93,16 +103,16 @@ FocusScope {
     Item {
         id: clearArea
         visible: input.text.length > 0
-        width: Theme.controls.searchField.iconSize
+        width: root.iconSize
         height: width
         anchors.right: parent.right
-        anchors.rightMargin: Theme.controls.searchField.paddingH
+        anchors.rightMargin: root.paddingH
         anchors.verticalCenter: parent.verticalCenter
 
         Icon {
             anchors.centerIn: parent
             name: "close"
-            size: Theme.controls.searchField.iconSize
+            size: root.iconSize
             color: clearHover.hovered ? Theme.color.textPrimary : Theme.color.textTertiary
         }
         HoverHandler { id: clearHover }

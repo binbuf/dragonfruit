@@ -32,6 +32,11 @@ Item {
     readonly property int nameWidth: Math.max(160, list.width
                                               - root.modifiedWidth - root.sizeWidth
                                               - root.kindWidth - 2 * root.gutter)
+    // The same highlight family as the icon view: a translucent selection
+    // wash, with the row's primary text staying in the scheme's text colour.
+    readonly property color selectionWash:
+        Qt.rgba(Theme.color.selection.r, Theme.color.selection.g,
+                Theme.color.selection.b, 0.28)
 
     function isSelected(nodeId) {
         return root.selectedIds.indexOf(nodeId) >= 0;
@@ -186,7 +191,7 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     color: row.isSelected
-                           ? Theme.color.accentMuted
+                           ? root.selectionWash
                            : (rowHover.hovered ? Theme.color.controlHover : "transparent")
                 }
 
@@ -205,7 +210,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             name: row.icon
                             size: 16
-                            color: row.isSelected ? Theme.color.accent
+                            color: row.isSelected ? Theme.color.textPrimary
                                                   : Theme.color.textSecondary
                             visible: row.thumbnail.length === 0
                                      || rowThumbnail.status !== Image.Ready
@@ -238,8 +243,7 @@ Item {
                             visible: !row.isRenaming
                             text: row.name
                             elide: Text.ElideMiddle
-                            color: row.isSelected ? Theme.color.accent
-                                                  : Theme.color.textPrimary
+                            color: Theme.color.textPrimary
                             font.pixelSize: Theme.primitive.font.sizeSm
                         }
 

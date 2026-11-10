@@ -251,10 +251,12 @@ interaction, not a page-based launcher.
 6. The drawer's search filters the app corpus only; system Search is a
    separate surface (T246/T247).
 
-**Owner:** T248. The current drawer already has a 7-column search-first grid;
-T248 adds the measured list mode, suggestions, launch/close feedback, and the
-remaining keyboard/empty states, and removes the old folder/paging language
-from the task and reference docs.
+**Owner:** T248. The visual pass now lands the measured top row (Back button,
+58 pt search field, More menu), 26 pt capsule chips, 115×92 pt cells with 77 pt
+icons, the translucent card, and card-wide vertical wheel scrolling. T248 still
+adds the measured list mode and “View content as” Grid/List choice, the
+suggestions section, the remaining multi-display capture, and the
+OPEN-DRAWER-01/02 evidence rows.
 
 ## 5. Notification Center is a vertical material ramp
 

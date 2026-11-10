@@ -305,6 +305,12 @@ private slots:
         QVERIFY(agent.prompt().startsWith(QStringLiteral("Password")));
         QVERIFY(!agent.details().isEmpty());
 
+        // The helper has opened the conversation and is waiting for the
+        // answer. `busy` must be false now: the shell controller drops key
+        // events while it is true, which would make the field untypable.
+        QTRY_VERIFY_WITH_TIMEOUT(!agent.info().isEmpty(), 5000);
+        QVERIFY(!agent.isBusy());
+
         agent.respond(QStringLiteral("secret"));
         QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 5000);
         QCOMPARE(finishedSpy.at(0).at(0).toBool(), true);
