@@ -3,6 +3,7 @@ import QtQuick
 import QtTest
 import Dragonfruit
 import Dragonfruit.MenuBar
+import Dragonfruit.ControlCenter
 
 // Menu-bar tests (T-09 FR-1…FR-7). Runs headless on the offscreen platform
 // and the software scene graph, so the interaction walkthrough is scripted
@@ -28,6 +29,7 @@ Item {
         Component { id: volumeMenuComponent; VolumeMenu { } }
         Component { id: batteryMenuComponent; BatteryMenu { } }
         Component { id: bluetoothMenuComponent; BluetoothMenu { } }
+        Component { id: controlCenterComponent; ControlCenter { } }
 
         SignalSpy { id: wifiJoinSpy; signalName: "joinRequested" }
         SignalSpy { id: wifiRefreshSpy; signalName: "refreshRequested" }
@@ -44,6 +46,14 @@ Item {
         SignalSpy { id: bluetoothPowerSpy; signalName: "bluetoothPowerToggleRequested" }
         SignalSpy { id: bluetoothDeviceSpy; signalName: "bluetoothDeviceToggled" }
         SignalSpy { id: bluetoothSettingsSpy; signalName: "bluetoothSettingsRequested" }
+        SignalSpy { id: bluetoothMenuSettingsSpy; signalName: "settingsRequested" }
+        SignalSpy { id: bluetoothDiscoverySpy; signalName: "discoveringToggleRequested" }
+        SignalSpy { id: bluetoothPairSpy; signalName: "pairRequested" }
+        SignalSpy { id: wifiSettingsSpy; signalName: "settingsRequested" }
+        SignalSpy { id: volumeSettingsSpy; signalName: "settingsRequested" }
+        SignalSpy { id: sinkSpy; signalName: "sinkSelected" }
+        SignalSpy { id: batterySettingsSpy; signalName: "settingsRequested" }
+        SignalSpy { id: powerProfileSpy; signalName: "powerProfileSelected" }
 
         // These tests exercise the legacy sampled/fallback rail unless a
         // case explicitly selects the replacement look.
@@ -1327,6 +1337,137 @@ Item {
             trayBar.destroy();
         }
 
+        function test_t232_capture_states() {
+            if (typeof TestEnvironment === "undefined"
+                    || TestEnvironment.captureDir.length === 0)
+                skip("DF_MENUBAR_CAPTURE_DIR not set");
+            var dir = TestEnvironment.captureDir;
+
+            var status = [
+                { id: "wifi", icon: "wifi", priority: 10, accessibleName: "Wi-Fi" },
+                { id: "bluetooth", icon: "bluetooth", priority: 20,
+                  accessibleName: "Bluetooth" },
+                { id: "battery", icon: "battery", priority: 30,
+                  accessibleName: "Battery" },
+                { id: "volume", icon: "volume", priority: 40,
+                  accessibleName: "Volume" },
+                { id: "search", icon: "search", priority: 50,
+                  accessibleName: "Search" },
+                { id: "control-center", icon: "control-center", priority: 80,
+                  accessibleName: "Quick Settings" }
+            ];
+
+            var wifi = wifiModel();
+            wifi.activeSsid = "home";
+            wifi.activeAddress = "192.168.1.7";
+            wifi.radioEnabled = true;
+            wifi.knownNetworks = [
+                { ssid: "home", uuid: "u1", autoconnect: true, connected: true,
+                  security: "WPA2", secured: true, lastUsed: 1700000000 },
+                { ssid: "office", uuid: "u2", autoconnect: false, connected: false,
+                  security: "WPA2", secured: true, lastUsed: 0 }
+            ];
+            var bluetooth = bluetoothModel({
+                discovering: true,
+                nearbyDevices: [
+                    { address: "22:33:44:55:66:77", name: "Mouse",
+                      paired: false, connected: false, signal: 60 }
+                ]
+            });
+            var battery = batteryModel();
+            battery.profilesAvailable = true;
+            battery.activeProfile = "balanced";
+            battery.profileLabel = "Balanced";
+            battery.profiles = [
+                { id: "power-saver", label: "Power Saver", glyph: "power-saver",
+                  active: false },
+                { id: "balanced", label: "Balanced", glyph: "power-balanced",
+                  active: true },
+                { id: "performance", label: "Performance", glyph: "power-performance",
+                  active: false }
+            ];
+            var audio = audioModel(false, 0.6);
+            audio.sinks.push({ id: 9, name: "headphones", description: "Headphones",
+                               volume: 0.6, percent: 60, muted: false,
+                               default: false });
+
+            var schemes = ["light", "dark"];
+            for (var s = 0; s < schemes.length; ++s) {
+                var scheme = schemes[s];
+                Theme.dark = scheme === "dark";
+
+                var wifiBar = make(menuBarComponent, {
+                    width: 1000, statusItems: status, wifiMenu: wifi
+                });
+                wifiBar.openStatusMenu("wifi");
+                waitForRendering(stage);
+                wait(250);
+                grabImage(stage).save(dir + "/t232-extras-wifi-" + scheme + ".png");
+                wifiBar.closeStatusMenu();
+                wifiBar.destroy();
+
+                var bluetoothBar = make(menuBarComponent, {
+                    width: 1000, statusItems: status, bluetoothMenu: bluetooth
+                });
+                bluetoothBar.openStatusMenu("bluetooth");
+                waitForRendering(stage);
+                wait(250);
+                grabImage(stage).save(dir + "/t232-extras-bluetooth-" + scheme + ".png");
+                bluetoothBar.closeStatusMenu();
+                bluetoothBar.destroy();
+
+                var batteryBar = make(menuBarComponent, {
+                    width: 1000, statusItems: status, batteryMenu: battery
+                });
+                batteryBar.openStatusMenu("battery");
+                waitForRendering(stage);
+                wait(250);
+                grabImage(stage).save(dir + "/t232-extras-battery-" + scheme + ".png");
+                batteryBar.closeStatusMenu();
+                batteryBar.destroy();
+
+                var volumeBar = make(menuBarComponent, {
+                    width: 1000, statusItems: status, volumeMenu: audio
+                });
+                volumeBar.openStatusMenu("volume");
+                waitForRendering(stage);
+                wait(250);
+                grabImage(stage).save(dir + "/t232-extras-volume-" + scheme + ".png");
+                volumeBar.closeStatusMenu();
+                volumeBar.destroy();
+
+                var searchBar = make(menuBarComponent, {
+                    width: 1000,
+                    statusItems: [ { id: "search", icon: "search", priority: 50,
+                                     accessibleName: "Search" } ]
+                });
+                waitForRendering(stage);
+                grabImage(stage).save(dir + "/t232-extras-search-" + scheme + ".png");
+                searchBar.destroy();
+
+                var quickBar = make(menuBarComponent, {
+                    width: 1000,
+                    statusItems: [ { id: "control-center", icon: "control-center",
+                                     priority: 80, accessibleName: "Quick Settings" } ]
+                });
+                waitForRendering(stage);
+                grabImage(stage).save(dir + "/t232-extras-quick-settings-bar-"
+                                      + scheme + ".png");
+                quickBar.destroy();
+
+                var panel = createTemporaryObject(controlCenterComponent, stage, {
+                    wifi: wifi, bluetooth: bluetooth, battery: battery, audio: audio
+                });
+                panel.width = 360;
+                panel.height = 1164;
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t232-extras-quick-settings-"
+                                      + scheme + ".png");
+                panel.destroy();
+            }
+            Theme.dark = false;
+        }
+
         function test_status_item_activation() {
             // Wi-Fi, volume, and battery open a popover (T-07.5a/b); every
             // other item still raises statusItemActivated.
@@ -1775,6 +1916,223 @@ Item {
             bar.openStatusMenu("battery");
             waitForRendering(stage);
             compare(bar.openStatusItem, "");
+        }
+
+        // -- T232: extras parity -------------------------------------------
+
+        function test_wifi_menu_known_current_details_and_settings() {
+            var model = wifiModel();
+            model.activeSsid = "home";
+            model.activeAddress = "192.168.1.7";
+            model.knownNetworks = [
+                { ssid: "home", uuid: "u1", autoconnect: true, connected: true,
+                  security: "WPA2", secured: true, lastUsed: 1700000000 },
+                { ssid: "office", uuid: "u2", autoconnect: false, connected: false,
+                  security: "WPA2", secured: true, lastUsed: 0 }
+            ];
+            model.networks.push({ ssid: "office", strength: 55, security: "WPA2",
+                                  secured: true, active: false, band: "5 GHz" });
+            var menu = make(wifiMenuComponent, { model: model });
+            compare(menu.activeSsid, "home");
+            compare(menu.knownRows.length, 2);
+            compare(menu.otherRows.length, 1, "cafe is the only unsaved network");
+            compare(menu.rows[0].ssid, "home");
+            compare(menu.rows[0].section, "known");
+            compare(menu.rows[0].active, true);
+            compare(menu.rows[1].ssid, "office");
+            compare(menu.rows[2].ssid, "cafe");
+            compare(menu.securityLabel("home"), "WPA2");
+            compare(menu.signalLabel("office"), "55% signal");
+            menu.toggleDetails("home");
+            compare(menu.detailsSsid, "home");
+            menu.toggleDetails("home");
+            compare(menu.detailsSsid, "");
+            wifiSettingsSpy.target = menu;
+            wifiSettingsSpy.clear();
+            menu.settingsRequested();
+            compare(wifiSettingsSpy.count, 1);
+        }
+
+        function test_wifi_menu_scanning_and_error_states() {
+            var scanning = wifiModel();
+            scanning.scanning = true;
+            var menu = make(wifiMenuComponent, { model: scanning });
+            compare(menu.scanning, true);
+            compare(menu.available, true);
+            compare(menu.radioEnabled, true);
+            compare(menu.scanningNoteVisible, true);
+            compare(menu.scanningNote.text, "Scanning…");
+            menu.open = true;
+            waitForRendering(stage);
+            menu.open = false;
+            waitForRendering(stage);
+
+            var connecting = wifiModel();
+            connecting.wifiState = "connecting";
+            var connectingMenu = make(wifiMenuComponent, { model: connecting });
+            compare(connectingMenu.scanning, true);
+
+            var error = wifiModel();
+            error.state = "error";
+            error.error = "NetworkManager read failed";
+            var errorMenu = make(wifiMenuComponent, { model: error });
+            compare(errorMenu.available, false);
+            compare(errorMenu.errorMessage, "NetworkManager read failed");
+            compare(errorMenu.stateNote.text, "NetworkManager read failed");
+        }
+
+        function test_bluetooth_menu_discovery_nearby_and_pairing() {
+            var model = bluetoothModel({
+                discovering: true,
+                nearbyDevices: [
+                    { address: "22:33:44:55:66:77", name: "Mouse",
+                      paired: false, connected: false, signal: 60 }
+                ]
+            });
+            var menu = make(bluetoothMenuComponent, { model: model });
+            compare(menu.discovering, true);
+            compare(menu.knownRows.length, 2);
+            compare(menu.nearbyRows.length, 1);
+            compare(menu.rows.length, 3);
+            compare(findChild(menu.popup, "bluetoothScanningNote").visible, false,
+                    "nearby rows replace the scanning note");
+
+            bluetoothDiscoverySpy.target = menu;
+            bluetoothDiscoverySpy.clear();
+            menu.toggleDiscovery();
+            compare(bluetoothDiscoverySpy.count, 1);
+            compare(bluetoothDiscoverySpy.signalArguments[0][0], false);
+
+            bluetoothPairSpy.target = menu;
+            bluetoothPairSpy.clear();
+            compare(menu.writable, true);
+            compare(menu.rows[2].paired, false);
+            compare(menu.rows[2].address, "22:33:44:55:66:77");
+            menu.activateRow(2);
+            compare(bluetoothPairSpy.count, 1);
+            compare(bluetoothPairSpy.signalArguments[0][0], "22:33:44:55:66:77");
+
+            bluetoothMenuSettingsSpy.target = menu;
+            bluetoothMenuSettingsSpy.clear();
+            menu.settingsRequested();
+            compare(bluetoothMenuSettingsSpy.count, 1);
+
+            var absent = bluetoothModel({ state: "unavailable" });
+            var absentMenu = make(bluetoothMenuComponent, { model: absent });
+            compare(absentMenu.writable, false);
+        }
+
+        function test_battery_menu_low_full_power_mode_and_settings() {
+            var lowModel = batteryModel();
+            lowModel.percent = 10;
+            lowModel.level = 0.10;
+            lowModel.label = "10%";
+            lowModel.charging = false;
+            lowModel.plugged = false;
+            lowModel.onBattery = true;
+            lowModel.chargeState = "discharging";
+            lowModel.timeToFull = null;
+            lowModel.timeToEmpty = 600;
+            var low = make(batteryMenuComponent, { model: lowModel });
+            compare(low.low, true);
+            compare(low.stateLabel, "Low Battery");
+            compare(low.remaining, "10 min");
+
+            var fullModel = batteryModel();
+            fullModel.percent = 100;
+            fullModel.level = 1.0;
+            fullModel.label = "100%";
+            fullModel.charging = false;
+            fullModel.plugged = true;
+            fullModel.onBattery = false;
+            fullModel.chargeState = "fully-charged";
+            var full = make(batteryMenuComponent, { model: fullModel });
+            compare(full.full, true);
+            compare(full.stateLabel, "Fully Charged");
+
+            var powerModel = batteryModel();
+            powerModel.profilesAvailable = true;
+            powerModel.activeProfile = "balanced";
+            powerModel.profileLabel = "Balanced";
+            powerModel.profiles = [
+                { id: "power-saver", label: "Power Saver", glyph: "power-saver",
+                  active: false },
+                { id: "balanced", label: "Balanced", glyph: "power-balanced",
+                  active: true },
+                { id: "performance", label: "Performance", glyph: "power-performance",
+                  active: false }
+            ];
+            var power = make(batteryMenuComponent, { model: powerModel });
+            compare(power.profiles.length, 3);
+            powerProfileSpy.target = power;
+            powerProfileSpy.clear();
+            power.selectProfile("power-saver");
+            compare(powerProfileSpy.count, 1);
+            compare(powerProfileSpy.signalArguments[0][0], "power-saver");
+            power.selectProfile("balanced");
+            compare(powerProfileSpy.count, 1, "the active profile is not rewritten");
+            power.moveProfileHighlight(1);
+            compare(power.profileHighlightIndex, 0);
+            power.activateProfileHighlight();
+            compare(powerProfileSpy.count, 2);
+
+            batterySettingsSpy.target = power;
+            batterySettingsSpy.clear();
+            power.settingsRequested();
+            compare(batterySettingsSpy.count, 1);
+        }
+
+        function test_volume_menu_output_routing_and_settings() {
+            var model = audioModel(false, 0.6);
+            model.sinks.push({ id: 9, name: "headphones", description: "Headphones",
+                               volume: 0.6, percent: 60, muted: false,
+                               default: false });
+            var menu = make(volumeMenuComponent, { model: model });
+            compare(menu.sinks.length, 2);
+            compare(menu.defaultSink.description, "Built-in Speakers");
+            sinkSpy.target = menu;
+            sinkSpy.clear();
+            menu.selectSink(9);
+            compare(sinkSpy.count, 1);
+            compare(sinkSpy.signalArguments[0][0], 9);
+            menu.selectSink(7);
+            compare(sinkSpy.count, 1, "the default sink is not rewritten");
+            menu.sinkHighlightIndex = 1;
+            menu.activateSinkHighlight();
+            compare(sinkSpy.count, 2);
+
+            volumeSettingsSpy.target = menu;
+            volumeSettingsSpy.clear();
+            menu.settingsRequested();
+            compare(volumeSettingsSpy.count, 1);
+
+            var absent = make(volumeMenuComponent, {
+                model: { kind: "audio", state: "unavailable" }
+            });
+            compare(absent.available, false);
+        }
+
+        function test_search_item_invokes_and_hides_from_the_bar() {
+            var bar = make(menuBarComponent, {
+                width: 800,
+                statusItems: [
+                    { id: "search", icon: "search", priority: 50,
+                      accessibleName: "Search" }
+                ]
+            });
+            statusSpy.target = bar;
+            statusSpy.clear();
+            bar.activateStatusItem("search");
+            compare(statusSpy.count, 1);
+            compare(statusSpy.signalArguments[0][0], "search");
+
+            bar.statusItems = [
+                { id: "search", icon: "search", priority: 50, visible: false,
+                  accessibleName: "Search" }
+            ];
+            waitForRendering(stage);
+            compare(bar.statusItemFor("search").visible, false);
+            compare(bar.statusItemFor("search").width, 0);
         }
 
         // -- Keyboard accessibility (T-07.5b) -------------------------------

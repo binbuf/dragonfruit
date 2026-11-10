@@ -115,6 +115,8 @@ qt_add_executable(dragonfruit-settings
     main.cpp
     MenuPublisher.cpp
     MenuPublisher.h
+    SettingsDeepLink.cpp
+    SettingsDeepLink.h
 )
 target_link_libraries(dragonfruit-settings PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::DBus

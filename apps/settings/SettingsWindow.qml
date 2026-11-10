@@ -9,6 +9,10 @@ import Dragonfruit
 Window {
     id: win
     property bool startAboutPanel: false
+    // T232: the running instance's deep-link endpoint (a context property from
+    // the executable). QML tests that create the window without it get null.
+    property var deepLinks: typeof SettingsDeepLinks !== "undefined"
+                            ? SettingsDeepLinks : null
     property alias aboutWindow: aboutWindow
     property alias aboutPanel: aboutPanel
     property alias settingsShell: shell
@@ -73,6 +77,19 @@ Window {
                 win.raise();
                 win.requestActivate();
             }
+        }
+    }
+
+    // T232: a `settings://pane/<id>` link delivered to the running instance.
+    // The shell's extras raise it; the app navigates in place and raises the
+    // window instead of starting a second process.
+    Connections {
+        target: win.deepLinks
+        function onRequested(url) {
+            shell.deepLink(url);
+            win.show();
+            win.raise();
+            win.requestActivate();
         }
     }
 

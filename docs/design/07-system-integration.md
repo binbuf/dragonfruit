@@ -996,6 +996,53 @@ the selected day, and every day/button carries an accessible name. The panel
 uses one one-shot boundary timer while open; the bar clock keeps its own
 single re-armed timer, so an idle bar still contributes one wakeup per minute.
 
+## The menu-bar extras parity (T232)
+
+T232 completes the six core extras on top of the T231 registry. Every extra
+reads the same bridge-host view as its Settings pane; no surface polls twice.
+The popover adds only the reference content, the explicit writes the host
+already owns, and the Settings deep link.
+
+- **Wi-Fi** (`shell/menubar/WifiMenu.qml`) shows the radio, the current network
+  with an inline `Details…` block (security, band, signal, address, last used),
+  `Known Networks`, the remaining visible networks, join (with the secured
+  password prompt), scanning/error text, and `Wi-Fi Settings…`. The current
+  network and the saved list come from the host's `activeSsid`,
+  `knownNetworks`, `networks`, and `activeAddress`; the view's `wifiState`
+  `connecting`/`disconnecting` value is the honest busy state.
+- **Bluetooth** (`BluetoothMenu.qml`) shows the power action, `My Devices`,
+  discovery, `Nearby Devices`, pair/connect, and `Bluetooth Settings…`. The
+  discovery write is `SetDiscovering`; a nearby unpaired row raises `Pair`.
+  The host's `nearbyDevices` and `discovering` fields are the source.
+- **Battery** (`BatteryMenu.qml`) shows percentage/time, `Charging`, `Low
+  Battery`, `Fully Charged`, health, and `Power Mode`. The mode rows write the
+  host's `SetActiveProfile`; the active row is marked and not rewritten.
+  A machine with no battery but a power-profiles daemon still opens the menu
+  for the mode control.
+- **Sound** (`VolumeMenu.qml`) shows the output-device list, volume, mute, and
+  `Sound Settings…`. Selecting an output device writes the host's
+  `SetDefaultSink`; the default row is marked and not rewritten.
+- **Search** remains the registry action extra: activation opens the
+  Applications drawer and `menu.control.search` hides/shows the slot.
+- **Quick Settings** remains the registry action extra that opens the one
+  Control Center panel. The panel footer adds `Quick Settings Settings…`, a
+  deep link to the customization pane; the panel's module state is the same
+  live bridge-host/settingsd view it already renders.
+
+**Settings links are deep links, not logs.** The shell's
+`ShellController::openSettingsDeepLink` opens `settings://pane/<id>`. A running
+Settings app owns `org.dragonfruit.SettingsApp1` and receives `Open(url)`; a
+cold launch carries `--deep-link <url>` and `SettingsShell::deepLink` consumes
+it. The app therefore lands on the same pane/row a Settings search result
+would, and a second launch is a delivery, not a second window.
+
+**Absence and accessibility.** An absent daemon keeps the T231 hidden slot; a
+present-but-unreadable view shows its error message in the popover. Every new
+row carries an accessible name and a disabled reason, and Up/Down/Return walk
+the same action list the pointer uses. The capture matrix is
+`make t232-extras-capture` (light/dark for each extra plus the Control Center
+panel; see ADR [0249](adr/0249-menu-bar-extras-parity-and-settings-links.md)).
+
 ## The General, About, and Updates path (T-15.10a)
 
 General, About, and Updates do not wrap a single desktop daemon: they project

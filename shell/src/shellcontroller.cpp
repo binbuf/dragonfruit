@@ -19,6 +19,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusInterface>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
@@ -867,6 +868,22 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onBluetoothDeviceToggled(QString,bool)));
     connect(m_item, SIGNAL(bluetoothSettingsRequested()), this,
             SLOT(onBluetoothSettingsRequested()));
+    // T232: the Bluetooth status menu's discovery and nearby-device pair
+    // actions, the Sound menu's output routing, and the Battery menu's power
+    // mode. Each is one explicit bridge-host write.
+    connect(m_item, SIGNAL(bluetoothDiscoveringToggled(bool)), this,
+            SLOT(onBluetoothDiscoveringToggleRequested(bool)));
+    connect(m_item, SIGNAL(bluetoothPairRequested(QString)), this,
+            SLOT(onBluetoothPairRequested(QString)));
+    connect(m_item, SIGNAL(sinkSelected(int)), this, SLOT(onSinkSelected(int)));
+    connect(m_item, SIGNAL(powerProfileSelected(QString)), this,
+            SLOT(onPowerProfileSelected(QString)));
+    connect(m_item, SIGNAL(wifiSettingsRequested()), this,
+            SLOT(onWifiSettingsRequested()));
+    connect(m_item, SIGNAL(volumeSettingsRequested()), this,
+            SLOT(onSoundSettingsRequested()));
+    connect(m_item, SIGNAL(batterySettingsRequested()), this,
+            SLOT(onBatterySettingsRequested()));
     applyStatusMenuData();
     // Hold the first menu-bar commit until the three visible first-party
     // status reads have landed. The host answers asynchronously; without this
@@ -1445,6 +1462,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onAccessibilitySettingsRequested()));
     connect(controlCenterObject, SIGNAL(vpnSettingsRequested()), this,
             SLOT(onVpnSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(quickSettingsSettingsRequested()), this,
+            SLOT(onQuickSettingsSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -3753,9 +3772,8 @@ void ShellController::onWifiToggleRequested(bool enabled)
 
 void ShellController::onWifiSettingsRequested()
 {
-    // Launching Settings on the matching pane is T-16; the entry point is
-    // wired and logs until then.
-    qInfo() << "shell: Wi-Fi Settings requested (T-16)";
+    // T232: the menu-bar extra's Settings link lands on the Wi-Fi pane.
+    openSettingsDeepLink(QStringLiteral("settings://pane/wifi"));
 }
 
 void ShellController::onBluetoothToggleRequested(bool enabled)
@@ -3777,9 +3795,22 @@ void ShellController::onBluetoothDeviceToggled(const QString &address, bool conn
 
 void ShellController::onBluetoothSettingsRequested()
 {
-    // Launching Settings on the Bluetooth pane is T-16; the entry point is
-    // wired and logs until then.
-    qInfo() << "shell: Bluetooth Settings requested (T-16)";
+    // T232: the menu-bar extra's Settings link lands on the Bluetooth pane.
+    openSettingsDeepLink(QStringLiteral("settings://pane/bluetooth"));
+}
+
+void ShellController::onBluetoothDiscoveringToggleRequested(bool discovering)
+{
+    // One explicit StartDiscovery/StopDiscovery through the bridge host.
+    if (m_statusClient)
+        m_statusClient->setBluetoothDiscovering(discovering);
+}
+
+void ShellController::onBluetoothPairRequested(const QString &address)
+{
+    // Pairing is an explicit BlueZ action; the host re-reads after it.
+    if (m_statusClient && !address.isEmpty())
+        m_statusClient->pairBluetooth(address);
 }
 
 void ShellController::onStorageMountRequested(const QString &volumePath)
@@ -3812,9 +3843,16 @@ void ShellController::onStorageSettingsRequested()
 
 void ShellController::onSoundSettingsRequested()
 {
-    // Launching Settings on the Sound pane is T-16; the entry point is wired
-    // and logs until then.
-    qInfo() << "shell: Sound Settings requested (T-16)";
+    // T232: the menu-bar extra's Settings link lands on the Sound pane.
+    openSettingsDeepLink(QStringLiteral("settings://pane/sound"));
+}
+
+void ShellController::onSinkSelected(int id)
+{
+    // T232: selecting an output device makes it the default sink through the
+    // one bridge-host routing write; the host re-reads and pushes the view.
+    if (m_statusClient)
+        m_statusClient->setDefaultSink(id);
 }
 
 void ShellController::onKeyboardSettingsRequested()
@@ -3833,9 +3871,15 @@ void ShellController::onMissionControlSettingsRequested()
 
 void ShellController::onBatterySettingsRequested()
 {
-    // Launching Settings on the Battery pane is T-16; the entry point is wired
-    // and logs until then.
-    qInfo() << "shell: Battery Settings requested (T-16)";
+    // T232: the menu-bar extra's Settings link lands on the Battery pane.
+    openSettingsDeepLink(QStringLiteral("settings://pane/battery"));
+}
+
+void ShellController::onPowerProfileSelected(const QString &profile)
+{
+    // T232: one explicit power-profiles-daemon write through the bridge host.
+    if (m_statusClient && !profile.isEmpty())
+        m_statusClient->setPowerProfile(profile);
 }
 
 void ShellController::onLockScreenSettingsRequested()
@@ -3913,6 +3957,12 @@ void ShellController::onVpnSettingsRequested()
     // Launching Settings on the Network pane is T-16; the entry point is wired
     // and logs until then.
     qInfo() << "shell: Network Settings requested (T-16)";
+}
+
+void ShellController::onQuickSettingsSettingsRequested()
+{
+    // T232: the Quick Settings panel footer lands on the customization pane.
+    openSettingsDeepLink(QStringLiteral("settings://pane/control-center"));
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)
@@ -7524,6 +7574,46 @@ void ShellController::openApp(const QString &desktopId)
         return;
     }
     launchDockApp(plan.desktopId);
+}
+
+void ShellController::openSettingsDeepLink(const QString &url)
+{
+    // T232: the one Settings entry point for the extras' "… Settings…" rows.
+    // A running Settings app owns `org.dragonfruit.SettingsApp1`; deliver the
+    // link there and raise its window. Otherwise launch it with the link so the
+    // app lands on the pane (SettingsShell::deepLink is the consumer).
+    if (url.isEmpty())
+        return;
+    const QString service = QStringLiteral("org.dragonfruit.SettingsApp1");
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.isConnected() && bus.interface()
+            && bus.interface()->isServiceRegistered(service)) {
+        QDBusMessage message = QDBusMessage::createMethodCall(
+            service, QStringLiteral("/org/dragonfruit/SettingsApp1"), service,
+            QStringLiteral("Open"));
+        message << url;
+        bus.send(message);
+        const AppOpenPlan plan =
+            planAppOpen(m_index, m_runningEntries,
+                        QStringLiteral("org.dragonfruit.Settings.desktop"));
+        if (plan.resolved && plan.running && m_protocol)
+            activateAppOrFallback(plan.appId, plan.desktopId);
+        return;
+    }
+    const DesktopEntry entry =
+        m_index.byId(QStringLiteral("org.dragonfruit.Settings.desktop"));
+    if (!DesktopEntryIndex::isLaunchable(entry)) {
+        qWarning() << "shell: cannot open Settings deep link; no usable entry";
+        return;
+    }
+    QStringList argv = DesktopEntryIndex::buildLaunchCommand(entry, QStringList());
+    if (argv.isEmpty()) {
+        qWarning() << "shell: cannot open Settings deep link; empty launch command";
+        return;
+    }
+    argv << QStringLiteral("--deep-link") << url;
+    if (!launchDetachedFromShell(argv, m_waylandDisplay, nullptr))
+        qWarning() << "shell: could not open Settings deep link" << url;
 }
 
 void ShellController::launchDockAppWithFiles(const QString &desktopId, const QStringList &files)

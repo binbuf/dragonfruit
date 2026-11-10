@@ -270,6 +270,18 @@ void DbusSystemStatusClient::setMute(bool muted)
          &SystemStatusClient::writeReport);
 }
 
+void DbusSystemStatusClient::setDefaultSink(int id)
+{
+    call(kAudioInterface, QStringLiteral("SetDefaultSink"), {id},
+         &SystemStatusClient::writeReport);
+}
+
+void DbusSystemStatusClient::setPowerProfile(const QString &profile)
+{
+    call(kBatteryInterface, QStringLiteral("SetActiveProfile"), {profile},
+         &SystemStatusClient::writeReport);
+}
+
 // --- MockSystemStatusClient ------------------------------------------------
 
 MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
@@ -961,8 +973,13 @@ void MockSystemStatusClient::refreshBattery()
     // T-15.6b: the power-profiles half, so the Control Center tile renders the
     // active profile without a power-profiles-daemon on the host.
     view.insert(QStringLiteral("profilesAvailable"), true);
-    view.insert(QStringLiteral("activeProfile"), QStringLiteral("balanced"));
-    view.insert(QStringLiteral("profileLabel"), QStringLiteral("Balanced"));
+    view.insert(QStringLiteral("activeProfile"), m_activeProfile);
+    view.insert(QStringLiteral("profileLabel"),
+                m_activeProfile == QStringLiteral("power-saver")
+                    ? QStringLiteral("Power Saver")
+                    : (m_activeProfile == QStringLiteral("performance")
+                           ? QStringLiteral("Performance")
+                           : QStringLiteral("Balanced")));
     QJsonArray profiles;
     const auto profile = [](const QString &id, const QString &label, const QString &glyph,
                             bool active) {
@@ -974,11 +991,14 @@ void MockSystemStatusClient::refreshBattery()
         return entry;
     };
     profiles.append(profile(QStringLiteral("power-saver"), QStringLiteral("Power Saver"),
-                            QStringLiteral("power-saver"), false));
+                            QStringLiteral("power-saver"),
+                            m_activeProfile == QStringLiteral("power-saver")));
     profiles.append(profile(QStringLiteral("balanced"), QStringLiteral("Balanced"),
-                            QStringLiteral("power-balanced"), true));
+                            QStringLiteral("power-balanced"),
+                            m_activeProfile == QStringLiteral("balanced")));
     profiles.append(profile(QStringLiteral("performance"), QStringLiteral("Performance"),
-                            QStringLiteral("power-performance"), false));
+                            QStringLiteral("power-performance"),
+                            m_activeProfile == QStringLiteral("performance")));
     view.insert(QStringLiteral("profiles"), profiles);
     emit batteryState(compact(view));
 }
@@ -1009,6 +1029,30 @@ void MockSystemStatusClient::setMute(bool muted)
 {
     m_muted = muted;
     refreshAudio();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("applied"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::setDefaultSink(int id)
+{
+    if (id == 7)
+        m_defaultSinkName = QStringLiteral("speakers");
+    else if (id == 9)
+        m_defaultSinkName = QStringLiteral("headphones");
+    refreshAudio();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("applied"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::setPowerProfile(const QString &profile)
+{
+    if (profile == QStringLiteral("power-saver")
+            || profile == QStringLiteral("balanced")
+            || profile == QStringLiteral("performance"))
+        m_activeProfile = profile;
+    refreshBattery();
     QJsonObject report;
     report.insert(QStringLiteral("outcome"), QStringLiteral("applied"));
     emit writeReport(compact(report));

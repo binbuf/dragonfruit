@@ -11,6 +11,7 @@ target_link_libraries(tst_menubar PRIVATE
     Qt6::Quick
     dragonfruit-design-systemplugin
     dragonfruit-shell-menubarplugin
+    dragonfruit-shell-control-centerplugin
 )
 qt_import_qml_plugins(tst_menubar)
 

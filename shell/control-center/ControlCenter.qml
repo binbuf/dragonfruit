@@ -936,6 +936,9 @@ Item {
     // The Network advanced (VPN) tile (T-15.15b) is a read-only summary; the
     // tap opens the Network pane where the connect/deactivate writes live.
     signal vpnSettingsRequested()
+    // T232: the panel footer links to the Quick Settings pane (module order
+    // and menu-bar-only customization).
+    signal quickSettingsSettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -2693,6 +2696,17 @@ Item {
                         onActivated: root.clipboardClearRequested()
                     }
                 }
+            }
+
+            // T232: the Quick Settings extra's Settings link. The panel is the
+            // extra's sheet; this row deep-links to the pane that owns the
+            // module order and menu-bar-only choices.
+            TextLink {
+                objectName: "quickSettingsSettingsLink"
+                width: parent.width
+                text: qsTr("Quick Settings Settings…")
+                accessibleName: qsTr("Open Quick Settings Settings")
+                onActivated: root.quickSettingsSettingsRequested()
             }
         }
         }

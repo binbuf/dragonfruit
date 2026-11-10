@@ -79,6 +79,11 @@ public:
     virtual void join(const QString &ssid, const QString &secret) = 0;
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
+    // T232: the menu-bar extras' routing/power-mode writes. Selecting an
+    // output device makes it the default sink; selecting a power profile
+    // writes the stable id. Both re-read through the host and invent no state.
+    virtual void setDefaultSink(int id) = 0;
+    virtual void setPowerProfile(const QString &profile) = 0;
 
 signals:
     void availableChanged(bool available);
@@ -133,6 +138,8 @@ public:
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
+    void setDefaultSink(int id) override;
+    void setPowerProfile(const QString &profile) override;
 
 private:
     using ReplySignal = void (SystemStatusClient::*)(const QByteArray &);
@@ -188,6 +195,8 @@ public:
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
+    void setDefaultSink(int id) override;
+    void setPowerProfile(const QString &profile) override;
 
 private:
     QString m_activeSsid = QStringLiteral("dragonfruit");
@@ -205,6 +214,8 @@ private:
     bool m_btPowered = true;
     bool m_btDiscovering = false;
     bool m_btDeviceConnected = false;
+    // T232: the active power profile the fixture selects.
+    QString m_activeProfile = QStringLiteral("balanced");
     // The storage fixture state (T-15.2b): one removable drive with a volume
     // that mount/unmount toggles in place, so the tile's round-trip is
     // observable headlessly (`DF_STATUS_FIXTURE`).

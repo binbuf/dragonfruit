@@ -268,6 +268,9 @@ class SettingsBridge : public QObject
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
+    // T232: a `settings://pane/<id>` link carried on the cold-launch command
+    // line. The shell consumes it once after the first pane is mounted.
+    Q_PROPERTY(QString startDeepLink READ startDeepLink CONSTANT)
     // T222: the human business-logic map. `mapDocPath` is the repo-relative
     // path (or `DF_SETTINGS_MAP_DOC`); `mapDocUrl` is a local file URL when the
     // document resolves, so the Help menu/debug view can open it.
@@ -345,6 +348,7 @@ public:
     int providerPreloadCount() const;
     bool wallpaperChooserAvailable() const;
     QString startPane() const;
+    QString startDeepLink() const;
     QString mapDocPath() const;
     QUrl mapDocUrl() const;
     bool debugView() const;

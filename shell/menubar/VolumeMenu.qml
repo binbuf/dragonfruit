@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
 import Dragonfruit
+pragma ComponentBehavior: Bound
 
 // The volume status menu (T-07.5a): the default sink's volume slider and mute,
 // drawn in the design-system popup. The model is the bridge host's `audio`
@@ -30,6 +31,8 @@ Item {
     readonly property int percent: Math.round(root.value * 100)
     readonly property bool available: model.state === "available"
     readonly property var sinks: model.sinks !== undefined ? model.sinks : []
+    readonly property string errorMessage: model.error !== undefined
+        ? String(model.error) : ""
     readonly property var defaultSink: {
         for (var i = 0; i < root.sinks.length; ++i) {
             if (root.sinks[i] && root.sinks[i].default === true)
@@ -39,9 +42,12 @@ Item {
     }
     readonly property string sinkLabel: root.defaultSink && root.defaultSink.description
                                         ? root.defaultSink.description : ""
+    property int sinkHighlightIndex: -1
 
     signal volumeSetRequested(double volume)
     signal muteToggleRequested()
+    signal sinkSelected(int id)
+    signal settingsRequested()
     signal refreshRequested()
     // Raised when the popup closes for any reason, for the bar's state
     // (T-07.5b keyboard a11y).
@@ -64,6 +70,36 @@ Item {
         root.muteToggleRequested();
     }
 
+    function selectSink(id) {
+        if (!root.available)
+            return;
+        for (var i = 0; i < root.sinks.length; ++i) {
+            if (Number(root.sinks[i].id) === Number(id)
+                    && root.sinks[i].default === true)
+                return;
+        }
+        root.sinkSelected(Number(id));
+    }
+
+    function moveSinkHighlight(delta) {
+        var n = root.sinks.length;
+        if (n <= 0) {
+            root.sinkHighlightIndex = -1;
+            return;
+        }
+        var i = root.sinkHighlightIndex < 0
+            ? (delta > 0 ? -1 : 0) : root.sinkHighlightIndex;
+        root.sinkHighlightIndex = ((i + delta) % n + n) % n;
+    }
+
+    function activateSinkHighlight() {
+        if (root.sinkHighlightIndex >= 0
+                && root.sinkHighlightIndex < root.sinks.length)
+            root.selectSink(Number(root.sinks[root.sinkHighlightIndex].id));
+        else
+            root.toggleMute();
+    }
+
     // Adjust by a keyboard step and apply it (T-07.5b).
     function step(delta) {
         root.value = Math.max(0.0, Math.min(1.0, root.value + delta));
@@ -80,7 +116,7 @@ Item {
         id: popup
         objectName: "volumePopup"
         anchorItem: root.anchorItem
-        preferredWidth: 240
+        preferredWidth: 280
         accessibleRole: Accessible.PopupMenu
         accessibleName: qsTr("Sound")
         escapeCloses: true
@@ -92,24 +128,28 @@ Item {
         materialFallback: root.materialFallback
 
         onOpened: {
+            root.sinkHighlightIndex = -1;
             root.refreshRequested();
             if (root.parent && root.width > 0)
                 popup.x = Math.min(popup.x,
                                    root.parent.width - popup.width
                                    - Theme.controls.menuBar.paddingH);
         }
-        onClosed: root.closed()
+        onClosed: {
+            root.sinkHighlightIndex = -1;
+            root.closed();
+        }
 
         Keys.onUpPressed: (event) => {
-            root.step(0.05);
+            root.moveSinkHighlight(-1);
+            event.accepted = true;
+        }
+        Keys.onDownPressed: (event) => {
+            root.moveSinkHighlight(1);
             event.accepted = true;
         }
         Keys.onRightPressed: (event) => {
             root.step(0.05);
-            event.accepted = true;
-        }
-        Keys.onDownPressed: (event) => {
-            root.step(-0.05);
             event.accepted = true;
         }
         Keys.onLeftPressed: (event) => {
@@ -117,7 +157,7 @@ Item {
             event.accepted = true;
         }
         Keys.onReturnPressed: (event) => {
-            root.toggleMute();
+            root.activateSinkHighlight();
             event.accepted = true;
         }
 
@@ -149,6 +189,22 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.min(implicitWidth, parent.width / 2)
                 }
+            }
+
+            // The host's error message is visible; an absent host hides the
+            // whole item in the bar, so the popover only reaches this on a
+            // present-but-unreadable view.
+            Text {
+                objectName: "volumeStateNote"
+                visible: !root.available || root.model.state === "error"
+                width: parent.width
+                text: root.model.state === "error"
+                      ? (root.errorMessage.length > 0 ? root.errorMessage
+                                                      : qsTr("Sound is unavailable"))
+                      : qsTr("Sound unavailable")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
             }
 
             // Slider row: speaker glyph, the draggable slider, the percent.
@@ -237,12 +293,111 @@ Item {
                 }
             }
 
+            Rectangle {
+                visible: root.available
+                width: parent.width
+                height: Theme.controls.window.borderWidth
+                color: Theme.color.separator
+            }
+
+            Text {
+                visible: root.available
+                width: parent.width
+                text: qsTr("Output")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                font.weight: Theme.primitive.font.weightMedium
+            }
+
+            Repeater {
+                objectName: "volumeSinkRows"
+                model: root.available ? root.sinks : []
+
+                delegate: Item {
+                    id: sinkRow
+                    required property var modelData
+                    required property int index
+                    objectName: "volumeSink-" + sinkRow.modelData.id
+                    readonly property bool isDefault: sinkRow.modelData.default === true
+                    width: parent.width
+                    height: Theme.controls.popup.rowHeight
+                    enabled: !sinkRow.isDefault
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Theme.controls.focusRing.radius
+                        color: (sinkHover.hovered
+                                || root.sinkHighlightIndex === sinkRow.index)
+                               ? Theme.color.controlHover : "transparent"
+                        antialiasing: true
+                    }
+
+                    Icon {
+                        visible: sinkRow.isDefault
+                        name: "check"
+                        size: Theme.controls.button.iconSize
+                        color: Theme.color.accent
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.primitive.spacing.xs
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: sinkRow.modelData.description !== undefined
+                              && String(sinkRow.modelData.description).length > 0
+                              ? sinkRow.modelData.description : sinkRow.modelData.name
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                        elide: Text.ElideRight
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.controls.button.iconSize
+                                         + Theme.primitive.spacing.sm
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.primitive.spacing.xs
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    HoverHandler { id: sinkHover }
+
+                    TapHandler {
+                        onTapped: root.selectSink(Number(sinkRow.modelData.id))
+                    }
+
+                    Accessible.role: Accessible.MenuItem
+                    Accessible.name: (sinkRow.modelData.description !== undefined
+                                      && String(sinkRow.modelData.description).length > 0
+                                      ? sinkRow.modelData.description : sinkRow.modelData.name)
+                                     + (sinkRow.isDefault ? qsTr(", selected") : "")
+                    Accessible.description: sinkRow.isDefault
+                        ? qsTr("Already the output device") : ""
+                    Accessible.onPressAction: root.selectSink(Number(sinkRow.modelData.id))
+                }
+            }
+
+            Text {
+                objectName: "volumeNoOutputs"
+                visible: root.available && root.sinks.length === 0
+                width: parent.width
+                text: qsTr("No output devices")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
             Button {
                 objectName: "muteButton"
                 width: parent.width
                 text: root.muted ? qsTr("Unmute") : qsTr("Mute")
                 variant: "secondary"
                 onClicked: root.toggleMute()
+            }
+
+            Button {
+                objectName: "volumeSettingsButton"
+                width: parent.width
+                text: qsTr("Sound Settings…")
+                variant: "secondary"
+                accessibleName: qsTr("Open Sound Settings")
+                onClicked: root.settingsRequested()
             }
         }
     }
