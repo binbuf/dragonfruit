@@ -10,7 +10,7 @@ import Dragonfruit.MenuBar
 Item {
     id: stage
     width: 1000
-    height: 320
+    height: 560
 
     TestCase {
         id: testCase
@@ -19,6 +19,8 @@ Item {
 
         Component { id: menuBarComponent; MenuBar { } }
         Component { id: statusItemComponent; StatusItem { } }
+        Component { id: registryComponent; StatusItemRegistry { } }
+        Component { id: dateTimePanelComponent; DateTimePanel { } }
         Component { id: clockComponent; MenuBarClock { } }
         Component { id: glyphComponent; StatusGlyph { } }
         Component { id: logoComponent; DragonfruitLogo { } }
@@ -35,7 +37,6 @@ Item {
         SignalSpy { id: statusSpy; signalName: "statusItemActivated" }
         SignalSpy { id: ccSpy; signalName: "controlCenterRequested" }
         SignalSpy { id: mcSpy; signalName: "missionControlRequested" }
-        SignalSpy { id: clockSpy; signalName: "clockActivated" }
         SignalSpy { id: openedSpy; signalName: "appMenuOpened" }
         SignalSpy { id: closedSpy; signalName: "appMenuClosed" }
         SignalSpy { id: triggeredSpy; signalName: "appMenuTriggered" }
@@ -935,6 +936,397 @@ Item {
             verify(wifi.opacity < 1.0);
         }
 
+        // -- The status-item registry (T231) --------------------------------
+
+        function test_registry_orders_system_items_and_puts_third_party_last() {
+            var registry = make(registryComponent, {
+                items: [
+                    { id: "volume", icon: "volume", priority: 40 },
+                    { id: "tray:one", icon: "application", priority: 1000,
+                      thirdParty: true, accessibleName: "Tray One" },
+                    { id: "wifi", icon: "wifi", priority: 10 },
+                    { id: "battery", icon: "battery", priority: 30 },
+                    { id: "bluetooth", icon: "bluetooth", priority: 20 }
+                ]
+            });
+            compare(registry.rowItems.length, 5);
+            compare(registry.rowItems[0].id, "wifi");
+            compare(registry.rowItems[1].id, "bluetooth");
+            compare(registry.rowItems[2].id, "battery");
+            compare(registry.rowItems[3].id, "volume");
+            compare(registry.rowItems[4].id, "tray:one",
+                    "a third-party item never sorts above a system item");
+            compare(registry.orderedItems[4].thirdParty, true);
+            compare(registry.hasOverflow, false);
+        }
+
+        function test_registry_normalizes_the_status_item_shape() {
+            var registry = make(registryComponent, {
+                items: [
+                    { id: "wifi", icon: "wifi", priority: 10, visible: false,
+                      tooltip: "Wi-Fi", state: "unavailable" },
+                    { id: "battery", icon: "battery", priority: 30,
+                      available: false, state: "error" },
+                    { id: "search", icon: "search", priority: 50,
+                      accessibleName: "Search" }
+                ]
+            });
+            // A hidden/absent slot keeps its index so later items do not
+            // shift; the delegate draws it with zero width.
+            compare(registry.rowItems.length, 3);
+            compare(registry.rowItems[0].available, false);
+            compare(registry.rowItems[0].state, "unavailable");
+            compare(registry.rowItems[0].tooltip, "Wi-Fi");
+            compare(registry.rowItems[1].available, false);
+            compare(registry.rowItems[1].state, "error");
+            compare(registry.rowItems[2].available, true);
+            compare(registry.rowItems[2].accessibleName, "Search");
+            compare(registry.rowItems[2].tooltip, "Search");
+        }
+
+        function test_registry_overflow_pushes_third_party_before_system() {
+            var registry = make(registryComponent, {
+                maxVisible: 5,
+                items: [
+                    { id: "wifi", icon: "wifi", priority: 10 },
+                    { id: "bluetooth", icon: "bluetooth", priority: 20 },
+                    { id: "battery", icon: "battery", priority: 30 },
+                    { id: "volume", icon: "volume", priority: 40 },
+                    { id: "clock", icon: "", priority: 70, kind: "clock",
+                      essential: true },
+                    { id: "tray:one", icon: "application", priority: 1000,
+                      thirdParty: true, accessibleName: "Tray One" },
+                    { id: "tray:two", icon: "application", priority: 1001,
+                      thirdParty: true, accessibleName: "Tray Two" }
+                ]
+            });
+            compare(registry.rowItems.length, 5);
+            compare(registry.overflowItems.length, 2);
+            compare(registry.overflowItems[0].id, "tray:one");
+            compare(registry.overflowItems[1].id, "tray:two");
+            for (var i = 0; i < registry.rowItems.length; ++i)
+                compare(registry.rowItems[i].thirdParty, false,
+                        "no third-party item stays while overflow is active");
+            compare(registry.statusRowItems[registry.statusRowItems.length - 1].id,
+                    "overflow");
+        }
+
+        function test_registry_keeps_essential_system_items_in_the_row() {
+            var registry = make(registryComponent, {
+                maxVisible: 3,
+                items: [
+                    { id: "wifi", icon: "wifi", priority: 10 },
+                    { id: "bluetooth", icon: "bluetooth", priority: 20 },
+                    { id: "battery", icon: "battery", priority: 30 },
+                    { id: "volume", icon: "volume", priority: 40 },
+                    { id: "clock", icon: "", priority: 70, kind: "clock",
+                      essential: true },
+                    { id: "tray:one", icon: "application", priority: 1000,
+                      thirdParty: true, accessibleName: "Tray One" }
+                ]
+            });
+            compare(registry.rowItems.length, 3);
+            compare(registry.rowItems[0].id, "wifi");
+            compare(registry.rowItems[1].id, "bluetooth");
+            compare(registry.rowItems[2].id, "clock",
+                    "the essential clock survives before optional system items");
+            compare(registry.overflowItems.length, 3);
+            compare(registry.overflowItems[0].id, "battery");
+            compare(registry.overflowItems[1].id, "volume");
+            compare(registry.overflowItems[2].id, "tray:one");
+        }
+
+        function test_registry_hidden_items_do_not_consume_the_budget() {
+            var registry = make(registryComponent, {
+                maxVisible: 2,
+                items: [
+                    { id: "wifi", icon: "wifi", priority: 10 },
+                    { id: "bluetooth", icon: "bluetooth", priority: 20,
+                      visible: false },
+                    { id: "battery", icon: "battery", priority: 30 },
+                    { id: "volume", icon: "volume", priority: 40 },
+                    { id: "tray:one", icon: "application", priority: 1000,
+                      thirdParty: true, accessibleName: "Tray One" }
+                ]
+            });
+            compare(registry.rowItems.length, 3,
+                    "the hidden slot stays in the row with zero width");
+            compare(registry.rowItems[1].id, "bluetooth");
+            compare(registry.rowItems[1].available, false);
+            compare(registry.overflowItems.length, 2);
+            compare(registry.overflowItems[0].id, "volume");
+            compare(registry.overflowItems[1].id, "tray:one");
+        }
+
+        function test_overflow_menu_lists_hidden_items_and_activates_them() {
+            var bar = make(menuBarComponent, {
+                width: 700,
+                statusOverflowCapacity: 4,
+                statusItems: [
+                    { id: "wifi", icon: "wifi", priority: 10,
+                      accessibleName: "Wi-Fi" },
+                    { id: "tray:one", icon: "application", priority: 1000,
+                      thirdParty: true, accessibleName: "Tray One" },
+                    { id: "tray:two", icon: "application", priority: 1001,
+                      thirdParty: true, accessibleName: "Tray Two" }
+                ]
+            });
+            var overflow = bar.statusItemFor("overflow");
+            verify(overflow);
+            compare(overflow.visible, true);
+            compare(overflow.Accessible.name, "More menu bar items");
+
+            statusSpy.target = bar;
+            statusSpy.clear();
+            bar.openOverflowMenu();
+            waitForRendering(stage);
+            compare(bar.overflowMenuOpen, true);
+            compare(bar.overflowMenu.length, 2);
+            compare(bar.overflowMenu[0].label, "Tray One");
+            compare(bar.overflowMenu[1].label, "Tray Two");
+
+            bar.activateStatusItem("tray:two");
+            compare(statusSpy.count, 1);
+            compare(statusSpy.signalArguments[0][0], "tray:two");
+            bar.closeOverflowMenu();
+        }
+
+        function test_status_tooltip_is_the_accessible_description() {
+            var bar = make(menuBarComponent, {
+                statusItems: [
+                    { id: "wifi", icon: "wifi", priority: 10,
+                      accessibleName: "Wi-Fi", tooltip: "Wi-Fi, home" }
+                ]
+            });
+            var wifi = bar.statusItemFor("wifi");
+            compare(wifi.tooltip, "Wi-Fi, home");
+            compare(wifi.Accessible.name, "Wi-Fi");
+            compare(wifi.Accessible.description, "Wi-Fi, home");
+            compare(wifi.Accessible.focusable, true);
+        }
+
+        function test_keyboard_reaches_search_notifications_clock_and_overflow() {
+            var bar = make(menuBarComponent, {
+                width: 700,
+                statusOverflowCapacity: 6,
+                statusItems: [
+                    { id: "wifi", icon: "wifi", priority: 10 },
+                    { id: "search", icon: "search", priority: 50,
+                      accessibleName: "Search" },
+                    { id: "notifications", icon: "bell", priority: 60,
+                      accessibleName: "Notifications" },
+                    { id: "tray:one", icon: "application", priority: 1000,
+                      thirdParty: true, accessibleName: "Tray One" }
+                ]
+            });
+            statusSpy.target = bar;
+            statusSpy.clear();
+
+            function walkTo(id) {
+                for (var step = 0; step < 20; ++step) {
+                    var current = bar.statusItemAt(bar.keyboardStatusIndex);
+                    if (current && current.itemId === id)
+                        return current;
+                    bar.moveStatusFocus(1);
+                }
+                return null;
+            }
+
+            // The keyboard walk visits every registry entry, including the
+            // clock and the overflow affordance. Search and Notifications
+            // raise the shell's one activation signal.
+            bar.keyboardStatusIndex = -1;
+            var search = walkTo("search");
+            verify(search, "search is keyboard reachable");
+            bar.activateKeyboardStatus();
+            compare(statusSpy.count, 1);
+            compare(statusSpy.signalArguments[0][0], "search");
+
+            var notifications = walkTo("notifications");
+            verify(notifications, "notifications is keyboard reachable");
+            bar.activateKeyboardStatus();
+            compare(statusSpy.count, 2);
+            compare(statusSpy.signalArguments[1][0], "notifications");
+
+            var clock = walkTo("clock");
+            verify(clock, "clock is keyboard reachable");
+            compare(clock.Accessible.name.length > 0, true);
+            bar.activateKeyboardStatus();
+            compare(bar.openStatusItem, "clock");
+            bar.closeStatusMenu();
+
+            bar.keyboardStatusIndex = -1;
+            var overflow = walkTo("overflow");
+            verify(overflow, "overflow is keyboard reachable");
+            bar.activateKeyboardStatus();
+            compare(bar.overflowMenuOpen, true);
+            bar.closeOverflowMenu();
+        }
+
+        // -- Date & Time / calendar panel (T231) ----------------------------
+
+        function test_date_time_panel_formats_and_calendar_grid() {
+            var panel = make(dateTimePanelComponent, {
+                showSeconds: true, use24Hour: true
+            });
+            panel.open = true;
+            waitForRendering(stage);
+            var fixed = new Date(2026, 8, 19, 14, 5, 0);
+            panel.now = fixed;
+            panel.selectedDate = fixed;
+            panel.visibleMonth = new Date(2026, 8, 1);
+            waitForRendering(stage);
+            compare(panel.timeText, "14:05:00");
+            compare(panel.dateText, Qt.formatDate(fixed, Locale.LongFormat));
+            compare(panel.monthTitleTextValue, Qt.formatDate(new Date(2026, 8, 1),
+                                                              "MMMM yyyy"));
+            compare(panel.calendarCells.length, 42);
+            var selected = -1;
+            for (var i = 0; i < panel.calendarCells.length; ++i) {
+                if (panel.calendarCells[i].selected)
+                    selected = i;
+            }
+            verify(selected >= 0, "the selected day is in the grid");
+            compare(panel.calendarCells[selected].day, 19);
+            compare(panel.dayRepeater.itemAt(selected).Accessible.name,
+                    panel.calendarCells[selected].accessibleName);
+            verify(panel.dayRepeater.itemAt(selected).Accessible.name.indexOf("19") >= 0);
+            compare(panel.previousButton.Accessible.name, "Previous month");
+            compare(panel.nextButton.Accessible.name, "Next month");
+            compare(panel.todayButton.Accessible.name, "Show today");
+            panel.open = false;
+        }
+
+        function test_date_time_panel_keyboard_traversal() {
+            var panel = make(dateTimePanelComponent, {
+                showSeconds: false, use24Hour: true
+            });
+            panel.open = true;
+            waitForRendering(stage);
+            var fixed = new Date(2026, 8, 19, 14, 5, 0);
+            panel.now = fixed;
+            panel.selectedDate = fixed;
+            panel.visibleMonth = new Date(2026, 8, 1);
+            waitForRendering(stage);
+
+            panel.popup.forceActiveFocus();
+            keyClick(Qt.Key_Right);
+            compare(panel.selectedDate.getDate(), 20);
+            keyClick(Qt.Key_Down);
+            compare(panel.selectedDate.getDate(), 27);
+            keyClick(Qt.Key_Left);
+            compare(panel.selectedDate.getDate(), 26);
+            keyClick(Qt.Key_Up);
+            compare(panel.selectedDate.getDate(), 19);
+            keyClick(Qt.Key_PageDown);
+            compare(panel.visibleMonth.getMonth(), 9);
+            keyClick(Qt.Key_PageUp);
+            compare(panel.visibleMonth.getMonth(), 8);
+            keyClick(Qt.Key_Home);
+            compare(panel.visibleMonth.getMonth(), new Date().getMonth());
+            keyClick(Qt.Key_Escape);
+            compare(panel.open, false);
+        }
+
+        // T231 evidence: the four required live-check states. The runner
+        // (`scripts/capture-t231-extras.sh`) sets DF_MENUBAR_CAPTURE_DIR; a
+        // normal ctest run skips this case.
+        function test_t231_capture_states() {
+            if (typeof TestEnvironment === "undefined"
+                    || TestEnvironment.captureDir.length === 0)
+                skip("DF_MENUBAR_CAPTURE_DIR not set");
+            var dir = TestEnvironment.captureDir;
+            var status = [
+                { id: "wifi", icon: "wifi", priority: 10, accessibleName: "Wi-Fi" },
+                { id: "bluetooth", icon: "bluetooth", priority: 20,
+                  accessibleName: "Bluetooth" },
+                { id: "battery", icon: "battery", priority: 30,
+                  accessibleName: "Battery" },
+                { id: "volume", icon: "volume", priority: 40,
+                  accessibleName: "Volume" },
+                { id: "search", icon: "search", priority: 50,
+                  accessibleName: "Search" },
+                { id: "notifications", icon: "bell", priority: 60,
+                  accessibleName: "Notifications" },
+                { id: "clock", kind: "clock", menu: "clock", priority: 70,
+                  essential: true, accessibleName: "Date & Time",
+                  tooltip: "Date & Time" },
+                { id: "control-center", icon: "control-center", priority: 80,
+                  accessibleName: "Quick Settings" }
+            ];
+
+            // 1. Seconds + 24-hour clock.
+            var clockBar = make(menuBarComponent, {
+                width: 1000, showDate: true, showSeconds: true,
+                use24Hour: true, statusItems: status
+            });
+            waitForRendering(stage);
+            grabImage(clockBar).save(dir + "/t231-extras-clock.png");
+            clockBar.destroy();
+
+            // 2. Open calendar.
+            var calendarBar = make(menuBarComponent, {
+                width: 1000, showDate: true, statusItems: status
+            });
+            waitForRendering(stage);
+            calendarBar.openStatusMenu("clock");
+            waitForRendering(stage);
+            wait(350);
+            waitForRendering(stage);
+            grabImage(stage).save(dir + "/t231-extras-calendar.png");
+            calendarBar.closeStatusMenu();
+            calendarBar.destroy();
+
+            // 3. A removed item (Wi-Fi hidden by the user).
+            var removed = status.slice();
+            removed[0] = { id: "wifi", icon: "wifi", priority: 10,
+                           visible: false, accessibleName: "Wi-Fi" };
+            var removedBar = make(menuBarComponent, {
+                width: 1000, statusItems: removed
+            });
+            waitForRendering(stage);
+            grabImage(removedBar).save(dir + "/t231-extras-removed.png");
+            removedBar.destroy();
+
+            // 4. Third-party items overflow into the affordance.
+            var overflowStatus = status.slice();
+            overflowStatus.push({ id: "tray:one", icon: "application",
+                                  priority: 1000, thirdParty: true,
+                                  accessibleName: "Tray One" });
+            overflowStatus.push({ id: "tray:two", icon: "application",
+                                  priority: 1001, thirdParty: true,
+                                  accessibleName: "Tray Two" });
+            var overflowBar = make(menuBarComponent, {
+                width: 1000, statusItems: overflowStatus,
+                statusOverflowCapacity: 7
+            });
+            waitForRendering(stage);
+            overflowBar.openOverflowMenu();
+            waitForRendering(stage);
+            grabImage(stage).save(dir + "/t231-extras-overflow.png");
+            overflowBar.closeOverflowMenu();
+            overflowBar.destroy();
+
+            // 5. A third-party item's own DBusMenu opens from its slot.
+            var trayStatus = status.slice();
+            trayStatus.push({ id: "tray:one", icon: "application",
+                              priority: 1000, thirdParty: true,
+                              accessibleName: "Tray One" });
+            var trayBar = make(menuBarComponent, {
+                width: 1000, statusItems: trayStatus,
+                trayMenu: [ { label: "Open Tray One", id: 1 },
+                            { label: "Quit Tray One", id: 2 } ]
+            });
+            waitForRendering(stage);
+            trayBar.openTrayMenu("one");
+            waitForRendering(stage);
+            wait(350);
+            waitForRendering(stage);
+            grabImage(stage).save(dir + "/t231-extras-tray.png");
+            trayBar.closeTrayMenu();
+            trayBar.destroy();
+        }
+
         function test_status_item_activation() {
             // Wi-Fi, volume, and battery open a popover (T-07.5a/b); every
             // other item still raises statusItemActivated.
@@ -1476,18 +1868,25 @@ Item {
                     Qt.formatTime(fixed, Qt.locale().timeFormat(Locale.LongFormat)));
         }
 
-        function test_the_clock_is_the_notification_center_entry_point() {
+        function test_the_clock_opens_the_date_and_time_panel() {
+            // T231: the clock is a registry item and its click opens the
+            // calendar panel; Notifications is the Notification Center entry.
             var bar = make(menuBarComponent, {
-                appMenu: [],
                 statusItems: [],
                 showDate: true
             });
-            clockSpy.target = bar;
-            clockSpy.clear();
-            var clock = findChild(bar, "clock");
+            var clock = bar.statusItemFor("clock");
             verify(clock);
+            compare(clock.kind, "clock");
             mouseClick(clock, clock.width / 2, clock.height / 2);
-            compare(clockSpy.count, 1);
+            compare(bar.openStatusItem, "clock");
+            var panel = findChild(bar, "dateTimePanel");
+            verify(panel);
+            verify(panel.popup.open);
+            compare(panel.popup.Accessible.name, "Date & Time");
+            bar.closeStatusMenu();
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "");
         }
 
         // -- Status glyph rendering (FR-5) ---------------------------------
@@ -1499,7 +1898,8 @@ Item {
             var names = ["wifi", "wifi-secure", "wifi-off", "wifi-disabled",
                          "wifi-connecting", "wifi-error", "bluetooth",
                          "volume", "volume-muted", "battery", "battery-charging",
-                         "focus", "accessibility", "control-center",
+                         "focus", "accessibility", "search", "notifications",
+                         "overflow", "application", "control-center",
                          "mission-control"];
             for (var i = 0; i < names.length; ++i) {
                 var glyph = make(glyphComponent, { name: names[i], size: 32 });

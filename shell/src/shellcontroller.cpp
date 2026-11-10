@@ -183,19 +183,72 @@ constexpr int kScreenCastHeight = 460;
 constexpr int kPolkitWidth = 480;
 constexpr int kPolkitHeight = 420;
 
+// T231: the status-row priorities. Lower values sit closer to the menu side;
+// every system extra is below the third-party band (1000+), so an overflow
+// never promotes a StatusNotifier item above a system one.
+namespace StatusPriority {
+constexpr int Wifi = 10;
+constexpr int Bluetooth = 20;
+constexpr int Battery = 30;
+constexpr int Volume = 40;
+constexpr int Search = 50;
+constexpr int Focus = 55;
+constexpr int Notifications = 60;
+constexpr int Clock = 70;
+constexpr int ControlCenter = 80;
+constexpr int MissionControl = 90;
+constexpr int ThirdParty = 1000;
+} // namespace StatusPriority
+
+// T231: the one status-item shape every system and third-party extra fills.
+// The QML registry (`shell/menubar/StatusItemRegistry.qml`) owns the order and
+// overflow decisions; this builder only names the fields.
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
                        const QString &accessibleName, bool available, qreal level = 0.8,
-                       bool enabled = true)
+                       bool enabled = true, int priority = 0,
+                       const QString &tooltip = QString(),
+                       const QString &menu = QString(),
+                       const QString &state = QStringLiteral("ok"),
+                       const QString &kind = QStringLiteral("status"),
+                       bool visible = true)
 {
     QVariantMap item;
     item.insert(QStringLiteral("id"), id);
     item.insert(QStringLiteral("icon"), icon);
     item.insert(QStringLiteral("label"), label);
     item.insert(QStringLiteral("accessibleName"), accessibleName);
-    item.insert(QStringLiteral("available"), available);
+    item.insert(QStringLiteral("tooltip"),
+                tooltip.isEmpty() ? accessibleName : tooltip);
+    item.insert(QStringLiteral("menu"), menu);
+    item.insert(QStringLiteral("priority"), priority);
+    item.insert(QStringLiteral("visible"), visible);
+    item.insert(QStringLiteral("available"), available && visible);
     item.insert(QStringLiteral("enabled"), enabled);
+    item.insert(QStringLiteral("selected"), false);
+    item.insert(QStringLiteral("state"), state);
+    item.insert(QStringLiteral("kind"), kind);
+    item.insert(QStringLiteral("thirdParty"), false);
+    item.insert(QStringLiteral("essential"),
+                kind == QLatin1String("clock")
+                    || id == QLatin1String("control-center")
+                    || id == QLatin1String("mission-control"));
     item.insert(QStringLiteral("level"), level);
     return item;
+}
+
+// Adapter views use "available"/"scanning" for live states; the registry's
+// stable vocabulary is `ok`/`unavailable`/`error`/`attention`.
+QString statusState(const QVariantMap &view)
+{
+    const QString state = view.value(QStringLiteral("state")).toString();
+    if (state.isEmpty() || state == QLatin1String("available"))
+        return view.value(QStringLiteral("visible")).toBool()
+            ? QStringLiteral("ok") : QStringLiteral("unavailable");
+    if (state == QLatin1String("error"))
+        return QStringLiteral("error");
+    if (state == QLatin1String("unavailable"))
+        return QStringLiteral("unavailable");
+    return QStringLiteral("ok");
 }
 
 // Minimal evdev -> Qt key map for menu interaction (the popup and bar only
@@ -665,9 +718,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                           "popupMaterial");
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
-    // T204: the menu-bar clock is the primary Notification Center entry
-    // point. It toggles the same surface as the keyboard/hot-corner action.
-    connect(m_item, SIGNAL(clockActivated()), this, SLOT(onClockActivated()));
+    // T231: the clock opens the Date & Time panel in QML; Notifications is the
+    // menu-bar entry point for the Notification Center, routed through the
+    // registry's `statusItemActivated`.
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
     connect(m_item, SIGNAL(statusItemActivated(QString)), this,
             SLOT(onStatusItemActivated(QString)));
@@ -2382,6 +2435,8 @@ void ShellController::settleInitialState()
 
 void ShellController::applyStatusItems()
 {
+    if (!m_item)
+        return;
     QVariantList items;
     const QVariantMap wifi = m_statusModel ? m_statusModel->wifi() : QVariantMap();
     const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
@@ -2402,14 +2457,18 @@ void ShellController::applyStatusItems()
 
     // Wi-Fi, volume, and battery are live from the bridge host (T-07.5a/b);
     // an absent daemon hides the slot, an error shows it visible but inert
-    // (FR-4). `--placeholders` is gone, so no item is faked.
+    // (FR-4). `--placeholders` is gone, so no item is faked. Every entry now
+    // carries the registry fields (priority, tooltip, menu, state, kind).
     QString wifiGlyph = wifi.value(QStringLiteral("glyph")).toString();
     if (wifiGlyph.isEmpty())
         wifiGlyph = QStringLiteral("wifi");
     items << statusItem(QStringLiteral("wifi"), wifiGlyph, QString(), tr("Wi-Fi"),
                         wifi.value(QStringLiteral("visible")).toBool()
                             && controlEnabled("wifi"),
-                        0.8, wifi.value(QStringLiteral("enabled")).toBool());
+                        0.8, wifi.value(QStringLiteral("enabled")).toBool(),
+                        StatusPriority::Wifi, tr("Wi-Fi"), QStringLiteral("wifi"),
+                        statusState(wifi), QStringLiteral("status"),
+                        controlEnabled("wifi"));
 
     // T202: Bluetooth is live through the same bridge host the Control Center
     // tile uses. An absent daemon hides the slot; an error stays visible but
@@ -2422,7 +2481,10 @@ void ShellController::applyStatusItems()
                         tr("Bluetooth"),
                         bluetooth.value(QStringLiteral("visible")).toBool()
                             && controlEnabled("bluetooth"),
-                        0.8, bluetooth.value(QStringLiteral("enabled")).toBool());
+                        0.8, bluetooth.value(QStringLiteral("enabled")).toBool(),
+                        StatusPriority::Bluetooth, tr("Bluetooth"),
+                        QStringLiteral("bluetooth"), statusState(bluetooth),
+                        QStringLiteral("status"), controlEnabled("bluetooth"));
 
     QString audioGlyph = audio.value(QStringLiteral("glyph")).toString();
     if (audioGlyph.isEmpty())
@@ -2431,7 +2493,10 @@ void ShellController::applyStatusItems()
                         audio.value(QStringLiteral("visible")).toBool()
                             && controlEnabled("volume"),
                         audio.value(QStringLiteral("volume")).toReal(),
-                        audio.value(QStringLiteral("enabled")).toBool());
+                        audio.value(QStringLiteral("enabled")).toBool(),
+                        StatusPriority::Volume, tr("Volume"), QStringLiteral("volume"),
+                        statusState(audio), QStringLiteral("status"),
+                        controlEnabled("volume"));
 
     // The battery is read-only; the model hides it both when UPower is absent
     // and when the machine has no present battery. Charging swaps the glyph.
@@ -2444,37 +2509,101 @@ void ShellController::applyStatusItems()
                         battery.value(QStringLiteral("visible")).toBool()
                             && controlEnabled("battery"),
                         battery.value(QStringLiteral("level")).toReal(),
-                        battery.value(QStringLiteral("enabled")).toBool());
+                        battery.value(QStringLiteral("enabled")).toBool(),
+                        StatusPriority::Battery, tr("Battery"), QStringLiteral("battery"),
+                        statusState(battery), QStringLiteral("status"),
+                        controlEnabled("battery"));
 
     QVariantMap focusItem = focusStatusItem(m_notificationModel
                                                 ? m_notificationModel->focusPolicy()
                                                 : QVariantMap());
+    focusItem.insert(QStringLiteral("priority"), StatusPriority::Focus);
+    focusItem.insert(QStringLiteral("tooltip"), tr("Focus"));
+    focusItem.insert(QStringLiteral("menu"), QString());
+    focusItem.insert(QStringLiteral("state"), QStringLiteral("ok"));
+    focusItem.insert(QStringLiteral("kind"), QStringLiteral("status"));
+    focusItem.insert(QStringLiteral("thirdParty"), false);
+    focusItem.insert(QStringLiteral("essential"), false);
     if (!controlEnabled("focus")) {
         focusItem.insert(QStringLiteral("available"), false);
         focusItem.insert(QStringLiteral("enabled"), false);
+        focusItem.insert(QStringLiteral("state"), QStringLiteral("unavailable"));
     }
     items << focusItem;
-    items << statusItem(QStringLiteral("accessibility"), QStringLiteral("accessibility"),
-                        QString(), tr("Accessibility"), false && controlEnabled("accessibility"));
 
-    // Third-party StatusNotifier/AppIndicator items (T-14.3). They join the
-    // same status row as the first-party items, so sizing/hover/dark-light
-    // treatment is identical; the themed icon is a file the service resolved.
+    items << statusItem(QStringLiteral("accessibility"), QStringLiteral("accessibility"),
+                        QString(), tr("Accessibility"), false,
+                        0.8, false, 65, tr("Accessibility"), QString(),
+                        QStringLiteral("unavailable"), QStringLiteral("status"),
+                        controlEnabled("accessibility"));
+
+    // T231: Search and Notifications join the registry as action extras. The
+    // shell routes their activation to the Applications drawer and the
+    // Notification Center; the clock no longer doubles as the Center's entry.
+    items << statusItem(QStringLiteral("search"), QStringLiteral("search"), QString(),
+                        tr("Search"), true, 0.8, true, StatusPriority::Search,
+                        tr("Search"), QString(), QStringLiteral("ok"),
+                        QStringLiteral("action"), controlEnabled("search"));
+
+    const bool notificationsAvailable =
+        m_notificationClient && m_notificationClient->isAvailable();
+    const int activeNotifications =
+        m_notificationCenter ? m_notificationCenter->activeCount() : 0;
+    QVariantMap notificationItem =
+        statusItem(QStringLiteral("notifications"), QStringLiteral("bell"),
+                   activeNotifications > 0 ? QString::number(activeNotifications)
+                                           : QString(),
+                   tr("Notifications"), notificationsAvailable, 0.8, true,
+                   StatusPriority::Notifications, tr("Notifications"), QString(),
+                   activeNotifications > 0 ? QStringLiteral("attention")
+                                           : QStringLiteral("ok"),
+                   QStringLiteral("action"), controlEnabled("notifications"));
+    notificationItem.insert(QStringLiteral("selected"), activeNotifications > 0);
+    items << notificationItem;
+
+    // The clock is a first-class registry extra: the panel formatting lives in
+    // MenuBarClock, but order, visibility, keyboard focus and overflow are the
+    // registry's.
+    items << statusItem(QStringLiteral("clock"), QString(), QString(),
+                        tr("Date & Time"), true, 0.8, true, StatusPriority::Clock,
+                        tr("Date & Time"), QStringLiteral("clock"),
+                        QStringLiteral("ok"), QStringLiteral("clock"),
+                        controlEnabled("clock"));
+
+    items << statusItem(QStringLiteral("control-center"),
+                        QStringLiteral("control-center"), QString(),
+                        tr("Quick Settings"), true, 0.8, true,
+                        StatusPriority::ControlCenter, tr("Quick Settings"),
+                        QString(), QStringLiteral("ok"), QStringLiteral("action"),
+                        controlEnabled("controlCenter"));
+
+    items << statusItem(QStringLiteral("mission-control"),
+                        QStringLiteral("mission-control"), QString(),
+                        tr("Overview"), true, 0.8, true,
+                        StatusPriority::MissionControl, tr("Overview"), QString(),
+                        QStringLiteral("ok"), QStringLiteral("action"), true);
+
+    // Third-party StatusNotifier/AppIndicator items (T-14.3/T231). They join
+    // the same registry, so sizing/hover/dark-light treatment is identical and
+    // the overflow policy can push them out before any system item.
+    int trayPriority = StatusPriority::ThirdParty;
     for (const TrayItem &tray : m_trayItems) {
-        QVariantMap item;
-        item.insert(QStringLiteral("id"), QStringLiteral("tray:") + tray.name);
-        item.insert(QStringLiteral("icon"), QStringLiteral("application"));
+        QVariantMap item =
+            statusItem(QStringLiteral("tray:") + tray.name,
+                       QStringLiteral("application"), QString(),
+                       !tray.title.isEmpty() ? tray.title
+                                             : (!tray.id.isEmpty() ? tray.id : tray.name),
+                       true, 0.8, true, trayPriority++,
+                       tray.tooltip.isEmpty() ? tray.title : tray.tooltip,
+                       QString(),
+                       tray.needsAttention ? QStringLiteral("attention")
+                                           : QStringLiteral("ok"),
+                       QStringLiteral("status"), true);
         item.insert(QStringLiteral("iconSource"),
                     tray.iconPath.isEmpty() ? QUrl()
                                             : QUrl::fromLocalFile(tray.iconPath));
-        item.insert(QStringLiteral("label"), QString());
-        item.insert(QStringLiteral("accessibleName"),
-                    !tray.title.isEmpty() ? tray.title
-                                          : (!tray.id.isEmpty() ? tray.id : tray.name));
-        item.insert(QStringLiteral("available"), true);
-        item.insert(QStringLiteral("enabled"), true);
-        item.insert(QStringLiteral("level"), 0.8);
         item.insert(QStringLiteral("selected"), tray.needsAttention);
+        item.insert(QStringLiteral("thirdParty"), true);
         items << item;
     }
 
@@ -3060,14 +3189,6 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
 }
 
 // --- Notification Center (T204) --------------------------------------------
-
-void ShellController::onClockActivated()
-{
-    // The menu-bar clock is the pointer entry point. The compositor's
-    // `notification-center` input action reaches the same toggle from a
-    // keyboard shortcut or a configured hot corner (onInputAction).
-    toggleNotificationCenter();
-}
 
 void ShellController::toggleNotificationCenter()
 {
@@ -5293,10 +5414,19 @@ void ShellController::onMissionControlRequested()
 
 void ShellController::onStatusItemActivated(const QString &itemId)
 {
-    // A tray item opens its owner's DBusMenu (T-14.3); every other status
-    // slot is a first-party popup or an inert placeholder.
+    // A tray item opens its owner's DBusMenu (T-14.3); the two action extras
+    // added in T231 open the shell's own surfaces; every other status slot is
+    // a first-party popup or an inert placeholder.
     if (itemId.startsWith(QLatin1String("tray:"))) {
         openTrayMenu(itemId.mid(5));
+        return;
+    }
+    if (itemId == QLatin1String("search")) {
+        showAppsDrawer();
+        return;
+    }
+    if (itemId == QLatin1String("notifications")) {
+        toggleNotificationCenter();
         return;
     }
     // Status-item popups consume the T-20 adapters; until then this is a
@@ -6497,6 +6627,9 @@ void ShellController::applyMenuBarPolicy()
                 m_globalMenuEnabled ? 1 : 0, showDate ? 1 : 0, showSeconds ? 1 : 0,
                 use24Hour ? 1 : 0, showBackground ? 1 : 0, qPrintable(autoHide));
     }
+    // The per-control keys (`menu.control.*`, including T231's clock,
+    // notifications and Quick Settings rows) gate the registry live.
+    applyStatusItems();
 }
 
 void ShellController::applyWallpaperPolicy()
@@ -7800,6 +7933,7 @@ void ShellController::onNotificationAvailable(bool available)
     // accessible unavailable state and the next `History()` repopulates it.
     if (m_notificationCenter)
         m_notificationCenter->setAvailable(available);
+    applyStatusItems();
     if (available) {
         m_notificationClient->refresh();
     } else {
@@ -7830,6 +7964,8 @@ void ShellController::onNotificationHistory(const QByteArray &json)
         if (available)
             m_notificationCenter->setHistory(m_notificationModel->history());
     }
+    // The bell's attention mark/count follows the active notification set.
+    applyStatusItems();
 }
 
 void ShellController::onNotificationFocusPolicy(const QByteArray &json)

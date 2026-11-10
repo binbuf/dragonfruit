@@ -34,11 +34,19 @@ Rectangle {
     // apps keep their own local menu presentation; the fixed system and
     // application menus stay.
     property bool globalMenuEnabled: true
-    // [{ id, icon, iconSource, label, accessibleName, available, enabled,
-    //    selected, tint }]; third-party StatusNotifier items join this same
-    //    row with `id: "tray:<name>"` and an `iconSource`, so they get
-    //    identical sizing/hover treatment (T-14.3).
+    // [{ id, icon, iconSource, label, tooltip, menu, priority, visible,
+    //    available, enabled, selected, state, accessibleName, kind,
+    //    thirdParty }]; every system extra and every third-party
+    //    StatusNotifier item joins this one registry (T231). The shell
+    //    controller supplies live entries; `StatusItemRegistry` owns order,
+    //    visibility and overflow.
     property var statusItems: []
+    // The row's slot budget. -1 keeps every item; a finite value moves
+    // third-party items into the overflow affordance first (T231/T233).
+    property int statusOverflowCapacity: -1
+    // The built-in fallbacks keep the bar usable in QML tests and before the
+    // controller's first status snapshot. The controller's entries win by id.
+    property bool showClock: true
     // The open tray item's DBusMenu rows (T-14.3), a design-system menu model.
     property var trayMenu: []
     property string trayMenuService: ""
@@ -50,8 +58,13 @@ Rectangle {
     property var batteryMenu: ({})
     property var bluetoothMenu: ({})
     // Which status popover is open: "" | "wifi" | "volume" | "battery" |
-    // "bluetooth".
+    // "bluetooth" | "clock".
     property string openStatusItem: ""
+    // The overflow affordance's menu (T231): third-party items that do not
+    // fit in `statusOverflowCapacity`, then optional system items.
+    property bool overflowMenuOpen: false
+    property var overflowMenu: []
+    property var overflowMenuEntries: []
     // Keyboard navigation (T-07.5b): the status slot the arrow keys select.
     // -1 means no slot is selected.
     property int keyboardStatusIndex: -1
@@ -104,6 +117,47 @@ Rectangle {
     // it is lost the open menu dismisses (FR-3).
     property bool shellFocused: true
 
+    // The registry source: the controller's entries plus the built-in
+    // clock/Quick Settings/Overview fallbacks. Deduplicating by id lets the
+    // controller own visibility (a hidden clock is not re-added here) while
+    // the QML tests and the first frame still get a complete bar.
+    readonly property var _statusSource: {
+        var source = [];
+        var seen = ({});
+        for (var i = 0; i < statusItems.length; ++i) {
+            var raw = statusItems[i] || {};
+            var id = raw.id !== undefined ? String(raw.id) : "";
+            if (id.length === 0)
+                continue;
+            source.push(raw);
+            seen[id] = true;
+        }
+        var builtins = [
+            { id: "clock", kind: "clock", menu: "clock", priority: 70,
+              tooltip: qsTr("Date & Time"), accessibleName: qsTr("Date & Time"),
+              visible: showClock, essential: true },
+            { id: "control-center", icon: "control-center", kind: "action",
+              priority: 80, tooltip: qsTr("Quick Settings"),
+              accessibleName: qsTr("Quick Settings"), visible: true,
+              essential: true },
+            { id: "mission-control", icon: "mission-control", kind: "action",
+              priority: 90, tooltip: qsTr("Overview"),
+              accessibleName: qsTr("Overview"), visible: true,
+              essential: true }
+        ];
+        for (var j = 0; j < builtins.length; ++j) {
+            if (!seen[builtins[j].id])
+                source.push(builtins[j]);
+        }
+        return source;
+    }
+
+    StatusItemRegistry {
+        id: statusRegistry
+        items: menuBar._statusSource
+        maxVisible: menuBar.statusOverflowCapacity
+    }
+
     // The bar's top-level menus, left to right: the fixed system menu, the
     // fixed application menu, then whatever the focused app exported. Keeping
     // them in one model is what lets drag-through and the open-menu-tracks-
@@ -136,13 +190,21 @@ Rectangle {
             var statusPopup = openStatusItem === "wifi" ? wifiMenuPopup
                             : (openStatusItem === "volume" ? volumeMenuPopup
                             : (openStatusItem === "battery" ? batteryMenuPopup
-                            : (openStatusItem === "bluetooth" ? bluetoothMenuPopup : null)));
+                            : (openStatusItem === "bluetooth" ? bluetoothMenuPopup
+                            : (openStatusItem === "clock" ? dateTimePanel : null))));
             if (statusPopup && statusPopup.popup.open) {
                 var statusOrigin = statusPopup.mapToItem(menuBar, statusPopup.popup.x,
                                                          statusPopup.popup.y);
                 return { x: statusOrigin.x, y: statusOrigin.y,
                          w: statusPopup.popup.width, h: statusPopup.popup.height };
             }
+        }
+        if (overflowMenuOpen && overflowContextMenu.open) {
+            var overflowRect = overflowContextMenu.contentRect;
+            var overflowOrigin = overflowContextMenu.mapToItem(menuBar, overflowRect.x,
+                                                               overflowRect.y);
+            return { x: overflowOrigin.x, y: overflowOrigin.y,
+                     w: overflowRect.w, h: overflowRect.h };
         }
         if (trayMenuOpen && trayContextMenu.open) {
             var trayRect = trayContextMenu.contentRect;
@@ -177,6 +239,8 @@ Rectangle {
     readonly property string dropdownPreset: {
         if (openStatusItem !== "")
             return "statusMenu";
+        if (overflowMenuOpen && overflowContextMenu.open)
+            return "menuDetached";
         if (trayMenuOpen && trayContextMenu.open)
             return "menuDetached";
         return "menuAttached";
@@ -187,17 +251,38 @@ Rectangle {
             var popup = openStatusItem === "wifi" ? wifiMenuPopup.popup
                       : (openStatusItem === "volume" ? volumeMenuPopup.popup
                       : (openStatusItem === "battery" ? batteryMenuPopup.popup
-                      : (openStatusItem === "bluetooth" ? bluetoothMenuPopup.popup : null)));
+                      : (openStatusItem === "bluetooth" ? bluetoothMenuPopup.popup
+                      : (openStatusItem === "clock" ? dateTimePanel.popup : null))));
             if (popup && popup.open) {
                 var owner = openStatusItem === "wifi" ? wifiMenuPopup
                           : (openStatusItem === "volume" ? volumeMenuPopup
                           : (openStatusItem === "battery" ? batteryMenuPopup
-                          : bluetoothMenuPopup));
+                          : (openStatusItem === "bluetooth" ? bluetoothMenuPopup
+                          : dateTimePanel)));
                 var p = owner.mapToItem(menuBar, popup.x, popup.y);
                 var r = Theme.controls.contextMenu.radius;
                 out.push({ key: "menu", preset: "statusMenu",
                            x: p.x, y: p.y, w: popup.width, h: popup.height,
                            tl: r, tr: r, br: r, bl: r, overscan: 20 });
+            }
+            return out;
+        }
+        if (overflowMenuOpen && overflowContextMenu.open) {
+            var overflowParent = overflowContextMenu.parent;
+            var overflowOrigin = overflowParent
+                ? overflowParent.mapToItem(menuBar, overflowContextMenu.x,
+                                           overflowContextMenu.y)
+                : Qt.point(overflowContextMenu.x, overflowContextMenu.y);
+            var overflowRegions = overflowContextMenu.regions;
+            for (var oi = 0; oi < overflowRegions.length; ++oi) {
+                var overflowRegion = overflowRegions[oi];
+                out.push({ key: overflowRegion.key, preset: overflowRegion.preset,
+                           x: overflowOrigin.x + overflowRegion.x,
+                           y: overflowOrigin.y + overflowRegion.y,
+                           w: overflowRegion.w, h: overflowRegion.h,
+                           tl: overflowRegion.tl, tr: overflowRegion.tr,
+                           br: overflowRegion.br, bl: overflowRegion.bl,
+                           overscan: overflowRegion.overscan });
             }
             return out;
         }
@@ -280,7 +365,6 @@ Rectangle {
     signal statusMenuClosed()
     signal controlCenterRequested()
     signal missionControlRequested()
-    signal clockActivated()
 
     implicitHeight: Theme.controls.menuBar.height
     implicitWidth: appMenuRow.implicitWidth + statusRow.implicitWidth
@@ -429,6 +513,7 @@ Rectangle {
 
     function closeMenus() {
         closeTrayMenu();
+        closeOverflowMenu();
         var index = openMenuIndex;
         openMenuIndex = -1;
         hoverMenuIndex = -1;
@@ -532,15 +617,17 @@ Rectangle {
     // degradation rule.
     function openStatusMenu(id) {
         if (id !== "wifi" && id !== "volume" && id !== "battery"
-                && id !== "bluetooth")
+                && id !== "bluetooth" && id !== "clock")
             return;
-        var data = id === "wifi" ? wifiMenu
-                 : (id === "volume" ? volumeMenu
-                 : (id === "battery" ? batteryMenu : bluetoothMenu));
-        if (!data || data.state === "unavailable")
-            return;
-        if ((id === "battery" || id === "bluetooth") && data.present === false)
-            return;
+        if (id !== "clock") {
+            var data = id === "wifi" ? wifiMenu
+                     : (id === "volume" ? volumeMenu
+                     : (id === "battery" ? batteryMenu : bluetoothMenu));
+            if (!data || data.state === "unavailable")
+                return;
+            if ((id === "battery" || id === "bluetooth") && data.present === false)
+                return;
+        }
         closeMenus();
         closeStatusMenu();
         openStatusItem = id;
@@ -550,8 +637,10 @@ Rectangle {
             volumeMenuPopup.open = true;
         else if (id === "battery")
             batteryMenuPopup.open = true;
-        else
+        else if (id === "bluetooth")
             bluetoothMenuPopup.open = true;
+        else
+            dateTimePanel.open = true;
         statusMenuRefreshRequested(id);
         statusMenuOpened();
     }
@@ -572,6 +661,89 @@ Rectangle {
         // Return keyboard focus to the bar so the arrow keys keep driving the
         // status row after a popover closes.
         forceActiveFocus();
+    }
+
+    // One activation path for every registry entry (T231). The item's
+    // `menu` names the first-party popover; tray/action items fall through to
+    // the shell's `statusItemActivated`, and the two overlay entries raise
+    // their existing signals.
+    function activateStatusItem(id) {
+        var item = statusRegistry.itemById(id);
+        if (item && item.kind === "overflow") {
+            toggleOverflowMenu();
+            return;
+        }
+        if (item && item.kind === "clock") {
+            openStatusMenu("clock");
+            return;
+        }
+        // First-party popovers keep the id fallback so a raw entry from an
+        // older producer (or a QML test) still opens its menu.
+        if (id === "wifi" || id === "volume" || id === "battery"
+                || id === "bluetooth") {
+            openStatusMenu(id);
+            return;
+        }
+        if (item && item.menu.length > 0 && item.menu !== "overflow") {
+            openStatusMenu(item.menu);
+            return;
+        }
+        closeMenus();
+        closeStatusMenu();
+        if (id === "control-center") {
+            controlCenterRequested();
+            return;
+        }
+        if (id === "mission-control") {
+            missionControlRequested();
+            return;
+        }
+        statusItemActivated(id);
+    }
+
+    function _overflowRows() {
+        var rows = [];
+        for (var i = 0; i < overflowMenuEntries.length; ++i) {
+            var item = overflowMenuEntries[i];
+            rows.push({ label: item.accessibleName,
+                        enabled: item.enabled !== false,
+                        checked: item.selected === true,
+                        checkable: false,
+                        action: item.id });
+        }
+        return rows;
+    }
+
+    function openOverflowMenu() {
+        if (!statusRegistry.hasOverflow)
+            return;
+        closeMenus();
+        closeStatusMenu();
+        closeTrayMenu();
+        overflowMenuEntries = statusRegistry.overflowItems;
+        overflowMenu = _overflowRows();
+        overflowMenuOpen = true;
+        var slot = statusItemFor("overflow");
+        var menuWidth = Math.max(overflowContextMenu.width,
+                                 Theme.controls.contextMenu.minWidth);
+        var anchorX = slot ? slot.mapToItem(menuBar, slot.width, 0).x : menuBar.width;
+        var left = Math.max(0, Math.min(menuBar.width - menuWidth,
+                                      anchorX - menuWidth));
+        overflowContextMenu.showAt(left, menuBar.height);
+    }
+
+    function closeOverflowMenu() {
+        if (!overflowMenuOpen)
+            return;
+        overflowMenuOpen = false;
+        overflowContextMenu.hide();
+    }
+
+    function toggleOverflowMenu() {
+        if (overflowMenuOpen)
+            closeOverflowMenu();
+        else
+            openOverflowMenu();
     }
 
     // --- Keyboard navigation (T-07.5b) ------------------------------------
@@ -602,14 +774,7 @@ Rectangle {
         var item = statusRepeater.itemAt(keyboardStatusIndex);
         if (!item)
             return;
-        if (item.itemId === "wifi" || item.itemId === "volume"
-                || item.itemId === "battery" || item.itemId === "bluetooth") {
-            openStatusMenu(item.itemId);
-        } else {
-            closeMenus();
-            closeStatusMenu();
-            statusItemActivated(item.itemId);
-        }
+        activateStatusItem(item.itemId);
     }
 
     // An open menu session tracks sibling titles on the next event-loop turn.
@@ -644,6 +809,7 @@ Rectangle {
             closeMenus();
             closeStatusMenu();
             closeTrayMenu();
+            closeOverflowMenu();
         }
     }
 
@@ -676,6 +842,7 @@ Rectangle {
             menuBar.closeMenus();
             menuBar.closeStatusMenu();
             menuBar.closeTrayMenu();
+            menuBar.closeOverflowMenu();
         }
     }
 
@@ -683,6 +850,7 @@ Rectangle {
         menuBar.closeMenus();
         menuBar.closeStatusMenu();
         menuBar.closeTrayMenu();
+        menuBar.closeOverflowMenu();
         event.accepted = true;
     }
 
@@ -789,7 +957,7 @@ Rectangle {
         Repeater {
             id: statusRepeater
             objectName: "statusRepeater"
-            model: menuBar.statusItems
+            model: statusRegistry.statusRowItems
 
             delegate: StatusItem {
                 required property var modelData
@@ -800,60 +968,23 @@ Rectangle {
                 icon: modelData.icon !== undefined ? modelData.icon : ""
                 iconSource: modelData.iconSource !== undefined ? modelData.iconSource : ""
                 label: modelData.label !== undefined ? modelData.label : ""
+                tooltip: modelData.tooltip !== undefined ? modelData.tooltip : ""
                 accessibleName: modelData.accessibleName !== undefined ? modelData.accessibleName : ""
+                kind: modelData.kind !== undefined ? modelData.kind : "status"
+                state: modelData.state !== undefined ? modelData.state : "ok"
                 available: modelData.available !== false
                 enabled: modelData.enabled !== false
                 selected: modelData.selected === true
                 level: modelData.level !== undefined ? modelData.level : 0.8
+                showDate: menuBar.showDate
+                showSeconds: menuBar.showSeconds
+                use24Hour: menuBar.use24Hour
                 tint: modelData.tint !== undefined ? modelData.tint : menuBar.foreground
+                foreground: menuBar.foreground
+                secondaryForeground: menuBar.secondaryForeground
                 backgroundColor: menuBar.color
 
-                onActivated: (id) => {
-                    if (id === "wifi" || id === "volume" || id === "battery"
-                            || id === "bluetooth") {
-                        menuBar.openStatusMenu(id);
-                        return;
-                    }
-                    menuBar.closeMenus();
-                    menuBar.closeStatusMenu();
-                    menuBar.statusItemActivated(id);
-                }
-            }
-        }
-
-        MenuBarClock {
-            objectName: "clock"
-            showDate: menuBar.showDate
-            showSeconds: menuBar.showSeconds
-            use24Hour: menuBar.use24Hour
-            foreground: menuBar.foreground
-            secondaryForeground: menuBar.secondaryForeground
-            onActivated: menuBar.clockActivated()
-        }
-
-        StatusItem {
-            itemId: "control-center"
-            icon: "control-center"
-            accessibleName: qsTr("Quick Settings")
-            tint: menuBar.foreground
-            backgroundColor: menuBar.color
-            onActivated: {
-                menuBar.closeMenus();
-                menuBar.closeStatusMenu();
-                menuBar.controlCenterRequested();
-            }
-        }
-
-        StatusItem {
-            itemId: "mission-control"
-            icon: "mission-control"
-            accessibleName: qsTr("Overview")
-            tint: menuBar.foreground
-            backgroundColor: menuBar.color
-            onActivated: {
-                menuBar.closeMenus();
-                menuBar.closeStatusMenu();
-                menuBar.missionControlRequested();
+                onActivated: (id) => menuBar.activateStatusItem(id)
             }
         }
     }
@@ -922,6 +1053,41 @@ Rectangle {
         onSettingsRequested: menuBar.bluetoothSettingsRequested()
         onRefreshRequested: menuBar.statusMenuRefreshRequested("bluetooth")
         onClosed: menuBar.closeStatusMenu()
+    }
+
+    // The Date & Time panel (T231): a clock popover, not a menu, using the
+    // same status-popover material and Escape dismissal as the other extras.
+    DateTimePanel {
+        id: dateTimePanel
+        objectName: "dateTimePanel"
+        anchorItem: menuBar.statusItemFor("clock")
+        showSeconds: menuBar.showSeconds
+        use24Hour: menuBar.use24Hour
+        materialBlurActive: menuBar.popupMaterialBlurActive
+        materialTier: menuBar.popupMaterialTier
+        materialFallback: menuBar.popupMaterialFallback
+        onClosed: menuBar.closeStatusMenu()
+    }
+
+    // The overflow affordance (T231). It is a design-system ContextMenu so it
+    // shares the tray menu's keyboard, material and dismissal contract.
+    ContextMenu {
+        id: overflowContextMenu
+        objectName: "overflowContextMenu"
+        model: menuBar.overflowMenu
+        accessibleName: qsTr("More menu bar items")
+        materialPreset: "menuDetached"
+        materialBackdrop: "trusted"
+        materialBlurActive: menuBar.popupMaterialBlurActive
+        materialTier: menuBar.popupMaterialTier
+        materialFallback: menuBar.popupMaterialFallback
+        onTriggered: (index, item) => {
+            var action = (item && item.action !== undefined) ? item.action : "";
+            menuBar.closeOverflowMenu();
+            if (action.length > 0)
+                menuBar.activateStatusItem(action);
+        }
+        onClosed: menuBar.closeOverflowMenu()
     }
 
     // A StatusNotifier tray item's DBusMenu (T-14.3). It reuses the

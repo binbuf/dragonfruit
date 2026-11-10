@@ -19,6 +19,11 @@ Item {
     // T200: wallpaper-adaptive menu-bar foreground, injected by MenuBar.
     property color foreground: Theme.color.textPrimary
     property color secondaryForeground: Theme.color.textSecondary
+    // T231: the clock is a registry item rendered inside `StatusItem`. The
+    // slot owns hover, the focus ring, the tap and the accessibility node, so
+    // the embedded clock is presentation only. Standalone uses (the QML
+    // tests, the lock scene) keep the interactive default.
+    property bool interactive: true
 
     signal activated()
 
@@ -84,14 +89,19 @@ Item {
         }
     }
 
-    HoverHandler { id: clockHover }
+    HoverHandler { id: clockHover; enabled: root.interactive }
 
     TapHandler {
+        enabled: root.interactive
         onTapped: root.activated()
     }
 
+    Accessible.ignored: !root.interactive
     Accessible.role: Accessible.StaticText
     Accessible.name: root.accessibleText
-    Accessible.focusable: true
-    Accessible.onPressAction: root.activated()
+    Accessible.focusable: root.interactive
+    Accessible.onPressAction: {
+        if (root.interactive)
+            root.activated();
+    }
 }

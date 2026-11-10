@@ -173,10 +173,13 @@ The top menu bar hosts, from left to right:
   model: the file manager owns the desktop — see [09-files.md](09-files.md)).
 - The active application's own menus (File, Edit, View, …) via the
   menu-broker (see [06-global-menu.md](06-global-menu.md)).
-- System status items: Wi-Fi, Bluetooth, volume, battery, clock, Focus/DND,
-  accessibility
-- The Control Center entry point
-- A Mission Control button/gesture target
+- One status-item registry, left-to-right by priority: Wi-Fi, Bluetooth,
+  battery, Sound, Search, Notifications, Focus/DND, Date & Time (clock),
+  accessibility, third-party StatusNotifier items, then the Quick Settings
+  (Control Center) entry point and the Mission Control button/gesture target.
+  The registry owns order, visibility, keyboard traversal and overflow
+  (T231); the clock is a first-class extra whose click opens the Date & Time
+  calendar panel.
 
 The menu family uses the shared glass presets (T202): the menu-bar dropdown is
 `menuAttached`, the tray context menu and Dock context menu are
@@ -939,6 +942,21 @@ exports — the de-facto Linux tray standard — through a bridge, shipped in th
 compatibility phase (see [ROADMAP.md](../ROADMAP.md)). Third-party items
 get the same sizing, hover, and dark/light treatment as first-party items.
 
+**T231 registry.** Every extra is one normalized entry: `id`, `icon` /
+`iconSource`, `label`, `tooltip`, `menu`, `priority`, `visible`, `available`,
+`enabled`, `selected`, `state` (`ok` / `unavailable` / `error` / `attention`),
+`accessibleName`, `kind` (`status` / `action` / `clock` / `overflow`) and the
+`thirdParty` flag. `StatusItemRegistry` sorts system items by priority and
+puts every third-party item after them. A finite slot budget removes
+third-party items first, then optional system items; the clock and Quick
+Settings are essential and never leave the row. Removed items appear in the
+overflow affordance's menu (a `ContextMenu`), so a third-party item can be
+hidden but never silently dropped. An absent service renders a hidden,
+zero-width slot (keeping later indices stable); an error/attention state stays
+visible with the reason in the tooltip and accessible description. The whole
+row — including the clock and overflow — is reachable with Left/Right and
+activated with Return/Space.
+
 ## Control Center
 
 The user sees one highly curated panel. Internally it is sensibly reusing
@@ -1008,9 +1026,10 @@ notification (T-11.1b) remains the failure path. See
 [adr/0059](adr/0059-menu-bar-focus-reflection.md).
 
 **T204 status (Notification Center).** The Center is mapped. Its entry points
-are the menu-bar clock (`MenuBar.clockActivated`), the compositor's
-`notification-center` input action (the default Control-Shift-N shortcut and
-any configured hot corner), all routed through the same
+are the menu-bar Notifications item (T231; the clock now opens the Date & Time
+panel instead), the compositor's `notification-center` input action (the
+default Control-Shift-N shortcut and any configured hot corner), all routed
+through the same
 `ShellController::toggleNotificationCenter()` path. The Center is a trusted
 top-right `notification-center` overlay layer surface with its own panel-sized
 input region, OnDemand keyboard interaction (exclusive while open) and the

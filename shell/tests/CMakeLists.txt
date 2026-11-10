@@ -8,6 +8,7 @@ qt_add_executable(tst_menubar
 )
 target_link_libraries(tst_menubar PRIVATE
     Qt6::QuickTest
+    Qt6::Quick
     dragonfruit-design-systemplugin
     dragonfruit-shell-menubarplugin
 )
