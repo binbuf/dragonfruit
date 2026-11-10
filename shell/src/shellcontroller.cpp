@@ -6633,9 +6633,9 @@ void ShellController::applyMenuBarPolicy()
     }
 
     // T-15.9b: the Menu Bar pane's keys. The clock options and the background
-    // material apply live; the auto-hide mode is stored policy the shell does
-    // not consume yet (the bar chrome surface stays pinned) and is carried on
-    // the bar until the apply lands.
+    // material apply live; the auto-hide mode is forwarded to the compositor
+    // (T201), which owns the per-output conceal/reveal, reservation and measured
+    // transition (T233), and is mirrored on the bar for the scene's own rule.
     const bool showDate = values.value(QStringLiteral("menu.clock.showDate"), true).toBool();
     const bool showSeconds = values.value(QStringLiteral("menu.clock.showSeconds"), false).toBool();
     const bool use24Hour = values.value(QStringLiteral("clock.use24Hour"), false).toBool();

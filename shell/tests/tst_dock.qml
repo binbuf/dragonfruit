@@ -152,14 +152,16 @@ Item {
             return (size - trashBox(size)) / 2;
         }
 
-        // A band above the lid and clear of the centred handle: only a full
-        // bin's crumpled-paper silhouette reaches it.
+        // A band above the lid: only a full bin's crumpled-paper silhouette
+        // reaches it. WhiteSur's empty bin starts at the lid, so the band is
+        // the top few percent of the trash box rather than a body-height row.
         function contentsBand(size) {
             var t = trashBox(size);
             var off = trashInset(size);
             return {
-                x0: Math.round(off + t * 0.26), x1: Math.round(off + t * 0.34),
-                y0: Math.round(off + t * 0.14), y1: Math.round(off + t * 0.22)
+                x0: Math.round(off + t * 0.25), x1: Math.round(off + t * 0.75),
+                y0: Math.round(off),
+                y1: Math.round(off + Math.max(1, t * 0.04))
             };
         }
 

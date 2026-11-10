@@ -381,9 +381,12 @@ Item {
         width: root.size * Theme.controls.dock.trashSize
                / Theme.controls.dock.iconSize
         height: width
-        source: root.trashFull
-            ? "qrc:/icons/whitesur/user-trash-full.svg"
-            : "qrc:/icons/whitesur/user-trash.svg"
+        source: {
+            var variant = Theme.dark ? "" : "-dark";
+            return root.trashFull
+                ? "qrc:/icons/whitesur/user-trash-full" + variant + ".svg"
+                : "qrc:/icons/whitesur/user-trash" + variant + ".svg";
+        }
         sourceSize.width: Math.ceil(width * 2)
         sourceSize.height: Math.ceil(width * 2)
         fillMode: Image.PreserveAspectFit
