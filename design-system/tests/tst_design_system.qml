@@ -123,7 +123,7 @@ TestCase {
         compare(Theme.primitive.spacing.sm, 8);
         compare(WindowStyle.height("titlebar"), 32);
         compare(Theme.controls.trafficLights.buttonSize, 16);
-        compare(Theme.controls.trafficLights.diameter, 14);
+        compare(Theme.controls.trafficLights.diameter, 13);
         compare(Theme.motion.menuOpen.fullDuration, 0);
         verify(Theme.color.accent !== undefined);
     }
@@ -150,9 +150,9 @@ TestCase {
     }
 
     function test_traffic_light_geometry_is_style_derived() {
-        // 16 pt is the AppKit AX/hit frame; 14 pt is the drawn circle.
+        // 16 pt is the AppKit AX/hit frame; 13 pt is the drawn circle.
         compare(WindowStyle.trafficLightSize, 16);
-        compare(WindowStyle.trafficLightDiameter, 14);
+        compare(WindowStyle.trafficLightDiameter, 13);
         compare(WindowStyle.trafficLightSpacing, 23);
         compare(WindowStyle.trafficLightGap(), 7);
         compare(WindowStyle.trafficLightInset(32), 8);

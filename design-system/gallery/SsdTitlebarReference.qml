@@ -10,7 +10,7 @@ import Dragonfruit
 // compositor renderer lands it replaces this reference in the diff.
 //
 // T230b: the reference resolves its height from the same `WindowStyle` table
-// and draws the measured 14 pt circles in their 16 pt AX frames at 23 pt
+// and draws the measured 13 pt circles in their 16 pt AX frames at 23 pt
 // centre spacing.
 Item {
     id: root

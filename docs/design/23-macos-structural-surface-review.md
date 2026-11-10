@@ -68,12 +68,15 @@ window means small chrome”).
 ### 2.3 Anatomy
 
 - **Traffic lights:** a 16×16 pt AppKit accessibility/hit frame containing a
-  14 pt drawn circle. The 16 pt figure is the AX frame, not the visible dot:
-  on the 2× reference build the close button measures 28 px (14 pt).
+  14 pt full-extent circle. The 16 pt figure is the AX frame, not the visible
+  dot: on the 2× reference build the close button measures 28 px (14 pt).
+  Dragonfruit draws a 13 pt circle, the lower bound of the ±1 pt acceptance,
+  because the 14 pt fill read slightly oversized against the reference
+  MacBook Pro.
   - Title-bar-only window: 8 pt frame inset from the top, centring them in a
     32 pt bar.
   - Unified toolbar: 18 pt frame inset, centring them in a 52 pt bar.
-  - The same frame inset applies horizontally; the drawn circle sits 1 pt
+  - The same frame inset applies horizontally; the drawn circle sits 1.5 pt
     inside it. `expanded`/`preference` derive the inset from their 28/32 pt
     title row, not the full chrome height.
   - Horizontal spacing is 23 pt centre-to-centre between close, minimise and
@@ -113,7 +116,7 @@ window means small chrome”).
    hidden/revealed states, long titles, or RTL mirroring.
 
 **Owner:** T230b. Landed: the `WindowStyle` table
-(0/32/40/48/52/66/88 pt), the 16 pt AX frame with a 14 pt drawn traffic-light
+(0/32/40/48/52/66/88 pt), the 16 pt AX frame with a 13 pt drawn traffic-light
 circle, 8/18 pt title-row-derived insets on both axes, 23 pt centre spacing,
 content-layer accessory-bar tokens, and the Settings/Files `unified`
 migration. Long-title truncation and RTL mirroring remain `OPEN`

@@ -21,7 +21,7 @@ Item {
     signal zoomClicked()
 
     implicitWidth: row.implicitWidth
-    // The 16 pt button frame is the hit target; the visible circle is 14 pt.
+    // The 16 pt button frame is the hit target; the visible circle is 13 pt.
     implicitHeight: Theme.controls.trafficLights.buttonSize
 
     readonly property bool reveal: root.forceReveal || root.hovered
@@ -76,7 +76,7 @@ Item {
         Accessible.onPressAction: light.activated()
 
         Rectangle {
-            // The AX frame is 16 pt, but AppKit draws a 14 pt circle centred
+            // The AX frame is 16 pt, but AppKit draws a 13 pt circle centred
             // inside it. Drawing the frame itself made the lights too big.
             anchors.centerIn: parent
             width: Theme.controls.trafficLights.diameter

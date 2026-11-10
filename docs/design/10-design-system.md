@@ -419,7 +419,7 @@ a named style once instead of hard-coding a height. Settings and Files are
 `unified`; the compositor's SSD renderer reads the same table and defaults to
 `titlebar`.
 
-Traffic lights use a 16 pt AppKit AX/hit frame with a 14 pt drawn circle and
+Traffic lights use a 16 pt AppKit AX/hit frame with a 13 pt drawn circle and
 23 pt centre spacing. The inset is derived from the title row on both axes:
 `(titleRow - 16) / 2`, which is the measured 8 pt in a 32 pt bar and 18 pt in
 a 52 pt bar, and keeps expanded/preference lights in their title row.

@@ -29,10 +29,12 @@ QtObject {
         preference: Theme.controls.windowStyle.preference
     })
 
-    // AppKit's accessibility/hit frame is 16 pt; on the 2× reference build
-    // the close button measures 28 px, so the drawn circle is 14 pt. Keeping
-    // both values separate stops the review's "16×16 pt traffic lights" (an
-    // AX frame measurement) from becoming a visibly oversized 16 pt circle.
+    // AppKit's accessibility/hit frame is 16 pt. On the 2× reference build the
+    // close button's full extent measures 28 px (14 pt). We draw a 13 pt
+    // circle (the lower bound of the ±1 pt acceptance) because a 14 pt fill
+    // read slightly oversized against the reference MacBook Pro. Keeping the
+    // frame and circle separate stops the review's "16×16 pt traffic lights"
+    // (an AX frame measurement) from becoming a visibly oversized circle.
     readonly property int trafficLightSize:
         Theme.controls.windowStyle.trafficLightSize
     readonly property int trafficLightDiameter:
@@ -87,7 +89,7 @@ QtObject {
 
     // The measured 8/18 pt insets are to the 16 pt AX frame, and the same
     // inset applies on both axes: 8 pt in a 32 pt row, 18 pt in a 52 pt row.
-    // The drawn 14 pt circle sits 1 pt further in because it is centred in
+    // The drawn 13 pt circle sits 1.5 pt further in because it is centred in
     // that frame.
     function trafficLightInset(rowHeight) {
         return Math.max(0, (rowHeight - model.trafficLightSize) / 2);
