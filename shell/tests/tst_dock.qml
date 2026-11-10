@@ -6573,6 +6573,35 @@ Item {
             }
         }
 
+        // The unsuffixed WhiteSur artwork is the light/silver bin for the light
+        // scheme; `-dark` is the dark-gray bin for the dark scheme.
+        function test_trash_artwork_follows_the_scheme() {
+            var savedDark = Theme.dark;
+            var cases = [
+                { dark: false,
+                  empty: "qrc:/icons/whitesur/user-trash.svg",
+                  full: "qrc:/icons/whitesur/user-trash-full.svg" },
+                { dark: true,
+                  empty: "qrc:/icons/whitesur/user-trash-dark.svg",
+                  full: "qrc:/icons/whitesur/user-trash-full-dark.svg" }
+            ];
+            for (var i = 0; i < cases.length; ++i) {
+                Theme.dark = cases[i].dark;
+                var label = cases[i].dark ? "dark" : "light";
+                var empty = make(glyphComponent,
+                                 { kind: "trash", trashFull: false, size: 48 });
+                var full = make(glyphComponent,
+                                { kind: "trash", trashFull: true, size: 48 });
+                compare(findChild(empty, "trashArtwork").source, cases[i].empty,
+                        "the empty bin uses the " + label + " artwork");
+                compare(findChild(full, "trashArtwork").source, cases[i].full,
+                        "the full bin uses the " + label + " artwork");
+                empty.destroy();
+                full.destroy();
+            }
+            Theme.dark = savedDark;
+        }
+
         function test_trash_unavailable_renders_dimmer() {
             // Grab the entries (not the glyphs) so the renderer applies the
             // entry's glyph opacity.

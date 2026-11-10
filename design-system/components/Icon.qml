@@ -150,12 +150,12 @@ Item {
     })
 
     // The WhiteSur resource for the current legacy name, or "" when this is a
-    // monochrome Tabler glyph. The Trash picks the dark artwork on a light
-    // scheme and the light artwork on a dark scheme, matching WhiteSur's pair.
+    // monochrome Tabler glyph. The Trash picks the light/silver artwork on a
+    // light scheme and the dark artwork on a dark scheme.
     readonly property string placeSource: {
         if (root.name === "trash")
             return "qrc:/icons/whitesur/" + (Theme.dark
-                ? "user-trash.svg" : "user-trash-dark.svg");
+                ? "user-trash-dark.svg" : "user-trash.svg");
         return root.placeIcons[root.name] !== undefined
             ? "qrc:/icons/whitesur/" + root.placeIcons[root.name] + ".svg" : "";
     }
