@@ -25,11 +25,19 @@ OUTDIR="${OUTDIR:-docs/captures}"
 SETTLE="${SETTLE:-4}"
 SCRATCH="${SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/dragonfruit-t235a.XXXXXX")}"
 SCALE="${SCALE:-1}"
+# `lines_grid` is the lens evidence: a flat field cannot show the corner
+# refraction. The default run keeps the flat field for the rim/glow profile;
+# `WALLPAPER_BACKGROUND=lines_grid` adds the lens row set.
+WALLPAPER_BACKGROUND="${WALLPAPER_BACKGROUND:-flat}"
+SUFFIX="${SUFFIX:-}"
+if [ -z "$SUFFIX" ] && [ "$WALLPAPER_BACKGROUND" != "flat" ]; then
+    SUFFIX="-lens"
+fi
 mkdir -p "$OUTDIR" "$SCRATCH"
 
 if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
-    cat >"$OUTDIR/t235a-dock-perimeter.md" <<EOF
-# T235a — Dock plate perimeter capture
+    cat >"$OUTDIR/t235a-dock-perimeter${SUFFIX}.md" <<EOF
+# T235a — Dock plate perimeter capture${SUFFIX}
 
 timestamp: $(date -Is)
 verdict: OPEN
@@ -89,8 +97,8 @@ if [ "$FORCE_KWIN" = "1" ] || [ -z "$HOST_DISPLAY" ] \
         HOST_DISPLAY="$KWIN_SOCKET"
     else
         echo "capture-t235a: kwin_wayland is not installed — writing OPEN" >&2
-        cat >"$OUTDIR/t235a-dock-perimeter.md" <<EOF
-# T235a — Dock plate perimeter capture
+        cat >"$OUTDIR/t235a-dock-perimeter${SUFFIX}.md" <<EOF
+# T235a — Dock plate perimeter capture${SUFFIX}
 
 timestamp: $(date -Is)
 verdict: OPEN
@@ -105,19 +113,28 @@ capture() {
     local position="$1" scheme="$2" state="$3" dest="$4"
     local tag="t235a-${position}-${scheme}-${state}"
     local raw="$SCRATCH/${tag}-raw.png"
-    local wallpaper="$SCRATCH/flat-${SCALE}x.png"
+    local wallpaper="$SCRATCH/${WALLPAPER_BACKGROUND}-${SCALE}x.png"
+    local query="$SCRATCH/${tag}-query.txt"
+    LAST_TIER="unknown"
     if [ ! -s "$wallpaper" ]; then
-        python3 scripts/t198-dock-optics.py wallpaper --out "$wallpaper" \
-            --width "$(python3 -c "print(round(1920*$SCALE))")" \
-            --height "$(python3 -c "print(round(1200*$SCALE))")" \
-            --scale "$SCALE" --flat
+        if [ "$WALLPAPER_BACKGROUND" = "flat" ]; then
+            python3 scripts/t198-dock-optics.py wallpaper --out "$wallpaper" \
+                --width "$(python3 -c "print(round(1920*$SCALE))")" \
+                --height "$(python3 -c "print(round(1200*$SCALE))")" \
+                --scale "$SCALE" --flat
+        else
+            python3 scripts/t198-dock-optics.py wallpaper --out "$wallpaper" \
+                --width "$(python3 -c "print(round(1920*$SCALE))")" \
+                --height "$(python3 -c "print(round(1200*$SCALE))")" \
+                --scale "$SCALE" --background "$WALLPAPER_BACKGROUND"
+        fi
     fi
-    echo "capture-t235a: $position / $scheme / $state"
+    echo "capture-t235a: $position / $scheme / $state ($WALLPAPER_BACKGROUND)"
     env XDG_RUNTIME_DIR="$HOST_RUNTIME" WAYLAND_DISPLAY="$HOST_DISPLAY" \
         FULL_SESSION=1 SCALE="$SCALE" \
         DOCK_POSITION="$position" COLOR_SCHEME="$scheme" \
         WALLPAPER_SOURCE="$wallpaper" \
-        OUT="$raw" SETTLE="$SETTLE" \
+        OUT="$raw" SETTLE="$SETTLE" QUERY_OUT="$query" \
         SOCKET="df-t235a-${position}-${scheme}-${state}-$$" \
         SCRATCH="$SCRATCH/${tag}" KEEP_SCRATCH=1 \
         bash scripts/t21-live-capture.sh "$state" >"$SCRATCH/${tag}.log" 2>&1 \
@@ -138,52 +155,28 @@ capture() {
            "$XDG_RUNTIME_DIR/df-t235a-${position}-${scheme}-${state}-$$.lock" \
            "$XDG_RUNTIME_DIR/df-t235a-${position}-${scheme}-${state}-$$.launch-token" \
            2>/dev/null || true
-    python3 - "$dest" "$position" "$state" <<'PY'
-import sys
-from PIL import Image
-
-raw, position, state = sys.argv[1], sys.argv[2], sys.argv[3]
-im = Image.open(raw).convert("RGB")
-w, h = im.size
-# The capture is the nested output at 1920x1200 (scaled by SCALE); crop the
-# edge strip that contains the plate, its corners and the gap to the screen
-# edge, then upscale for inspection.
-strip = min(w, h, 200)
-if position == "bottom":
-    box = (0, max(0, h - strip), w, h)
-elif position == "left":
-    box = (0, 0, strip, h)
-else:
-    box = (max(0, w - strip), 0, w, h)
-crop = im.crop(box)
-scale = max(1, 900 // max(1, min(crop.size)))
-crop.resize((crop.width * scale, crop.height * scale), Image.NEAREST).save(raw)
-print(f"capture-t235a: {position}/{state} strip {crop.size} x{scale}")
-PY
-    # A 6x close-up of both plate corners. The strip is long; take the first
-    # and last 120 px along the Dock's long axis.
-    python3 - "$dest" "$position" <<'PY'
-import sys
-from PIL import Image
-
-dest, position = sys.argv[1], sys.argv[2]
-im = Image.open(dest).convert("RGB")
-w, h = im.size
-if position == "bottom":
-    first = im.crop((0, 0, min(w, 360), h))
-    last = im.crop((max(0, w - 360), 0, w, h))
-    out = Image.new("RGB", (first.width + last.width + 12, h), (24, 24, 24))
-else:
-    first = im.crop((0, 0, w, min(h, 360)))
-    last = im.crop((0, max(0, h - 360), w, h))
-    out = Image.new("RGB", (w, first.height + last.height + 12), (24, 24, 24))
-out.paste(first, (0, 0))
-if position == "bottom":
-    out.paste(last, (first.width + 12, 0))
-else:
-    out.paste(last, (0, first.height + 12))
-out.save(dest.replace(".png", "-corners.png"))
-PY
+    # The plate rim is the long bright run that does not span the output; a
+    # wallpaper grid line does span it. The helper crops the actual plate
+    # corners, not the first/last strip pixels (which are usually wallpaper).
+    if python3 scripts/t235a-crop-plate.py --capture "$raw" \
+            --position "$position" --scale "$SCALE" \
+            --out-strip "$dest" \
+            --out-corners "${dest%.png}-corners.png"; then
+        :
+    else
+        echo "capture-t235a: $tag corner crop OPEN" >&2
+    fi
+    if [ -s "$SCRATCH/${tag}/shell.log" ]; then
+        LAST_TIER="$(grep -ao 'material role=dock tier=[0-9]*' \
+            "$SCRATCH/${tag}/shell.log" | tail -1 | sed 's/.*tier=//')"
+        case "$LAST_TIER" in
+            0) LAST_TIER="full" ;;
+            1) LAST_TIER="reduced" ;;
+            2) LAST_TIER="minimal" ;;
+            *) LAST_TIER="unknown" ;;
+        esac
+    fi
+    echo "capture-t235a: $tag tier=$LAST_TIER"
 }
 
 ROWS=""
@@ -192,41 +185,49 @@ for position in bottom left right; do
         for state in settled motion; do
             label="rest"
             [ "$state" = "motion" ] && label="magnified"
-            dest="$OUTDIR/t235a-dock-perimeter-${position}-${scheme}-${label}.png"
+            dest="$OUTDIR/t235a-dock-perimeter${SUFFIX}-${position}-${scheme}-${label}.png"
             if capture "$position" "$scheme" "$state" "$dest"; then
-                ROWS="$ROWS| $position | $scheme | $label | $SCALE | \`$dest\` | measured |\n"
+                ROWS="$ROWS| $position | $scheme | $label | $WALLPAPER_BACKGROUND | $LAST_TIER | $SCALE | \`$dest\` | measured |\n"
             else
-                ROWS="$ROWS| $position | $scheme | $label | $SCALE | — | OPEN |\n"
+                ROWS="$ROWS| $position | $scheme | $label | $WALLPAPER_BACKGROUND | — | $SCALE | — | OPEN |\n"
             fi
         done
     done
 done
 
-cat >"$OUTDIR/t235a-dock-perimeter.md" <<EOF
-# T235a — Dock plate perimeter and corner lens capture
+cat >"$OUTDIR/t235a-dock-perimeter${SUFFIX}.md" <<EOF
+# T235a — Dock plate perimeter and corner lens capture${SUFFIX}
 
 timestamp: $(date -Is)
 build: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 output scale: ${SCALE}x
-Reduce Transparency: off
-Increase Contrast: off
-Reduce Motion: off
+wallpaper: ${WALLPAPER_BACKGROUND}
+Reduce Transparency: ${REDUCE_TRANSPARENCY:-0}
+Increase Contrast: ${INCREASE_CONTRAST:-0}
+Reduce Motion: ${REDUCE_MOTION:-0}
 
 The captures are the nested compositor's own render. Each row crops the plate's
-edge strip at 3x and writes a 6x both-corners companion. Inspect for a darker
-side, a brighter bottom centre, a flat-side lens warp and an outer shadow.
+edge strip and writes a close-up of the plate's actual rounded corners (not the
+wallpaper at the strip ends). The tier column is the live Dock material tier
+from the shell log; the persistent Dock floor is \`reduced\`, so the corner lens
+must be visible there. Inspect for a darker side, a brighter bottom centre, a
+flat-side lens warp and an outer shadow.
 
-| Position | Scheme | State | Scale | Artifact | Verdict |
-|---|---|---|---|---|---|
+A flat field shows the rim and inner glow but cannot show the corner lens;
+run with \`WALLPAPER_BACKGROUND=lines_grid\` for the refraction evidence.
+
+| Position | Scheme | State | Wallpaper | Tier | Scale | Artifact | Verdict |
+|---|---|---|---|---|---|---|---|
 $(printf '%b' "$ROWS")
 
 Rerun:
 
 \`\`\`sh
 make t235a-dock-perimeter-capture
+WALLPAPER_BACKGROUND=lines_grid make t235a-dock-perimeter-capture
 \`\`\`
 
 A row that did not produce a render is OPEN, not a claimed measurement.
 EOF
 
-echo "capture-t235a: wrote $OUTDIR/t235a-dock-perimeter.md"
+echo "capture-t235a: wrote $OUTDIR/t235a-dock-perimeter${SUFFIX}.md"

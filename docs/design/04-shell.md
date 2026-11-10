@@ -581,7 +581,10 @@ approximates the same tail with three concentric full-perimeter strokes
 uniform border; it has no `position` branch, so bottom, left and right Docks
 draw the same perimeter. The corner lens is corner-only: it is parameterized by
 distance inside the rim, directed by the outward SDF normal, and gated by
-`4·nx²·ny²`, so flat edges and flat sides are exactly unbent. The plate group
+`4·nx²·ny²`, so flat edges and flat sides are exactly unbent. The persistent
+Dock resolves to the `Reduced` tier; that tier keeps the flat-band corner lens
+and drops only the generic edge-lens `refraction`, so the measured corner
+refraction is present on the normal production path (T235a). The plate group
 is clipped at its top edge so no paint bleeds into the transparent magnify band
 above it (T-10 section 2). Icon tiles are rounded squares at
 `controls.dock.icon.radiusRatio`, and the themed artwork is **masked** into

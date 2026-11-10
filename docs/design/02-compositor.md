@@ -591,11 +591,14 @@ texture) uses the same token, so the approximation and the GPU path cannot
 drift.
 
 `DegradeTier` owns the fallback: `Full` = blur + refraction + specular + tint;
-`Reduced` = blur + specular + tint with the edge lens dropped and the blur
-radius/geometry halved (via the existing `geometry_scale`); `Minimal` = the flat
-feather fallback (no glass). `query material` reports the resolved glass
-parameters per role after the active tier, so the mapping and the fallback are
-asserted headless.
+`Reduced` = blur + specular + tint with the generic edge lens dropped and the
+blur radius/geometry halved (via the existing `geometry_scale`); `Minimal` = the
+flat feather fallback (no glass). The measured flat-band corner lens is not the
+generic edge pass: persistent Dock/Control Center roles resolve to `Reduced`
+even under a global `Minimal` selection (T-21.2c), so `Reduced` keeps the
+flat-band `corner_peak` and zeroes only `refraction` (T235a). `query material`
+reports the resolved glass parameters per role after the active tier, so the
+mapping and the fallback are asserted headless.
 
 **Multi-GPU, software fallback, and determinism (T-20.4, ADR 0184).** The
 material's scene texture is owned **per GPU** and is never sampled across
@@ -773,7 +776,9 @@ risk, so they degrade along one ordered ladder —
 `compositor/src/window/degrade.rs`:
 
 - `Full` is the token material as designed.
-- `Reduced` shrinks the radius/blur geometry and roughly halves the layers.
+- `Reduced` shrinks the radius/blur geometry and roughly halves the layers. It
+  keeps the measured flat-band corner lens; only the generic edge-lens
+  `refraction` is dropped (T235a).
 - `Minimal` turns the backdrop blur **off** entirely and collapses the shadow
   to a small tight ring; the window stays rounded and legible.
 

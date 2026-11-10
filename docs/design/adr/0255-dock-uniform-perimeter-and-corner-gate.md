@@ -50,6 +50,13 @@ left the fallback segmented and double-painted.
    is authoritative for the measured +0.397. The fallback is pinned to a
    uniform rim delta on every edge and the calibrated stroke opacity; its
    absolute peak is recorded as a deliberate deviation, not invented evidence.
+5. **`Reduced` keeps the corner lens.** `MaterialRole::{Chrome, Dock}` are
+   persistent and never resolve below `Reduced` while the sampled pass is
+   available (T-21.2c), so `Reduced` is the production Dock tier. Its glass
+   spec therefore drops only the generic edge-lens `refraction`; the flat-band
+   `corner_peak` is retained. Zeroing the corner field at `Reduced` deletes the
+   measured plate on the normal path even though the corner lens is a cheap UV
+   displacement, not the expensive edge pass.
 
 ## Consequences
 
@@ -62,6 +69,10 @@ left the fallback segmented and double-painted.
 - The capture matrix over the review backgrounds is recorded by
   `make dock-optics-capture`; unmeasured side/dark/scale rows stay explicit
   `OPEN` rows with the rerun command.
+- `DegradeTier::glass` unit tests pin `Reduced` keeping the flat-band corner
+  peak while dropping the generic edge lens. The T235a perimeter capture logs
+  `tier=reduced` for every Dock row, so the lens evidence is taken on the
+  production tier rather than `Full`.
 
 ## References
 

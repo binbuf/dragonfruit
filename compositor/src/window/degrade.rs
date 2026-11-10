@@ -398,8 +398,13 @@ impl DegradeTier {
 
     /// The Tahoe liquid-glass pass at this tier (T-20.2), or `None` when blur
     /// is off. `Full` keeps refraction + specular + tint; `Reduced` keeps the
-    /// specular rim and the adaptive tint but drops the edge lens (the
-    /// expensive part), and the smaller blur radius comes from [`Self::blur`].
+    /// specular rim, the adaptive tint and the measured flat-band corner lens,
+    /// and drops only the generic edge-lens `refraction`. The corner lens is a
+    /// cheap UV displacement, not the expensive edge pass, and it is the
+    /// Dock/Control Center perimeter identity: the persistent roles live at
+    /// `Reduced` by design (T-21.2c), so dropping it there would make the
+    /// measured plate disappear on the normal path (T235a). The smaller blur
+    /// radius still comes from [`Self::blur`].
     pub fn glass(self, spec: GlassSpec) -> Option<GlassSpec> {
         if !self.blur_enabled() {
             return None;
@@ -408,7 +413,6 @@ impl DegradeTier {
             DegradeTier::Full => spec,
             DegradeTier::Reduced => GlassSpec {
                 refraction: 0.0,
-                corner_peak: if spec.flat_band { 0.0 } else { spec.corner_peak },
                 ..spec
             },
             // `blur_enabled` is false at `Minimal`, handled above.
@@ -1008,6 +1012,38 @@ mod tests {
         assert_eq!(DegradeTier::Minimal.backdrop(base), None);
         assert!(!DegradeTier::Minimal.blur_enabled());
         assert!(DegradeTier::Reduced.blur_enabled());
+    }
+
+    #[test]
+    fn reduced_keeps_the_measured_flat_band_corner_lens() {
+        // T235a: the persistent Dock/Control Center roles live at Reduced by
+        // design (T-21.2c). The flat-band corner lens is the measured plate
+        // identity, not the expensive generic edge pass, so Reduced must keep
+        // it. Only the non-flat edge-lens refraction drops.
+        let flat = GlassSpec {
+            flat_band: true,
+            refraction: 10.0,
+            corner_peak: 13.6,
+            ..GlassSpec::default()
+        };
+        let reduced = DegradeTier::Reduced
+            .glass(flat)
+            .expect("reduced keeps the sampled pass");
+        assert_eq!(reduced.corner_peak, flat.corner_peak);
+        assert_eq!(reduced.refraction, 0.0);
+
+        // The non-flat path still drops its generic edge lens and keeps the
+        // corner field untouched (the shader only reads it for flat bands).
+        let edge = GlassSpec {
+            flat_band: false,
+            ..flat
+        };
+        let reduced_edge = DegradeTier::Reduced.glass(edge).expect("reduced keeps blur");
+        assert_eq!(reduced_edge.refraction, 0.0);
+        assert_eq!(reduced_edge.corner_peak, edge.corner_peak);
+
+        // Minimal has no sampled pass, so the fallback owns the plate.
+        assert_eq!(DegradeTier::Minimal.glass(flat), None);
     }
 
     #[test]
