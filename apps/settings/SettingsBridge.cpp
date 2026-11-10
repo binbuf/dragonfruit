@@ -630,6 +630,11 @@ QString SettingsBridge::startPane() const
     return qEnvironmentVariable("DF_SETTINGS_START_PANE");
 }
 
+QString SettingsBridge::startDeepLink() const
+{
+    return qEnvironmentVariable("DF_SETTINGS_START_DEEP_LINK");
+}
+
 QString SettingsBridge::mapDocPath() const
 {
     const QString override =

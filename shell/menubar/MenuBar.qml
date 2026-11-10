@@ -353,13 +353,20 @@ Rectangle {
     // the shell controller forwards it to the bridge host.
     signal wifiJoinRequested(string ssid, string secret)
     signal wifiToggleRequested(bool enabled)
+    signal wifiSettingsRequested()
     signal volumeSetRequested(double volume)
     signal muteToggleRequested()
+    signal volumeSettingsRequested()
+    signal sinkSelected(int id)
+    signal batterySettingsRequested()
+    signal powerProfileSelected(string profile)
     // Bluetooth status menu (T202): the same action policy as the Control
     // Center tile, routed through the existing bridge-host slots.
     signal bluetoothPowerToggleRequested(bool enabled)
     signal bluetoothDeviceToggled(string address, bool connected)
     signal bluetoothSettingsRequested()
+    signal bluetoothDiscoveringToggled(bool discovering)
+    signal bluetoothPairRequested(string address)
     signal statusMenuRefreshRequested(string itemId)
     signal statusMenuOpened()
     signal statusMenuClosed()
@@ -625,7 +632,12 @@ Rectangle {
                      : (id === "battery" ? batteryMenu : bluetoothMenu));
             if (!data || data.state === "unavailable")
                 return;
-            if ((id === "battery" || id === "bluetooth") && data.present === false)
+            if (id === "bluetooth" && data.present === false)
+                return;
+            // A desktop can have no battery but still select a power profile;
+            // only hide the battery popover when neither half has content.
+            if (id === "battery" && data.present === false
+                    && data.profilesAvailable !== true)
                 return;
         }
         closeMenus();
@@ -1004,6 +1016,7 @@ Rectangle {
         materialFallback: menuBar.popupMaterialFallback
         onJoinRequested: (ssid, secret) => menuBar.wifiJoinRequested(ssid, secret)
         onToggleRequested: (enabled) => menuBar.wifiToggleRequested(enabled)
+        onSettingsRequested: menuBar.wifiSettingsRequested()
         onRefreshRequested: menuBar.statusMenuRefreshRequested("wifi")
         onClosed: menuBar.closeStatusMenu()
     }
@@ -1020,6 +1033,8 @@ Rectangle {
         materialFallback: menuBar.popupMaterialFallback
         onVolumeSetRequested: (volume) => menuBar.volumeSetRequested(volume)
         onMuteToggleRequested: menuBar.muteToggleRequested()
+        onSinkSelected: (id) => menuBar.sinkSelected(id)
+        onSettingsRequested: menuBar.volumeSettingsRequested()
         onRefreshRequested: menuBar.statusMenuRefreshRequested("volume")
         onClosed: menuBar.closeStatusMenu()
     }
@@ -1035,6 +1050,8 @@ Rectangle {
         materialTier: menuBar.popupMaterialTier
         materialFallback: menuBar.popupMaterialFallback
         onRefreshRequested: menuBar.statusMenuRefreshRequested("battery")
+        onPowerProfileSelected: (profile) => menuBar.powerProfileSelected(profile)
+        onSettingsRequested: menuBar.batterySettingsRequested()
         onClosed: menuBar.closeStatusMenu()
     }
 
@@ -1051,6 +1068,8 @@ Rectangle {
         onPowerToggleRequested: (enabled) => menuBar.bluetoothPowerToggleRequested(enabled)
         onDeviceToggled: (address, connected) => menuBar.bluetoothDeviceToggled(address, connected)
         onSettingsRequested: menuBar.bluetoothSettingsRequested()
+        onDiscoveringToggleRequested: (discovering) => menuBar.bluetoothDiscoveringToggled(discovering)
+        onPairRequested: (address) => menuBar.bluetoothPairRequested(address)
         onRefreshRequested: menuBar.statusMenuRefreshRequested("bluetooth")
         onClosed: menuBar.closeStatusMenu()
     }

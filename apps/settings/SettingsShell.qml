@@ -470,6 +470,10 @@ Item {
             root.currentPaneId = first;
             root.syncSelection();
         }
+        // T232: a cold-launch `--deep-link` lands on the requested pane/row.
+        var deepLink = Settings.startDeepLink;
+        if (deepLink.length > 0)
+            root.deepLink(deepLink);
         // `DF_SETTINGS_DEBUG=1` opens the owner debug view on launch so a
         // scripted check can inspect the current pane's row metadata.
         if (Settings.debugView && first.length > 0)

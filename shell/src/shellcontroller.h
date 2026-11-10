@@ -219,6 +219,10 @@ private slots:
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
+    // T232: the Sound menu's output-device routing write and the Battery menu's
+    // power-mode write. Both forward one explicit request to the bridge host.
+    void onSinkSelected(int id);
+    void onPowerProfileSelected(const QString &profile);
     // T-15.3b: the Control Center Sound tile reflects the routing state; the
     // routing writes are raised from the Settings pane, not the compact tile.
     void onSoundSettingsRequested();
@@ -255,12 +259,17 @@ private slots:
     // T-15.15b: the Control Center Network advanced (VPN) tile is a read-only
     // summary; the Settings link is an entry point only until T-16.
     void onVpnSettingsRequested();
+    // T232: the Quick Settings panel's footer link to the customization pane.
+    void onQuickSettingsSettingsRequested();
     // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
     // adapter; a known-device row connects/disconnects it; the Settings link is
     // an entry point only until T-16.
     void onBluetoothToggleRequested(bool enabled);
     void onBluetoothDeviceToggled(const QString &address, bool connected);
     void onBluetoothSettingsRequested();
+    // T232: discovery and pairing from the Bluetooth status menu.
+    void onBluetoothDiscoveringToggleRequested(bool discovering);
+    void onBluetoothPairRequested(const QString &address);
     // T-15.2b: the Control Center Storage tile. Mount/unmount a volume and
     // eject a drive through the bridge host; the Settings link is an entry
     // point only until T-16.
@@ -707,6 +716,11 @@ private:
     // running window when one matches, otherwise launch it from its cached
     // app-index record.
     void openApp(const QString &desktopId);
+    // T232: open Settings on a `settings://pane/<id>` deep link. The running
+    // Settings app owns `org.dragonfruit.SettingsApp1`; when it is present the
+    // link is delivered to that instance, otherwise the app launches with the
+    // link argument and lands on the pane.
+    void openSettingsDeepLink(const QString &url);
     // Ask the compositor to activate `appId` (the sole activation authority)
     // and remember `desktopId` so a not-found result can fall back to a
     // launch. An empty app id is launched directly (T-14.7g); never a dead

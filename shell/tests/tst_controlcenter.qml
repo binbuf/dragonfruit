@@ -38,7 +38,7 @@ Item {
         SignalSpy { id: updatesRebootSpy; signalName: "updatesRebootRequested" }
         SignalSpy { id: updatesSettingsSpy; signalName: "updatesSettingsRequested" }
         SignalSpy { id: usersSettingsSpy; signalName: "usersSettingsRequested" }
-        SignalSpy { id: printersSettingsSpy; signalName: "printersSettingsRequested" }
+        SignalSpy { id: quickSettingsSettingsSpy; signalName: "quickSettingsSettingsRequested" }        SignalSpy { id: printersSettingsSpy; signalName: "printersSettingsRequested" }
         SignalSpy { id: privacySettingsSpy; signalName: "privacySettingsRequested" }
         SignalSpy { id: accessibilitySettingsSpy; signalName: "accessibilitySettingsRequested" }
         SignalSpy { id: vpnSettingsSpy; signalName: "vpnSettingsRequested" }
@@ -1136,6 +1136,18 @@ lockPolicy: lockPolicyModel(600),
             compare(link.Accessible.name, "Open Sound Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(soundSettingsSpy.count, 1);
+        }
+
+        function test_quick_settings_settings_link_raises_the_request() {
+            var panel = make({});
+            quickSettingsSettingsSpy.target = panel;
+            quickSettingsSettingsSpy.clear();
+            var link = findChild(panel, "quickSettingsSettingsLink");
+            verify(link !== null, "the Quick Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Quick Settings Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(quickSettingsSettingsSpy.count, 1);
         }
 
         function test_wifi_tile_is_read_only_until_the_adapter_can_write() {
