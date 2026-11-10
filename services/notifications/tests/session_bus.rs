@@ -398,6 +398,30 @@ fn dismiss_and_expire_record_their_reasons() {
 }
 
 #[test]
+fn clear_all_and_clear_history_empty_the_shell_views() {
+    let bus = PrivateBus::start();
+    let (_service, _queue) = serve(&bus);
+    let client = bus.connect();
+
+    let first = notify(&client, "Mail", 0, "one", "", 0);
+    let second = notify(&client, "Chat", 0, "two", "", 0);
+
+    // Clearing the history leaves the two active banners alone.
+    assert!(shell_call::<bool>(&client, "ClearHistory", ()).unwrap());
+    assert!(!shell_call::<bool>(&client, "ClearHistory", ()).unwrap());
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert_eq!(banners.as_array().unwrap().len(), 2);
+
+    // Clearing everything closes both banners and empties both views.
+    let closed = shell_call::<Vec<u32>>(&client, "ClearAll", ()).unwrap();
+    assert_eq!(closed, vec![first, second]);
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert!(banners.as_array().unwrap().is_empty());
+    let history = json_array(&shell_call::<String>(&client, "History", ()).unwrap());
+    assert!(history.as_array().unwrap().is_empty());
+}
+
+#[test]
 fn a_replaces_id_updates_the_same_banner() {
     let bus = PrivateBus::start();
     let (_service, _queue) = serve(&bus);

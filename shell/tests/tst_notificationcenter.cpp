@@ -46,6 +46,7 @@ class TestNotificationCenter : public QObject
 private slots:
     void history_normalizes_to_stable_keys_and_active_rows();
     void duplicate_ids_keep_the_newest_row();
+    void history_groups_contiguous_rows_by_app();
     void selection_follows_the_key_across_updates();
     void empty_state_is_safe();
     void keyboard_traversal_clamps_at_the_ends();
@@ -97,6 +98,33 @@ void TestNotificationCenter::duplicate_ids_keep_the_newest_row()
     QCOMPARE(rows.size(), 1);
     QCOMPARE(rows.first().toMap().value(QStringLiteral("summary")).toString(),
              QStringLiteral("newest"));
+}
+
+void TestNotificationCenter::history_groups_contiguous_rows_by_app()
+{
+    QVariantMap first = historyEntry(3, QStringLiteral("one"), QString(), 0, false, {});
+    first.insert(QStringLiteral("appName"), QStringLiteral("Mail"));
+    QVariantMap second = historyEntry(2, QStringLiteral("two"), QString(), 0, false, {});
+    second.insert(QStringLiteral("appName"), QStringLiteral("mail"));
+    QVariantMap third = historyEntry(1, QStringLiteral("three"), QString(), 0, false, {});
+    third.insert(QStringLiteral("appName"), QStringLiteral("Chat"));
+
+    const QVariantList rows = NotificationCenter::normalizeHistory({ first, second, third });
+    QCOMPARE(rows.size(), 3);
+
+    // The first two rows are one contiguous Mail group (case-insensitive);
+    // the header lands on the run's first row and carries the run length.
+    QCOMPARE(rows.at(0).toMap().value(QStringLiteral("group")).toString(),
+             QStringLiteral("mail"));
+    QCOMPARE(rows.at(0).toMap().value(QStringLiteral("groupStart")).toBool(), true);
+    QCOMPARE(rows.at(0).toMap().value(QStringLiteral("groupCount")).toInt(), 2);
+    QCOMPARE(rows.at(1).toMap().value(QStringLiteral("groupStart")).toBool(), false);
+    QCOMPARE(rows.at(1).toMap().value(QStringLiteral("groupCount")).toInt(), 2);
+
+    QCOMPARE(rows.at(2).toMap().value(QStringLiteral("group")).toString(),
+             QStringLiteral("chat"));
+    QCOMPARE(rows.at(2).toMap().value(QStringLiteral("groupStart")).toBool(), true);
+    QCOMPARE(rows.at(2).toMap().value(QStringLiteral("groupCount")).toInt(), 1);
 }
 
 void TestNotificationCenter::selection_follows_the_key_across_updates()

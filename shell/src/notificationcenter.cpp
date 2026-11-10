@@ -98,7 +98,41 @@ QVariantList NotificationCenter::normalizeHistory(const QVariantList &raw)
         entry.insert(QStringLiteral("canAct"), active && !actions.isEmpty());
         entry.insert(QStringLiteral("status"), entryStatus(source, active));
         entry.insert(QStringLiteral("actions"), actions);
+        // T234: grouping is contiguous by app. `group` is the normalized
+        // identity used for equality; `groupStart`/`groupCount` let the view
+        // draw one header per run without a second model.
+        const QString app = source.value(QStringLiteral("appName")).toString().trimmed();
+        entry.insert(QStringLiteral("group"),
+                     app.isEmpty() ? QStringLiteral("unknown") : app.toLower());
+        entry.insert(QStringLiteral("groupStart"), false);
+        entry.insert(QStringLiteral("groupCount"), 1);
         out.append(entry);
+    }
+
+    // One pass over the normalized rows: mark the first row of each run and
+    // carry the run length. A one-row group still reports a count of one; the
+    // view only draws a header when it is meaningful.
+    for (int i = 0; i < out.size();) {
+        const QString group =
+            out.at(i).toMap().value(QStringLiteral("group")).toString();
+        int end = i + 1;
+        while (end < out.size()
+               && out.at(end).toMap().value(QStringLiteral("group")).toString()
+                      == group) {
+            ++end;
+        }
+        const int count = end - i;
+        QVariantMap first = out.at(i).toMap();
+        first.insert(QStringLiteral("groupStart"), true);
+        first.insert(QStringLiteral("groupCount"), count);
+        out.replace(i, first);
+        for (int j = i + 1; j < end; ++j) {
+            QVariantMap row = out.at(j).toMap();
+            row.insert(QStringLiteral("groupStart"), false);
+            row.insert(QStringLiteral("groupCount"), count);
+            out.replace(j, row);
+        }
+        i = end;
     }
     return out;
 }

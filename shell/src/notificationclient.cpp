@@ -215,6 +215,27 @@ void DbusNotificationClient::setFocusMode(const QString &mode)
 #endif
 }
 
+void DbusNotificationClient::clearAll()
+{
+#if defined(QT_DBUS_LIB)
+    // The service closes every banner and drops the history, then emits
+    // `Changed`; the shell re-reads both views.
+    QDBusInterface iface(m_service, m_path, m_interface, QDBusConnection::sessionBus());
+    if (iface.isValid())
+        iface.asyncCall(QStringLiteral("ClearAll"));
+#else
+#endif
+}
+
+void DbusNotificationClient::clearHistory()
+{
+#if defined(QT_DBUS_LIB)
+    QDBusInterface iface(m_service, m_path, m_interface, QDBusConnection::sessionBus());
+    if (iface.isValid())
+        iface.asyncCall(QStringLiteral("ClearHistory"));
+#endif
+}
+
 // --- MockNotificationClient ------------------------------------------------
 
 MockNotificationClient::MockNotificationClient(QObject *parent, bool seedFixture)
@@ -490,4 +511,19 @@ void MockNotificationClient::setDoNotDisturb(bool enabled)
 {
     // The T-11.1a compat surface maps the bool onto the three-way policy.
     setFocusMode(enabled ? QStringLiteral("dnd") : QStringLiteral("off"));
+}
+
+void MockNotificationClient::clearAll()
+{
+    m_historyJson = QByteArrayLiteral("[]");
+    m_bannerJson = QByteArrayLiteral("[]");
+    m_bannerId = 0;
+    m_expiry.stop();
+    refresh();
+}
+
+void MockNotificationClient::clearHistory()
+{
+    m_historyJson = QByteArrayLiteral("[]");
+    refresh();
 }

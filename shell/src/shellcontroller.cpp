@@ -68,6 +68,7 @@
 #include "shellmenus.h"
 #include "systemstatusclient.h"
 #include "themebinding.h"
+#include "widgetmodel.h"
 
 namespace {
 
@@ -134,7 +135,7 @@ bool launchDetachedFromShell(const QStringList &argv, const QString &waylandDisp
 constexpr int kBannerWidth = 380;
 // The surface is tall enough for a banner with an action row; a banner with
 // no actions draws only the top card and leaves the rest transparent.
-constexpr int kBannerSurfaceHeight = 132;
+constexpr int kBannerSurfaceHeight = 144;
 constexpr int kBannerCardHeight = 96;
 constexpr int kBannerCardActionsHeight = 132;
 constexpr int kBannerTopGap = 8;
@@ -143,9 +144,15 @@ constexpr int kBannerTopGap = 8;
 // top-right corner below the menu bar. The QML panel fills the surface, so
 // its input region is the whole thing; the surface is clamped to the output
 // height on fractional scales like the Control Center.
-constexpr int kNotificationCenterWidth = 360;
+// T234: the measured right-edge panel width (structural review §5.1).
+constexpr int kNotificationCenterWidth = 344;
 constexpr int kNotificationCenterHeight = 620;
 constexpr int kNotificationCenterTopGap = 8;
+
+// T234: the widget gallery is the measured separate window (structural review
+// §5.1): 1027×552 pt with a 240 pt category sidebar.
+constexpr int kWidgetGalleryWidth = 1027;
+constexpr int kWidgetGalleryHeight = 552;
 
 // The Control Center panel (T-11.3a): a fixed panel surface anchored to the
 // top-right corner below the menu bar. The panel fills the surface, so its
@@ -1046,6 +1053,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::outputRemoved, this, [this]() {
         if (m_notificationCenterOpen)
             hideNotificationCenter(QStringLiteral("output"));
+        hideWidgetGallery();
     });
     connect(m_dockTrackingTimer, &QChronoTimer::timeout, this, &ShellController::scheduleDockRender);
     connect(m_dockItem, SIGNAL(pointerTrackingActiveChanged()),
@@ -1218,6 +1226,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // selection. The service remains the single owner of history, expiry,
     // Focus/DND, banner replacement and urgency.
     m_notificationCenter = new NotificationCenter(this);
+    // T234: the optional widget stack. The model starts with the measured live
+    // Calendar card; the gallery adds/removes entries through the same model.
+    m_widgetModel = new WidgetModel(this);
+    connect(m_widgetModel, &WidgetModel::widgetsChanged, this, [this]() {
+        if (m_notificationCenterItem)
+            m_notificationCenterItem->setProperty("widgets", m_widgetModel->widgets());
+        if (m_notificationCenterOpen)
+            applyNotificationCenterData();
+    });
     connect(m_notificationCenter, &NotificationCenter::changed, this, [this]() {
         if (m_notificationCenterOpen)
             applyNotificationCenterData();
@@ -1347,6 +1364,16 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onNotificationCenterActionRequested(int,QString)));
     connect(notificationCenterObject, SIGNAL(dismissEntryRequested(int)), this,
             SLOT(onNotificationCenterEntryDismissRequested(int)));
+    // T234: header/lower actions and the widget stack.
+    connect(notificationCenterObject, SIGNAL(clearAllRequested()), this,
+            SLOT(onNotificationCenterClearAllRequested()));
+    connect(notificationCenterObject, SIGNAL(clearHistoryRequested()), this,
+            SLOT(onNotificationCenterClearHistoryRequested()));
+    connect(notificationCenterObject, SIGNAL(editWidgetsRequested()), this,
+            SLOT(onNotificationCenterEditWidgetsRequested()));
+    connect(notificationCenterObject, SIGNAL(widgetRemoveRequested(QString)), this,
+            SLOT(onNotificationCenterWidgetRemoveRequested(QString)));
+    m_notificationCenterItem->setProperty("widgets", m_widgetModel->widgets());
     // T205: the stack/lower regions follow the QML layout and the banner
     // inset; re-render when the binding settles so the compositor never keeps
     // the pre-layout region list.
@@ -1377,6 +1404,60 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // set in a normal session.
     if (qEnvironmentVariable("DF_NOTIFY_CENTER_FIXTURE") == QLatin1String("open")) {
         QTimer::singleShot(0, this, [this]() { showNotificationCenter(); });
+    }
+
+    // Widget gallery (T234): the measured separate 1027×552 pt window. It is
+    // centered by the compositor and opens from the Center's Edit Widgets
+    // action; it is never a sheet inside the Center.
+    m_widgetGalleryWindow = createChromeProducer()->window();
+    m_widgetGalleryWindow->setColor(Qt::transparent);
+    QQmlComponent widgetGalleryComponent(m_engine);
+    widgetGalleryComponent.loadFromModule(QStringLiteral("Dragonfruit.Notifications"),
+                                          QStringLiteral("WidgetGallery"));
+    if (widgetGalleryComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: WidgetGallery QML error: %s\n",
+                qPrintable(widgetGalleryComponent.errorString()));
+        return false;
+    }
+    QObject *widgetGalleryObject = widgetGalleryComponent.create();
+    m_widgetGalleryItem = qobject_cast<QQuickItem *>(widgetGalleryObject);
+    if (!m_widgetGalleryItem) {
+        fprintf(stderr, "dragonfruit-shell: WidgetGallery QML did not produce an item\n");
+        return false;
+    }
+    m_widgetGalleryItem->setParentItem(m_widgetGalleryWindow->contentItem());
+    setMaterialProperties(m_widgetGalleryItem,
+                          m_materialPolicy.applied(MaterialPolicy::Popup));
+    connect(widgetGalleryObject, SIGNAL(closeRequested()), this,
+            SLOT(onWidgetGalleryCloseRequested()));
+    connect(widgetGalleryObject, SIGNAL(addRequested(QString,QString)), this,
+            SLOT(onWidgetGalleryAddRequested(QString,QString)));
+    connect(widgetGalleryObject, SIGNAL(removeRequested(QString)), this,
+            SLOT(onWidgetGalleryRemoveRequested(QString)));
+    connect(widgetGalleryObject, SIGNAL(resizeRequested(QString,QString)), this,
+            SLOT(onWidgetGalleryResizeRequested(QString,QString)));
+    bindChromePacing(m_producers.value(m_widgetGalleryWindow),
+                     QStringLiteral("widget-gallery"),
+                     [this]() { renderWidgetGallery(); });
+    connect(m_protocol, &ShellProtocol::widgetGalleryConfigured, this,
+            &ShellController::onWidgetGalleryConfigured);
+    connect(m_protocol, &ShellProtocol::widgetGalleryPointerMoved, this,
+            &ShellController::onWidgetGalleryPointerMoved);
+    connect(m_protocol, &ShellProtocol::widgetGalleryPointerButton, this,
+            &ShellController::onWidgetGalleryPointerButton);
+    connect(m_protocol, &ShellProtocol::widgetGalleryPointerLeft, this,
+            &ShellController::onWidgetGalleryPointerLeft);
+    connect(m_protocol, &ShellProtocol::widgetGalleryKeyboardFocused, this,
+            &ShellController::onWidgetGalleryKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::widgetGalleryKeyEvent, this,
+            &ShellController::onWidgetGalleryKeyEvent);
+    m_widgetGalleryWidth = kWidgetGalleryWidth;
+    m_widgetGalleryHeight = kWidgetGalleryHeight;
+    applyWidgetGalleryData();
+    // Capture/demo seam: open the gallery deterministically without the
+    // Center. Never set in a normal session.
+    if (qEnvironmentVariable("DF_WIDGET_GALLERY_FIXTURE") == QLatin1String("open")) {
+        QTimer::singleShot(0, this, [this]() { showWidgetGallery(); });
     }
 
     // Control Center panel (T-11.3a): a top-right offscreen scene rendered
@@ -3234,6 +3315,7 @@ void ShellController::showNotificationCenter()
         hideControlCenter();
     if (m_appsDrawerOpen)
         hideAppsDrawer();
+    hideWidgetGallery();
     if (m_overviewActive && m_protocol)
         m_protocol->exitMissionControl();
 
@@ -3333,6 +3415,221 @@ void ShellController::onNotificationCenterEntryDismissRequested(int id)
         m_notificationCenter->dismiss(static_cast<quint32>(id));
 }
 
+void ShellController::onNotificationCenterClearAllRequested()
+{
+    // The service owns the queue and history; it emits `Changed` and the
+    // normal refresh repopulates the Center (now empty). Never clear the local
+    // view optimistically.
+    if (m_notificationClient)
+        m_notificationClient->clearAll();
+}
+
+void ShellController::onNotificationCenterClearHistoryRequested()
+{
+    if (m_notificationClient)
+        m_notificationClient->clearHistory();
+}
+
+void ShellController::onNotificationCenterEditWidgetsRequested()
+{
+    showWidgetGallery();
+}
+
+void ShellController::onNotificationCenterWidgetRemoveRequested(const QString &id)
+{
+    if (m_widgetModel)
+        m_widgetModel->removeWidget(id);
+}
+
+// --- Widget gallery (T234) -------------------------------------------------
+
+void ShellController::showWidgetGallery()
+{
+    if (!m_widgetGalleryItem || !m_protocol)
+        return;
+    // One ambient surface at a time: the gallery is a separate window, so the
+    // Center retires rather than staying behind it.
+    if (m_notificationCenterOpen)
+        hideNotificationCenter(QStringLiteral("competing"));
+    if (m_controlCenterOpen)
+        hideControlCenter();
+    if (!m_protocol->createWidgetGallerySurface(kWidgetGalleryWidth,
+                                                kWidgetGalleryHeight))
+        return;
+    m_widgetGalleryOpen = true;
+    m_widgetGalleryPending = true;
+    applyWidgetGalleryData();
+    if (m_widgetGalleryWidth > 0 && m_widgetGalleryHeight > 0)
+        renderWidgetGallery();
+    m_widgetGalleryItem->forceActiveFocus();
+    m_protocol->setWidgetGalleryInputRegion(m_widgetGalleryWidth,
+                                            m_widgetGalleryHeight);
+}
+
+void ShellController::hideWidgetGallery()
+{
+    if (!m_widgetGalleryOpen)
+        return;
+    m_widgetGalleryOpen = false;
+    m_widgetGalleryPending = false;
+    m_widgetGalleryButtons = Qt::NoButton;
+    if (m_protocol) {
+        m_protocol->setWidgetGalleryInputRegion(0, 0);
+        m_protocol->hideWidgetGallery();
+    }
+}
+
+void ShellController::applyWidgetGalleryData()
+{
+    if (!m_widgetGalleryItem || !m_widgetModel)
+        return;
+    m_widgetGalleryItem->setProperty("catalog", m_widgetModel->catalog());
+    m_widgetGalleryItem->setProperty("categories", m_widgetModel->categories());
+    m_widgetGalleryItem->setProperty("widgets", m_widgetModel->widgets());
+    m_widgetGalleryItem->setProperty("available",
+                                     m_notificationClient
+                                         && m_notificationClient->isAvailable());
+}
+
+void ShellController::renderWidgetGallery()
+{
+    if (!m_widgetGalleryOpen || !m_widgetGalleryPending
+        || !m_widgetGalleryWindow || !m_widgetGalleryItem) {
+        return;
+    }
+    if (m_widgetGalleryWidth <= 0 || m_widgetGalleryHeight <= 0)
+        return;
+    prepareChromeScene(m_widgetGalleryWindow, m_widgetGalleryItem,
+                       QSize(m_widgetGalleryWidth, m_widgetGalleryHeight),
+                       QSize(m_widgetGalleryWidth, m_widgetGalleryHeight),
+                       m_chromeScale);
+    const QSize logical(m_widgetGalleryWidth, m_widgetGalleryHeight);
+    commitChromeScene(m_widgetGalleryWindow,
+                      {{QStringLiteral("widget-gallery"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitWidgetGalleryImage(image,
+                                                                        logical);
+                        }}});
+}
+
+void ShellController::scheduleWidgetGalleryRender()
+{
+    if (m_widgetGalleryRenderPending)
+        return;
+    m_widgetGalleryRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_widgetGalleryRenderPending = false;
+        renderWidgetGallery();
+    });
+}
+
+void ShellController::onWidgetGalleryConfigured(int width, int height, quint32)
+{
+    if (width != kWidgetGalleryWidth || height != kWidgetGalleryHeight) {
+        fprintf(stderr,
+                "dragonfruit-shell: ignoring pre-layout widget-gallery configure %dx%d\n",
+                width, height);
+        return;
+    }
+    m_widgetGalleryWidth = width;
+    m_widgetGalleryHeight = height;
+    if (m_protocol)
+        m_protocol->setWidgetGalleryInputRegion(width, height);
+    if (m_widgetGalleryPending)
+        renderWidgetGallery();
+}
+
+void ShellController::onWidgetGalleryPointerMoved(qreal x, qreal y)
+{
+    if (!m_widgetGalleryWindow)
+        return;
+    sendChromePointer(m_widgetGalleryWindow, QEvent::MouseMove, QPointF(x, y),
+                      Qt::NoButton, m_widgetGalleryButtons);
+    scheduleWidgetGalleryRender();
+}
+
+void ShellController::onWidgetGalleryPointerButton(qreal x, qreal y, quint32 button,
+                                                   bool pressed)
+{
+    if (!m_widgetGalleryWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_widgetGalleryButtons |= qtButton;
+    else
+        m_widgetGalleryButtons &= ~qtButton;
+    sendChromePointer(m_widgetGalleryWindow,
+                      pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+                      QPointF(x, y), qtButton, m_widgetGalleryButtons);
+    scheduleWidgetGalleryRender();
+}
+
+void ShellController::onWidgetGalleryPointerLeft()
+{
+    if (!m_widgetGalleryWindow)
+        return;
+    sendChromePointer(m_widgetGalleryWindow, QEvent::MouseMove, QPointF(-1, -1),
+                      Qt::NoButton, m_widgetGalleryButtons);
+    scheduleWidgetGalleryRender();
+}
+
+void ShellController::onWidgetGalleryKeyboardFocused(bool focused)
+{
+    m_widgetGalleryKeyboardFocused = focused;
+    if (focused && m_widgetGalleryOpen && m_widgetGalleryItem)
+        m_widgetGalleryItem->forceActiveFocus();
+}
+
+void ShellController::onWidgetGalleryKeyEvent(quint32 key, bool pressed)
+{
+    if (!m_widgetGalleryWindow || !m_widgetGalleryOpen)
+        return;
+    sendChromeKeyEvent(m_widgetGalleryWindow, key, pressed,
+                       m_protocol ? m_protocol->keyboardModifiers() : 0);
+    scheduleWidgetGalleryRender();
+}
+
+void ShellController::onWidgetGallerySurfaceClosed()
+{
+    m_widgetGalleryOpen = false;
+    m_widgetGalleryPending = false;
+    m_widgetGalleryButtons = Qt::NoButton;
+    m_widgetGalleryKeyboardFocused = false;
+}
+
+void ShellController::onWidgetGalleryAddRequested(const QString &kind,
+                                                  const QString &size)
+{
+    if (m_widgetModel && m_widgetModel->addWidget(kind, size)) {
+        applyWidgetGalleryData();
+        scheduleWidgetGalleryRender();
+    }
+}
+
+void ShellController::onWidgetGalleryRemoveRequested(const QString &id)
+{
+    if (m_widgetModel && m_widgetModel->removeWidget(id)) {
+        applyWidgetGalleryData();
+        scheduleWidgetGalleryRender();
+    }
+}
+
+void ShellController::onWidgetGalleryResizeRequested(const QString &id,
+                                                     const QString &size)
+{
+    if (m_widgetModel && m_widgetModel->resizeWidget(id, size)) {
+        applyWidgetGalleryData();
+        scheduleWidgetGalleryRender();
+    }
+}
+
+void ShellController::onWidgetGalleryCloseRequested()
+{
+    hideWidgetGallery();
+}
+
 void ShellController::onNotificationCenterConfigured(int width, int height, quint32)
 {
     // The compositor's pre-layout configure is the full output; the panel's
@@ -3427,6 +3724,8 @@ void ShellController::applyNotificationCenterData()
     m_notificationCenterItem->setProperty("selectedIndex",
                                           m_notificationCenter->selectedIndex());
     m_notificationCenterItem->setProperty("available", m_notificationCenter->available());
+    if (m_widgetModel)
+        m_notificationCenterItem->setProperty("widgets", m_widgetModel->widgets());
     // T205: a co-visible banner owns the top strip; inset the Center's stack
     // below the card so the two trusted surfaces never overlap or sample one
     // another. The inset follows the banner's action-row height.
@@ -5093,6 +5392,7 @@ void ShellController::onSessionLocked()
     // input region may remain above the fail-secure lock surface.
     if (m_notificationCenterOpen)
         hideNotificationCenter(QStringLiteral("lock"));
+    hideWidgetGallery();
     // A lock clears the clipboard history by default; pinned entries survive
     // (T-13.5b, ADR 0082).
     if (m_clipboard && m_clipboard->clearOnLock())
@@ -8088,6 +8388,17 @@ void ShellController::showCurrentBanner()
     m_bannerItem->setProperty("body", banner.value(QStringLiteral("body")));
     m_bannerItem->setProperty("urgency", banner.value(QStringLiteral("urgency")));
     m_bannerItem->setProperty("actions", actions);
+    // T234: a queued banner count draws the peeking stack edges, and the
+    // enter motion is the shell's own short slide/fade. A replacement keeps
+    // the surface mapped and simply updates the card.
+    m_bannerExitGeneration++;
+    m_bannerExiting = false;
+    m_bannerPresent = true;
+    m_bannerItem->setProperty("reducedMotion", m_compositorPolicy.reducedMotion);
+    m_bannerItem->setProperty(
+        "stackCount",
+        qMax(1, static_cast<int>(m_notificationModel->banners().size())));
+    m_bannerItem->setProperty("present", true);
     // The card is taller when it carries action buttons; only the card is
     // clickable, so the transparent strip below a no-action banner passes
     // clicks through (T-11.1b).
@@ -8095,6 +8406,25 @@ void ShellController::showCurrentBanner()
     m_bannerPending = true;
     if (m_bannerWidth > 0 && m_bannerHeight > 0)
         renderBanner();
+    // T234: the service already expires banners, but the shell also arms the
+    // resolved deadline so the exit motion starts exactly at the measured
+    // timeout even if the service's `Changed` is late. A null/zero deadline
+    // means "never expire" and leaves the timer off.
+    m_bannerExpiry.stop();
+    const qint64 deadline = banner.value(QStringLiteral("deadline")).toLongLong();
+    if (deadline > 0) {
+        const qint64 remaining =
+            deadline - QDateTime::currentMSecsSinceEpoch();
+        const quint32 armedId = m_bannerId;
+        m_bannerExpiry.setSingleShot(true);
+        m_bannerExpiry.setInterval(static_cast<int>(
+            qBound<qint64>(qint64(0), remaining, qint64(86400000))));
+        connect(&m_bannerExpiry, &QTimer::timeout, this, [this, armedId]() {
+            if (m_bannerId == armedId && m_notificationClient)
+                m_notificationClient->expire(armedId);
+        }, Qt::UniqueConnection);
+        m_bannerExpiry.start();
+    }
     // T205: a banner appearing while the Center is open moves the stack down.
     if (m_notificationCenterOpen)
         applyNotificationCenterData();
@@ -8118,7 +8448,34 @@ void ShellController::applyBannerInputRegion()
 
 void ShellController::hideCurrentBanner()
 {
+    m_bannerExpiry.stop();
+    // T234: run the measured exit motion before unmapping. A new banner
+    // arriving during the exit bumps the generation, so the queued teardown
+    // becomes a no-op and the replacement card stays on screen.
+    if (m_bannerItem && m_bannerPresent && !m_bannerExiting) {
+        m_bannerExiting = true;
+        const int generation = ++m_bannerExitGeneration;
+        m_bannerItem->setProperty("reducedMotion",
+                                  m_compositorPolicy.reducedMotion);
+        m_bannerItem->setProperty("present", false);
+        QTimer::singleShot(m_compositorPolicy.reducedMotion ? 0 : 190, this,
+                           [this, generation]() {
+                               if (generation != m_bannerExitGeneration)
+                                   return;
+                               finishBannerHide();
+                           });
+        return;
+    }
+    if (m_bannerExiting)
+        return;
+    finishBannerHide();
+}
+
+void ShellController::finishBannerHide()
+{
     m_bannerPending = false;
+    m_bannerPresent = false;
+    m_bannerExiting = false;
     m_bannerId = 0;
     if (m_protocol) {
         m_protocol->setBannerInputRegion(0, 0);

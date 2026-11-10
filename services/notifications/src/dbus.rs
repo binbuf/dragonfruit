@@ -263,6 +263,37 @@ impl ShellNotifications {
         self.close_with(id, CloseReason::Expired, &emitter).await
     }
 
+    /// Clear the Notification Center (T234): close every active banner with
+    /// reason 2 and drop the recorded history. Returns the closed ids, oldest
+    /// first. The Focus policy and its suppression batch are untouched.
+    async fn clear_all(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Vec<u32> {
+        let closed = lock(&self.queue).clear_all(now_ms());
+        if !closed.is_empty() {
+            wake_expiry(&self.wake);
+            for id in &closed {
+                emit_closed(&emitter, *id, CloseReason::Dismissed).await;
+            }
+            emit_shell_changed(&emitter).await;
+        }
+        closed
+    }
+
+    /// Drop the recorded history without closing the active banners. Returns
+    /// whether anything was removed.
+    async fn clear_history(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> bool {
+        let cleared = lock(&self.queue).clear_history();
+        if cleared {
+            emit_shell_changed(&emitter).await;
+        }
+        cleared
+    }
+
     /// The user invoked an action on an active banner: emit the freedesktop
     /// `ActionInvoked(id, action_key)` to the originating app, then dismiss
     /// the banner (reason 2), emitting `NotificationClosed` and `Changed`.

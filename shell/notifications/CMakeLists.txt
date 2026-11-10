@@ -6,10 +6,13 @@ qt_add_qml_module(dragonfruit-shell-notifications
     QML_FILES
         NotificationBanner.qml
         NotificationCenter.qml
+        WidgetGallery.qml
+        WidgetStack.qml
 )
 target_link_libraries(dragonfruit-shell-notifications PUBLIC
     Qt6::Core Qt6::Gui Qt6::Quick
     dragonfruit-design-systemplugin
 )
 
-df_qml_lint(shell-notifications NotificationBanner.qml NotificationCenter.qml)
+df_qml_lint(shell-notifications NotificationBanner.qml NotificationCenter.qml
+    WidgetGallery.qml WidgetStack.qml)

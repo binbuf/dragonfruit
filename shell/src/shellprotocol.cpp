@@ -1111,6 +1111,85 @@ bool ShellProtocol::hideChooser()
     return true;
 }
 
+// --- widget gallery (T234) --------------------------------------------------
+
+bool ShellProtocol::createWidgetGallerySurface(int width, int height)
+{
+    if (m_widgetGallerySurface || m_widgetGalleryLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_widgetGallerySurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_widgetGallerySurface);
+    m_widgetGalleryLayer = df_shell_get_layer_surface(m_shell, m_widgetGallerySurface, nullptr,
+                                                      DF_SHELL_LAYER_OVERLAY,
+                                                      "widget-gallery");
+    if (!m_widgetGalleryLayer)
+        return fail(QStringLiteral("compositor refused the widget-gallery layer surface"));
+    static const df_layer_surface_listener listener = { onWidgetGalleryConfigure,
+                                                        onLayerClosed };
+    df_layer_surface_add_listener(m_widgetGalleryLayer, &listener, this);
+
+    // No anchors: the compositor centers the measured gallery window. Reserve
+    // nothing; take the keyboard on demand so Escape and click-away dismiss it.
+    df_layer_surface_set_size(m_widgetGalleryLayer, width, height);
+    df_layer_surface_set_exclusive_zone(m_widgetGalleryLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_widgetGalleryLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_widgetGallerySurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_widgetGallerySurface, nullptr, 0, 0);
+    wl_surface_commit(m_widgetGallerySurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the widget-gallery surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setWidgetGalleryInputRegion(int width, int height)
+{
+    if (!m_widgetGallerySurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    wl_surface_set_input_region(m_widgetGallerySurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::commitWidgetGalleryImage(const QImage &image,
+                                             const QSize &logicalSize)
+{
+    if (!m_widgetGallerySurface)
+        return false;
+    if (!commitTo(m_widgetGallerySurface, image, logicalSize))
+        return false;
+    m_widgetGalleryMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideWidgetGallery()
+{
+    if (!m_widgetGallerySurface || !m_widgetGalleryLayer)
+        return false;
+    if (!m_widgetGalleryMapped)
+        return true;
+    cancelPendingFrame(QStringLiteral("widget-gallery"));
+    wl_surface_attach(m_widgetGallerySurface, nullptr, 0, 0);
+    wl_surface_commit(m_widgetGallerySurface);
+    resetSurfaceScale(m_widgetGallerySurface);
+    m_widgetGalleryMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 // --- screenshot selection overlay (T-13.3a) ---------------------------------
 
 bool ShellProtocol::createScreenshotSurface()
@@ -1988,6 +2067,8 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufFor(
             m_osdMapped = true;
         else if (surface == m_chooserSurface)
             m_chooserMapped = true;
+        else if (surface == m_widgetGallerySurface)
+            m_widgetGalleryMapped = true;
         else if (surface == m_screenshotSurface)
             m_screenshotMapped = true;
         else if (surface == m_screencastSurface)
@@ -2439,6 +2520,8 @@ QString ShellProtocol::surfaceLabel(wl_surface *surface) const
         return QStringLiteral("osd");
     if (surface == m_chooserSurface)
         return QStringLiteral("chooser");
+    if (surface == m_widgetGallerySurface)
+        return QStringLiteral("widget-gallery");
     if (surface == m_screenshotSurface)
         return QStringLiteral("screenshot");
     if (surface == m_screencastSurface)
@@ -2478,6 +2561,8 @@ wl_surface *ShellProtocol::surfaceForLabel(const QString &label) const
         return m_osdSurface;
     if (label == QLatin1String("chooser"))
         return m_chooserSurface;
+    if (label == QLatin1String("widget-gallery"))
+        return m_widgetGallerySurface;
     if (label == QLatin1String("screenshot"))
         return m_screenshotSurface;
     if (label == QLatin1String("screencast"))
@@ -3291,6 +3376,10 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_chooserLayer);
     if (m_chooserSurface)
         wl_surface_destroy(m_chooserSurface);
+    if (m_widgetGalleryLayer)
+        df_layer_surface_destroy(m_widgetGalleryLayer);
+    if (m_widgetGallerySurface)
+        wl_surface_destroy(m_widgetGallerySurface);
     if (m_screenshotLayer)
         df_layer_surface_destroy(m_screenshotLayer);
     if (m_screenshotSurface)
@@ -3661,6 +3750,15 @@ void ShellProtocol::onChooserConfigure(void *data, df_layer_surface *, uint32_t 
     if (self->m_chooserLayer)
         df_layer_surface_ack_configure(self->m_chooserLayer, serial);
     emit self->chooserConfigured(width, height, serial);
+}
+
+void ShellProtocol::onWidgetGalleryConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                             int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_widgetGalleryLayer)
+        df_layer_surface_ack_configure(self->m_widgetGalleryLayer, serial);
+    emit self->widgetGalleryConfigured(width, height, serial);
 }
 
 void ShellProtocol::onScreenshotConfigure(void *data, df_layer_surface *, uint32_t serial,
@@ -4267,6 +4365,8 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_overviewSurface && surface == self->m_overviewSurface;
     self->m_pointerOnChooser =
         self->m_chooserSurface && surface == self->m_chooserSurface;
+    self->m_pointerOnWidgetGallery =
+        self->m_widgetGallerySurface && surface == self->m_widgetGallerySurface;
     self->m_pointerOnScreenshot =
         self->m_screenshotSurface && surface == self->m_screenshotSurface;
     self->m_pointerOnScreenCast =
@@ -4293,6 +4393,12 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->chooserPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnWidgetGallery) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->widgetGalleryPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnScreenshot) {
@@ -4354,6 +4460,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     const bool wasNotificationCenter = self->m_pointerOnNotificationCenter;
     const bool wasControlCenter = self->m_pointerOnControlCenter;
     const bool wasChooser = self->m_pointerOnChooser;
+    const bool wasWidgetGallery = self->m_pointerOnWidgetGallery;
     const bool wasScreenshot = self->m_pointerOnScreenshot;
     const bool wasScreenCast = self->m_pointerOnScreenCast;
     const bool wasPolkit = self->m_pointerOnPolkit;
@@ -4368,12 +4475,15 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnControlCenter = false;
     self->m_pointerOnOverview = false;
     self->m_pointerOnChooser = false;
+    self->m_pointerOnWidgetGallery = false;
     self->m_pointerOnScreenshot = false;
     self->m_pointerOnScreenCast = false;
     self->m_pointerOnPolkit = false;
     self->m_pointerOnAppsDrawer = false;
     if (wasChooser)
         emit self->chooserPointerLeft();
+    else if (wasWidgetGallery)
+        emit self->widgetGalleryPointerLeft();
     else if (wasScreenshot)
         emit self->screenshotPointerLeft();
     else if (wasScreenCast)
@@ -4420,6 +4530,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->chooserPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnWidgetGallery) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->widgetGalleryPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnScreenshot) {
@@ -4490,6 +4606,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
     if (self->m_pointerOnChooser) {
         emit self->chooserPointerButton(self->m_pointerX, self->m_pointerY, button,
                                         state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
+    if (self->m_pointerOnWidgetGallery) {
+        emit self->widgetGalleryPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                              state == WL_POINTER_BUTTON_STATE_PRESSED);
         return;
     }
     if (self->m_pointerOnScreenshot) {
@@ -4596,6 +4717,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
     self->m_keyboardOnChooser =
         self->m_chooserSurface && surface == self->m_chooserSurface;
+    self->m_keyboardOnWidgetGallery =
+        self->m_widgetGallerySurface && surface == self->m_widgetGallerySurface;
     self->m_keyboardOnScreenshot =
         self->m_screenshotSurface && surface == self->m_screenshotSurface;
     self->m_keyboardOnScreenCast =
@@ -4616,6 +4739,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->controlCenterKeyboardFocused(true);
     if (self->m_keyboardOnChooser)
         emit self->chooserKeyboardFocused(true);
+    if (self->m_keyboardOnWidgetGallery)
+        emit self->widgetGalleryKeyboardFocused(true);
     if (self->m_keyboardOnScreenshot)
         emit self->screenshotKeyboardFocused(true);
     if (self->m_keyboardOnScreenCast)
@@ -4640,6 +4765,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_controlCenterSurface && surface == self->m_controlCenterSurface);
     const bool wasChooser = self->m_keyboardOnChooser
             || (self->m_chooserSurface && surface == self->m_chooserSurface);
+    const bool wasWidgetGallery = self->m_keyboardOnWidgetGallery
+            || (self->m_widgetGallerySurface && surface == self->m_widgetGallerySurface);
     const bool wasScreenshot = self->m_keyboardOnScreenshot
             || (self->m_screenshotSurface && surface == self->m_screenshotSurface);
     const bool wasScreenCast = self->m_keyboardOnScreenCast
@@ -4653,6 +4780,7 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
     self->m_keyboardOnNotificationCenter = false;
     self->m_keyboardOnControlCenter = false;
     self->m_keyboardOnChooser = false;
+    self->m_keyboardOnWidgetGallery = false;
     self->m_keyboardOnScreenshot = false;
     self->m_keyboardOnScreenCast = false;
     self->m_keyboardOnPolkit = false;
@@ -4669,6 +4797,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->controlCenterKeyboardFocused(false);
     if (wasChooser)
         emit self->chooserKeyboardFocused(false);
+    if (wasWidgetGallery)
+        emit self->widgetGalleryKeyboardFocused(false);
     if (wasScreenshot)
         emit self->screenshotKeyboardFocused(false);
     if (wasScreenCast)
@@ -4706,6 +4836,10 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
     }
     if (self->m_keyboardOnChooser) {
         emit self->chooserKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+        return;
+    }
+    if (self->m_keyboardOnWidgetGallery) {
+        emit self->widgetGalleryKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
         return;
     }
     if (self->m_keyboardOnScreenshot) {
