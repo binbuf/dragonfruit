@@ -29,6 +29,7 @@ SETTLE="${SETTLE:-9}"
 SCRATCH="${SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/dragonfruit-t14-dock.XXXXXX")}"
 SOCKET="${SOCKET:-dragonfruit-t14-dock}"
 SETTINGS_BIN="$PWD/target/debug/dragonfruit-settingsd"
+REUSE_SETTINGS="${REUSE_SETTINGS:-0}"
 DBUS_DEST="org.dragonfruit.Settings1"
 DBUS_PATH="/org/dragonfruit/Settings1"
 DBUS_IFACE="org.dragonfruit.Settings1"
@@ -39,7 +40,7 @@ if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
     echo "capture-dock-spacing: XDG_RUNTIME_DIR unset — the capture needs a host session" >&2
     exit 1
 fi
-if [ ! -x "$SETTINGS_BIN" ]; then
+if [ "$REUSE_SETTINGS" != "1" ] && [ ! -x "$SETTINGS_BIN" ]; then
     echo "capture-dock-spacing: $SETTINGS_BIN not built — run make build" >&2
     exit 1
 fi
@@ -53,7 +54,8 @@ python3 -c 'import PIL' 2>/dev/null || {
     echo "capture-dock-spacing: python3 Pillow not found" >&2
     exit 1
 }
-if gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+if [ "$REUSE_SETTINGS" != "1" ] && gdbus call --session \
+        --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
         --method org.freedesktop.DBus.NameHasOwner "$DBUS_DEST" 2>/dev/null | grep -q true; then
     echo "capture-dock-spacing: $DBUS_DEST is already owned — stop the running settingsd first" >&2
     exit 1
@@ -65,7 +67,7 @@ rm -f "$SYNTH"
 
 cleanup() {
     stop_demo
-    stop_settingsd
+    [ "$REUSE_SETTINGS" = "1" ] || stop_settingsd
     rm -f "$SYNTH"
     [ "${KEEP_SCRATCH:-0}" = "1" ] || rm -rf "$SCRATCH"
 }
@@ -188,7 +190,7 @@ print(f"capture-dock-spacing: saved {dest} ({im.crop(crop).size[0]}x{im.crop(cro
 PY
 }
 
-start_settingsd
+[ "$REUSE_SETTINGS" = "1" ] || start_settingsd
 
 echo "capture-dock-spacing: launching the nested demo ($SOCKET)"
 DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" setsid make demo DEMO_ARGS="--socket-name $SOCKET" \

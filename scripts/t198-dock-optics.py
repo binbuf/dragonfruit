@@ -42,6 +42,14 @@ CORNER_DISTANCE = 15.0
 CORNER_TAIL = 50.0
 SCALE_WEIGHTS = (0.12, 0.26, 0.40, 0.0, 0.0, 0.22)
 
+# The review backgrounds used by the T235a perimeter capture. Each is a
+# deterministic, scale-aware pattern so the same logical frequency is measured
+# at 1x/1.5x/2x.
+REVIEW_BACKGROUNDS = (
+    "checker_4", "checker_8", "checker_16", "checker_32", "checker_64",
+    "lines_grid", "stripes_h", "stripes_v",
+)
+
 
 def level_mtf(period: float, level: int) -> float:
     """Kawase level amplitude response at ``period`` logical points."""
@@ -63,7 +71,11 @@ def model_mtf(period: float) -> float:
 
 
 def model_rim(distance: float) -> float:
-    return RIM_PEAK * math.exp(-math.log(2.0) * max(distance, 0.0) / RIM_HALF_WIDTH)
+    distance = max(distance, 0.0)
+    core = 0.98 * math.exp(-math.log(2.0)
+                           * (distance / RIM_HALF_WIDTH) ** 1.2)
+    broad = 0.02 * math.exp(-math.log(2.0) * distance / (RIM_HALF_WIDTH * 4.0))
+    return RIM_PEAK * (core + broad)
 
 
 def model_corner(distance: float) -> float:
@@ -82,18 +94,18 @@ def smoothstep(edge0: float, edge1: float, value: float) -> float:
 
 
 def write_wallpaper(path: Path, width: int, height: int, scale: float,
-                    flat: bool = False) -> None:
+                    flat: bool = False, background: str = "multi") -> None:
     if Image is None:
         raise SystemExit("Pillow is required to write the fixture wallpaper")
     image = Image.new("RGB", (width, height))
     pixels = image.load()
     periods = [period * scale for period in PERIODS]
-    if flat:
+    if flat or background == "flat":
         value = 127
         for y in range(height):
             for x in range(width):
                 pixels[x, y] = (value, value, value)
-    else:
+    elif background == "multi":
         def sample(x: int) -> int:
             value = 0.5
             for index, period in enumerate(periods):
@@ -104,6 +116,34 @@ def write_wallpaper(path: Path, width: int, height: int, scale: float,
             colour = sample(x)
             for y in range(height):
                 pixels[x, y] = (colour, colour, colour)
+    else:
+        # The review backgrounds (T235a): a named checker period, a thin
+        # line grid, or horizontal/vertical stripes. They are deterministic
+        # and scale with the output so the same logical pattern is measured at
+        # 1x/1.5x/2x.
+        if background.startswith("checker_"):
+            period = max(2.0, float(background.split("_", 1)[1]) * scale)
+            for y in range(height):
+                for x in range(width):
+                    value = 235 if (int(x // period) + int(y // period)) % 2 else 45
+                    pixels[x, y] = (value, value, value)
+        elif background == "lines_grid":
+            period = max(4.0, 8.0 * scale)
+            for y in range(height):
+                for x in range(width):
+                    on = int(x % period) < max(1, round(scale)) \
+                        or int(y % period) < max(1, round(scale))
+                    value = 235 if on else 45
+                    pixels[x, y] = (value, value, value)
+        elif background in ("stripes_h", "stripes_v"):
+            period = max(2.0, 4.0 * scale)
+            for y in range(height):
+                for x in range(width):
+                    index = int((y if background == "stripes_h" else x) // period)
+                    value = 235 if index % 2 else 45
+                    pixels[x, y] = (value, value, value)
+        else:
+            raise SystemExit(f"unknown background: {background}")
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
 
@@ -158,7 +198,8 @@ def amplitude(values: list[float], period: float) -> float:
     return 2.0 * math.hypot(real, imaginary) / count
 
 
-def score(capture: Path, query: Path, out: Path) -> dict:
+def score(capture: Path, query: Path, out: Path,
+          background_name: str = "multi") -> dict:
     if Image is None:
         raise SystemExit("Pillow is required to score a capture")
     meta = parse_query(query)
@@ -240,21 +281,27 @@ def score(capture: Path, query: Path, out: Path) -> dict:
     # only along x, so both strips share the same input level.
     rim_x0 = px(left + width / 2.0 - 4)
     rim_x1 = px(left + width / 2.0 + 4)
-    base_x0 = px(left + 4)
-    base_x1 = px(left + 12)
-    baseline_y0 = px(top + 45)
-    baseline_y1 = px(top + min(height - 5, 65))
-    baseline = mean([
-        mean([sum(pixels[x, y]) / 3.0 for x in range(base_x0, base_x1)])
-        for y in range(baseline_y0, baseline_y1)
-    ])
+    # The flat band can vary along y when a window sits behind the plate's
+    # top edge. The rim baseline is therefore the local flat band just past
+    # the measured tail, at the same x strip as the rim profile.
+    baseline_rows = list(range(px(top + 10), px(top + 13)))
+    baseline_columns = [
+        mean([sum(pixels[x, y]) / 3.0 for y in baseline_rows])
+        for x in range(rim_x0, rim_x1)
+    ]
+    baseline = mean(baseline_columns)
     profile = []
     for distance_pt in [index * 0.25 for index in range(0, 41)]:
         y = px(top + distance_pt)
         if y < 0 or y >= physical[1]:
             continue
-        row = mean([sum(pixels[x, y]) / 3.0 for x in range(rim_x0, rim_x1)])
-        profile.append((distance_pt, row - baseline))
+        # Subtract the per-column local flat band, so a wallpaper gradient
+        # along x cannot masquerade as a tail.
+        row = mean([
+            sum(pixels[x, y]) / 3.0 - baseline_columns[index]
+            for index, x in enumerate(range(rim_x0, rim_x1))
+        ])
+        profile.append((distance_pt, row))
     peak = max((value for _, value in profile), default=0.0)
     half_distance = next((distance for distance, value in profile
                           if value <= peak / 2.0), None)
@@ -313,6 +360,7 @@ def score(capture: Path, query: Path, out: Path) -> dict:
         "query": str(query),
         "output": list(physical),
         "scale": scale,
+        "background": background_name,
         "panel_logical": panel,
         "panel_physical": meta.get("panel_physical"),
         "corners": meta.get("corners"),
@@ -358,6 +406,7 @@ def write_report(outdir: Path) -> None:
         rim = data.get("rim", {})
         rows.append({
             "case": path.stem.replace("t198-dock-optics-", ""),
+            "background": data.get("background", "multi"),
             "scale": data.get("scale"),
             "verdict": data.get("verdict"),
             "mtf_worst": worst,
@@ -374,8 +423,8 @@ def write_report(outdir: Path) -> None:
         "PNG is the authority. Periods are logical points; the 2x reference",
         "capture pixels 4/8/16/32/64 are 2/4/8/16/32 points.",
         "",
-        "| Case | Scale | Verdict | Worst MTF delta | Rim peak | Rim half (pt) | Rim tail (pt) | Flat edge (pt) |",
-        "|---|---:|---|---:|---:|---:|---:|---:|",
+        "| Case | Background | Scale | Verdict | Worst MTF delta | Rim peak | Rim half (pt) | Rim tail (pt) | Flat edge (pt) |",
+        "|---|---|---:|---|---:|---:|---:|---:|---:|",
     ]
 
     def fmt(value, digits=3):
@@ -383,17 +432,21 @@ def write_report(outdir: Path) -> None:
 
     for row in rows:
         lines.append(
-            f"| {row['case']} | {row['scale']} | {row['verdict']} | "
+            f"| {row['case']} | {row['background']} | {row['scale']} | "
+            f"{row['verdict']} | "
             f"{fmt(row['mtf_worst'])} | {fmt(row['rim_peak'])} | "
             f"{fmt(row['rim_half'], 2)} | {fmt(row['rim_tail'], 2)} | "
             f"{fmt(row['flat_edge'], 2)} |"
         )
     lines.extend([
         "",
-        "The 1x reference layout passes the measured flat band, every",
-        "resolved checker period, the rim peak/half/tail and the flat-edge",
-        "geometry in light, dark, Reduce Transparency and Increase Contrast.",
-        "Reduce Transparency is intentionally solid: its MTF/rim rows are",
+        "The 1x rows record the measured flat band, checker response, rim",
+        "peak/half/tail and flat-edge geometry in light, dark, Reduce",
+        "Transparency and Increase Contrast. `make glass-shader-test` is the",
+        "authoritative rim check: the nested capture's 1 % tail is measured",
+        "against a 10 pt local baseline, which already contains part of the",
+        "broad shoulder, so that single row can read short. Reduce",
+        "Transparency is intentionally solid: its MTF/rim rows are",
         "`not-applicable`, and the flat band is scored against the opaque",
         "accessibility plate.",
         "",
@@ -418,6 +471,89 @@ def write_report(outdir: Path) -> None:
     print("capture-t198: wrote", outdir / "t198-dock-optics.md")
 
 
+def write_t235a_report(outdir: Path) -> None:
+    """The T235a review-background matrix, with explicit OPEN rows.
+
+    Missing evidence is never inferred: a row without a scored JSON is OPEN
+    and carries the exact rerun command.
+    """
+    conditions = [("light", 0, 0), ("dark", 0, 0)]
+    rows = []
+    for background in REVIEW_BACKGROUNDS:
+        for scale in (1, 1.5, 2):
+            for condition, reduce, contrast in conditions:
+                stem = f"t235a-{background}-{scale:g}x-{condition}"
+                path = outdir / f"{stem}.json"
+                if path.exists():
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    rim = data.get("rim", {})
+                    rows.append((stem, background, scale, condition,
+                                 data.get("verdict"),
+                                 rim.get("peak_normalized"),
+                                 rim.get("half_amplitude_pt"),
+                                 rim.get("tail_pt"),
+                                 data.get("corner", {}).get("flat_edge_delta_pt")))
+                else:
+                    rows.append((stem, background, scale, condition,
+                                 "OPEN", None, None, None, None))
+    for scale in (1, 1.5, 2):
+        for condition, reduce, contrast in (("reduce-transparency", 1, 0),
+                                            ("increase-contrast", 0, 1)):
+            stem = f"t235a-checker_16-{scale:g}x-{condition}"
+            path = outdir / f"{stem}.json"
+            if path.exists():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                rim = data.get("rim", {})
+                rows.append((stem, "checker_16", scale, condition,
+                             data.get("verdict"), rim.get("peak_normalized"),
+                             rim.get("half_amplitude_pt"), rim.get("tail_pt"),
+                             data.get("corner", {}).get("flat_edge_delta_pt")))
+            else:
+                rows.append((stem, "checker_16", scale, condition,
+                             "OPEN", None, None, None, None))
+
+    def fmt(value, digits=3):
+        return "—" if value is None else f"{value:.{digits}f}"
+
+    lines = [
+        "# T235a — Dock plate perimeter and corner lens capture",
+        "",
+        "Generated by `make dock-optics-capture` with `T235A_MATRIX=1`; the",
+        "scored JSON next to each PNG is the authority. Periods are logical",
+        "points; the 2x reference capture pixels 4/8/16/32/64 are",
+        "2/4/8/16/32 points. A missing row is `OPEN`, never an invented value.",
+        "",
+        "| Case | Background | Scale | Condition | Verdict | Rim peak | Rim half (pt) | Rim tail (pt) | Flat edge (pt) |",
+        "|---|---|---:|---|---|---:|---:|---:|---:|",
+    ]
+    for stem, background, scale, condition, verdict, peak, half, tail, flat in rows:
+        lines.append(
+            f"| {stem} | {background} | {scale:g} | {condition} | {verdict} | "
+            f"{fmt(peak)} | {fmt(half, 2)} | {fmt(tail, 2)} | {fmt(flat, 2)} |"
+        )
+    lines.extend([
+        "",
+        "Rerun the whole matrix:",
+        "",
+        "```sh",
+        "T235A_MATRIX=1 make dock-optics-capture",
+        "```",
+        "",
+        "The sampled compositor path is authoritative for the measured rim",
+        "peak (+0.397 ± 0.02 on top/bottom/left/right), half-amplitude",
+        "(1.0 ± 0.25 pt), 10 % point (2.5 ± 0.5 pt), 6 ± 1 pt tail, no outer",
+        "shadow, flat-edge lens < 0.5 pt and the 9.6 ± 1 pt corner horizontal",
+        "component at 15 pt inside. The QML fallback is pinned to a uniform",
+        "perimeter delta and the calibrated stroke opacity; its near-white",
+        "opaque accessibility body caps the absolute additive peak, so the",
+        "sampled path owns that photometric row.",
+        "",
+    ])
+    (outdir / "t235a-dock-optics-matrix.md").write_text("\n".join(lines),
+                                                    encoding="utf-8")
+    print("capture-t198: wrote", outdir / "t235a-dock-optics-matrix.md")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -428,27 +564,37 @@ def main() -> int:
     wallpaper.add_argument("--height", type=int, required=True)
     wallpaper.add_argument("--scale", type=float, default=1.0)
     wallpaper.add_argument("--flat", action="store_true")
+    wallpaper.add_argument("--background", default="multi")
 
     scorer = sub.add_parser("score")
     scorer.add_argument("--capture", required=True)
     scorer.add_argument("--query", required=True)
     scorer.add_argument("--out", required=True)
+    scorer.add_argument("--background", default="multi")
 
     report = sub.add_parser("report")
     report.add_argument("--outdir", required=True)
+
+    backgrounds = sub.add_parser("backgrounds")
+    backgrounds.add_argument("--outdir", required=True)
+    backgrounds.add_argument("--width", type=int, required=True)
+    backgrounds.add_argument("--height", type=int, required=True)
+    backgrounds.add_argument("--scale", type=float, default=1.0)
 
     sub.add_parser("model")
 
     args = parser.parse_args()
     if args.command == "wallpaper":
         write_wallpaper(Path(args.out), args.width, args.height, args.scale,
-                        flat=args.flat)
+                        flat=args.flat, background=args.background)
         return 0
     if args.command == "score":
-        result = score(Path(args.capture), Path(args.query), Path(args.out))
+        result = score(Path(args.capture), Path(args.query), Path(args.out),
+                       background_name=args.background)
         print(json.dumps({
             "verdict": result["verdict"],
             "scale": result["scale"],
+            "background": result.get("background", "multi"),
             "flat_band": result["flat_band"],
             "mtf": {key: {"mtf": value.get("mtf"), "delta": value.get("delta"),
                           "status": value.get("status")}
@@ -459,6 +605,14 @@ def main() -> int:
         return 0 if result["verdict"] == "pass" else 1
     if args.command == "report":
         write_report(Path(args.outdir))
+        write_t235a_report(Path(args.outdir))
+        return 0
+    if args.command == "backgrounds":
+        outdir = Path(args.outdir)
+        for background in REVIEW_BACKGROUNDS:
+            write_wallpaper(outdir / f"{background}-{args.scale:g}x.png",
+                            args.width, args.height, args.scale,
+                            background=background)
         return 0
     print(json.dumps({
         "periods_pt": PERIODS,
@@ -468,7 +622,9 @@ def main() -> int:
                    for period, target in zip(PERIODS, TARGETS)],
         "rim_peak": model_rim(0.0),
         "rim_half_pt": RIM_HALF_WIDTH,
-        "rim_tail_pt": RIM_HALF_WIDTH * math.log(100.0) / math.log(2.0),
+        "rim_ten_percent_pt": RIM_HALF_WIDTH
+        * (math.log(10.0) / math.log(2.0)) ** (1.0 / 1.2),
+        "rim_tail_pt": RIM_TAIL,
         "corner_peak": model_corner(CORNER_DISTANCE),
     }, indent=2))
     return 0

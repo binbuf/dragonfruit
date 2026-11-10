@@ -3696,58 +3696,26 @@ Rectangle {
                  w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
     }
 
-    // The interior-edge rim outline as an SVG path for the plate's rounded
-    // rectangle, inset by half the stroke so every rim pixel lies inside the
-    // plate shape (T-14.7z). The path traces the flat interior edge and both
-    // interior corner arcs, so the highlight follows the curve instead of
-    // poking a straight hairline across the corner. `w`/`h` are the already
-    // inset box (the Shape's own size). `strokeWidth` defaults to the rim
-    // hairline; the interior gloss band passes its own width so both strokes
-    // share one path definition.
+    // The plate perimeter as an SVG path for the plate's rounded rectangle,
+    // inset by half the stroke so every rim pixel lies inside the plate shape
+    // (T-14.7z, T235a). The path traces the full rounded rectangle — all four
+    // edges and all four arcs — so the rim and the inner glow are the same on
+    // a bottom, left or right Dock. There is no interior-edge branch and no
+    // straight top/bottom lift. `w`/`h` are the already inset box (the Shape's
+    // own size). `strokeWidth` defaults to the rim hairline; each glow band
+    // passes its own width so all strokes share one path definition.
     function rimOutlinePath(w, h, strokeWidth) {
         if (strokeWidth === undefined)
             strokeWidth = Theme.controls.dock.plate.rimHeight;
         var d = strokeWidth / 2;
         var r = Math.max(0, Math.min(Theme.controls.dock.radius - d,
                                       Math.min(w, h) / 2));
-        if (position === "right")
-            return "M " + r + " 0 A " + r + " " + r + " 0 0 0 0 " + r
-                 + " L 0 " + (h - r) + " A " + r + " " + r + " 0 0 0 " + r + " " + h;
-        if (position === "left")
-            return "M " + (w - r) + " 0 A " + r + " " + r + " 0 0 1 " + w + " " + r
-                 + " L " + w + " " + (h - r) + " A " + r + " " + r + " 0 0 1 "
-                 + (w - r) + " " + h;
-        // bottom (default): the interior edge is the top.
-        return "M 0 " + r + " A " + r + " " + r + " 0 0 1 " + r + " 0"
-             + " L " + (w - r) + " 0 A " + r + " " + r + " 0 0 1 " + w + " " + r;
-    }
-
-    // The full plate silhouette as an SVG path. The fallback fill gradients
-    // are clipped to this same rounded rect, so the top/bottom lifts cannot
-    // leak past the corner arcs.
-    function platePath(w, h) {
-        var r = Math.max(0, Math.min(Theme.controls.dock.radius, Math.min(w, h) / 2));
         return "M " + r + " 0"
              + " L " + (w - r) + " 0 A " + r + " " + r + " 0 0 1 " + w + " " + r
              + " L " + w + " " + (h - r) + " A " + r + " " + r + " 0 0 1 "
              + (w - r) + " " + h
              + " L " + r + " " + h + " A " + r + " " + r + " 0 0 1 0 " + (h - r)
              + " L 0 " + r + " A " + r + " " + r + " 0 0 1 " + r + " 0 Z";
-    }
-
-    // The bottom edge plus both bottom corner arcs, inset by half the stroke.
-    // Used for the bottom brightening rim on a bottom Dock; the straight
-    // middle is already painted by `dockEdge`, so this path adds the corner
-    // arcs without changing the anchored-edge lip.
-    function bottomOutlinePath(w, h, strokeWidth) {
-        if (strokeWidth === undefined)
-            strokeWidth = Theme.controls.dock.plate.rimHeight;
-        var d = strokeWidth / 2;
-        var r = Math.max(0, Math.min(Theme.controls.dock.radius - d,
-                                      Math.min(w, h) / 2));
-        return "M 0 " + (h - r) + " A " + r + " " + r + " 0 0 1 " + r + " " + h
-             + " L " + (w - r) + " " + h + " A " + r + " " + r + " 0 0 1 "
-             + w + " " + (h - r);
     }
 
     // The surface input region: the visible bar plus the currently magnified
@@ -3814,19 +3782,11 @@ Rectangle {
                              : dock.panelRect.h
         clip: true
 
-        Shadow {
-            objectName: "dockPlateShadow"
-            visible: !dock.sampledPlate
-            x: dockPlate.plateX
-            y: dockPlate.plateY
-            width: dockPlate.plateW
-            height: dockPlate.plateH
-            radius: dockPlate.plateRadius
-            blur: Theme.controls.dock.plate.shadowBlur
-            shadowOpacity: Theme.controls.dock.plate.shadowOpacity
-            offset: Qt.point(0, Theme.controls.dock.plate.shadowOffsetY)
-        }
-
+        // The plate is a floating glass sheet: one translucent fill, one
+        // full-perimeter specular rim and two or three concentric inner-glow
+        // strokes (T235a). The reference has no outer shadow and no darker
+        // side, so none is drawn here. The same layers work for a bottom, left
+        // or right Dock; there is no `position` branch.
         Rectangle {
             objectName: "dockBar"
             visible: !dock.sampledPlate
@@ -3852,142 +3812,95 @@ Rectangle {
                         : Theme.material.dockFallbackOpacity)
         }
 
-        // The interior-edge gloss: a soft band just inside the rim that fades
-        // the plate's interior edge into its body, so the material reads as
-        // glass rather than a flat slab (T-14.7aa). It shares the rim's
-        // rounded path, inset by half its stroke, so it follows the corner
-        // arcs exactly like the hairline above it.
+        // The inner glow: two or three concentric full-perimeter strokes
+        // approximating the measured ~6 pt exponential rim tail. Each stroke
+        // shares `rimOutlinePath`, inset by half its own width, so it follows
+        // every corner arc and works on any Dock orientation. The sampled
+        // compositor path is authoritative; this is the Minimal/floor-missed
+        // approximation of the same perimeter.
         Shape {
-            id: dockGloss
-            objectName: "dockGloss"
+            id: dockGlowOuter
+            objectName: "dockGlowOuter"
             visible: !dock.sampledPlate
-            readonly property real inset: Theme.controls.dock.plate.glossHeight / 2
+            readonly property real inset: Theme.controls.dock.plate.glowOuterHeight / 2
             x: dockPlate.plateX + inset
             y: dockPlate.plateY + inset
             width: Math.max(0, dockPlate.plateW - 2 * inset)
             height: Math.max(0, dockPlate.plateH - 2 * inset)
             preferredRendererType: Shape.GeometryRenderer
             antialiasing: true
-            opacity: Theme.controls.dock.plate.glossOpacity
+            opacity: Theme.controls.dock.plate.glowOuterOpacity
             ShapePath {
-                objectName: "dockGlossStroke"
+                objectName: "dockGlowOuterStroke"
                 strokeColor: Theme.color.dockRim
-                strokeWidth: Theme.controls.dock.plate.glossHeight
+                strokeWidth: Theme.controls.dock.plate.glowOuterHeight
                 fillColor: "transparent"
                 capStyle: ShapePath.FlatCap
                 PathSvg {
-                    path: dock.rimOutlinePath(dockGloss.width, dockGloss.height,
-                                              Theme.controls.dock.plate.glossHeight)
+                    path: dock.rimOutlinePath(dockGlowOuter.width,
+                                              dockGlowOuter.height,
+                                              Theme.controls.dock.plate.glowOuterHeight)
                 }
             }
         }
 
-        // The top and bottom interior lifts. The reference plate is flat in
-        // the centre but brightens over ~10 px at the top and ~12 px at the
-        // bottom; these gradients are clipped to the same silhouette as the
-        // fill, so they follow the corner arcs.
         Shape {
-            id: dockTopGlow
-            objectName: "dockTopGlow"
-            visible: !dock.sampledPlate && dock.position === "bottom"
-            x: dockPlate.plateX
-            y: dockPlate.plateY
-            width: dockPlate.plateW
-            height: dockPlate.plateH
-            preferredRendererType: Shape.GeometryRenderer
-            antialiasing: true
-            ShapePath {
-                strokeWidth: 0
-                fillGradient: LinearGradient {
-                    x1: 0
-                    y1: 0
-                    x2: 0
-                    y2: dockPlate.plateH
-                    GradientStop {
-                        position: 0.0
-                        color: Qt.rgba(1, 1, 1,
-                                       Theme.controls.dock.plate.topGlowOpacity)
-                    }
-                    GradientStop {
-                        position: Math.min(1.0,
-                            Theme.controls.dock.plate.topGlowHeight
-                            / Math.max(1, dockPlate.plateH))
-                        color: "transparent"
-                    }
-                    GradientStop { position: 1.0; color: "transparent" }
-                }
-                PathSvg { path: dock.platePath(dockPlate.plateW, dockPlate.plateH) }
-            }
-        }
-
-        Shape {
-            id: dockBottomGlow
-            objectName: "dockBottomGlow"
-            visible: !dock.sampledPlate && dock.position === "bottom"
-            x: dockPlate.plateX
-            y: dockPlate.plateY
-            width: dockPlate.plateW
-            height: dockPlate.plateH
-            preferredRendererType: Shape.GeometryRenderer
-            antialiasing: true
-            ShapePath {
-                strokeWidth: 0
-                fillGradient: LinearGradient {
-                    x1: 0
-                    y1: 0
-                    x2: 0
-                    y2: dockPlate.plateH
-                    GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop {
-                        position: Math.max(0.0,
-                            1.0 - Theme.controls.dock.plate.bottomGlowHeight
-                            / Math.max(1, dockPlate.plateH))
-                        color: "transparent"
-                    }
-                    GradientStop {
-                        position: 1.0
-                        color: Qt.rgba(1, 1, 1,
-                                       Theme.controls.dock.plate.bottomGlowOpacity)
-                    }
-                }
-                PathSvg { path: dock.platePath(dockPlate.plateW, dockPlate.plateH) }
-            }
-        }
-
-        // The bottom edge highlight follows the two bottom corner arcs; the
-        // straight middle is the anchored-edge lip below.
-        Shape {
-            id: dockBottomRim
-            objectName: "dockBottomRim"
-            z: 1
-            visible: !dock.sampledPlate && dock.position === "bottom"
-            readonly property real inset: Theme.controls.dock.plate.rimHeight / 2
+            id: dockGlowMid
+            objectName: "dockGlowMid"
+            visible: !dock.sampledPlate
+            readonly property real inset: Theme.controls.dock.plate.glowMidHeight / 2
             x: dockPlate.plateX + inset
             y: dockPlate.plateY + inset
             width: Math.max(0, dockPlate.plateW - 2 * inset)
             height: Math.max(0, dockPlate.plateH - 2 * inset)
             preferredRendererType: Shape.GeometryRenderer
             antialiasing: true
-            opacity: Theme.controls.dock.plate.edgeOpacity
+            opacity: Theme.controls.dock.plate.glowMidOpacity
             ShapePath {
-                objectName: "dockBottomRimStroke"
+                objectName: "dockGlowMidStroke"
                 strokeColor: Theme.color.dockRim
-                strokeWidth: Theme.controls.dock.plate.rimHeight
+                strokeWidth: Theme.controls.dock.plate.glowMidHeight
                 fillColor: "transparent"
                 capStyle: ShapePath.FlatCap
                 PathSvg {
-                    path: dock.bottomOutlinePath(dockBottomRim.width,
-                                                 dockBottomRim.height)
+                    path: dock.rimOutlinePath(dockGlowMid.width,
+                                              dockGlowMid.height,
+                                              Theme.controls.dock.plate.glowMidHeight)
                 }
             }
         }
 
-        // The bright inner highlight: a stroked path along the interior edge
-        // that follows the plate's corner arcs instead of a straight hairline
-        // poking into them (T-14.7z). It is inset by half the stroke so every
-        // rim pixel lies inside the plate shape. Only the interior edge is
-        // traced: the top for a bottom Dock, the interior side for a vertical
-        // one.
+        Shape {
+            id: dockGlowInner
+            objectName: "dockGlowInner"
+            visible: !dock.sampledPlate
+            readonly property real inset: Theme.controls.dock.plate.glowInnerHeight / 2
+            x: dockPlate.plateX + inset
+            y: dockPlate.plateY + inset
+            width: Math.max(0, dockPlate.plateW - 2 * inset)
+            height: Math.max(0, dockPlate.plateH - 2 * inset)
+            preferredRendererType: Shape.GeometryRenderer
+            antialiasing: true
+            opacity: Theme.controls.dock.plate.glowInnerOpacity
+            ShapePath {
+                objectName: "dockGlowInnerStroke"
+                strokeColor: Theme.color.dockRim
+                strokeWidth: Theme.controls.dock.plate.glowInnerHeight
+                fillColor: "transparent"
+                capStyle: ShapePath.FlatCap
+                PathSvg {
+                    path: dock.rimOutlinePath(dockGlowInner.width,
+                                              dockGlowInner.height,
+                                              Theme.controls.dock.plate.glowInnerHeight)
+                }
+            }
+        }
+
+        // The bright inner highlight: one full-perimeter specular stroke. It is
+        // inset by half the stroke so every rim pixel lies inside the plate
+        // shape, and it traces all four edges and arcs (T-14.7z, T235a). The
+        // token opacity is calibrated so its additive delta on 50 % grey is the
+        // measured +0.397.
         Shape {
             id: dockRim
             objectName: "dockRim"
@@ -4012,37 +3925,12 @@ Rectangle {
             }
         }
 
-        // The anchored-edge highlight: a short bright lip along the flat
-        // middle of the plate's screen-edge side (the reference's lower edge,
-        // Dock_Tile_Mouseover.png). It is inset past the corner arcs on the
-        // along axis, so it never pokes outside the rounded shape, and it is
-        // orientation-aware like the interior rim.
-        Rectangle {
-            objectName: "dockEdge"
-            z: 1
-            readonly property real corner: Theme.controls.dock.radius
-            readonly property bool horizontal: dock.position === "bottom"
-            color: Theme.color.dockRim
-            opacity: Math.min(1, Theme.controls.dock.plate.edgeOpacity
-                                 + dock.contrastEdgeBoost)
-            visible: !dock.sampledPlate && width > 0 && height > 0
-            x: dock.position === "left" ? dockPlate.plateX
-               : dock.position === "right" ? dockPlate.plateX + dockPlate.plateW - width
-               : dockPlate.plateX + corner
-            y: dock.position === "bottom" ? dockPlate.plateY + dockPlate.plateH - height
-               : dockPlate.plateY + corner
-            width: horizontal
-                   ? Math.max(0, dockPlate.plateW - 2 * corner)
-                   : Theme.controls.dock.plate.edgeHeight
-            height: horizontal
-                    ? Theme.controls.dock.plate.edgeHeight
-                    : Math.max(0, dockPlate.plateH - 2 * corner)
-        }
-
-        // The hairline border around the whole plate.
+        // The border is an Increase Contrast ink only, never the normal plate
+        // edge: the reference has no dark side and the rim already carries the
+        // perimeter. It is a uniform hairline, not a directional outline.
         Rectangle {
             objectName: "dockBorder"
-            visible: !dock.sampledPlate
+            visible: !dock.sampledPlate && Glass.increaseContrast
             x: dockPlate.plateX
             y: dockPlate.plateY
             width: dockPlate.plateW
@@ -4051,8 +3939,7 @@ Rectangle {
             color: "transparent"
             border.width: Theme.controls.dock.plate.borderWidth
             border.color: Theme.color.dockBorder
-            opacity: Math.min(1, Theme.controls.dock.plate.borderOpacity
-                                 + dock.contrastEdgeBoost)
+            opacity: Theme.controls.dock.plate.borderOpacity
         }
     }
 

@@ -153,7 +153,7 @@ QtObject {
                 readonly property string slider: "none"
                 readonly property var light: QtObject {
                     readonly property string confidence: "measured"
-                    readonly property string provenance: "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; rim peak 0.397 on mid-grey; blur sigma 3.86pt first fit"
+                    readonly property string provenance: "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur sigma 3.86pt first fit"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.253
@@ -166,20 +166,15 @@ QtObject {
                     readonly property real edge: 0.397
                     readonly property real edgeWidth: 1.0
                     readonly property real edgeTail: 6.0
-                    readonly property real edgeSide: -0.08
-                    readonly property real topGlow: 0.06
-                    readonly property real topGlowHeight: 10.0
-                    readonly property real bottomGlow: 0.1
-                    readonly property real bottomGlowHeight: 12.0
                     readonly property real sharpFraction: 0.12
-                    readonly property real cornerLensPeak: 9.6
+                    readonly property real cornerLensPeak: 13.6
                     readonly property real cornerLensDistance: 15.0
                     readonly property real cornerLensTail: 50.0
                     readonly property real foreground: 0.0
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "measured"
-                    readonly property string provenance: "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; blur and rim reuse the light fit because the dark rim was not separately fitted"
+                    readonly property string provenance: "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur and rim reuse the light fit because the dark rim was not separately fitted"
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.149
@@ -192,13 +187,8 @@ QtObject {
                     readonly property real edge: 0.397
                     readonly property real edgeWidth: 1.0
                     readonly property real edgeTail: 6.0
-                    readonly property real edgeSide: -0.06
-                    readonly property real topGlow: 0.04
-                    readonly property real topGlowHeight: 10.0
-                    readonly property real bottomGlow: 0.07
-                    readonly property real bottomGlowHeight: 12.0
                     readonly property real sharpFraction: 0.12
-                    readonly property real cornerLensPeak: 9.6
+                    readonly property real cornerLensPeak: 13.6
                     readonly property real cornerLensDistance: 15.0
                     readonly property real cornerLensTail: 50.0
                     readonly property real foreground: 0.0
@@ -1233,21 +1223,16 @@ QtObject {
             readonly property int hideDelay: 350
             readonly property var plate: QtObject {
                 readonly property real fillOpacity: 0.42
-                readonly property real rimOpacity: 0.7
+                readonly property real rimOpacity: 0.84
                 readonly property int rimHeight: 1
-                readonly property int glossHeight: 6
-                readonly property real glossOpacity: 0.1
-                readonly property int edgeHeight: 1
-                readonly property real edgeOpacity: 0.7
-                readonly property int topGlowHeight: 10
-                readonly property real topGlowOpacity: 0.06
-                readonly property int bottomGlowHeight: 12
-                readonly property real bottomGlowOpacity: 0.1
+                readonly property int glowOuterHeight: 6
+                readonly property real glowOuterOpacity: 0.03
+                readonly property int glowMidHeight: 3
+                readonly property real glowMidOpacity: 0.06
+                readonly property int glowInnerHeight: 1
+                readonly property real glowInnerOpacity: 0.1
                 readonly property int borderWidth: 1
-                readonly property real borderOpacity: 0.55
-                readonly property int shadowBlur: 6
-                readonly property real shadowOpacity: 0.12
-                readonly property int shadowOffsetY: 2
+                readonly property real borderOpacity: 0.18
             }
             readonly property var icon: QtObject {
                 readonly property real radiusRatio: 0.24
