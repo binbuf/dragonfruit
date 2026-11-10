@@ -36,6 +36,12 @@ class FilesSettings : public QObject
     // T206: whether the app window has a client-alpha composition path.
     // `DF_APP_CHROME_SOLID=1` forces the opaque fallback for captures.
     Q_PROPERTY(bool appChromeSupported READ appChromeSupported CONSTANT)
+    // The effective wallpaper's average sRGB luma (0..1), resolved from the
+    // same `wallpaper.source` → `builtinDefault` → `providerSource` precedence
+    // the shell forwards to the compositor. The desktop uses it to pick the
+    // menu bar's near-white/black label pair; 0.5 is the no-wallpaper fallback.
+    Q_PROPERTY(qreal wallpaperLuminance READ wallpaperLuminance
+               NOTIFY wallpaperLuminanceChanged)
 
 public:
     explicit FilesSettings(QObject *parent = nullptr);
@@ -44,6 +50,7 @@ public:
     bool available() const;
     QString glassRollout() const;
     bool appChromeSupported() const;
+    qreal wallpaperLuminance() const;
 
     // The shared client's write path, exposed only so the headless QML tests
     // can drive an external settings change and prove the app-local bindings
@@ -53,7 +60,11 @@ public:
 signals:
     void valuesChanged();
     void availableChanged();
+    void wallpaperLuminanceChanged();
 
 private:
+    QString effectiveWallpaperSource() const;
     SettingsClient *m_client = nullptr;
+    mutable QString m_wallpaperLumaKey;
+    mutable qreal m_wallpaperLuma = 0.5;
 };

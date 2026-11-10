@@ -401,10 +401,13 @@ returns nothing and input is dropped rather than falling back to a client:
 losing surfaces never clears the `locked` flag, so killing the lock UI keeps the
 session locked. The `ext_session_lock_manager_v1` global is also gated on the
 T-07 launch-token handshake, so only the trusted shell can request a lock or
-call `unlock_and_destroy`. The shell maps the captured keys through a small
-US/ASCII evdev table (`shell/src/lockinput.cpp`) and exposes only the password
-length to the lock scene, which draws a bullet mask; the password itself goes
-straight to the PAM helper's stdin. The decision is frozen in
+call `unlock_and_destroy`. The shell keeps the compositor's
+`wl_keyboard.keymap` and translates captured keys with an xkb state
+(`shell/src/shellprotocol.cpp`), so the password follows the user's actual
+layout (Shift, Caps Lock, AltGr, non-US layouts, keypad). A small US/ASCII
+evdev table (`shell/src/lockinput.cpp`) is only the pre-keymap fallback. The
+lock scene sees just the password length and draws a bullet mask; the password
+itself goes straight to the PAM helper's stdin. The decision is frozen in
 [ADR 0069](adr/0069-locked-input-capture-and-kill-resistance.md).
 
 ### Idle timers (T-12.4a)

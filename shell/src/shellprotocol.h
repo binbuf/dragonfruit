@@ -52,6 +52,9 @@ struct wp_viewporter;
 struct wp_viewport;
 struct zwp_linux_dmabuf_v1;
 struct zwp_linux_buffer_params_v1;
+struct xkb_context;
+struct xkb_keymap;
+struct xkb_state;
 
 class QSocketNotifier;
 
@@ -836,14 +839,15 @@ signals:
     void screencastPointerLeft();
     void screencastKeyboardFocused(bool focused);
     void screencastKeyEvent(uint32_t key, bool pressed);
-    // polkit authentication dialog overlay (T-13.6). The key event carries the
-    // live Shift state so the password field can map shifted keys.
+    // polkit authentication dialog overlay (T-13.6). `text` is the key's
+    // current-layout text from the compositor keymap (null before the keymap
+    // arrives); `shift` is the fallback state for that brief window.
     void polkitConfigured(int width, int height, uint32_t serial);
     void polkitPointerMoved(qreal x, qreal y);
     void polkitPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void polkitPointerLeft();
     void polkitKeyboardFocused(bool focused);
-    void polkitKeyEvent(uint32_t key, bool pressed, bool shift);
+    void polkitKeyEvent(uint32_t key, bool pressed, bool shift, const QString &text);
     // Applications drawer overlay (T-19.2): a full-output launcher surface.
     void appsDrawerConfigured(int width, int height, uint32_t serial);
     void appsDrawerPointerMoved(qreal x, qreal y);
@@ -945,9 +949,10 @@ signals:
     void keyEvent(uint32_t key, bool pressed, uint32_t modifiers);
     // A key delivered to the lock surface while the session is locked
     // (T-12.3c). Distinct from `keyEvent` so lock input never reaches the
-    // menu bar or Dock scenes. `shift` is the live Shift state from
-    // `wl_keyboard.modifiers`.
-    void lockKeyEvent(uint32_t key, bool pressed, bool shift);
+    // menu bar or Dock scenes. `text` is the current-layout text from the
+    // compositor keymap (null before the keymap arrives); `shift` is the
+    // fallback state for that brief window.
+    void lockKeyEvent(uint32_t key, bool pressed, bool shift, const QString &text);
     // Mission Control overview (T-11): the compositor's single overview state
     // machine entered/left, and one progress-pipeline sample for the in-flight
     // transition. `overviewDataChanged` means the workspace/minimized-window
@@ -1173,6 +1178,9 @@ private:
     static void onKeyboardModifiers(void *data, wl_keyboard *keyboard, uint32_t serial,
                                     uint32_t modsDepressed, uint32_t modsLatched,
                                     uint32_t modsLocked, uint32_t group);
+    // The current-layout text for a raw evdev keycode. Null before the keymap
+    // arrives; non-null (possibly empty) once the xkb state exists.
+    QString keyText(quint32 key) const;
     // wl_data_device / wl_data_offer (external DnD target, T-10 section 12).
     static void onDataDeviceOffer(void *data, wl_data_device *device, wl_data_offer *offer);
     static void onDataDeviceEnter(void *data, wl_data_device *device, uint32_t serial,
@@ -1483,8 +1491,22 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // True while a lock surface holds the keyboard (T-12.3c), so key events
     // are routed to the lock scene and never to the chrome.
     bool m_keyboardOnLock = false;
-    // Live Shift state from `wl_keyboard.modifiers`, for lock-screen text.
+    // Live Shift state from `wl_keyboard.modifiers`, for the fallback lock
+    // text mapping before the keymap is available.
     bool m_keyboardShift = false;
+    // The last full modifier/layout masks, replayed onto a keymap that arrives
+    // after the modifiers event.
+    uint32_t m_keyboardModsDepressed = 0;
+    uint32_t m_keyboardModsLatched = 0;
+    uint32_t m_keyboardModsLocked = 0;
+    uint32_t m_keyboardGroup = 0;
+    // The compositor's keymap and the live xkb state, used to translate a
+    // locked/polkit key into the text the user's layout actually produces
+    // (Shift, Caps Lock, AltGr, non-US layouts, the numeric keypad). Null
+    // until `wl_keyboard.keymap` arrives.
+    xkb_context *m_xkbContext = nullptr;
+    xkb_keymap *m_xkbKeymap = nullptr;
+    xkb_state *m_xkbState = nullptr;
     // The full live modifier mask from `wl_keyboard.modifiers` (the xkb
     // `depressed` bits), carried with `keyEvent` so the chrome can honour
     // chords such as the Dock's Ctrl+Shift+Arrow reorder (T-14.7t).

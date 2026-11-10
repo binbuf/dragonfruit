@@ -273,11 +273,23 @@ Item {
 
     // Rubber-band (marquee) selection (T-19.3): the view reports the enclosed
     // node ids; Cmd toggles them, Shift extends, otherwise the band replaces
-    // the selection (an empty band clears it).
-    function selectMarquee(nodeIds, modifiers) {
+    // the selection (an empty band clears it). The live path snapshots the
+    // selection on `beginMarquee` so a Cmd/Shift drag toggles from a stable
+    // base while the pointer is still moving, rather than flipping each tile
+    // on every update.
+    property var marqueeBaseIds: []
+    property bool marqueeLive: false
+
+    function beginMarquee(modifiers) {
+        root.marqueeBaseIds = root.selectedIds.slice();
+        root.marqueeLive = true;
+    }
+
+    function updateMarquee(nodeIds, modifiers) {
         var command = modifiers & root.commandMask;
         var shift = modifiers & Qt.ShiftModifier;
-        var ids = root.selectedIds.slice();
+        var ids = (root.marqueeLive ? root.marqueeBaseIds
+                                    : root.selectedIds).slice();
         if (command) {
             for (var i = 0; i < nodeIds.length; ++i) {
                 var at = ids.indexOf(nodeIds[i]);
@@ -298,6 +310,18 @@ Item {
         if (!command && ids.length > 0)
             root.anchorId = ids[0];
         root.selectedId = ids.length > 0 ? ids[ids.length - 1] : 0;
+    }
+
+    function endMarquee(nodeIds, modifiers) {
+        root.updateMarquee(nodeIds, modifiers);
+        root.marqueeLive = false;
+        root.marqueeBaseIds = [];
+    }
+
+    function selectMarquee(nodeIds, modifiers) {
+        if (!root.marqueeLive)
+            root.beginMarquee(modifiers);
+        root.endMarquee(nodeIds, modifiers);
     }
 
     // The contiguous node ids from `fromId` to `toId` in the current model
@@ -592,14 +616,19 @@ Item {
                   action: "selectAll" }
             ];
         }
-        return [
+        var rows = [
             { label: qsTr("New Folder"), shortcut: "Shift+Super+N",
-              action: "newFolder" },
-            { type: "separator" },
-            toolbarRow,
-            { label: qsTr("Select All"), shortcut: "Super+A",
-              action: "selectAll" }
+              action: "newFolder" }
         ];
+        // Free placement is an icon-view rule; a list has no icon slots to
+        // clean up, so the row would be a dead affordance there.
+        if (browser.currentView !== "list")
+            rows.push({ label: qsTr("Clean Up"), action: "cleanUp" });
+        rows.push({ type: "separator" });
+        rows.push(toolbarRow);
+        rows.push({ label: qsTr("Select All"), shortcut: "Super+A",
+                    action: "selectAll" });
+        return rows;
     }
 
     function openNodeMenu(nodeId, uri, isDir, x, y) {
@@ -629,6 +658,10 @@ Item {
             break;
         case "newFolder":
             root.makeFolder();
+            break;
+        case "cleanUp":
+            if (root.iconView)
+                root.iconView.cleanUp();
             break;
         case "selectAll":
             root.selectAll();
@@ -1070,7 +1103,9 @@ Item {
                                 var p = iconView.mapToItem(root, x, y);
                                 root.openBackgroundMenu(p.x, p.y);
                             }
-                            onMarqueeSelected: (nodeIds, modifiers) => root.selectMarquee(nodeIds, modifiers)
+                            onMarqueeStarted: (modifiers) => root.beginMarquee(modifiers)
+                            onMarqueeUpdated: (nodeIds, modifiers) => root.updateMarquee(nodeIds, modifiers)
+                            onMarqueeSelected: (nodeIds, modifiers) => root.endMarquee(nodeIds, modifiers)
                             onRenameSubmitted: (nodeId, name) => root.commitRename(nodeId, name)
                             onRenameCancelled: root.cancelRename()
                         }

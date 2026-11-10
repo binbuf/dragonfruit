@@ -564,7 +564,7 @@ token per role and scheme — the shader holds no literal value. A driver that
 refuses the glass shader keeps the plain blurred compose. The QML surfaces stay
 the **complement**: the menu bar already uses `material.chromeOpacity` in its
 fill (T-20.1), and the Applications card's fill uses
-`controls.appsDrawer.panelOpacity` (0.88) so the compositor material reads
+`controls.appsDrawer.panelOpacity` (0.72) so the compositor material reads
 through it while the card stays a solid frosted surface on backends without
 the GPU scene-blur pass. On a DRM output outside the supported boundary
 (multi-GPU, rotated) the compositor draws the token tint/feather fallback and
@@ -1172,10 +1172,13 @@ complete the track:
   windows clear the menu bar and Dock) with a per-output cascade offset.
   Interactive move and resize subtract only the top menu-bar reserve
   (including the SSD titlebar drawn above the client area), so a floating
-  window cannot be dragged or grown into the bar. The Dock keeps its reserve
-  for placement and Zoom, but a dragged or resized window may overlap it —
-  the Dock still composites above the window. A concealed menu bar reserves
-  nothing, so the strip becomes draggable until it is revealed.
+  window cannot be dragged or grown into the bar. **A moved window may hang
+  partially off the left, right, or bottom edge** — macOS-style free
+  placement — while keeping at least a 48 px grab strip on screen; the top
+  edge is the one hard stop. The Dock keeps its reserve for placement and
+  Zoom, but a dragged or resized window may overlap it — the Dock still
+  composites above the window. A concealed menu bar reserves nothing, so the
+  strip becomes draggable until it is revealed.
   Transient dialogs center on their parent, stay above it, and minimize with
   it (T-16.1b).
 - **Output hotplug.** Attaching a display gives it a fresh Space list that

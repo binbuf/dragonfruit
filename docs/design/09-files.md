@@ -257,11 +257,24 @@ retired on navigation. **Rubber-band selection is real (T-19.3):**
 `FilesIconView` paints a marquee over empty background and emits
 `marqueeSelected(nodeIds, modifiers)`, which the shell folds in with the same
 replace/Cmd-toggle/Shift-extend rules as the click paths; the desktop surface
-reuses the view. The band wears the macOS Tahoe drag-selection look — a very
-light, semi-transparent neutral grey wash inside a slightly darker, thicker,
-square grey perimeter (`marqueeFill`/`marqueeBorder` + `component.marquee`) —
-rather than an accent tint, because it marks a transient region, not a
-committed selection. **Still deferred:** Open With, Get Info,
+reuses the view. The band is **live**: while the button is still down the view
+emits the enclosed ids (`marqueeStarted`/`marqueeUpdated`), so every tile in
+the region highlights in real time, and the final `marqueeSelected` commits
+the same set. Cmd/Shift drags toggle/extend from the selection snapshot taken
+when the band starts, so a moving band never flips a tile twice. The band wears
+the macOS Tahoe drag-selection look — a very light, semi-transparent neutral
+grey wash inside a slightly darker, thicker, square grey perimeter
+(`marqueeFill`/`marqueeBorder` + `component.marquee`) — rather than an accent
+tint, because it marks a transient region, not a committed selection.
+**Icon selection is macOS-shaped:** the icon gets a translucent selection
+square (not a full-cell wash), and the label gets a text-hugging pill in the
+`selection` highlight colour with `textPrimary` lettering. The icon keeps its
+own tint. The list view uses the same translucent `selection` wash on the row,
+with its name/icon in `textPrimary`. Desktop items have no hover wash. **Free
+placement is real:** an icon tile can be dragged away from its grid slot,
+follows the pointer at 72 % opacity, and keeps that offset per URI; `Clean Up`
+is the one reflow rule and returns every tile to the grid. **Still deferred:**
+Open With, Get Info,
 Copy/Duplicate/Compress/Make Alias, file opening, the folder watcher, and the
 search result set (T-10.4c+/T-10.5).
 
@@ -781,8 +794,23 @@ The macOS model: **the file manager owns the desktop.**
   macOS Tahoe's neutral drag band (a translucent light-grey wash, a thicker
   square grey perimeter) from the `marqueeFill`/`marqueeBorder` semantic tokens
   and `component.marquee` geometry, so it stays scheme-aware in light and dark.
-  The same view serves a Files window and the desktop surface. Click/Cmd/Shift
-  selection, the `activated` signal, and the band are QML-tested.
+  The band is **live** (`marqueeStarted`/`marqueeUpdated`): enclosed tiles
+  highlight while the pointer is still moving, with Cmd/Shift based on the
+  pre-drag snapshot. The same view serves a Files window and the desktop
+  surface. Click/Cmd/Shift selection, the `activated` signal, and the band are
+  QML-tested.
+- **Desktop labels and free placement.** Desktop labels use the menu bar's
+  wallpaper-polarity pair (`foregroundOnDark`/`foregroundOnLight` and the 0.78
+  flip threshold) rather than the app scheme's text colour: almost white on
+  ordinary wallpaper, black only on an extremely bright scene, plus a 1 px
+  opposite-tone drop shadow. `FilesSettings.wallpaperLuminance` resolves the
+  same effective wallpaper source the shell forwards to the compositor and
+  caches the average luma. Desktop tiles have no hover wash. Selection is a
+  translucent icon square plus a label pill, not a full-cell accent wash.
+  Icons can be dragged freely from their grid slot (semi-transparent while
+  moving); the offset is kept per URI for the life of the view (durable
+  per-location persistence is a later view-state slice) and `Clean Up` returns
+  everything to the grid. The same view and rules serve a Files icon view.
 - **The desktop process itself (T-19.3).** `dragonfruit-files --desktop` is a
   self-contained trusted private-protocol client
   (`apps/files/DesktopProtocol.*`): it presents the `desktop:` launch token,

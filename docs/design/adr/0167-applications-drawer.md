@@ -83,17 +83,25 @@ Spotlight-equivalent search pane) will build on them:
 - The drawer's scene coordinates equal output coordinates (the surface maps 1:1
   to the output), which is why the recorded tile rect can feed
   `set_launch_origin` unchanged.
-- The grid is a `Grid` with a fixed tile size, a column count capped at seven,
-  and a viewport capped at five rows (a longer corpus scrolls): wide outputs
-  lay out at most seven per row, and narrow outputs wrap to fewer instead of
-  overflowing. Column and row gaps are separate tokens
-  (`gridColumnGap`/`gridRowGap`), and the caps (`maxColumns`, `maxRows`) mean
-  the keyboard row stride always matches the real layout. The drawer card is
-  a ~90%-opaque frosted panel whose top section is a flat (background-less)
-  search bar framed by hairline rules over the pill row and grid; it hugs the
-  content with `panelPadding` (50px) on the sides and a tighter
-  `panelPaddingVertical` (32px) above and below, clamped to the output so a
+- The grid follows the measured Spotlight Apps geometry: 115×92 pt cells,
+  77 pt icons, an 18 pt single-line label, a 115 pt column pitch and a 102 pt
+  row pitch. A column count capped at seven and a viewport capped at five rows
+  keep wide outputs at seven per row; narrow outputs wrap to fewer instead of
+  overflowing. The caps (`maxColumns`, `maxRows`) mean the keyboard row stride
+  always matches the real layout.
+- The card is a translucent frosted plate (0.72 alpha on the sampled path, a
+  0.86 milky plate on the fallback path) with a 28 pt radius, a soft floating
+  shadow and a subtle top-to-bottom light falloff. Its top row is the measured
+  Spotlight chrome: a 34 pt Back button, a 58 pt rounded search field, and a
+  34 pt More button (Refresh Applications / Close). The category row is a set
+  of 26 pt translucent capsule chips rather than a segmented group. The card
+  hugs the content with `panelPadding` (20 pt) on the sides and
+  `panelPaddingVertical` (20 pt) above and below, clamped to the output so a
   narrow screen shrinks the card instead of clipping it.
+- Vertical wheel input scrolls the grid from anywhere over the card, not only
+  when the pointer is over the grid's column band. The grid Flickable spans the
+  card width; a vertical wheel over the search row or chip row is forwarded to
+  the same scroll path, while a horizontal wheel still scrolls the chips.
 - Every open is a fresh launcher session: the query, category selection,
   keyboard selection, and grid/pill scroll offsets reset, and the search field
   takes active focus. The tiles are not focusable — a `Repeater` rebuild must

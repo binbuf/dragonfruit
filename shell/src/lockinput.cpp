@@ -4,23 +4,56 @@
 namespace dragonfruit {
 namespace {
 
+LockKey character(const QString &text)
+{
+    return LockKey{ LockKeyKind::Character, text };
+}
+
 LockKey character(QChar ch)
 {
-    return LockKey{ LockKeyKind::Character, ch };
+    return character(QString(ch));
 }
 
 } // namespace
+
+LockKey lockKeyFromText(quint32 key, const QString &text)
+{
+    // Control keys are recognised by keycode: their xkb text is a control
+    // character ("\r", "\b", "\x1b") or empty, which must never be inserted
+    // into the password buffer.
+    switch (key) {
+    case 1:
+        return LockKey{ LockKeyKind::Escape, QString() };
+    case 14:
+        return LockKey{ LockKeyKind::Backspace, QString() };
+    case 28:
+    case 96: // keypad enter
+        return LockKey{ LockKeyKind::Return, QString() };
+    default:
+        break;
+    }
+    if (text.isEmpty())
+        return LockKey{ LockKeyKind::Ignore, QString() };
+    // Drop control chords (Ctrl+A..Z and friends) and any other non-text
+    // control code the layout may produce. A password field has no use for
+    // them, and they could otherwise corrupt the captured buffer.
+    for (const QChar ch : text) {
+        if (ch.category() == QChar::Other_Control)
+            return LockKey{ LockKeyKind::Ignore, QString() };
+    }
+    return character(text);
+}
 
 LockKey lockKeyFromEvdev(quint32 key, bool shift)
 {
     switch (key) {
     case 1:
-        return LockKey{ LockKeyKind::Escape, QChar() };
+        return LockKey{ LockKeyKind::Escape, QString() };
     case 14:
-        return LockKey{ LockKeyKind::Backspace, QChar() };
+        return LockKey{ LockKeyKind::Backspace, QString() };
     case 28:
     case 96: // keypad enter
-        return LockKey{ LockKeyKind::Return, QChar() };
+        return LockKey{ LockKeyKind::Return, QString() };
     case 57:
         return character(QChar(' '));
     // Number row: unshifted digit, shifted symbol.
@@ -94,7 +127,7 @@ LockKey lockKeyFromEvdev(quint32 key, bool shift)
     case 49: return character(shift ? QChar('N') : QChar('n'));
     case 50: return character(shift ? QChar('M') : QChar('m'));
     default:
-        return LockKey{ LockKeyKind::Ignore, QChar() };
+        return LockKey{ LockKeyKind::Ignore, QString() };
     }
 }
 

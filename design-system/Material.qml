@@ -155,12 +155,13 @@ QtObject {
                 ? Qt.rgba(Theme.color.surface.r, Theme.color.surface.g,
                           Theme.color.surface.b, Theme.controls.appsDrawer.panelOpacity)
                 : Qt.rgba(Theme.color.chromeFallbackFill.r, Theme.color.chromeFallbackFill.g,
-                          Theme.color.chromeFallbackFill.b, Theme.material.popupFallbackOpacity);
+                          Theme.color.chromeFallbackFill.b,
+                          Theme.controls.appsDrawer.panelFallbackOpacity);
         }
         var resolved = menuResolution("menuDetached", blurActive, tier, fallback, true);
-        // Apps is a predominantly opaque browsing surface. Its material fit
-        // remains unmeasured; keep the existing card-opacity token, with the
-        // menu slider's relative change and the shared accessibility override.
+        // Apps is a translucent browsing surface. Its material fit remains
+        // unmeasured; keep the card-opacity token, with the menu slider's
+        // relative change and the shared accessibility override.
         var alpha = resolved.alpha;
         if (resolved.renderMode === "sampled-glass") {
             var baseline = Theme.glass.presets.menuDetached[

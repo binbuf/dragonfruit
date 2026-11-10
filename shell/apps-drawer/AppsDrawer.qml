@@ -40,6 +40,8 @@ Item {
 
     signal appLaunched(string desktopId, real tileX, real tileY, real tileW, real tileH)
     signal dismissRequested()
+    // The More menu's manual refresh; the shell reloads the app-index corpus.
+    signal refreshRequested()
 
     // Canonical pill order (the same keys `appsdrawer.cpp` maps to) and the
     // one label table. The C++ helper owns the freedesktop -> key mapping; the
@@ -73,6 +75,8 @@ Item {
         if (root.active) {
             root.resetSession()
             Qt.callLater(root.focusSearch)
+        } else if (moreMenu) {
+            moreMenu.hide()
         }
     }
     Behavior on shown {
@@ -138,21 +142,20 @@ Item {
     readonly property bool showAbsence: !root.available
     readonly property bool noMatches: root.visibleApps.length === 0 && !root.showAbsence
 
-    // The card wraps the grid (at most seven columns) with at least
-    // `panelPadding` on the sides and a tighter `panelPaddingV` above and below,
-    // floored at the search field's width so a short list still reads as a card,
-    // and clamped to the output.
+    // The card wraps the grid (at most seven columns) with the measured
+    // `panelPadding` on the sides and `panelPaddingV` above and below, floored
+    // at the search field's width so a short list still reads as a card, and
+    // clamped to the output.
     readonly property int maxColumns: 7
     readonly property real panelPadding: Theme.controls.appsDrawer.panelPadding
     readonly property real panelPaddingV:
         Theme.controls.appsDrawer.panelPaddingVertical
-    // The hairline rules under the top search section and the pill row.
-    readonly property real separatorHeight: Theme.controls.window.borderWidth
-    readonly property real tileWidth: Theme.controls.appsDrawer.tileSize
-                                      + Theme.primitive.spacing.xl
-    // One tile's full height: the artwork square plus its single-line label.
-    readonly property real tileHeight:
-        root.tileWidth + Math.ceil(Theme.controls.appsDrawer.labelSize * 2.2)
+    // Measured Spotlight Apps cells: 115 pt wide, 77 pt icon, 18 pt label,
+    // 102 pt row pitch. The label is a single line under the artwork.
+    readonly property real tileWidth: Theme.controls.appsDrawer.tileWidth
+    readonly property real tileHeight: Theme.controls.appsDrawer.tileHeight
+    readonly property real iconSize: Theme.controls.appsDrawer.tileSize
+    readonly property real labelHeight: Theme.controls.appsDrawer.labelHeight
     readonly property real gridGap: Theme.controls.appsDrawer.gridColumnGap
     readonly property real gridRowGap: Theme.controls.appsDrawer.gridRowGap
     readonly property real gridMaxWidth:
@@ -161,6 +164,14 @@ Item {
     readonly property int maxRows: 5
     readonly property real gridMaxHeight:
         root.maxRows * root.tileHeight + (root.maxRows - 1) * root.gridRowGap
+    // The search row is the measured card width: a Back button, the field, and
+    // the More button share one line.
+    readonly property real searchButtonSize:
+        Theme.controls.appsDrawer.searchButtonSize
+    readonly property real searchButtonGap:
+        Theme.controls.appsDrawer.searchButtonGap
+    readonly property real searchHeight: Theme.controls.appsDrawer.searchHeight
+    readonly property real chipHeight: Theme.controls.appsDrawer.chipHeight
     readonly property real panelWidth: Math.max(0, Math.min(
         Math.max(root.gridMaxWidth, Theme.controls.appsDrawer.searchMaxWidth)
             + 2 * root.panelPadding,
@@ -183,9 +194,9 @@ Item {
     readonly property int rows: root.visibleApps.length === 0 ? 0
         : Math.ceil(root.visibleApps.length / root.columns)
 
-    // The card height: the top search bar, the two hairline rules, pills, the
-    // grid, and the vertical padding, clamped to five grid rows and to the
-    // output so a long corpus scrolls.
+    // The card height: the search row, the category chips, the grid, and the
+    // vertical padding, clamped to five grid rows and to the output so a long
+    // corpus scrolls.
     readonly property real emptyContentHeight:
         Theme.controls.appsDrawer.emptyGlyphSize + Theme.primitive.spacing.xxl
     readonly property real gridContentHeight:
@@ -197,10 +208,8 @@ Item {
     readonly property real gridNaturalHeight:
         Math.min(root.gridContentHeight, root.gridMaxHeight)
     readonly property real panelNaturalHeight:
-        root.panelPaddingV + searchField.height
-        + Theme.primitive.spacing.lg + root.separatorHeight
-        + Theme.primitive.spacing.lg + pillScroller.height
-        + Theme.primitive.spacing.lg + root.separatorHeight
+        root.panelPaddingV + root.searchHeight
+        + Theme.primitive.spacing.lg + root.chipHeight
         + Theme.primitive.spacing.xl + root.gridNaturalHeight
         + root.panelPaddingV
     readonly property real panelMaxHeight:
@@ -330,6 +339,41 @@ Item {
         root.revealCurrent();
     }
 
+    // One wheel path for the whole card: the grid's Flickable handles the
+    // column band, and the card-level handler below catches vertical wheels
+    // over the search field, chips, and side gutters. Pixel deltas keep
+    // touchpads smooth; a discrete wheel steps one row.
+    function scrollGridByWheel(event) {
+        // A discrete wheel notch arrives with both a small pixel delta and a
+        // 120-unit angle delta from the shell. Use whichever is larger so one
+        // notch steps a row instead of a few pixels, while a high-resolution
+        // touchpad still uses its precise pixel delta.
+        var pixel = event.pixelDelta.y;
+        var angle = event.angleDelta.y / 120
+                * (root.tileHeight + root.gridRowGap);
+        var delta = Math.abs(angle) > Math.abs(pixel) ? angle : pixel;
+        if (delta === 0)
+            return;
+        var maxY = Math.max(0, gridFlick.contentHeight - gridFlick.height);
+        if (maxY <= 0)
+            return;
+        gridFlick.cancelFlick();
+        gridFlick.contentY = Math.max(0, Math.min(maxY,
+                                                  gridFlick.contentY - delta));
+        event.accepted = true;
+    }
+
+    function openMoreMenu() {
+        if (!moreButton)
+            return;
+        var p = moreButton.mapToItem(root, moreButton.width,
+                                     moreButton.height
+                                     + Theme.primitive.spacing.xs);
+        moreMenu.showAt(Math.max(0, Math.min(root.width - moreMenu.width,
+                                             p.x - moreMenu.width)),
+                        p.y);
+    }
+
     onVisibleAppsChanged: {
         // Do not auto-select the first tile. That used to (a) give the drawer a
         // permanent highlight before the user touched anything and (b) move
@@ -384,6 +428,16 @@ Item {
         }
     }
 
+    // A soft floating shadow behind the card. The compositor supplies the
+    // sampled backdrop; this keeps the card legible on the software/fallback
+    // path and gives the translucent plate the reference's lifted edge.
+    Shadow {
+        anchors.fill: panel
+        level: "overlay"
+        radius: panel.radius
+        opacity: root.reveal
+    }
+
     Rectangle {
         id: panel
         objectName: "appsDrawerPanel"
@@ -391,20 +445,48 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         width: root.panelWidth
         height: Math.min(root.panelNaturalHeight, root.panelMaxHeight)
-        radius: Theme.primitive.radius.xl
+        radius: Theme.controls.appsDrawer.panelRadius
         // A translucent frosted fill: the compositor's liquid-glass material
         // (blur + edge lens + specular rim + adaptive tint, T-20.2) and the
         // scrim/desktop ghost through, while the children (search, pills,
-        // tiles) stay fully opaque because the opacity is in the fill, not on
-        // the item. Without the sampled pass it takes the milky complement.
+        // tiles) stay opaque because the opacity is in the fill, not on the
+        // item. Without the sampled pass it takes the milky complement.
         color: Material.drawerFill(root.materialBlurActive, root.materialTier,
                                    root.materialFallback)
         opacity: root.reveal
         scale: 1.0
         border.width: Theme.controls.window.borderWidth
-        border.color: Glass.increaseContrast ? Theme.color.textPrimary : Theme.color.border
+        border.color: Glass.increaseContrast
+                      ? Theme.color.textPrimary
+                      : Qt.rgba(Theme.color.dockRim.r, Theme.color.dockRim.g,
+                                Theme.color.dockRim.b, 0.45)
         antialiasing: true
 
+        // A soft vertical light falloff: the top of the sheet catches a little
+        // more light and the bottom sits in a slight shade, so the translucent
+        // plate reads as glass rather than a flat tint.
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            gradient: Gradient {
+                GradientStop {
+                    position: 0.0
+                    color: Qt.rgba(Theme.color.dockRim.r, Theme.color.dockRim.g,
+                                   Theme.color.dockRim.b, 0.12)
+                }
+                GradientStop {
+                    position: 0.3
+                    color: Qt.rgba(Theme.color.dockRim.r, Theme.color.dockRim.g,
+                                   Theme.color.dockRim.b, 0.02)
+                }
+                GradientStop {
+                    position: 1.0
+                    color: Qt.rgba(Theme.color.shadowColor.r,
+                                   Theme.color.shadowColor.g,
+                                   Theme.color.shadowColor.b, 0.05)
+                }
+            }
+        }
 
         // Consume clicks on the panel so a miss on a tile does not dismiss,
         // and return typing to the search field (a click on the pills or the
@@ -412,155 +494,302 @@ Item {
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.AllButtons
-            onPressed: root.focusSearch()
+            onPressed: {
+                if (moreMenu.open)
+                    moreMenu.hide();
+                root.focusSearch();
+            }
         }
 
-        // The search bar is the card's top section. It is flat (no pill
-        // background or border) so it blends into the card's rounded top; the
-        // drawer's name is its placeholder.
-        SearchField {
-            id: searchField
-            objectName: "appsDrawerSearch"
+        // Vertical wheel over the search field, the chip row, or the card's
+        // side gutters still scrolls the grid. The grid Flickable's own
+        // handler accepts first when the pointer is over the column band.
+        WheelHandler {
+            target: null
+            onWheel: (event) => {
+                if (event.pixelDelta.y === 0 && event.angleDelta.y === 0)
+                    return;
+                root.scrollGridByWheel(event);
+            }
+        }
+
+        // The measured Spotlight Apps top row: a Back button, the large
+        // rounded search field, and the More button.
+        Item {
+            id: searchRow
+            objectName: "appsDrawerSearchRow"
             anchors.top: parent.top
             anchors.topMargin: root.panelPaddingV
             anchors.horizontalCenter: parent.horizontalCenter
             width: root.panelWidth - 2 * root.panelPadding
-            flat: true
-            placeholderText: qsTr("Applications")
-            onTextChanged: root.query = text
-            // Return launches the selected tile from the text field; Escape
-            // dismisses the launcher outright (Launchpad behaviour), and the
-            // next open starts with an empty search.
-            onAccepted: root.launchAt(root.currentIndex)
-            onEscapePressed: root.dismissRequested()
-            // The text field owns focus while the drawer is open. Forward the
-            // grid-navigation keys here so typing filters and arrows still
-            // move the tile selection.
-            Keys.onDownPressed: (event) => {
-                root.moveSelection(root.columns)
-                event.accepted = true
+            height: Math.max(root.searchHeight, root.searchButtonSize)
+
+            DrawerIconButton {
+                id: backButton
+                objectName: "appsDrawerBackButton"
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                icon: "chevron-left"
+                accessibleName: qsTr("Close Applications")
+                onClicked: root.dismissRequested()
             }
-            Keys.onUpPressed: (event) => {
-                root.moveSelection(-root.columns)
-                event.accepted = true
+
+            DrawerIconButton {
+                id: moreButton
+                objectName: "appsDrawerMoreButton"
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                icon: "adjustments-horizontal"
+                accessibleName: qsTr("Applications options")
+                onClicked: {
+                    if (moreMenu.open)
+                        moreMenu.hide();
+                    else
+                        root.openMoreMenu();
+                }
             }
-            Keys.onPressed: (event) => {
-                if (event.key === Qt.Key_PageDown) {
-                    root.moveSelection(root.columns
-                                       * Math.max(1, Math.floor(
-                                              gridFlick.height
-                                              / (root.tileHeight + root.gridRowGap))))
+
+            SearchField {
+                id: searchField
+                objectName: "appsDrawerSearch"
+                anchors.left: backButton.right
+                anchors.leftMargin: root.searchButtonGap
+                anchors.right: moreButton.left
+                anchors.rightMargin: root.searchButtonGap
+                anchors.verticalCenter: parent.verticalCenter
+                height: root.searchHeight
+                fieldHeight: root.searchHeight
+                fieldRadius: Theme.controls.appsDrawer.searchRadius
+                fieldFill: Qt.rgba(Theme.color.surface.r, Theme.color.surface.g,
+                                   Theme.color.surface.b,
+                                   Theme.controls.appsDrawer.searchFillOpacity)
+                fieldBorder: searchField.activeFocus
+                             ? Qt.rgba(Theme.color.focusRing.r,
+                                       Theme.color.focusRing.g,
+                                       Theme.color.focusRing.b, 0.75)
+                             : Qt.rgba(Theme.color.border.r,
+                                       Theme.color.border.g,
+                                       Theme.color.border.b,
+                                       Theme.controls.appsDrawer.searchBorderOpacity)
+                iconSize: Theme.controls.appsDrawer.searchIconSize
+                paddingH: Theme.controls.appsDrawer.searchPaddingH
+                fontSize: Theme.primitive.font.sizeLg
+                placeholderText: qsTr("Applications")
+                onTextChanged: root.query = text
+                // Return launches the selected tile from the text field; Escape
+                // dismisses the launcher outright (Launchpad behaviour), and
+                // the next open starts with an empty search.
+                onAccepted: root.launchAt(root.currentIndex)
+                onEscapePressed: {
+                    if (moreMenu.open) {
+                        moreMenu.hide();
+                        root.focusSearch();
+                    } else {
+                        root.dismissRequested();
+                    }
+                }
+                // The text field owns focus while the drawer is open. Forward
+                // the grid-navigation keys here so typing filters and arrows
+                // still move the tile selection.
+                Keys.onDownPressed: (event) => {
+                    root.moveSelection(root.columns)
                     event.accepted = true
-                } else if (event.key === Qt.Key_PageUp) {
-                    root.moveSelection(-root.columns
-                                       * Math.max(1, Math.floor(
-                                              gridFlick.height
-                                              / (root.tileHeight + root.gridRowGap))))
+                }
+                Keys.onUpPressed: (event) => {
+                    root.moveSelection(-root.columns)
                     event.accepted = true
+                }
+                Keys.onPressed: (event) => {
+                    if (event.key === Qt.Key_PageDown) {
+                        root.moveSelection(root.columns
+                                           * Math.max(1, Math.floor(
+                                                  gridFlick.height
+                                                  / (root.tileHeight + root.gridRowGap))))
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_PageUp) {
+                        root.moveSelection(-root.columns
+                                           * Math.max(1, Math.floor(
+                                                  gridFlick.height
+                                                  / (root.tileHeight + root.gridRowGap))))
+                        event.accepted = true
+                    }
                 }
             }
         }
 
-        // The hairline rule under the search section (the reference's first
-        // separator).
-        Rectangle {
-            id: topSeparator
-            objectName: "appsDrawerTopSeparator"
-            anchors.top: searchField.bottom
-            anchors.topMargin: Theme.primitive.spacing.lg
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - 2 * Theme.primitive.spacing.xl
-            height: root.separatorHeight
-            color: Theme.color.border
-        }
-
-        // The category pills. Horizontally scrollable so a narrow output never
-        // clips a pill; a SegmentedControl owns the selection semantics.
+        // The category chips: individual translucent capsules, not a segmented
+        // group. Horizontally scrollable so a narrow output never clips one.
         Flickable {
             id: pillScroller
             objectName: "appsDrawerPills"
-            anchors.top: topSeparator.bottom
+            anchors.top: searchRow.bottom
             anchors.topMargin: Theme.primitive.spacing.lg
             anchors.horizontalCenter: parent.horizontalCenter
             width: root.panelWidth - 2 * root.panelPadding
-            height: pillsControl.height
-            contentWidth: pillsControl.width
+            height: root.chipHeight
+            contentWidth: pillsRow.width
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.HorizontalFlick
             interactive: contentWidth > width
 
-            // A plain mouse wheel has only a vertical axis; over the pill
-            // strip map it sideways so a narrow output can still reach the
-            // last category without discovering a horizontal drag.
+            // Only a horizontal wheel (or a shift-wheel) scrolls the chips. A
+            // plain vertical wheel is left to the card-level handler so it
+            // scrolls the grid from anywhere over the card.
             WheelHandler {
                 target: null
                 onWheel: (event) => {
-                    const delta = event.pixelDelta.y || event.pixelDelta.x
-                            || event.angleDelta.y || event.angleDelta.x;
-                    if (delta === 0)
+                    const delta = event.pixelDelta.x || event.angleDelta.x;
+                    if (delta !== 0) {
+                        const maxX = Math.max(0, pillScroller.contentWidth
+                                                 - pillScroller.width);
+                        pillScroller.contentX = Math.max(0, Math.min(
+                            maxX, pillScroller.contentX - delta));
+                        event.accepted = true;
                         return;
-                    const maxX = Math.max(0, pillScroller.contentWidth
-                                             - pillScroller.width);
-                    pillScroller.contentX = Math.max(0, Math.min(
-                        maxX, pillScroller.contentX - delta));
-                    event.accepted = true;
+                    }
+                    // A plain wheel has only the vertical axis. Forward it to
+                    // the grid instead of swallowing it on the chip strip.
+                    if (event.pixelDelta.y !== 0 || event.angleDelta.y !== 0)
+                        root.scrollGridByWheel(event);
                 }
             }
 
-            SegmentedControl {
-                id: pillsControl
+            Row {
+                id: pillsRow
                 objectName: "appsDrawerCategoryControl"
-                model: root.pills
-                currentIndex: root.categoryIndex
-                onActivated: (index) => { root.category = root.pills[index].key; }
+                spacing: Theme.controls.appsDrawer.pillGap
+
+                Repeater {
+                    model: root.pills
+
+                    delegate: Item {
+                        id: chip
+                        required property var modelData
+                        required property int index
+
+                        readonly property bool current:
+                            root.category === chip.modelData.key
+                        readonly property bool hovered: chipHover.hovered
+                        width: chipLabel.implicitWidth
+                               + 2 * Theme.controls.appsDrawer.chipPaddingH
+                        height: root.chipHeight
+                        activeFocusOnTab: true
+
+                        function activate() {
+                            root.category = chip.modelData.key;
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.controls.appsDrawer.chipRadius
+                            color: chip.current
+                                ? Qt.rgba(Theme.color.textPrimary.r,
+                                          Theme.color.textPrimary.g,
+                                          Theme.color.textPrimary.b,
+                                          Theme.controls.appsDrawer.chipSelectedOpacity)
+                                : Qt.rgba(Theme.color.textPrimary.r,
+                                          Theme.color.textPrimary.g,
+                                          Theme.color.textPrimary.b,
+                                          chip.hovered
+                                          ? Theme.controls.appsDrawer.chipHoverOpacity
+                                          : Theme.controls.appsDrawer.chipFillOpacity)
+                            border.width: chip.current
+                                          ? 0 : Theme.controls.window.borderWidth
+                            border.color: Qt.rgba(Theme.color.textPrimary.r,
+                                                  Theme.color.textPrimary.g,
+                                                  Theme.color.textPrimary.b, 0.18)
+                            antialiasing: true
+
+                            Behavior on color {
+                                enabled: !Theme.reducedMotion
+                                ColorAnimation {
+                                    duration: Theme.motion.hover.duration
+                                    easing.type: Easing.Bezier
+                                    easing.bezierCurve: Theme.motion.hover.curve
+                                }
+                            }
+                        }
+
+                        Text {
+                            id: chipLabel
+                            anchors.centerIn: parent
+                            text: chip.modelData.label
+                            color: chip.current ? Theme.color.surface
+                                                : Theme.color.textSecondary
+                            font.pixelSize: Theme.primitive.font.sizeSm
+                            font.weight: chip.current
+                                         ? Theme.primitive.font.weightMedium
+                                         : Theme.primitive.font.weightRegular
+                        }
+
+                        HoverHandler { id: chipHover }
+                        TapHandler {
+                            onTapped: chip.activate()
+                        }
+                        FocusRing {
+                            target: chip
+                            cornerRadius: Theme.controls.appsDrawer.chipRadius
+                            shown: chip.activeFocus
+                        }
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Left) {
+                                var left = Math.max(0, root.categoryIndex - 1);
+                                root.category = root.pills[left].key;
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Right) {
+                                var right = Math.min(root.pills.length - 1,
+                                                     root.categoryIndex + 1);
+                                root.category = root.pills[right].key;
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Space
+                                       || event.key === Qt.Key_Return
+                                       || event.key === Qt.Key_Enter) {
+                                chip.activate();
+                                event.accepted = true;
+                            }
+                        }
+
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: chip.modelData.label
+                        Accessible.checkable: true
+                        Accessible.checked: chip.current
+                        Accessible.focusable: true
+                        Accessible.onPressAction: chip.activate()
+                    }
+                }
             }
         }
 
-        // The hairline rule under the pills (the reference's second separator).
-        Rectangle {
-            id: pillsSeparator
-            objectName: "appsDrawerPillsSeparator"
-            anchors.top: pillScroller.bottom
-            anchors.topMargin: Theme.primitive.spacing.lg
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width - 2 * Theme.primitive.spacing.xl
-            height: root.separatorHeight
-            color: Theme.color.border
-        }
-
-        // The tile grid. A `Grid` gives the column and row gaps their own
-        // tokens while the column count stays matched to the real layout.
+        // The tile grid. The Flickable spans the whole card so a wheel over
+        // the grid's side gutters scrolls too; the Grid itself stays at the
+        // measured width and is centred.
         Flickable {
             id: gridFlick
             objectName: "appsDrawerGrid"
-            anchors.top: pillsSeparator.bottom
+            anchors.top: pillScroller.bottom
             anchors.topMargin: Theme.primitive.spacing.xl
             anchors.bottom: parent.bottom
             anchors.bottomMargin: root.panelPaddingV
             anchors.horizontalCenter: parent.horizontalCenter
-            width: root.gridWidth
+            width: parent.width
+            contentWidth: width
             contentHeight: grid.height
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            interactive: contentHeight > height
 
             WheelHandler {
                 target: null
-                onWheel: (event) => {
-                    var delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y
-                        : event.angleDelta.y / 120 * (root.tileHeight + root.gridRowGap);
-                    if (delta === 0)
-                        return;
-                    gridFlick.cancelFlick();
-                    gridFlick.contentY = Math.max(0, Math.min(
-                        Math.max(0, gridFlick.contentHeight - gridFlick.height),
-                        gridFlick.contentY - delta));
-                    event.accepted = true;
-                }
+                onWheel: (event) => root.scrollGridByWheel(event)
             }
+
             Grid {
                 id: grid
                 objectName: "appsDrawerTiles"
-                width: parent.width
+                width: root.gridWidth
+                anchors.horizontalCenter: parent.horizontalCenter
                 columns: root.columns
                 rowSpacing: root.gridRowGap
                 columnSpacing: root.gridGap
@@ -589,6 +818,9 @@ Item {
                         readonly property bool selected: tile.index === root.currentIndex
                         readonly property bool hovered: tileHover.hovered
                         readonly property bool pressed: tileTap.pressed
+                        readonly property real iconSize: root.iconSize
+                        readonly property real highlightSize:
+                            tile.iconSize + Theme.primitive.spacing.sm
 
                         width: root.tileWidth
                         height: root.tileHeight
@@ -605,54 +837,93 @@ Item {
                         Rectangle {
                             id: tileHighlight
                             anchors.horizontalCenter: parent.horizontalCenter
-                            y: 0
-                            width: root.tileWidth
-                            height: root.tileWidth
+                            y: (tile.iconSize - tile.highlightSize) / 2
+                            width: tile.highlightSize
+                            height: tile.highlightSize
                             radius: Theme.controls.appsDrawer.tileRadius
-                            color: tile.pressed ? Theme.color.controlActive
-                                 : (tile.selected ? Theme.color.accentMuted
-                                    : (tile.hovered ? Theme.color.controlFill : "transparent"))
-                            border.width: tile.selected ? Theme.controls.window.borderWidth : 0
+                            color: tile.pressed
+                                   ? Qt.rgba(Theme.color.textPrimary.r,
+                                             Theme.color.textPrimary.g,
+                                             Theme.color.textPrimary.b,
+                                             Theme.controls.appsDrawer.iconSelectedOpacity
+                                             + 0.1)
+                                   : (tile.selected
+                                      ? Qt.rgba(Theme.color.textPrimary.r,
+                                                Theme.color.textPrimary.g,
+                                                Theme.color.textPrimary.b,
+                                                Theme.controls.appsDrawer.iconSelectedOpacity)
+                                      : (tile.hovered
+                                         ? Qt.rgba(Theme.color.textPrimary.r,
+                                                   Theme.color.textPrimary.g,
+                                                   Theme.color.textPrimary.b,
+                                                   Theme.controls.appsDrawer.iconHighlightOpacity)
+                                         : "transparent"))
+                            border.width: tile.selected
+                                          ? Theme.controls.window.borderWidth : 0
                             border.color: Theme.color.accent
+                            antialiasing: true
                         }
 
-                        // The themed app-index icon, rendered at the tile size.
+                        // The themed app-index icon, rendered at the measured
+                        // 77 pt artwork size.
                         Image {
                             id: appIcon
                             objectName: "appsDrawerTileIcon"
                             visible: tile.iconUrl.length > 0 && status === Image.Ready
                             source: tile.iconUrl
-                            sourceSize.width: Theme.controls.appsDrawer.tileSize
-                            sourceSize.height: Theme.controls.appsDrawer.tileSize
-                            width: Theme.controls.appsDrawer.tileSize
-                            height: Theme.controls.appsDrawer.tileSize
+                            sourceSize.width: Theme.controls.appsDrawer.iconSourceSize
+                            sourceSize.height: Theme.controls.appsDrawer.iconSourceSize
+                            width: tile.iconSize
+                            height: tile.iconSize
                             anchors.horizontalCenter: parent.horizontalCenter
-                            y: (root.tileWidth - height) / 2
+                            y: 0
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                             smooth: true
                         }
 
-                        // The Tabler fallback while the themed icon loads,
-                        // when app-index has none, or when it failed to load.
-                        TablerIcon {
+                        // The fallback is a rounded app tile, not a bare glyph:
+                        // while the themed icon loads, when app-index has none,
+                        // or when it failed to load, the drawer still reads as
+                        // a grid of app artwork.
+                        Rectangle {
+                            id: fallbackTile
                             objectName: "appsDrawerTileFallback"
                             visible: tile.iconUrl.length === 0
                                      || appIcon.status !== Image.Ready
-                            name: "app-window"
-                            size: Theme.controls.appsDrawer.tileSize
-                                     * Theme.controls.appsDrawer.fallbackGlyphRatio
-                            strokeWidth: 1.5
-                            color: Theme.color.textSecondary
+                            width: tile.iconSize
+                            height: tile.iconSize
                             anchors.horizontalCenter: parent.horizontalCenter
-                            y: (root.tileWidth - height) / 2
+                            y: 0
+                            radius: Theme.controls.appsDrawer.tileRadius
+                            color: Qt.rgba(Theme.color.textPrimary.r,
+                                           Theme.color.textPrimary.g,
+                                           Theme.color.textPrimary.b,
+                                           Theme.controls.appsDrawer.fallbackFillOpacity)
+                            border.width: Theme.controls.window.borderWidth
+                            border.color: Qt.rgba(Theme.color.textPrimary.r,
+                                                  Theme.color.textPrimary.g,
+                                                  Theme.color.textPrimary.b,
+                                                  Theme.controls.appsDrawer.fallbackBorderOpacity)
+                            antialiasing: true
+
+                            TablerIcon {
+                                anchors.centerIn: parent
+                                name: "app-window"
+                                size: tile.iconSize
+                                         * Theme.controls.appsDrawer.fallbackGlyphRatio
+                                strokeWidth: 1.5
+                                color: Theme.color.textSecondary
+                            }
                         }
 
                         Text {
                             objectName: "appsDrawerTileLabel"
                             width: parent.width
-                            y: root.tileWidth + Theme.controls.appsDrawer.tileContentGap
+                            height: root.labelHeight
+                            y: tile.iconSize
                             horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                             maximumLineCount: 1
                             text: tile.name
@@ -754,8 +1025,7 @@ Item {
             visible: gridFlick.contentHeight > gridFlick.height + 1
             anchors.top: gridFlick.top
             anchors.bottom: gridFlick.bottom
-            anchors.left: gridFlick.right
-            anchors.leftMargin: Theme.primitive.spacing.md
+            x: grid.x + grid.width + Theme.primitive.spacing.md
             width: 4
             radius: width / 2
             color: "transparent"
@@ -790,9 +1060,50 @@ Item {
         }
     }
 
+    // A click anywhere outside the open More menu closes it without swallowing
+    // the click that the underlying control wants.
+    MouseArea {
+        visible: moreMenu.open
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        z: 1500
+        onPressed: {
+            moreMenu.hide();
+            mouse.accepted = false;
+        }
+    }
+
+    ContextMenu {
+        id: moreMenu
+        objectName: "appsDrawerMoreMenu"
+        model: [
+            { label: qsTr("Refresh Applications") },
+            { type: "separator" },
+            { label: qsTr("Close") }
+        ]
+        materialPreset: "menuDetached"
+        materialBackdrop: "local"
+        materialBlurActive: root.materialBlurActive
+        materialTier: root.materialTier
+        materialFallback: root.materialFallback
+        accessibleName: qsTr("Applications options")
+        onTriggered: (index, item) => {
+            if (index === 0)
+                root.refreshRequested();
+            else if (index === 2)
+                root.dismissRequested();
+        }
+        onClosed: root.focusSearch()
+    }
+
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Escape) {
-            root.dismissRequested();
+            if (moreMenu.open) {
+                moreMenu.hide();
+                root.focusSearch();
+            } else {
+                root.dismissRequested();
+            }
             event.accepted = true;
         } else if (event.key === Qt.Key_Left) {
             root.moveSelection(-1);
@@ -852,4 +1163,76 @@ Item {
 
     Accessible.role: Accessible.List
     Accessible.name: qsTr("Applications")
+
+    // The measured 34 pt circular chrome button used by the drawer's Back and
+    // More affordances. It is a translucent control on the card rather than a
+    // solid toolbar button, so the glass reads through it.
+    component DrawerIconButton: Item {
+        id: button
+
+        property string icon: ""
+        property string accessibleName: ""
+        readonly property bool hovered: buttonHover.hovered
+
+        signal clicked()
+
+        implicitWidth: Theme.controls.appsDrawer.searchButtonSize
+        implicitHeight: Theme.controls.appsDrawer.searchButtonSize
+        width: implicitWidth
+        height: implicitHeight
+        activeFocusOnTab: true
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.controls.appsDrawer.searchButtonRadius
+            color: Qt.rgba(Theme.color.textPrimary.r, Theme.color.textPrimary.g,
+                           Theme.color.textPrimary.b,
+                           button.hovered
+                           ? Theme.controls.appsDrawer.searchButtonHoverOpacity
+                           : Theme.controls.appsDrawer.searchButtonFillOpacity)
+            border.width: Theme.controls.window.borderWidth
+            border.color: Qt.rgba(Theme.color.textPrimary.r,
+                                  Theme.color.textPrimary.g,
+                                  Theme.color.textPrimary.b, 0.14)
+            antialiasing: true
+
+            Behavior on color {
+                enabled: !Theme.reducedMotion
+                ColorAnimation {
+                    duration: Theme.motion.hover.duration
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.motion.hover.curve
+                }
+            }
+        }
+
+        TablerIcon {
+            anchors.centerIn: parent
+            name: button.icon
+            size: Theme.controls.appsDrawer.searchButtonIconSize
+            color: Theme.color.textSecondary
+        }
+
+        HoverHandler { id: buttonHover }
+        TapHandler {
+            onTapped: button.clicked()
+        }
+        FocusRing {
+            target: button
+            cornerRadius: Theme.controls.appsDrawer.searchButtonRadius
+            shown: button.activeFocus
+        }
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                    || event.key === Qt.Key_Enter) {
+                button.clicked();
+                event.accepted = true;
+            }
+        }
+
+        Accessible.role: Accessible.Button
+        Accessible.name: button.accessibleName
+        Accessible.focusable: true
+        Accessible.onPressAction: button.clicked()
+    }
 }

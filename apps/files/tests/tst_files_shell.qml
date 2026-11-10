@@ -687,6 +687,10 @@ Item {
             mousePress(shell.iconView, 5, 5);
             mouseMove(shell.iconView, 300, 300);
             verify(shell.iconView.bandActive);
+            // The enclosed tiles are already selected while the button is
+            // still down, so the user sees the live selection before release.
+            verify(shell.selectedIds.length >= 2,
+                   "the band must highlight enclosed tiles while dragging");
 
             // macOS Tahoe drag band: a neutral, translucent grey wash inside a
             // thicker, less transparent square grey perimeter — no accent tint.
@@ -720,6 +724,39 @@ Item {
             // Shift extends rather than replaces.
             shell.selectMarquee([first], Qt.ShiftModifier);
             verify(shell.selectedIds.indexOf(first) >= 0);
+        }
+
+        function test_icon_free_placement_is_translucent_and_cleans_up() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            waitForRendering(stage);
+
+            var tile = shell.iconView.gridView.itemAtIndex(0);
+            verify(tile !== null);
+            var uri = tile.uri;
+            compare(shell.iconView.freePositions[uri], undefined);
+
+            // Drag the tile 80×60 from its grid slot. It follows the pointer
+            // semi-transparently, then keeps the free position after release.
+            mousePress(tile, 10, 10);
+            mouseMove(tile, 90, 70);
+            verify(tile.dragging);
+            verify(tile.opacity < 1, "a free-placed drag is semi-transparent");
+            mouseRelease(tile, 90, 70);
+            waitForRendering(stage);
+            verify(!tile.dragging);
+            var position = shell.iconView.freePositions[uri];
+            verify(position !== undefined);
+            fuzzyCompare(position.x, 80, 0.01);
+            fuzzyCompare(position.y, 60, 0.01);
+            verify(tile.freeOffset !== null,
+                   "the delegate keeps the committed free offset");
+
+            // Clean Up is the one reflow rule: it drops every free offset and
+            // returns the tile to its grid slot.
+            shell.iconView.cleanUp();
+            compare(shell.iconView.freePositions[uri], undefined);
         }
 
         function test_context_menu_targets_the_pointer() {
@@ -1237,6 +1274,55 @@ Item {
             compare(surface.directory.uriAt(0), Files.viewFixtureUri + "/Folder");
         }
 
+        function test_desktop_labels_follow_wallpaper_luma_and_skip_hover() {
+            var surface = makeDesktop();
+            compare(surface.iconView.desktopStyle, true);
+            compare(surface.iconView.hoverHighlight, false,
+                    "desktop items do not paint a hover highlight");
+
+            // Ordinary scenes use the menu bar's near-white pair; only a very
+            // bright wallpaper flips to black.
+            surface.backgroundLuma = 0.2;
+            compare(surface.iconView.desktopLabelColor,
+                    Theme.controls.menuBar.foregroundOnDark);
+            surface.backgroundLuma = 0.9;
+            compare(surface.iconView.desktopLabelColor,
+                    Theme.controls.menuBar.foregroundOnLight);
+            verify(surface.iconView.desktopLabelShadowColor.a > 0,
+                   "labels keep a subtle drop shadow for legibility");
+
+            // Selection is a translucent icon square plus a label pill, not a
+            // full-tile accent wash.
+            verify(surface.iconView.tileSelectionColor.a < 1);
+            verify(surface.iconView.tileSelectionColor !== Theme.color.accentMuted);
+        }
+
+        function test_desktop_icons_can_be_free_placed_and_cleaned_up() {
+            var surface = makeDesktop();
+            waitForRendering(stage);
+            var tile = surface.iconView.gridView.itemAtIndex(0);
+            verify(tile !== null);
+            var uri = tile.uri;
+
+            mousePress(tile, 10, 10);
+            mouseMove(tile, 90, 70);
+            verify(tile.dragging);
+            verify(tile.opacity < 1, "the dragged desktop item is semi-transparent");
+            mouseRelease(tile, 90, 70);
+            waitForRendering(stage);
+            var position = surface.iconView.freePositions[uri];
+            verify(position !== undefined);
+            fuzzyCompare(position.x, 80, 0.01);
+            fuzzyCompare(position.y, 60, 0.01);
+
+            surface.openBackgroundMenu(12, 12);
+            var actions = surface.contextMenu.model.map(function(e) { return e.action; });
+            verify(actions.indexOf("cleanUp") >= 0);
+            surface.contextMenu.hide();
+            surface.contextAction("cleanUp");
+            compare(surface.iconView.freePositions[uri], undefined);
+        }
+
         function test_desktop_selection_command_shift_and_marquee() {
             var surface = makeDesktop();
             var ids = surface.directory.allNodeIds();
@@ -1259,6 +1345,8 @@ Item {
             mousePress(surface.iconView, 5, 5);
             mouseMove(surface.iconView, 300, 300);
             verify(surface.iconView.bandActive);
+            verify(surface.selectedIds.length >= 2,
+                   "the desktop band highlights tiles before release");
             mouseRelease(surface.iconView, 300, 300);
             waitForRendering(stage);
             verify(surface.selectedIds.length >= 2);

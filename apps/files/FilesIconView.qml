@@ -20,6 +20,23 @@ FocusScope {
     // The node currently being renamed inline, or 0.
     property real renamingId: 0
 
+    // Desktop presentation. The desktop labels sit directly on the wallpaper,
+    // so they use the menu bar's sampled luminance and its light/dark pair
+    // instead of the app's scheme text colour. Files windows keep the normal
+    // scheme label and the hover wash.
+    property bool desktopStyle: false
+    // The wallpaper luma behind the view (0..1), from the same sampled source
+    // the menu bar uses. Desktop labels are near-white until this crosses the
+    // menu bar's flip threshold, where they become black.
+    property real backgroundLuma: 0.5
+    property bool hoverHighlight: true
+    // Free placement: the grid remains the base layout, but a tile can be
+    // dragged away from its cell. The offset is remembered per URI for the
+    // life of the view; `cleanUp()` returns every tile to its grid slot.
+    property bool freePlacement: true
+    property var freePositions: ({})
+    readonly property int dragThreshold: Math.max(2, Theme.primitive.spacing.xs)
+
     signal selected(real nodeId, int modifiers)
     signal activated(string uri, bool isDir)
     signal contextRequested(real nodeId, string uri, bool isDir, real x, real y)
@@ -29,11 +46,27 @@ FocusScope {
     // Rubber-band selection (T-19.3): the node ids enclosed by the marquee,
     // with the live modifier state so the shell can toggle (Cmd) or extend
     // (Shift) instead of replacing.
+    signal marqueeStarted(int modifiers)
+    signal marqueeUpdated(var nodeIds, int modifiers)
     signal marqueeSelected(var nodeIds, int modifiers)
 
     readonly property int tileIconSize: 48
     readonly property int cellWidth: 116
     readonly property int cellHeight: 104
+    // Wallpaper labels follow the menu bar's measured polarity: almost white
+    // on ordinary scenes, black only on very bright wallpaper, with a slight
+    // opposite-tone drop shadow so the glyphs stay legible on busy images.
+    readonly property bool desktopLabelDark:
+        root.backgroundLuma >= Theme.controls.menuBar.foregroundFlipThresholdLight
+    readonly property color desktopLabelColor:
+        root.desktopLabelDark ? Theme.controls.menuBar.foregroundOnLight
+                              : Theme.controls.menuBar.foregroundOnDark
+    readonly property color desktopLabelShadowColor:
+        root.desktopLabelDark ? Qt.rgba(1, 1, 1, 0.70)
+                              : Qt.rgba(0, 0, 0, 0.70)
+    readonly property color tileSelectionColor:
+        Qt.rgba(Theme.color.selection.r, Theme.color.selection.g,
+                Theme.color.selection.b, 0.32)
     // The virtualizing view, exposed for the windowed-rendering check (T-10.5).
     property alias gridView: grid
     // The live marquee rectangle, exposed so tests can assert the drag-selection
@@ -50,6 +83,28 @@ FocusScope {
 
     function isSelected(nodeId) {
         return root.selectedIds.indexOf(nodeId) >= 0;
+    }
+
+    function freeOffsetFor(uri) {
+        return root.freePositions[uri] || null;
+    }
+
+    function setFreeOffset(uri, x, y) {
+        var next = {};
+        for (var key in root.freePositions)
+            next[key] = root.freePositions[key];
+        if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5)
+            delete next[uri];
+        else
+            next[uri] = { x: x, y: y };
+        root.freePositions = next;
+    }
+
+    // Finder's Clean Up: keep the current order but return every free-placed
+    // tile to the grid. It is deliberately the only reflow rule: users can
+    // otherwise put icons wherever they like, including overlapping.
+    function cleanUp() {
+        root.freePositions = ({});
     }
 
     // The tile node ids whose delegate rectangle intersects `rect` (view
@@ -140,11 +195,19 @@ FocusScope {
                         && Math.abs(mouse.y - root.bandStartY) < threshold)
                     return;
                 root.bandActive = true;
+                // Capture the pre-drag selection so live Cmd/Shift updates
+                // toggle/extend from a stable base instead of flipping the
+                // same tile on every pointer move.
+                root.marqueeStarted(mouse.modifiers);
             }
             root.bandRect = Qt.rect(Math.min(root.bandStartX, mouse.x),
                                     Math.min(root.bandStartY, mouse.y),
                                     Math.abs(mouse.x - root.bandStartX),
                                     Math.abs(mouse.y - root.bandStartY));
+            // Live selection: the shell highlights every enclosed tile while
+            // the button is still held, not only after release.
+            root.marqueeUpdated(root.enclosedIds(root.bandRect),
+                                mouse.modifiers);
         }
         onReleased: (mouse) => {
             if (mouse.button === Qt.LeftButton && root.bandActive) {
@@ -210,16 +273,33 @@ FocusScope {
 
             readonly property bool isSelected: root.isSelected(tile.nodeId)
             readonly property bool isRenaming: root.renamingId === tile.nodeId
+            readonly property var freeOffset: root.freeOffsetFor(tile.uri)
+            property real dragOffsetX: 0
+            property real dragOffsetY: 0
+            property bool dragging: false
+            property bool suppressClick: false
 
+            // Free placement translates the tile from its grid slot. The
+            // transform (not x/y) keeps GridView's layout ownership intact.
+            transform: Translate {
+                x: (tile.freeOffset ? tile.freeOffset.x : 0) + tile.dragOffsetX
+                y: (tile.freeOffset ? tile.freeOffset.y : 0) + tile.dragOffsetY
+            }
+            // A dragged item is a floating, semi-transparent copy, like Finder.
+            opacity: tile.dragging ? 0.72 : 1.0
+            z: tile.dragging ? 100 : (tile.isSelected ? 1 : 0)
+
+            // The icon's own translucent selection square. The label gets a
+            // separate pill below; the full tile is never washed in accent.
             Rectangle {
-                anchors.centerIn: parent
-                width: Math.min(parent.width - Theme.primitive.spacing.sm,
-                                root.cellWidth - Theme.primitive.spacing.sm)
-                height: parent.height - Theme.primitive.spacing.sm
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: Theme.primitive.spacing.lg - Theme.primitive.spacing.sm
+                width: root.tileIconSize + 2 * Theme.primitive.spacing.sm
+                height: root.tileIconSize + 2 * Theme.primitive.spacing.sm
                 radius: Theme.primitive.radius.md
-                color: tile.isSelected ? Theme.color.accentMuted
-                                       : (hover.hovered ? Theme.color.controlHover
-                                                        : "transparent")
+                color: tile.isSelected ? root.tileSelectionColor
+                                       : (root.hoverHighlight && hover.hovered
+                                          ? Theme.color.controlHover : "transparent")
             }
 
             Icon {
@@ -227,8 +307,7 @@ FocusScope {
                 y: Theme.primitive.spacing.lg
                 name: tile.icon
                 size: root.tileIconSize
-                color: tile.isSelected ? Theme.color.accent
-                                       : Theme.color.textPrimary
+                color: Theme.color.textPrimary
                 // Keep the kind glyph visible until the async preview is
                 // ready, and permanently when the file has no thumbnail.
                 visible: tile.thumbnail.length === 0
@@ -253,7 +332,40 @@ FocusScope {
                 fillMode: Image.PreserveAspectFit
             }
 
+            // The selected label's highlight hugs the text, macOS-style.
+            Rectangle {
+                id: labelPill
+                visible: tile.isSelected && !tile.isRenaming
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: labelText.y - Theme.primitive.spacing.xs
+                width: Math.min(parent.width - Theme.primitive.spacing.sm,
+                                labelText.contentWidth + 2 * Theme.primitive.spacing.sm)
+                height: labelText.contentHeight + 2 * Theme.primitive.spacing.xs
+                radius: Theme.primitive.radius.xs
+                color: Theme.color.selection
+            }
+
+            // Desktop labels get a slight opposite-tone drop shadow so they
+            // stay legible on photographic wallpaper without a plate.
             Text {
+                id: labelShadow
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: root.tileIconSize + Theme.primitive.spacing.lg
+                                              + Theme.primitive.spacing.sm + 1
+                width: parent.width - Theme.primitive.spacing.md
+                visible: root.desktopStyle && !tile.isSelected && !tile.isRenaming
+                text: tile.name
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                color: root.desktopLabelShadowColor
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            Text {
+                id: labelText
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
                 anchors.topMargin: root.tileIconSize + Theme.primitive.spacing.lg
@@ -265,7 +377,10 @@ FocusScope {
                 wrapMode: Text.Wrap
                 maximumLineCount: 2
                 elide: Text.ElideRight
-                color: tile.isSelected ? Theme.color.accent : Theme.color.textPrimary
+                color: tile.isSelected
+                       ? Theme.color.textPrimary
+                       : (root.desktopStyle ? root.desktopLabelColor
+                                            : Theme.color.textPrimary)
                 font.pixelSize: Theme.primitive.font.sizeSm
             }
 
@@ -318,9 +433,57 @@ FocusScope {
             }
 
             MouseArea {
+                id: tileMouse
                 anchors.fill: parent
                 enabled: !tile.isRenaming
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                property real pressX: 0
+                property real pressY: 0
+
+                onPressed: (mouse) => {
+                    if (mouse.button === Qt.LeftButton) {
+                        tileMouse.pressX = mouse.x;
+                        tileMouse.pressY = mouse.y;
+                        tile.dragOffsetX = 0;
+                        tile.dragOffsetY = 0;
+                        tile.dragging = false;
+                        tile.suppressClick = false;
+                        // Finder selects on press, so a drag carries the
+                        // selection with it.
+                        root.selected(tile.nodeId, mouse.modifiers);
+                    }
+                }
+                onPositionChanged: (mouse) => {
+                    if (!root.freePlacement || !pressed
+                            || !(mouse.buttons & Qt.LeftButton))
+                        return;
+                    if (!tile.dragging) {
+                        if (Math.abs(mouse.x - tileMouse.pressX) < root.dragThreshold
+                                && Math.abs(mouse.y - tileMouse.pressY) < root.dragThreshold)
+                            return;
+                        tile.dragging = true;
+                    }
+                    tile.dragOffsetX = mouse.x - tileMouse.pressX;
+                    tile.dragOffsetY = mouse.y - tileMouse.pressY;
+                }
+                onReleased: (mouse) => {
+                    if (mouse.button !== Qt.LeftButton || !tile.dragging)
+                        return;
+                    var base = tile.freeOffset;
+                    root.setFreeOffset(tile.uri,
+                                       (base ? base.x : 0) + tile.dragOffsetX,
+                                       (base ? base.y : 0) + tile.dragOffsetY);
+                    tile.dragging = false;
+                    tile.dragOffsetX = 0;
+                    tile.dragOffsetY = 0;
+                    tile.suppressClick = true;
+                }
+                onCanceled: {
+                    tile.dragging = false;
+                    tile.dragOffsetX = 0;
+                    tile.dragOffsetY = 0;
+                }
                 onDoubleClicked: root.activated(tile.uri, tile.isDir)
                 onClicked: (mouse) => {
                     if (mouse.button === Qt.RightButton) {
@@ -331,8 +494,9 @@ FocusScope {
                         var p = root.mapFromItem(tile, mouse.x, mouse.y);
                         root.contextRequested(tile.nodeId, tile.uri, tile.isDir,
                                               p.x, p.y);
-                    } else {
-                        root.selected(tile.nodeId, mouse.modifiers);
+                    } else if (tile.suppressClick) {
+                        // A completed free-placement drag is not a click.
+                        tile.suppressClick = false;
                     }
                 }
             }

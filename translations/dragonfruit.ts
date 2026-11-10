@@ -420,6 +420,18 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Applications options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close Applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Creativity</source>
         <translation type="unfinished"></translation>
     </message>
@@ -445,6 +457,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Productivity &amp; Finance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refresh Applications</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2391,6 +2407,10 @@ Open source system software</source>
 <context>
     <name>DesktopSurface</name>
     <message>
+        <source>Clean Up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Desktop</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3189,6 +3209,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Choosing a default application is not implemented.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clean Up</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

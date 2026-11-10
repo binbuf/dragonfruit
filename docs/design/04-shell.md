@@ -39,9 +39,10 @@ local-only macOS screenshots that never ship.
 > [v0.2.0/ROADMAP.md](../v0.2.0/ROADMAP.md). This document remains the
 > component-level design; the new document adds the completeness bar.
 
-**Known presentation limits (2026-11).** The shell forces
-`QT_QPA_PLATFORM=offscreen` and owns the chrome transport itself. Since
-T-21.1c every chrome surface renders through one `ChromeFrameProducer`
+**Known presentation limits (2026-11).** The shell owns the chrome transport
+itself. It selects a QPA only for the Qt-side GL context: `wayland` when the
+GPU rail is requested and a host Wayland display exists, otherwise `offscreen`.
+Since T-21.1c every chrome surface renders through one `ChromeFrameProducer`
 (`QQuickRenderControl` into a ping-pong `QImage` pair, one render per requested
 frame) and commits through a per-surface three-buffer `wl_shm` pool. A commit
 copies the source rectangle once, damages only the changed pixel bounding box,
@@ -663,12 +664,15 @@ and attention bounce phases are pushed as an `entry id -> { phase, attention }`
 map (`bouncePhases`) every committed frame; the Repeater model is never
 reassigned for a bounce, so delegates are not recreated and hover/press state
 survives. The 16 ms tick only advances the map and stops the moment both
-clocks are empty, so the settled Dock contributes zero wakeups. Opening a
-menu/chooser/stack never resizes the offscreen window: the shell pre-sizes the
-buffer to a fixed `popoverHeadroom`/`popoverGutter` budget and `Dock.qml`
-clamps every popover into it. `dock.size`/overflow changes and the drag-gap
-close ease with the non-overshooting `motion.dockMagnify` token (reduced
-motion is duration 0); the
+clocks are empty, so the settled Dock contributes zero wakeups. While a
+menu/chooser/stack is open, the shell pre-sizes the buffer to a fixed
+`popoverHeadroom`/`popoverGutter` budget and `Dock.qml` clamps every popover
+into it. Opening and closing the popover currently changes the scene height
+between the resting and headroom sizes; [the chrome stability
+proposal](proposals/chrome-stability-and-performance.md) S2 removes that
+transition by keeping the full budget allocated for the life of the output.
+`dock.size`/overflow changes and the drag-gap close ease with the
+non-overshooting `motion.dockMagnify` token (reduced motion is duration 0); the
 first configure snaps and magnification stays progress-based. The T-14.7c
 trace lives at `docs/captures/t14-dock-motion-trace.txt`. See
 [ADR 0100](adr/0100-dock-motion-phase-map-and-popover-buffer.md) and the
@@ -878,16 +882,20 @@ rather than a dead click. See T-14.7g.
 The **Applications drawer** (T-19.2) is the shell's primary "start an app"
 affordance, the macOS Launchpad analogue. It is a full-output `overlay` layer
 surface (namespace `apps-drawer`, keyboard on demand) fed by the app-index
-corpus: every launchable app, alphabetical by default, with a design-system
-`SearchField` as the card's top section (placeholder "Applications") and a
-category pill row (`SegmentedControl`, default `All`), and a fixed-size tile
-grid whose column count is capped at seven (the reference width) and whose
-viewport is capped at five rows; it drops to fewer columns on a narrower output
-and scrolls when the corpus is longer. The centered card is a ~90%-opaque
-frosted panel: its top section is a flat (background-less) search bar framed by
-hairline rules over the pill row and the grid, with 50px
-(`component.appsDrawer.panelPadding`) side padding and 32px
-(`panelPaddingVertical`) top/bottom padding, clamped to the output. The list is
+corpus: every launchable app, alphabetical by default, with the measured
+Spotlight Apps top row (a 34 pt Back button, a 58 pt rounded `SearchField`
+with placeholder "Applications", and a 34 pt More button), a row of 26 pt
+translucent category capsule chips (default `All`), and the measured
+115×92 pt tile grid (77 pt icon, 18 pt label, 115 pt column pitch, 102 pt row
+pitch). The column count is capped at seven (the reference width) and the
+viewport at five rows; it drops to fewer columns on a narrower output and
+scrolls when the corpus is longer. The centered card is a translucent frosted
+plate (0.72 alpha on the sampled path, a 0.86 milky plate on fallback) with a
+28 pt radius, a soft floating shadow and a subtle light falloff, using 20px
+(`component.appsDrawer.panelPadding`) side padding and 20px
+(`panelPaddingVertical`) top/bottom padding, clamped to the output. Vertical
+wheel input scrolls the grid from anywhere over the card, including the search
+and chip rows; horizontal wheel input scrolls the chips. The list is
 built by the pure `buildAppsDrawerList` helper (`shell/src/appsdrawer.{h,cpp}`),
 which drops `noDisplay`/non-launchable records, dedupes by desktop id, maps the
 freedesktop `Categories` list to the pill set, sorts by localized name with an

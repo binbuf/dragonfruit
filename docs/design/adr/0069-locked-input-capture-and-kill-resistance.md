@@ -32,12 +32,16 @@ request a lock and then `unlock_and_destroy` the real one (the T-81 TODO).
   the requesting client against the T-07 launch-token trust model and drops the
   `SessionLocker` (sending `finished`, creating no lock) for anyone else. An
   untrusted client can neither install a fake lock UI nor release the real one.
-- **The shell reads captured keys without an xkb client.** The lock surface's
-  `wl_keyboard` events are routed to `lockKeyEvent`; `ShellController` fills a
-  private `QString` password buffer and exposes only its length to the lock
-  scene, which draws bullets. The mapping is a fixed US/ASCII evdev table
-  (`shell/src/lockinput.cpp`); layout-accurate input would need an xkb state and
-  is deferred.
+- **The shell translates captured keys with the compositor keymap.** The lock
+  surface's `wl_keyboard` events are routed to `lockKeyEvent`; `ShellController`
+  fills a private `QString` password buffer and exposes only its length to the
+  lock scene, which draws bullets. `ShellProtocol` keeps the
+  `wl_keyboard.keymap` fd, feeds `wl_keyboard.modifiers` into an xkb state, and
+  passes the current-layout text to the controller, so Shift, Caps Lock, AltGr,
+  non-US layouts, and the numeric keypad all type correctly. A fixed US/ASCII
+  table (`shell/src/lockinput.cpp`) remains only as the fallback for the brief
+  window before the keymap arrives (and for the chrome scenes, which do not use
+  the password path).
 
 ## Consequences
 
