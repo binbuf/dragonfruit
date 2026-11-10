@@ -1545,6 +1545,21 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onVpnSettingsRequested()));
     connect(controlCenterObject, SIGNAL(quickSettingsSettingsRequested()), this,
             SLOT(onQuickSettingsSettingsRequested()));
+    // T235: the Edit Controls catalogue, the one customization write path,
+    // and the screenshot/ScreenCast module actions.
+    connect(controlCenterObject, SIGNAL(editControlsRequested()), this,
+            SLOT(onControlCenterEditOpened()));
+    connect(controlCenterObject, SIGNAL(editControlsClosed()), this,
+            SLOT(onControlCenterEditClosed()));
+    connect(controlCenterObject,
+            SIGNAL(quickSettingsWriteRequested(QString,QVariant)), this,
+            SLOT(onControlCenterWriteRequested(QString,QVariant)));
+    connect(controlCenterObject, SIGNAL(screenshotRequested()), this,
+            SLOT(onControlCenterScreenshotRequested()));
+    connect(controlCenterObject, SIGNAL(screencastRequested()), this,
+            SLOT(onControlCenterScreencastRequested()));
+    connect(controlCenterObject, SIGNAL(focusModeSetRequested(QString)), this,
+            SLOT(onFocusModeSetRequested(QString)));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -2067,16 +2082,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         auto applyExpansion = [this, fixture]() {
             if (!m_controlCenterItem)
                 return;
-            // T203 capture seam: `wifi`/`bluetooth` open one expanded list and
-            // `expanded` opens both. The QML owns the visible state; the shell
-            // only seeds it once the panel exists.
-            m_controlCenterItem->setProperty(
-                "wifiExpanded",
-                fixture == QLatin1String("wifi") || fixture == QLatin1String("expanded"));
-            m_controlCenterItem->setProperty(
-                "bluetoothExpanded",
-                fixture == QLatin1String("bluetooth")
-                    || fixture == QLatin1String("expanded"));
+            // T203/T235 capture seam: the measured panel expands one module
+            // at a time. `wifi`/`bluetooth` select that sheet; the legacy
+            // `expanded` label selects the Wi-Fi sheet. The QML owns the
+            // visible state; the shell only seeds it once the panel exists.
+            if (fixture == QLatin1String("bluetooth"))
+                m_controlCenterItem->setProperty("expandedId", "bluetooth");
+            else if (fixture == QLatin1String("wifi")
+                     || fixture == QLatin1String("expanded"))
+                m_controlCenterItem->setProperty("expandedId", "wifi");
         };
         auto open = [this, applyExpansion]() {
             if (!m_controlCenterOpen)
@@ -3834,6 +3848,14 @@ void ShellController::hideControlCenter()
 {
     m_controlCenterOpen = false;
     m_controlCenterPending = false;
+    // A click-away or Escape while Edit Controls is open must not leave the
+    // next open in the 736x900 catalogue mode.
+    if (m_controlCenterEditMode) {
+        m_controlCenterEditMode = false;
+        m_controlCenterWidth = kControlCenterWidth;
+        if (m_controlCenterItem)
+            m_controlCenterItem->setProperty("editMode", false);
+    }
     if (m_protocol) {
         m_protocol->setControlCenterInputRegion(0, 0);
         m_protocol->clearControlCenterPanelRegions();
@@ -3959,6 +3981,26 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty(
         "quickSettingsMenuBarOnly",
         settingsValues.value(QStringLiteral("quickSettings.menuBarOnly")));
+    // T235: the measured grid's pages, spans and per-display policy.
+    m_controlCenterItem->setProperty(
+        "quickSettingsPage2",
+        settingsValues.value(QStringLiteral("quickSettings.page2")));
+    m_controlCenterItem->setProperty(
+        "quickSettingsPage3",
+        settingsValues.value(QStringLiteral("quickSettings.page3")));
+    m_controlCenterItem->setProperty(
+        "quickSettingsPageCount",
+        settingsValues.value(QStringLiteral("quickSettings.pageCount"), 1));
+    m_controlCenterItem->setProperty(
+        "quickSettingsActivePage",
+        settingsValues.value(QStringLiteral("quickSettings.activePage"), 0));
+    m_controlCenterItem->setProperty(
+        "quickSettingsPerDisplay",
+        settingsValues.value(QStringLiteral("quickSettings.perDisplay"), false));
+    m_controlCenterItem->setProperty(
+        "quickSettingsSpans",
+        settingsValues.value(QStringLiteral("quickSettings.spans")));
+    m_controlCenterItem->setProperty("editMode", m_controlCenterEditMode);
     // The clipboard history list (T-13.5b); the panel gates it on
     // `clipboardAvailable`.
     m_controlCenterItem->setProperty("clipboardEntries",
@@ -3974,7 +4016,7 @@ void ShellController::applyControlCenterData()
 
 void ShellController::updateControlCenterGeometry()
 {
-    if (!m_protocol)
+    if (!m_protocol || m_controlCenterEditMode)
         return;
     const QSize output = m_protocol->outputLogicalSize();
     if (output.isEmpty())
@@ -3993,8 +4035,10 @@ void ShellController::onControlCenterConfigured(int width, int height, quint32)
     // own size follows. At 1.5x/2x the fixed 1164 px panel would run past the
     // bottom edge, so fit it below the menu bar and wait for the matching
     // configure (T-21.1b).
-    updateControlCenterGeometry();
-    if (width != kControlCenterWidth || height != m_controlCenterHeight)
+    if (!m_controlCenterEditMode)
+        updateControlCenterGeometry();
+    const int expectedWidth = m_controlCenterEditMode ? 736 : kControlCenterWidth;
+    if (width != expectedWidth || height != m_controlCenterHeight)
         return;
     m_controlCenterWidth = width;
     // The surface exists now; apply the panel-sized input region for a pending
@@ -4264,6 +4308,80 @@ void ShellController::onQuickSettingsSettingsRequested()
 {
     // T232: the Quick Settings panel footer lands on the customization pane.
     openSettingsDeepLink(QStringLiteral("settings://pane/control-center"));
+}
+
+void ShellController::onControlCenterEditOpened()
+{
+    if (!m_controlCenterItem)
+        return;
+    m_controlCenterEditMode = true;
+    m_controlCenterItem->setProperty("editMode", true);
+    const QSize output = m_protocol ? m_protocol->outputLogicalSize() : QSize();
+    const int available = output.height() > 0
+        ? output.height() - m_barHeight - kControlCenterTopGap : 900;
+    m_controlCenterWidth = 736;
+    m_controlCenterHeight = qMin(900, available > 0 ? available : 900);
+    if (m_protocol)
+        m_protocol->setControlCenterSize(m_controlCenterWidth, m_controlCenterHeight);
+    scheduleControlCenterRender();
+}
+
+void ShellController::onControlCenterEditClosed()
+{
+    if (!m_controlCenterItem)
+        return;
+    m_controlCenterEditMode = false;
+    m_controlCenterItem->setProperty("editMode", false);
+    m_controlCenterWidth = kControlCenterWidth;
+    const QSize output = m_protocol ? m_protocol->outputLogicalSize() : QSize();
+    const int available = output.height() > 0
+        ? output.height() - m_barHeight - kControlCenterTopGap : kControlCenterHeight;
+    m_controlCenterHeight = qMin(kControlCenterHeight, available);
+    if (m_protocol)
+        m_protocol->setControlCenterSize(m_controlCenterWidth, m_controlCenterHeight);
+    scheduleControlCenterRender();
+}
+
+void ShellController::onControlCenterWriteRequested(const QString &key,
+                                                    const QVariant &value)
+{
+    if (!m_settingsClient)
+        return;
+    QVariant coerced = value;
+    if (key == QLatin1String("quickSettings.modules")
+            || key == QLatin1String("quickSettings.menuBarOnly")
+            || key == QLatin1String("quickSettings.page2")
+            || key == QLatin1String("quickSettings.page3")
+            || key == QLatin1String("quickSettings.spans")) {
+        QStringList list;
+        const QVariantList values = value.toList();
+        for (const QVariant &entry : values)
+            list.append(entry.toString());
+        coerced = list;
+    }
+    if (!m_settingsClient->set(key, coerced)) {
+        fprintf(stderr, "dragonfruit-shell: Control Center rejected %s: %s\n",
+                qPrintable(key),
+                qPrintable(m_settingsClient->validate(key, coerced)));
+    }
+}
+
+void ShellController::onControlCenterScreenshotRequested()
+{
+    hideControlCenter();
+    showScreenshot();
+}
+
+void ShellController::onControlCenterScreencastRequested()
+{
+    hideControlCenter();
+    showScreenCast();
+}
+
+void ShellController::onFocusModeSetRequested(const QString &mode)
+{
+    if (m_notificationClient)
+        m_notificationClient->setFocusMode(mode);
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

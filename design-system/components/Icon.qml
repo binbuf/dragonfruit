@@ -120,7 +120,33 @@ Item {
         "drive-removable-media": "usb",
         "drive-harddisk": "server",
         "control-center": "adjustments-horizontal",
-        "mission-control": "layout-dashboard"
+        "mission-control": "layout-dashboard",
+        // T235 Control Center module vocabulary. Every target is a vendored
+        // Tabler outline; Apple-only modules still resolve to a readable mark
+        // and show their explicit absence in the module body.
+        "now-playing": "music",
+        "airdrop": "devices",
+        "stage-manager": "layout-grid",
+        "screen-mirroring": "device-desktop",
+        "capture-screen": "photo",
+        "airplay-audio": "volume",
+        "edit-controls": "adjustments-horizontal",
+        "clock": "refresh",
+        "shortcuts": "bolt",
+        "utilities": "settings",
+        "voice-memos": "music",
+        "notes": "file-text",
+        "screenshot": "photo",
+        "keyboard-brightness": "sun",
+        "fast-user-switching": "users",
+        "home-control": "home",
+        "hearing": "accessible",
+        "motor": "accessible",
+        "vision": "accessible",
+        "play": "arrow-up",
+        "pause": "minus",
+        "previous": "chevron-left",
+        "next": "chevron-right"
     })
 
     // The WhiteSur resource for the current legacy name, or "" when this is a

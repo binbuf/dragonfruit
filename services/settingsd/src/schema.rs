@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 24;
+pub const SCHEMA_VERSION: u32 = 25;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1966,10 +1966,9 @@ pub const KEYS: &[KeySpec] = &[
         group: KeyGroup::QuickSettings,
         kind: KeyType::TextList,
         default: KeyDefault::List(&[
-            "wifi", "bluetooth", "storage", "focus", "volume", "brightness",
-            "dark", "keyboard", "mission-control", "battery", "lock-screen",
-            "menu-bar", "software-update", "users", "printers", "privacy",
-            "accessibility", "vpn",
+            "wifi", "bluetooth", "now-playing", "airdrop", "stage-manager",
+            "screen-mirroring", "dark", "capture-screen", "focus",
+            "brightness", "volume", "airplay-audio", "edit-controls",
         ]),
         allowed: &[],
         min: None,
@@ -1991,6 +1990,85 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/control-center, shell/MenuBar",
         since: 21,
         summary: "Module ids that stay in the menu bar and are hidden from the Control Center panel.",
+    },
+    // ── T235: measured grid, pages and per-display policy ────────────────
+    KeySpec {
+        key: "quickSettings.page2",
+        group: KeyGroup::QuickSettings,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/control-center",
+        since: 25,
+        summary: "Ordered module ids on the second Control Center page.",
+    },
+    KeySpec {
+        key: "quickSettings.page3",
+        group: KeyGroup::QuickSettings,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/control-center",
+        since: 25,
+        summary: "Ordered module ids on the third Control Center page.",
+    },
+    KeySpec {
+        key: "quickSettings.pageCount",
+        group: KeyGroup::QuickSettings,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(1),
+        allowed: &[],
+        min: Some(1.0),
+        max: Some(3.0),
+        owner: "apps/settings",
+        consumer: "shell/control-center",
+        since: 25,
+        summary: "How many Control Center pages exist (1-3).",
+    },
+    KeySpec {
+        key: "quickSettings.activePage",
+        group: KeyGroup::QuickSettings,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(0),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(2.0),
+        owner: "apps/settings",
+        consumer: "shell/control-center",
+        since: 25,
+        summary: "The Control Center page shown when the panel opens.",
+    },
+    KeySpec {
+        key: "quickSettings.perDisplay",
+        group: KeyGroup::QuickSettings,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/control-center",
+        since: 25,
+        summary: "Show Control Center on every display instead of the active display only.",
+    },
+    KeySpec {
+        key: "quickSettings.spans",
+        group: KeyGroup::QuickSettings,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/control-center",
+        since: 25,
+        summary: "Per-module measured span overrides, encoded as id=1x1|2x1|2x2|4x1.",
     },
     // ── Search (T227) ────────────────────────────────────────────────────
     // Durable Spotlight-equivalent preferences. T246 owns the search service
@@ -3066,6 +3144,34 @@ mod tests {
             .unwrap()
             .validate(&Value::Text("23:59".into()))
             .is_ok());
+    }
+
+    /// The T235 measured-grid keys, additive in revision 25.
+    #[test]
+    fn the_t235_keys_are_declared_in_revision_twenty_five() {
+        for (key, kind, default) in [
+            ("quickSettings.page2", KeyType::TextList, KeyDefault::List(&[])),
+            ("quickSettings.page3", KeyType::TextList, KeyDefault::List(&[])),
+            ("quickSettings.pageCount", KeyType::Integer, KeyDefault::Integer(1)),
+            ("quickSettings.activePage", KeyType::Integer, KeyDefault::Integer(0)),
+            ("quickSettings.perDisplay", KeyType::Bool, KeyDefault::Bool(false)),
+            ("quickSettings.spans", KeyType::TextList, KeyDefault::List(&[])),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::QuickSettings, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.since, 25, "{key}");
+            assert!(spec.validate(&spec.default.to_value()).is_ok(), "{key}");
+        }
+        assert!(spec("quickSettings.pageCount")
+            .unwrap()
+            .validate(&Value::Integer(4))
+            .is_err());
+        assert!(spec("quickSettings.activePage")
+            .unwrap()
+            .validate(&Value::Integer(-1))
+            .is_err());
     }
 
     /// The T227 Appearance/Quick Settings/Search/Screen Saver/Desktop keys,

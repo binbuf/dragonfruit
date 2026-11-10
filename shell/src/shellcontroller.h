@@ -280,6 +280,15 @@ private slots:
     void onVpnSettingsRequested();
     // T232: the Quick Settings panel's footer link to the customization pane.
     void onQuickSettingsSettingsRequested();
+    // T235: Edit Controls is a 736x900 surface; customization writes go
+    // through the one settingsd client, and the module actions reuse the
+    // existing screenshot/ScreenCast owners.
+    void onControlCenterEditOpened();
+    void onControlCenterEditClosed();
+    void onControlCenterWriteRequested(const QString &key, const QVariant &value);
+    void onControlCenterScreenshotRequested();
+    void onControlCenterScreencastRequested();
+    void onFocusModeSetRequested(const QString &mode);
     // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
     // adapter; a known-device row connects/disconnects it; the Settings link is
     // an entry point only until T-16.
@@ -989,6 +998,7 @@ private:
     int m_controlCenterWidth = 0;
     int m_controlCenterHeight = 0;
     bool m_controlCenterOpen = false;
+    bool m_controlCenterEditMode = false;
     bool m_controlCenterPending = false;
     bool m_controlCenterRenderPending = false;
     Qt::MouseButtons m_controlCenterButtons = Qt::NoButton;

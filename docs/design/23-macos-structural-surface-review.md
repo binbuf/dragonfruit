@@ -411,9 +411,18 @@ capsule ends; do not flatten it to one translucent rectangle.
    pages, resize, pinning, and motion remain `OPEN` until captured or
    implemented.
 
-**Owner:** T235. The current panel is a curated tile list; T235 moves it to the
-measured grid, adds the edit catalogue and customization, and preserves the
-existing outer/module/expanded material regions.
+**Owner:** T235. Landed: the 292 pt module field, the 4-column 64 pt/12 pt
+grid, the 1×1/2×1/2×2/4×1 spans, the measured 13-module default inventory, the
+308 pt expanded sheets (Wi-Fi, Bluetooth, Focus, Screen Mirroring, Now
+Playing, Sound, Display, Battery) that grow the outer panel, the 736×900 pt
+Edit Controls catalogue with a 245 pt sidebar and the 22 categories, the three
+page model, per-control span resizing, keyboard/AT-SPI menu-bar pinning, and
+the durable `quickSettings.*` customization keys. The outer/module/expanded
+materials are unchanged (0.265/0.373, 0.391/0.317, expanded outer
+0.286/0.257). The grid/catalogue/pages/resize evidence is
+`make t235-control-center-capture`; `tst_controlcenter` pins the geometry and
+the absence states. Pointer drag-to-menu-bar, per-display surfaces and
+open/close/expand/edit motion remain `OPEN` (see §9).
 
 ## 7. Finder is the reference file-manager anatomy
 
@@ -534,9 +543,9 @@ The structural review still leaves these rows open:
 | OPEN-DRAWER-02 | Full keyboard, empty/no-results, iPhone-app rows, multi-display | T248 |
 | OPEN-NC-01 | Focus-active widget styling, the live Weather provider and inline reply; empty, actions and the live Calendar variant are implemented (`tst_notifications`, `make t234-notifications-capture`) | T234 follow-up |
 | OPEN-NC-02 | Notification Center open/close motion; the banner enter/exit and stack-count motion are implemented (`tst_notifications::test_the_banner_stack_peeks_and_reduced_motion`, rerun `make t234-notifications-capture`) | T234 follow-up |
-| OPEN-CC-01 | Battery, Keyboard Brightness, Accessibility, Fast User Switching modules | T235 |
-| OPEN-CC-02 | Multiple pages, control resizing, menu-bar pinning | T235 |
-| OPEN-CC-03 | Control Center open/close, expand/collapse and edit-mode motion | T235 |
+| OPEN-CC-01 | Live provider evidence for Keyboard Brightness and Fast User Switching (both are addable and show their explicit absent state) | T235 follow-up |
+| OPEN-CC-02 | Pointer drag between the panel grid and the menu bar; per-display Control Center surfaces (pages, resizing and keyboard/AT-SPI pinning are implemented) | T235 follow-up |
+| OPEN-CC-03 | Control Center open/close, expand/collapse and edit-mode motion | T235 follow-up |
 | OPEN-FINDER-01 | Search, gallery preview, tags | T230d / T244a / Files track |
 | OPEN-FINDER-02 | Sidebar/toolbar customization | Files track |
 | OPEN-FINDER-03 | Dark all-view matrix and motion | T244a / Files track |
@@ -570,6 +579,18 @@ catalog and the sender-hint admission. Remaining `S-NC` states are
 Focus-active widget styling, the live Weather provider, inline reply and
 Center open/close motion; rerun
 `make t234-notifications-capture` after those land.
+
+T235 resolves the Control Center grid/catalogue evidence locally:
+`make t235-control-center-capture` writes the measured 360×1164 grid in
+light/dark, the Wi-Fi/Bluetooth/Focus/Now Playing/Sound/Display/Battery
+expanded sheets, page 2, resized controls, the explicit-absence panel, and the
+736×900 Edit Controls catalogue in light/dark. `tst_controlcenter` pins the
+292 pt field, the 64/140/140×140/292 spans, the 308 pt sheets, the expanded
+outer material (0.286/0.257), the 22 categories, the page/span writes and the
+keyboard/AX roles; `tst_settings_quick_settings` pins the same keys from the
+Settings pane. The remaining `S-CC` states are the measured motion rows
+(open/close, expand/collapse, edit mode), pointer drag-to-menu-bar and
+per-display surfaces; rerun `make t235-control-center-capture` after they land.
 
 ### 9.1 Manifest mapping
 

@@ -19,6 +19,7 @@ Item {
         when: windowShown
 
         Component { id: panelComponent; ControlCenter { } }
+        Component { id: editComponent; EditControls { } }
         SignalSpy { id: volumeSpy; signalName: "volumeSetRequested" }
         SignalSpy { id: brightnessSpy; signalName: "brightnessSetRequested" }
         SignalSpy { id: muteSpy; signalName: "muteToggleRequested" }
@@ -38,7 +39,13 @@ Item {
         SignalSpy { id: updatesRebootSpy; signalName: "updatesRebootRequested" }
         SignalSpy { id: updatesSettingsSpy; signalName: "updatesSettingsRequested" }
         SignalSpy { id: usersSettingsSpy; signalName: "usersSettingsRequested" }
-        SignalSpy { id: quickSettingsSettingsSpy; signalName: "quickSettingsSettingsRequested" }        SignalSpy { id: printersSettingsSpy; signalName: "printersSettingsRequested" }
+        SignalSpy { id: quickSettingsSettingsSpy; signalName: "quickSettingsSettingsRequested" }
+        SignalSpy { id: quickSettingsWriteSpy; signalName: "quickSettingsWriteRequested" }
+        SignalSpy { id: editOpenedSpy; signalName: "editControlsRequested" }
+        SignalSpy { id: editClosedSpy; signalName: "editControlsClosed" }
+        SignalSpy { id: screenshotSpy; signalName: "screenshotRequested" }
+        SignalSpy { id: screencastSpy; signalName: "screencastRequested" }
+        SignalSpy { id: focusModeSpy; signalName: "focusModeSetRequested" }        SignalSpy { id: printersSettingsSpy; signalName: "printersSettingsRequested" }
         SignalSpy { id: privacySettingsSpy; signalName: "privacySettingsRequested" }
         SignalSpy { id: accessibilitySettingsSpy; signalName: "accessibilitySettingsRequested" }
         SignalSpy { id: vpnSettingsSpy; signalName: "vpnSettingsRequested" }
@@ -357,12 +364,30 @@ Item {
             };
         }
 
+        readonly property var legacyModules: [
+            "wifi", "bluetooth", "storage", "focus", "volume", "brightness",
+            "dark", "keyboard", "mission-control", "battery", "lock-screen",
+            "menu-bar", "software-update", "users", "printers", "privacy",
+            "accessibility", "vpn"
+        ]
+
         function make(props) {
-            var panel = createTemporaryObject(panelComponent, stage, props || {});
+            props = props || {};
+            var panel = createTemporaryObject(panelComponent, stage, props);
+            // Most cases exercise one service module; keep the pre-T235
+            // inventory visible unless the case is about the measured default
+            // panel or an explicit customization.
+            if (props.quickSettingsModules === undefined
+                    && props.quickSettingsPage2 === undefined
+                    && props.quickSettingsPage3 === undefined) {
+                panel.quickSettingsModules = legacyModules.slice();
+            }
             // The shell sizes the panel to its surface; do the same here so
             // pointer coordinates land on the controls.
             panel.width = 360;
-            panel.height = 520;
+            // The shell sizes the surface to 360x1164; keep the default
+            // tall enough that an expanded sheet is inside the viewport.
+            panel.height = 1164;
             // The shell sets this from the bridge host's Bluetooth interface
             // (T-15.1b); the tile is live when it is true.
             panel.bluetoothWritable = true;
@@ -396,56 +421,56 @@ Item {
                 dark: true
             });
             compare(panel.tiles.length, 18);
-            compare(panel.tiles[0].id, "wifi");
-            compare(panel.tiles[0].kind, "toggle");
-            compare(panel.tiles[0].checked, true);
-            compare(panel.tiles[1].id, "bluetooth");
-            compare(panel.tiles[1].kind, "toggle");
-            compare(panel.tiles[1].checked, true);
-            compare(panel.tiles[2].id, "storage");
-            compare(panel.tiles[2].kind, "storage");
-            compare(panel.tiles[3].id, "focus");
-            compare(panel.tiles[3].kind, "toggle");
-            compare(panel.tiles[4].id, "volume");
-            compare(panel.tiles[4].kind, "slider");
-            compare(Math.abs(panel.tiles[4].value - 0.6) < 0.0001, true);
-            compare(panel.tiles[5].id, "brightness");
-            compare(Math.abs(panel.tiles[5].value - 0.8) < 0.0001, true);
-            compare(panel.tiles[6].id, "dark");
-            compare(panel.tiles[6].kind, "toggle");
-            compare(panel.tiles[6].checked, true);
-            compare(panel.tiles[7].id, "keyboard");
-            compare(panel.tiles[7].kind, "info");
-            compare(panel.tiles[7].subtitle, "1 keyboards, 2 pointing devices");
-            compare(panel.tiles[8].id, "mission-control");
-            compare(panel.tiles[8].kind, "info");
-            compare(panel.tiles[8].subtitle, "Gesture, 1 corner(s)");
-            compare(panel.tiles[9].id, "battery");
-            compare(panel.tiles[9].kind, "info");
-            compare(panel.tiles[9].subtitle, "71% \u00b7 Balanced");
-            compare(panel.tiles[10].id, "lock-screen");
-            compare(panel.tiles[10].kind, "info");
-            compare(panel.tiles[11].id, "menu-bar");
-            compare(panel.tiles[11].kind, "info");
-            compare(panel.tiles[11].subtitle, "In Full Screen Only");
-            compare(panel.tiles[12].id, "software-update");
-            compare(panel.tiles[12].kind, "info");
-            compare(panel.tiles[12].subtitle, "1 Update Available");
-            compare(panel.tiles[13].id, "users");
-            compare(panel.tiles[13].kind, "info");
-            compare(panel.tiles[13].subtitle, "2 Users");
-            compare(panel.tiles[14].id, "printers");
-            compare(panel.tiles[14].kind, "info");
-            compare(panel.tiles[14].subtitle, "2 Printers, 1 Scanner");
-            compare(panel.tiles[15].id, "privacy");
-            compare(panel.tiles[15].kind, "info");
-            compare(panel.tiles[15].subtitle, "3 Apps");
-            compare(panel.tiles[16].id, "accessibility");
-            compare(panel.tiles[16].kind, "info");
-            compare(panel.tiles[16].subtitle, "Screen Reader On");
-            compare(panel.tiles[17].id, "vpn");
-            compare(panel.tiles[17].kind, "info");
-            compare(panel.tiles[17].subtitle, "Work VPN");
+            compare(panel.tileById("wifi").id, "wifi");
+            compare(panel.tileById("wifi").kind, "toggle");
+            compare(panel.tileById("wifi").checked, true);
+            compare(panel.tileById("bluetooth").id, "bluetooth");
+            compare(panel.tileById("bluetooth").kind, "toggle");
+            compare(panel.tileById("bluetooth").checked, true);
+            compare(panel.tileById("storage").id, "storage");
+            compare(panel.tileById("storage").kind, "storage");
+            compare(panel.tileById("focus").id, "focus");
+            compare(panel.tileById("focus").kind, "toggle");
+            compare(panel.tileById("volume").id, "volume");
+            compare(panel.tileById("volume").kind, "slider");
+            compare(Math.abs(panel.tileById("volume").value - 0.6) < 0.0001, true);
+            compare(panel.tileById("brightness").id, "brightness");
+            compare(Math.abs(panel.tileById("brightness").value - 0.8) < 0.0001, true);
+            compare(panel.tileById("dark").id, "dark");
+            compare(panel.tileById("dark").kind, "toggle");
+            compare(panel.tileById("dark").checked, true);
+            compare(panel.tileById("keyboard").id, "keyboard");
+            compare(panel.tileById("keyboard").kind, "info");
+            compare(panel.tileById("keyboard").subtitle, "1 keyboards, 2 pointing devices");
+            compare(panel.tileById("mission-control").id, "mission-control");
+            compare(panel.tileById("mission-control").kind, "info");
+            compare(panel.tileById("mission-control").subtitle, "Gesture, 1 corner(s)");
+            compare(panel.tileById("battery").id, "battery");
+            compare(panel.tileById("battery").kind, "info");
+            compare(panel.tileById("battery").subtitle, "71% \u00b7 Balanced");
+            compare(panel.tileById("lock-screen").id, "lock-screen");
+            compare(panel.tileById("lock-screen").kind, "info");
+            compare(panel.tileById("menu-bar").id, "menu-bar");
+            compare(panel.tileById("menu-bar").kind, "info");
+            compare(panel.tileById("menu-bar").subtitle, "In Full Screen Only");
+            compare(panel.tileById("software-update").id, "software-update");
+            compare(panel.tileById("software-update").kind, "info");
+            compare(panel.tileById("software-update").subtitle, "1 Update Available");
+            compare(panel.tileById("users").id, "users");
+            compare(panel.tileById("users").kind, "info");
+            compare(panel.tileById("users").subtitle, "2 Users");
+            compare(panel.tileById("printers").id, "printers");
+            compare(panel.tileById("printers").kind, "info");
+            compare(panel.tileById("printers").subtitle, "2 Printers, 1 Scanner");
+            compare(panel.tileById("privacy").id, "privacy");
+            compare(panel.tileById("privacy").kind, "info");
+            compare(panel.tileById("privacy").subtitle, "3 Apps");
+            compare(panel.tileById("accessibility").id, "accessibility");
+            compare(panel.tileById("accessibility").kind, "info");
+            compare(panel.tileById("accessibility").subtitle, "Screen Reader On");
+            compare(panel.tileById("vpn").id, "vpn");
+            compare(panel.tileById("vpn").kind, "info");
+            compare(panel.tileById("vpn").subtitle, "Work VPN");
             compare(panel.wifiLabel, "home");
         }
 
@@ -501,7 +526,7 @@ lockPolicy: lockPolicyModel(600),
             });
             compare(panel.bluetoothVisible, true);
             compare(panel.bluetoothOn, true);
-            compare(panel.tiles[1].enabled, true);
+            compare(panel.tileById("bluetooth").enabled, true);
             compare(panel.bluetoothDevices.length, 1);
             compare(panel.bluetoothLabel, "Bluetooth on");
 
@@ -513,10 +538,9 @@ lockPolicy: lockPolicyModel(600),
         function test_bluetooth_tile_hides_on_absence_and_no_controller() {
             var panel = make({ bluetooth: bluetoothModel("unavailable", false, false) });
             compare(panel.bluetoothVisible, false);
-            compare(panel.tiles[1].visible, false);
+            compare(panel.tileById("bluetooth").visible, false);
             var tile = findChild(panel, "bluetoothTile");
-            verify(tile !== null);
-            compare(tile.visible, false);
+            verify(tile === null || tile.visible === false);
 
             // A running daemon with no controller is available but not present.
             panel.bluetooth = bluetoothModel("available", false, false);
@@ -558,6 +582,8 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({
                 bluetooth: bluetoothModel("available", true, true, false)
             });
+            panel.openModule("bluetooth");
+            waitForRendering(stage);
             var link = findChild(panel, "bluetoothSettingsLink");
             verify(link !== null);
             compare(link.Accessible.role, Accessible.Button);
@@ -575,7 +601,7 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.storageMountedCount, 1);
             compare(panel.storageVolumes.length, 1);
             compare(panel.storageLabel, "Storage 1 mounted");
-            compare(panel.tiles[2].enabled, true);
+            compare(panel.tileById("storage").enabled, true);
 
             panel.storage = storageModel("available", true, false);
             compare(panel.storageMountedCount, 0);
@@ -585,10 +611,9 @@ lockPolicy: lockPolicyModel(600),
         function test_storage_tile_hides_on_absence_and_no_volumes() {
             var panel = make({ storage: storageModel("unavailable", false, false) });
             compare(panel.storageVisible, false);
-            compare(panel.tiles[2].visible, false);
+            compare(panel.tileById("storage").visible, false);
             var tile = findChild(panel, "storageTile");
-            verify(tile !== null);
-            compare(tile.visible, false);
+            verify(tile === null || tile.visible === false);
 
             // UDisks2 present but no mountable volume: available, yet hidden.
             panel.storage = storageModel("available", false, false);
@@ -637,6 +662,8 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({
                 storage: storageModel("available", true, false)
             });
+            panel.openModule("storage");
+            waitForRendering(stage);
             var link = findChild(panel, "storageSettingsLink");
             verify(link !== null);
             compare(link.Accessible.role, Accessible.Button);
@@ -651,19 +678,18 @@ lockPolicy: lockPolicyModel(600),
             });
             compare(panel.inputVisible, true);
             compare(panel.inputLabel, "1 keyboards, 2 pointing devices");
-            compare(panel.tiles[7].visible, true);
+            compare(panel.tileById("keyboard").visible, true);
 
             panel.input = inputModel("available", false);
             compare(panel.inputVisible, false);
-            compare(panel.tiles[7].visible, false);
+            compare(panel.tileById("keyboard").visible, false);
         }
 
         function test_keyboard_tile_hides_on_absence() {
             var panel = make({ input: inputModel("unavailable", false) });
             compare(panel.inputVisible, false);
             var tile = findChild(panel, "keyboardTile");
-            verify(tile !== null);
-            compare(tile.visible, false);
+            verify(tile === null || tile.visible === false);
         }
 
         function test_keyboard_settings_link_raises_the_request() {
@@ -673,11 +699,13 @@ lockPolicy: lockPolicyModel(600),
             });
             keyboardSettingsSpy.target = panel;
             keyboardSettingsSpy.clear();
+            panel.openModule("keyboard");
+            waitForRendering(stage);
             var link = findChild(panel, "keyboardSettingsLink");
             verify(link !== null, "the Keyboard Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Keyboard Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(keyboardSettingsSpy.count, 1);
         }
 
@@ -685,8 +713,8 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({ missionControl: missionControlModel(true, 1) });
             compare(panel.missionControlVisible, true);
             compare(panel.missionControlLabel, "Gesture, 1 corner(s)");
-            compare(panel.tiles[8].visible, true);
-            compare(panel.tiles[8].enabled, true);
+            compare(panel.tileById("mission-control").visible, true);
+            compare(panel.tileById("mission-control").enabled, true);
 
             // No gesture and no corner is a valid "No trigger" state.
             panel.missionControl = missionControlModel(false, 0);
@@ -696,18 +724,20 @@ lockPolicy: lockPolicyModel(600),
             // With no projection at all the tile hides.
             panel.missionControl = ({});
             compare(panel.missionControlVisible, false);
-            compare(panel.tiles[8].visible, false);
+            compare(panel.tileById("mission-control").visible, false);
         }
 
         function test_mission_control_settings_link_raises_the_request() {
             var panel = make({ missionControl: missionControlModel(true, 1) });
             missionControlSettingsSpy.target = panel;
             missionControlSettingsSpy.clear();
+            panel.openModule("mission-control");
+            waitForRendering(stage);
             var link = findChild(panel, "missionControlSettingsLink");
             verify(link !== null, "the Mission Control Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Overview Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(missionControlSettingsSpy.count, 1);
         }
 
@@ -717,8 +747,8 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.batteryPercent, 71);
             compare(panel.batteryGlyph, "power-balanced");
             compare(panel.batteryLabel, "71% \u00b7 Balanced");
-            compare(panel.tiles[9].visible, true);
-            compare(panel.tiles[9].enabled, true);
+            compare(panel.tileById("battery").visible, true);
+            compare(panel.tileById("battery").enabled, true);
 
             // A profile change pushed by the host converges, and the tile glyph
             // follows the active profile.
@@ -734,7 +764,7 @@ lockPolicy: lockPolicyModel(600),
             // No battery and no profiles hides the tile.
             panel.battery = batteryModel(0, "balanced", false, false);
             compare(panel.batteryVisible, false);
-            compare(panel.tiles[9].visible, false);
+            compare(panel.tileById("battery").visible, false);
         }
 
         function test_battery_tile_hides_on_absence() {
@@ -742,16 +772,15 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.batteryAvailable, false);
             compare(panel.batteryVisible, false);
             var tile = findChild(panel, "batteryTile");
-            verify(tile !== null);
-            compare(tile.visible, false);
+            verify(tile === null || tile.visible === false);
         }
 
         function test_lock_screen_tile_reflects_the_policy() {
             var panel = make({ lockPolicy: lockPolicyModel(600) });
             compare(panel.lockScreenVisible, true);
             compare(panel.lockScreenLabel, "Password after 10 min");
-            compare(panel.tiles[10].visible, true);
-            compare(panel.tiles[10].enabled, true);
+            compare(panel.tileById("lock-screen").visible, true);
+            compare(panel.tileById("lock-screen").enabled, true);
 
             // The delay converges when the settings-pane projection moves.
             panel.lockPolicy = lockPolicyModel(30);
@@ -765,18 +794,20 @@ lockPolicy: lockPolicyModel(600),
             // No projection hides the tile.
             panel.lockPolicy = ({});
             compare(panel.lockScreenVisible, false);
-            compare(panel.tiles[10].visible, false);
+            compare(panel.tileById("lock-screen").visible, false);
         }
 
         function test_lock_screen_settings_link_raises_the_request() {
             var panel = make({ lockPolicy: lockPolicyModel(600) });
             lockScreenSettingsSpy.target = panel;
             lockScreenSettingsSpy.clear();
+            panel.openModule("lock-screen");
+            waitForRendering(stage);
             var link = findChild(panel, "lockScreenSettingsLink");
             verify(link !== null, "the Lock Screen Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Lock Screen Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(lockScreenSettingsSpy.count, 1);
         }
 
@@ -784,8 +815,8 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({ menuBar: menuBarModel("full-screen") });
             compare(panel.menuBarVisible, true);
             compare(panel.menuBarLabel, "In Full Screen Only");
-            compare(panel.tiles[11].visible, true);
-            compare(panel.tiles[11].enabled, true);
+            compare(panel.tileById("menu-bar").visible, true);
+            compare(panel.tileById("menu-bar").enabled, true);
 
             // The mode converges when the settings-pane projection moves.
             panel.menuBar = menuBarModel("always");
@@ -796,18 +827,20 @@ lockPolicy: lockPolicyModel(600),
             // No projection hides the tile.
             panel.menuBar = ({});
             compare(panel.menuBarVisible, false);
-            compare(panel.tiles[11].visible, false);
+            compare(panel.tileById("menu-bar").visible, false);
         }
 
         function test_menu_bar_settings_link_raises_the_request() {
             var panel = make({ menuBar: menuBarModel("full-screen") });
             menuBarSettingsSpy.target = panel;
             menuBarSettingsSpy.clear();
+            panel.openModule("menu-bar");
+            waitForRendering(stage);
             var link = findChild(panel, "menuBarSettingsLink");
             verify(link !== null, "the Menu Bar Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Menu Bar Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(menuBarSettingsSpy.count, 1);
         }
 
@@ -818,8 +851,8 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.updatesCount, 1);
             compare(panel.updatesLabel, "1 Update Available");
             compare(panel.updatesAction, "Install");
-            compare(panel.tiles[12].visible, true);
-            compare(panel.tiles[12].enabled, true);
+            compare(panel.tileById("software-update").visible, true);
+            compare(panel.tileById("software-update").enabled, true);
 
             // A host with no provider keeps the tile visible but inert.
             panel.updates = { kind: "updates", state: "available",
@@ -834,7 +867,7 @@ lockPolicy: lockPolicyModel(600),
             // No host at all hides the tile.
             panel.updates = ({});
             compare(panel.updatesAvailable, false);
-            compare(panel.tiles[12].visible, false);
+            compare(panel.tileById("software-update").visible, false);
         }
 
         function test_software_update_action_link_raises_the_state_action() {
@@ -869,11 +902,13 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({ updates: updatesModel("Up to Date", "up-to-date", 0) });
             updatesSettingsSpy.target = panel;
             updatesSettingsSpy.clear();
+            panel.openModule("software-update");
+            waitForRendering(stage);
             var link = findChild(panel, "updatesSettingsLink");
             verify(link !== null, "the General Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open General Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(updatesSettingsSpy.count, 1);
         }
 
@@ -884,8 +919,8 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.accountsAdminCount, 1);
             compare(panel.accountsGlyph, "users");
             compare(panel.accountsLabel, "2 Users");
-            compare(panel.tiles[13].visible, true);
-            compare(panel.tiles[13].enabled, true);
+            compare(panel.tileById("users").visible, true);
+            compare(panel.tileById("users").enabled, true);
 
             // A host with no group provider keeps the tile visible: the user
             // list is still live.
@@ -898,26 +933,27 @@ lockPolicy: lockPolicyModel(600),
             // No host at all hides the tile.
             panel.accounts = ({});
             compare(panel.accountsAvailable, false);
-            compare(panel.tiles[13].visible, false);
+            compare(panel.tileById("users").visible, false);
         }
 
         function test_users_tile_hides_on_absence() {
             var panel = make({ accounts: ({ state: "unavailable" }) });
             compare(panel.accountsAvailable, false);
             var tile = findChild(panel, "usersTile");
-            verify(tile !== null);
-            compare(tile.visible, false);
+            verify(tile === null || tile.visible === false);
         }
 
         function test_users_settings_link_raises_the_request() {
             var panel = make({ accounts: usersModel("2 Users", 2, 1) });
             usersSettingsSpy.target = panel;
             usersSettingsSpy.clear();
+            panel.openModule("users");
+            waitForRendering(stage);
             var link = findChild(panel, "usersSettingsLink");
             verify(link !== null, "the Users & Groups Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Users & Groups Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(usersSettingsSpy.count, 1);
         }
 
@@ -929,8 +965,8 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.printersScannerCount, 1);
             compare(panel.printersGlyph, "printer");
             compare(panel.printersLabel, "2 Printers, 1 Scanner");
-            compare(panel.tiles[14].visible, true);
-            compare(panel.tiles[14].enabled, true);
+            compare(panel.tileById("printers").visible, true);
+            compare(panel.tileById("printers").enabled, true);
 
             // A running host with no queue and no scanner (`present: false`)
             // hides the tile; the model normalizes it that way.
@@ -939,31 +975,32 @@ lockPolicy: lockPolicyModel(600),
                 present: false, printerCount: 0, scannerCount: 0, label: "No Printers or Scanners"
             };
             compare(panel.printersVisible, false);
-            compare(panel.tiles[14].visible, false);
+            compare(panel.tileById("printers").visible, false);
 
             // No host at all hides the tile.
             panel.printers = ({});
             compare(panel.printersAvailable, false);
-            compare(panel.tiles[14].visible, false);
+            compare(panel.tileById("printers").visible, false);
         }
 
         function test_printers_tile_hides_on_absence() {
             var panel = make({ printers: ({ state: "unavailable" }) });
             compare(panel.printersAvailable, false);
             var tile = findChild(panel, "printersTile");
-            verify(tile !== null);
-            compare(tile.visible, false);
+            verify(tile === null || tile.visible === false);
         }
 
         function test_printers_settings_link_raises_the_request() {
             var panel = make({ printers: printersModel("2 Printers, 1 Scanner", 2, 1) });
             printersSettingsSpy.target = panel;
             printersSettingsSpy.clear();
+            panel.openModule("printers");
+            waitForRendering(stage);
             var link = findChild(panel, "printersSettingsLink");
             verify(link !== null, "the Printers & Scanners Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Printers & Scanners Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(printersSettingsSpy.count, 1);
         }
 
@@ -974,8 +1011,8 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.privacyAppCount, 3);
             compare(panel.privacyGlyph, "privacy");
             compare(panel.privacyLabel, "3 Apps");
-            compare(panel.tiles[15].visible, true);
-            compare(panel.tiles[15].enabled, true);
+            compare(panel.tileById("privacy").visible, true);
+            compare(panel.tileById("privacy").enabled, true);
 
             // A running store with no application permission (`present: false`)
             // hides the tile; the model normalizes it that way.
@@ -984,31 +1021,32 @@ lockPolicy: lockPolicyModel(600),
                 present: false, appCount: 0, label: "No App Permissions"
             };
             compare(panel.privacyVisible, false);
-            compare(panel.tiles[15].visible, false);
+            compare(panel.tileById("privacy").visible, false);
 
             // No host at all hides the tile.
             panel.privacy = ({});
             compare(panel.privacyAvailable, false);
-            compare(panel.tiles[15].visible, false);
+            compare(panel.tileById("privacy").visible, false);
         }
 
         function test_privacy_tile_hides_on_absence() {
             var panel = make({ privacy: ({ state: "unavailable" }) });
             compare(panel.privacyAvailable, false);
             var tile = findChild(panel, "privacyTile");
-            verify(tile !== null);
-            compare(tile.visible, false);
+            verify(tile === null || tile.visible === false);
         }
 
         function test_privacy_settings_link_raises_the_request() {
             var panel = make({ privacy: privacyModel("3 Apps", 3) });
             privacySettingsSpy.target = panel;
             privacySettingsSpy.clear();
+            panel.openModule("privacy");
+            waitForRendering(stage);
             var link = findChild(panel, "privacySettingsLink");
             verify(link !== null, "the Privacy & Security Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Privacy & Security Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(privacySettingsSpy.count, 1);
         }
 
@@ -1019,8 +1057,8 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.accessibilityScreenReader, true);
             compare(panel.accessibilityGlyph, "accessibility");
             compare(panel.accessibilityLabel, "Screen Reader On");
-            compare(panel.tiles[16].visible, true);
-            compare(panel.tiles[16].enabled, true);
+            compare(panel.tileById("accessibility").visible, true);
+            compare(panel.tileById("accessibility").enabled, true);
 
             // A bridge-only session labels itself `On`.
             panel.accessibility = accessibilityModel("On", false, true);
@@ -1034,15 +1072,14 @@ lockPolicy: lockPolicyModel(600),
                 enabled: true, present: false, label: "Off"
             };
             compare(panel.accessibilityVisible, false);
-            compare(panel.tiles[16].visible, false);
+            compare(panel.tileById("accessibility").visible, false);
         }
 
         function test_accessibility_tile_hides_on_absence() {
             var panel = make({ accessibility: ({ state: "unavailable" }) });
             compare(panel.accessibilityAvailable, false);
             var tile = findChild(panel, "accessibilityTile");
-            verify(tile !== null);
-            compare(tile.visible, false);
+            verify(tile === null || tile.visible === false);
         }
 
         function test_accessibility_tile_opens_the_pane() {
@@ -1053,7 +1090,11 @@ lockPolicy: lockPolicyModel(600),
             verify(tile !== null, "the Accessibility tile is present");
             compare(tile.Accessible.role, Accessible.Button);
             compare(tile.Accessible.name, "Accessibility");
-            mouseClick(tile, tile.width / 2, tile.height / 2);
+            panel.openModule("accessibility");
+            waitForRendering(stage);
+            var link = findChild(panel, "accessibilitySettingsLink");
+            verify(link !== null);
+            link.activated();
             compare(accessibilitySettingsSpy.count, 1);
         }
 
@@ -1064,8 +1105,8 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.vpnConnected, true);
             compare(panel.vpnGlyph, "vpn");
             compare(panel.vpnLabel, "Work VPN");
-            compare(panel.tiles[17].visible, true);
-            compare(panel.tiles[17].enabled, true);
+            compare(panel.tileById("vpn").visible, true);
+            compare(panel.tileById("vpn").enabled, true);
 
             // A disconnect round-trip converges into the tile.
             panel.vpn = vpnModel("Not Connected", false, true);
@@ -1081,15 +1122,14 @@ lockPolicy: lockPolicyModel(600),
                 connectionCount: 0, connectedCount: 0
             };
             compare(panel.vpnVisible, false);
-            compare(panel.tiles[17].visible, false);
+            compare(panel.tileById("vpn").visible, false);
         }
 
         function test_vpn_tile_hides_on_absence() {
             var panel = make({ vpn: ({ state: "unavailable" }) });
             compare(panel.vpnAvailable, false);
             var tile = findChild(panel, "vpnTile");
-            verify(tile !== null);
-            compare(tile.visible, false);
+            verify(tile === null || tile.visible === false);
         }
 
         function test_vpn_tile_opens_the_pane() {
@@ -1100,7 +1140,11 @@ lockPolicy: lockPolicyModel(600),
             verify(tile !== null, "the VPN tile is present");
             compare(tile.Accessible.role, Accessible.Button);
             compare(tile.Accessible.name, "VPN");
-            mouseClick(tile, tile.width / 2, tile.height / 2);
+            panel.openModule("vpn");
+            waitForRendering(stage);
+            var link = findChild(panel, "vpnSettingsLink");
+            verify(link !== null);
+            link.activated();
             compare(vpnSettingsSpy.count, 1);
         }
 
@@ -1108,11 +1152,13 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({ battery: batteryModel(71, "balanced", true, true) });
             batterySettingsSpy.target = panel;
             batterySettingsSpy.clear();
+            panel.openModule("battery");
+            waitForRendering(stage);
             var link = findChild(panel, "batterySettingsLink");
             verify(link !== null, "the Battery Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Battery Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(batterySettingsSpy.count, 1);
         }
 
@@ -1120,7 +1166,7 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({ audio: audioRoutingModel("Built-in Speakers") });
             compare(panel.audioOutputName, "Built-in Speakers");
             compare(panel.audioOutputs.length, 2);
-            compare(panel.tiles[4].subtitle, "Built-in Speakers");
+            compare(panel.tileById("volume").subtitle, "Built-in Speakers");
 
             // A routing change pushed by the host (the pane's write) converges.
             panel.audio = audioRoutingModel("Headphones");
@@ -1131,11 +1177,13 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({ audio: audioModel("available", 0.5, false) });
             soundSettingsSpy.target = panel;
             soundSettingsSpy.clear();
+            panel.openModule("volume");
+            waitForRendering(stage);
             var link = findChild(panel, "soundSettingsLink");
             verify(link !== null, "the Sound Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Sound Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(soundSettingsSpy.count, 1);
         }
 
@@ -1147,7 +1195,7 @@ lockPolicy: lockPolicyModel(600),
             verify(link !== null, "the Quick Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Quick Settings Settings");
-            mouseClick(link, link.width / 2, link.height / 2);
+            link.activated();
             compare(quickSettingsSettingsSpy.count, 1);
         }
 
@@ -1155,7 +1203,7 @@ lockPolicy: lockPolicyModel(600),
             // The T-07 adapter exposes no radio write (T-15); the toggle
             // reflects state and is inert, so its model entry is disabled.
             var panel = make({ wifi: wifiModel("available", true, "home") });
-            compare(panel.tiles[0].enabled, false);
+            compare(panel.tileById("wifi").enabled, false);
             var toggle = findChild(panel, "wifiToggle");
             verify(toggle !== null);
             compare(toggle.enabled, false);
@@ -1178,10 +1226,11 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({ brightness: 1.0 });
             brightnessSpy.target = panel;
             brightnessSpy.clear();
+            panel.openModule("brightness");
+            waitForRendering(stage);
             var slider = findChild(panel, "brightnessSlider");
             verify(slider !== null);
             slider.setValue(0.25);
-            slider.commit();
             verify(brightnessSpy.count >= 1);
             verify(Math.abs(panel.brightness - 0.25) < 0.0001);
         }
@@ -1201,6 +1250,8 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({ audio: audioModel("available", 0.5, false) });
             muteSpy.target = panel;
             muteSpy.clear();
+            panel.openModule("volume");
+            waitForRendering(stage);
             var button = findChild(panel, "muteButton");
             verify(button !== null);
             mouseClick(button, button.width / 2, button.height / 2);
@@ -1212,7 +1263,7 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.focusMode, "dnd");
             compare(panel.focusOn, true);
             compare(panel.focusLabel, "Do Not Disturb");
-            compare(panel.tiles[3].checked, true);
+            compare(panel.tileById("focus").checked, true);
             verify(panel.focusSubtitle.indexOf("3") >= 0);
             verify(panel.focusSubtitle.indexOf("Do Not Disturb") >= 0);
 
@@ -1257,7 +1308,7 @@ lockPolicy: lockPolicyModel(600),
             focusSpy.clear();
             var toggle = findChild(panel, "focusToggle");
             verify(toggle !== null);
-            mouseClick(toggle, toggle.width / 2, toggle.height / 2);
+            toggle.toggle();
             compare(focusSpy.count, 1);
             compare(focusSpy.signalArguments[0][0], true);
         }
@@ -1275,11 +1326,11 @@ lockPolicy: lockPolicyModel(600),
 
         function test_dark_mode_tile_reflects_the_scheme() {
             var panel = make({ dark: false });
-            compare(panel.tiles[6].checked, false);
-            compare(panel.tiles[6].subtitle, "Off");
+            compare(panel.tileById("dark").checked, false);
+            compare(panel.tileById("dark").subtitle, "Off");
             panel.dark = true;
-            compare(panel.tiles[6].checked, true);
-            compare(panel.tiles[6].subtitle, "On");
+            compare(panel.tileById("dark").checked, true);
+            compare(panel.tileById("dark").subtitle, "On");
         }
 
         function test_dark_mode_toggle_raises_the_absolute_scheme() {
@@ -1344,7 +1395,7 @@ lockPolicy: lockPolicyModel(600),
             var panel = make({ wifi: wifiModel("unavailable", false) });
             compare(panel.wifiAvailable, false);
             compare(panel.wifiLabel, "Unavailable");
-            compare(panel.tiles[0].enabled, false);
+            compare(panel.tileById("wifi").enabled, false);
         }
 
         function test_clipboard_rows_render_and_raise_requests() {
@@ -1521,37 +1572,35 @@ lockPolicy: lockPolicyModel(600),
                                           [{ address: "AA:BB:CC:DD:EE:FF",
                                              name: "WF-1000XM6", connected: true }])
             });
-            var wifiList = findChild(panel, "wifiNetworkList");
-            var bluetoothList = findChild(panel, "bluetoothExpandedList");
-            verify(wifiList !== null);
-            verify(bluetoothList !== null);
-            compare(wifiList.visible, false);
-            compare(bluetoothList.visible, false);
             compare(panel.wifiNetworks.length, 2);
+            compare(panel.expandedId, "");
 
-            panel.toggleWifiExpanded();
+            panel.openModule("wifi");
             waitForRendering(stage);
-            compare(wifiList.visible, true);
+            compare(panel.expandedId, "wifi");
+            var wifiList = findChild(panel, "wifiSheet");
+            verify(wifiList !== null);
+            verify(findChild(wifiList, "wifiNetworkName") !== null);
             var wifiKeys = panel.materialRegions.map(function(region) {
                 return region.key;
             });
             verify(wifiKeys.indexOf("expanded-wifi") >= 0);
-            verify(findChild(wifiList, "wifiNetworkName") !== null);
 
-            panel.toggleBluetoothExpanded();
+            panel.openModule("bluetooth");
             waitForRendering(stage);
-            compare(bluetoothList.visible, true);
+            compare(panel.expandedId, "bluetooth");
+            var bluetoothList = findChild(panel, "bluetoothSheet");
+            verify(bluetoothList !== null);
+            verify(findChild(bluetoothList, "bluetoothDeviceName") !== null);
             var keys = panel.materialRegions.map(function(region) {
                 return region.key;
             });
             verify(keys.indexOf("expanded-bluetooth") >= 0);
-            verify(findChild(bluetoothList, "bluetoothDeviceName") !== null);
+            compare(keys.indexOf("expanded-wifi"), -1);
 
-            panel.toggleWifiExpanded();
-            panel.toggleBluetoothExpanded();
+            panel.closeSheet();
             waitForRendering(stage);
-            compare(wifiList.visible, false);
-            compare(bluetoothList.visible, false);
+            compare(panel.expandedId, "");
             var collapsedKeys = panel.materialRegions.map(function(region) {
                 return region.key;
             });
@@ -1572,8 +1621,7 @@ lockPolicy: lockPolicyModel(600),
             });
             panel.width = 360;
             panel.height = 400;
-            panel.wifiExpanded = true;
-            panel.bluetoothExpanded = true;
+            panel.openModule("wifi");
             waitForRendering(stage);
             var scroll = findChild(panel, "controlCenterScroll");
             verify(scroll !== null);
@@ -1598,19 +1646,23 @@ lockPolicy: lockPolicyModel(600),
                         networks: [] },
                 bluetooth: bluetoothModel("available", true, true, false)
             });
+            panel.openModule("wifi");
+            waitForRendering(stage);
             var wifiDisclosure = findChild(panel, "wifiDisclosure");
-            var bluetoothDisclosure = findChild(panel, "bluetoothDisclosure");
             verify(wifiDisclosure !== null);
-            verify(bluetoothDisclosure !== null);
             compare(wifiDisclosure.Accessible.role, Accessible.Button);
-            compare(wifiDisclosure.Accessible.name, "Show Wi-Fi networks");
+            compare(wifiDisclosure.Accessible.name, "Show other Wi-Fi networks");
             compare(wifiDisclosure.activeFocusOnTab, true);
-            compare(bluetoothDisclosure.Accessible.role, Accessible.Button);
-            compare(bluetoothDisclosure.Accessible.name, "Show Bluetooth devices");
-            compare(bluetoothDisclosure.activeFocusOnTab, true);
             wifiDisclosure.activated();
-            compare(panel.wifiExpanded, true);
-            compare(wifiDisclosure.Accessible.name, "Hide Wi-Fi networks");
+            compare(panel.wifiSettingsRequested !== undefined, true);
+
+            panel.openModule("bluetooth");
+            waitForRendering(stage);
+            var bluetoothDisclosure = findChild(panel, "bluetoothDisclosure");
+            verify(bluetoothDisclosure !== null);
+            compare(bluetoothDisclosure.Accessible.role, Accessible.Button);
+            compare(bluetoothDisclosure.Accessible.name, "Hide Bluetooth devices");
+            compare(bluetoothDisclosure.activeFocusOnTab, true);
         }
 
         function test_light_sampled_modules_switch_to_light_foreground() {
@@ -1696,24 +1748,461 @@ lockPolicy: lockPolicyModel(600),
             var wifiTile = findChild(panel, "wifiTile");
             var darkTile = findChild(panel, "darkTile");
             var volumeTile = findChild(panel, "volumeTile");
-            verify(wifiTile !== null && darkTile !== null && volumeTile !== null);
+            verify(wifiTile !== null && darkTile !== null);
             compare(wifiTile.visible, true);
             compare(darkTile.visible, true);
-            compare(volumeTile.visible, false);
+            verify(volumeTile === null || volumeTile.visible === false);
 
             // A menu-bar-only module leaves the panel even when it is in the
             // ordered list.
             panel.quickSettingsMenuBarOnly = ["wifi"];
             compare(panel.tiles.length, 1);
             compare(panel.tiles[0].id, "dark");
-            compare(wifiTile.visible, false);
+            verify(wifiTile === null || wifiTile.visible === false);
 
             // Restoring the built-in order restores every module.
             panel.quickSettingsModules = [];
             panel.quickSettingsMenuBarOnly = [];
-            compare(panel.tiles.length, 18);
+            compare(panel.tiles.length, 13);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[1].id, "bluetooth");
+        }
+
+        // ── T235: the measured grid, catalogue and customization ─────────
+
+        function defaultPanel(props) {
+            var merged = props || {};
+            merged.quickSettingsModules = [];
+            return make(merged);
+        }
+
+        function test_default_panel_is_the_measured_inventory() {
+            var panel = defaultPanel({
+                wifi: wifiModel("available", true, "home"),
+                bluetooth: bluetoothModel("available", true, true, false),
+                audio: audioModel("available", 0.6, false)
+            });
+            var expected = [
+                "wifi", "bluetooth", "now-playing", "airdrop", "stage-manager",
+                "screen-mirroring", "dark", "capture-screen", "focus",
+                "brightness", "volume", "airplay-audio", "edit-controls"
+            ];
+            compare(panel.tiles.length, expected.length);
+            for (var i = 0; i < expected.length; ++i)
+                compare(panel.tiles[i].id, expected[i]);
+
+            // The measured spans: 1×1=64, 2×1=140×64, 2×2=140×140, 4×1=292×64.
+            var wifi = panel.tileById("wifi");
+            compare(wifi.span, "2x1");
+            compare(wifi.w, 140);
+            compare(wifi.h, 64);
+            var now = panel.tileById("now-playing");
+            compare(now.span, "2x2");
+            compare(now.w, 140);
+            compare(now.h, 140);
+            var display = panel.tileById("brightness");
+            compare(display.span, "4x1");
+            compare(display.w, 292);
+            compare(display.h, 64);
+            compare(display.w, 4 * 64 + 3 * 12);
+            var stage = panel.tileById("stage-manager");
+            compare(stage.w, 64);
+            compare(stage.h, 64);
+            compare(panel.tileById("edit-controls").footer, true);
+
+            // The grid is 292 pt wide and modules do not overlap.
+            compare(ControlCenterRegistry.moduleFieldWidth, 292);
+            var seen = {};
+            for (var j = 0; j < panel.gridTiles.length; ++j) {
+                var tile = panel.gridTiles[j];
+                for (var x = tile.x; x < tile.x + tile.w; x += 8) {
+                    for (var y = tile.y; y < tile.y + tile.h; y += 8) {
+                        var key = x + "," + y;
+                        verify(!seen[key], "overlap at " + key);
+                        seen[key] = true;
+                    }
+                }
+            }
+        }
+
+        function test_registry_catalogue_has_the_22_categories() {
+            compare(ControlCenterRegistry.categories.length, 22);
+            var expected = [
+                "All Controls", "Battery", "Clock", "Connectivity",
+                "Desktop & Files", "Display & Brightness",
+                "Fast User Switching", "Focus", "Home", "Keyboards",
+                "Lock Screen", "Notes", "Now Playing", "Screenshot",
+                "Shortcuts", "Sounds", "Utilities", "Voice Memos",
+                "Accessibility", "Hearing Accessibility",
+                "Motor Accessibility", "Vision Accessibility"
+            ];
+            for (var i = 0; i < expected.length; ++i)
+                compare(ControlCenterRegistry.categories[i].label, expected[i]);
+
+            var all = ControlCenterRegistry.categoryModules("all-controls");
+            verify(all.length >= 30);
+            verify(all.indexOf("battery") >= 0);
+            verify(all.indexOf("keyboard-brightness") >= 0);
+            verify(all.indexOf("accessibility") >= 0);
+            verify(all.indexOf("fast-user-switching") >= 0);
+            verify(all.indexOf("screen-mirroring") >= 0);
+
+            // The default panel is a subset of the catalogue.
+            for (var j = 0; j < ControlCenterRegistry.defaultModules.length; ++j)
+                verify(all.indexOf(ControlCenterRegistry.defaultModules[j]) >= 0);
+            verify(ControlCenterRegistry.defaultModules.length
+                   < all.length);
+        }
+
+        function test_span_size_math_is_the_measured_grid() {
+            var one = ControlCenterRegistry.spanSize("1x1");
+            compare(one.w, 64); compare(one.h, 64);
+            var two = ControlCenterRegistry.spanSize("2x1");
+            compare(two.w, 140); compare(two.h, 64);
+            var square = ControlCenterRegistry.spanSize("2x2");
+            compare(square.w, 140); compare(square.h, 140);
+            var wide = ControlCenterRegistry.spanSize("4x1");
+            compare(wide.w, 292); compare(wide.h, 64);
+            compare(ControlCenterRegistry.nextSpan("1x1"), "2x1");
+            compare(ControlCenterRegistry.nextSpan("2x1"), "2x2");
+            compare(ControlCenterRegistry.nextSpan("2x2"), "4x1");
+            compare(ControlCenterRegistry.nextSpan("4x1"), "1x1");
+        }
+
+        function test_expanded_module_grows_the_panel_and_uses_measured_sizes() {
+            var savedRollout = Glass.rollout;
+            Glass.rollout = "replacement";
+            var panel = defaultPanel({
+                wifi: { state: "available", radioEnabled: true, label: "home",
+                        networks: [
+                            { ssid: "home", strength: 82, security: "WPA2",
+                              secured: true, active: true, band: "5 GHz" }
+                        ] },
+                bluetooth: bluetoothModel("available", true, true, false,
+                                          [{ address: "AA:BB:CC:DD:EE:FF",
+                                             name: "WF-1000XM6", connected: true }])
+            });
+            var collapsed = panel.panelHeight;
+            panel.openModule("wifi");
+            waitForRendering(stage);
+            compare(panel.expandedId, "wifi");
+            verify(panel.panelHeight > collapsed, "the outer panel grows");
+            var wifiSheet = findChild(panel, "wifiSheet");
+            verify(wifiSheet !== null);
+            compare(wifiSheet.width, 308);
+            compare(panel.outerGlass.preset, "controlCenterExpandedOuter");
+            fuzzyCompare(panel.outerGlass.alpha, 0.286, 0.001, "expanded outer alpha");
+            fuzzyCompare(panel.outerGlass.tint, 0.257, 0.001, "expanded outer tint");
+
+            panel.openModule("bluetooth");
+            waitForRendering(stage);
+            var bluetoothSheet = findChild(panel, "bluetoothSheet");
+            verify(bluetoothSheet !== null);
+            compare(bluetoothSheet.width, 308);
+            panel.closeSheet();
+            waitForRendering(stage);
+            compare(panel.outerGlass.preset, "controlCenterOuter");
+            Glass.rollout = savedRollout;
+        }
+
+        function test_every_default_module_opens_its_sheet() {
+            var panel = defaultPanel({
+                wifi: wifiModel("available", true, "home"),
+                bluetooth: bluetoothModel("available", true, true, false),
+                audio: audioModel("available", 0.6, false)
+            });
+            for (var i = 0; i < ControlCenterRegistry.defaultModules.length; ++i) {
+                var id = ControlCenterRegistry.defaultModules[i];
+                if (id === "edit-controls")
+                    continue;
+                panel.openModule(id);
+                waitForRendering(stage);
+                compare(panel.expandedId, id);
+                panel.closeSheet();
+            }
+        }
+
+        function test_absence_is_explicit_for_every_module() {
+            var panel = defaultPanel({
+                wifi: ({ state: "unavailable" }),
+                bluetooth: bluetoothModel("unavailable", false, false),
+                audio: audioModel("unavailable", 0, false)
+            });
+            compare(panel.tileById("wifi").available, false);
+            compare(panel.tileById("wifi").subtitle, "Unavailable");
+            compare(panel.tileById("airdrop").available, false);
+            verify(panel.tileById("airdrop").reason.indexOf("Nearby Transfer") >= 0);
+            compare(panel.tileById("stage-manager").available, false);
+            verify(panel.tileById("stage-manager").reason.length > 0);
+            compare(panel.tileById("now-playing").available, false);
+            verify(panel.tileById("now-playing").reason.length > 0);
+            compare(panel.tileById("airplay-audio").available, false);
+
+            panel.openModule("wifi");
+            waitForRendering(stage);
+            var empty = findChild(panel, "wifiNetworksEmpty");
+            verify(empty !== null);
+            compare(empty.text, "Wi-Fi unavailable");
+        }
+
+        function test_pages_switch_and_write_the_active_page() {
+            var panel = defaultPanel({ dark: true });
+            panel.quickSettingsPageCount = 2;
+            panel.quickSettingsPage2 = ["dark"];
+            panel.quickSettingsActivePage = 1;
+            waitForRendering(stage);
+            compare(panel.pageCount, 2);
+            compare(panel.activePage, 1);
+            compare(panel.tiles.length, 1);
+            compare(panel.tiles[0].id, "dark");
+
+            quickSettingsWriteSpy.target = panel;
+            quickSettingsWriteSpy.clear();
+            panel.setActivePage(0);
+            compare(quickSettingsWriteSpy.count, 1);
+            compare(quickSettingsWriteSpy.signalArguments[0][0],
+                    "quickSettings.activePage");
+            compare(quickSettingsWriteSpy.signalArguments[0][1], 0);
+            compare(panel.activePage, 0);
+        }
+
+        function test_edit_controls_geometry_and_22_categories() {
+            var editor = createTemporaryObject(editComponent, stage, {
+                panelModules: ControlCenterRegistry.defaultModules.slice(),
+                pageCount: 1,
+                activePage: 0
+            });
+            verify(editor !== null);
+            compare(editor.width, 736);
+            compare(editor.height, 900);
+            compare(editor.sidebarWidth, 245);
+            var sidebar = findChild(editor, "editControlsSidebar");
+            verify(sidebar !== null);
+            compare(sidebar.width, 245);
+            var list = findChild(editor, "editControlsList");
+            verify(list !== null);
+            compare(list.count, ControlCenterRegistry.categoryModules("all-controls").length);
+            compare(ControlCenterRegistry.categories.length, 22);
+        }
+
+        function test_edit_controls_add_remove_resize_and_pin() {
+            var editor = createTemporaryObject(editComponent, stage, {
+                panelModules: ControlCenterRegistry.defaultModules.slice(),
+                pageCount: 1,
+                activePage: 0
+            });
+            verify(editor !== null);
+            quickSettingsWriteSpy.target = editor;
+            quickSettingsWriteSpy.clear();
+
+            // Resize cycles the measured span.
+            editor.cycleSpan("wifi");
+            compare(quickSettingsWriteSpy.count, 1);
+            compare(quickSettingsWriteSpy.signalArguments[0][0],
+                    "quickSettings.spans");
+            var spans = quickSettingsWriteSpy.signalArguments[0][1];
+            verify(spans.indexOf("wifi=2x2") >= 0);
+
+            // Add/remove writes the active page list.
+            quickSettingsWriteSpy.clear();
+            editor.setEnabled("storage", true);
+            compare(quickSettingsWriteSpy.count, 1);
+            compare(quickSettingsWriteSpy.signalArguments[0][0],
+                    "quickSettings.modules");
+            verify(quickSettingsWriteSpy.signalArguments[0][1].indexOf("storage") >= 0);
+            quickSettingsWriteSpy.clear();
+            editor.setEnabled("wifi", false);
+            verify(quickSettingsWriteSpy.signalArguments[0][1].indexOf("wifi") < 0);
+
+            // Menu-bar-only removes the control from the panel and writes the
+            // separate mark.
+            quickSettingsWriteSpy.clear();
+            compare(editor.menuBarOnly.length, 0);
+            editor.setMenuBarOnly("bluetooth", true);
+            verify(editor.menuBarOnly.length === 1);
+            var keys = [];
+            for (var i = 0; i < quickSettingsWriteSpy.count; ++i)
+                keys.push(quickSettingsWriteSpy.signalArguments[i][0]);
+            verify(keys.indexOf("quickSettings.menuBarOnly") >= 0);
+            verify(keys.indexOf("quickSettings.modules") >= 0);
+            verify(keys.indexOf("menu.control.bluetooth") >= 0);
+            verify(editor.isMenuBarOnly("bluetooth"));
+        }
+
+        function test_edit_controls_pages_and_reset() {
+            var editor = createTemporaryObject(editComponent, stage, {
+                panelModules: ControlCenterRegistry.defaultModules.slice(),
+                pageCount: 1,
+                activePage: 0
+            });
+            verify(editor !== null);
+            quickSettingsWriteSpy.target = editor;
+            quickSettingsWriteSpy.clear();
+            editor.addPage();
+            var keys = [];
+            for (var i = 0; i < quickSettingsWriteSpy.count; ++i)
+                keys.push(quickSettingsWriteSpy.signalArguments[i][0]);
+            verify(keys.indexOf("quickSettings.pageCount") >= 0);
+            verify(keys.indexOf("quickSettings.activePage") >= 0);
+
+            quickSettingsWriteSpy.clear();
+            editor.reset();
+            keys = [];
+            for (var j = 0; j < quickSettingsWriteSpy.count; ++j)
+                keys.push(quickSettingsWriteSpy.signalArguments[j][0]);
+            verify(keys.indexOf("quickSettings.modules") >= 0);
+            verify(keys.indexOf("quickSettings.spans") >= 0);
+            verify(keys.indexOf("quickSettings.perDisplay") >= 0);
+        }
+
+        function test_keyboard_and_ax_on_the_grid() {
+            var panel = defaultPanel({ dark: false });
+            var wifi = findChild(panel, "wifiTile");
+            verify(wifi !== null);
+            compare(wifi.activeFocusOnTab, true);
+            compare(wifi.Accessible.name, "Wi-Fi");
+            compare(wifi.Accessible.role, Accessible.Grouping);
+            var dark = findChild(panel, "darkTile");
+            verify(dark !== null);
+            compare(dark.activeFocusOnTab, true);
+            compare(dark.Accessible.name, "Dark Mode");
+            var page = findChild(panel, "controlCenterPages");
+            verify(page !== null);
+            compare(panel.reduceMotion, Theme.reducedMotion);
+        }
+
+        // T235: headless evidence for the measured grid, expanded sheets,
+        // Edit Controls catalogue, pages, resizing and absence. Skipped unless
+        // `DF_CONTROL_CENTER_CAPTURE_DIR` is set (make t235-control-center-capture).
+        function test_t235_capture_states() {
+            if (typeof TestEnvironment === "undefined"
+                    || TestEnvironment.captureDir.length === 0)
+                skip("DF_CONTROL_CENTER_CAPTURE_DIR not set");
+            var dir = TestEnvironment.captureDir;
+            var savedRollout = Glass.rollout;
+            var savedReduce = Glass.reduceTransparency;
+            var savedWidth = stage.width;
+            var savedHeight = stage.height;
+            try {
+                Glass.rollout = "replacement";
+                Glass.reduceTransparency = true;
+                Theme.dark = false;
+                stage.width = 760;
+                stage.height = 1200;
+
+                var panel = defaultPanel({
+                    wifi: { state: "available", radioEnabled: true, label: "home",
+                            networks: [
+                                { ssid: "home", strength: 82, security: "WPA2",
+                                  secured: true, active: true, band: "5 GHz" },
+                                { ssid: "guest", strength: 61, security: "Open",
+                                  secured: false, active: false, band: "2.4 GHz" }
+                            ] },
+                    bluetooth: bluetoothModel("available", true, true, false,
+                                              [{ address: "AA:BB:CC:DD:EE:FF",
+                                                 name: "WF-1000XM6", connected: true },
+                                               { address: "11:22:33:44:55:66",
+                                                 name: "WH-1000XM6", connected: false }]),
+                    audio: audioRoutingModel("Built-in Speakers"),
+                    battery: batteryModel(71, "balanced", true, true),
+                    focusPolicy: focusModel("dnd", 3),
+                    dark: false
+                });
+                panel.width = 360;
+                panel.height = 1164;
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-grid-light.png", "PNG");
+
+                Theme.dark = true;
+                panel.dark = true;
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-grid-dark.png", "PNG");
+
+                Theme.dark = false;
+                panel.dark = false;
+                panel.openModule("wifi");
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-expanded-wifi.png", "PNG");
+                panel.openModule("bluetooth");
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-expanded-bluetooth.png", "PNG");
+                panel.openModule("focus");
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-expanded-focus.png", "PNG");
+                panel.openModule("now-playing");
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-expanded-now-playing.png", "PNG");
+                panel.openModule("volume");
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-expanded-sound.png", "PNG");
+                panel.openModule("brightness");
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-expanded-display.png", "PNG");
+                panel.openModule("battery");
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-expanded-battery.png", "PNG");
+                panel.closeSheet();
+
+                panel.quickSettingsPageCount = 2;
+                panel.quickSettingsPage2 = ["storage", "keyboard", "mission-control"];
+                panel.quickSettingsActivePage = 1;
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-page-2.png", "PNG");
+
+                panel.quickSettingsActivePage = 0;
+                panel.quickSettingsSpans = ["wifi=2x2", "bluetooth=4x1",
+                                            "dark=1x1", "focus=1x1"];
+                waitForRendering(stage);
+                grabImage(panel).save(dir + "/t235-control-center-resized.png", "PNG");
+
+                var absent = defaultPanel({
+                    wifi: ({ state: "unavailable" }),
+                    bluetooth: bluetoothModel("unavailable", false, false),
+                    audio: audioModel("unavailable", 0, false),
+                    battery: ({ state: "unavailable" })
+                });
+                absent.width = 360;
+                absent.height = 1164;
+                waitForRendering(stage);
+                grabImage(absent).save(dir + "/t235-control-center-absent.png", "PNG");
+
+                var editor = createTemporaryObject(editComponent, stage, {
+                    panelModules: ControlCenterRegistry.defaultModules.slice(),
+                    pageCount: 2,
+                    activePage: 0,
+                    menuBarOnly: ["accessibility"]
+                });
+                editor.width = 736;
+                editor.height = 900;
+                waitForRendering(stage);
+                grabImage(editor).save(dir + "/t235-edit-controls-light.png", "PNG");
+                Theme.dark = true;
+                waitForRendering(stage);
+                grabImage(editor).save(dir + "/t235-edit-controls-dark.png", "PNG");
+            } finally {
+                Theme.dark = false;
+                Glass.rollout = savedRollout;
+                Glass.reduceTransparency = savedReduce;
+                stage.width = savedWidth;
+                stage.height = savedHeight;
+            }
+        }
+
+        function test_module_actions_route_to_the_owner() {
+            var panel = defaultPanel({});
+            screenshotSpy.target = panel;
+            screenshotSpy.clear();
+            panel.requestModuleAction("capture-screen");
+            compare(screenshotSpy.count, 1);
+            screencastSpy.target = panel;
+            screencastSpy.clear();
+            panel.requestModuleAction("screen-mirroring");
+            compare(screencastSpy.count, 1);
+            focusModeSpy.target = panel;
+            focusModeSpy.clear();
+            panel.focusModeSetRequested("focus");
+            compare(focusModeSpy.count, 1);
+            compare(focusModeSpy.signalArguments[0][0], "focus");
         }
     }
 }

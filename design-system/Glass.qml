@@ -50,7 +50,8 @@ QtObject {
     readonly property var presetNames: [
         "dock", "menuBarVeil", "menuAttached", "menuDetached", "statusMenu",
         "tooltip", "controlCenterOuter", "controlCenterModule",
-        "controlCenterExpanded", "notificationBanner", "notificationStack",
+        "controlCenterExpanded", "controlCenterExpandedOuter", "notificationBanner",
+        "notificationStack",
         "notificationLowerPanel", "windowChrome", "settingsSidebar",
         "settingsToolbar", "filesSidebar", "filesToolbar"
     ]

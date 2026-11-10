@@ -144,8 +144,14 @@ freezes the v1 key set.
 | `appearance.sidebarIconSize` | s | `medium` | `small`/`medium`/`large` | apps/settings | apps/settings Sidebar | Sidebar icon size (T227). |
 | `appearance.wallpaperTint` | b | true | | apps/settings | shell/design-system Glass, apps/settings Glass | Let glass surfaces take their tint from the wallpaper; off uses the neutral plate (T227). |
 | `appearance.scrollBars` | s | `automatic` | `automatic`/`when-scrolling`/`always` | apps/settings | shell/design-system ScrollView, apps/settings ScrollView | When scroll bars show (T227). |
-| `quickSettings.modules` | as | `[wifi, bluetooth, storage, focus, volume, brightness, dark, keyboard, mission-control, battery, lock-screen, menu-bar, software-update, users, printers, privacy, accessibility, vpn]` | | apps/settings | shell/control-center | Ordered Control Center module ids; empty means the built-in order (T227). |
+| `quickSettings.modules` | as | `[wifi, bluetooth, now-playing, airdrop, stage-manager, screen-mirroring, dark, capture-screen, focus, brightness, volume, airplay-audio, edit-controls]` | | apps/settings | shell/control-center | Ordered module ids on the first Control Center page; empty means the measured default inventory (T235). |
 | `quickSettings.menuBarOnly` | as | `[]` | | apps/settings | shell/control-center, shell/MenuBar | Module ids that stay in the menu bar and are hidden from the Control Center panel (T227). |
+| `quickSettings.page2` | as | `[]` | | apps/settings | shell/control-center | Ordered module ids on the second Control Center page (T235). |
+| `quickSettings.page3` | as | `[]` | | apps/settings | shell/control-center | Ordered module ids on the third Control Center page (T235). |
+| `quickSettings.pageCount` | x | 1 | 1–3 | apps/settings | shell/control-center | How many Control Center pages exist (T235). |
+| `quickSettings.activePage` | x | 0 | 0–2 | apps/settings | shell/control-center | The Control Center page shown when the panel opens (T235). |
+| `quickSettings.perDisplay` | b | false | | apps/settings | shell/control-center | Show Control Center on every display instead of the active display only (T235). |
+| `quickSettings.spans` | as | `[]` | | apps/settings | shell/control-center | Per-module measured span overrides, encoded as `id=<span>` where span is 1x1, 2x1, 2x2 or 4x1 (T235). |
 | `search.categories` | as | `[applications, files, folders, actions, calculations, definitions, web]` | | apps/settings | search service (T246) | Result categories the desktop search includes (T227). |
 | `search.indexLocations` | as | `[home]` | | apps/settings | search service (T246) | Folders the file index includes; `home` is the user's home directory (T227). |
 | `search.shortcut` | s | `Super+Space` | | apps/settings | search service (T246), shell shortcuts | Global keyboard shortcut that opens Search (T227). |
@@ -168,7 +174,7 @@ freezes the v1 key set.
 | `apps/settings/design-system Theme` (`apps/settings/SettingsShell.qml` bindings, T-09.2) | `appearance.colorScheme`, `appearance.accent`, `appearance.highlight`, `appearance.scrollBars`, `accessibility.reduceMotion` (the app is a separate process, so it mirrors the same keys onto its own `Theme`) |
 | `apps/settings/design-system Glass` (`apps/settings/SettingsShell.qml` bindings, T196/T227) | `appearance.transparency`, `appearance.wallpaperTint`, `accessibility.reduceTransparency`, `accessibility.increaseContrast` — the app-local resolver drives both pane previews |
 | `apps/settings Sidebar` (`apps/settings/SettingsShell.qml`, T227) | `appearance.sidebarIconSize` — mapped onto the design-system Sidebar icon/category slots |
-| `shell/control-center` (`shell/control-center/ControlCenter.qml`, T227) | `quickSettings.modules`, `quickSettings.menuBarOnly` — the live panel filters/orders its module tiles; menu-bar-only items keep their `menu.control.*` mark |
+| `shell/control-center` (`shell/control-center/ControlCenter.qml`, T227/T235) | `quickSettings.modules`, `quickSettings.menuBarOnly`, `quickSettings.page2`, `quickSettings.page3`, `quickSettings.pageCount`, `quickSettings.activePage`, `quickSettings.perDisplay`, `quickSettings.spans` — the live panel renders the measured grid and the Edit Controls catalogue writes the same keys; menu-bar-only items keep their `menu.control.*` mark |
 | `apps/files desktop` (`apps/files/DesktopSurface.qml`, T227) | `desktop.showItems` — `in-stage` hides the Files-owned desktop icon surface |
 | `shell/LockScreen` (`shell/lock/LockScreen.qml`, T227) | `screenSaver.style`, `screenSaver.clock`, `screenSaver.showDate`, `screenSaver.showSeconds` — the lock scene's clock presentation; `idle.blank` is the Start After delay |
 | `search service (T246)` | `search.categories`, `search.indexLocations`, `search.shortcut`, `search.web` — durable preferences the T246 service reads; the pane disables indexing status/rebuild until it exists |

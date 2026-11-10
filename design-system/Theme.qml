@@ -464,6 +464,53 @@ QtObject {
                     readonly property real foreground: 0.0
                 }
             }
+            readonly property var controlCenterExpandedOuter: QtObject {
+                readonly property string role: "popup"
+                readonly property string render: "sampled"
+                readonly property string slider: "none"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "measured"
+                    readonly property string provenance: "REFERENCE.md controlled Control Center expanded-outer fit alpha 0.286 / tint 0.257 (SURFACE-REVIEW 6.2/6.4); the sheet grows the outer panel behind the module"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.286
+                        readonly property real neutralTint: 0.257
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.286
+                        readonly property real perceptualTint: 0.257
+                    }
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.3
+                    readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 6.0
+                    readonly property real sharpFraction: 0.1
+                    readonly property real cornerLensPeak: 6.0
+                    readonly property real cornerLensDistance: 24.0
+                    readonly property real cornerLensTail: 50.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "No independent dark expanded-outer fit; adapted 0.50/0.60 so the expanded plate stays darker than the module capsules and lighter than the collapsed dark outer plate"
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.5
+                        readonly property real neutralTint: 0.6
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.5
+                        readonly property real perceptualTint: 0.6
+                    }
+                    readonly property real blur: 8.0
+                    readonly property real edge: 0.3
+                    readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 6.0
+                    readonly property real sharpFraction: 0.1
+                    readonly property real cornerLensPeak: 6.0
+                    readonly property real cornerLensDistance: 24.0
+                    readonly property real cornerLensTail: 50.0
+                    readonly property real foreground: 0.0
+                }
+            }
             readonly property var controlCenterModule: QtObject {
                 readonly property string role: "popup"
                 readonly property string render: "sampled"

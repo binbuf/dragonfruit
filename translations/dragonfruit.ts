@@ -2,6 +2,169 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="en_US">
 <context>
+    <name>AboutPage</name>
+    <message>
+        <source>%1 GB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Architecture: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Chip: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Computer name: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display: Not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Displays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dragonfruit Linux · Open source system software</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dragonfruit System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dragonfruit source files use their declared open source licenses; installed host packages retain their own licenses.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free space: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPU: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kernel: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Licenses…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Memory: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Model: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No regulatory certification data is available from this host.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Operating System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Regulatory information…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial number: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Storage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Storage Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System Report…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Total: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Version and compatibility details depend on the installed distribution.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AboutPanel</name>
+    <message>
+        <source>Chip</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dragonfruit Linux
+Open source system software</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dragonfruit System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Memory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More Info…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No regulatory certification data is available from this host.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Regulatory information</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial number</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup disk</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>AccessibilityPane</name>
     <message>
         <source>Accessibility</source>
@@ -443,7 +606,35 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>, active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Already active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery Health: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery is unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -451,11 +642,39 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>On battery</source>
+        <source>Fully Charged</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Plugged in</source>
+        <source>Low Battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On Battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Battery Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plugged In</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power modes are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This computer has no battery.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -864,7 +1083,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>, disconnected</source>
+        <source>, nearby</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, paired</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -873,6 +1096,10 @@
     </message>
     <message>
         <source>Bluetooth Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth is unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -896,7 +1123,47 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Discovering…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>My Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nearby Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Bluetooth controller</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Bluetooth Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read-only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Read-only: changes need authorization</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scan for Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scanning…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop Scanning</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1026,7 +1293,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Accessibility Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Appearance Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio Casting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio casting is not available on this system.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1046,7 +1325,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Bluetooth unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Brightness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Brightness %1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Capture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Capture Screen</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1059,6 +1354,10 @@
     </message>
     <message>
         <source>Clipboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1082,7 +1381,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Display Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Do Not Disturb</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Do Not Disturb, %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit Controls</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1091,6 +1402,14 @@
     </message>
     <message>
         <source>Eject %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fast User Switching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fast User Switching is not available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1106,6 +1425,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Hearing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Hide Bluetooth devices</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1114,11 +1437,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Hide Networks</source>
+        <source>Home</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Hide Wi-Fi networks</source>
+        <source>Home has no provider in this build.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1131,6 +1454,10 @@
     </message>
     <message>
         <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard Brightness</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1154,6 +1481,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Menu bar clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Motor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Mount</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1163,6 +1498,22 @@
     </message>
     <message>
         <source>Muted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nearby Transfer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nearby Transfer is not available on this system.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Network Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next Quick Settings page</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1182,7 +1533,31 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No displays available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No hearing accessibility provider.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No input devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No keyboard backlight is exposed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No media player is publishing Now Playing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No media playing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No motor accessibility provider.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1202,6 +1577,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No utility is available in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No vision accessibility provider.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No volumes</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1210,11 +1593,35 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Not mirroring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notes has no provider in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Now Playing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Off</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open %1 Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Accessibility Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1227,6 +1634,14 @@
     </message>
     <message>
         <source>Open Bluetooth Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Display Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Edit Controls</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1250,6 +1665,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open Network Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open Overview Settings</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1259,6 +1678,10 @@
     </message>
     <message>
         <source>Open Privacy &amp; Security Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Quick Settings Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1278,6 +1701,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Other Networks…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Output</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1290,11 +1717,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Page %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Pin</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Pin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power mode: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Previous Quick Settings page</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1318,11 +1757,39 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Quick Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reduce Interruptions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reduce Interruptions, %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Restart</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Screen Casting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Screen Reader On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screenshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts has no provider in this build.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1334,11 +1801,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show Networks</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Show Wi-Fi networks</source>
+        <source>Show other Wi-Fi networks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1359,6 +1822,18 @@
     </message>
     <message>
         <source>Sound Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stage is not part of this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start Screen Casting…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1402,7 +1877,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Utilities</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>VPN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vision</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Voice Memos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Voice Memos has no provider in this build.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1415,6 +1906,216 @@
     </message>
     <message>
         <source>Wi-Fi Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ControlCenterModule</name>
+    <message>
+        <source>Do Not Disturb</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Previous</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ControlCenterRegistry</name>
+    <message>
+        <source>Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio Casting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Capture Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connectivity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dark Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop &amp; Files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display &amp; Brightness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fast User Switching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hearing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hearing Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Home</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard Brightness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboards</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu Bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Motor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Motor Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nearby Transfer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Now Playing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Printers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Privacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen Casting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screenshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Software Update</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sounds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Storage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Users</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Utilities</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vision</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vision Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Voice Memos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1474,6 +2175,33 @@
     </message>
     <message>
         <source>Using network time</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DateTimePanel</name>
+    <message>
+        <source>%1, today</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date &amp; Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next month</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Previous month</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show today</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Today</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2240,6 +2968,89 @@
     </message>
 </context>
 <context>
+    <name>EditControls</name>
+    <message>
+        <source>%1 is now %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a Quick Settings page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose what appears in Quick Settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close Edit Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep %1 in the menu bar only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Page %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove this Quick Settings page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Resize %1, currently %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore the default Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restored the default Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show %1 in Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Quick Settings on all displays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show on all displays (per-display surfaces remain OPEN)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable on this system</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>—</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>−</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>FileChooser</name>
     <message>
         <source>Cancel</source>
@@ -2267,6 +3078,21 @@
     </message>
     <message>
         <source>Up</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FilesBridge</name>
+    <message>
+        <source>Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No default application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>available</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2322,6 +3148,18 @@
 <context>
     <name>FilesShell</name>
     <message>
+        <source>%1 folders, %2 files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 items selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Back</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2334,7 +3172,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Choosing a default application is not implemented.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Column View</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Column view arrives with T244a.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Comments</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Content created</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2350,6 +3208,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Extension</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Favorites</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2362,7 +3224,43 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Gallery View</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gallery view arrives with T244a.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>General</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Get Info</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide Toolbar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide extension</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Icon View</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kind</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2374,11 +3272,43 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Modified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More Info</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Move to Trash</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Multiple applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Multiple values</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name &amp; Extension</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>New Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2390,7 +3320,31 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open with</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Original</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Owner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Permissions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Rename</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename one item at a time.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2410,6 +3364,26 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Selection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sharing &amp; Permissions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Toolbar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The comments backend is not implemented.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The items in the Trash will be deleted immediately. This cannot be undone.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2419,6 +3393,22 @@
     </message>
     <message>
         <source>Trash</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Where</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>files-core does not expose POSIX ownership yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>files-core does not store the hide-extension flag.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>files-core exposes the modification time only.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2435,6 +3425,14 @@
 </context>
 <context>
     <name>FocusPane</name>
+    <message>
+        <source>%1 is active.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 is on. Notifications are silenced.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>%1 recorded</source>
         <translation type="unfinished"></translation>
@@ -2472,15 +3470,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Custom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Days</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Do Not Disturb</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Do Not Disturb is on. Notifications are silenced.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2500,15 +3498,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Focus is on. Notifications are silenced.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Focus keyboard shortcut</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Focus on %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus profile</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2528,6 +3526,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Mon</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2540,6 +3542,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No people have sent a notification yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No profile is active.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Notifications are delivered normally.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2548,11 +3558,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Notifications from these people are delivered even while Focus or Do Not Disturb is on. A person appears here when an app supplies the optional sender hint with its notification.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Off</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Only allow-listed apps banner; everything else is batched.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Personal</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2568,6 +3586,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Sleep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Sun</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2577,10 +3599,6 @@
     </message>
     <message>
         <source>The notification service could not be read: %1.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>The notification service identifies senders by application, not person, so a per-person allow list is not available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2616,15 +3634,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Use Allowed Apps</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Use a modifier and a key, for example Ctrl+Alt+F.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Wed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Work</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2718,14 +3736,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>About This System</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Architecture</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Automatic Updates</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2742,27 +3752,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Chip</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Computer name</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Date &amp; Time</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Disk</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Done</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>GPU</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2778,31 +3772,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Kernel</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Kernel %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Language &amp; Region</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Login Items</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Memory</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Model</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>More Info…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2815,18 +3789,6 @@
     </message>
     <message>
         <source>No update provider is available on this system.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Not available</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>OS</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Processor</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2846,10 +3808,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Serial number</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Sharing</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2866,23 +3824,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>System Info</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>The system information service is not running, so system details and updates are unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This System</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Unavailable</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Unknown</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2891,6 +3837,28 @@
     </message>
     <message>
         <source>‹ General</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>GetInfoInspector</name>
+    <message>
+        <source>%1 items selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Get Info</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>GetInfoWindow</name>
+    <message>
+        <source>Get Info</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3624,6 +4592,14 @@
 <context>
     <name>MenuBar</name>
     <message>
+        <source>Date &amp; Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More menu bar items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Overview</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3703,6 +4679,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Date &amp; Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Display the time with seconds</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3719,6 +4699,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Items that do not fit move into the overflow menu; they are never clipped. Only the active display owns the application menu.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Menu Bar Controls</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3731,7 +4715,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Recent documents, applications, and servers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4066,6 +5062,13 @@
     </message>
 </context>
 <context>
+    <name>NotificationBanner</name>
+    <message>
+        <source>%1. %2 actions available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>NotificationCenter</name>
     <message>
         <source>%1 notifications</source>
@@ -4076,15 +5079,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 · %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>0 notifications</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Closed</source>
+        <source>Clear All</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Dismiss</source>
+        <source>Clear Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Closed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4093,6 +5104,10 @@
     </message>
     <message>
         <source>Dismissed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit Widgets</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4819,7 +5834,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Active display only</source>
+        <source>Audio Casting</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4828,6 +5843,14 @@
     </message>
     <message>
         <source>Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Capture Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4847,7 +5870,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Edit Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fast User Switching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hearing Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Home</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4860,6 +5899,10 @@
     </message>
     <message>
         <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard Brightness</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4883,11 +5926,31 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Motor Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Move %1 down</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Move %1 up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nearby Transfer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Now Playing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off shows Quick Settings on the active display only. The per-display surfaces themselves remain OPEN.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4915,7 +5978,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Screen Casting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screenshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show %1 in Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Quick Settings on all displays</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4931,11 +6010,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Storage</source>
+        <source>Stage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The shell exposes one Quick Settings surface today; per-display panels land with T235.</source>
+        <source>Storage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4947,7 +6026,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Utilities</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>VPN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vision Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Voice Memos</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5720,6 +6811,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Control sizes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Controllers</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6249,6 +7344,10 @@
     </message>
     <message>
         <source>Overview preferences stay live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pages</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7190,6 +8289,10 @@
 <context>
     <name>SettingsShell</name>
     <message>
+        <source>About</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Back</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7224,6 +8327,10 @@
 </context>
 <context>
     <name>SettingsWindow</name>
+    <message>
+        <source>About This System</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Settings</source>
         <translation type="unfinished"></translation>
@@ -7267,7 +8374,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Bring All to Front</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Do Not Disturb</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every window is already minimized.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7283,7 +8398,35 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Minimize</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Services Available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Windows</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No application has registered a service.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No hidden app to show.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No other app has a visible window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Quit %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Services</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7292,6 +8435,14 @@
     </message>
     <message>
         <source>Show All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The app has no visible window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This app has no open windows.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -7310,7 +8461,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No Recent Items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No applications have been used yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Quit to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recent Items</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7541,6 +8704,32 @@
     </message>
     <message>
         <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>StatusBar</name>
+    <message>
+        <source>%1 items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 item</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Status bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>StatusItemRegistry</name>
+    <message>
+        <source>More menu bar items</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -7860,6 +9049,14 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>, selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Already the output device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Mute</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7868,7 +9065,31 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No output devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Sound Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound is unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8131,9 +9352,139 @@ Provider: %2</source>
     </message>
 </context>
 <context>
+    <name>WidgetGallery</name>
+    <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change %1 size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No widgets match this search.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search widgets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widget Gallery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widgets are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>medium</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>WidgetStack</name>
+    <message>
+        <source>No data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No widgets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove widget</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Weather</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Weather unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widget</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widgets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widgets unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>WifiMenu</name>
     <message>
+        <source>%1% signal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, saved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Address: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Already connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Hidden network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide Details</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8141,11 +9492,75 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Known Networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last used: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No networks found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Wi-Fi Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other Networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Read-only: joining needs authorization</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Scanning…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signal: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Wi-Fi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi is off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi is off. Turn it on to see networks.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wi-Fi is unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8491,31 +9906,9 @@ Provider: %2</source>
     </message>
 </context>
 <context>
-    <name>screencastbridge</name>
-    <message>
-        <source>Choose a screen or window to share.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Live streaming is not available in this build — the app will receive still images.</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>screenshotbridge</name>
-    <message>
-        <source>Select an area to capture.</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>shellcontroller</name>
+    <name>registry</name>
     <message>
         <source>%1 is not installed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Accessibility</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8524,14 +9917,6 @@ Provider: %2</source>
     </message>
     <message>
         <source>Authentication is required to manage system services or other units.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Battery</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Bluetooth</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8547,6 +9932,10 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Date &amp; Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Files</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8556,6 +9945,14 @@ Provider: %2</source>
     </message>
     <message>
         <source>Open File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quick Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8580,6 +9977,51 @@ Provider: %2</source>
     </message>
     <message>
         <source>The compositor capture path is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>screencastbridge</name>
+    <message>
+        <source>Choose a screen or window to share.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live streaming is not available in this build — the app will receive still images.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>screenshotbridge</name>
+    <message>
+        <source>Select an area to capture.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>shellcontroller</name>
+    <message>
+        <source>Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

@@ -272,16 +272,21 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("appearance.scrollBars"), QStringLiteral("automatic"));
     values.insert(QStringLiteral("quickSettings.modules"), QStringList({
         QStringLiteral("wifi"), QStringLiteral("bluetooth"),
-        QStringLiteral("storage"), QStringLiteral("focus"),
-        QStringLiteral("volume"), QStringLiteral("brightness"),
-        QStringLiteral("dark"), QStringLiteral("keyboard"),
-        QStringLiteral("mission-control"), QStringLiteral("battery"),
-        QStringLiteral("lock-screen"), QStringLiteral("menu-bar"),
-        QStringLiteral("software-update"), QStringLiteral("users"),
-        QStringLiteral("printers"), QStringLiteral("privacy"),
-        QStringLiteral("accessibility"), QStringLiteral("vpn")
+        QStringLiteral("now-playing"), QStringLiteral("airdrop"),
+        QStringLiteral("stage-manager"), QStringLiteral("screen-mirroring"),
+        QStringLiteral("dark"), QStringLiteral("capture-screen"),
+        QStringLiteral("focus"), QStringLiteral("brightness"),
+        QStringLiteral("volume"), QStringLiteral("airplay-audio"),
+        QStringLiteral("edit-controls")
     }));
     values.insert(QStringLiteral("quickSettings.menuBarOnly"), QStringList());
+    // Revision 25 (T235): the measured grid, pages and per-display policy.
+    values.insert(QStringLiteral("quickSettings.page2"), QStringList());
+    values.insert(QStringLiteral("quickSettings.page3"), QStringList());
+    values.insert(QStringLiteral("quickSettings.pageCount"), 1);
+    values.insert(QStringLiteral("quickSettings.activePage"), 0);
+    values.insert(QStringLiteral("quickSettings.perDisplay"), false);
+    values.insert(QStringLiteral("quickSettings.spans"), QStringList());
     values.insert(QStringLiteral("search.categories"), QStringList({
         QStringLiteral("applications"), QStringLiteral("files"),
         QStringLiteral("folders"), QStringLiteral("actions"),
