@@ -519,6 +519,19 @@ pub mod component {
         pub const BUTTON_SIZE: f32 = 28.0_f32;
         pub const RADIUS: f32 = 10.0_f32;
     }
+    pub mod files {
+        pub const SIDEBAR_WIDTH: f32 = 198.0_f32;
+        pub const VIEW_GROUP_WIDTH: f32 = 164.0_f32;
+        pub const VIEW_GROUP_HEIGHT: f32 = 52.0_f32;
+        pub const VIEW_SEGMENT_WIDTH: f32 = 40.0_f32;
+        pub const VIEW_SEGMENT_HEIGHT: f32 = 36.0_f32;
+        pub const VIEW_GROUP_PADDING_X: f32 = 2.0_f32;
+        pub const VIEW_GROUP_PADDING_Y: f32 = 8.0_f32;
+        pub const TOOLBAR_HIDDEN_INSET: f32 = 64.0_f32;
+        pub const GET_INFO_WIDTH: f32 = 328.0_f32;
+        pub const GET_INFO_HEIGHT: f32 = 1034.0_f32;
+        pub const GET_INFO_CHROME_HEIGHT: f32 = 32.0_f32;
+    }
     pub mod accessory_bar {
         pub const TAB: f32 = 28.0_f32;
         pub const PATH: f32 = 30.0_f32;

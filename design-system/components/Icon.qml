@@ -55,6 +55,8 @@ Item {
         "file": "file",
         "icon-view": "layout-grid",
         "list-view": "list",
+        "column-view": "layout-bottombar",
+        "gallery-view": "photo",
         "wifi": "wifi",
         "wifi-secure": "wifi",
         "wifi-disabled": "wifi-off",

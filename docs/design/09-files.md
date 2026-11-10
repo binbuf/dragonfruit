@@ -337,20 +337,57 @@ scroll trace is
 budget record stays in
 [`docs/captures/t10-files-perf.txt`](../captures/t10-files-perf.txt).
 
+**Implementation status (T230d).** Files now matches Finder's measured window
+anatomy at 900×600 pt: a 52 pt unified toolbar, a 198 pt sidebar, a 30 pt path
+bar and a 28 pt status bar. The path and status bars are content-layer
+accessories, so they do not increase the chrome height. The status bar reports
+the listing item count, the live selection count and the current volume's free
+space; a volume that cannot be resolved leaves the free-space label empty
+rather than inventing a number. The toolbar-hidden mode hides the toolbar
+controls **and** the sidebar, grows the content start to the measured 64 pt
+inset, and moves the status bar to the full window width; the path bar stays a
+content accessory. It is reachable from the background menu (Hide/Show Toolbar)
+and `Ctrl+Alt+T`.
+
+The view-mode group is the measured 164×52 pt capsule with four 40×36 pt
+segments. Icon and List are live and keep the per-location view state. Column
+and Gallery are disabled with an explicit reason ("arrives with T244a") shown
+on hover and as an inline notice on activation; they are not dead glyphs.
+`SegmentedControl` gained optional measured geometry plus a `rejected(index,
+reason)` signal so the same component serves both the generic and Files
+cases.
+
+Get Info is a separate 328×1034 pt auxiliary window with a 32 pt title bar and
+one scrolling column: General, More Info, Name & Extension, Comments, Open
+with, Preview, Sharing & Permissions. It follows the live selection, so a
+multi-selection aggregates the item count, folder/file split and summed file
+size. Only Name & Extension has a real backend (the files-core rename path);
+Comments, the hide-extension flag, default-application editing and POSIX
+ownership are explicit "Not available" rows with reasons. The sidebar/toolbar
+material alpha is unchanged from T206 (Light 0.985/0.858 and 0.994/0.922; Dark
+0.935/0.218 and 0.900/0.247); the 0.55 popover alpha is not used. Tests cover
+the geometry, toolbar-hidden mode, status counts, segment states, inspector
+sections, multi-selection aggregation, the real rename path and the volume
+absence path; `make t230d-files-capture` writes the light/dark stills. Tabs,
+column/gallery rendering, search results, tags, sidebar/toolbar customization
+and motion remain `OPEN` (see §9 of the structural review). See
+[ADR 0247](adr/0247-files-measured-anatomy-and-get-info.md).
+
 **Current status (2026-11) — what the Files MVP actually ships.** The browsing
 core is real: streaming listings, natural sorting, the C ABI delta path,
 sidebar favorites/volumes/Computer/Trash, icon/list views, selection
 (click/Cmd/Shift/marquee), inline rename, New Folder, Move to Trash, Empty
 Trash, file opening, thumbnails, Trash browsing, path bar, back/forward
-history, local name search, and the Dock/desktop integration. It is **not**
+history, local name search, the measured window anatomy, the status bar,
+toolbar-hidden mode, Get Info, and the Dock/desktop integration. It is **not**
 the full Finder design:
 
 - **Not implemented:** tabs, New Window (the context row is disabled), copy /
-  move / paste, drag-and-drop inside Files, duplicate, Make Alias, Get Info,
+  move / paste, drag-and-drop inside Files, duplicate, Make Alias,
   Compress, Open With, undo/redo, per-item progress, conflict policy, batch
   operations, column/gallery views, Quick Look, preview pane, tags, saved
   searches, batch rename, Connect to Server, and the Files menu model.
-  T230d lands the measured 52/198/30/28 pt chrome, the status bar, the
+  T230d landed the measured 52/198/30/28 pt chrome, the status bar, the
   toolbar-hidden mode and the Get Info inspector; T244a lands the column and
   gallery views. Tabs remain open.
 - **Partially implemented:** thumbnails (local images; PDF/video only when a

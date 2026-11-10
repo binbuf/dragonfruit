@@ -119,6 +119,13 @@ public:
     Q_INVOKABLE bool isDirAt(int row) const;
     // Every node id in the current order (Select All).
     Q_INVOKABLE QVariantList allNodeIds() const;
+    // The inspector view of one row: name, kind, size, modified, symlink
+    // target, thumbnail, parent folder and extension. Empty when the id is
+    // not in the current listing (T230d).
+    Q_INVOKABLE QVariantMap nodeInfo(quint64 nodeId) const;
+    // The aggregate inspector view of a multi-selection: found count, folder
+    // and file counts, and the summed file size (T230d).
+    Q_INVOKABLE QVariantMap selectionInfo(const QVariantList &nodeIds) const;
 
 signals:
     void locationChanged();

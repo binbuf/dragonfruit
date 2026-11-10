@@ -17,6 +17,7 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 class FilesBridge : public QObject
@@ -73,6 +74,9 @@ class FilesBridge : public QObject
     // or `icon`); empty means the shell default. A capture seam, sibling of
     // `DF_FILES_START_URI`.
     Q_PROPERTY(QString startView READ startView CONSTANT)
+    // `DF_FILES_CAPTURE_DIR` makes the headless capture case write its stills
+    // there; empty for a normal run (the capture test skips).
+    Q_PROPERTY(QString captureDir READ captureDir CONSTANT)
 
 public:
     explicit FilesBridge(QObject *parent = nullptr);
@@ -93,6 +97,7 @@ public:
     bool startRename() const { return m_startRename; }
     int startSelect() const { return m_startSelect; }
     bool startEmptyTrash() const { return m_startEmptyTrash; }
+    QString captureDir() const { return m_captureDir; }
 
     // The path bar breadcrumb as `{ label, uri }` from the machine down to the
     // location. `file://` paths are segmented; the home directory collapses
@@ -114,6 +119,14 @@ public:
     // installed. Directories are the browser's job (`FilesBrowser.navigate`),
     // not this call.
     Q_INVOKABLE bool open(const QString &uri) const;
+    // The volume backing `uri`, as `{ available, freeBytes, freeText }`. Used
+    // by the status bar; an unavailable volume leaves `freeText` empty rather
+    // than inventing a number (T230d).
+    Q_INVOKABLE QVariantMap volumeInfo(const QString &uri) const;
+    // The display name of the default application for a file, or a folder
+    // label. Empty for a non-local location. Read-only in Get Info until the
+    // default-application editor lands (T230d).
+    Q_INVOKABLE QString defaultHandler(const QString &uri) const;
 
 private:
     void buildLocations();
@@ -128,6 +141,7 @@ private:
     QString m_mutationFixtureUri;
     QString m_startView;
     QString m_startMenu;
+    QString m_captureDir;
     bool m_startRename = false;
     int m_startSelect = 0;
     bool m_startEmptyTrash = false;
