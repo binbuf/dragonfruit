@@ -497,12 +497,15 @@ The corner lens is parameterized by distance *inside* the rim, directed by the
 outward SDF normal and gated by `4·nx²·ny²`: exactly zero on flat edges and
 flat sides, one at the 45° corner. `cornerLensPeak` 13.6 is the displacement
 along the normal, whose horizontal component at 15 pt inside is the measured
-9.6 pt. The shader applies the measured flat band (alpha 0.253 light / 0.149
-dark, neutral tint 0.604/0.207); Increase Contrast raises the resolved rim
-peak/width after the fit. The QML plate layers are hidden on the sampled path,
-so tint and rim are painted once; unsupported paths and Reduce Transparency
-keep the shell-painted plate with one full-perimeter rim and three concentric
-glow strokes.
+9.6 pt. The persistent Dock/Control Center roles resolve to `Reduced`
+(T-21.2c); that tier keeps the flat-band corner lens and drops only the generic
+edge-lens `refraction`, so the measured corner refraction is on the production
+path rather than only at `Full` (T235a). The shader applies the measured flat
+band (alpha 0.253 light / 0.149 dark, neutral tint 0.604/0.207); Increase
+Contrast raises the resolved rim peak/width after the fit. The QML plate layers
+are hidden on the sampled path, so tint and rim are painted once; unsupported
+paths and Reduce Transparency keep the shell-painted plate with one
+full-perimeter rim and three concentric glow strokes.
 
 `make dock-optics-capture` records the 1x light/dark/Reduce
 Transparency/Increase Contrast runs, the 1.5x/2x captures and a Dock sweep with
