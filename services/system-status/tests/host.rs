@@ -131,6 +131,25 @@ fn the_volume_menu_model_exposes_a_slider_and_mute() {
 }
 
 #[test]
+fn an_available_audio_graph_with_no_output_still_has_a_muted_slot() {
+    // WirePlumber answered but the graph has no sink (a machine with no audio
+    // output). That is not daemon absence: the slot stays visible with the
+    // muted speaker, so the user can still open Sound and see the state.
+    let mut host = StatusHost::new(
+        MockNetworkManager::absent(),
+        MockAudio::present(AudioData::default()),
+        MockPower::absent(),
+    );
+    host.refresh();
+
+    let view = host.audio_view();
+    assert_eq!(view["state"], "available");
+    assert_eq!(view["sinkCount"], 0);
+    assert_eq!(view["glyph"], "volume-muted");
+    assert_eq!(view["label"], "No output device");
+}
+
+#[test]
 fn an_absent_daemon_hides_both_items_and_never_errors() {
     let mut host = StatusHost::new(
         MockNetworkManager::absent(),

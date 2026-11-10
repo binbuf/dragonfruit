@@ -89,6 +89,10 @@ pub const UNIT_FILES: &[(&str, &str)] = &[
         include_str!("../units/dragonfruit-notifications.service"),
     ),
     (
+        "dragonfruit-system-status.service",
+        include_str!("../units/dragonfruit-system-status.service"),
+    ),
+    (
         "dragonfruit-wallpaperd.service",
         include_str!("../units/dragonfruit-wallpaperd.service"),
     ),

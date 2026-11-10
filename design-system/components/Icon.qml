@@ -27,6 +27,28 @@ Item {
     implicitWidth: size
     implicitHeight: size
 
+    // Colored place artwork from the vendored WhiteSur set. These are complete
+    // SVG resources, so they intentionally ignore `color`; the monochrome
+    // interface vocabulary below stays on Tabler. Keep this map small and
+    // explicit: a name here is the only way a legacy `Icon` call site gets a
+    // non-tintable image.
+    readonly property var placeIcons: ({
+        "folder": "folder",
+        "documents": "folder-documents",
+        "downloads": "folder-download",
+        "wallpaper": "folder-images",
+        "music": "folder-music",
+        "movies": "folder-videos",
+        "public": "folder-public",
+        "templates": "folder-templates",
+        "home": "user-home",
+        "displays": "user-desktop",
+        "trash": "user-trash",
+        "computer": "computer",
+        "drive-harddisk": "drive-harddisk",
+        "drive-removable-media": "drive-removable-media"
+    })
+
     // Legacy name -> vendored Tabler outline name.
     readonly property var aliases: ({
         "close": "x",
@@ -101,14 +123,34 @@ Item {
         "mission-control": "layout-dashboard"
     })
 
+    // The WhiteSur resource for the current legacy name, or "" when this is a
+    // monochrome Tabler glyph.
+    readonly property string placeSource: root.placeIcons[root.name] !== undefined
+        ? "qrc:/icons/whitesur/" + root.placeIcons[root.name] + ".svg" : ""
+    readonly property bool isPlaceIcon: root.placeSource.length > 0
+
     // The Tabler name for the current legacy name, or "" for an unknown one.
     readonly property string tablerName: root.aliases[root.name] !== undefined
                                          ? root.aliases[root.name] : ""
-    readonly property bool resolved: root.tablerName.length > 0
-                                     && TablerGlyphs.has("outline", root.tablerName)
+    readonly property bool resolved: root.isPlaceIcon
+                                     || (root.tablerName.length > 0
+                                         && TablerGlyphs.has("outline", root.tablerName))
+
+    Image {
+        anchors.fill: parent
+        visible: root.isPlaceIcon
+        source: root.placeSource
+        sourceSize.width: Math.ceil(root.size * 2)
+        sourceSize.height: Math.ceil(root.size * 2)
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        cache: true
+        smooth: true
+    }
 
     TablerIcon {
         anchors.fill: parent
+        visible: !root.isPlaceIcon
         name: root.tablerName
         color: root.color
         size: root.size

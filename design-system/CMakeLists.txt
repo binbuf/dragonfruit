@@ -103,6 +103,22 @@ qt_add_resources(dragonfruit-design-system "tabler"
     FILES ${_tabler_svgs}
 )
 
+# The vendored WhiteSur place/app artwork is exposed unchanged at the stable
+# prefix `qrc:/icons/whitesur/<name>.svg`. `Icon.qml` uses the colored place
+# files; `DockGlyph` uses the folder/trash/launcher files. This is a separable
+# GPL-3.0-only data asset (see assets/icons/whitesur/README.md), not linked
+# code; the files are copied unchanged from the pinned upstream tag.
+file(GLOB _whitesur_svgs CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/assets/icons/whitesur/*.svg")
+if(NOT _whitesur_svgs)
+    message(FATAL_ERROR "dragonfruit-design-system: assets/icons/whitesur is empty")
+endif()
+qt_add_resources(dragonfruit-design-system "whitesur"
+    PREFIX "/icons/whitesur"
+    BASE "${CMAKE_SOURCE_DIR}/assets/icons/whitesur"
+    FILES ${_whitesur_svgs}
+)
+
 # The first-party app icons (T-19.1d) are exposed unchanged at the stable
 # prefix `qrc:/icons/apps/<name>.svg`. The Dock renders them for the
 # first-party desktop ids before an install; the same files are installed into

@@ -24,12 +24,22 @@ for Dragonfruit alters the terms of these components.
 | [Tabler Icons](https://github.com/tabler/tabler-icons) 3.50.0 (`assets/icons/tabler/`, the `outline` line-glyph set and the pinned `filled` marks, compiled into the design-system module) | MIT |
 | [Phosphor](https://github.com/phosphor-icons/core) 2.0.8 (`assets/icons/phosphor/`, the `regular` and `fill` glyphs, compiled into the design-system module) | MIT |
 | [Capitaine cursors](https://github.com/keeferrourke/capitaine-cursors) commit `06c8843` (`assets/cursors/capitaine-cursors/`, the desktop cursor theme, installed to `share/icons/capitaine-cursors`) | LGPL-3.0-or-later; see [`assets/cursors/capitaine-cursors/COPYING`](assets/cursors/capitaine-cursors/COPYING) and [`LICENSES/LGPL-3.0-or-later.txt`](LICENSES/LGPL-3.0-or-later.txt) |
+| [WhiteSur icon theme](https://github.com/vinceliuice/WhiteSur-icon-theme) `2026-09-10` (commit `73d8040da51a9ed74e47c7366e7e9ff437601a5c`; `assets/icons/whitesur/`, the colored place/app artwork, compiled into the design-system module; the Files app icon copy installs to `share/icons/hicolor/scalable/apps`) | GPL-3.0-only; see [`assets/icons/whitesur/COPYING`](assets/icons/whitesur/COPYING) and [`LICENSES/GPL-3.0-only.txt`](LICENSES/GPL-3.0-only.txt) |
 | Default wallpaper (`assets/graphics/wallpapers/Default.jpg`, installed to `share/dragonfruit/wallpapers/Default.jpg`) | MIT (original project asset) |
 
 The default wallpaper is the only image bundled in a package. Featured
 pictures are fetched from Wikimedia Commons at runtime under their own
 licenses and are never shipped — see
 [docs/licensing.md](docs/licensing.md).
+
+WhiteSur is the one **copyleft** bundled asset set. It is separable runtime
+data: QML loads the SVGs as files, no first-party code links against them, and
+the set can be replaced independently. Any binary distribution must include the
+GPL-3.0 text, the provenance record in
+[`assets/icons/whitesur/README.md`](assets/icons/whitesur/README.md), and the
+corresponding upstream source identified there. The deliberate exception is
+recorded in
+[ADR 0251](docs/design/adr/0251-whitesur-place-icons.md).
 
 ## Asset provenance
 

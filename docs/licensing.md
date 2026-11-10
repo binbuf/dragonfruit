@@ -25,6 +25,7 @@ restrictions to track.
 | `assets/fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
 | `assets/icons/tabler/` (line-glyph set and pinned filled marks) | MIT |
 | `assets/icons/phosphor/` (filled Settings-tile glyphs) | MIT |
+| `assets/icons/whitesur/` (colored place/app artwork and the Files app icon) | GPL-3.0-only |
 | `assets/cursors/capitaine-cursors/` (system cursor theme) | LGPL-3.0-or-later |
 | `assets/graphics/wallpapers/Default.jpg` (shipped default wallpaper) | MIT (original project asset) |
 
@@ -77,6 +78,18 @@ constraints between components. Two rules still matter:
   `make check-phosphor` fail if a registry or a glyph reference drifts. No
   Apple artwork is vendored or reproduced (see
   [../docs/design/14-risks.md](design/14-risks.md)).
+- **WhiteSur place/app artwork.** WhiteSur `2026-09-10` (commit
+  `73d8040da51a9ed74e47c7366e7e9ff437601a5c`) is bundled as a separable
+  **GPL-3.0-only** data asset under `assets/icons/whitesur/`: colored folder,
+  home/desktop, Trash, computer/volume, Files, and Applications-launcher SVGs.
+  It is loaded by QML as files, never linked into first-party code, and can be
+  replaced independently. This is a deliberate, recorded exception to the
+  permissive-asset default; every binary distribution must ship the GPL-3.0
+  text, the provenance record in
+  [`assets/icons/whitesur/README.md`](../assets/icons/whitesur/README.md), and
+  the corresponding source. See
+  [ADR 0251](design/adr/0251-whitesur-place-icons.md). The artwork is
+  third-party open work, not Apple artwork.
 - **Cursor theme.** Capitaine cursors is bundled as a separable data asset
   under the LGPL-3.0-or-later (see
   [../assets/cursors/capitaine-cursors/COPYING](../assets/cursors/capitaine-cursors/COPYING)
@@ -135,8 +148,9 @@ follows the same credit package:
 - **License text and notice.** The set ships its own `LICENSE` beside the
   assets, a copy in `LICENSES/`, a row in [NOTICE](../NOTICE), and a row in the
   component table above. MIT sets need no special distribution obligation
-  beyond preserving the notice; a future copyleft icon set would be a review
-  blocker under the linking rules.
+  beyond preserving the notice; a new copyleft icon set is a review blocker
+  unless it is added as an explicitly recorded separable data asset, as
+  WhiteSur is in ADR 0251.
 - **One registry per set.** `scripts/gen-tabler-glyphs.py` and
   `scripts/gen-phosphor-glyphs.py` extract the path data into generated QML
   singletons; `--check` fails the build if the committed registry is stale.
@@ -145,8 +159,11 @@ follows the same credit package:
   `Icon.qml` alias map and the dynamic service vocabulary.
 - **Current split.** Tabler 3.50.0 is the line-glyph set (Files, menu bar,
   Dock, shell chrome, and the `Icon.qml` facade). Phosphor 2.0.8 is the filled
-  Settings-tile set. The first-party app artwork uses Tabler's filled marks.
-  Both are MIT.
+  Settings-tile set. WhiteSur is the colored place/app artwork: folder,
+  home/desktop, Trash, computer/volume, Files, and Applications-launcher icons.
+  The Settings app artwork uses Tabler's filled mark; the Files app artwork is
+  a byte-for-byte copy of WhiteSur's `file-manager.svg`. Tabler and Phosphor
+  are MIT; WhiteSur is GPL-3.0-only and separable (ADR 0251).
 - **No Apple artwork.** The original-assets rule in
   [14-risks.md](design/14-risks.md) still applies: third-party open icon sets
   are allowed; Apple's assets and pixel-copied proprietary artwork are not.
@@ -219,6 +236,8 @@ name or branding should ask first.
   resolve, including the `Icon.qml` compatibility map).
 - `make check-phosphor` remains the equivalent gate for the filled Settings
   tile/app-mark set.
+- `make check-assets` validates the WhiteSur provenance row, its license text,
+  and the copied Files app icon.
 - New files: carry the MIT SPDX header. Adding a copyleft dependency or
   changing a component's license is a review blocker.
 

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
-import QtQuick.Shapes
 import QtQuick.VectorImage
 import QtQuick.Window
 import Dragonfruit
@@ -293,59 +292,21 @@ Item {
     }
 
     // -- Folder stack ----------------------------------------------------
-    // A macOS-like folder silhouette (T-14.7h): a back tab, a front face with
-    // a subtle vertical gradient, a rim edge, and an inner sheen — all our own
-    // geometry, sized like the app tiles. The folder name belongs to the hover
-    // label and the popover, never the artwork, so there is deliberately no
-    // `Text` here (ADR 0092).
-    Item {
+    // The vendored WhiteSur folder artwork (T-14.7h keeps the no-text rule).
+    // The folder name belongs to the hover label and the popover, never the
+    // artwork, so there is deliberately no `Text` here (ADR 0092).
+    Image {
         id: stack
         objectName: "stackArtwork"
         visible: root.kind === "stack"
         anchors.fill: parent
-
-        readonly property real s: root.size
-
-        // The back tab, peeking above the front face on the left.
-        Rectangle {
-            objectName: "stackFolderTab"
-            x: stack.s * 0.10
-            y: stack.s * 0.20
-            width: stack.s * 0.42
-            height: stack.s * 0.18
-            radius: stack.s * 0.045
-            color: Theme.color.folderTab
-            border.width: 1
-            border.color: Theme.color.folderRim
-        }
-
-        // The front face: gradient body, rim edge, and a soft top sheen.
-        Rectangle {
-            objectName: "stackFolderFront"
-            x: stack.s * 0.08
-            y: stack.s * 0.30
-            width: stack.s * 0.84
-            height: stack.s * 0.48
-            radius: stack.s * 0.09
-            border.width: 1
-            border.color: Theme.color.folderRim
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Theme.color.folderFillTop }
-                GradientStop { position: 1.0; color: Theme.color.folderFillBottom }
-            }
-
-            Rectangle {
-                objectName: "stackFolderSheen"
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: Math.max(1, stack.s * 0.05)
-                height: Math.max(1, stack.s * 0.06)
-                radius: height / 2
-                color: Theme.color.folderHighlight
-                opacity: 0.35
-            }
-        }
+        source: "qrc:/icons/whitesur/folder.svg"
+        sourceSize.width: root.artworkPixelSize
+        sourceSize.height: root.artworkPixelSize
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        cache: true
+        smooth: true
     }
 
     // -- Overflow cell ---------------------------------------------------
@@ -390,140 +351,44 @@ Item {
     }
 
     // -- Applications launcher (T-19.2 follow-up) ------------------------
-    // The permanent Dock tile that opens the Applications drawer: a neutral
-    // squircle carrying our own Tabler grid mark (the same glyph the drawer
-    // title uses), so it reads as a Dock tile without copying vendor artwork.
-    Item {
+    // The permanent Dock tile that opens the Applications drawer. WhiteSur's
+    // app-grid mark carries its own white rounded tile, so it is drawn as one
+    // resource rather than composited over a separate squircle.
+    Image {
         id: launcher
         objectName: "launcherArtwork"
         visible: root.kind === "launcher"
         anchors.fill: parent
-
-        Rectangle {
-            objectName: "launcherTile"
-            anchors.centerIn: parent
-            width: root.tileW
-            height: root.tileH
-            radius: root.tileRadius
-            color: Theme.color.controlFill
-            border.width: 1
-            border.color: Theme.color.border
-        }
-
-        TablerIcon {
-            objectName: "launcherGlyph"
-            anchors.centerIn: parent
-            name: "layout-grid"
-            weight: "filled"
-            size: Math.round(root.size * 0.5)
-            color: Theme.color.textPrimary
-        }
+        source: "qrc:/icons/whitesur/view-app-grid.svg"
+        sourceSize.width: root.artworkPixelSize
+        sourceSize.height: root.artworkPixelSize
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        cache: true
+        smooth: true
     }
 
     // -- Trash -----------------------------------------------------------
-    // A designed, original bin (T-14.7d): a metallic body with a vertical
-    // fill/gradient and a rim edge, a lid that overhangs the body, and a clean
-    // handle. Empty is a tidy neutral bin; full adds a crumpled-paper
-    // silhouette overflowing behind the lid plus an accent rim cue — a shape
-    // change, not just a tint, so it stays legible in grayscale. Drawn in a
-    // `trashSize`-derived box, centred in the entry's iconSize box so it scales
-    // with magnification and shares the app tiles' baseline.
-    Item {
+    // WhiteSur's empty/full bin pair (T-14.7d keeps the state distinction: the
+    // full state adds visible contents above the lid, not just a tint). Drawn
+    // in the same `trashSize`-derived box, centred in the entry's iconSize box
+    // so it scales with magnification and shares the app tiles' baseline.
+    Image {
         id: trash
+        objectName: "trashArtwork"
         visible: root.kind === "trash"
         anchors.centerIn: parent
         width: root.size * Theme.controls.dock.trashSize
                / Theme.controls.dock.iconSize
         height: width
-
-        readonly property real t: width
-        // The defining edge; the accent cue is reserved for a full bin.
-        readonly property color edge:
-            root.trashFull ? Theme.color.accent : Theme.color.trashRim
-
-        // Crumpled paper behind the rim, visible only above the lid. A jagged
-        // silhouette so the full state reads without colour.
-        Shape {
-            visible: root.trashFull
-            width: 100
-            height: 100
-            scale: trash.t / 100
-            transformOrigin: Item.TopLeft
-            antialiasing: true
-            preferredRendererType: Shape.GeometryRenderer
-
-            ShapePath {
-                fillColor: Theme.color.trashPaper
-                strokeColor: Theme.color.trashPaperEdge
-                strokeWidth: 2.0
-                PathSvg {
-                    path: "M27 46 L24 22 L31 27 L35 13 L42 22 L47 8 "
-                        + "L53 21 L59 11 L65 23 L71 15 L77 28 L74 46 Z"
-                }
-            }
-        }
-
-        // Body: rounded, subtly tapered by its gradient, rim edge.
-        Rectangle {
-            id: body
-            width: trash.t * 0.62
-            height: trash.t * 0.52
-            radius: trash.t * 0.09
-            x: (trash.t - width) / 2
-            y: trash.t * 0.34
-            border.width: Math.max(1, trash.t * 0.025)
-            border.color: trash.edge
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Theme.color.trashFillTop }
-                GradientStop { position: 1.0; color: Theme.color.trashFillBottom }
-            }
-
-            // A soft vertical sheen so the body reads as metal/glass, not fill.
-            Rectangle {
-                width: body.width * 0.20
-                height: body.height * 0.62
-                radius: width / 2
-                x: body.width * 0.16
-                y: body.height * 0.18
-                color: Theme.color.trashHighlight
-                opacity: 0.22
-            }
-        }
-
-        // Lid: overhangs the body, with its own rim and a top highlight.
-        Rectangle {
-            id: lid
-            width: trash.t * 0.76
-            height: trash.t * 0.105
-            radius: trash.t * 0.035
-            x: (trash.t - width) / 2
-            y: trash.t * 0.255
-            border.width: Math.max(1, trash.t * 0.025)
-            border.color: trash.edge
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Theme.color.trashFillTop }
-                GradientStop { position: 1.0; color: Theme.color.trashFillBottom }
-            }
-
-            Rectangle {
-                width: lid.width * 0.78
-                height: Math.max(1, lid.height * 0.18)
-                radius: height / 2
-                x: (lid.width - width) / 2
-                y: lid.height * 0.16
-                color: Theme.color.trashHighlight
-                opacity: 0.55
-            }
-        }
-
-        // Handle: a clean rounded bar above the lid.
-        Rectangle {
-            width: trash.t * 0.24
-            height: trash.t * 0.055
-            radius: height / 2
-            x: (trash.t - width) / 2
-            y: trash.t * 0.155
-            color: trash.edge
-        }
+        source: root.trashFull
+            ? "qrc:/icons/whitesur/user-trash-full.svg"
+            : "qrc:/icons/whitesur/user-trash.svg"
+        sourceSize.width: Math.ceil(width * 2)
+        sourceSize.height: Math.ceil(width * 2)
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        cache: true
+        smooth: true
     }
 }

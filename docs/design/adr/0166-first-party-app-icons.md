@@ -3,8 +3,9 @@
 ## Status
 
 accepted; the artwork source moved from Phosphor to Tabler's filled marks in
-ADR [0185](0185-tabler-line-icons.md). The one-SVG-per-app contract is
-unchanged.
+ADR [0185](0185-tabler-line-icons.md), then the Files mark moved to WhiteSur's
+`file-manager.svg` in ADR [0251](0251-whitesur-place-icons.md). The
+one-SVG-per-app contract is unchanged.
 
 ## Context
 

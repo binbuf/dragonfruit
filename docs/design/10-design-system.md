@@ -84,12 +84,25 @@ migration did not touch every call site. New code uses `TablerIcon` directly.
 
 `PhosphorIcon` (T-19.1a) remains the **filled** primitive for surfaces that
 need a solid near-white mark on a colored container: the System Settings
-category tile. (The first-party app artwork uses Tabler's filled
-`folders`/`settings` marks.) Phosphor 2.0.8 (MIT) is vendored under
-`assets/icons/phosphor/` and rendered as a tintable `ShapePath` sized from
-`name`/`color`/`size`/`weight`; a referenced glyph that is not vendored fails
-`make check-phosphor` (ADR [0163](adr/0163-phosphor-icons.md)). The line/fill
-split is recorded in ADR [0185](adr/0185-tabler-line-icons.md).
+category tile. (The Settings app artwork uses Tabler's filled `settings` mark;
+the Files app artwork is WhiteSur's `file-manager.svg`.) Phosphor 2.0.8 (MIT)
+is vendored under `assets/icons/phosphor/` and rendered as a tintable
+`ShapePath` sized from `name`/`color`/`size`/`weight`; a referenced glyph that
+is not vendored fails `make check-phosphor` (ADR
+[0163](adr/0163-phosphor-icons.md)). The line/fill split is recorded in ADR
+[0185](adr/0185-tabler-line-icons.md).
+
+`Icon.qml` also resolves the colored **place/app artwork** from the vendored
+WhiteSur set (`assets/icons/whitesur/`, exposed at
+`qrc:/icons/whitesur/<name>.svg`): generic folders, Documents, Downloads,
+Pictures, Music, Videos, Public, Templates, Home, Desktop, Trash, Computer,
+and internal/removable volumes. These resources carry their own color and are
+drawn as images, so they intentionally ignore the `Icon` tint. `DockGlyph`
+uses the same set for folder stacks, the empty/full Trash, and the
+Applications launcher. WhiteSur is GPL-3.0-only and handled as a separable
+runtime data asset; the provenance and the recorded exception are in
+[ADR 0251](adr/0251-whitesur-place-icons.md) and
+[`assets/icons/whitesur/README.md`](../../assets/icons/whitesur/README.md).
 
 `SettingsCategoryIcon` (T-19.1b) is the one gradient-backed category tile: a
 rounded container with a token drop shadow, a vertical gradient, a top inner
@@ -626,11 +639,12 @@ moving (window shapes, menu-bar iconography, materials), so building against
 design dependency. See [14-risks.md](14-risks.md) for the IP constraints on
 assets and branding.
 
-Third-party **open** icon sets are vendored resources under their own MIT
-licenses — Tabler for the line glyphs and Phosphor for the filled Settings
-tiles — not copies of Apple's artwork. The line/fill split and the credit
-package are recorded in ADR
-[0185](adr/0185-tabler-line-icons.md).
+Third-party **open** icon sets are vendored resources — Tabler (MIT) for the
+line glyphs, Phosphor (MIT) for the filled Settings tiles, and WhiteSur
+(GPL-3.0-only, separable data) for the colored place/app artwork — not copies
+of Apple's artwork. The line/fill split and credit package are recorded in ADR
+[0185](adr/0185-tabler-line-icons.md); the WhiteSur provenance and copyleft
+exception are in ADR [0251](adr/0251-whitesur-place-icons.md).
 
 ## What the design system provides to siblings
 

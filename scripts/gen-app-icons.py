@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Generate the first-party app icon SVGs from vendored Tabler glyphs.
+"""Assemble the first-party app icon SVGs from pinned artwork.
 
-The two first-party applications carry original artwork built from the pinned
-Tabler set (MIT, ADR 0185):
+The two first-party applications use two different, deliberately recorded
+sources:
 
-  * ``org.dragonfruit.Files`` — Tabler ``folders`` on a plain rounded-square
-    app tile (no container treatment, matching every other Dock app tile).
-  * ``org.dragonfruit.Settings`` — the System Settings gradient container
-    (the ``SettingsCategoryIcon`` treatment: rounded square, vertical gradient,
-    top inner highlight) with a Tabler ``settings``.
+  * ``org.dragonfruit.Files`` — the vendored WhiteSur ``file-manager.svg``,
+    copied byte-for-byte from ``assets/icons/whitesur/`` (GPL-3.0-only; see
+    that directory's README). The file is still the *single* artwork source,
+    so a future theme bump is one upstream swap plus this copy step.
+  * ``org.dragonfruit.Settings`` — an original gradient container (the
+    ``SettingsCategoryIcon`` treatment: rounded square, vertical gradient, top
+    inner highlight) with a Tabler ``settings`` glyph (MIT, ADR 0185).
 
-The SVGs are the *single* artwork source: they are exposed to QML as bundled
-resources (``qrc:/icons/apps/<name>.svg``, T-19.1d) for the Dock before an
-install, and installed into the shipped icon theme so launchers, menus, and
-the portal file chooser resolve the same file. Only the geometry and colour
-constants below are decided here; the glyph paths come from the vendored SVGs,
-so a Tabler update is one file swap plus this generator.
-
+The SVGs are exposed to QML as bundled resources (``qrc:/icons/apps/<name>.svg``,
+T-19.1d) for the Dock before an install, and installed into the shipped icon
+theme so launchers, menus, and the portal file chooser resolve the same file.
 Running with ``--check`` (``make check-tabler``) fails if a committed icon is
-stale, so the assets and the generator cannot drift.
+stale, so the assets and their pinned sources cannot drift.
 
 Usage:
     scripts/gen-app-icons.py            # (re)write the two icons
@@ -35,6 +33,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 TABLER_DIR = REPO / "assets" / "icons" / "tabler"
+WHITESUR_DIR = REPO / "assets" / "icons" / "whitesur"
 OUT_DIR = REPO / "assets" / "icons" / "apps"
 
 VIEW = 256.0
@@ -42,12 +41,6 @@ TABLER_VIEW = 24.0
 # Corner radius matches `component.dock.icon.radiusRatio` /
 # `component.settingsCategory.radiusRatio` (0.24) at the 256 viewBox.
 RADIUS = round(VIEW * 0.24, 2)
-
-# Files: a plain app tile (no gradient container), the deterministic blue of
-# our file manager. White fill glyph.
-FILES_TILE = "#3b82f6"
-FILES_GLYPH = "folders"
-FILES_GLYPH_RATIO = 0.6
 
 # Settings: the one app icon that carries the gradient container, matching
 # SettingsPanes' "general" category hue (`#8e8e93` -> `#58585c`).
@@ -84,16 +77,6 @@ def _centered_glyph(name: str, ratio: float) -> str:
             f'fill="{WHITE}" d="{glyph_path(name)}"/>\n')
 
 
-def files_svg() -> str:
-    return (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">\n'
-        f'  <rect x="0" y="0" width="256" height="256" rx="{RADIUS:g}" '
-        f'fill="{FILES_TILE}"/>\n'
-        + _centered_glyph(FILES_GLYPH, FILES_GLYPH_RATIO)
-        + "</svg>\n"
-    )
-
-
 def settings_svg() -> str:
     highlight = VIEW * SETTINGS_HIGHLIGHT_RATIO
     return (
@@ -119,8 +102,13 @@ def settings_svg() -> str:
 
 
 ICONS = {
-    "org.dragonfruit.Files.svg": files_svg,
     "org.dragonfruit.Settings.svg": settings_svg,
+}
+
+# The Files tile is upstream artwork, not generated geometry. Copy it
+# byte-for-byte so the installed/qrc asset stays one reviewable file swap.
+COPIES = {
+    "org.dragonfruit.Files.svg": WHITESUR_DIR / "file-manager.svg",
 }
 
 
@@ -142,6 +130,17 @@ def main() -> int:
         dest.write_text(text)
         print(f"wrote {dest.relative_to(REPO)}")
 
+    for name, source in COPIES.items():
+        data = source.read_bytes()
+        dest = OUT_DIR / name
+        if args.check:
+            if not dest.exists() or dest.read_bytes() != data:
+                stale.append(str(dest.relative_to(REPO)))
+            continue
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        print(f"copied {source.relative_to(REPO)} -> {dest.relative_to(REPO)}")
+
     if args.check:
         if stale:
             for path in stale:
@@ -149,7 +148,7 @@ def main() -> int:
             print("run scripts/gen-app-icons.py and commit the result",
                   file=sys.stderr)
             return 1
-        print(f"app icon assets are current ({len(ICONS)} icons)")
+        print(f"app icon assets are current ({len(ICONS) + len(COPIES)} icons)")
     return 0
 
 

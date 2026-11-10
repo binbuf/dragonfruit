@@ -41,6 +41,7 @@ units=(
     dragonfruit-menu-broker.service
     dragonfruit-app-index.service
     dragonfruit-notifications.service
+    dragonfruit-system-status.service
     dragonfruit-wallpaperd.service
     dragonfruit-portal.service
 )
