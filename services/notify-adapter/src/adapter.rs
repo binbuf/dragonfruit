@@ -100,6 +100,18 @@ impl<S: NotificationsSource> NotificationsAdapter<S> {
         self.after_write(outcome)
     }
 
+    /// Select a named Focus profile. One explicit write.
+    pub fn set_focus_profile(&mut self, id: &str) -> FocusOutcome {
+        let outcome = self.source.set_focus_profile(id);
+        self.after_write(outcome)
+    }
+
+    /// Replace the allowed-people list. One explicit write.
+    pub fn set_focus_allowed_people(&mut self, people: Vec<String>) -> FocusOutcome {
+        let outcome = self.source.set_focus_allowed_people(people);
+        self.after_write(outcome)
+    }
+
     /// Set one app's durable notification preference (T229a). One explicit
     /// write; the caller refreshes on success.
     pub fn set_app_preference(
@@ -181,6 +193,9 @@ mod tests {
         NotificationsData {
             mode,
             allow_list: vec!["Pager".to_owned()],
+            allowed_people: vec![],
+            active_profile: None,
+            profiles: dragonfruit_notifications::policy::default_profiles(),
             batched_count: 0,
             active: vec![NotificationRecord {
                 id: 1,

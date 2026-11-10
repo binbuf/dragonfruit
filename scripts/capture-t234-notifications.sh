@@ -47,9 +47,10 @@ date: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 source: shell/tests/tst_notifications.qml (headless offscreen/software)
 stage: 800x480 pt, 1x
 axes: light/dark; banner 380x132 with actions and a two-banner stack; Center
-      344x620 with the banner stack, the live 164 pt Calendar widget and the
-      lower panel; empty Center; separate 1027x552 widget gallery (240 pt
-      sidebar, 19 categories, 102x102 gallery thumbnails)
+      344x620 with the banner stack, grouping, a Focus-suppressed row, the live
+      164 pt Calendar widget and the lower panel; empty Center; separate
+      1027x552 widget gallery (240 pt sidebar, 19 categories, 102x102 gallery
+      thumbnails)
 measured bands: banner alpha 0.549 / tint 0.976; stack 0.551 / 0.706;
                 lower 0.407 / 0.852 (Light; Dark stack 0.507 / 0.550)
 artifacts:

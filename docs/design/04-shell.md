@@ -1109,14 +1109,25 @@ arrives; the service still owns the queue and expiry. `ClearAll` closes every
 active banner and drops the history, `ClearHistory` drops only the history;
 both are service methods, never local guesses. Per-display placement remains
 the compositor's per-output overlay rule (the Center has no explicit output).
-Named Focus profiles (Personal/Work/Sleep/custom) are not a second policy: the
-accepted ADR 0058 three-mode admission rule stays the one source of truth, and
-the profile presentation layer remains `OPEN`. Per-app notification settings
-are the existing service-owned `SetAppPreference` view used by the Settings
-panes. `make t234-notifications-capture` records light/dark banner, populated
-and empty Center, and gallery stills; `tst_notifications`, `tst_widgetmodel`
-and the service session-bus suite cover the behavior. See
-[adr/0252](adr/0252-notification-center-ramp-widgets-and-actions.md).
+Named Focus profiles (Do Not Disturb/Personal/Work/Sleep/custom) are a
+presentation layer over the accepted ADR 0058 three-mode admission rule, not a
+second policy: selecting a profile installs its mode and its own allowed-apps /
+allowed-people lists into the one `FocusPolicy`, and a manual mode change
+selects the synthetic `custom` profile. The service serves the catalog and the
+active profile in `FocusPolicy()` (`profiles`, `activeProfile`,
+`activeProfileLabel`, `allowedPeople`); the menu bar, Control Center, and
+Settings all read that one view, and the profile label is the user-facing name
+(Control Center's subtitle and the menu-bar item's accessible name). Allowed
+people come from the optional `sender` / `x-dragonfruit-sender` `Notify` hint;
+an allow-listed person is admitted exactly like an allow-listed app, because
+the freedesktop contract has no person field. Per-app notification settings are
+the existing service-owned `SetAppPreference` view used by the Settings panes.
+`make t234-notifications-capture` records light/dark banner, populated and
+empty Center, and gallery stills; `tst_notifications`, `tst_widgetmodel`, the
+service session-bus suite, `tst_settings_notifications`, `tst_controlcenter`
+and `tst_dockcore` cover the behavior. See
+[adr/0252](adr/0252-notification-center-ramp-widgets-and-actions.md) and
+[adr/0253](adr/0253-focus-profiles-and-allowed-people.md).
 
 **T-11.3a status.** The Control Center panel exists: the menu-bar item (or the
 Control-Option-C shortcut, routed as the compositor's `control-center` input

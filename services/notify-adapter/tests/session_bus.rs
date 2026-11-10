@@ -166,7 +166,12 @@ fn the_adapter_drives_the_live_source() {
             dragonfruit_notify_adapter::NotificationsChange::FocusModeChanged {
                 from: FocusMode::Off,
                 to: FocusMode::Focus,
-            }
+            },
+            // A manual mode change selects the synthetic custom profile.
+            dragonfruit_notify_adapter::NotificationsChange::ProfileChanged {
+                from: None,
+                to: Some("custom".to_owned()),
+            },
         ]
     );
 }

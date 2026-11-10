@@ -47,6 +47,11 @@ public:
     virtual void setFocusMode(const QString &mode) = 0;
     // Replace the per-app Focus allow list. One explicit write.
     virtual void setFocusAllowList(const QStringList &apps) = 0;
+    // Select a named Focus profile (`personal`/`work`/`sleep`/`custom`). One
+    // explicit write; the host rejects an unknown id.
+    virtual void setFocusProfile(const QString &id) = 0;
+    // Replace the allowed-people list (the optional notification sender).
+    virtual void setFocusAllowedPeople(const QStringList &people) = 0;
     // Set one app's durable notification preference (T229a). One explicit
     // write; the host re-reads and pushes the new view.
     virtual void setAppPreference(const QString &app, const QString &style,
@@ -71,6 +76,8 @@ public:
     void refresh() override;
     void setFocusMode(const QString &mode) override;
     void setFocusAllowList(const QStringList &apps) override;
+    void setFocusProfile(const QString &id) override;
+    void setFocusAllowedPeople(const QStringList &people) override;
     void setAppPreference(const QString &app, const QString &style, bool sound,
                           bool badge, bool allowed) override;
 
@@ -101,13 +108,17 @@ public:
     void refresh() override;
     void setFocusMode(const QString &mode) override;
     void setFocusAllowList(const QStringList &apps) override;
+    void setFocusProfile(const QString &id) override;
+    void setFocusAllowedPeople(const QStringList &people) override;
     void setAppPreference(const QString &app, const QString &style, bool sound,
                           bool badge, bool allowed) override;
 
 private:
     void rebuild();
     QString m_mode = QStringLiteral("focus");
+    QString m_profile = QStringLiteral("personal");
     QStringList m_allowList = QStringList{ QStringLiteral("Pager") };
+    QStringList m_allowedPeople = QStringList{ QStringLiteral("Ada") };
     // App name (case-insensitive) -> {style, sound, badge, allowed}. Only
     // non-default entries are stored, like the service.
     QHash<QString, QVariantMap> m_appPreferences;

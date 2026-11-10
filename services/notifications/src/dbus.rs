@@ -11,10 +11,10 @@
 //!   path is what makes every existing Linux app's notifications work.
 //! * `org.dragonfruit.Notifications1` — the shell-facing interface
 //!   (`Banners`, `History`, `Dismiss`, `Expire`, `FocusPolicy`,
-//!   `SetFocusMode`, `SetFocusAllowList`, `DoNotDisturb`,
-//!   `SetDoNotDisturb`, `Changed`; the last two are the T-11.1a DND
-//!   compat pair). The Qt shell reads the flat JSON views from here; it
-//!   never scrapes the freedesktop interface.
+//!   `SetFocusMode`, `SetFocusAllowList`, `SetFocusProfile`,
+//!   `SetFocusAllowedPeople`, `DoNotDisturb`, `SetDoNotDisturb`, `Changed`;
+//!   the last two are the T-11.1a DND compat pair). The Qt shell reads the
+//!   flat JSON views from here; it never scrapes the freedesktop interface.
 //!
 //! Both interfaces share one [`Queue`] behind a mutex, so a `Notify` on the
 //! standard interface is exactly the banner the shell reads. A background
@@ -133,6 +133,14 @@ impl FreedesktopNotifications {
             .and_then(|value| u8::try_from(value.clone()).ok())
             .map(Urgency::from_hint)
             .unwrap_or_default();
+        // The freedesktop spec has no sender field; an app that can name the
+        // person supplies one of these hints (T234). Unknown hints are
+        // ignored as usual.
+        let sender = hints
+            .get("x-dragonfruit-sender")
+            .or_else(|| hints.get("sender"))
+            .and_then(|value| String::try_from(value.clone()).ok())
+            .unwrap_or_default();
         let request = NotifyRequest {
             app_name: app_name.to_owned(),
             replaces_id,
@@ -141,6 +149,7 @@ impl FreedesktopNotifications {
             body: body.to_owned(),
             actions: pair_actions(actions),
             urgency,
+            sender,
             expire_timeout_ms: expire_timeout,
         };
         let id = lock(&self.queue).notify(request, now_ms());
@@ -266,10 +275,7 @@ impl ShellNotifications {
     /// Clear the Notification Center (T234): close every active banner with
     /// reason 2 and drop the recorded history. Returns the closed ids, oldest
     /// first. The Focus policy and its suppression batch are untouched.
-    async fn clear_all(
-        &self,
-        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
-    ) -> Vec<u32> {
+    async fn clear_all(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) -> Vec<u32> {
         let closed = lock(&self.queue).clear_all(now_ms());
         if !closed.is_empty() {
             wake_expiry(&self.wake);
@@ -283,10 +289,7 @@ impl ShellNotifications {
 
     /// Drop the recorded history without closing the active banners. Returns
     /// whether anything was removed.
-    async fn clear_history(
-        &self,
-        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
-    ) -> bool {
+    async fn clear_history(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) -> bool {
         let cleared = lock(&self.queue).clear_history();
         if cleared {
             emit_shell_changed(&emitter).await;
@@ -345,6 +348,31 @@ impl ShellNotifications {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) {
         lock(&self.queue).set_focus_allow_list(apps);
+        emit_shell_changed(&emitter).await;
+    }
+
+    /// Select a named Focus profile (`personal`/`work`/`sleep`/`custom`).
+    /// The profile installs its mode and allow lists into the one policy.
+    /// Unknown ids are rejected and the previous state is kept.
+    async fn set_focus_profile(
+        &self,
+        id: &str,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> bool {
+        let accepted = lock(&self.queue).set_focus_profile(id);
+        if accepted {
+            emit_shell_changed(&emitter).await;
+        }
+        accepted
+    }
+
+    /// Replace the allowed-people list (the optional notification sender).
+    async fn set_focus_allowed_people(
+        &self,
+        people: Vec<String>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) {
+        lock(&self.queue).set_focus_allowed_people(people);
         emit_shell_changed(&emitter).await;
     }
 

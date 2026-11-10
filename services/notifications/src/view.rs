@@ -31,6 +31,7 @@ pub fn history_json(queue: &Queue) -> String {
                 "summary": entry.summary,
                 "body": entry.body,
                 "urgency": entry.urgency.name(),
+                "sender": entry.sender,
                 "createdAt": entry.created_at_ms,
                 "closedAt": entry.closed_at_ms,
                 "reason": entry.reason.map(|reason| reason.name()),
@@ -57,9 +58,26 @@ pub fn focus_policy_json(policy: &FocusPolicy) -> String {
             })
         })
         .collect();
+    let profiles: Vec<Value> = policy
+        .profiles()
+        .iter()
+        .map(|profile| {
+            json!({
+                "id": profile.id,
+                "name": profile.name,
+                "mode": profile.mode.name(),
+                "apps": profile.apps,
+                "people": profile.people,
+            })
+        })
+        .collect();
     json!({
         "mode": policy.mode().name(),
         "allowList": policy.allow_list(),
+        "allowedPeople": policy.allowed_people(),
+        "activeProfile": policy.active_profile(),
+        "activeProfileLabel": policy.presentation_label(),
+        "profiles": profiles,
         "batchedCount": policy.batched_count(),
         "appPreferences": app_preferences,
     })
@@ -76,6 +94,7 @@ fn banner_value(notification: &Notification) -> Value {
         "summary": notification.summary,
         "body": notification.body,
         "urgency": notification.urgency.name(),
+        "sender": notification.sender,
         "createdAt": notification.created_at_ms,
         "deadline": notification.deadline_ms(crate::model::DEFAULT_TIMEOUT_MS),
         "actions": actions_value(&notification.actions),
@@ -143,13 +162,29 @@ mod tests {
             serde_json::json!({
                 "mode": "off",
                 "allowList": [],
+                "allowedPeople": [],
+                "activeProfile": null,
+                "activeProfileLabel": null,
+                "profiles": [
+                    { "id": "dnd", "name": "Do Not Disturb", "mode": "dnd",
+                      "apps": [], "people": [] },
+                    { "id": "personal", "name": "Personal", "mode": "focus",
+                      "apps": [], "people": [] },
+                    { "id": "work", "name": "Work", "mode": "focus",
+                      "apps": [], "people": [] },
+                    { "id": "sleep", "name": "Sleep", "mode": "dnd",
+                      "apps": [], "people": [] },
+                    { "id": "custom", "name": "Custom", "mode": "focus",
+                      "apps": [], "people": [] },
+                ],
                 "batchedCount": 0,
                 "appPreferences": [],
             })
         );
 
-        policy.set_mode(crate::policy::FocusMode::Focus);
+        assert!(policy.set_active_profile("personal"));
         policy.set_allow_list(vec!["Chat".to_owned()]);
+        policy.set_allowed_people(vec!["Ada".to_owned()]);
         policy.set_app_preference(
             "Mail",
             crate::policy::AppPreference {
@@ -162,6 +197,11 @@ mod tests {
         let value: Value = serde_json::from_str(&focus_policy_json(&policy)).unwrap();
         assert_eq!(value["mode"], "focus");
         assert_eq!(value["allowList"][0], "Chat");
+        assert_eq!(value["allowedPeople"][0], "Ada");
+        assert_eq!(value["activeProfile"], "personal");
+        assert_eq!(value["activeProfileLabel"], "Personal");
+        assert_eq!(value["profiles"][1]["apps"][0], "Chat");
+        assert_eq!(value["profiles"][1]["people"][0], "Ada");
         assert_eq!(value["batchedCount"], 1);
         assert_eq!(value["appPreferences"][0]["name"], "Mail");
         assert_eq!(value["appPreferences"][0]["style"], "alert");

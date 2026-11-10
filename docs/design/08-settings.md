@@ -257,10 +257,11 @@ The last four panes close the reference information architecture
   service's new `SetAppPreference`, and links to Focus. The service enforces
   the mute and `style = none` in admission; the app inventory is the observed
   list, not a guessed installed-app set.
-- **Focus** renders the three modes with their admission rule and active
-  state, the per-app allow list, an explicit Allowed People note (senders are
-  apps, not people), the durable `focus.schedule.*` schedule, and the
-  `focus.shortcut` recorder. `shell/src/focusschedule.cpp` is the one consumer:
+- **Focus** renders the named Do Not Disturb/Personal/Work/Sleep/custom
+  profile selector, the three admission modes with their active state, the
+  per-app and per-person allow lists (people come from the optional
+  notification `sender` hint), the durable `focus.schedule.*` schedule, and
+  the `focus.shortcut` recorder. `shell/src/focusschedule.cpp` is the one consumer:
   it applies Focus at the opening boundary and Off at the closing boundary,
   and a manual mode change wins until the next window.
 - **Lock Screen** writes the `lock.*` display keys and the shell now pushes

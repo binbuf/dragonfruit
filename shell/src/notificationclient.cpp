@@ -380,10 +380,44 @@ void MockNotificationClient::refresh()
 
 QByteArray MockNotificationClient::policyJson() const
 {
+    // T234: the shell mock mirrors the service's named-profile presentation.
+    // The mode stays the one admission rule; the label is what the menu bar
+    // and Control Center show.
+    const QString profileLabel =
+        m_focusMode == QLatin1String("dnd") ? QStringLiteral("Do Not Disturb")
+        : m_focusMode == QLatin1String("focus") ? QStringLiteral("Focus")
+                                                : QString();
+    QJsonArray profiles;
+    const auto addProfile = [&profiles](const char *id, const char *name,
+                                        const char *mode) {
+        profiles.append(QJsonObject{
+            { QStringLiteral("id"), QString::fromLatin1(id) },
+            { QStringLiteral("name"), QString::fromLatin1(name) },
+            { QStringLiteral("mode"), QString::fromLatin1(mode) },
+            { QStringLiteral("apps"), QJsonArray{} },
+            { QStringLiteral("people"), QJsonArray{} },
+        });
+    };
+    addProfile("dnd", "Do Not Disturb", "dnd");
+    addProfile("personal", "Personal", "focus");
+    addProfile("work", "Work", "focus");
+    addProfile("sleep", "Sleep", "dnd");
+    addProfile("custom", "Custom", "focus");
     return QJsonDocument(
                QJsonObject{
                    { QStringLiteral("mode"), m_focusMode },
                    { QStringLiteral("allowList"), QJsonArray{} },
+                   { QStringLiteral("allowedPeople"), QJsonArray{} },
+                   { QStringLiteral("activeProfile"),
+                     m_focusMode == QLatin1String("off")
+                         ? QJsonValue(QJsonValue::Null)
+                         : QJsonValue(m_focusMode == QLatin1String("dnd")
+                                          ? QStringLiteral("dnd")
+                                          : QStringLiteral("custom")) },
+                   { QStringLiteral("profileLabel"),
+                     profileLabel.isEmpty() ? QJsonValue(QJsonValue::Null)
+                                            : QJsonValue(profileLabel) },
+                   { QStringLiteral("profiles"), profiles },
                    { QStringLiteral("batchedCount"), m_focusBatched },
                })
         .toJson(QJsonDocument::Compact);

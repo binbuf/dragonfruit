@@ -595,7 +595,15 @@ Item {
         ? root.focusPolicy.mode : "off"
     readonly property bool focusOn: root.focusMode === "focus"
         || root.focusMode === "dnd"
+    // T234: the service's named profile is the presentation label; the
+    // underlying mode stays the one admission rule.
+    readonly property string focusProfileLabel:
+        root.focusPolicy.profileLabel !== undefined
+            && root.focusPolicy.profileLabel !== null
+            ? String(root.focusPolicy.profileLabel) : ""
     readonly property string focusLabel: {
+        if (root.focusOn && root.focusProfileLabel.length > 0)
+            return root.focusProfileLabel;
         if (root.focusMode === "dnd")
             return qsTr("Do Not Disturb");
         if (root.focusMode === "focus")

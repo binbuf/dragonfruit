@@ -730,16 +730,19 @@ Owner: notification service + `settingsd`.
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Do Not Disturb | Do Not Disturb | Segmented + list | notification service | Off/Focus/DND; active state |
-| Personal/Work/Sleep/Custom | Modes | List | notification service | The three service modes with their admission rule; custom named modes are a service follow-up |
-| Allowed people | Allowed people | Note | notification service | Senders are applications, not people; explicit Linux absence |
+| Personal/Work/Sleep/Custom | Focus profile | Segmented + list | notification service | Named profiles install a mode and their own lists over the one admission rule |
+| Allowed people | Allowed people | List | notification service | Observed `sender` hint; allowed people are admitted like allowed apps |
 | Allowed apps | Allowed apps | List | notification service | Per-app Focus allow list |
 | Time | Schedule | Toggle + time fields + days | `settingsd`: `focus.schedule.*` | Shell `FocusSchedule` applies the mode at the window boundary |
 | Shortcuts | Shortcut | Recorder | `settingsd`: `focus.shortcut` | Validated; global registration deferred |
 
-**T229a status.** The pane renders the service's three modes with their
-admission rule and the live active state, the per-app Focus allow list, and an
-explicit **Allowed People** note (the service identifies senders by
-application, not person, so no dead per-person list is drawn). **Schedule**
+**T229a/T234 status.** The pane renders the named profile selector
+(Do Not Disturb/Personal/Work/Sleep/custom) over the service's three-mode
+admission rule, the live active state, the per-app Focus allow list, and the
+**Allowed People** list (observed from the optional notification `sender`
+hint; an explicit empty state shows when none have arrived). Selecting a
+profile installs its mode and its own lists; a manual mode change selects
+`custom`. **Schedule**
 writes `focus.schedule.enabled/start/end/days`; the shell's `FocusSchedule`
 reads them and applies Focus at the window boundary, respecting a manual
 override. **Shortcut** writes `focus.shortcut` with a modifier+key validator;

@@ -46,10 +46,13 @@ adapter** over the notification service, not a second service.
    snapshot and the host re-reads after the service's `Changed`. An absent
    write resyncs the adapter to `Unavailable`.
 4. **A typed snapshot and a pure change stream.** `NotificationsSnapshot`
-   carries `FocusSnapshot` (mode, allow list, suppressed batch), the active
-   banners, the history, and a derived per-app list (`AppNotifications`);
-   `NotificationsSnapshot::changes` is the event diff (mode, allow list, batch,
-   banner and history counts) the adapter queues in `drain_changes`.
+   carries `FocusSnapshot` (mode, app/person allow lists, active profile and
+   catalog, suppressed batch), the active banners, the history, and derived
+   per-app/per-person lists (`AppNotifications`, `PersonNotifications`);
+   `NotificationsSnapshot::changes` is the event diff (mode, app/person lists,
+   profile, batch, banner and history counts) the adapter queues in
+   `drain_changes`. T234 grew these fields additively; the admission rule is
+   still the service's (ADR 0253).
 5. **New slot ids.** `AdapterId::NOTIFICATIONS` (`"notifications"`) and
    `AdapterId::FOCUS` (`"focus"`) join the contract; the adapter reports
    `NOTIFICATIONS`.

@@ -28,7 +28,9 @@
 //! [0056]: ../../../docs/design/adr/0056-notification-service-surface-and-shell-banner.md
 //! [0058]: ../../../docs/design/adr/0058-focus-dnd-policy-semantics.md
 
-use dragonfruit_notifications::{AppPreference, AppPreferenceEntry, FocusMode, Urgency};
+use dragonfruit_notifications::{
+    AppPreference, AppPreferenceEntry, FocusMode, FocusProfile, Urgency,
+};
 use dragonfruit_system_adapters::AdapterError;
 
 /// One recorded notification, the flattened read of the service's
@@ -49,6 +51,8 @@ pub struct NotificationRecord {
     pub summary: String,
     /// The urgency hint.
     pub urgency: Urgency,
+    /// The optional person identity from the `Notify` sender hint (T234).
+    pub sender: String,
     /// Whether the Focus policy suppressed this notification's banner (a
     /// history-only flag).
     pub suppressed: bool,
@@ -64,6 +68,12 @@ pub struct NotificationsData {
     pub mode: FocusMode,
     /// The per-app Focus allow list, in the service's order.
     pub allow_list: Vec<String>,
+    /// The allowed-people list (the optional notification sender).
+    pub allowed_people: Vec<String>,
+    /// The active named profile id, when one is selected.
+    pub active_profile: Option<String>,
+    /// The named profile catalog the service serves.
+    pub profiles: Vec<FocusProfile>,
     /// How many notifications the current suppression has batched.
     pub batched_count: u32,
     /// The active banners, oldest first (the service's order).
@@ -121,6 +131,17 @@ pub trait NotificationsSource {
 
     /// Replace the per-app Focus allow list. One explicit write.
     fn set_focus_allow_list(&mut self, _apps: Vec<String>) -> FocusOutcome {
+        FocusOutcome::Absent
+    }
+
+    /// Select a named Focus profile. One explicit write; unknown ids are
+    /// rejected by the service.
+    fn set_focus_profile(&mut self, _id: &str) -> FocusOutcome {
+        FocusOutcome::Absent
+    }
+
+    /// Replace the allowed-people list. One explicit write.
+    fn set_focus_allowed_people(&mut self, _people: Vec<String>) -> FocusOutcome {
         FocusOutcome::Absent
     }
 
@@ -266,6 +287,49 @@ impl NotificationsSource for MockNotifications {
         FocusOutcome::Applied
     }
 
+    fn set_focus_profile(&mut self, id: &str) -> FocusOutcome {
+        if !self.present {
+            return FocusOutcome::Absent;
+        }
+        if let Some(error) = &self.write_failure {
+            return FocusOutcome::Failed(error.clone());
+        }
+        let Some(data) = self.data.as_mut() else {
+            return FocusOutcome::Failed(AdapterError::new("no notification state"));
+        };
+        let Some(profile) = data
+            .profiles
+            .iter()
+            .find(|profile| profile.id.eq_ignore_ascii_case(id.trim()))
+            .cloned()
+        else {
+            return FocusOutcome::Failed(AdapterError::new(format!("unknown focus profile: {id}")));
+        };
+        if profile.mode == FocusMode::Off {
+            return FocusOutcome::Failed(AdapterError::new("focus profile is off"));
+        }
+        data.mode = profile.mode;
+        data.allow_list = profile.apps;
+        data.allowed_people = profile.people;
+        data.active_profile = Some(profile.id);
+        self.focus_writes += 1;
+        FocusOutcome::Applied
+    }
+
+    fn set_focus_allowed_people(&mut self, people: Vec<String>) -> FocusOutcome {
+        if !self.present {
+            return FocusOutcome::Absent;
+        }
+        if let Some(error) = &self.write_failure {
+            return FocusOutcome::Failed(error.clone());
+        }
+        if let Some(data) = self.data.as_mut() {
+            data.allowed_people = people;
+        }
+        self.focus_writes += 1;
+        FocusOutcome::Applied
+    }
+
     fn set_app_preference(&mut self, app: &str, preference: AppPreference) -> FocusOutcome {
         if !self.present {
             return FocusOutcome::Absent;
@@ -287,7 +351,9 @@ impl NotificationsSource for MockNotifications {
                     preference,
                 });
                 data.app_preferences.sort_by(|a, b| {
-                    a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase())
+                    a.name
+                        .to_ascii_lowercase()
+                        .cmp(&b.name.to_ascii_lowercase())
                 });
             }
         }
@@ -304,12 +370,16 @@ mod tests {
         NotificationsData {
             mode,
             allow_list: vec!["Chat".to_owned()],
+            allowed_people: vec![],
+            active_profile: None,
+            profiles: dragonfruit_notifications::policy::default_profiles(),
             batched_count: 2,
             active: vec![NotificationRecord {
                 id: 1,
                 app_name: "Mail".to_owned(),
                 summary: "New message".to_owned(),
                 urgency: Urgency::Normal,
+                sender: String::new(),
                 suppressed: false,
                 created_at_ms: 1000,
             }],
