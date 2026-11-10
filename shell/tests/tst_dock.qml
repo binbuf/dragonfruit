@@ -215,6 +215,69 @@ Item {
             return n;
         }
 
+        function test_minimized_targets_map_to_each_minimized_tile() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom",
+                entries: [
+                    app("a", "A", true),
+                    { id: "win:11", windowId: "11", appId: "a", name: "Doc",
+                      kind: "minimized", minimized: true },
+                    { id: "win:12", windowId: "12", appId: "a", name: "Doc 2",
+                      kind: "minimized", minimized: true }
+                ]
+            });
+            var targets = dock.minimizedTargets;
+            compare(Object.keys(targets).length, 2);
+            verify(targets["11"] !== undefined);
+            verify(targets["12"] !== undefined);
+            // The targets are the resting minimized tiles, inside the
+            // revealed plate and ordered along the Dock axis.
+            verify(targets["11"].y >= dock.revealedPlateRect.y);
+            verify(targets["11"].y + targets["11"].h
+                   <= dock.revealedPlateRect.y + dock.revealedPlateRect.h);
+            verify(targets["11"].x < targets["12"].x);
+            // The fallback region spans the current minimized group.
+            var region = dock.minimizedRegionRect;
+            verify(region.w >= targets["11"].w);
+            verify(region.x <= targets["11"].x + 0.5);
+            verify(region.x + region.w >= targets["12"].x + targets["12"].w - 0.5);
+        }
+
+        function test_minimize_into_tile_icon_clears_the_minimized_targets() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [
+                    app("a", "A", true),
+                    { id: "win:11", windowId: "11", appId: "a", name: "Doc",
+                      kind: "minimized", minimized: true }
+                ]
+            });
+            compare(Object.keys(dock.minimizedTargets).length, 1);
+            dock.minimizeIntoTileIcon = true;
+            waitForRendering(stage);
+            compare(Object.keys(dock.minimizedTargets).length, 0);
+            compare(dock.minimizedRegionRect.w, 0);
+            compare(dock.minimizedRegionRect.h, 0);
+        }
+
+        function test_minimized_targets_follow_the_vertical_axis() {
+            var dock = make(dockComponent, {
+                width: 240, height: 800, position: "left",
+                entries: [
+                    app("a", "A", true),
+                    { id: "win:11", windowId: "11", appId: "a", name: "Doc",
+                      kind: "minimized", minimized: true }
+                ]
+            });
+            var target = dock.minimizedTargets["11"];
+            verify(target !== undefined);
+            verify(target.x >= dock.revealedPlateRect.x);
+            verify(target.x + target.w
+                   <= dock.revealedPlateRect.x + dock.revealedPlateRect.w);
+            // A left Dock's minimized tile is lower than the app region.
+            verify(target.y > dock.revealedPlateRect.y);
+        }
+
         function test_region_dividers_split_pinned_tail_and_fixed() {
             // pinned + running unpinned + stack + Trash: two rules, matching
             // the reference `[pinned] | [temporary/recent] | [stacks Trash]`.
@@ -2529,6 +2592,44 @@ Item {
             verify(dock.plateRect.y > dock.magnifyBand);
             dock.reveal();
             wait(Theme.motion.dockReveal.duration + 40);
+            compare(dock.hideOffset, 0);
+        }
+
+        function test_auto_hide_reserves_nothing_and_off_restores_the_zone() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            // The hidden auto-hide Dock reserves nothing; the revealed plate
+            // floats over content, so it still reserves nothing.
+            compare(dock.reservedThickness, 0);
+            dock.hide();
+            wait(Theme.motion.dockReveal.duration + 40);
+            compare(dock.reservedThickness, 0);
+            // Turning auto-hide off restores the resting plate + edge margin.
+            dock.autoHide = false;
+            waitForRendering(stage);
+            compare(dock.reservedThickness, dock.barThickness + dock.edgeMargin);
+        }
+
+        function test_auto_hide_reveal_retargets_from_the_current_offset() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            var hiddenOffset = dock.barThickness + dock.edgeMargin;
+            dock.hide();
+            wait(Math.floor(Theme.motion.dockReveal.duration / 4));
+            var partial = dock.hideOffset;
+            verify(partial > 0);
+            verify(partial < hiddenOffset);
+            // A reverse input continues from the visible offset; it does not
+            // snap to the revealed state or restart from the hidden end.
+            dock.reveal();
+            wait(Math.floor(Theme.motion.dockReveal.duration / 4));
+            verify(dock.hideOffset < partial);
+            verify(dock.hideOffset > 0);
+            wait(Theme.motion.dockReveal.duration + 80);
             compare(dock.hideOffset, 0);
         }
 

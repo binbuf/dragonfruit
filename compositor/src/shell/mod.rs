@@ -57,7 +57,8 @@ const INTERFACE_VERSION: u32 = 1;
 const SHELL_INTERFACE_VERSION: u32 = 4;
 
 /// `df_toplevel_manager` is version 10 since the T229 pointer/layout policy
-/// requests were added; `set_appearance_policy` was the v9 addition (T196);
+/// requests were added; `set_minimize_target` is the v11 addition (T237);
+/// `set_appearance_policy` was the v9 addition (T196);
 /// `activation_result` was the v8 addition (T-14.7g),
 /// `set_app_accelerators` v7 (T-14.2b), `capture_screenshot` and the
 /// `screenshot_saved`/`screenshot_failed` events were the v6 additions
@@ -65,7 +66,7 @@ const SHELL_INTERFACE_VERSION: u32 = 4;
 /// (T-08.2c), `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3
 /// (T-11), and `release_keyboard_focus` v2 (T-10). The other interfaces stay
 /// at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 10;
+const MANAGER_INTERFACE_VERSION: u32 = 11;
 
 /// `df_output` is version 4 since the role-keyed `material_role_state` event
 /// was added (T-21.2c); v3 added the global effective `material_state` event
@@ -2511,6 +2512,21 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     &app_id,
                     Rectangle::new((x, y).into(), (width.max(1), height.max(1)).into()),
                 );
+            }
+            df_toplevel_manager::Request::SetMinimizeTarget {
+                window_id,
+                x,
+                y,
+                width,
+                height,
+            } => {
+                // T237: the Dock's minimized-region or per-window target when
+                // `dock.minimizeIntoTileIcon` is off. A non-positive rect
+                // clears it and restores the app-tile mapping.
+                let origin = (width > 0 && height > 0)
+                    .then(|| Rectangle::new((x, y).into(), (width.max(1), height.max(1)).into()));
+                state.set_minimize_target(&window_id, origin);
+                state.needs_redraw = true;
             }
             df_toplevel_manager::Request::SetMotionPolicy {
                 color_scheme,

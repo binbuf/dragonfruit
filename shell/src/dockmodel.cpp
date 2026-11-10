@@ -171,10 +171,11 @@ QString displayNameForIdentity(const QString &identity)
 
 double dockLaunchBouncePhase(qint64 elapsedMs)
 {
+    // One measured lift: 0 -> 1 -> 0 over the token duration. The caller's
+    // sin(pi * phase) turns it into a single 15 pt hop.
     if (elapsedMs < 0 || elapsedMs >= kLaunchBounceMs)
         return -1.0;
-    const qint64 hop = kLaunchBounceMs / 3;
-    return static_cast<double>(elapsedMs % hop) / static_cast<double>(hop);
+    return static_cast<double>(elapsedMs) / static_cast<double>(kLaunchBounceMs);
 }
 
 double dockAttentionBouncePhase(qint64 elapsedMs)

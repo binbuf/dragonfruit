@@ -71,6 +71,7 @@
 //! fullscreen <window-id> | unfullscreen <window-id>
 //! animate-dummy <duration-ms>
 //! animate-dummy-on <output> <duration-ms>
+//! capture <path>
 //! ```
 //!
 //! `query decorations` is a read-only introspection aid for the SSD
@@ -853,6 +854,12 @@ pub enum SyntheticCommand {
         output: String,
         duration_ms: u64,
     },
+    /// Ask the compositor to write a full-output PNG to `path` on the next
+    /// rendered frame (T237 motion-capture plumbing; same path as the
+    /// portal-presenter screenshot request).
+    Capture {
+        path: String,
+    },
 }
 
 fn parse_state(token: &str) -> Result<KeyState, String> {
@@ -957,6 +964,9 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             slot: parse_u32(parts.next().ok_or("touch-up requires a slot")?)?,
         },
         "touch-frame" => SyntheticCommand::TouchFrame,
+        "capture" => SyntheticCommand::Capture {
+            path: parts.next().ok_or("capture requires a path")?.to_string(),
+        },
         "animate-dummy" => SyntheticCommand::AnimateDummy {
             duration_ms: parts
                 .next()
@@ -1429,6 +1439,9 @@ impl SyntheticCommand {
             SyntheticCommand::AnimateDummyOn { .. } => {
                 unreachable!("animate-dummy-on is handled by apply_datagram")
             }
+            SyntheticCommand::Capture { .. } => {
+                unreachable!("capture is handled by apply_datagram")
+            }
         }
     }
 }
@@ -1732,6 +1745,12 @@ fn apply_datagram_reply(
                         (width.max(1), height.max(1)).into(),
                     ),
                 );
+                applied += 1;
+            }
+            Ok(SyntheticCommand::Capture { path }) => {
+                // T237 capture plumbing: the same compositor capture path the
+                // trusted shell uses, with the full primary output.
+                state.request_capture(0, 0, 0, 0, "fullscreen", path);
                 applied += 1;
             }
             Ok(SyntheticCommand::MinimizeWindow(id)) => {

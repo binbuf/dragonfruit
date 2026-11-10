@@ -955,7 +955,10 @@ Rectangle {
     // floating plate (ADR 0089). Both are derived here, never in the shell,
     // so the plate math has one source of truth.
     readonly property real surfaceThickness: barThickness + magnifyBand + edgeMargin
-    readonly property real reservedThickness: barThickness + edgeMargin
+    // A hidden auto-hide Dock reserves nothing, even while it is revealed
+    // (the revealed plate floats over content). This is the single reserved-
+    // zone source the shell forwards to the compositor.
+    readonly property real reservedThickness: autoHide ? 0 : barThickness + edgeMargin
     readonly property bool axisIsX: position === "bottom"
     readonly property string indicatorEdge:
         position === "bottom" ? "bottom" : (position === "left" ? "left" : "right")
@@ -3693,6 +3696,124 @@ Rectangle {
             y: base.positions[0] - paddingAlong,
             w: barThickness,
             h: base.total + 2 * paddingAlong
+        };
+    }
+
+    // The plate's revealed (on-screen) geometry: the same resting plate with
+    // the auto-hide translation removed. Minimize targets use this so a window
+    // collapsing while the Dock is hidden still lands at the edge the plate
+    // slides back to, not at an off-screen rect.
+    readonly property var revealedPlateRect: {
+        var base = _baseline;
+        if (axisIsX)
+            return {
+                x: base.positions[0] - paddingAlong,
+                y: height - edgeMargin - barThickness,
+                w: base.total + 2 * paddingAlong,
+                h: barThickness
+            };
+        return {
+            x: position === "right" ? width - edgeMargin - barThickness : edgeMargin,
+            y: base.positions[0] - paddingAlong,
+            w: barThickness,
+            h: base.total + 2 * paddingAlong
+        };
+    }
+
+    // The resting rect of one entry in `items`, in Dock-local coordinates.
+    // Cross-axis placement mirrors `layout` without magnification or bounce,
+    // so the minimize target does not move while the pointer sweeps the Dock.
+    function baselineEntryRect(index) {
+        if (index < 0 || index >= items.length)
+            return { x: 0, y: 0, w: 0, h: 0 };
+        var base = _baseline;
+        var size = base.sizes[index];
+        var along = base.positions[index];
+        var plate = revealedPlateRect;
+        if (axisIsX) {
+            return {
+                x: along,
+                y: plate.y + barThickness - padding - size,
+                w: size,
+                h: size + indicatorSpace
+            };
+        }
+        var cross = position === "right"
+                  ? plate.x + padding + iconSize - size
+                  : plate.x + padding - indicatorSpace;
+        return {
+            x: cross,
+            y: along,
+            w: size + indicatorSpace,
+            h: size
+        };
+    }
+
+    // Per-window minimize/restore targets (T237): each minimized entry's
+    // resting tile, keyed by its decimal window id and translated into the
+    // compositor's global layout space. `dock.minimizeIntoTileIcon` on keeps
+    // this empty so windows collapse into the app icon instead.
+    readonly property var minimizedTargets: {
+        var out = {};
+        if (minimizeIntoTileIcon)
+            return out;
+        for (var i = 0; i < items.length; ++i) {
+            if (items[i].kind !== "minimized")
+                continue;
+            var id = items[i].windowId;
+            if (id === undefined || id === "")
+                continue;
+            var r = baselineEntryRect(i);
+            out[String(id)] = {
+                x: r.x + outputOriginX,
+                y: r.y + outputOriginY,
+                w: r.w,
+                h: r.h
+            };
+        }
+        return out;
+    }
+
+    // The shared fallback target for a window that is about to minimize and
+    // has no minimized tile yet: the current minimized region, or the slot the
+    // first minimized entry will occupy (the leading fixed-region tile). In
+    // the compositor's global layout space; empty when the app-tile mapping
+    // applies or the Dock has no geometry.
+    readonly property var minimizedRegionRect: {
+        var empty = { x: 0, y: 0, w: 0, h: 0 };
+        if (minimizeIntoTileIcon || items.length === 0)
+            return empty;
+        var first = -1;
+        var last = -1;
+        for (var i = 0; i < items.length; ++i) {
+            if (items[i].kind === "minimized") {
+                if (first < 0)
+                    first = i;
+                last = i;
+            }
+        }
+        var local;
+        if (first >= 0) {
+            var a = baselineEntryRect(first);
+            var b = baselineEntryRect(last);
+            local = axisIsX
+                  ? { x: a.x, y: a.y, w: (b.x + b.w) - a.x, h: a.h }
+                  : { x: a.x, y: a.y, w: a.w, h: (b.y + b.h) - a.y };
+        } else {
+            for (var f = 0; f < items.length; ++f) {
+                if (items[f].kind === "stack" || items[f].kind === "trash") {
+                    local = baselineEntryRect(f);
+                    break;
+                }
+            }
+        }
+        if (local === undefined)
+            return empty;
+        return {
+            x: local.x + outputOriginX,
+            y: local.y + outputOriginY,
+            w: local.w,
+            h: local.h
         };
     }
 

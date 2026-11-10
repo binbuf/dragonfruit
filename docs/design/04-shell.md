@@ -659,9 +659,12 @@ already carries the state.
 
 ### Dock motion and frame discipline
 
-Continuous Dock motion is deliberately separate from the entry model. Launch
-and attention bounce phases are pushed as an `entry id -> { phase, attention }`
-map (`bouncePhases`) every committed frame; the Repeater model is never
+Continuous Dock motion is deliberately separate from the entry model. The
+launch clock is one measured 15 pt lift over 300 ms (`kLaunchBounceMs`), not
+the earlier three-hop adaptation; the unresolved multi-bounce stays `OPEN`.
+Launch and attention bounce phases are pushed as an
+`entry id -> { phase, attention }` map (`bouncePhases`) every committed frame;
+the Repeater model is never
 reassigned for a bounce, so delegates are not recreated and hover/press state
 survives. The 16 ms tick only advances the map and stops the moment both
 clocks are empty, so the settled Dock contributes zero wakeups. While a
@@ -713,6 +716,28 @@ Dock's cross axis and always points away from the anchored edge: upward on a
 bottom Dock, toward the interior on a left/right Dock; the reaction is
 decorative and never enters the entry's accessible name, which keeps carrying
 the window count and state.
+
+### Dock minimize/restore targets (T237)
+
+`dock.minimizeIntoTileIcon` selects where a window's minimize/restore motion
+lands. On, the compositor keeps the app's Dock tile (`set_launch_origin`). Off,
+the Dock publishes its minimized-region rect and each minimized entry's resting
+tile over `df_toplevel_manager.set_minimize_target` (additive v11): an empty
+window id is the shared region, a decimal window id is that entry. The
+compositor resolves per-window tile → region → app tile → centered fallback, so
+a first minimize (no tile yet) still lands in the region and a later restore
+grows out of the exact tile. Targets are resting geometry, translated by the
+Dock surface origin; a magnification sweep does not republish them.
+The compositor shifts the published target by the window output's origin
+delta, so a window on a second display minimizes into that display's copy of
+the persistent Dock rather than the primary's. `dock.minimizedAnimation=genie`
+uses the measured 450 ms envelope and a per-axis squeeze (horizontal ahead of
+vertical) on the one `WindowMotion` transform; `scale` keeps the uniform
+transform and `none` collapses. The true
+genie mesh warp remains a material-pass follow-up. The Dock's
+`reservedThickness` is zero whenever auto-hide is on, in every reveal state, so
+the shell forwards a zero exclusive zone and a fullscreen client is never left
+with a reserved strip.
 
 ### Dock keyboard navigation and reordering
 

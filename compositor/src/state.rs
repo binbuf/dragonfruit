@@ -892,6 +892,15 @@ pub struct DfState {
     /// the launching window appears from it and minimize/restore scale into
     /// and out of it. Absent, the motion falls back to a centered origin.
     pub dock_tiles: HashMap<String, Rectangle<i32, Logical>>,
+    /// The shared minimized-region target the shell publishes when
+    /// `dock.minimizeIntoTileIcon` is off. Minimize/restore use it (or a
+    /// per-window target) instead of the app's Dock tile; `None` keeps the
+    /// app-tile mapping.
+    pub minimize_region: Option<Rectangle<i32, Logical>>,
+    /// Per-window minimize/restore targets keyed by decimal window id. The
+    /// Dock publishes each minimized entry's tile so a restore grows out of
+    /// the exact tile it lives in.
+    pub minimize_targets: HashMap<String, Rectangle<i32, Logical>>,
     /// A single-frame capture the trusted shell asked for over the private
     /// protocol (T-13.3b). The next rendered frame produces it and the result
     /// is written to the requested path. Capture is portal-presenter-only:
@@ -1134,6 +1143,8 @@ impl DfState {
             frame_scheduler: FrameScheduler::new(),
             window_motion_driver: false,
             dock_tiles: HashMap::new(),
+            minimize_region: None,
+            minimize_targets: HashMap::new(),
             pending_capture: None,
             shell,
             material_pass: BackdropPass::new(),
@@ -3576,6 +3587,39 @@ impl DfState {
         self.dock_tiles.insert(app_id.to_string(), origin);
     }
 
+    /// Record (or clear) a minimize/restore target. An empty `window_id`
+    /// addresses the shared minimized-region target; a non-empty one is a
+    /// decimal window id and addresses that window's minimized tile. A
+    /// non-positive rect clears the target, restoring the app-tile mapping.
+    pub fn set_minimize_target(
+        &mut self,
+        window_id: &str,
+        origin: Option<Rectangle<i32, Logical>>,
+    ) {
+        const MAX_TARGETS: usize = 128;
+        match origin {
+            Some(origin) if window_id.is_empty() => {
+                self.minimize_region = Some(origin);
+            }
+            Some(origin) => {
+                if self.minimize_targets.len() >= MAX_TARGETS
+                    && !self.minimize_targets.contains_key(window_id)
+                {
+                    if let Some(key) = self.minimize_targets.keys().next().cloned() {
+                        self.minimize_targets.remove(&key);
+                    }
+                }
+                self.minimize_targets.insert(window_id.to_string(), origin);
+            }
+            None if window_id.is_empty() => {
+                self.minimize_region = None;
+            }
+            None => {
+                self.minimize_targets.remove(window_id);
+            }
+        }
+    }
+
     /// The origin a window's lifecycle motion starts from (appear/restore) or
     /// ends at (minimize): the app's Dock tile, or a centered fallback when
     /// the shell never supplied one.
@@ -3589,6 +3633,49 @@ impl DfState {
             .and_then(|app| self.dock_tiles.get(app))
             .copied()
             .unwrap_or_else(|| WindowMotion::centered_origin(geometry))
+    }
+
+    /// The minimize/restore target. `dock.minimizeIntoTileIcon` off maps into
+    /// the minimized region (or a per-window minimized tile) the shell
+    /// publishes; on keeps the app's Dock tile so the window collapses into
+    /// the application icon.
+    pub fn minimize_origin_for(
+        &self,
+        window: &Window,
+        geometry: Rectangle<i32, Logical>,
+    ) -> Rectangle<i32, Logical> {
+        // The Dock is a persistent layer on every output, but the shell
+        // publishes its tile/region in the primary output's space. A window on
+        // a second display must minimize into that display's copy of the Dock,
+        // so shift the published targets by the output-origin delta.
+        let primary = self.primary_output().1.map(|r| r.loc).unwrap_or_default();
+        let target = self
+            .output_bounds_for(window)
+            .map(|r| r.loc)
+            .unwrap_or(primary);
+        let (dx, dy) = (target.x - primary.x, target.y - primary.y);
+        let shift = |rect: Rectangle<i32, Logical>| {
+            Rectangle::new((rect.loc.x + dx, rect.loc.y + dy).into(), rect.size)
+        };
+        let app_tile = self
+            .windows
+            .app_id(window)
+            .and_then(|app| self.dock_tiles.get(app))
+            .copied()
+            .map(shift);
+        let region = self.minimize_region.map(shift);
+        let per_window: HashMap<String, Rectangle<i32, Logical>> = self
+            .minimize_targets
+            .iter()
+            .map(|(key, rect)| (key.clone(), shift(*rect)))
+            .collect();
+        crate::window::motion::resolve_minimize_origin(
+            self.windows.id(window).map(|id| id.0),
+            app_tile,
+            region,
+            &per_window,
+            geometry,
+        )
     }
 
     /// Start `window`'s appear transition and arm the shared clock.
@@ -3609,7 +3696,11 @@ impl DfState {
         kind: WindowMotionKind,
         geometry: Rectangle<i32, Logical>,
     ) -> bool {
-        let origin = self.motion_origin_for(window, geometry);
+        let origin = if matches!(kind, WindowMotionKind::Minimize | WindowMotionKind::Restore) {
+            self.minimize_origin_for(window, geometry)
+        } else {
+            self.motion_origin_for(window, geometry)
+        };
         self.begin_window_motion_from(window, kind, origin, geometry)
     }
 
@@ -3641,14 +3732,19 @@ impl DfState {
         // The genie mode uses the controlled reference's 450 ms envelope. Scale
         // and None keep their existing open/close timing and collapse policy,
         // so selecting a mode never silently changes another mode's pacing.
-        let window_motion = WindowMotion::new_with_motion(
-            kind,
-            origin,
-            geometry,
-            now,
-            reduced,
-            motion_token(kind, self.minimized_animation),
-        );
+        let window_motion =
+            if minimize_kind && self.minimized_animation == MinimizedAnimation::Genie {
+                WindowMotion::new_genie_motion(kind, origin, geometry, now, reduced)
+            } else {
+                WindowMotion::new_with_motion(
+                    kind,
+                    origin,
+                    geometry,
+                    now,
+                    reduced,
+                    motion_token(kind, self.minimized_animation),
+                )
+            };
         if !self.windows.set_motion(window, window_motion) {
             return false;
         }

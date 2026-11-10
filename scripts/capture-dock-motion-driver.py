@@ -65,17 +65,85 @@ class Synthetic:
     def key(self, code, down):
         self.send(f"key {code} {'down' if down else 'up'}")
 
+    def query(self, command):
+        self.send(command)
+        chunks = []
+        while True:
+            try:
+                data, _ = self.sock.recvfrom(65536)
+            except socket.timeout:
+                break
+            text = data.decode()
+            chunks.append(text)
+            if "end\n" in text:
+                break
+        return "".join(chunks)
+
+    def identities(self):
+        out = {}
+        for line in self.query("query identity").splitlines():
+            parts = line.split(" ", 3)
+            if len(parts) >= 3 and parts[0] == "identity":
+                out[int(parts[1])] = parts[2]
+        return out
+
+    def find_settings_window(self):
+        """The demo's existing Settings window, without launching more apps.
+
+        The nested dev session starts Settings as its Qt app. Clicking a Dock
+        entry for an already-running app only activates it, and scanning the
+        Dock would launch unrelated pinned apps, so the capture uses the live
+        window and its completed appear record.
+        """
+        for win, app_id in self.identities().items():
+            if "settings" in app_id.lower():
+                return win
+        raise RuntimeError("the demo has no Settings window")
+
+    def motions(self):
+        rows = []
+        for line in self.query("query motion").splitlines():
+            parts = line.split()
+            if not parts or parts[0] != "motion" or len(parts) < 14:
+                continue
+            rows.append(
+                {
+                    "window": int(parts[1]),
+                    "kind": parts[2],
+                    "active": parts[3] == "1",
+                    "completed": parts[4] == "1",
+                    "frames": int(parts[5]),
+                    "origin": tuple(int(v) for v in parts[6:10]),
+                    "target": tuple(int(v) for v in parts[10:14]),
+                }
+            )
+        return rows
+
 
 class Capturer:
-    def __init__(self, outdir, scratch):
+    def __init__(self, outdir, scratch, synth=None):
         self.outdir = outdir
         self.scratch = scratch
+        self.synth = synth
         os.makedirs(outdir, exist_ok=True)
         os.makedirs(scratch, exist_ok=True)
         self.rect = None
 
     def full(self, name):
         dest = os.path.join(self.scratch, name + ".png")
+        # The compositor's own capture path works on this host where the
+        # host screenshot tools return 1 for a nested DRM session.
+        if self.synth is not None:
+            try:
+                os.unlink(dest)
+            except FileNotFoundError:
+                pass
+            self.synth.send(f"capture {dest}")
+            for _ in range(80):
+                if os.path.exists(dest) and os.path.getsize(dest) > 0:
+                    return dest
+                time.sleep(0.05)
+            raise RuntimeError(f"compositor capture never wrote {dest}")
         subprocess.run(
             ["spectacle", "-b", "-n", "-f", "-o", dest],
             check=True,
@@ -88,6 +156,11 @@ class Capturer:
         im = Image.open(path).convert("RGB")
         px = im.load()
         w, h = im.size
+        # The compositor capture is already the nested output, with no host
+        # window frame or wallpaper margin.
+        if (w, h) == (NESTED_W, NESTED_H):
+            self.rect = (0, 0, NESTED_W, NESTED_H)
+            return self.rect
 
         def matches(c):
             return all(abs(c[i] - WALL[i]) <= WALL_TOL for i in range(3))
@@ -113,6 +186,8 @@ class Capturer:
         crop.save(dest)
         log(f"saved {dest} ({crop.width}x{crop.height})")
         return dest
+
+
 
 
 def latest_lines(log_path, needle):
@@ -180,7 +255,7 @@ def phase_line(name, elapsed, before, after):
 
 def run(args):
     synth = Synthetic(args.synth)
-    cap = Capturer(args.outdir, args.scratch)
+    cap = Capturer(args.outdir, args.scratch, synth=synth)
     synth.send("set color-scheme dark")
     time.sleep(0.3)
 
@@ -248,6 +323,76 @@ def run(args):
     after = snapshot(args.compositor_pid, args.demo_log)
     phases.append(phase_line("size-change", elapsed, before, after))
 
+    # --- T237: launch, minimize/restore, and auto-hide ---------------------
+    before = snapshot(args.compositor_pid, args.demo_log)
+    start = time.monotonic()
+    window_id = synth.find_settings_window()
+    appear = [m for m in synth.motions() if m["kind"] == "appear"
+              and m["window"] == window_id]
+    launch_origin = appear[-1]["origin"] if appear else None
+    time.sleep(0.3)
+    launch_full = cap.full("t237-dock-launch")
+    cap.dock_still(launch_full, "t237-dock-launch.png")
+
+    # Minimize: with `dock.minimizeIntoTileIcon` off the target is the Dock's
+    # minimized region, not the app icon.
+    synth.send(f"minimize {window_id}")
+    time.sleep(0.08)
+    minimize = [m for m in synth.motions() if m["kind"] == "minimize"
+                and m["window"] == window_id]
+    minimize_origin = minimize[-1]["origin"] if minimize else None
+    time.sleep(0.55)
+    minimized_full = cap.full("t237-dock-minimized")
+    cap.dock_still(minimized_full, "t237-dock-minimized.png")
+
+    # Restore: the same window grows back out of the target.
+    synth.send(f"restore {window_id}")
+    time.sleep(0.08)
+    restore = [m for m in synth.motions() if m["kind"] == "restore"
+               and m["window"] == window_id]
+    restore_origin = restore[-1]["origin"] if restore else None
+    time.sleep(0.6)
+    elapsed = time.monotonic() - start
+    after = snapshot(args.compositor_pid, args.demo_log)
+    phases.append(phase_line("launch-minimize-restore", elapsed, before, after))
+    phases.append(
+        "motion-records: launch_origin=%s minimize_origin=%s restore_origin=%s "
+        "appear_frames=%s minimize_frames=%s restore_frames=%s"
+        % (
+            launch_origin,
+            minimize_origin,
+            restore_origin,
+            appear[-1]["frames"] if appear else None,
+            minimize[-1]["frames"] if minimize else None,
+            restore[-1]["frames"] if restore else None,
+        )
+    )
+    if launch_origin and minimize_origin:
+        # The minimized region sits to the right of the pinned app entry, so a
+        # `minimizeIntoTileIcon=off` target is not the launch tile.
+        log(f"launch origin {launch_origin}, minimize origin {minimize_origin}")
+        if minimize_origin == launch_origin:
+            log("WARNING: minimize target still equals the app tile")
+
+    # Auto-hide: hide, then reveal from the edge; the reserved zone is zero in
+    # both states (the QML/unit tests pin the value, the stills show the slide).
+    before = snapshot(args.compositor_pid, args.demo_log)
+    start = time.monotonic()
+    gdbus_set(args.dbus_dest, args.dbus_path, args.dbus_iface, "dock.autohide", "<true>")
+    time.sleep(0.9)
+    hidden_full = cap.full("t237-dock-autohide-hidden")
+    cap.dock_still(hidden_full, "t237-dock-autohide-hidden.png")
+    synth.motion(DOCK_CENTER_X, NESTED_H - 2)
+    time.sleep(0.7)
+    revealed_full = cap.full("t237-dock-autohide-revealed")
+    cap.dock_still(revealed_full, "t237-dock-autohide-revealed.png")
+    gdbus_set(args.dbus_dest, args.dbus_path, args.dbus_iface, "dock.autohide", "<false>")
+    synth.motion(20, 20)
+    time.sleep(0.5)
+    elapsed = time.monotonic() - start
+    after = snapshot(args.compositor_pid, args.demo_log)
+    phases.append(phase_line("auto-hide", elapsed, before, after))
+
     # --- Idle window: the settled Dock must contribute no frames -----------
     before = snapshot(args.compositor_pid, args.demo_log)
     idle_start = time.monotonic()
@@ -256,9 +401,10 @@ def run(args):
     after = snapshot(args.compositor_pid, args.demo_log)
     phases.append(phase_line("idle", idle_elapsed, before, after))
 
-    lines = ["T-14.7c Dock motion trace",
+    lines = ["T-14.7c/T237 Dock motion trace",
              "magnification sweep, context menu open/close, "
-             "dock.size 0.5 -> 0.85 -> 0.5, then idle"]
+             "dock.size 0.5 -> 0.85 -> 0.5, launch/minimize/restore, "
+             "auto-hide hidden/revealed, then idle"]
     lines.extend(phases)
     lines.append(f"render stats (final): {latest_lines(args.demo_log, 'render stats (')}")
     lines.append(f"degrade stats (final): {latest_lines(args.demo_log, 'degrade stats (')}")

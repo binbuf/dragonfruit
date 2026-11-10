@@ -651,6 +651,13 @@ public:
     // `df_toplevel_manager.set_launch_origin`, additive in v4).
     void setLaunchOrigin(const QString &appId, int x, int y, int width, int height);
 
+    // Hand the Dock's minimize/restore destination to the compositor
+    // (`df_toplevel_manager.set_minimize_target`, additive in v11). An empty
+    // `windowId` is the shared minimized-region target; a decimal window id
+    // is that minimized entry's tile. A non-positive rect clears the target
+    // and restores the app-tile/centered fallback (T237).
+    void setMinimizeTarget(const QString &windowId, int x, int y, int width, int height);
+
     // The primary output's global geometry (x, y, width, height) from
     // `df_output.geometry`, in the compositor's logical layout space (T-14.7l).
     // The Dock hands its tile rect to `set_launch_origin` in these coordinates,

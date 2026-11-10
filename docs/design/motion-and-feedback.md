@@ -49,8 +49,9 @@ These measurements remain reference values; explicit policy updates are noted be
 | Dock magnification envelope | 135 ms smoothstep (`3u² − 2u³`), no overshoot | ADR 0218 |
 | Dock magnification spatial profile | raised cosine, R = 125.1 pt, peak 1.217× default / 2.047× diagnostic | ADR 0218 |
 | Dock tooltip | Immediate opening/retargeting; 33 pt capsule, 16.5 pt radius, 8 pt above plate | [ADR 0243](adr/0243-shell-material-focus-and-hover-corrections.md) supersedes the earlier 1.4 s delay |
-| Dock launch lift | 15 pt over ~0.3 s (full multi-bounce unresolved) | ADR 0218 |
-| Genie minimize/restore | ~0.45–0.5 s each way | ADR 0218 |
+| Dock launch lift | One 15 pt lift over 300 ms; full multi-bounce `OPEN` | ADR 0218, [ADR 0258](adr/0258-dock-motion-launch-lift-and-minimize-targets.md) |
+| Genie minimize/restore | 450 ms each way; per-axis squeeze on the one motion transform | ADR 0218, [ADR 0258](adr/0258-dock-motion-launch-lift-and-minimize-targets.md) |
+| Dock auto-hide | 120 ms reveal delay, 350 ms hide grace, 160 ms slide; interactive curve `OPEN` | ADR 0218, [ADR 0258](adr/0258-dock-motion-launch-lift-and-minimize-targets.md) |
 | Menu close | ~183 ms, ~5% shrink, translate toward anchor | Liquid Glass report |
 | Menu open | Immediate; reference appears fully open within one 60 fps frame | Liquid Glass report; ADR 0244 |
 | Menu tracking | Top-level switch on the next event-loop turn; submenu crossing grace 150 ms | Product policy, ADR 0245 |
@@ -147,9 +148,13 @@ The full `A-*` inventory is in the capture plan. Implementation priority:
 ### 5.2 Dock
 
 - Magnification enter/track/exit (existing 135 ms; preserve).
-- Launch bounce (measured amplitude/hops; unresolved multi-bounce stays
-  unresolved).
-- Auto-hide reveal/hide (interactive, progress-based).
+- Launch lift (one measured 15 pt hop over 300 ms; the unresolved multi-bounce
+  stays `OPEN` and is not invented).
+- Minimize/restore target: the app icon when `dock.minimizeIntoTileIcon` is on,
+  otherwise the minimized region/per-window tile; `genie` uses the 450 ms
+  per-axis squeeze and `scale` keeps the uniform transform.
+- Auto-hide reveal/hide (interactive, progress-based; the measured curve stays
+  `OPEN`; the reserved zone is zero whenever auto-hide is on).
 - Reorder settle (gap close).
 - Window chooser open/close (anchored to the tile).
 - Tooltip appear/dismiss (dwell + fade).

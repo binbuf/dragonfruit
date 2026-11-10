@@ -1885,14 +1885,16 @@ private slots:
 
     // -- bounce clocks ---------------------------------------------------
 
-    void launchBounceIsThreeHopsThenDone()
+    void launchLiftIsOneMeasuredHopThenDone()
     {
-        // Hop phase 0 at the start and at each hop boundary, peak mid-hop.
+        // The measured launch lift is a single 15 pt hop over ~300 ms, not an
+        // invented multi-bounce: the phase rises 0 -> 1 across the token and
+        // the caller's sin(pi * phase) gives one round trip.
+        QCOMPARE(kLaunchBounceMs, 300);
         QCOMPARE(dockLaunchBouncePhase(0), 0.0);
-        QVERIFY(qAbs(dockLaunchBouncePhase(100) - 0.5) < 1e-9);
-        QCOMPARE(dockLaunchBouncePhase(200), 0.0);
-        QVERIFY(dockLaunchBouncePhase(300) > 0.4);
-        // The third hop ends exactly at the total duration.
+        QVERIFY(qAbs(dockLaunchBouncePhase(150) - 0.5) < 1e-9);
+        QVERIFY(dockLaunchBouncePhase(299) > 0.99);
+        // It ends exactly at the token duration.
         QCOMPARE(dockLaunchBouncePhase(kLaunchBounceMs), -1.0);
         QCOMPARE(dockLaunchBouncePhase(kLaunchBounceMs + 100), -1.0);
         // A negative clock is never a valid bounce.
