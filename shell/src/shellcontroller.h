@@ -515,6 +515,19 @@ private:
     void hideAppWindows(const QString &appId);
     void hideOtherAppWindows(const QString &appId);
     void showHiddenWindows();
+    // T236: the Dock app menu's per-app Show. Restores exactly the windows
+    // this app hid (or its minimized set when the hidden mark predates the
+    // tracked ids), never another app's window.
+    void showAppWindows(const QString &appId);
+    // T236: Dock Quit / Force Quit. Quit asks the compositor to close every
+    // window; Force Quit additionally SIGKILLs the process the shell launched
+    // for `desktopId` when one is recorded. Both drop the temporary Dock entry
+    // immediately instead of waiting for the compositor's close ghost.
+    void quitDockApp(const QString &appId, const QString &desktopId, bool temporary);
+    void forceQuitDockApp(const QString &appId, const QString &desktopId, bool temporary);
+    // T236: publish the apps the Dock menu should render as hidden so its
+    // Hide/Show row and running dot follow the shell's Hide verbs.
+    void publishDockHiddenApps();
     // T230: route a `dbusmenu:<id>` row back to the focused window's owning
     // DBusMenu object through app-index.
     bool routeDbusMenuAction(const QString &action);
@@ -1371,6 +1384,16 @@ private:
     quint32 m_dbusMenuWindowId = 0;
     // Window ids Hide/Hide Others minimized; Show All restores exactly these.
     QSet<QString> m_hiddenWindowIds;
+    // T236: apps whose windows the Hide verb minimized. The Dock menu reads
+    // this to offer Show instead of Hide and the running dot dims while set.
+    QSet<QString> m_hiddenApps;
+    // T236: apps whose quit is in flight. Their temporary Dock entry is
+    // removed immediately; the mark clears when the compositor retires the
+    // app or after the fallback timeout.
+    QSet<QString> m_quittingApps;
+    // T236: the pid of the process the shell launched for a desktop id, so
+    // Force Quit can terminate it. Bounded to the most recent launches.
+    QHash<QString, qint64> m_dockLaunchPids;
     // `menu.recentItems`: how many recency entries the system menu shows.
     int m_menuRecentItems = 10;
     QString m_systemUserName;

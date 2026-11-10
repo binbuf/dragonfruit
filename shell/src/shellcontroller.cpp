@@ -40,6 +40,8 @@
 #include <QUrl>
 
 #include <cstdio>
+#include <csignal>
+#include <sys/types.h>
 #include <memory>
 
 #include "appindexclient.h"
@@ -2353,6 +2355,61 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         });
     }
 
+    // Capture/demo seam (T236): drive the Dock lifecycle menu and hidden
+    // state without a synthetic pointer. `hide`/`show` use the real tracked
+    // Hide path; `quit`/`force` pick the first unpinned running group; `menu`
+    // opens a running app's menu. Retries until an app maps. Never set in a
+    // normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_LIFECYCLE_FIXTURE")) {
+        const QString mode = qEnvironmentVariable("DF_DOCK_LIFECYCLE_FIXTURE");
+        auto *timer = new QTimer(this);
+        timer->setInterval(500);
+        connect(timer, &QTimer::timeout, this, [this, timer, mode]() {
+            if (!m_dockItem)
+                return;
+            QString appId;
+            QString desktopId;
+            bool temporary = false;
+            for (const QVariant &value : std::as_const(m_runningEntries)) {
+                const QVariantMap row = value.toMap();
+                if (row.value(QStringLiteral("kind")).toString()
+                    != QLatin1String("temporary"))
+                    continue;
+                appId = row.value(QStringLiteral("appId")).toString();
+                const DesktopEntry resolved = m_index.resolve(appId);
+                desktopId = resolved.valid ? resolved.id : QString();
+                temporary = true;
+                break;
+            }
+            if (appId.isEmpty())
+                return;
+            timer->stop();
+            timer->deleteLater();
+            if (mode == QLatin1String("hide")) {
+                hideAppWindows(appId);
+            } else if (mode == QLatin1String("hidemenu")) {
+                hideAppWindows(appId);
+                QTimer::singleShot(1500, this, [this]() {
+                    if (m_dockItem)
+                        QMetaObject::invokeMethod(m_dockItem,
+                                                  "openRunningEntryMenuFixture");
+                });
+            } else if (mode == QLatin1String("show")) {
+                hideAppWindows(appId);
+                QTimer::singleShot(1500, this, [this, appId]() {
+                    showAppWindows(appId);
+                });
+            } else if (mode == QLatin1String("quit")) {
+                quitDockApp(appId, desktopId, temporary);
+            } else if (mode == QLatin1String("force")) {
+                forceQuitDockApp(appId, desktopId, temporary);
+            } else if (mode == QLatin1String("menu")) {
+                QMetaObject::invokeMethod(m_dockItem, "openRunningEntryMenuFixture");
+            }
+        });
+        timer->start();
+    }
+
     // Capture/demo seam (T-14.7m): open the window chooser for the first
     // multi-window app once it has mapped, with the first row's per-window
     // actions revealed, so the live visual check captures them without a
@@ -3187,6 +3244,11 @@ void ShellController::hideAppWindows(const QString &appId)
         m_protocol->setToplevelMinimized(windowId, true);
         m_hiddenWindowIds.insert(windowId);
     }
+    // T236: remember the app-level Hide so the Dock menu offers Show and the
+    // running dot dims; a manual window minimize never sets this.
+    if (!windows.isEmpty())
+        m_hiddenApps.insert(appId);
+    publishDockHiddenApps();
     qInfo() << "shell: Hide" << appId << "minimized" << windows.size() << "window(s)";
     if (!windows.isEmpty())
         applyFocusedApp();
@@ -3201,6 +3263,18 @@ void ShellController::hideOtherAppWindows(const QString &appId)
         m_protocol->setToplevelMinimized(windowId, true);
         m_hiddenWindowIds.insert(windowId);
     }
+    // Hide Others also marks each other app that lost its last visible window.
+    for (const QVariant &value : std::as_const(m_runningEntries)) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        const QString rowApp = row.value(QStringLiteral("appId")).toString();
+        if (rowApp.isEmpty() || rowApp == appId)
+            continue;
+        if (!row.value(QStringLiteral("minimized")).toBool())
+            m_hiddenApps.insert(rowApp);
+    }
+    publishDockHiddenApps();
     qInfo() << "shell: Hide Others minimized" << windows.size() << "window(s)";
     // The focused app stays in front (macOS Hide Others raises it).
     if (!windows.isEmpty()) {
@@ -3222,7 +3296,102 @@ void ShellController::showHiddenWindows()
         m_protocol->setToplevelMinimized(windowId, false);
     qInfo() << "shell: Show All restored" << windows.size() << "window(s)";
     m_hiddenWindowIds.clear();
+    m_hiddenApps.clear();
+    publishDockHiddenApps();
     applyFocusedApp();
+}
+
+void ShellController::showAppWindows(const QString &appId)
+{
+    if (!m_protocol || appId.isEmpty())
+        return;
+    // Restore exactly the windows this app hid. A hidden mark that predates
+    // the tracked ids (or a projection that rebuilt while hidden) falls back
+    // to the app's minimized set; a manually minimized window is only touched
+    // when it belongs to the app the user asked to show.
+    QStringList windows = trackedWindowIdsForApp(m_runningEntries, m_hiddenWindowIds, appId);
+    if (windows.isEmpty())
+        windows = minimizedWindowIdsForApp(m_runningEntries, appId);
+    if (windows.isEmpty())
+        return;
+    for (const QString &windowId : windows) {
+        m_protocol->setToplevelMinimized(windowId, false);
+        m_hiddenWindowIds.remove(windowId);
+    }
+    m_hiddenApps.remove(appId);
+    publishDockHiddenApps();
+    qInfo() << "shell: Show" << appId << "restored" << windows.size() << "window(s)";
+    applyFocusedApp();
+}
+
+void ShellController::publishDockHiddenApps()
+{
+    if (!m_dockItem)
+        return;
+    QStringList ids(m_hiddenApps.begin(), m_hiddenApps.end());
+    ids.sort();
+    if (m_dockItem->property("hiddenApps").toStringList() == ids)
+        return;
+    m_dockItem->setProperty("hiddenApps", ids);
+    scheduleDockRender();
+}
+
+void ShellController::quitDockApp(const QString &appId, const QString &desktopId, bool temporary)
+{
+    Q_UNUSED(desktopId);
+    if (!m_protocol || appId.isEmpty())
+        return;
+    // A quit of a running-but-unpinned app removes its temporary Dock entry at
+    // once (T236); a pinned app keeps its tile and only loses the running dot
+    // when the compositor retires the windows.
+    if (temporary) {
+        m_quittingApps.insert(appId);
+        rebuildDockEntries();
+        QTimer::singleShot(8000, this, [this, appId]() {
+            // The app refused to close (an unsaved-changes prompt, a hung
+            // client). Stop hiding the entry; the projection is the truth.
+            if (m_quittingApps.remove(appId))
+                rebuildDockEntries();
+        });
+    }
+    m_protocol->closeApp(appId);
+    qInfo() << "shell: Dock Quit" << appId << (temporary ? "(temporary entry removed)" : "");
+    scheduleDockRender();
+}
+
+void ShellController::forceQuitDockApp(const QString &appId, const QString &desktopId,
+                                       bool temporary)
+{
+    if (!m_protocol || appId.isEmpty())
+        return;
+    const qint64 pid = m_dockLaunchPids.value(desktopId, 0);
+    bool signalled = false;
+    if (pid > 0) {
+        // Only signal a process that is still alive; a stale pid must never
+        // hit an unrelated process after reuse.
+        if (::kill(static_cast<pid_t>(pid), 0) == 0) {
+            signalled = ::kill(static_cast<pid_t>(pid), SIGKILL) == 0;
+            if (!signalled)
+                qWarning() << "shell: Force Quit could not SIGKILL" << desktopId << "pid" << pid;
+        }
+        m_dockLaunchPids.remove(desktopId);
+    }
+    // Always ask the compositor to retire the windows: for a shell-launched
+    // app the SIGKILL already disconnects the client, and for an app the shell
+    // did not launch this is the strongest operation the protocol offers.
+    m_protocol->closeApp(appId);
+    if (temporary) {
+        m_quittingApps.insert(appId);
+        rebuildDockEntries();
+        QTimer::singleShot(8000, this, [this, appId]() {
+            if (m_quittingApps.remove(appId))
+                rebuildDockEntries();
+        });
+    }
+    qInfo() << "shell: Dock Force Quit" << appId
+            << (signalled ? QStringLiteral("(process terminated)")
+                          : QStringLiteral("(close requested; no live launched pid)"));
+    scheduleDockRender();
 }
 
 bool ShellController::routeDbusMenuAction(const QString &action)
@@ -6831,6 +7000,7 @@ void ShellController::applyDockSettings(bool reconfigure)
     m_dockItem->setProperty("animateOpening", m_dockConfig.animateOpening);
     m_dockItem->setProperty("showRecentApps", m_dockConfig.showRecentApps);
     m_dockItem->setProperty("chooserOnHover", m_dockConfig.chooserOnHover);
+    publishDockHiddenApps();
     // The minimize reaction is opt-in; the capture seam forces the property on
     // regardless of the persisted key (T-14.7s). Turning the key off drops any
     // in-flight pulse so a stale hop cannot outlive the setting.
@@ -7389,6 +7559,36 @@ void ShellController::onDockStateChanged(const QVariantList &entries)
     if (entries == m_runningEntries)
         return;
     m_runningEntries = entries;
+    // T236: drop app-level marks whose app left the projection. A hidden app
+    // that the user restored (a visible window reappeared) is no longer hidden
+    // either; a quit that finished stops suppressing the temporary entry.
+    if (!m_hiddenApps.isEmpty()) {
+        bool changed = false;
+        for (auto it = m_hiddenApps.begin(); it != m_hiddenApps.end();) {
+            const QString appId = *it;
+            if (!appStillHidden(entries, m_hiddenWindowIds, appId)) {
+                it = m_hiddenApps.erase(it);
+                changed = true;
+            } else {
+                ++it;
+            }
+        }
+        if (changed)
+            publishDockHiddenApps();
+    }
+    if (!m_quittingApps.isEmpty()) {
+        bool changed = false;
+        for (auto it = m_quittingApps.begin(); it != m_quittingApps.end();) {
+            if (appInProjection(entries, *it)) {
+                ++it;
+            } else {
+                it = m_quittingApps.erase(it);
+                changed = true;
+            }
+        }
+        if (changed)
+            rebuildDockEntries();
+    }
     // T230: a window that closed while hidden must not stay in the Show All
     // set (the compositor handle is gone).
     if (!m_hiddenWindowIds.isEmpty()) {
@@ -7439,6 +7639,13 @@ void ShellController::rebuildDockEntries()
     // phase, so a running bounce does not reset the Repeater. The phases are
     // published separately (T-14.7c).
     QVariantList running = m_runningEntries;
+    if (!m_quittingApps.isEmpty()) {
+        QStringList quitting(m_quittingApps.begin(), m_quittingApps.end());
+        running = filterDockQuittingEntries(running, quitting);
+    }
+    // T236: publish the app-level Hide state so the menu offers Show and the
+    // running dot dims while an app is hidden.
+    publishDockHiddenApps();
     if (m_dockOverflowFixture) {
         // Synthetic unpinned running groups so the overflow planner has more
         // groups than the capped fixture width fits. Distinct names make the
@@ -7466,7 +7673,7 @@ void ShellController::rebuildDockEntries()
     }
     m_dockAllEntries = buildDockEntries(
         m_dockConfig.pinned, m_index, running, m_launchStates,
-        m_dockConfig.showRecentApps ? m_recentAppIds : QStringList());
+        dockRecentIds(m_dockConfig, m_recentAppIds));
     // The Applications launcher (T-19.2 follow-up) is a permanent Dock tile:
     // it is not part of the user-orderable `dock.pinned` set and cannot be
     // removed. Inject it immediately after the first pinned tile (Files by
@@ -7909,14 +8116,18 @@ void ShellController::onActivationResult(const QString &appId, bool found)
     // The compositor found no window for the app. If the Dock knows the
     // installed entry, launch it (the app exited between the projection and
     // the click); otherwise make the failure visible.
-    if (!desktopId.isEmpty()) {
-        const DesktopEntry entry = m_index.byId(desktopId);
-        if (DesktopEntryIndex::isLaunchable(entry)) {
-            qInfo() << "shell: Dock activation found no window for" << appId
-                    << "- launching" << entry.id;
-            launchDockApp(entry.id);
-            return;
-        }
+    const DesktopEntry entry = m_index.byId(desktopId);
+    const bool launchable = DesktopEntryIndex::isLaunchable(entry);
+    switch (dockActivationFallback(found, launchable)) {
+    case DockActivationFallback::None:
+        return;
+    case DockActivationFallback::Launch:
+        qInfo() << "shell: Dock activation found no window for" << appId
+                << "- launching" << entry.id;
+        launchDockApp(entry.id);
+        return;
+    case DockActivationFallback::Notice:
+        break;
     }
     qWarning() << "shell: Dock activation found no window for" << appId;
     raiseDockNotice(m_notificationClient, tr("Could not switch to application"),
@@ -7944,8 +8155,11 @@ void ShellController::launchFiles(const QString &argument)
     qint64 pid = 0;
     if (!launchDetachedFromShell(argv, m_waylandDisplay, &pid))
         qWarning() << "shell: cannot open Files at" << argument << ":" << argv.first();
-    else
+    else {
         qInfo() << "shell: opened Files at" << argument << "(pid" << pid << ")";
+        if (pid > 0)
+            m_dockLaunchPids.insert(files.id, pid);
+    }
 }
 
 void ShellController::openTrashInFiles()
@@ -8059,6 +8273,18 @@ void ShellController::launchDockAppWithFiles(const QString &desktopId, const QSt
     }
     qInfo() << "shell: Dock launched" << entry.name << "pid" << pid
             << (files.isEmpty() ? QString() : QStringLiteral("with %1 file(s)").arg(files.size()));
+    if (pid > 0) {
+        // T236: remember the process the shell spawned so the Dock's Force
+        // Quit can terminate it. The map is session-bounded by the set of
+        // distinct launched apps; a relaunch refreshes the pid.
+        m_dockLaunchPids.insert(desktopId, pid);
+        if (m_dockLaunchPids.size() > 128) {
+            // A pathological launcher loop must not grow the map forever;
+            // drop the oldest insertion (QHash order is arbitrary but this is
+            // only a safety valve, not a recency policy).
+            m_dockLaunchPids.erase(m_dockLaunchPids.begin());
+        }
+    }
     m_launchStates.insert(desktopId, QStringLiteral("launching"));
     m_launchStart.insert(desktopId, QDateTime::currentMSecsSinceEpoch());
     m_launchDeadlines.insert(desktopId, QDateTime::currentMSecsSinceEpoch() + kLaunchTimeoutMs);
@@ -9065,7 +9291,18 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
             rebuildDockEntries();
         }
     } else if (action == QLatin1String("quit")) {
-        m_protocol->closeApp(map.value(QStringLiteral("appId")).toString());
+        const QString appId = map.value(QStringLiteral("appId")).toString();
+        const QString desktopId = map.value(QStringLiteral("desktopId")).toString();
+        quitDockApp(appId, desktopId,
+                    map.value(QStringLiteral("temporary")).toBool());
+    } else if (action == QLatin1String("force_quit")) {
+        forceQuitDockApp(map.value(QStringLiteral("appId")).toString(),
+                         map.value(QStringLiteral("desktopId")).toString(),
+                         map.value(QStringLiteral("temporary")).toBool());
+    } else if (action == QLatin1String("hide_app")) {
+        hideAppWindows(map.value(QStringLiteral("appId")).toString());
+    } else if (action == QLatin1String("show_app")) {
+        showAppWindows(map.value(QStringLiteral("appId")).toString());
     } else if (action == QLatin1String("open")) {
         const QString id = map.value(QStringLiteral("desktopId")).toString();
         if (!id.isEmpty())
@@ -9110,8 +9347,9 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
             applyDockSettings(true);
         }
     } else if (action == QLatin1String("open_dock_settings")) {
-        // T-16 owns the Desktop & Dock pane; the entry point is wired.
-        qInfo() << "shell: Dock Settings requested (T-16)";
+        // T236: the pane exists (T227); open it at its Dock group instead of
+        // logging a placeholder.
+        openSettingsDeepLink(QStringLiteral("settings://pane/desktop-dock"));
     } else if (action == QLatin1String("open_downloads_folder")) {
         onDockDownloadsFolderRequested();
     } else if (action == QLatin1String("open_trash")) {
@@ -9158,6 +9396,10 @@ void ShellController::onDockWindowMinimizeRequested(const QString &windowId, boo
     // The row sent the state it wants; the compositor flips the toplevel and
     // the projection flips the button label (T-14.7m). The chooser stays open.
     m_protocol->setToplevelMinimized(windowId, minimized);
+    // A manual restore leaves the tracked hide set, so the next projection
+    // can clear the app's hidden mark and the menu offers Hide again (T236).
+    if (!minimized)
+        m_hiddenWindowIds.remove(windowId);
     scheduleDockRender();
 }
 

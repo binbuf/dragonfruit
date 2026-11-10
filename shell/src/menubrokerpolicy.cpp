@@ -188,6 +188,90 @@ QStringList minimizedWindowIds(const QVariantList &entries)
     return ids;
 }
 
+QStringList minimizedWindowIdsForApp(const QVariantList &entries, const QString &appId)
+{
+    QStringList ids;
+    if (appId.isEmpty())
+        return ids;
+    for (const QVariant &value : entries) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        if (row.value(QStringLiteral("appId")).toString() != appId)
+            continue;
+        for (const QVariant &windowValue : row.value(QStringLiteral("windowList")).toList()) {
+            const QVariantMap window = windowValue.toMap();
+            const QString windowId = window.value(QStringLiteral("windowId")).toString();
+            if (!windowId.isEmpty() && window.value(QStringLiteral("minimized")).toBool()
+                && !ids.contains(windowId))
+                ids << windowId;
+        }
+    }
+    return ids;
+}
+
+QStringList trackedWindowIdsForApp(const QVariantList &entries,
+                                   const QSet<QString> &windowIds,
+                                   const QString &appId)
+{
+    QStringList ids;
+    if (appId.isEmpty() || windowIds.isEmpty())
+        return ids;
+    for (const QVariant &value : entries) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        if (row.value(QStringLiteral("appId")).toString() != appId)
+            continue;
+        for (const QVariant &windowValue : row.value(QStringLiteral("windowList")).toList()) {
+            const QString windowId =
+                windowValue.toMap().value(QStringLiteral("windowId")).toString();
+            if (windowIds.contains(windowId) && !ids.contains(windowId))
+                ids << windowId;
+        }
+    }
+    return ids;
+}
+
+bool appInProjection(const QVariantList &entries, const QString &appId)
+{
+    if (appId.isEmpty())
+        return false;
+    for (const QVariant &value : entries) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        if (row.value(QStringLiteral("appId")).toString() == appId)
+            return true;
+    }
+    return false;
+}
+
+bool appStillHidden(const QVariantList &entries, const QSet<QString> &hiddenWindowIds,
+                    const QString &appId)
+{
+    if (appId.isEmpty() || !appInProjection(entries, appId))
+        return false;
+    for (const QVariant &value : entries) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        if (row.value(QStringLiteral("appId")).toString() != appId)
+            continue;
+        for (const QVariant &windowValue : row.value(QStringLiteral("windowList")).toList()) {
+            const QVariantMap window = windowValue.toMap();
+            const QString windowId = window.value(QStringLiteral("windowId")).toString();
+            if (windowId.isEmpty() || window.value(QStringLiteral("minimized")).toBool())
+                continue;
+            // A visible window the shell did not hide means the app was shown
+            // by another route.
+            if (!hiddenWindowIds.contains(windowId))
+                return false;
+        }
+    }
+    return true;
+}
+
 QStringList retainWindowIds(const QVariantList &entries, const QSet<QString> &windowIds)
 {
     QSet<QString> live;

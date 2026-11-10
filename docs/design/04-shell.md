@@ -344,6 +344,29 @@ The difficult part is not drawing the Dock; it is getting all the lifecycle
 details and edge cases polished — launch failures, app exit while animating,
 windows opening on other workspaces, and apps with inconsistent identifiers.
 
+### Dock lifecycle menu (T236)
+
+The app context menu carries the full lifecycle: the live window list, Show All
+Windows, Keep/Remove, Options, **Hide/Show**, **Quit**, and **Force Quit**. A
+click is still a request to the compositor; the menu never mutates the
+projection. Hide reuses the fixed application menu's tracked Hide path, so the
+same app id is minimized and recorded; the Dock receives that set as
+`hiddenApps`, renders **Show** for it, and dims the running dot to the inactive
+opacity while the app is hidden. Per-app Show restores exactly the windows that
+app hid (or its minimized set when the tracked ids are gone), so it never
+touches another app's window. A manual minimize does not mark an app hidden.
+
+Quit closes every window through `df_toplevel.close`; for an unpinned app the
+temporary entry is removed from the next Dock build immediately (the pure
+`filterDockQuittingEntries`) instead of waiting for the compositor's close
+ghost. The mark clears when the app leaves the projection, and after an
+eight-second fallback if the app refuses to close, so an unsaved-changes prompt
+cannot hide the tile forever. Force Quit also signals the process the shell
+launched (`QProcess::startDetached` pid, checked for liveness before
+`SIGKILL`); an app the shell did not launch degrades to the close request. The
+menu's Settings row opens `settings://pane/desktop-dock`, not a placeholder.
+See [ADR 0256](adr/0256-dock-lifecycle-menu-and-hidden-state.md).
+
 ### Dock window chooser
 
 An app with two or more windows opens the **window chooser** instead of

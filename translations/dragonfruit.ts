@@ -2589,6 +2589,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Force Quit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Keep in Dock</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2666,6 +2674,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2772,6 +2784,10 @@ Open source system software</source>
     </message>
     <message>
         <source>(active)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(hidden)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

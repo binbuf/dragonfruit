@@ -2618,6 +2618,36 @@ Item {
             compare(activatedSpy.signalArguments[0][0].appId, "files");
         }
 
+        function test_click_tree_covers_pinned_idle_running_and_missing() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [
+                    app("files", "Files", false),
+                    app("settings", "Settings", true),
+                    { id: "gone", appId: "gone", desktopId: "gone.desktop",
+                      name: "Gone", kind: "pinned", pinned: true,
+                      running: false, missing: true }
+                ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            // A pinned idle app is a launch request; the shell resolves it.
+            dock.activateEntry(dock.items[0]);
+            // A running app is an activation request.
+            dock.activateEntry(dock.items[1]);
+            // A pinned identity the corpus cannot resolve still emits the
+            // click so the shell can raise its not-installed notice.
+            dock.activateEntry(dock.items[2]);
+            compare(activatedSpy.count, 3);
+            compare(activatedSpy.signalArguments[0][0].kind, "pinned");
+            compare(activatedSpy.signalArguments[0][0].running, false);
+            compare(activatedSpy.signalArguments[1][0].running, true);
+            compare(activatedSpy.signalArguments[2][0].missing, true);
+            // The divider is layout only and never emits.
+            dock.activateEntry({ id: "__divider__", kind: "divider" });
+            compare(activatedSpy.count, 3);
+        }
+
         function test_click_trash_activates_trash_entry() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160, entries: []
@@ -3203,6 +3233,100 @@ Item {
             verify(right.popoverRect.x + right.popoverRect.w <= right.plateRect.x);
         }
 
+        function test_menu_hide_and_show_follow_the_hidden_apps() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            menuActionSpy.target = dock;
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            verify(labels.indexOf("Hide") >= 0);
+            compare(labels.indexOf("Show") < 0, true);
+            menuActionSpy.clear();
+            menu.activate(labels.indexOf("Hide"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "hide_app");
+            compare(menuActionSpy.signalArguments[0][1].appId, "files");
+
+            // The shell publishes the hidden app; the same row becomes Show
+            // and emits the restore action.
+            dock.hiddenApps = ["files"];
+            dock.openEntryMenu(dock.items[0]);
+            menu = findChild(dock, "entryMenu");
+            labels = menuLabels(menu);
+            verify(labels.indexOf("Show") >= 0);
+            compare(labels.indexOf("Hide") < 0, true);
+            menuActionSpy.clear();
+            menu.activate(labels.indexOf("Show"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "show_app");
+            compare(menuActionSpy.signalArguments[0][1].appId, "files");
+        }
+
+        function test_menu_force_quit_carries_the_temporary_entry_flag() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ temporary("term", "Terminal") ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            verify(labels.indexOf("Force Quit") >= 0);
+            menu.activate(labels.indexOf("Force Quit"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "force_quit");
+            compare(menuActionSpy.signalArguments[0][1].appId, "term");
+            compare(menuActionSpy.signalArguments[0][1].desktopId, "term.desktop");
+            compare(menuActionSpy.signalArguments[0][1].temporary, true);
+        }
+
+        function test_quit_marks_a_temporary_entry_for_immediate_removal() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ temporary("term", "Terminal") ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            menu.activate(menuLabels(menu).indexOf("Quit"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "quit");
+            compare(menuActionSpy.signalArguments[0][1].temporary, true);
+        }
+
+        function test_hidden_app_dot_dims_and_the_name_says_hidden() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            var entry = dock.itemAt(0);
+            var dot = findChild(entry, "indicator");
+            compare(dot.opacity, Theme.controls.dock.indicator.opacity);
+            dock.hiddenApps = ["files"];
+            wait(Theme.motion.focus.duration + 50);
+            compare(dot.opacity, Theme.controls.dock.indicator.inactiveOpacity);
+            verify(entry.Accessible.name.indexOf("(hidden)") >= 0);
+            verify(entry.Accessible.name.indexOf("(active)") < 0);
+        }
+
+        function test_hidden_state_is_scoped_to_the_app_id() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true),
+                           app("settings", "Settings", true) ]
+            });
+            dock.hiddenApps = ["files"];
+            waitForRendering(stage);
+            compare(dock.itemAt(0).hidden, true);
+            compare(dock.itemAt(1).hidden, false);
+            compare(dock.itemAt(1).Accessible.name.indexOf("(hidden)") < 0, true);
+        }
+
         function test_menu_model_lists_windows_and_actions() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
@@ -3214,8 +3338,9 @@ Item {
             });
             dock.openEntryMenu(dock.items[0]);
             var menu = findChild(dock, "entryMenu");
-            // 2 windows, sep, Show All Windows, sep, Remove, Options, sep, Quit
-            compare(menu.entries.length, 9);
+            // 2 windows, sep, Show All Windows, sep, Remove, Options, sep,
+            // Hide, Quit, Force Quit
+            compare(menu.entries.length, 11);
             compare(menu.entries[0].label, "A");
             compare(menu.entries[0].checked, true);
             compare(menu.entries[1].label, "B (minimized)");
@@ -3224,7 +3349,9 @@ Item {
             compare(menu.entries[5].label, "Remove from Dock");
             compare(menu.entries[6].label, "Options");
             compare(menu.entries[6].type, "submenu");
-            compare(menu.entries[8].label, "Quit");
+            compare(menu.entries[8].label, "Hide");
+            compare(menu.entries[9].label, "Quit");
+            compare(menu.entries[10].label, "Force Quit");
         }
 
         function test_app_options_submenu_has_assign_login_and_show_in_files() {
