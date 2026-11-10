@@ -2533,14 +2533,19 @@ fn menubar_report(state: &DfState) -> String {
         let name = output.name();
         let fullscreen = state.fullscreen_client_covers_output(&name);
         let active = state.menu_bar_active_on(&name);
+        let surface_height = state.menu_bar_surface_height();
         out.push_str(&format!(
-            "menubar output {} fullscreen={} revealed={} active={} visible={} reserved-top={}\n",
+            "menubar output {} fullscreen={} revealed={} active={} visible={} \
+             reserved-top={} progress={} offset={} input-top={}\n",
             name,
             fullscreen as u32,
             state.menu_bar_revealed_on(&name) as u32,
             active as u32,
             state.menu_bar_visible_on(&name, fullscreen) as u32,
             state.shell.reserved_zones_for(&name).top,
+            (state.menu_bar_progress_on(&name) * 1000.0).round() as u32,
+            state.menu_bar_hide_offset_on(&name, surface_height),
+            state.menu_bar_input_on(&name, fullscreen) as u32,
         ));
     }
     out.push_str("end\n");

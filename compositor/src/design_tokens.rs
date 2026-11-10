@@ -365,6 +365,8 @@ pub mod component {
         pub const FONT_SIZE: f32 = 13.0_f32;
         pub const LABEL_GAP: f32 = 5.0_f32;
         pub const CLOCK_GAP: f32 = 8.0_f32;
+        pub const REVEAL_DELAY: f32 = 0.0_f32;
+        pub const HIDE_DELAY: f32 = 350.0_f32;
         pub const RADIUS: f32 = 10.0_f32;
         pub const HOVER_RADIUS: f32 = 6.0_f32;
         pub const FOREGROUND_ON_LIGHT: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
@@ -1502,6 +1504,11 @@ pub mod motion {
     pub const MENU_CLOSE: Motion = Motion {
         duration_ms: 183_u32,
         curve: [0.4_f32, 0.0_f32, 1.0_f32, 1.0_f32],
+        reduced_duration_ms: 0_u32,
+    };
+    pub const MENU_BAR_REVEAL: Motion = Motion {
+        duration_ms: 160_u32,
+        curve: [0.2_f32, 0.0_f32, 0.0_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };
     pub const POPUP_OPEN: Motion = Motion {

@@ -1152,6 +1152,8 @@ QtObject {
             readonly property int fontSize: 13
             readonly property int labelGap: 5
             readonly property int clockGap: 8
+            readonly property int revealDelay: 0
+            readonly property int hideDelay: 350
             readonly property int radius: 10
             readonly property int hoverRadius: 6
             readonly property color foregroundOnLight: "#000000"
@@ -1522,6 +1524,11 @@ QtObject {
             readonly property int fullDuration: 183
             readonly property int duration: tokens.reducedMotion ? 0 : 183
             readonly property var curve: [0.4, 0.0, 1.0, 1.0, 1.0, 1.0]
+        }
+        readonly property QtObject menuBarReveal: QtObject {
+            readonly property int fullDuration: 160
+            readonly property int duration: tokens.reducedMotion ? 0 : 160
+            readonly property var curve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0]
         }
         readonly property QtObject popupOpen: QtObject {
             readonly property int fullDuration: 160

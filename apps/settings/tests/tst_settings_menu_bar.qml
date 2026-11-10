@@ -34,9 +34,13 @@ Item {
             Settings.set("menu.control.wifi", true);
             Settings.set("menu.control.bluetooth", true);
             Settings.set("menu.control.battery", true);
-            Settings.set("menu.control.focus", true);
             Settings.set("menu.control.volume", true);
+            Settings.set("menu.control.search", true);
+            Settings.set("menu.control.notifications", true);
+            Settings.set("menu.control.focus", true);
+            Settings.set("menu.control.clock", true);
             Settings.set("menu.control.accessibility", true);
+            Settings.set("menu.control.controlCenter", true);
         }
 
         function make() {
@@ -74,7 +78,9 @@ Item {
             compare(pane.recentSelect.currentIndex, 2); // 10
             compare(pane.clockShowDate, true);
             compare(pane.clockShowSeconds, false);
-            compare(pane.controlsRepeater.count, 6);
+            compare(pane.controlsRepeater.count, 10);
+            compare(findChild(pane, "menuBarOverflowDescription") !== null, true,
+                    "the pane explains the overflow policy");
         }
 
         function test_behavior_rows_round_trip() {
@@ -99,11 +105,14 @@ Item {
             var shell = make();
             var pane = paneOf(shell);
 
-            // The list order is the reference order: Wi-Fi, Bluetooth,
-            // Battery, Focus, Sound, Accessibility.
+            // The list order is the registry's reference order: Wi-Fi,
+            // Bluetooth, Battery, Sound, Search, Notifications, Focus,
+            // Date & Time, Accessibility, Quick Settings.
             var keys = ["menu.control.wifi", "menu.control.bluetooth",
-                        "menu.control.battery", "menu.control.focus",
-                        "menu.control.volume", "menu.control.accessibility"];
+                        "menu.control.battery", "menu.control.volume",
+                        "menu.control.search", "menu.control.notifications",
+                        "menu.control.focus", "menu.control.clock",
+                        "menu.control.accessibility", "menu.control.controlCenter"];
             for (var i = 0; i < keys.length; ++i) {
                 var toggle = controlToggle(pane, i);
                 verify(toggle, "toggle " + i + " must exist");

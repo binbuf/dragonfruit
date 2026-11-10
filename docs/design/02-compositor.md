@@ -705,6 +705,16 @@ on demand over fullscreen. A concealed bar is filtered out before
 menubar` prints the mode and each output's fullscreen/revealed/active/visible
 state plus the reserved top strip.
 
+T233 makes that state a measured transition (ADR
+[0250](adr/0250-menubar-reveal-motion-and-measured-overflow.md)): the per-output
+state also carries the target, a hide-delay deadline, a running tween, and the
+rendered progress. The surface, its panel and its material regions are
+translated by `(1 - progress) * height` while input stays on the top strip; a
+concealed bar is fully above the output and contributes no reservation, input
+region or panel. `query menubar` adds `progress`, `offset` and `input-top`, and
+the shared animation clock arms the hide delay and slide so an idle desktop
+still produces no frames once the transition settles.
+
 `BackdropPass` gates the pass: the backend opens a rendered frame once
 (`DfState::begin_render_frame`) and each output applies the backdrop at most
 once. A repeated `(frame, output)` request is counted as `skipped` and draws

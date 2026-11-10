@@ -5,6 +5,7 @@ qt_add_qml_module(dragonfruit-shell-menubar
     VERSION 1.0
     QML_FILES
         MenuBar.qml
+        MenuBarDisplayPolicy.qml
         StatusItem.qml
         StatusItemRegistry.qml
         StatusGlyph.qml
@@ -22,6 +23,7 @@ target_link_libraries(dragonfruit-shell-menubar PUBLIC
 
 df_qml_lint(shell-menubar
     MenuBar.qml
+    MenuBarDisplayPolicy.qml
     StatusItem.qml
     StatusItemRegistry.qml
     StatusGlyph.qml
