@@ -30,10 +30,10 @@ surface uses are vendored, so the set stays reviewable:
 | `folder-templates.svg` | `alternative/places/scalable/folder-templates.svg` | Templates |
 | `user-home.svg` | `alternative/places/scalable/user-home.svg` | Home location |
 | `user-desktop.svg` | `alternative/places/scalable/user-desktop.svg` | Desktop location |
-| `user-trash.svg` | `alternative/places/scalable/user-trash.svg` | Empty Trash (dark scheme) |
-| `user-trash-full.svg` | `alternative/places/scalable/user-trash-full.svg` | Full Trash (dark scheme) |
-| `user-trash-dark.svg` | `alternative/places/scalable/user-trash-dark.svg` | Empty Trash (light scheme) |
-| `user-trash-full-dark.svg` | `alternative/places/scalable/user-trash-full-dark.svg` | Full Trash (light scheme) |
+| `user-trash.svg` | `alternative/places/scalable/user-trash.svg` | Empty Trash (light scheme) |
+| `user-trash-full.svg` | `alternative/places/scalable/user-trash-full.svg` | Full Trash (light scheme) |
+| `user-trash-dark.svg` | `alternative/places/scalable/user-trash-dark.svg` | Empty Trash (dark scheme) |
+| `user-trash-full-dark.svg` | `alternative/places/scalable/user-trash-full-dark.svg` | Full Trash (dark scheme) |
 | `computer.svg` | `alternative/devices/scalable/computer.svg` | Computer location |
 | `drive-harddisk.svg` | `alternative/devices/scalable/drive-harddisk.svg` | Internal volumes |
 | `drive-removable-media.svg` | `alternative/devices/scalable/drive-removable-media.svg` | Removable volumes |
@@ -42,7 +42,7 @@ surface uses are vendored, so the set stays reviewable:
 
 `Icon.qml` resolves the legacy place names (`folder`, `documents`,
 `downloads`, `wallpaper`, `music`, `movies`, `home`, `displays`, `trash`) to
-these files. The Trash chooses the dark artwork on a light scheme and the light
+these files. The Trash chooses the light artwork on a light scheme and the dark
 artwork on a dark scheme. `DockGlyph.qml` uses `folder.svg` for folder stacks,
 `view-app-grid.svg` for the Applications launcher, and the same light/dark
 empty/full pair for the Dock Trash.

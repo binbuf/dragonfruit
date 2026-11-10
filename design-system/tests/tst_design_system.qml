@@ -1698,11 +1698,22 @@ TestCase {
         compare(folder.resolved, true);
         folder.destroy();
 
-        var trash = make(legacyIconComponent, { name: "trash" });
-        compare(trash.isPlaceIcon, true);
-        verify(trash.placeSource.indexOf("/user-trash") >= 0);
-        compare(trash.resolved, true);
-        trash.destroy();
+        var savedDark = Theme.dark;
+        Theme.dark = false;
+        var trashLight = make(legacyIconComponent, { name: "trash" });
+        compare(trashLight.isPlaceIcon, true);
+        compare(trashLight.placeSource, "qrc:/icons/whitesur/user-trash.svg");
+        compare(trashLight.resolved, true);
+        trashLight.destroy();
+
+        Theme.dark = true;
+        var trashDark = make(legacyIconComponent, { name: "trash" });
+        compare(trashDark.isPlaceIcon, true);
+        compare(trashDark.placeSource,
+                "qrc:/icons/whitesur/user-trash-dark.svg");
+        compare(trashDark.resolved, true);
+        trashDark.destroy();
+        Theme.dark = savedDark;
 
         var close = make(legacyIconComponent, { name: "close" });
         compare(close.tablerName, "x");

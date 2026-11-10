@@ -382,7 +382,10 @@ Item {
                / Theme.controls.dock.iconSize
         height: width
         source: {
-            var variant = Theme.dark ? "" : "-dark";
+            // The unsuffixed WhiteSur artwork is the light/silver bin for the
+            // light scheme; the `-dark` file is the dark-gray bin for the dark
+            // scheme.
+            var variant = Theme.dark ? "-dark" : "";
             return root.trashFull
                 ? "qrc:/icons/whitesur/user-trash-full" + variant + ".svg"
                 : "qrc:/icons/whitesur/user-trash" + variant + ".svg";
