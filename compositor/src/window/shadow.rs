@@ -234,6 +234,26 @@ pub fn shadow_elements_outside(
     )
 }
 
+/// The shadow ring outside a window's **bounds**, not its rounded body.
+///
+/// The rounded-body cutout used by [`shadow_elements_outside`] keeps the
+/// shadow out of the translucent chrome, but it also leaves shadow in the
+/// square corner pixels between the rounded window arc and its bounding box.
+/// On a rounded window those pixels are transparent in the surface, so the
+/// shadow reads as a faint grey square behind the rounded titlebar. Cutting at
+/// the bounds keeps the ring outside the window while leaving the corner
+/// cutout clear; the rounded titlebar/`AppWindow` supplies the silhouette.
+pub fn shadow_elements_outside_bounds(
+    rect: Rectangle<i32, Logical>,
+    spec: ShadowSpec,
+    scale: Scale<f64>,
+    output_origin: Point<i32, Logical>,
+    motion: Option<MotionFrame>,
+    window: Rectangle<i32, Logical>,
+) -> Vec<SolidColorRenderElement> {
+    shadow_elements_with_occluder(rect, spec, scale, output_origin, motion, Some((window, 0)))
+}
+
 fn shadow_elements_with_occluder(
     rect: Rectangle<i32, Logical>,
     spec: ShadowSpec,
@@ -573,6 +593,59 @@ mod tests {
             merged_bounds(&elements, 1.0.into()),
             shadow_bounds(window, spec).to_physical_precise_round(1.0)
         );
+    }
+
+    #[test]
+    fn shadow_outside_bounds_keeps_the_rounded_corner_cutout_clear() {
+        let window = rect(100, 200, 400, 300);
+        let spec = ShadowLevel::High.spec(ColorScheme::Dark);
+        let corners = [
+            Point::from((window.loc.x, window.loc.y)),
+            Point::from((window.loc.x + window.size.w - 1, window.loc.y)),
+            Point::from((window.loc.x, window.loc.y + window.size.h - 1)),
+            Point::from((
+                window.loc.x + window.size.w - 1,
+                window.loc.y + window.size.h - 1,
+            )),
+        ];
+        let elements = shadow_elements_outside_bounds(
+            window,
+            spec,
+            1.0.into(),
+            Point::from((0, 0)),
+            None,
+            window,
+        );
+        for corner in corners {
+            assert!(
+                !elements
+                    .iter()
+                    .any(|element| element.geometry(1.0.into()).contains(corner)),
+                "the corner cutout must be completely clear: {corner:?}"
+            );
+        }
+        // The ring still reaches the full shadow bounds outside the window.
+        assert_eq!(
+            merged_bounds(&elements, 1.0.into()),
+            shadow_bounds(window, spec).to_physical_precise_round(1.0)
+        );
+
+        // The rounded-body variant is the old behaviour: the square corner
+        // outside the arc carries shadow. This is the regression guard for the
+        // faint corner square the user saw.
+        let rounded = shadow_elements_outside(
+            window,
+            spec,
+            1.0.into(),
+            Point::from((0, 0)),
+            None,
+            window,
+            spec.radius.round() as i32,
+        );
+        let bottom_left = Point::from((window.loc.x, window.loc.y + window.size.h - 1));
+        assert!(rounded
+            .iter()
+            .any(|element| element.geometry(1.0.into()).contains(bottom_left)));
     }
 
     #[test]

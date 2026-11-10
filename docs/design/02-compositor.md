@@ -421,9 +421,14 @@ window (the SSD titlebar strip included, via `WindowInsets::outset`) is
 shadowed, a window mid-appear/minimize/zoom carries the same lifecycle
 `MotionFrame` as its content, and a minimizing/closing ghost keeps its shadow.
 Fullscreen windows cast none. T206 emits the shadow as a ring outside the
-window's rounded body (`shadow_elements_outside`), so a first-party window with
-translucent app-local sidebar/toolbar chrome cannot sample its own shadow
-through the transparent surface; opaque windows are visually unchanged.
+window body, so a first-party window with translucent app-local
+sidebar/toolbar chrome cannot sample its own shadow through the transparent
+surface; opaque windows are visually unchanged. The ring is cut at the
+**decorated window bounds** (`shadow_elements_outside_bounds`), not at the
+rounded body: the square corner pixels between the rounded window arc and its
+bounding box must stay completely transparent, so the wallpaper shows through
+instead of a faint translucent shadow square. The rounded silhouette comes
+from the window/titlebar surface itself.
 
 The titlebar, client surface, and shadow are emitted **per window**, in
 `Space` stacking order: the titlebar first (above its own content), then the
