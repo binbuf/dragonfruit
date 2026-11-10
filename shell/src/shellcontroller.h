@@ -101,9 +101,9 @@ private slots:
     void onControlCenterPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onControlCenterPointerLeft();
     void onControlCenterKeyboardFocused(bool focused);
-    // Notification Center (T204): the clock entry point, its own overlay
-    // surface and pointer/keyboard stream, and the service-backed history.
-    void onClockActivated();
+    // Notification Center (T204/T231): the Notifications menu-bar extra, its
+    // own overlay surface and pointer/keyboard stream, and the service-backed
+    // history.
     void onNotificationCenterStateClosed(const QString &reason);
     void onNotificationCenterConfigured(int width, int height, quint32 serial);
     void onNotificationCenterPointerMoved(qreal x, qreal y);

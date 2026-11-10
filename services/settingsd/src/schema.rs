@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 23;
+pub const SCHEMA_VERSION: u32 = 24;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1630,6 +1630,50 @@ pub const KEYS: &[KeySpec] = &[
         since: 16,
         summary: "Show the Accessibility control in the menu bar when it is available.",
     },
+    // ── Menu-bar extras registry (T231) ─────────────────────────────────
+    // The three extras that became registry items in T231. The existing
+    // `menu.control.search` key now has a live consumer (the Search item);
+    // these add the clock, Notifications and Quick Settings visibility
+    // choices. The pane rows are T233's; the keys are the durable contract.
+    KeySpec {
+        key: "menu.control.clock",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 24,
+        summary: "Show the Date & Time (clock) item in the menu bar.",
+    },
+    KeySpec {
+        key: "menu.control.notifications",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 24,
+        summary: "Show the Notifications item in the menu bar when the service is present.",
+    },
+    KeySpec {
+        key: "menu.control.controlCenter",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 24,
+        summary: "Show the Quick Settings item in the menu bar.",
+    },
     // ── Printers & Scanners (T-15.12b) ──────────────────────────────────
     // CUPS owns the queues, the system default destination, and the job
     // queue; SANE owns the scanner inventory (ADR 0140). The one durable
@@ -2688,6 +2732,36 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    /// T231 adds the three menu-bar extras that became registry items: the
+    /// Date & Time clock, Notifications and Quick Settings. They are bool
+    /// visibility keys in the existing `menu.control.*` family; the Search key
+    /// (`menu.control.search`, revision 21) now has a live consumer too.
+    #[test]
+    fn the_menu_bar_extras_registry_keys_are_declared_in_revision_twenty_four() {
+        for key in [
+            "menu.control.clock",
+            "menu.control.notifications",
+            "menu.control.controlCenter",
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Menu, "{key}");
+            assert_eq!(spec.kind, KeyType::Bool, "{key}");
+            assert_eq!(spec.default, KeyDefault::Bool(true), "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.consumer, "shell/MenuBar status row", "{key}");
+            assert_eq!(spec.since, 24, "{key}");
+            assert!(spec.validate(&Value::Bool(false)).is_ok(), "{key}");
+            assert!(
+                spec.validate(&Value::Text("on".into())).is_err(),
+                "{key}"
+            );
+        }
+        assert_eq!(
+            spec("menu.control.search").map(|spec| spec.since),
+            Some(21)
+        );
     }
 
     /// The glass preference and its two accessibility overrides are additive

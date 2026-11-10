@@ -6,8 +6,10 @@ qt_add_qml_module(dragonfruit-shell-menubar
     QML_FILES
         MenuBar.qml
         StatusItem.qml
+        StatusItemRegistry.qml
         StatusGlyph.qml
         MenuBarClock.qml
+        DateTimePanel.qml
         WifiMenu.qml
         VolumeMenu.qml
         BatteryMenu.qml
@@ -21,8 +23,10 @@ target_link_libraries(dragonfruit-shell-menubar PUBLIC
 df_qml_lint(shell-menubar
     MenuBar.qml
     StatusItem.qml
+    StatusItemRegistry.qml
     StatusGlyph.qml
     MenuBarClock.qml
+    DateTimePanel.qml
     WifiMenu.qml
     VolumeMenu.qml
     BatteryMenu.qml

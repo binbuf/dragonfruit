@@ -2,13 +2,18 @@
 import QtQuick
 import Dragonfruit
 
-// One menu-bar status-item slot (T-09 FR-5). First-party items and (later,
-// T-30) StatusNotifier items both render through this slot, so sizing,
-// hover, and dark/light treatment are identical everywhere.
+// One menu-bar status-item slot (T-09 FR-5, T231 registry).
+//
+// Every system and third-party extra renders through this slot, so sizing,
+// hover, tooltip, keyboard focus and dark/light treatment are identical
+// everywhere. The registry (`StatusItemRegistry.qml`) owns order, visibility
+// and overflow; this item owns only one slot's presentation.
 //
 // Graceful degradation (FR-4): `available: false` hides the item entirely
 // when its backing daemon is absent; `enabled: false` keeps it visible but
-// dimmed when the adapter is present but the feature is off.
+// dimmed when the adapter is present but the feature is off. `state` carries
+// the reason for introspection and the accessible description (`ok`,
+// `unavailable`, `error`, `attention`).
 Item {
     id: root
 
@@ -19,7 +24,13 @@ Item {
     // get the same slot treatment as first-party ones (T-14.3).
     property url iconSource: ""
     property string label: ""
+    // The registry's tooltip text; also the accessible description.
+    property string tooltip: ""
     property string accessibleName: ""
+    // "status" | "action" | "clock" | "overflow".
+    property string kind: "status"
+    // "ok" | "unavailable" | "error" | "attention".
+    property string state: "ok"
     property bool available: true
     property bool selected: false
     // Keyboard selection (T-07.5b): the bar's arrow keys move this ring.
@@ -28,13 +39,34 @@ Item {
     property color tint: Theme.color.textPrimary
     property color backgroundColor: Theme.color.chrome
 
+    // T231: the clock is a first-class registry item. `StatusItem` owns its
+    // slot (hover/focus/tap/accessibility) and embeds the formatting-only
+    // `MenuBarClock`, so the clock sorts and overflows with every other item.
+    property bool showDate: false
+    property bool showSeconds: false
+    property bool use24Hour: false
+    property color foreground: Theme.color.textPrimary
+    property color secondaryForeground: Theme.color.textSecondary
+
+    readonly property bool isClock: root.kind === "clock"
+    readonly property string clockText:
+        clockLoader.item ? clockLoader.item.timeText : ""
+    readonly property string clockDateText:
+        clockLoader.item ? clockLoader.item.dateText : ""
+    readonly property string clockAccessibleText:
+        clockLoader.item ? clockLoader.item.accessibleText : ""
+
     signal activated(string itemId)
 
     visible: available
     enabled: available
-    implicitWidth: available ? slotContent.implicitWidth + 2 * Theme.controls.menuBar.statusItemPaddingH : 0
+    implicitWidth: available
+        ? (root.isClock
+           ? (clockLoader.item ? clockLoader.item.implicitWidth : 0)
+           : slotContent.implicitWidth + 2 * Theme.controls.menuBar.statusItemPaddingH)
+        : 0
     implicitHeight: Theme.controls.menuBar.height
-    opacity: enabled ? 1.0 : 0.4
+    opacity: (enabled && root.state !== "error") ? 1.0 : 0.4
 
     Rectangle {
         id: slotBackground
@@ -55,6 +87,7 @@ Item {
 
     Row {
         id: slotContent
+        visible: !root.isClock
         anchors.centerIn: parent
         spacing: root.label.length > 0 ? Theme.controls.menuBar.labelGap : 0
 
@@ -90,15 +123,68 @@ Item {
         }
     }
 
-    HoverHandler { id: slotHover }
+    Loader {
+        id: clockLoader
+        anchors.centerIn: parent
+        active: root.isClock
+        sourceComponent: Component {
+            MenuBarClock {
+                objectName: "clock"
+                interactive: false
+                showDate: root.showDate
+                showSeconds: root.showSeconds
+                use24Hour: root.use24Hour
+                foreground: root.foreground
+                secondaryForeground: root.secondaryForeground
+            }
+        }
+    }
+
+    HoverHandler {
+        id: slotHover
+        onHoveredChanged: {
+            if (hovered && root.tooltip.length > 0) {
+                tooltipTimer.restart();
+            } else {
+                tooltipTimer.stop();
+                tooltipItem.open = false;
+            }
+        }
+    }
+
+    // The owner owns the dwell timer (ADR 0093). A status tooltip is passive:
+    // it never takes focus and never blocks the slot beneath it.
+    Timer {
+        id: tooltipTimer
+        interval: Theme.controls.tooltip.dwell
+        repeat: false
+        onTriggered: {
+            if (slotHover.hovered && root.tooltip.length > 0)
+                tooltipItem.open = true;
+        }
+    }
+
+    Tooltip {
+        id: tooltipItem
+        open: false
+        text: root.tooltip
+        anchorItem: root
+        placement: "below"
+        bounds: null
+    }
 
     TapHandler {
         onTapped: root.activated(root.itemId)
     }
 
     Accessible.role: Accessible.Button
-    Accessible.name: root.accessibleName.length > 0 ? root.accessibleName
-                                                    : (root.label.length > 0 ? root.label : root.itemId)
+    Accessible.name: {
+        if (root.isClock && root.clockAccessibleText.length > 0)
+            return root.clockAccessibleText;
+        return root.accessibleName.length > 0 ? root.accessibleName
+                                              : (root.label.length > 0 ? root.label : root.itemId);
+    }
+    Accessible.description: root.tooltip
     Accessible.focusable: true
     Accessible.onPressAction: root.activated(root.itemId)
 }

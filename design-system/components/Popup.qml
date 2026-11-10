@@ -82,8 +82,17 @@ Item {
         if (!anchorItem || !root.parent)
             return Qt.point((root.parent ? root.parent.width : 0) / 2 - width / 2,
                             (root.parent ? root.parent.height : 0) / 2 - height / 2);
-        var p = anchorItem.mapToItem(root.parent, 0, anchorItem.height);
-        return Qt.point(p.x, p.y + root.anchorOffset);
+        // Reference the anchor's live geometry (and its row's position) so the
+        // binding re-evaluates after the status row lays out. `mapToItem`
+        // itself is not a bindable dependency; without these reads a popup
+        // created before the row's first layout stayed at x=0 (T231).
+        var anchorWidth = anchorItem.width;
+        var anchorHeight = anchorItem.height;
+        var anchorX = anchorItem.x;
+        var rowX = anchorItem.parent ? anchorItem.parent.x : 0;
+        var parentWidth = root.parent.width;
+        var p = anchorItem.mapToItem(root.parent, 0, anchorHeight);
+        return Qt.point(Math.max(0, p.x), p.y + root.anchorOffset);
     }
     // The anchor point in popup-local coordinates: the surface shrinks toward
     // this point on close (T202).

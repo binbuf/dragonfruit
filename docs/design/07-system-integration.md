@@ -883,6 +883,9 @@ stack, exactly as `dragonfruit-overview` projects the compositor and
   (`clock`, `wifi`, `bluetooth`, `battery`, `volume`, `focus`,
   `accessibility`). `MenuBarSnapshot` types all of it; the control ids are the
   shell status-item ids, so a projection maps straight onto the status row.
+  The T231 registry additionally carries `search`, `notifications`,
+  `control-center` and `mission-control`; the adapter's read-only projection
+  remains the seven controls it shipped.
 - **Events** are the shared subscription lifecycle (`AdapterEvent`) plus a pure
   `MenuBarSnapshot::changes` diff — the runtime hidden flag, the auto-hide
   mode, the background and global-menu flags, each clock option, each control
@@ -941,6 +944,57 @@ like Mission Control (T-15.5b) and the Lock Screen (T-15.8b; ADR
   [adr/0220](adr/0220-menu-bar-auto-hide-visibility.md). `menu.recentItems`
   is consumed by the system menu's Recent Items submenu (T230); the rows are
   live controls, not dead policy.
+
+## The menu-bar extras registry and Date & Time (T231)
+
+The menu bar's right side is one registry, not a hand-built row. The shell
+controller (`ShellController::applyStatusItems`) emits the normalized entry
+shape — `id`, `icon`/`iconSource`, `label`, `tooltip`, `menu`, `priority`,
+`visible`, `available`, `enabled`, `selected`, `state`, `accessibleName`,
+`kind`, `thirdParty` — and `shell/menubar/StatusItemRegistry.qml` owns the two
+decisions a delegate must not repeat:
+
+- **Order.** System extras sort by priority (`wifi 10`, `bluetooth 20`,
+  `battery 30`, `volume 40`, `search 50`, `focus 55`, `notifications 60`,
+  `clock 70`, `control-center 80`, `mission-control 90`); every third-party
+  StatusNotifier item is at `1000+` and therefore after the whole system
+  block. Ties keep the producer's registration order.
+- **Overflow.** A finite `maxVisible` budget removes third-party items first,
+  then optional system items. `essential` entries (clock, Quick Settings,
+  Overview) never leave the row. The removed entries appear in the overflow
+  affordance's menu, so a third-party item can be hidden but never silently
+  dropped. T233 feeds the budget from the measured bar width and adds the
+  notch/overflow motion; T231 ships the deterministic rule and the menu.
+
+The system extras all migrated: Wi-Fi, Bluetooth, Battery, Sound, Search,
+Notifications, Focus, Accessibility, Date & Time, Quick Settings, Mission
+Control, and the tray items. Search activation opens the Applications
+drawer's search field; Notifications opens the Notification Center; the clock
+opens the Date & Time panel; Wi-Fi/Bluetooth/Sound/Battery open their existing
+status popovers. Absence keeps the old semantics: an absent daemon is a
+hidden zero-width slot that does not consume the overflow budget, a
+present-but-off control is dimmed and inert, and
+`state: "error"`/`"attention"` stays visible with the reason in the tooltip and
+accessible description. A third-party item's `needsAttention` becomes
+`state: "attention"`/`selected`.
+
+`menu.control.<id>` is the durable user choice. Revision 24 adds
+`menu.control.clock`, `menu.control.notifications`, and
+`menu.control.controlCenter`; the existing `menu.control.search` now has a
+live consumer. The Menu Bar pane rows for the new keys are T233's; the keys
+are already applied live by `applyMenuBarPolicy`.
+
+**Date & Time.** The clock is a registry item rendered by `MenuBarClock`
+inside the shared `StatusItem` slot, so it has the same hover, focus ring,
+tooltip and keyboard treatment as every other extra. Clicking it opens
+`DateTimePanel`, a `Popup` with the `statusMenu` material preset and Escape
+dismissal (a panel, not a menu). It shows the time with the user's
+`menu.clock.showSeconds` and `clock.use24Hour` preferences, the date in the
+locale's long format, and a month grid. Arrows move the selection by a
+day/week, PageUp/PageDown move by month, Home returns to today, Return raises
+the selected day, and every day/button carries an accessible name. The panel
+uses one one-shot boundary timer while open; the bar clock keeps its own
+single re-armed timer, so an idle bar still contributes one wakeup per minute.
 
 ## The General, About, and Updates path (T-15.10a)
 

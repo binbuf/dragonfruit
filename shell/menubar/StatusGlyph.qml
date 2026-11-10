@@ -25,6 +25,10 @@ import Dragonfruit
 //   battery-charging        -> battery-charging
 //   focus                   -> moon
 //   accessibility           -> accessible
+//   search                  -> search
+//   notifications           -> bell
+//   overflow                -> chevron-down
+//   application             -> app-window (a tray item without a themed icon)
 //   control-center          -> adjustments-horizontal
 //   mission-control         -> layout-dashboard
 //
@@ -74,6 +78,14 @@ Item {
             return "moon";
         case "accessibility":
             return "accessible";
+        case "search":
+            return "search";
+        case "notifications":
+            return "bell";
+        case "overflow":
+            return "chevron-down";
+        case "application":
+            return "app-window";
         case "control-center":
             return "adjustments-horizontal";
         case "mission-control":
@@ -165,6 +177,46 @@ Item {
         anchors.fill: parent
         visible: root.glyphName === "accessible"
         name: "accessible"
+        color: root.color
+        size: root.size
+        strokeWidth: 2.25
+        opacity: root.markOpacity
+    }
+
+    TablerIcon {
+        anchors.fill: parent
+        visible: root.glyphName === "search"
+        name: "search"
+        color: root.color
+        size: root.size
+        strokeWidth: 2.25
+        opacity: root.markOpacity
+    }
+
+    TablerIcon {
+        anchors.fill: parent
+        visible: root.glyphName === "app-window"
+        name: "app-window"
+        color: root.color
+        size: root.size
+        strokeWidth: 2.25
+        opacity: root.markOpacity
+    }
+
+    TablerIcon {
+        anchors.fill: parent
+        visible: root.glyphName === "bell"
+        name: "bell"
+        color: root.color
+        size: root.size
+        strokeWidth: 2.25
+        opacity: root.markOpacity
+    }
+
+    TablerIcon {
+        anchors.fill: parent
+        visible: root.glyphName === "chevron-down"
+        name: "chevron-down"
         color: root.color
         size: root.size
         strokeWidth: 2.25

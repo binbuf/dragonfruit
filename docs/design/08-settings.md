@@ -271,7 +271,10 @@ The last four panes close the reference information architecture
   to the Accessibility pane.
 
 Schema revision 23 adds `focus.schedule.enabled/start/end/days`,
-`focus.shortcut`, `lock.passwordHint`, and `login.windowStyle`.
+`focus.shortcut`, `lock.passwordHint`, and `login.windowStyle`. Revision 24
+adds the menu-bar extras registry keys `menu.control.clock`,
+`menu.control.notifications`, and `menu.control.controlCenter` (T231; the
+Menu Bar pane rows for them are T233's).
 
 ## The T229 panes (Sound, Keyboard/Input, Mouse/Trackpad, Controllers, Users & Groups, Printers & Scanners, Battery/Storage)
 

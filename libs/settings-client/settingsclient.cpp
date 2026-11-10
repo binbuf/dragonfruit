@@ -129,7 +129,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 22). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 24). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -204,6 +204,9 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("menu.control.volume"), true);
     values.insert(QStringLiteral("menu.control.focus"), true);
     values.insert(QStringLiteral("menu.control.accessibility"), true);
+    values.insert(QStringLiteral("menu.control.clock"), true);
+    values.insert(QStringLiteral("menu.control.notifications"), true);
+    values.insert(QStringLiteral("menu.control.controlCenter"), true);
     values.insert(QStringLiteral("sound.alertSound"), QStringLiteral("Chime"));
     values.insert(QStringLiteral("sound.playEffectsThrough"), QStringLiteral("output"));
     values.insert(QStringLiteral("sound.alertVolume"), 0.8);
