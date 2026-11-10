@@ -988,6 +988,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockEntryActivated(QVariant)));
     connect(m_dockItem, SIGNAL(entryTileRect(QString,qreal,qreal,qreal,qreal)), this,
             SLOT(onDockEntryTileRect(QString,qreal,qreal,qreal,qreal)));
+    // T237: the Dock publishes its minimized-region/per-window targets as the
+    // layout or `dock.minimizeIntoTileIcon` changes; the shell forwards them
+    // to the compositor's minimize/restore motion.
+    connect(m_dockItem, SIGNAL(minimizedTargetsChanged()), this,
+            SLOT(publishDockMinimizeTargets()));
+    connect(m_dockItem, SIGNAL(minimizedRegionRectChanged()), this,
+            SLOT(publishDockMinimizeTargets()));
     connect(m_dockItem, SIGNAL(entryContextMenuRequested(QVariant,qreal,qreal)), this,
             SLOT(onDockEntryContextMenu(QVariant,qreal,qreal)));
     connect(m_dockItem, SIGNAL(dividerContextMenuRequested(qreal,qreal)), this,
@@ -7035,6 +7042,10 @@ void ShellController::applyDockSettings(bool reconfigure)
                             : position == ShellProtocol::DockPosition::Right
                                     ? QStringLiteral("right")
                                     : QStringLiteral("bottom"));
+    // T237: `dock.minimizeIntoTileIcon` selects the minimize/restore target
+    // mapping; publish the current region/per-window targets after the
+    // setting and geometry are in place.
+    publishDockMinimizeTargets();
     // The reduced-motion policy is no longer sent from here: T-08.2c routes
     // the whole motion/input policy through `applyCompositorPolicy()` so the
     // settingsd value has exactly one applier (the compositor).
@@ -8069,6 +8080,58 @@ void ShellController::onDockEntryTileRect(const QString &desktopId, qreal x, qre
     const QRect rect(qRound(x), qRound(y), qRound(w), qRound(h));
     const QRect output = m_protocol ? m_protocol->primaryOutputGeometry() : QRect();
     m_dockTiles.record(desktopId, clampDockTileRect(rect, output));
+}
+
+void ShellController::publishDockMinimizeTargets()
+{
+    if (!m_protocol || !m_dockItem)
+        return;
+    const QVariantMap targets = m_dockItem->property("minimizedTargets").toMap();
+    const QVariantMap regionMap = m_dockItem->property("minimizedRegionRect").toMap();
+    const QRect region(qRound(regionMap.value(QStringLiteral("x")).toReal()),
+                       qRound(regionMap.value(QStringLiteral("y")).toReal()),
+                       qRound(regionMap.value(QStringLiteral("w")).toReal()),
+                       qRound(regionMap.value(QStringLiteral("h")).toReal()));
+    const bool intoTile = m_dockConfig.minimizeIntoTileIcon;
+    if (intoTile == m_lastMinimizeIntoTile
+        && targets == m_lastMinimizeTargets
+        && region == m_lastMinimizeRegion) {
+        return;
+    }
+    m_lastMinimizeIntoTile = intoTile;
+    m_lastMinimizeTargets = targets;
+    m_lastMinimizeRegion = region;
+
+    if (intoTile) {
+        // Windows collapse into the application icon; clear every target so
+        // the compositor falls back to the app's Dock tile.
+        for (const QString &key : std::as_const(m_publishedMinimizeTargets))
+            m_protocol->setMinimizeTarget(key, 0, 0, 0, 0);
+        m_protocol->setMinimizeTarget(QString(), 0, 0, 0, 0);
+        m_publishedMinimizeTargets.clear();
+        return;
+    }
+
+    // The shared region target is the fallback for a window that has no
+    // minimized tile yet (its first minimize).
+    m_protocol->setMinimizeTarget(QString(), region.x(), region.y(),
+                                  region.width(), region.height());
+
+    QSet<QString> live;
+    for (auto it = targets.constBegin(); it != targets.constEnd(); ++it) {
+        const QVariantMap r = it.value().toMap();
+        m_protocol->setMinimizeTarget(it.key(),
+                                      qRound(r.value(QStringLiteral("x")).toReal()),
+                                      qRound(r.value(QStringLiteral("y")).toReal()),
+                                      qRound(r.value(QStringLiteral("w")).toReal()),
+                                      qRound(r.value(QStringLiteral("h")).toReal()));
+        live.insert(it.key());
+    }
+    for (const QString &key : std::as_const(m_publishedMinimizeTargets)) {
+        if (!live.contains(key))
+            m_protocol->setMinimizeTarget(key, 0, 0, 0, 0);
+    }
+    m_publishedMinimizeTargets = live;
 }
 
 QPoint ShellController::dockSurfaceOutputOrigin() const

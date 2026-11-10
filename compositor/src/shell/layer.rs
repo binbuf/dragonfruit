@@ -572,6 +572,34 @@ mod tests {
     }
 
     #[test]
+    fn auto_hide_dock_reserves_nothing_and_fullscreen_hides_it() {
+        // T237: a hidden auto-hide Dock sends exclusive_zone 0, so it removes
+        // no usable area on any output (the shell's reservedThickness is 0 for
+        // every reveal state), and the persistent top layer is hidden while a
+        // fullscreen client owns the output.
+        let dock = LayerSurfaceState {
+            anchor: ANCHOR_BOTTOM | ANCHOR_LEFT | ANCHOR_RIGHT,
+            height: 131,
+            exclusive_zone: 0,
+            ..Default::default()
+        };
+        assert!(dock.matches_output("HEADLESS-1"));
+        assert!(dock.matches_output("HDMI-A-1"));
+        assert_eq!(dock.reserved(), None);
+        assert_eq!(
+            aggregate_reserved_for("HEADLESS-1", [&dock].into_iter(), ReservedZones::default()),
+            ReservedZones::default(),
+            "the auto-hide Dock reserves nothing on the primary"
+        );
+        assert_eq!(
+            aggregate_reserved_for("HDMI-A-1", [&dock].into_iter(), ReservedZones::default()),
+            ReservedZones::default(),
+            "the auto-hide Dock reserves nothing on a second output"
+        );
+        assert!(!visible_in_fullscreen(LAYER_TOP));
+    }
+
+    #[test]
     fn menu_bar_veil_extent_is_visual_only_beyond_the_reserved_strip() {
         // T200: the layer surface is tall enough for the 95 pt veil, but the
         // exclusive zone stays the 28 pt bar strip. The visual region extends

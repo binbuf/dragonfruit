@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T-14.7c Dock motion trace capture.
+# T-14.7c/T237 Dock motion trace capture.
 #
 # Runs the nested demo on the current session bus alongside a scratch-home
-# settingsd, drives a magnification sweep, a context menu open/close, and a
-# `dock.size` change through the synthetic-input harness + `gdbus`, and writes
-# the bracketed compositor frame trace plus two stills:
+# settingsd, drives a magnification sweep, a context menu open/close, a
+# `dock.size` change, a launch/minimize/restore (genie, minimized-region
+# target), and auto-hide hide/reveal through the synthetic-input harness +
+# `gdbus`, and writes the bracketed compositor frame trace plus the stills:
 #
 #   * docs/captures/t14-dock-motion-trace.txt
 #   * docs/captures/t14-dock-motion-menu-dark.png
 #   * docs/captures/t14-dock-motion-resized-dark.png
+#   * docs/captures/t237-dock-{launch,minimized,autohide-hidden,autohide-revealed}.png
 #
 # Requires: a host Wayland session, `spectacle`, `gdbus`, python3 with Pillow,
 # and the built tree (`make build`). Not part of `make e2e`.
@@ -46,10 +48,26 @@ python3 -c 'import PIL' 2>/dev/null || {
     echo "capture-dock-motion: python3 Pillow not found" >&2
     exit 1
 }
+# The default capture owns a scratch settingsd. On a live dev host the session
+# settingsd is already running; `DF_CAPTURE_LIVE_SETTINGS=1` borrows it, saves
+# the three Dock keys, and restores them on exit instead of stopping the
+# session service.
+LIVE_SETTINGS="${DF_CAPTURE_LIVE_SETTINGS:-0}"
+settings_get() {
+    gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" \
+        --method "$DBUS_IFACE.Get" "$1" 2>/dev/null \
+        | sed -e 's/^((//' -e 's/),)$//'
+}
 if gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
         --method org.freedesktop.DBus.NameHasOwner "$DBUS_DEST" 2>/dev/null | grep -q true; then
-    echo "capture-dock-motion: $DBUS_DEST is already owned — stop the running settingsd first" >&2
-    exit 1
+    if [ "$LIVE_SETTINGS" != "1" ]; then
+        echo "capture-dock-motion: $DBUS_DEST is already owned — stop the running settingsd first (or set DF_CAPTURE_LIVE_SETTINGS=1)" >&2
+        exit 1
+    fi
+    OLD_POSITION="$(settings_get dock.position)"
+    OLD_MINIMIZED_ANIMATION="$(settings_get dock.minimizedAnimation)"
+    OLD_MINIMIZE_INTO_TILE="$(settings_get dock.minimizeIntoTileIcon)"
+    OLD_AUTOHIDE="$(settings_get dock.autohide)"
 fi
 
 SYNTH="${XDG_RUNTIME_DIR}/$SOCKET.synth"
@@ -66,25 +84,51 @@ cleanup() {
         kill -KILL "$SETTINGS_PID" 2>/dev/null || true
         wait "$SETTINGS_PID" 2>/dev/null || true
     fi
+    if [ "$LIVE_SETTINGS" = "1" ]; then
+        for pair in "dock.position:$OLD_POSITION" \
+                    "dock.minimizedAnimation:$OLD_MINIMIZED_ANIMATION" \
+                    "dock.minimizeIntoTileIcon:$OLD_MINIMIZE_INTO_TILE" \
+                    "dock.autohide:$OLD_AUTOHIDE"; do
+            key="${pair%%:*}"
+            value="${pair#*:}"
+            if [ -n "$value" ]; then
+                gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" \
+                    --method "$DBUS_IFACE.Set" "$key" "$value" >/dev/null 2>&1 || true
+            fi
+        done
+    fi
     rm -f "$SYNTH"
     [ "${KEEP_SCRATCH:-0}" = "1" ] || rm -rf "$SCRATCH"
 }
 trap cleanup EXIT
 
-echo "capture-dock-motion: starting the scratch settingsd"
-XDG_CONFIG_HOME="$XDG_DIR" "$SETTINGS_BIN" >>"$SCRATCH/settingsd.log" 2>&1 &
-SETTINGS_PID=$!
-for _ in $(seq 1 200); do
-    if gdbus call --session --dest org.freedesktop.DBus \
-            --object-path /org/freedesktop/DBus \
-            --method org.freedesktop.DBus.NameHasOwner "$DBUS_DEST" 2>/dev/null | grep -q true; then
-        break
-    fi
-    sleep 0.05
-done
+if [ "$LIVE_SETTINGS" = "1" ]; then
+    echo "capture-dock-motion: borrowing the live settingsd"
+else
+    echo "capture-dock-motion: starting the scratch settingsd"
+    XDG_CONFIG_HOME="$XDG_DIR" "$SETTINGS_BIN" >>"$SCRATCH/settingsd.log" 2>&1 &
+    SETTINGS_PID=$!
+    for _ in $(seq 1 200); do
+        if gdbus call --session --dest org.freedesktop.DBus \
+                --object-path /org/freedesktop/DBus \
+                --method org.freedesktop.DBus.NameHasOwner "$DBUS_DEST" 2>/dev/null | grep -q true; then
+            break
+        fi
+        sleep 0.05
+    done
+fi
+
+# T237: exercise the genie minimize/restore and the minimized-region target.
+gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" \
+    --method "$DBUS_IFACE.Set" "dock.position" "<'bottom'>" >/dev/null
+gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" \
+    --method "$DBUS_IFACE.Set" "dock.minimizedAnimation" "<'genie'>" >/dev/null
+gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" \
+    --method "$DBUS_IFACE.Set" "dock.minimizeIntoTileIcon" "<false>" >/dev/null
 
 echo "capture-dock-motion: starting the nested demo (socket $SOCKET)"
-DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" setsid make demo DEMO_ARGS="--socket-name $SOCKET" \
+DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" setsid make demo \
+    DEMO_ARGS="--socket-name $SOCKET" \
     >"$SCRATCH/demo.log" 2>&1 &
 DEMO_PGID=$!
 for _ in $(seq 1 300); do [ -e "$XDG_RUNTIME_DIR/$SOCKET" ] && break; sleep 0.1; done

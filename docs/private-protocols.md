@@ -180,8 +180,9 @@ is acked with `done` after the scene applies it (FR-3).
   create/remove/reorder/activate, `enter`/`exit_mission_control`,
   `select_overview_toplevel`, `activate_app`, `cycle_app_switcher`,
   `release_keyboard_focus` (v2), `set_reduced_motion` (v3),
-  `set_launch_origin` (v4), and `set_motion_policy`/`set_input_policy` (v5),
-  `capture_screenshot` (v6), and `set_app_accelerators` (v7). The capture
+  `set_launch_origin` (v4), `set_motion_policy`/`set_input_policy` (v5),
+  `capture_screenshot` (v6), `set_app_accelerators` (v7), and
+  `set_minimize_target` (v11). The capture
   request is the portal presenter's
   still-frame path (T-13.3b): the trusted shell supplies a rectangle, a
   `fullscreen`/`region`/`window` mode, and a path; the compositor renders an
@@ -197,7 +198,14 @@ is acked with `done` after the scene applies it (FR-3).
   it is never sent. The shell now has a caller (T-14.7l): the Dock's
   `entryTileRect` signal feeds a bounded `desktopId -> rect` cache, and every
   launch path sends the rect in output coordinates before spawning the child
-  ([ADR 0105](design/adr/0105-dock-launch-origin-tile-handoff.md)). `set_motion_policy` forwards the resolved
+  ([ADR 0105](design/adr/0105-dock-launch-origin-tile-handoff.md)).
+  `set_minimize_target` (v11) is the T237 counterpart for the
+  `dock.minimizeIntoTileIcon=off` mapping: an empty window id publishes the
+  Dock's shared minimized-region rect, a decimal window id publishes that
+  minimized entry's resting tile, and a non-positive rect clears it. The
+  compositor prefers a per-window tile, then the region, then the app tile,
+  then the centered fallback ([ADR 0258](design/adr/0258-dock-motion-launch-lift-and-minimize-targets.md)).
+  `set_motion_policy` forwards the resolved
   `appearance.colorScheme`, `dock.titlebarDoubleClick`, and
   `dock.minimizedAnimation`; `set_input_policy` forwards
   `input.repeatDelay`/`input.repeatRate` and the `gestures.*` switches

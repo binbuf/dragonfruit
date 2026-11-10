@@ -395,9 +395,14 @@ keyboard focus the moment it becomes a ghost, so an input-inert window is
 never a phantom focus target (the compositor mirrors the unset itself because
 Smithay does not report it). `dock.minimizedAnimation`
 defaults to `scale`; `genie` uses the measured 450 ms minimize/restore
-envelope (the warp still renders as the same per-window transform), and `none`
-is the reduced-motion fallback: the states still change and the motion
-collapses to one step. See
+envelope and squeezes the horizontal axis ahead of the vertical one on the
+same per-window transform (the true mesh warp remains a material-pass
+follow-up), and `none` is the reduced-motion fallback: the states still change
+and the motion collapses to one step. The minimize/restore destination follows
+`dock.minimizeIntoTileIcon`: the shell publishes the Dock's minimized-region
+and per-window tiles over `df_toplevel_manager.set_minimize_target` (v11), and
+the compositor resolves per-window tile → region → app tile → centered
+fallback. See
 [ADR 0004](adr/0004-window-appear-origin-and-transform.md),
 [ADR 0005](adr/0005-minimize-restore-motion-and-ghost.md),
 [ADR 0006](adr/0006-zoom-fullscreen-geometry-motion.md),

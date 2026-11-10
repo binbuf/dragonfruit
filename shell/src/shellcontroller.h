@@ -364,6 +364,10 @@ private slots:
     // (T-14.7l); remember it bounded so the next launch can hand it to the
     // compositor over `set_launch_origin`.
     void onDockEntryTileRect(const QString &desktopId, qreal x, qreal y, qreal w, qreal h);
+    // T237: publish the Dock's minimized-region and per-window minimize/
+    // restore targets over `set_minimize_target` when windows do not collapse
+    // into the app icon. Clears every target when the setting turns on.
+    void publishDockMinimizeTargets();
     // The compositor's reply to `activateApp` (T-14.7g): when it found no
     // window, launch the remembered desktop entry or raise a notice.
     void onActivationResult(const QString &appId, bool found);
@@ -1299,6 +1303,14 @@ private:
     // The Dock's last-interaction tile rects, keyed by desktop id (T-14.7l).
     // Bounded; cleared when the pinned set changes.
     DockTileRects m_dockTiles;
+    // T237: the decimal window ids whose per-window minimize targets were
+    // last published, so a removed minimized entry is cleared explicitly.
+    QSet<QString> m_publishedMinimizeTargets;
+    // The last published snapshot, so an unchanged layout does not resend the
+    // protocol messages every frame of an icon-size animation.
+    QVariantMap m_lastMinimizeTargets;
+    QRect m_lastMinimizeRegion;
+    bool m_lastMinimizeIntoTile = true;
     // Pinned desktop id -> deadline (ms since epoch) for the launch timeout.
     QHash<QString, qint64> m_launchDeadlines;
     // Pinned desktop id -> launch-bounce start (ms since epoch); the bounce

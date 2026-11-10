@@ -110,10 +110,7 @@ pub enum WindowMotionKind {
 /// The timing token for a lifecycle motion under the selected minimize mode.
 /// Only genie minimize/restore uses the measured 450 ms envelope; scale keeps
 /// the existing open/close pacing and `none` collapses via `collapses()`.
-pub fn motion_token(
-    kind: WindowMotionKind,
-    minimized_animation: MinimizedAnimation,
-) -> Motion {
+pub fn motion_token(kind: WindowMotionKind, minimized_animation: MinimizedAnimation) -> Motion {
     if matches!(kind, WindowMotionKind::Minimize | WindowMotionKind::Restore)
         && minimized_animation == MinimizedAnimation::Genie
     {
@@ -197,6 +194,11 @@ pub struct WindowMotion {
     pub target: Rectangle<i32, Logical>,
     /// Progress timing on the shared clock.
     pub tween: Tween,
+    /// Whether this minimize/restore uses the genie per-axis squeeze rather
+    /// than the uniform scale. The true mesh warp remains a material-pass
+    /// follow-up; this is the measured 450 ms genie envelope applied to the
+    /// one per-window transform (no second effect path).
+    pub genie: bool,
     /// Frames this motion has been advanced for. The reduced-motion
     /// acceptance is `frames == 1`.
     pub frames: u64,
@@ -238,6 +240,29 @@ impl MotionFrame {
     }
 }
 
+/// Resolve the minimize/restore destination from the shell's published
+/// targets (T237). Precedence: a per-window minimized tile, the shared
+/// minimized region, then the app's Dock tile, then the centered fallback.
+/// Keeping this pure makes the `dock.minimizeIntoTileIcon` mapping testable
+/// without a live compositor.
+pub fn resolve_minimize_origin(
+    window_id: Option<u64>,
+    app_tile: Option<Rectangle<i32, Logical>>,
+    region: Option<Rectangle<i32, Logical>>,
+    per_window: &std::collections::HashMap<String, Rectangle<i32, Logical>>,
+    geometry: Rectangle<i32, Logical>,
+) -> Rectangle<i32, Logical> {
+    if let Some(id) = window_id {
+        if let Some(origin) = per_window.get(&id.to_string()) {
+            return *origin;
+        }
+    }
+    if let Some(region) = region {
+        return region;
+    }
+    app_tile.unwrap_or_else(|| WindowMotion::centered_origin(geometry))
+}
+
 impl WindowMotion {
     /// A motion of `kind` from `origin` to `target` starting at `now_ms`.
     pub fn new(
@@ -247,14 +272,7 @@ impl WindowMotion {
         now_ms: u64,
         reduced_motion: bool,
     ) -> Self {
-        Self::new_with_motion(
-            kind,
-            origin,
-            target,
-            now_ms,
-            reduced_motion,
-            kind.token(),
-        )
+        Self::new_with_motion(kind, origin, target, now_ms, reduced_motion, kind.token())
     }
 
     /// A lifecycle motion timed with an explicit token. The genie minimize/
@@ -273,9 +291,31 @@ impl WindowMotion {
             origin,
             target,
             tween: Tween::from_motion(now_ms, token, reduced_motion),
+            genie: false,
             frames: 0,
             completed: false,
         }
+    }
+
+    /// A minimize/restore timed with the measured genie envelope and drawn
+    /// with the genie per-axis squeeze instead of the uniform scale.
+    pub fn new_genie_motion(
+        kind: WindowMotionKind,
+        origin: Rectangle<i32, Logical>,
+        target: Rectangle<i32, Logical>,
+        now_ms: u64,
+        reduced_motion: bool,
+    ) -> Self {
+        let mut motion = Self::new_with_motion(
+            kind,
+            origin,
+            target,
+            now_ms,
+            reduced_motion,
+            motion::WINDOW_GENIE,
+        );
+        motion.genie = matches!(kind, WindowMotionKind::Minimize | WindowMotionKind::Restore);
+        motion
     }
 
     /// A convenience constructor for a window appearing into `target` from
@@ -332,13 +372,27 @@ impl WindowMotion {
             // Zoom/fullscreen are visible at both ends: geometry only.
             (self.origin, self.target, 1.0)
         };
-        let lerp =
-            |a: i32, b: i32| (f64::from(a) + (f64::from(b) - f64::from(a)) * t).round() as i32;
+        // The genie squeeze compresses the window horizontally ahead of the
+        // vertical collapse (and grows it back the same way on restore), so
+        // the surface reads as a stretch into the Dock tile instead of a
+        // uniform scale. Both axes still land exactly on the endpoints.
+        let (tx, ty) = if self.genie {
+            (1.0 - (1.0 - t).powf(1.6), t.powf(1.6))
+        } else {
+            (t, t)
+        };
+        let lerp = |a: i32, b: i32, p: f64| {
+            (f64::from(a) + (f64::from(b) - f64::from(a)) * p).round() as i32
+        };
         let rect = Rectangle::new(
-            (lerp(start.loc.x, end.loc.x), lerp(start.loc.y, end.loc.y)).into(),
             (
-                lerp(start.size.w, end.size.w).max(1),
-                lerp(start.size.h, end.size.h).max(1),
+                lerp(start.loc.x, end.loc.x, tx),
+                lerp(start.loc.y, end.loc.y, ty),
+            )
+                .into(),
+            (
+                lerp(start.size.w, end.size.w, tx).max(1),
+                lerp(start.size.h, end.size.h, ty).max(1),
             )
                 .into(),
         );
@@ -674,8 +728,14 @@ mod tests {
         assert_eq!(token.duration_ms, 450);
         assert_eq!(token.reduced_duration_ms, 0);
 
-        let minimize =
-            WindowMotion::new_with_motion(WindowMotionKind::Minimize, tile, target, 0, false, token);
+        let minimize = WindowMotion::new_with_motion(
+            WindowMotionKind::Minimize,
+            tile,
+            target,
+            0,
+            false,
+            token,
+        );
         let mid = minimize.frame(225);
         assert!(mid.rect.size.w > tile.size.w && mid.rect.size.w < target.size.w);
         assert!(mid.alpha > 0.0 && mid.alpha < 1.0);
@@ -690,6 +750,92 @@ mod tests {
         assert_eq!(restore.frame(0).rect, tile);
         assert_eq!(restore.frame(450).rect, target);
         assert_eq!(restore.frame(450).alpha, 1.0);
+    }
+
+    #[test]
+    fn minimize_target_precedence_is_per_window_then_region_then_app_tile() {
+        let geometry = rect(200, 200, 800, 600);
+        let app_tile = rect(10, 10, 48, 48);
+        let region = rect(400, 1100, 300, 60);
+        let window_tile = rect(520, 1110, 48, 48);
+        let mut per_window = std::collections::HashMap::new();
+        per_window.insert("42".to_string(), window_tile);
+
+        // A published per-window tile wins over the shared region and app tile.
+        assert_eq!(
+            resolve_minimize_origin(
+                Some(42),
+                Some(app_tile),
+                Some(region),
+                &per_window,
+                geometry
+            ),
+            window_tile
+        );
+        // An unknown window falls back to the shared region.
+        assert_eq!(
+            resolve_minimize_origin(Some(7), Some(app_tile), Some(region), &per_window, geometry),
+            region
+        );
+        // `minimizeIntoTileIcon` on clears the region: the app tile applies.
+        assert_eq!(
+            resolve_minimize_origin(Some(7), Some(app_tile), None, &per_window, geometry),
+            app_tile
+        );
+        // No tile at all keeps the centered fallback.
+        assert_eq!(
+            resolve_minimize_origin(None, None, None, &per_window, geometry),
+            WindowMotion::centered_origin(geometry)
+        );
+    }
+
+    #[test]
+    fn genie_squeezes_the_axis_ahead_of_the_other_and_lands_on_the_tile() {
+        let tile = rect(10, 10, 48, 48);
+        let target = rect(200, 200, 800, 600);
+        let genie =
+            WindowMotion::new_genie_motion(WindowMotionKind::Minimize, tile, target, 0, false);
+        assert!(genie.genie);
+        let start = genie.frame(0);
+        assert_eq!(start.rect, target);
+        let end = genie.frame(motion::WINDOW_GENIE.duration_ms as u64);
+        assert_eq!(end.rect, tile);
+        assert_eq!(end.alpha, 0.0);
+
+        // At the midpoint the horizontal collapse is ahead of the vertical
+        // one, so the surface is narrower than a uniform scale would make it
+        // (the genie stretch), while both axes stay between the endpoints.
+        let mid = genie.frame(motion::WINDOW_GENIE.duration_ms as u64 / 2);
+        let uniform_w = f64::from(target.size.w) * 0.5 + f64::from(tile.size.w) * 0.5;
+        let uniform_h = f64::from(target.size.h) * 0.5 + f64::from(tile.size.h) * 0.5;
+        assert!(f64::from(mid.rect.size.w) < uniform_w);
+        assert!(f64::from(mid.rect.size.h) > uniform_h);
+        assert!(mid.alpha > 0.0 && mid.alpha < 1.0);
+
+        // The scale variant is still the uniform interpolation: both axes
+        // carry the same eased progress.
+        let scale = WindowMotion::new(WindowMotionKind::Minimize, tile, target, 0, false);
+        assert!(!scale.genie);
+        let scale_mid = scale.frame(motion::WINDOW_CLOSE.duration_ms as u64 / 2);
+        let w_progress = (f64::from(target.size.w) - f64::from(scale_mid.rect.size.w))
+            / (f64::from(target.size.w) - f64::from(tile.size.w));
+        let h_progress = (f64::from(target.size.h) - f64::from(scale_mid.rect.size.h))
+            / (f64::from(target.size.h) - f64::from(tile.size.h));
+        assert!(
+            (w_progress - h_progress).abs() < 2e-3,
+            "scale keeps both axes on the same progress"
+        );
+    }
+
+    #[test]
+    fn reduced_motion_genie_completes_on_the_first_step() {
+        let tile = rect(10, 10, 48, 48);
+        let target = rect(200, 200, 800, 600);
+        let genie =
+            WindowMotion::new_genie_motion(WindowMotionKind::Restore, tile, target, 1000, true);
+        assert!(genie.is_done(1000));
+        assert_eq!(genie.frame(1000).rect, target);
+        assert_eq!(genie.frame(1000).alpha, 1.0);
     }
 
     #[test]

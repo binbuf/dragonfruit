@@ -233,13 +233,14 @@ DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableL
                                      int gap, int dividerWidth, int fixedCount = 2,
                                      bool minimizedVisible = true);
 
-// T-10 section 8.1 bounce clocks. A launch bounce is three hops over
-// `kLaunchBounceMs`; an attention bounce repeats one hop every
-// `kAttentionBounceHopMs` until the controller's deadline. Both return the
-// current hop phase in [0,1], where the caller maps it to an offset with
-// `sin(pi * phase)`; `dockLaunchBouncePhase` returns -1 once the launch
-// bounce has finished. Pure and unit-tested (tst_dockcore).
-constexpr qint64 kLaunchBounceMs = 600;
+// T-10 section 8.1 bounce clocks. The measured reference launch lift is one
+// 15 pt hop over ~300 ms; the full multi-bounce is unresolved, so the launch
+// clock is that single lift rather than an invented multi-hop. An attention
+// bounce repeats one hop every `kAttentionBounceHopMs` until the controller's
+// deadline. Both return the current phase in [0,1], where the caller maps it
+// to an offset with `sin(pi * phase)`; `dockLaunchBouncePhase` returns -1 once
+// the launch lift has finished. Pure and unit-tested (tst_dockcore).
+constexpr qint64 kLaunchBounceMs = 300;
 constexpr qint64 kAttentionBounceHopMs = 400;
 constexpr qint64 kAttentionBounceMs = 2000;
 double dockLaunchBouncePhase(qint64 elapsedMs);

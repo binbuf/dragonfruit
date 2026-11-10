@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="10">
+  <interface name="df_toplevel_manager" version="11">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -379,6 +379,28 @@
       </description>
       <arg name="layout" type="string" allow-null="true"/>
       <arg name="variant" type="string" allow-null="true"/>
+    </request>
+
+    <!-- T237: the Dock's minimize/restore destination when windows do not
+         collapse into the application icon. Appended after the v10 messages so
+         the scanner's `since` stays non-decreasing and every pre-existing
+         message keeps its opcode (append-only). Additive in v11. -->
+    <request name="set_minimize_target" since="11">
+      <description summary="set the Dock's minimized-region or per-window target">
+        When `dock.minimizeIntoTileIcon` is off, a minimizing window shrinks
+        into the Dock's minimized-window region instead of the app icon. The
+        shell publishes the shared region target (empty `window_id`) and each
+        minimized entry's tile (the decimal window id) in logical global
+        pixels. A non-positive rect clears the target, restoring the
+        app-tile/centered fallback. The compositor remembers these for the
+        window's minimize/restore motion; `dock.minimizedAnimation` still
+        selects the timing and genie/scale shape.
+      </description>
+      <arg name="window_id" type="string"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
     </request>
 
     <enum name="hot_corner">

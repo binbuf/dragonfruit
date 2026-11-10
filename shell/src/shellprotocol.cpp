@@ -3296,6 +3296,19 @@ void ShellProtocol::setLaunchOrigin(const QString &appId, int x, int y, int widt
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setMinimizeTarget(const QString &windowId, int x, int y, int width, int height)
+{
+    // T237: the Dock's minimize/restore destination when windows do not
+    // collapse into the app icon. Additive in v11; older compositors keep the
+    // app-tile mapping.
+    if (m_manager && m_managerVersion >= 11) {
+        const QByteArray id = windowId.toUtf8();
+        df_toplevel_manager_set_minimize_target(m_manager, id.constData(), x, y, width, height);
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 QRect ShellProtocol::primaryOutputGeometry() const
 {
     if (m_outputs.isEmpty())

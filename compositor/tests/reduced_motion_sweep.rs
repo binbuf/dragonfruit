@@ -435,7 +435,7 @@ fn every_compositor_lifecycle_kind_routes_through_reduced_motion() {
     }
     assert!(
         motion.contains("Tween::from_motion(now_ms, token, reduced_motion)")
-            && motion.contains("kind.token(),"),
+            && (motion.contains("kind.token(),") || motion.contains("kind.token())")),
         "every lifecycle motion must route its tween through the reduced-motion hook"
     );
 
