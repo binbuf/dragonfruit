@@ -7,6 +7,7 @@
 
 #include <QObject>
 #include <QElapsedTimer>
+#include <QTimer>
 #include <QEvent>
 #include <QHash>
 #include <QImage>
@@ -60,6 +61,7 @@ class QTimer;
 class QChronoTimer;
 class ChromeFrameProducer;
 class GpuChromeFrameProducer;
+class WidgetModel;
 
 class ShellController : public QObject
 {
@@ -122,6 +124,23 @@ private slots:
     void onNotificationCenterDismissSelectedRequested();
     void onNotificationCenterActionRequested(int id, const QString &actionKey);
     void onNotificationCenterEntryDismissRequested(int id);
+    // T234: the Center's header/lower actions and the widget stack/gallery.
+    void onNotificationCenterClearAllRequested();
+    void onNotificationCenterClearHistoryRequested();
+    void onNotificationCenterEditWidgetsRequested();
+    void onNotificationCenterWidgetRemoveRequested(const QString &id);
+    // T234: the separate 1027×552 pt widget gallery window.
+    void onWidgetGalleryConfigured(int width, int height, quint32 serial);
+    void onWidgetGalleryPointerMoved(qreal x, qreal y);
+    void onWidgetGalleryPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onWidgetGalleryPointerLeft();
+    void onWidgetGalleryKeyboardFocused(bool focused);
+    void onWidgetGalleryKeyEvent(quint32 key, bool pressed);
+    void onWidgetGallerySurfaceClosed();
+    void onWidgetGalleryAddRequested(const QString &kind, const QString &size);
+    void onWidgetGalleryRemoveRequested(const QString &id);
+    void onWidgetGalleryResizeRequested(const QString &id, const QString &size);
+    void onWidgetGalleryCloseRequested();
     // T-11.4a: the OSD overlay surface, its auto-dismiss tick, and the
     // volume/brightness gestures that present it.
     void onOsdConfigured(int width, int height, quint32 serial);
@@ -589,6 +608,13 @@ private:
     void hideNotificationCenter(const QString &reason = QString());
     void applyNotificationCenterData();
     void renderNotificationCenter();
+    // T234: the banner exit's final unmap after the short motion.
+    void finishBannerHide();
+    void showWidgetGallery();
+    void hideWidgetGallery();
+    void renderWidgetGallery();
+    void scheduleWidgetGalleryRender();
+    void applyWidgetGalleryData();
     void scheduleNotificationCenterRender();
     void updateNotificationCenterGeometry();
     // Control Center panel (T-11.3a): seed the panel's tile state, map/unmap
@@ -909,6 +935,8 @@ private:
     // the service's decoded `Banners()`/`History()` views.
     NotificationModel *m_notificationModel = nullptr;
     NotificationClient *m_notificationClient = nullptr;
+    // T234: the optional widget stack and its 19-category gallery catalogue.
+    WidgetModel *m_widgetModel = nullptr;
     // T229a: the Focus schedule's one consumer.
     FocusSchedule *m_focusSchedule = nullptr;
     QQuickWindow *m_bannerWindow = nullptr;
@@ -922,6 +950,13 @@ private:
     quint32 m_bannerId = 0;
     Qt::MouseButtons m_bannerButtons = Qt::NoButton;
     bool m_bannerSceneGraphCommitLogged = false;
+    // T234: the banner's own enter/exit motion and timeout. The service still
+    // owns expiry; this timer is the deterministic visual deadline the shell
+    // uses to call `Expire` and run the exit motion before unmapping.
+    QTimer m_bannerExpiry;
+    bool m_bannerPresent = false;
+    bool m_bannerExiting = false;
+    int m_bannerExitGeneration = 0;
     // Notification Center (T204): the pure service-history state and a
     // top-right overlay scene, unmapped until the clock, keyboard action or
     // configured hot corner opens it.
@@ -936,6 +971,17 @@ private:
     Qt::MouseButtons m_notificationCenterButtons = Qt::NoButton;
     bool m_notificationCenterKeyboardFocused = false;
     bool m_notificationCenterSceneGraphCommitLogged = false;
+    // T234: the widget gallery is its own centered 1027×552 pt window.
+    QQuickWindow *m_widgetGalleryWindow = nullptr;
+    QQuickItem *m_widgetGalleryItem = nullptr;
+    int m_widgetGalleryWidth = 0;
+    int m_widgetGalleryHeight = 0;
+    bool m_widgetGalleryOpen = false;
+    bool m_widgetGalleryPending = false;
+    bool m_widgetGalleryRenderPending = false;
+    Qt::MouseButtons m_widgetGalleryButtons = Qt::NoButton;
+    bool m_widgetGalleryKeyboardFocused = false;
+    bool m_widgetGallerySceneGraphCommitLogged = false;
     // Control Center panel (T-11.3a): a top-right overlay scene, unmapped
     // until the panel opens.
     QQuickWindow *m_controlCenterWindow = nullptr;

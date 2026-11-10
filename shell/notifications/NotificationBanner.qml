@@ -19,6 +19,14 @@ Item {
     property string urgency: "normal"
     // The service's `actions` view: a list of { key, label } maps.
     property var actions: []
+    // T234: enter/exit motion and the stacked look. The shell sets `present`
+    // false for the exit, keeps the surface mapped for the short motion, then
+    // unmaps. `stackCount` is the number of active banners; the card draws up
+    // to two peeking edges behind the newest one.
+    property bool present: true
+    property bool reducedMotion: false
+    property int stackCount: 1
+    property real enterProgress: present ? 1 : 0
     // T-21.2c: the shell applies the compositor's Popup role state. Without
     // the sampled pass the card takes the token-driven milky plate.
     property bool materialBlurActive: true
@@ -65,10 +73,21 @@ Item {
     // surface's transparent strip below a no-action card. The compositor
     // commit-latches this list with the banner image; `banner` is the stable
     // key and `notificationBanner` the measured preset.
+    // T234: the measured enter/exit motion. A banner must not steal focus;
+    // this is a short, non-interactive slide/fade on the shell's own surface.
+    readonly property real slideOffset: reducedMotion ? 0 : (1 - enterProgress) * -10
+    Behavior on enterProgress {
+        NumberAnimation {
+            duration: root.reducedMotion ? 0 : 180
+            easing.type: Easing.OutCubic
+        }
+    }
+    opacity: root.enterProgress
+
     readonly property var materialRegions: [{
         key: "banner",
         preset: "notificationBanner",
-        x: 0, y: 0, w: width, h: cardHeight,
+        x: 0, y: slideOffset, w: width, h: cardHeight,
         tl: Theme.controls.popup.radius, tr: Theme.controls.popup.radius,
         br: Theme.controls.popup.radius, bl: Theme.controls.popup.radius,
         overscan: 8
@@ -77,7 +96,39 @@ Item {
     // The scene is exactly the surface; the transparent area below the card
     // passes clicks through (the shell only makes the card clickable).
     width: 380
-    height: 132
+    // The card is 132 pt with actions; the extra strip shows the stack lip.
+    height: 144
+
+    // T234: up to two peeking edges behind the newest card show that more
+    // than one banner is queued. The service still exposes one card at a time;
+    // the stack is a visual count, not a second banner model.
+    Rectangle {
+        id: peek2
+        objectName: "bannerStackPeek2"
+        visible: root.stackCount > 2
+        x: 8
+        y: root.slideOffset
+        width: parent.width - 16
+        height: root.cardHeight + 12
+        radius: Theme.controls.popup.radius
+        color: Theme.color.surfaceMuted
+        opacity: 0.92
+        z: -2
+    }
+
+    Rectangle {
+        id: peek1
+        objectName: "bannerStackPeek1"
+        visible: root.stackCount > 1
+        x: 4
+        y: root.slideOffset
+        width: parent.width - 8
+        height: root.cardHeight + 6
+        radius: Theme.controls.popup.radius
+        color: Theme.color.surfaceElevated
+        opacity: 0.94
+        z: -1
+    }
 
     Shadow {
         anchors.fill: card
@@ -93,6 +144,7 @@ Item {
     Rectangle {
         id: card
         objectName: "bannerCard"
+        y: root.slideOffset
         width: parent.width
         height: root.cardHeight
         radius: Theme.controls.popup.radius

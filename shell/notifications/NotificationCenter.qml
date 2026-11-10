@@ -2,33 +2,38 @@
 import QtQuick
 import Dragonfruit
 
-// The notification-center history (T-11.1a; mapped by T204, materials T205).
+// The notification-center history (T-11.1a; mapped by T204, materials T205,
+// measured layout/widgets/actions T234).
 //
 // The service owns the history, expiry, Focus/DND and banner policy. The shell
 // decodes `History()` once (`NotificationCenter` in shell/src) into stable-keyed
-// rows: `key`, `active`, `canAct`, `status` and the filtered `actions`. This
-// component is only the view. It renders history rows, exposes keyboard
-// traversal (Up/Down/Home/End/Return/Delete) and raises the action/dismissal
-// requests the shell forwards through the existing notification service
-// contract.
+// rows: `key`, `active`, `canAct`, `status`, the filtered `actions` and the
+// contiguous `group`/`groupStart`/`groupCount` metadata. This component is only
+// the view. It renders the measured 344 pt right-edge ramp: a header, the
+// banner stack, the widget stack and the lower panel.
 //
 // History-only rows (expired, closed, dismissed or DND-suppressed) keep their
 // text and stable identity but never show actions: `actions` is empty and
 // `canAct` is false in the model.
 //
-// T205: the Center is two independently keyed materials. The notification
-// stack (title + history list) uses `notificationStack`; the lower panel uses
-// `notificationLowerPanel`. Both regions are declared to the compositor and
-// commit-latched with the surface image. On the sampled path the compositor
-// paints the measured flat bands and the QML plates are transparent; on
-// solid/software/Reduce Transparency the QML paints the same resolved
-// tint/alpha. The regions never overlap, so a panel is never frosted twice.
+// T205/T234: the Center is still two independently keyed materials. The
+// notification stack (header + banner stack) uses `notificationStack`; the
+// lower panel (widget stack + actions) uses `notificationLowerPanel`. Both
+// regions are declared to the compositor and commit-latched with the surface
+// image. On the sampled path the compositor paints the measured flat bands and
+// the QML plates are transparent; on solid/software/Reduce Transparency the QML
+// paints the same resolved tint/alpha. The regions never overlap, so a panel is
+// never frosted twice. The banner itself remains its own `notificationBanner`
+// material on the separate banner surface.
 Item {
     id: root
 
+    // The measured right-edge panel width (structural review §5.1).
+    readonly property int measuredWidth: 344
+
     // Standalone/test default; the shell sets the live surface size through
     // `prepareChromeScene`.
-    width: 360
+    width: measuredWidth
     height: 620
 
     // The normalized `History()` view, most recent first.
@@ -50,6 +55,14 @@ Item {
     property int materialFallback: 0
     readonly property string materialFallbackReason:
         Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
+
+    // T234: the widget stack below the notifications. Each entry is a map
+    // (`id`, `kind`, `size`, `title`, `available`, optional live fields). The
+    // live panel size is the measured 164 pt calendar, never the gallery
+    // thumbnail. Widgets are optional: an empty list shows the widget empty
+    // state and the lower panel keeps its action row.
+    property var widgets: []
+    readonly property bool hasWidgets: widgets.length > 0
 
     // T205: resolve the two measured presets through the one shared policy.
     // The stack is the measured Light 0.551/0.706 and Dark 0.507/0.550 fit;
@@ -109,11 +122,20 @@ Item {
             return qsTr("%1 notifications · %2 active").arg(history.length).arg(activeCount);
         return qsTr("%1 notifications").arg(history.length);
     }
+    // The measured banner stack row height (structural review §5.1).
+    readonly property int activeRowHeight: 75
+    readonly property int historyRowHeight: 64
 
     // The two panel bands. The stack clears an active banner and the lower
-    // panel is a fixed footer; the gap keeps both rounded edges visible.
+    // panel is a footer; the gap keeps both rounded edges visible.
     readonly property int panelGap: Theme.primitive.spacing.sm
-    readonly property int lowerPanelHeight: 64
+    readonly property int lowerPanelBaseHeight: 64
+    // T234: the widget stack lives inside the lower panel's material band, so
+    // the measured lower-panel ramp covers the widgets too and no third
+    // material is invented. The stack grows by one 164 pt calendar card plus
+    // the section's padding.
+    readonly property int widgetSectionHeight: hasWidgets ? 180 : 0
+    readonly property int lowerPanelHeight: lowerPanelBaseHeight + widgetSectionHeight
     readonly property int stackTop: Math.min(bannerInset,
         Math.max(0, height - lowerPanelHeight - panelGap))
     readonly property int lowerTop: Math.max(stackTop + panelGap,
@@ -121,11 +143,12 @@ Item {
     readonly property int stackHeight: Math.max(0, lowerTop - panelGap - stackTop)
     readonly property int panelRadius: Theme.controls.window.radius
 
-    // T205: the shell declares these regions on the `notification-center`
+    // T205/T234: the shell declares these regions on the `notification-center`
     // layer surface. `stack` and `lower` are stable keys with disjoint rects;
     // the material list is commit-latched with the image. A banner uses its
     // own `notification` surface and `banner` region, so no region samples a
-    // panel's own content.
+    // panel's own content. The widget stack is part of the lower region, not a
+    // third band.
     readonly property var materialRegions: {
         var out = [];
         if (stackHeight > 0) {
@@ -156,6 +179,12 @@ Item {
     signal dismissSelectedRequested()
     signal actionInvoked(int id, string key)
     signal dismissEntryRequested(int id)
+    // T234: header and lower-panel actions. The shell forwards these to the
+    // notification service (clear) or opens the separate widget gallery.
+    signal clearAllRequested()
+    signal clearHistoryRequested()
+    signal editWidgetsRequested()
+    signal widgetRemoveRequested(string id)
 
     focus: true
     Accessible.role: Accessible.List
@@ -199,8 +228,8 @@ Item {
         }
     }
 
-    // The notification stack: title plus the history viewport. Its material
-    // region starts at `stackTop`, clearing a co-visible banner.
+    // The notification stack: header plus the banner-stack viewport. Its
+    // material region starts at `stackTop`, clearing a co-visible banner.
     Shadow {
         anchors.fill: stackPlate
         radius: stackPlate.radius
@@ -229,21 +258,102 @@ Item {
             anchors.margins: Theme.controls.popup.padding
             spacing: Theme.controls.popover.padding
 
-            Text {
-                id: titleText
+            // Measured header: "Notifications" plus Clear All. The
+            // overflow menu clears only the recorded history; Clear All also
+            // closes the active banner stack.
+            Item {
+                id: header
+                objectName: "centerHeader"
                 width: parent.width
-                objectName: "centerTitle"
-                text: qsTr("Notifications")
-                color: Theme.color.textPrimary
-                font.pixelSize: Theme.primitive.font.sizeLg
-                font.weight: Theme.primitive.font.weightSemibold
-                elide: Text.ElideRight
+                height: Math.max(titleText.implicitHeight,
+                                 headerActions.implicitHeight)
+
+                Text {
+                    id: titleText
+                    width: parent.width - headerActions.width
+                           - Theme.primitive.spacing.sm
+                    objectName: "centerTitle"
+                    text: qsTr("Notifications")
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.primitive.font.sizeLg
+                    font.weight: Theme.primitive.font.weightSemibold
+                    elide: Text.ElideRight
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Row {
+                    id: headerActions
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.primitive.spacing.xs
+
+                    Rectangle {
+                        id: clearAllButton
+                        objectName: "clearAllButton"
+                        width: clearAllLabel.implicitWidth
+                               + 2 * Theme.primitive.spacing.sm
+                        height: 24
+                        radius: Theme.controls.sidebar.rowRadius
+                        color: clearAllArea.containsMouse
+                               ? Theme.color.surfaceElevated : "transparent"
+                        border.width: Theme.controls.window.borderWidth
+                        border.color: Theme.color.border
+                        visible: root.hasHistory
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Clear All")
+
+                        Text {
+                            id: clearAllLabel
+                            anchors.centerIn: parent
+                            text: qsTr("Clear All")
+                            color: Theme.color.accent
+                            font.pixelSize: Theme.primitive.font.sizeSm
+                            font.weight: Theme.primitive.font.weightMedium
+                        }
+
+                        MouseArea {
+                            id: clearAllArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: root.clearAllRequested()
+                        }
+                    }
+
+                    Rectangle {
+                        id: clearHistoryButton
+                        objectName: "clearHistoryButton"
+                        width: 24
+                        height: 24
+                        radius: Theme.controls.sidebar.rowRadius
+                        color: clearHistoryArea.containsMouse
+                               ? Theme.color.surfaceElevated : "transparent"
+                        visible: root.hasHistory
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Clear Notifications")
+
+                        Icon {
+                            anchors.centerIn: parent
+                            name: "list-view"
+                            size: Theme.primitive.font.sizeMd
+                            color: Theme.color.textSecondary
+                        }
+
+                        MouseArea {
+                            id: clearHistoryArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: root.clearHistoryRequested()
+                        }
+                    }
+                }
             }
 
             Item {
                 id: listArea
                 width: parent.width
-                height: parent.height - titleText.height - layout.spacing
+                height: parent.height - header.height - layout.spacing
 
                 ListView {
                     id: list
@@ -267,6 +377,15 @@ Item {
                         readonly property bool active: modelData.active === true
                         readonly property bool canAct: modelData.canAct === true
                         readonly property var actions: modelData.actions || []
+                        readonly property bool groupStart: modelData.groupStart === true
+                        readonly property int groupCount:
+                            modelData.groupCount !== undefined
+                                ? Number(modelData.groupCount) : 1
+                        // The active banner-stack row keeps its own app label
+                        // so the 75 pt row has a stable anatomy; grouping is a
+                        // history affordance.
+                        readonly property bool showGroupHeader: groupStart
+                            && groupCount > 1 && !active
                         readonly property string statusText: {
                             if (modelData.status === "suppressed")
                                 return qsTr("Suppressed by Focus");
@@ -281,7 +400,13 @@ Item {
 
                         objectName: "history_" + modelData.key
                         width: list.width
-                        height: rowContent.implicitHeight + 2 * Theme.primitive.spacing.sm
+                        // The measured banner-stack row is 75 pt for an active
+                        // notification; a compact history row keeps more of
+                        // the list visible.
+                        height: active ? root.activeRowHeight
+                                       : Math.max(root.historyRowHeight,
+                                                  rowContent.implicitHeight
+                                                  + 2 * Theme.primitive.spacing.sm)
                         radius: Theme.controls.sidebar.rowRadius
                         color: selected ? Theme.color.surfaceElevated : Theme.color.surfaceMuted
                         border.width: selected ? Theme.controls.window.borderWidth : 0
@@ -314,11 +439,35 @@ Item {
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
                             anchors.leftMargin: Theme.primitive.spacing.sm
-                            anchors.rightMargin: Theme.primitive.spacing.sm
+                            // Leave room for the active row's dismiss target.
+                            anchors.rightMargin: row.active
+                                ? 26 : Theme.primitive.spacing.sm
+                            anchors.topMargin: row.active ? 4
+                                                          : Theme.primitive.spacing.sm
+                            anchors.bottomMargin: row.active ? 4
+                                                               : Theme.primitive.spacing.sm
                             spacing: Theme.primitive.spacing.xxs
+
+                            // T234: one group header per contiguous app run.
+                            // It carries the app name and the run length; the
+                            // per-row app label is suppressed below it.
+                            Text {
+                                id: groupHeader
+                                objectName: "historyGroupHeader"
+                                visible: row.showGroupHeader
+                                width: parent.width
+                                height: visible ? implicitHeight : 0
+                                text: qsTr("%1 · %2").arg(modelData.appName)
+                                    .arg(row.groupCount)
+                                color: Theme.color.textTertiary
+                                font.pixelSize: Theme.primitive.font.sizeXs
+                                font.weight: Theme.primitive.font.weightMedium
+                                elide: Text.ElideRight
+                            }
 
                             Row {
                                 width: parent.width
+                                visible: !row.showGroupHeader
                                 spacing: Theme.primitive.spacing.sm
 
                                 Text {
@@ -339,6 +488,17 @@ Item {
                                     elide: Text.ElideRight
                                 }
                             }
+                            // The status stays visible even when the group
+                            // header replaces the app label.
+                            Text {
+                                objectName: "historyStatusGrouped"
+                                visible: row.showGroupHeader && row.statusText.length > 0
+                                height: visible ? implicitHeight : 0
+                                text: row.statusText
+                                color: Theme.color.textTertiary
+                                font.pixelSize: Theme.primitive.font.sizeXs
+                                elide: Text.ElideRight
+                            }
                             Text {
                                 width: parent.width
                                 objectName: "historySummary"
@@ -350,12 +510,16 @@ Item {
                             }
                             Text {
                                 width: parent.width
+                                // The 75 pt active row gives its second line
+                                // to the action row; the body stays on a row
+                                // without actions and on history rows.
                                 visible: modelData.body.length > 0
+                                    && (!row.active || row.actions.length === 0)
                                 text: modelData.body
                                 color: Theme.color.textSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 wrapMode: Text.WordWrap
-                                maximumLineCount: 2
+                                maximumLineCount: row.active ? 1 : 2
                                 elide: Text.ElideRight
                             }
 
@@ -364,7 +528,7 @@ Item {
                                 objectName: "historyActions"
                                 visible: row.active && row.actions.length > 0
                                 width: parent.width
-                                height: visible ? 26 : 0
+                                height: visible ? 22 : 0
                                 spacing: Theme.primitive.spacing.sm
 
                                 Repeater {
@@ -404,33 +568,38 @@ Item {
                                 }
                             }
 
-                            Rectangle {
-                                objectName: "historyDismiss"
-                                visible: row.active
-                                height: visible ? 24 : 0
-                                width: dismissLabel.implicitWidth
-                                       + 2 * Theme.primitive.spacing.sm
-                                radius: Theme.controls.sidebar.rowRadius
-                                color: dismissArea.containsMouse
-                                       ? Theme.color.surfaceElevated : "transparent"
+                        }
 
-                                Accessible.role: Accessible.Button
-                                Accessible.name: qsTr("Dismiss notification")
+                        // The dismiss target sits in the active row's top-right
+                        // corner, outside the text column, so the measured
+                        // 75 pt row keeps its text and action anatomy.
+                        Rectangle {
+                            objectName: "historyDismiss"
+                            visible: row.active
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 4
+                            width: 20
+                            height: 20
+                            radius: 10
+                            color: dismissArea.containsMouse
+                                   ? Theme.color.surfaceElevated : "transparent"
 
-                                Text {
-                                    id: dismissLabel
-                                    anchors.centerIn: parent
-                                    text: qsTr("Dismiss")
-                                    color: Theme.color.textTertiary
-                                    font.pixelSize: Theme.primitive.font.sizeXs
-                                }
+                            Accessible.role: Accessible.Button
+                            Accessible.name: qsTr("Dismiss notification")
 
-                                MouseArea {
-                                    id: dismissArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    onClicked: root.dismissEntryRequested(row.modelData.id)
-                                }
+                            Icon {
+                                anchors.centerIn: parent
+                                name: "close"
+                                size: 12
+                                color: Theme.color.textTertiary
+                            }
+
+                            MouseArea {
+                                id: dismissArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: root.dismissEntryRequested(row.modelData.id)
                             }
                         }
                     }
@@ -484,8 +653,9 @@ Item {
         }
     }
 
-    // The lower panel: a separately toned footer with the history summary and
-    // the keyboard/scroll hint. Its region is disjoint from the stack.
+    // The lower panel: the widget stack plus a separately toned action footer.
+    // Its region is disjoint from the stack and covers both the widgets and
+    // the actions, so the measured lower-panel ramp is never split.
     Shadow {
         anchors.fill: lowerPanel
         radius: lowerPanel.radius
@@ -505,34 +675,94 @@ Item {
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
 
-        Item {
+        Column {
             anchors.fill: parent
-            anchors.leftMargin: Theme.primitive.spacing.lg
-            anchors.rightMargin: Theme.primitive.spacing.lg
+            anchors.margins: Theme.primitive.spacing.sm
+            spacing: Theme.primitive.spacing.xs
 
-            Text {
-                id: lowerHint
-                objectName: "lowerPanelHint"
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.scrollable ? qsTr("Scroll for more") : qsTr("Esc to close")
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeXs
+            WidgetStack {
+                id: widgetStack
+                objectName: "widgetStack"
+                width: parent.width
+                height: root.hasWidgets
+                    ? root.lowerPanelHeight - 2 * Theme.primitive.spacing.sm
+                      - lowerFooter.height - Theme.primitive.spacing.xs
+                    : 0
+                visible: root.hasWidgets
+                widgets: root.widgets
+                available: root.available
+                onRemoveRequested: (id) => root.widgetRemoveRequested(id)
             }
 
-            Text {
-                id: lowerSummaryText
-                objectName: "lowerPanelSummary"
-                anchors.left: parent.left
-                anchors.right: lowerHint.left
-                anchors.rightMargin: Theme.primitive.spacing.md
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.lowerSummary
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                elide: Text.ElideRight
-                Accessible.role: Accessible.StaticText
-                Accessible.name: root.lowerSummary
+            Item {
+                id: lowerFooter
+                width: parent.width
+                height: root.lowerPanelBaseHeight - 2 * Theme.primitive.spacing.sm
+
+                Text {
+                    id: lowerHint
+                    objectName: "lowerPanelHint"
+                    anchors.right: lowerActions.left
+                    anchors.rightMargin: Theme.primitive.spacing.md
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.scrollable ? qsTr("Scroll for more") : qsTr("Esc to close")
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.primitive.font.sizeXs
+                }
+
+                Row {
+                    id: lowerActions
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.primitive.spacing.xs
+
+                    Rectangle {
+                        id: editWidgetsButton
+                        objectName: "editWidgetsButton"
+                        width: editWidgetsLabel.implicitWidth
+                               + 2 * Theme.primitive.spacing.sm
+                        height: 24
+                        radius: Theme.controls.sidebar.rowRadius
+                        color: editWidgetsArea.containsMouse
+                               ? Theme.color.surfaceElevated : "transparent"
+                        border.width: Theme.controls.window.borderWidth
+                        border.color: Theme.color.border
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Edit Widgets")
+
+                        Text {
+                            id: editWidgetsLabel
+                            anchors.centerIn: parent
+                            text: qsTr("Edit Widgets")
+                            color: Theme.color.accent
+                            font.pixelSize: Theme.primitive.font.sizeXs
+                            font.weight: Theme.primitive.font.weightMedium
+                        }
+
+                        MouseArea {
+                            id: editWidgetsArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: root.editWidgetsRequested()
+                        }
+                    }
+                }
+
+                Text {
+                    id: lowerSummaryText
+                    objectName: "lowerPanelSummary"
+                    anchors.left: parent.left
+                    anchors.right: lowerHint.left
+                    anchors.rightMargin: Theme.primitive.spacing.md
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.lowerSummary
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                    elide: Text.ElideRight
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: root.lowerSummary
+                }
             }
         }
     }

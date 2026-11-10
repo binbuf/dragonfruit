@@ -68,7 +68,7 @@ endif
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update stage dist package \
-        files-capture t230d-files-capture t231-extras-capture t232-extras-capture t233-menubar-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
+        files-capture t230d-files-capture t231-extras-capture t232-extras-capture t233-menubar-capture t234-notifications-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -121,6 +121,7 @@ help:
 	@echo "  make t231-extras-capture — T231 registry clock/calendar/overflow stills"
 	@echo "  make t232-extras-capture — T232 Wi-Fi/Bluetooth/Battery/Sound/Search/Quick Settings stills"
 	@echo "  make t233-menubar-capture — T233 auto-hide reveal/concealed + overflow stills"
+	@echo "  make t234-notifications-capture — T234 Center/banner/widget gallery stills"
 	@echo "  make osd-dnd-capture — T-11.4b OSD card + menu-bar DND still"
 	@echo "  make portals-capture — T-13.7 Flatpak portal round-trips + picker still"
 	@echo "  make zoo-run — T-14.6a strange-app zoo matrix + desktop still"
@@ -677,6 +678,11 @@ t232-extras-capture: build
 # menu on a narrow display. Headless offscreen stills.
 t233-menubar-capture: build
 	bash scripts/capture-t233-menubar.sh
+
+# T234: the measured Notification Center ramp, banner stack, widget stack and
+# the separate 1027x552 pt widget gallery, light/dark (headless offscreen).
+t234-notifications-capture: build
+	bash scripts/capture-t234-notifications.sh
 
 # T-11.4b: the OSD + DND stills. Needs a host Wayland session, `spectacle`,
 # Pillow and the built tree; runs the nested demo with the status/notification

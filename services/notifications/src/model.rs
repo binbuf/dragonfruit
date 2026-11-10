@@ -317,6 +317,36 @@ impl Queue {
         Some(notification)
     }
 
+    /// Clear the whole Center: close every active banner with `Dismissed` and
+    /// drop the recorded history. Returns the closed ids, oldest first, so the
+    /// adapter can emit one `NotificationClosed` per app-owned banner.
+    ///
+    /// This is the Notification Center's "Clear All" action. It never touches
+    /// the Focus policy or its batch: clearing the visible list is not a mode
+    /// change.
+    pub fn clear_all(&mut self, now_ms: u64) -> Vec<u32> {
+        let closed: Vec<u32> = self.active.iter().map(|n| n.id).collect();
+        for id in &closed {
+            if let Some(entry) = self.history.iter_mut().find(|entry| entry.id == *id) {
+                entry.closed_at_ms = Some(now_ms);
+                entry.reason = Some(CloseReason::Dismissed);
+            }
+        }
+        self.active.clear();
+        self.history.clear();
+        closed
+    }
+
+    /// Clear only the recorded history; active banners stay in the queue.
+    /// Returns whether anything was dropped.
+    pub fn clear_history(&mut self) -> bool {
+        if self.history.is_empty() {
+            return false;
+        }
+        self.history.clear();
+        true
+    }
+
     /// Expire every active banner whose deadline has passed. Returns the
     /// closed ids, oldest first.
     pub fn expire_due(&mut self, now_ms: u64) -> Vec<u32> {
@@ -593,6 +623,32 @@ mod tests {
         assert_eq!(replaced, first);
         assert_eq!(queue.focus_policy().batched(), &[first]);
         assert_eq!(queue.history().len(), 1);
+    }
+
+    #[test]
+    fn clear_all_closes_active_banners_and_drops_the_history() {
+        let mut queue = Queue::new();
+        let first = queue.notify(request("one", 0), 1000);
+        let second = queue.notify(request("two", 0), 1001);
+        let closed = queue.clear_all(1500);
+        assert_eq!(closed, vec![first, second]);
+        assert!(queue.banners().is_empty());
+        assert!(queue.history().is_empty());
+        // The policy and its batch are untouched by a list clear.
+        assert_eq!(queue.focus_mode(), FocusMode::Off);
+    }
+
+    #[test]
+    fn clear_history_keeps_the_active_banners() {
+        let mut queue = Queue::new();
+        let active = queue.notify(request("active", 0), 1000);
+        let closed = queue.notify(request("closed", 0), 1001);
+        queue.close(closed, CloseReason::Dismissed, 1002);
+        assert!(queue.clear_history());
+        assert_eq!(queue.history().len(), 0);
+        assert_eq!(queue.banners().len(), 1);
+        assert_eq!(queue.banners()[0].id, active);
+        assert!(!queue.clear_history(), "a second clear is a no-op");
     }
 
     #[test]

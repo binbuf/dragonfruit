@@ -20,6 +20,8 @@ Item {
 
         Component { id: bannerComponent; NotificationBanner { } }
         Component { id: centerComponent; NotificationCenter { } }
+        Component { id: widgetStackComponent; WidgetStack { } }
+        Component { id: widgetGalleryComponent; WidgetGallery { } }
 
         SignalSpy { id: actionSpy; signalName: "actionInvoked" }
         SignalSpy { id: activatedSpy; signalName: "activated" }
@@ -30,6 +32,15 @@ Item {
         SignalSpy { id: centerDismissSelectedSpy; signalName: "dismissSelectedRequested" }
         SignalSpy { id: centerActionSpy; signalName: "actionInvoked" }
         SignalSpy { id: centerEntryDismissSpy; signalName: "dismissEntryRequested" }
+        SignalSpy { id: centerClearAllSpy; signalName: "clearAllRequested" }
+        SignalSpy { id: centerClearHistorySpy; signalName: "clearHistoryRequested" }
+        SignalSpy { id: centerEditWidgetsSpy; signalName: "editWidgetsRequested" }
+        SignalSpy { id: centerWidgetRemoveSpy; signalName: "widgetRemoveRequested" }
+        SignalSpy { id: widgetRemoveSpy; signalName: "removeRequested" }
+        SignalSpy { id: galleryAddSpy; signalName: "addRequested" }
+        SignalSpy { id: galleryRemoveSpy; signalName: "removeRequested" }
+        SignalSpy { id: galleryResizeSpy; signalName: "resizeRequested" }
+        SignalSpy { id: galleryCloseSpy; signalName: "closeRequested" }
 
         // These tests exercise the legacy sampled/fallback rail unless a
         // case explicitly selects the replacement look.
@@ -133,11 +144,11 @@ Item {
             return row;
         }
 
-        function activeEntry(id, summary) {
+        function activeEntry(id, summary, appName) {
             return {
                 key: "" + id,
                 id: id,
-                appName: "Mail",
+                appName: appName || "Mail",
                 summary: summary,
                 body: "From Ada",
                 status: "active",
@@ -557,6 +568,315 @@ Item {
                 Glass.increaseContrast = savedContrast;
                 Theme.dark = false;
             }
+        }
+
+        // --- T234: measured layout, header actions, grouping and widgets ----
+
+        function test_the_center_uses_the_measured_344_pt_ramp() {
+            var center = make(centerComponent, { history: [] });
+            compare(center.width, 344);
+            compare(center.measuredWidth, 344);
+            verify(findChild(center, "centerHeader") !== null);
+            compare(findChild(center, "centerTitle").text, "Notifications");
+            // The lower panel keeps its measured summary and the Edit Widgets
+            // action even with no widgets.
+            compare(findChild(center, "lowerPanelSummary").text, "0 notifications");
+            verify(findChild(center, "editWidgetsButton") !== null);
+            verify(!findChild(center, "clearAllButton").visible,
+                   "Clear All hides on an empty history");
+        }
+
+        function test_the_center_header_actions_raise_clear_requests() {
+            var center = make(centerComponent, {
+                history: [activeEntry(7, "New message")]
+            });
+            centerClearAllSpy.target = center;
+            centerClearHistorySpy.target = center;
+            centerClearAllSpy.clear();
+            centerClearHistorySpy.clear();
+
+            var clearAll = findChild(center, "clearAllButton");
+            verify(clearAll.visible);
+            mouseClick(clearAll, clearAll.width / 2, clearAll.height / 2);
+            compare(centerClearAllSpy.count, 1);
+
+            var clearHistory = findChild(center, "clearHistoryButton");
+            verify(clearHistory.visible);
+            mouseClick(clearHistory, clearHistory.width / 2, clearHistory.height / 2);
+            compare(centerClearHistorySpy.count, 1);
+
+            centerEditWidgetsSpy.target = center;
+            centerEditWidgetsSpy.clear();
+            var edit = findChild(center, "editWidgetsButton");
+            mouseClick(edit, edit.width / 2, edit.height / 2);
+            compare(centerEditWidgetsSpy.count, 1);
+        }
+
+        function test_the_center_active_banner_row_is_75_pt_and_groups_history() {
+            var grouped = historyEntry(8, "Older one", "expired");
+            grouped.groupStart = true;
+            grouped.groupCount = 2;
+            var center = make(centerComponent, {
+                history: [activeEntry(9, "New message", "Chat"),
+                          grouped,
+                          historyEntry(7, "Older two", "dismissed")]
+            });
+            var list = findChild(center, "historyList");
+            compare(list.count, 3);
+            var active = centerRow(list, 0);
+            verify(active);
+            compare(active.height, 75, "measured banner-stack row");
+
+            // The two history rows are one contiguous Mail group: the first
+            // carries the group header, the second does not.
+            var first = centerRow(list, 1);
+            var second = centerRow(list, 2);
+            verify(first && second);
+            var header = findChild(first, "historyGroupHeader");
+            verify(header.visible);
+            compare(header.text, "Mail · 2");
+            verify(!findChild(second, "historyGroupHeader").visible);
+        }
+
+        function widget(id, kind, title, available, data) {
+            return {
+                id: id,
+                kind: kind,
+                title: title,
+                size: "medium",
+                available: available,
+                data: data || {}
+            };
+        }
+
+        function test_the_widget_stack_empty_and_live_calendar_states() {
+            var empty = make(widgetStackComponent, { widgets: [] });
+            verify(findChild(empty, "widgetEmpty").visible);
+            compare(findChild(empty, "widgetEmpty").text, "No widgets");
+
+            var live = make(widgetStackComponent, {
+                widgets: [widget("widget-1", "calendar", "Calendar", true)]
+            });
+            var card = findChild(live, "widget_widget-1");
+            verify(card);
+            compare(card.width, 164);
+            compare(card.height, 164);
+            verify(findChild(card, "calendarMonth").text.length > 0);
+            verify(findChild(card, "calendarGrid").columns === 7);
+
+            // The stored panel size changes the live card; the gallery
+            // thumbnail size is never used in the panel.
+            var small = widget("widget-2", "calendar", "Calendar", true);
+            small.size = "small";
+            var large = widget("widget-3", "calendar", "Calendar", true);
+            large.size = "large";
+            var sized = make(widgetStackComponent, { widgets: [small, large] });
+            compare(findChild(sized, "widget_widget-2").width, 102);
+            compare(findChild(sized, "widget_widget-3").width, sized.width);
+        }
+
+        function test_the_widget_stack_shows_provider_absence_and_removes() {
+            var stack = make(widgetStackComponent, {
+                widgets: [widget("widget-2", "weather", "Weather", false)]
+            });
+            var card = findChild(stack, "widget_widget-2");
+            verify(card);
+            verify(findChild(card, "widgetUnavailable").visible);
+            compare(findChild(card, "widgetUnavailable").text, "Weather unavailable");
+
+            widgetRemoveSpy.target = stack;
+            widgetRemoveSpy.clear();
+            mouseMove(card, card.width / 2, card.height / 2);
+            wait(20);
+            var remove = findChild(card, "widgetRemove");
+            verify(remove.visible);
+            mouseClick(remove, remove.width / 2, remove.height / 2);
+            compare(widgetRemoveSpy.count, 1);
+            compare(widgetRemoveSpy.signalArguments[0][0], "widget-2");
+        }
+
+        function test_the_widget_gallery_is_a_separate_measured_window() {
+            var categories = [];
+            for (var i = 0; i < 19; ++i)
+                categories.push("Category " + i);
+            var gallery = make(widgetGalleryComponent, {
+                categories: categories,
+                catalog: [
+                    { kind: "calendar", title: "Calendar", category: "Category 0",
+                      description: "Month grid", sizes: ["medium"] },
+                    { kind: "weather", title: "Weather", category: "Category 1",
+                      description: "Conditions", sizes: ["medium"] }
+                ]
+            });
+            compare(gallery.width, 1027);
+            compare(gallery.height, 552);
+            compare(gallery.sidebarWidth, 240);
+            // All + the 19 measured categories.
+            compare(findChild(gallery, "galleryCategoryList").count, 20);
+            compare(findChild(gallery, "galleryTitle").text, "Widget Gallery");
+            compare(findChild(gallery, "galleryThumbnail").width, 102);
+            compare(findChild(gallery, "galleryThumbnail").height, 102);
+        }
+
+        function test_the_widget_gallery_filters_and_raises_add_remove() {
+            // A 760 pt instance keeps every control inside the 800 pt test
+            // window; the measured 1027 pt window is asserted separately.
+            var gallery = make(widgetGalleryComponent, {
+                width: 760,
+                height: 480,
+                categories: ["Calendar", "Weather"],
+                catalog: [
+                    { kind: "calendar", title: "Calendar", category: "Calendar",
+                      description: "Month grid", sizes: ["medium"] },
+                    { kind: "weather", title: "Weather", category: "Weather",
+                      description: "Conditions", sizes: ["medium"] }
+                ]
+            });
+            compare(gallery.filteredCatalog.length, 2);
+            gallery.searchText = "weather";
+            compare(gallery.filteredCatalog.length, 1);
+            gallery.searchText = "";
+            gallery.selectedCategory = "Weather";
+            compare(gallery.filteredCatalog.length, 1);
+
+            galleryAddSpy.target = gallery;
+            galleryAddSpy.clear();
+            var add = findChild(gallery, "galleryToggle_weather");
+            verify(add);
+            mouseClick(add, add.width / 2, add.height / 2);
+            compare(galleryAddSpy.count, 1);
+            compare(galleryAddSpy.signalArguments[0][0], "weather");
+
+            // A widget already in the panel offers Remove.
+            gallery.widgets = [widget("widget-1", "weather", "Weather", true)];
+            wait(50);
+            galleryRemoveSpy.target = gallery;
+            galleryRemoveSpy.clear();
+            var remove = findChild(gallery, "galleryToggle_weather");
+            verify(remove);
+            mouseClick(remove, remove.width / 2, remove.height / 2);
+            compare(galleryRemoveSpy.count, 1);
+            compare(galleryRemoveSpy.signalArguments[0][0], "widget-1");
+
+            galleryResizeSpy.target = gallery;
+            galleryResizeSpy.clear();
+            var size = findChild(gallery, "gallerySize_weather");
+            verify(size);
+            mouseClick(size, size.width / 2, size.height / 2);
+            compare(galleryResizeSpy.count, 1);
+            compare(galleryResizeSpy.signalArguments[0][0], "widget-1");
+            compare(galleryResizeSpy.signalArguments[0][1], "large");
+
+            galleryCloseSpy.target = gallery;
+            galleryCloseSpy.clear();
+            var done = findChild(gallery, "galleryDone");
+            mouseClick(done, done.width / 2, done.height / 2);
+            compare(galleryCloseSpy.count, 1);
+        }
+
+        function test_the_banner_stack_peeks_and_reduced_motion() {
+            var banner = make(bannerComponent, {
+                summary: "New message",
+                stackCount: 3,
+                reducedMotion: true
+            });
+            verify(findChild(banner, "bannerStackPeek1").visible);
+            verify(findChild(banner, "bannerStackPeek2").visible);
+            compare(banner.enterProgress, 1);
+            banner.present = false;
+            wait(20);
+            compare(banner.enterProgress, 0);
+            compare(banner.opacity, 0);
+            compare(banner.materialRegions[0].y, 0, "reduced motion has no slide");
+        }
+
+        // --- T234 evidence: the measured ramp, banner stack and gallery ----
+
+        function saveShot(item, name) {
+            // QML's QImage.save() returns void through the test binding, so
+            // the capture script verifies the files instead.
+            grabImage(item).save(TestEnvironment.captureDir + "/" + name, "PNG");
+        }
+
+        function test_t234_capture_states() {
+            if (typeof TestEnvironment === "undefined"
+                    || TestEnvironment.captureDir.length === 0)
+                skip("DF_NOTIFICATIONS_CAPTURE_DIR not set");
+            var dir = TestEnvironment.captureDir;
+            // The measured Center is 620 pt and the gallery 1027×552 pt, both
+            // larger than the interaction stage; grow the offscreen window so
+            // grabImage captures the whole item.
+            stage.width = 1100;
+            stage.height = 900;
+            wait(100);
+
+            var grouped = historyEntry(8, "Older one", "expired");
+            grouped.groupStart = true;
+            grouped.groupCount = 2;
+            var rows = [activeEntry(9, "New message", "Mail"),
+                        grouped,
+                        historyEntry(7, "Older two", "dismissed")];
+            var calendar = widget("widget-1", "calendar", "Calendar", true);
+
+            for (var dark = 0; dark < 2; ++dark) {
+                Theme.dark = dark === 1;
+                var suffix = dark === 1 ? "dark" : "light";
+
+                var banner = make(bannerComponent, {
+                    appName: "Mail",
+                    summary: "New message",
+                    body: "Ada Lovelace — Notes on the Analytical Engine",
+                    actions: [
+                        { key: "reply", label: "Reply" },
+                        { key: "default", label: "Open" }
+                    ],
+                    stackCount: 2,
+                    reducedMotion: true
+                });
+                saveShot(banner, "t234-banner-" + suffix + ".png");
+                banner.destroy();
+
+                var center = make(centerComponent, {
+                    history: rows,
+                    widgets: [calendar],
+                    available: true
+                });
+                saveShot(center, "t234-center-populated-" + suffix + ".png");
+                center.destroy();
+
+                var empty = make(centerComponent, {
+                    history: [],
+                    widgets: [],
+                    available: true
+                });
+                saveShot(empty, "t234-center-empty-" + suffix + ".png");
+                empty.destroy();
+
+                var gallery = make(widgetGalleryComponent, {
+                    width: 1027,
+                    height: 552,
+                    categories: [
+                        "Clock", "Calendar", "Weather", "Reminders", "Notes",
+                        "Stocks", "Battery", "Activity", "News", "Music",
+                        "Podcasts", "Books", "Software Center", "Devices", "Home",
+                        "Photos", "Files", "Contacts", "Tips"
+                    ],
+                    catalog: [
+                        { kind: "calendar", title: "Calendar",
+                          category: "Calendar", description: "Live month grid",
+                          sizes: ["medium"] },
+                        { kind: "weather", title: "Weather",
+                          category: "Weather", description: "Current conditions",
+                          sizes: ["medium"] }
+                    ],
+                    widgets: [calendar]
+                });
+                saveShot(gallery, "t234-widget-gallery-" + suffix + ".png");
+                gallery.destroy();
+            }
+            Theme.dark = false;
+            stage.width = 800;
+            stage.height = 480;
         }
     }
 }

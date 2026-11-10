@@ -399,6 +399,24 @@ public:
     // Unmap the chooser surface (attach a null buffer).
     bool hideChooser();
 
+    // Create the widget gallery (T234): the measured 1027×552 pt separate
+    // window, namespace "widget-gallery", centered and unmapped until the
+    // Center's Edit Widgets action opens it. It reserves nothing and takes the
+    // keyboard on demand so Escape and click-away dismissal work.
+    bool createWidgetGallerySurface(int width, int height);
+
+    // Set the gallery's clickable input region to the full `width` x `height`
+    // top-left rect (a non-positive size passes everything through). Applied
+    // with the next buffer commit.
+    bool setWidgetGalleryInputRegion(int width, int height);
+
+    // Attach `image` to the widget-gallery surface and commit.
+    bool commitWidgetGalleryImage(const QImage &image,
+                                  const QSize &logicalSize = QSize());
+
+    // Unmap the widget-gallery surface (attach a null buffer).
+    bool hideWidgetGallery();
+
     // Create the screenshot selection overlay (T-13.3a): a full-output
     // `overlay` layer surface, namespace "screenshot", unmapped until a
     // capture starts. It reserves nothing (`exclusive_zone = -1`) and takes
@@ -797,6 +815,13 @@ signals:
     void chooserPointerLeft();
     void chooserKeyboardFocused(bool focused);
     void chooserKeyEvent(uint32_t key, bool pressed);
+    // Widget gallery (T234).
+    void widgetGalleryConfigured(int width, int height, uint32_t serial);
+    void widgetGalleryPointerMoved(qreal x, qreal y);
+    void widgetGalleryPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void widgetGalleryPointerLeft();
+    void widgetGalleryKeyboardFocused(bool focused);
+    void widgetGalleryKeyEvent(uint32_t key, bool pressed);
     // Screenshot selection overlay (T-13.3a).
     void screenshotConfigured(int width, int height, uint32_t serial);
     void screenshotPointerMoved(qreal x, qreal y);
@@ -1109,6 +1134,8 @@ private:
                                int32_t width, int32_t height);
     static void onChooserConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                    int32_t width, int32_t height);
+    static void onWidgetGalleryConfigure(void *data, df_layer_surface *layer,
+                                         uint32_t serial, int32_t width, int32_t height);
     static void onScreenshotConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                       int32_t width, int32_t height);
     static void onScreenCastConfigure(void *data, df_layer_surface *layer, uint32_t serial,
@@ -1400,6 +1427,12 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     bool m_chooserMapped = false;
     bool m_pointerOnChooser = false;
     bool m_keyboardOnChooser = false;
+    // Widget gallery (T234): the separate 1027×552 pt catalogue window.
+    wl_surface *m_widgetGallerySurface = nullptr;
+    df_layer_surface *m_widgetGalleryLayer = nullptr;
+    bool m_widgetGalleryMapped = false;
+    bool m_pointerOnWidgetGallery = false;
+    bool m_keyboardOnWidgetGallery = false;
     // Screenshot selection overlay (T-13.3a): a full-output `overlay` surface
     // mapped only while a capture is in progress. It takes the keyboard on
     // demand.

@@ -95,6 +95,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     notificationclient.cpp
     notificationmodel.cpp
     osdmodel.cpp
+    widgetmodel.cpp
+    widgetmodel.h
     polkitagent.cpp
     polkitsession.cpp
     screencastbridge.cpp

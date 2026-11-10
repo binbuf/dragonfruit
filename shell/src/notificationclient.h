@@ -58,6 +58,12 @@ public slots:
     // `SetFocusMode` (T-11.2a). The service rejects unknown names; the
     // resulting policy arrives through `focusPolicyChanged`.
     virtual void setFocusMode(const QString &mode) = 0;
+    // Clear the Notification Center (T234): close every active banner and
+    // drop the recorded history. The service emits `Changed`; the views are
+    // re-read, never locally guessed.
+    virtual void clearAll() = 0;
+    // Drop only the recorded history; active banners stay.
+    virtual void clearHistory() = 0;
 
 signals:
     void availableChanged(bool available);
@@ -90,6 +96,8 @@ public slots:
                 const QStringList &actionLabels) override;
     void invoke(quint32 id, const QString &actionKey) override;
     void setFocusMode(const QString &mode) override;
+    void clearAll() override;
+    void clearHistory() override;
 
 private:
     using ReplySignal = void (NotificationClient::*)(const QByteArray &);
@@ -123,6 +131,8 @@ public slots:
                 const QStringList &actionLabels) override;
     void invoke(quint32 id, const QString &actionKey) override;
     void setFocusMode(const QString &mode) override;
+    void clearAll() override;
+    void clearHistory() override;
 
 private:
     void seedBanner();

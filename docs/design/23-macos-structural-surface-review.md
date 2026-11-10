@@ -307,12 +307,19 @@ lower panel is darker and more transparent. Do not flatten them into one
    matches the swipe-in interaction.
 4. The widget gallery is a separate window with its own sidebar and search; it
    is not a sheet inside the panel.
-5. Empty state, actions/reply, Focus active, Weather/Calendar variants,
-   multi-display, and motion remain `OPEN` until captured or implemented.
+5. Empty state, actions and the Calendar variant are implemented and tested;
+   Focus-active widget styling, the Weather live provider, inline reply and
+   Center open/close motion remain `OPEN` (the banner's own enter/exit motion
+   is implemented). Multi-display placement follows the compositor's
+   per-output overlay rule and is covered by the T204 routing tests.
 
-**Owner:** T234. The current banner/stack/lower-panel material roles already
-exist; T234 adds the measured layout, widget stack/gallery, empty/actions/Focus
-states, and motion.
+**Owner:** T234. The banner/stack/lower-panel material roles were already in
+place; T234 added the measured 344 pt layout, the header/Clear All actions,
+75 pt banner-stack rows and grouping, the 164 pt live Calendar widget stack,
+the separate 1027×552 pt gallery with its 240 pt/19-category sidebar, banner
+motion/timeout, and the service-side clear operations. Evidence:
+`make t234-notifications-capture` and the `tst_notifications` /
+`tst_widgetmodel` / service session-bus suites.
 
 ## 6. Control Center is a nested dark-glass grid
 
@@ -520,8 +527,8 @@ The structural review still leaves these rows open:
 | OPEN-ABOUT-02 | Live localized host capture; long/localized surfaces are captured at 1× and tested at 1×/1.5×/2× | T230c |
 | OPEN-DRAWER-01 | Drawer open/close/launch motion | T248 |
 | OPEN-DRAWER-02 | Full keyboard, empty/no-results, iPhone-app rows, multi-display | T248 |
-| OPEN-NC-01 | Empty, actions, Focus, Weather/Calendar variants | T234 |
-| OPEN-NC-02 | Notification Center open/close, banner and stack motion | T234 |
+| OPEN-NC-01 | Focus-active widget styling, the live Weather provider and inline reply; empty, actions and the live Calendar variant are implemented (`tst_notifications`, `make t234-notifications-capture`) | T234 follow-up |
+| OPEN-NC-02 | Notification Center open/close motion; the banner enter/exit and stack-count motion are implemented (`tst_notifications::test_the_banner_stack_peeks_and_reduced_motion`) | T234 follow-up |
 | OPEN-CC-01 | Battery, Keyboard Brightness, Accessibility, Fast User Switching modules | T235 |
 | OPEN-CC-02 | Multiple pages, control resizing, menu-bar pinning | T235 |
 | OPEN-CC-03 | Control Center open/close, expand/collapse and edit-mode motion | T235 |
@@ -544,6 +551,18 @@ window/tab/view/Get Info motion (T244a/Files track, rerun `make files-capture`).
 The capture PNGs are local evidence under `docs/captures/` (gitignored by
 repository policy); the committed runner and make target are the durable
 artifact.
+
+T234 resolves the Notification Center layout/material/action evidence locally:
+`make t234-notifications-capture` writes light/dark banner, populated Center,
+empty Center and separate-gallery stills at the measured 344 pt and 1027×552 pt sizes,
+and `ctest -R '^(tst_notifications|tst_widgetmodel)$'` pins the 344 pt ramp,
+75 pt active rows, grouping, header Clear All/Clear Notifications, the three
+material presets, the 164 pt live Calendar, widget absence, the gallery's
+240 pt/19-category sidebar and 102×102 thumbnails, and the banner enter/exit
+and stack-count motion. The service session-bus suite pins `ClearAll`/
+`ClearHistory`. Remaining `S-NC` states are Focus-active widget styling, the
+live Weather provider, inline reply and Center open/close motion; rerun
+`make t234-notifications-capture` after those land.
 
 ### 9.1 Manifest mapping
 

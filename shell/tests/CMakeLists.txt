@@ -528,13 +528,32 @@ set_tests_properties(tst_notificationcenter PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Notification Center widget stack (T234): the 19-category catalogue, the
+# measured default Calendar card, add/remove/resize and provider absence.
+qt_add_executable(tst_widgetmodel
+    tst_widgetmodel.cpp
+)
+target_link_libraries(tst_widgetmodel PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_widgetmodel
+    COMMAND tst_widgetmodel
+)
+set_tests_properties(tst_widgetmodel PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Notification chrome tests (T-11.1a): the banner card and the notification
 # center render the decoded service views.
 qt_add_executable(tst_notifications
     tst_notifications.cpp
 )
 target_link_libraries(tst_notifications PRIVATE
-    Qt6::QuickTest
+    Qt6::QuickTest Qt6::Quick Qt6::Qml
     dragonfruit-design-systemplugin
     dragonfruit-shell-notificationsplugin
 )

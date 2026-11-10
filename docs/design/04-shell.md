@@ -1092,6 +1092,32 @@ and lower panel are readable, labelled adaptations because the reference has
 no independent Dark fit. See
 [adr/0224](adr/0224-notification-banner-stack-lower-panel.md).
 
+**T234 status (measured Center, widgets and banners).** The Center now uses the
+measured 344 pt right-edge ramp: a header with Clear All and the overflow Clear
+Notifications action, 75 pt active banner-stack rows, contiguous per-app
+grouping, the optional widget stack and the action footer. The widget stack
+lives inside the lower-panel material band, so the three measured bands stay
+separate (banner, banner stack, lower panel) and no third plate is invented.
+The live Calendar card is the measured 164 pt panel size; the gallery preview
+is a 102×102 thumbnail. `WidgetGallery.qml` is the separate centered 1027×552
+pt `widget-gallery` overlay window with a 240 pt sidebar and the 19 categories;
+`WidgetModel` owns the catalogue and add/remove/resize, and a widget with no
+provider shows its explicit absence rather than invented data. Banners get a
+short reduced-motion-aware enter/exit slide/fade, a peeking stack count, and a
+shell-armed deadline timer that calls `Expire` before the service's `Changed`
+arrives; the service still owns the queue and expiry. `ClearAll` closes every
+active banner and drops the history, `ClearHistory` drops only the history;
+both are service methods, never local guesses. Per-display placement remains
+the compositor's per-output overlay rule (the Center has no explicit output).
+Named Focus profiles (Personal/Work/Sleep/custom) are not a second policy: the
+accepted ADR 0058 three-mode admission rule stays the one source of truth, and
+the profile presentation layer remains `OPEN`. Per-app notification settings
+are the existing service-owned `SetAppPreference` view used by the Settings
+panes. `make t234-notifications-capture` records light/dark banner, populated
+and empty Center, and gallery stills; `tst_notifications`, `tst_widgetmodel`
+and the service session-bus suite cover the behavior. See
+[adr/0252](adr/0252-notification-center-ramp-widgets-and-actions.md).
+
 **T-11.3a status.** The Control Center panel exists: the menu-bar item (or the
 Control-Option-C shortcut, routed as the compositor's `control-center` input
 action) opens a top-right `control-center` overlay surface rendered from
