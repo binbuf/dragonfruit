@@ -27,6 +27,7 @@ Item {
         // list before every case so the panes always open on a known state.
         function init() {
             Settings.setFocusMode("focus");
+            Settings.setFocusProfile("personal");
             Settings.setFocusApp("Mail", false);
             Settings.setFocusApp("chat", false);
             Settings.set("notifications.showPreviews", "when-unlocked");
@@ -268,12 +269,51 @@ Item {
             verify(pane.summary.text.length > 0);
         }
 
-        function test_allowed_people_is_an_explicit_absence_not_a_dead_list() {
+        function test_focus_profile_selector_round_trips_through_the_adapter() {
+            var shell = make("focus");
+            var pane = paneOf(shell);
+            // The fixture starts on the Personal profile.
+            compare(pane.profile, "personal");
+            compare(pane.profileSelector.currentIndex, 2);
+            verify(pane.profileSummary.text.indexOf("Personal") >= 0);
+
+            pane.profileSelector.activateIndex(3); // Work
+            tryVerify(function() {
+                return Settings.notifications.profile === "work";
+            }, 2000, "selecting Work installs the named profile");
+            compare(pane.mode, "focus");
+
+            pane.profileSelector.activateIndex(4); // Sleep
+            tryVerify(function() {
+                return Settings.notifications.profile === "sleep";
+            }, 2000);
+            compare(pane.mode, "dnd");
+
+            pane.profileSelector.activateIndex(0); // Off
+            tryVerify(function() {
+                return Settings.notifications.mode === "off";
+            }, 2000);
+            compare(pane.profile, "");
+        }
+
+        function test_allowed_people_list_round_trips_through_the_adapter() {
             var shell = make("focus");
             var pane = paneOf(shell);
             verify(pane.peopleGroup.visible);
-            verify(pane.peopleRow.description.indexOf("application") >= 0,
-                   "the people note must explain the Linux limitation");
+            verify(pane.peopleList.count > 0);
+            // Ada is on the fixture allowed-people list; Grace is not.
+            compare(pane.peopleList.itemAt(0).modelData.name, "Ada");
+            compare(pane.peopleList.itemAt(0).modelData.allowed, true);
+            compare(pane.peopleList.itemAt(1).modelData.allowed, false);
+
+            pane.peopleList.itemAt(1).personToggle.toggle();
+            tryVerify(function() {
+                return Settings.notifications.allowedPeople.indexOf("Grace") >= 0;
+            }, 2000, "allowing Grace adds the person to the policy");
+            pane.peopleList.itemAt(1).personToggle.toggle();
+            tryVerify(function() {
+                return Settings.notifications.allowedPeople.indexOf("Grace") === -1;
+            }, 2000);
         }
 
         function test_schedule_validates_and_round_trips() {

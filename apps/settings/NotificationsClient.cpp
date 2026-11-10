@@ -79,6 +79,17 @@ void DbusNotificationsClient::setFocusAllowList(const QStringList &apps)
     call(QStringLiteral("SetFocusAllowList"), { apps });
 }
 
+void DbusNotificationsClient::setFocusProfile(const QString &id)
+{
+    if (!id.trimmed().isEmpty())
+        call(QStringLiteral("SetFocusProfile"), { id.trimmed() });
+}
+
+void DbusNotificationsClient::setFocusAllowedPeople(const QStringList &people)
+{
+    call(QStringLiteral("SetFocusAllowedPeople"), { people });
+}
+
 void DbusNotificationsClient::setAppPreference(const QString &app,
                                                const QString &style, bool sound,
                                                bool badge, bool allowed)
@@ -149,14 +160,66 @@ void MockNotificationsClient::refresh()
 void MockNotificationsClient::setFocusMode(const QString &mode)
 {
     if (mode == QStringLiteral("off") || mode == QStringLiteral("focus")
-            || mode == QStringLiteral("dnd"))
+            || mode == QStringLiteral("dnd")) {
+        // A mode change keeps a named profile whose mode matches, exactly like
+        // the service; otherwise it selects the synthetic custom profile.
+        const bool matches =
+            (mode == QStringLiteral("focus")
+             && (m_profile == QStringLiteral("personal")
+                 || m_profile == QStringLiteral("work")
+                 || m_profile == QStringLiteral("custom")))
+            || (mode == QStringLiteral("dnd")
+                && (m_profile == QStringLiteral("dnd")
+                    || m_profile == QStringLiteral("sleep")
+                    || m_profile == QStringLiteral("custom")));
         m_mode = mode;
+        if (mode == QStringLiteral("off"))
+            m_profile.clear();
+        else if (!matches)
+            m_profile = QStringLiteral("custom");
+    }
     rebuild();
 }
 
 void MockNotificationsClient::setFocusAllowList(const QStringList &apps)
 {
     m_allowList = apps;
+    rebuild();
+}
+
+void MockNotificationsClient::setFocusProfile(const QString &id)
+{
+    const QString profile = id.trimmed().toLower();
+    if (profile == QStringLiteral("personal") || profile == QStringLiteral("work")) {
+        m_profile = profile;
+        m_mode = QStringLiteral("focus");
+    } else if (profile == QStringLiteral("sleep")
+               || profile == QStringLiteral("dnd")) {
+        m_profile = profile;
+        m_mode = QStringLiteral("dnd");
+    } else if (profile == QStringLiteral("custom")) {
+        m_profile = profile;
+        if (m_mode == QStringLiteral("off"))
+            m_mode = QStringLiteral("focus");
+    } else {
+        return;
+    }
+    // A named profile installs its own lists; the fixture gives Personal the
+    // seeded Pager/Ada entries so the pane tests have a known allow list.
+    // Custom keeps the current lists.
+    if (profile == QStringLiteral("personal")) {
+        m_allowList = QStringList{ QStringLiteral("Pager") };
+        m_allowedPeople = QStringList{ QStringLiteral("Ada") };
+    } else if (profile != QStringLiteral("custom")) {
+        m_allowList.clear();
+        m_allowedPeople.clear();
+    }
+    rebuild();
+}
+
+void MockNotificationsClient::setFocusAllowedPeople(const QStringList &people)
+{
+    m_allowedPeople = people;
     rebuild();
 }
 
@@ -237,21 +300,78 @@ void MockNotificationsClient::rebuild()
         apps.append(app);
     }
 
+    const auto profileLabel = [this, &modeLabel]() -> QString {
+        if (m_profile == QStringLiteral("dnd"))
+            return QStringLiteral("Do Not Disturb");
+        if (m_profile == QStringLiteral("personal"))
+            return QStringLiteral("Personal");
+        if (m_profile == QStringLiteral("work"))
+            return QStringLiteral("Work");
+        if (m_profile == QStringLiteral("sleep"))
+            return QStringLiteral("Sleep");
+        // `custom` is a marker, not a name the user picked; it reads as the
+        // mode, exactly like the service's presentation label.
+        return modeLabel();
+    };
+    QVariantList profiles{
+        QVariantMap{ { QStringLiteral("id"), QStringLiteral("dnd") },
+                     { QStringLiteral("name"), QStringLiteral("Do Not Disturb") },
+                     { QStringLiteral("mode"), QStringLiteral("dnd") } },
+        QVariantMap{ { QStringLiteral("id"), QStringLiteral("personal") },
+                     { QStringLiteral("name"), QStringLiteral("Personal") },
+                     { QStringLiteral("mode"), QStringLiteral("focus") } },
+        QVariantMap{ { QStringLiteral("id"), QStringLiteral("work") },
+                     { QStringLiteral("name"), QStringLiteral("Work") },
+                     { QStringLiteral("mode"), QStringLiteral("focus") } },
+        QVariantMap{ { QStringLiteral("id"), QStringLiteral("sleep") },
+                     { QStringLiteral("name"), QStringLiteral("Sleep") },
+                     { QStringLiteral("mode"), QStringLiteral("dnd") } },
+        QVariantMap{ { QStringLiteral("id"), QStringLiteral("custom") },
+                     { QStringLiteral("name"), QStringLiteral("Custom") },
+                     { QStringLiteral("mode"), QStringLiteral("focus") } },
+    };
+
+    // The observed people come from the optional notification sender hint.
+    const struct {
+        const char *name;
+        int notifications;
+    } peopleSource[] = {
+        { "Ada", 1 },
+        { "Grace", 1 },
+    };
+    QVariantList people;
+    for (const auto &entry : peopleSource) {
+        const QString name = QString::fromLatin1(entry.name);
+        QVariantMap person;
+        person.insert(QStringLiteral("name"), name);
+        person.insert(QStringLiteral("allowed"),
+                      m_allowedPeople.contains(name, Qt::CaseInsensitive));
+        person.insert(QStringLiteral("notifications"), entry.notifications);
+        people.append(person);
+    }
+
     QVariantMap view;
     view.insert(QStringLiteral("kind"), QStringLiteral("notifications"));
     view.insert(QStringLiteral("state"), QStringLiteral("available"));
     view.insert(QStringLiteral("glyph"), QStringLiteral("bell"));
-    view.insert(QStringLiteral("label"), modeLabel());
+    view.insert(QStringLiteral("label"), profileLabel());
     view.insert(QStringLiteral("mode"), m_mode);
     view.insert(QStringLiteral("modeLabel"), modeLabel());
+    view.insert(QStringLiteral("profile"),
+                m_profile.isEmpty() ? QVariant() : QVariant(m_profile));
+    view.insert(QStringLiteral("profileLabel"), profileLabel());
+    view.insert(QStringLiteral("profiles"), profiles);
     view.insert(QStringLiteral("suppressing"), suppressing);
     view.insert(QStringLiteral("dnd"), m_mode == QStringLiteral("dnd"));
     view.insert(QStringLiteral("batched"), suppressing ? 2 : 0);
     view.insert(QStringLiteral("allowList"), m_allowList);
+    view.insert(QStringLiteral("allowedPeople"), m_allowedPeople);
     view.insert(QStringLiteral("activeCount"), 1);
     view.insert(QStringLiteral("historyCount"), 2);
     view.insert(QStringLiteral("appCount"), apps.length());
     view.insert(QStringLiteral("apps"), apps);
+    view.insert(QStringLiteral("peopleCount"), people.length());
+    view.insert(QStringLiteral("people"), people);
     m_view = view;
     emit changed(m_view);
 }

@@ -90,6 +90,14 @@ Item {
 
             var reply = findChild(banner, "action_reply");
             verify(reply);
+            // AX: the action is a named button, but the banner never takes
+            // keyboard focus (the Center is the keyboard path).
+            compare(reply.Accessible.role, Accessible.Button);
+            compare(reply.Accessible.name, "Reply");
+            compare(reply.Accessible.focusable, false);
+            compare(banner.Accessible.role, Accessible.Alert);
+            compare(banner.Accessible.focusable, false);
+            verify(banner.Accessible.description.indexOf("2 actions") >= 0);
             actionSpy.target = banner;
             actionSpy.clear();
             mouseClick(reply, reply.width / 2, reply.height / 2);
@@ -815,6 +823,9 @@ Item {
             grouped.groupCount = 2;
             var rows = [activeEntry(9, "New message", "Mail"),
                         grouped,
+                        // A Focus-suppressed row: the service keeps it in the
+                        // history and the Center shows the reason.
+                        historyEntry(6, "Quiet update", "suppressed"),
                         historyEntry(7, "Older two", "dismissed")];
             var calendar = widget("widget-1", "calendar", "Calendar", true);
 

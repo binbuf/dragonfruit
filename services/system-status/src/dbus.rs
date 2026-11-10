@@ -452,6 +452,20 @@ impl NotificationsInterface {
             .to_string()
     }
 
+    /// Select a named Focus profile. Returns the JSON report.
+    fn set_focus_profile(&self, id: &str) -> String {
+        lock_notifications(&self.host)
+            .set_focus_profile(id)
+            .to_string()
+    }
+
+    /// Replace the allowed-people list. Returns the JSON report.
+    fn set_focus_allowed_people(&self, people: Vec<String>) -> String {
+        lock_notifications(&self.host)
+            .set_focus_allowed_people(people)
+            .to_string()
+    }
+
     /// Set one app's durable notification preference (T229a). Returns the
     /// JSON report.
     fn set_app_preference(

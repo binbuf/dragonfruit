@@ -14,9 +14,11 @@ import Dragonfruit.Settings
 // The pane now renders the reference information architecture:
 //   * Modes — the service's three modes with their admission rule and the
 //     live active state;
+//   * Focus profile — the named Do Not Disturb/Personal/Work/Sleep/custom
+//     presentation over the one admission policy (T234);
 //   * Allowed Apps — the per-app Focus allow list;
-//   * Allowed People — an explicit Linux absence: the service identifies
-//     senders by application, not person, so no dead per-person list is drawn;
+//   * Allowed People — the observed senders from the optional notification
+//     `sender` hint, with an explicit empty state when none have arrived;
 //   * Schedule — the durable `focus.schedule.*` keys the shell's
 //     `FocusSchedule` reads and applies at the window boundary (ADR 0239);
 //   * Shortcut — the durable `focus.shortcut` key (registration is deferred
@@ -34,8 +36,17 @@ Item {
     readonly property bool available: Settings.notificationsAvailable
     readonly property bool ready: root.available && view.state === "available"
     readonly property var apps: view.apps !== undefined ? view.apps : []
+    readonly property var people: view.people !== undefined ? view.people : []
+    readonly property var profiles: view.profiles !== undefined ? view.profiles : []
     readonly property string mode:
         view.mode !== undefined ? String(view.mode) : "off"
+    readonly property string profile:
+        view.profile !== undefined && view.profile !== null
+            ? String(view.profile) : ""
+    readonly property string profileLabel:
+        view.profileLabel !== undefined && view.profileLabel !== null
+            && String(view.profileLabel).length > 0
+            ? String(view.profileLabel) : qsTr("Off")
     readonly property int batched:
         view.batched !== undefined ? Number(view.batched) : 0
 
@@ -68,6 +79,35 @@ Item {
         { value: "dnd", label: qsTr("Do Not Disturb") }
     ]
 
+    // T234: the named profile presentation. Each profile installs a mode and
+    // its own allowed apps/people into the one policy; `custom` is the
+    // synthetic profile a manual mode change selects.
+    readonly property var profileOptions: [
+        { value: "", label: qsTr("Off") },
+        { value: "dnd", label: qsTr("Do Not Disturb") },
+        { value: "personal", label: qsTr("Personal") },
+        { value: "work", label: qsTr("Work") },
+        { value: "sleep", label: qsTr("Sleep") },
+        { value: "custom", label: qsTr("Custom") }
+    ]
+
+    function profileIndex(value) {
+        for (var i = 0; i < root.profileOptions.length; ++i) {
+            if (root.profileOptions[i].value === value)
+                return i;
+        }
+        // A profile the pane does not know (a future catalog entry) reads as
+        // custom rather than silently selecting Off.
+        return root.profileOptions.length - 1;
+    }
+
+    function applyProfile(value) {
+        if (value === "")
+            Settings.setFocusMode("off");
+        else
+            Settings.setFocusProfile(value);
+    }
+
     readonly property var modeRows: [
         { id: "off", label: qsTr("Off"),
           description: qsTr("Notifications are delivered normally.") },
@@ -92,14 +132,16 @@ Item {
     // Test surface (used by tst_settings_notifications.qml).
     property alias modeSelector: modeSelector
     property alias modeRepeater: modeRepeater
+    property alias profileSelector: profileSelector
     property alias allowGroup: allowGroup
     property alias allowList: allowList
     property alias absenceNote: absenceNote
     property alias noAppsNote: noAppsNote
     property alias summary: summary
     property alias peopleGroup: peopleGroup
-    property alias peopleRow: peopleRow
-    property alias peopleNote: peopleNote
+    property alias peopleList: peopleList
+    property alias noPeopleNote: noPeopleNote
+    property alias profileSummary: profileSummary
     property alias scheduleGroup: scheduleGroup
     property alias scheduleToggle: scheduleToggle
     property alias scheduleStartInput: scheduleStartInput
@@ -214,11 +256,10 @@ Item {
             return qsTr("Notifications are delivered normally.");
         if (root.batched > 0)
             return qsTr("%1 \u00b7 %2 notifications silenced while active.")
-                .arg(root.mode === "dnd" ? qsTr("Do Not Disturb") : qsTr("Focus"))
+                .arg(root.profileLabel)
                 .arg(root.batched);
-        return root.mode === "dnd"
-            ? qsTr("Do Not Disturb is on. Notifications are silenced.")
-            : qsTr("Focus is on. Notifications are silenced.");
+        return qsTr("%1 is on. Notifications are silenced.")
+            .arg(root.profileLabel);
     }
 
     Component.onCompleted: Settings.refreshNotifications()
@@ -250,11 +291,42 @@ Item {
             }
         }
 
+        // ── Focus profile (T234) ──────────────────────────────────────────
+        SettingsGroup {
+            id: profileGroup
+            width: parent.width
+            title: qsTr("Focus profile")
+            visible: root.ready
+
+            SegmentedControl {
+                id: profileSelector
+                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
+                x: Theme.controls.settingsRow.paddingH
+                model: root.profileOptions
+                onActivated: (index) => root.applyProfile(
+                    root.profileOptions[index].value)
+            }
+
+            Text {
+                id: profileSummary
+                objectName: "focusProfileSummary"
+                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
+                x: Theme.controls.settingsRow.paddingH
+                text: root.mode === "off"
+                    ? qsTr("No profile is active.")
+                    : qsTr("%1 is active.").arg(root.profileLabel)
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                topPadding: Theme.primitive.spacing.sm
+            }
+        }
+
         // ── Focus mode ────────────────────────────────────────────────────
         SettingsGroup {
             id: modeGroup
             width: parent.width
-            title: qsTr("Focus")
+            title: qsTr("Mode")
             visible: root.ready
 
             SegmentedControl {
@@ -426,23 +498,65 @@ Item {
             title: qsTr("Allowed People")
             visible: root.ready
 
-            SettingsRow {
-                id: peopleRow
+            Text {
+                objectName: "focusPeopleDescription"
                 width: parent.width
-                label: qsTr("Allowed People")
-                description: qsTr("The notification service identifies senders "
-                                  + "by application, not person, so a per-person "
-                                  + "allow list is not available.")
-                settingsId: "people"
-                owner: "notification service"
-                settingsKey: "focus.people"
-                showSeparator: false
-                controlData: Text {
-                    id: peopleNote
-                    objectName: "focusPeopleNote"
-                    text: qsTr("Use Allowed Apps")
-                    color: Theme.color.textSecondary
-                    font.pixelSize: Theme.primitive.font.sizeSm
+                text: qsTr("Notifications from these people are delivered even "
+                           + "while Focus or Do Not Disturb is on. A person "
+                           + "appears here when an app supplies the optional "
+                           + "sender hint with its notification.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                bottomPadding: Theme.primitive.spacing.xs
+            }
+
+            Text {
+                id: noPeopleNote
+                objectName: "focusNoPeople"
+                width: parent.width
+                visible: peopleList.count === 0
+                text: qsTr("No people have sent a notification yet.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                id: peopleList
+                objectName: "focusPeopleList"
+                model: root.people
+                delegate: Item {
+                    id: personRow
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    height: personSettingsRow.implicitHeight
+                    property alias personToggle: personToggle
+
+                    SettingsRow {
+                        id: personSettingsRow
+                        anchors.fill: parent
+                        showSeparator: personRow.index < peopleList.count - 1
+                        label: personRow.modelData.name
+                        description: Number(personRow.modelData.notifications || 0) > 0
+                            ? qsTr("%1 recorded").arg(Number(personRow.modelData.notifications))
+                            : qsTr("No notifications yet")
+
+                        controlData: Toggle {
+                            id: personToggle
+                            objectName: "focusPersonToggle"
+                            accessibleName: qsTr("Allow %1").arg(personRow.modelData.name)
+                            onToggled: (checked) => Settings.setFocusPerson(
+                                personRow.modelData.name, checked)
+                        }
+                    }
+
+                    Binding {
+                        target: personToggle
+                        property: "checked"
+                        value: personRow.modelData.allowed === true
+                    }
                 }
             }
         }
@@ -671,6 +785,14 @@ Item {
         }
     }
 
+    Binding {
+        target: profileSelector
+        property: "currentIndex"
+        value: root.profileIndex(root.mode === "off"
+                                 ? ""
+                                 : (root.profile.length > 0
+                                    ? root.profile : "custom"))
+    }
     Binding {
         target: modeSelector
         property: "currentIndex"

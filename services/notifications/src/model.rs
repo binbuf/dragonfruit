@@ -131,6 +131,11 @@ pub struct NotifyRequest {
     pub body: String,
     pub actions: Vec<Action>,
     pub urgency: Urgency,
+    /// The optional person identity (T234), read from the `sender` or
+    /// `x-dragonfruit-sender` hint. The freedesktop spec has no sender field;
+    /// an app that can name the person supplies this hint, and the Focus
+    /// allowed-people list matches it. Empty means "unknown".
+    pub sender: String,
     /// The requested timeout in milliseconds: `< 0` is the service default,
     /// `0` means never expire, `> 0` is the exact lifetime.
     pub expire_timeout_ms: i32,
@@ -146,6 +151,7 @@ impl Default for NotifyRequest {
             body: String::new(),
             actions: Vec::new(),
             urgency: Urgency::Normal,
+            sender: String::new(),
             expire_timeout_ms: -1,
         }
     }
@@ -161,6 +167,8 @@ pub struct Notification {
     pub body: String,
     pub actions: Vec<Action>,
     pub urgency: Urgency,
+    /// The optional person identity from the `Notify` hint (T234).
+    pub sender: String,
     pub expire_timeout_ms: i32,
     pub created_at_ms: u64,
 }
@@ -193,6 +201,8 @@ pub struct HistoryEntry {
     pub body: String,
     pub actions: Vec<Action>,
     pub urgency: Urgency,
+    /// The optional person identity from the `Notify` hint (T234).
+    pub sender: String,
     pub created_at_ms: u64,
     /// `None` while the notification is still open in the banner queue.
     pub closed_at_ms: Option<u64>,
@@ -212,6 +222,7 @@ impl From<&Notification> for HistoryEntry {
             body: notification.body.clone(),
             actions: notification.actions.clone(),
             urgency: notification.urgency,
+            sender: notification.sender.clone(),
             created_at_ms: notification.created_at_ms,
             closed_at_ms: None,
             reason: None,
@@ -287,12 +298,15 @@ impl Queue {
             body: request.body,
             actions: request.actions,
             urgency: request.urgency,
+            sender: request.sender,
             expire_timeout_ms: request.expire_timeout_ms,
             created_at_ms: now_ms,
         };
+        let sender =
+            (!notification.sender.trim().is_empty()).then_some(notification.sender.as_str());
         let admitted = self
             .policy
-            .admits(&notification.app_name, notification.urgency);
+            .admits(&notification.app_name, notification.urgency, sender);
         let mut entry = HistoryEntry::from(&notification);
         entry.suppressed = !admitted;
         self.push_history(entry);
@@ -409,12 +423,19 @@ impl Queue {
         self.policy.set_allow_list(apps);
     }
 
+    /// Select a named Focus profile (T234). Unknown ids are rejected and the
+    /// previous state is kept.
+    pub fn set_focus_profile(&mut self, id: &str) -> bool {
+        self.policy.set_active_profile(id)
+    }
+
+    /// Replace the allowed-people list (the optional notification sender).
+    pub fn set_focus_allowed_people(&mut self, people: impl IntoIterator<Item = String>) {
+        self.policy.set_allowed_people(people);
+    }
+
     /// Store one app's durable notification preference (T229a).
-    pub fn set_app_preference(
-        &mut self,
-        app_name: &str,
-        preference: crate::policy::AppPreference,
-    ) {
+    pub fn set_app_preference(&mut self, app_name: &str, preference: crate::policy::AppPreference) {
         self.policy.set_app_preference(app_name, preference);
     }
 

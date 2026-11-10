@@ -203,6 +203,13 @@ fn notify_urgent(
     .expect("Notify succeeds")
 }
 
+/// A string hint value for `Notify`.
+fn owned_string(value: &str) -> OwnedValue {
+    zbus::zvariant::Value::from(value)
+        .try_into()
+        .expect("a string converts to an owned hint value")
+}
+
 /// Read and parse the shell-facing `FocusPolicy` JSON.
 fn focus_policy(client: &Connection) -> serde_json::Value {
     serde_json::from_str(&shell_call::<String>(client, "FocusPolicy", ()).unwrap())
@@ -541,14 +548,12 @@ fn a_per_app_preference_mutes_and_projects_into_the_focus_view() {
     let (_service, _queue) = serve(&bus);
     let client = bus.connect();
 
-    assert!(
-        shell_call::<bool>(
-            &client,
-            "SetAppPreference",
-            ("Mail", "none", true, true, false),
-        )
-        .unwrap()
-    );
+    assert!(shell_call::<bool>(
+        &client,
+        "SetAppPreference",
+        ("Mail", "none", true, true, false),
+    )
+    .unwrap());
     let policy = focus_policy(&client);
     assert_eq!(policy["appPreferences"][0]["name"], "Mail");
     assert_eq!(policy["appPreferences"][0]["style"], "none");
@@ -572,14 +577,12 @@ fn a_per_app_preference_mutes_and_projects_into_the_focus_view() {
     assert_eq!(focus_policy(&client)["appPreferences"][0]["style"], "none");
 
     // Restoring the defaults drops the entry.
-    assert!(
-        shell_call::<bool>(
-            &client,
-            "SetAppPreference",
-            ("Mail", "banner", true, true, true),
-        )
-        .unwrap()
-    );
+    assert!(shell_call::<bool>(
+        &client,
+        "SetAppPreference",
+        ("Mail", "banner", true, true, true),
+    )
+    .unwrap());
     assert!(focus_policy(&client)["appPreferences"]
         .as_array()
         .unwrap()
@@ -625,6 +628,77 @@ fn an_unknown_focus_mode_is_rejected_and_the_compat_dnd_pair_maps() {
     shell_call::<()>(&client, "SetDoNotDisturb", (false,)).unwrap();
     assert!(!shell_call::<bool>(&client, "DoNotDisturb", ()).unwrap());
     assert_eq!(focus_policy(&client)["mode"], "off");
+}
+
+#[test]
+fn a_named_profile_and_allowed_person_round_trip_over_the_bus() {
+    let bus = PrivateBus::start();
+    let (_service, _queue) = serve(&bus);
+    let client = bus.connect();
+
+    // Selecting Personal installs the focus mode and the named profile.
+    assert!(shell_call::<bool>(&client, "SetFocusProfile", ("personal",)).unwrap());
+    let policy = focus_policy(&client);
+    assert_eq!(policy["mode"], "focus");
+    assert_eq!(policy["activeProfile"], "personal");
+    assert_eq!(policy["activeProfileLabel"], "Personal");
+    assert_eq!(policy["profiles"][1]["id"], "personal");
+
+    // An unknown id is rejected and keeps the previous profile.
+    assert!(!shell_call::<bool>(&client, "SetFocusProfile", ("vacation",)).unwrap());
+    assert_eq!(focus_policy(&client)["activeProfile"], "personal");
+
+    // An allowed person is admitted even though the app is not allow-listed.
+    shell_call::<()>(&client, "SetFocusAllowedPeople", (vec!["Ada".to_owned()],)).unwrap();
+    assert_eq!(focus_policy(&client)["allowedPeople"][0], "Ada");
+    let mut hints = HashMap::<String, OwnedValue>::new();
+    hints.insert("sender".to_owned(), owned_string("Ada"));
+    freedesktop_call::<u32>(
+        &client,
+        "Notify",
+        (
+            "Chat",
+            0u32,
+            "",
+            "hello",
+            "",
+            Vec::<String>::new(),
+            hints.clone(),
+            -1i32,
+        ),
+    )
+    .expect("Notify succeeds");
+    assert_eq!(
+        json_array(&shell_call::<String>(&client, "Banners", ()).unwrap())[0]["sender"],
+        "Ada"
+    );
+    assert_eq!(focus_policy(&client)["batchedCount"], 0);
+
+    // A different sender is suppressed and batched.
+    hints.insert("sender".to_owned(), owned_string("Grace"));
+    freedesktop_call::<u32>(
+        &client,
+        "Notify",
+        (
+            "Chat",
+            0u32,
+            "",
+            "quiet",
+            "",
+            Vec::<String>::new(),
+            hints,
+            -1i32,
+        ),
+    )
+    .expect("Notify succeeds");
+    assert_eq!(focus_policy(&client)["batchedCount"], 1);
+
+    // Sleep is a DND profile and carries its own (empty) lists.
+    assert!(shell_call::<bool>(&client, "SetFocusProfile", ("sleep",)).unwrap());
+    let policy = focus_policy(&client);
+    assert_eq!(policy["mode"], "dnd");
+    assert_eq!(policy["activeProfile"], "sleep");
+    assert!(policy["allowedPeople"].as_array().unwrap().is_empty());
 }
 
 #[test]

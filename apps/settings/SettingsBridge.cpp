@@ -1180,6 +1180,32 @@ void SettingsBridge::setFocusApp(const QString &app, bool allowed)
     m_notifications->setFocusAllowList(list);
 }
 
+void SettingsBridge::setFocusProfile(const QString &id)
+{
+    if (m_notifications && !id.trimmed().isEmpty())
+        m_notifications->setFocusProfile(id.trimmed());
+}
+
+void SettingsBridge::setFocusPerson(const QString &person, bool allowed)
+{
+    if (!m_notifications || person.trimmed().isEmpty())
+        return;
+    // Like `setFocusApp`, the adapter takes a whole-list replace.
+    QStringList list = m_notifications->view()
+                           .value(QStringLiteral("allowedPeople"))
+                           .toStringList();
+    const int index = list.indexOf(QRegularExpression(
+        QStringLiteral("^%1$").arg(QRegularExpression::escape(person.trimmed())),
+        QRegularExpression::CaseInsensitiveOption));
+    if (allowed && index < 0)
+        list.append(person.trimmed());
+    else if (!allowed && index >= 0)
+        list.removeAt(index);
+    else
+        return;
+    m_notifications->setFocusAllowedPeople(list);
+}
+
 void SettingsBridge::setNotificationAppPreference(const QString &app,
                                                   const QString &style,
                                                   bool sound, bool badge,

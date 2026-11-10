@@ -12,7 +12,8 @@
 //! [ADR 0058]: ../../../docs/design/adr/0058-focus-dnd-policy-semantics.md
 
 use dragonfruit_notifications::{
-    AppPreference, AppPreferenceEntry, FocusMode, NotificationStyle,
+    AppPreference, AppPreferenceEntry, FocusMode, FocusProfile, NotificationStyle,
+    CUSTOM_PROFILE_ID,
 };
 
 use crate::source::{NotificationRecord, NotificationsData};
@@ -28,6 +29,12 @@ pub struct FocusSnapshot {
     pub mode: FocusMode,
     /// The per-app allow list, in the service's order.
     pub allow_list: Vec<String>,
+    /// The allowed-people list (the optional notification sender).
+    pub allowed_people: Vec<String>,
+    /// The active named profile id, when one is selected.
+    pub active_profile: Option<String>,
+    /// The named profile catalog (`personal`/`work`/`sleep`/`custom`).
+    pub profiles: Vec<FocusProfile>,
     /// Notifications suppressed since the mode last returned to `off`.
     pub batched: u32,
 }
@@ -65,13 +72,37 @@ impl FocusSnapshot {
     /// Whether `app` is on the allow list (case-insensitive, trimmed), the
     /// per-app override the service honors in both suppressing modes.
     pub fn allows(&self, app: &str) -> bool {
-        let app = app.trim();
-        !app.is_empty()
-            && self
-                .allow_list
-                .iter()
-                .any(|allowed| allowed.eq_ignore_ascii_case(app))
+        allows_name(&self.allow_list, app)
     }
+
+    /// Whether `person` is on the allowed-people list.
+    pub fn allows_person(&self, person: &str) -> bool {
+        allows_name(&self.allowed_people, person)
+    }
+
+    /// The active profile's user-facing label, or `None` when off.
+    pub fn active_profile_label(&self) -> Option<&str> {
+        let id = self.active_profile.as_deref()?;
+        self.profiles
+            .iter()
+            .find(|profile| profile.id == id)
+            .map(|profile| profile.name.as_str())
+    }
+
+    /// The presentation label: a named profile when one is selected, otherwise
+    /// the mode label. `custom` reads as the mode, not as a user-picked name.
+    pub fn profile_label(&self) -> &str {
+        match self.active_profile.as_deref() {
+            Some(CUSTOM_PROFILE_ID) | None => self.label(),
+            Some(_) => self.active_profile_label().unwrap_or_else(|| self.label()),
+        }
+    }
+}
+
+/// Whether `name` is in a normalized list (case-insensitive, trimmed).
+fn allows_name(names: &[String], name: &str) -> bool {
+    let name = name.trim();
+    !name.is_empty() && names.iter().any(|entry| entry.eq_ignore_ascii_case(name))
 }
 
 /// One observed application and its notification state, the row the
@@ -111,6 +142,18 @@ impl AppNotifications {
     }
 }
 
+/// One observed person (the optional notification `sender` hint) and whether
+/// the Focus policy allows them (T234).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersonNotifications {
+    /// The sender string as the `Notify` hint spelled it.
+    pub name: String,
+    /// Whether the person is on the allowed-people list.
+    pub allowed: bool,
+    /// How many recorded notifications name this sender.
+    pub notifications: usize,
+}
+
 /// The Notifications and Focus snapshot a pane or tile renders.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NotificationsSnapshot {
@@ -131,6 +174,9 @@ impl NotificationsSnapshot {
             focus: FocusSnapshot {
                 mode: data.mode,
                 allow_list: data.allow_list.clone(),
+                allowed_people: data.allowed_people.clone(),
+                active_profile: data.active_profile.clone(),
+                profiles: data.profiles.clone(),
                 batched: data.batched_count,
             },
             active: data.active.clone(),
@@ -190,11 +236,7 @@ impl NotificationsSnapshot {
             .collect();
         // A configured app stays listed even when its notifications have aged
         // out of the bounded history, so its preference is always reachable.
-        names.extend(
-            self.app_preferences
-                .iter()
-                .map(|entry| entry.name.clone()),
-        );
+        names.extend(self.app_preferences.iter().map(|entry| entry.name.clone()));
         names.sort_by_key(|name| name.to_ascii_lowercase());
         names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
 
@@ -219,9 +261,36 @@ impl NotificationsSnapshot {
             .collect()
     }
 
+    /// The observed people, sorted case-insensitively by name. A person
+    /// appears when any active banner or history entry carries a non-empty
+    /// sender hint; the allow state comes from the Focus policy.
+    pub fn people(&self) -> Vec<PersonNotifications> {
+        let mut names: Vec<String> = self
+            .active
+            .iter()
+            .chain(self.history.iter())
+            .map(|entry| entry.sender.trim().to_owned())
+            .filter(|name| !name.is_empty())
+            .collect();
+        names.sort_by_key(|name| name.to_ascii_lowercase());
+        names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        names
+            .into_iter()
+            .map(|name| PersonNotifications {
+                allowed: self.focus.allows_person(&name),
+                notifications: self
+                    .history
+                    .iter()
+                    .filter(|entry| entry.sender.eq_ignore_ascii_case(&name))
+                    .count(),
+                name,
+            })
+            .collect()
+    }
+
     /// What changed between `previous` and this snapshot, in a stable order:
-    /// the Focus mode, the allow list, the suppressed batch, then the
-    /// notification counts.
+    /// the Focus mode, the allow list, the allowed people, the profile, the
+    /// suppressed batch, then the notification counts.
     ///
     /// This is the "event" half of the adapter: the host diffs two reads to
     /// learn what moved without polling each field. A notification body or an
@@ -239,6 +308,18 @@ impl NotificationsSnapshot {
             changes.push(NotificationsChange::AllowListChanged {
                 from: previous.focus.allow_list.clone(),
                 to: self.focus.allow_list.clone(),
+            });
+        }
+        if self.focus.allowed_people != previous.focus.allowed_people {
+            changes.push(NotificationsChange::AllowedPeopleChanged {
+                from: previous.focus.allowed_people.clone(),
+                to: self.focus.allowed_people.clone(),
+            });
+        }
+        if self.focus.active_profile != previous.focus.active_profile {
+            changes.push(NotificationsChange::ProfileChanged {
+                from: previous.focus.active_profile.clone(),
+                to: self.focus.active_profile.clone(),
             });
         }
         if self.focus.batched != previous.focus.batched {
@@ -280,6 +361,20 @@ pub enum NotificationsChange {
         /// The new allow list.
         to: Vec<String>,
     },
+    /// The allowed-people list moved.
+    AllowedPeopleChanged {
+        /// The previous list.
+        from: Vec<String>,
+        /// The new list.
+        to: Vec<String>,
+    },
+    /// The active named profile moved (or cleared).
+    ProfileChanged {
+        /// The previous profile id.
+        from: Option<String>,
+        /// The new profile id.
+        to: Option<String>,
+    },
     /// The suppressed batch count moved.
     BatchedChanged {
         /// The previous count.
@@ -315,6 +410,7 @@ mod tests {
             app_name: app.to_owned(),
             summary: summary.to_owned(),
             urgency: Urgency::Normal,
+            sender: String::new(),
             suppressed,
             created_at_ms: 1000 + u64::from(id),
         }
@@ -324,6 +420,9 @@ mod tests {
         NotificationsData {
             mode,
             allow_list: vec!["Pager".to_owned()],
+            allowed_people: vec![],
+            active_profile: None,
+            profiles: dragonfruit_notifications::policy::default_profiles(),
             batched_count: 0,
             active: vec![record(1, "Mail", "New message", false)],
             history: vec![record(2, "Pager", "on-call", true)],
@@ -359,12 +458,51 @@ mod tests {
         let focus = FocusSnapshot {
             mode: FocusMode::Dnd,
             allow_list: vec!["Pager".to_owned()],
+            allowed_people: vec!["Ada".to_owned()],
+            active_profile: Some("work".to_owned()),
+            profiles: dragonfruit_notifications::policy::default_profiles(),
             batched: 0,
         };
         assert!(focus.allows("pager"));
         assert!(focus.allows(" Pager "));
         assert!(!focus.allows("Mail"));
         assert!(!focus.allows("   "));
+        assert!(focus.allows_person("ada"));
+        assert!(!focus.allows_person("Grace"));
+        assert_eq!(focus.active_profile_label(), Some("Work"));
+        assert_eq!(focus.profile_label(), "Work");
+    }
+
+    #[test]
+    fn people_are_derived_from_the_sender_hint_and_the_allow_list() {
+        let mut raw = data(FocusMode::Focus);
+        raw.allowed_people = vec!["Ada".to_owned()];
+        raw.active_profile = Some("personal".to_owned());
+        raw.history.push(NotificationRecord {
+            sender: "Ada".to_owned(),
+            ..record(5, "Chat", "hi", false)
+        });
+        raw.history.push(NotificationRecord {
+            sender: "Grace".to_owned(),
+            ..record(6, "Chat", "hello", false)
+        });
+        raw.history.push(NotificationRecord {
+            sender: "ada".to_owned(),
+            ..record(7, "Chat", "again", false)
+        });
+        let snapshot = NotificationsSnapshot::from_data(&raw);
+        let people = snapshot.people();
+        assert_eq!(
+            people
+                .iter()
+                .map(|person| person.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ada", "Grace"]
+        );
+        assert!(people[0].allowed);
+        assert_eq!(people[0].notifications, 2);
+        assert!(!people[1].allowed);
+        assert_eq!(snapshot.focus.profile_label(), "Personal");
     }
 
     #[test]

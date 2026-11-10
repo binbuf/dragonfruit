@@ -772,9 +772,11 @@ bridge host's `Notifications` interface mirrors Bluetooth/storage/battery:
   `notifications.showWhenSleeping`, `notifications.showWhenLocked`,
   `notifications.showWhenMirroring`, settingsd revision 14) and the per-app
   inventory with its live Allow/Style/Sound/Badge sheet. The **Focus pane**
-  (`apps/settings/FocusPane.qml`) owns the mode selector, the per-app allow
-  list, the Allowed People note, the `focus.schedule.*` schedule, and the
-  `focus.shortcut` recorder, sharing the same adapter view. The Control Center
+  (`apps/settings/FocusPane.qml`) owns the named profile selector, the mode
+  selector, the per-app and per-person allow lists, the `focus.schedule.*`
+  schedule, and the `focus.shortcut` recorder, sharing the same adapter view.
+  A named profile installs its mode and lists into the one policy; allowed
+  people come from the optional notification `sender` hint. The Control Center
   **Focus tile** (T-11.3b) reflects the same service policy and remains the
   tile for this unit.
 - **Absence is layered.** The bridge host absent, or a foreign notification

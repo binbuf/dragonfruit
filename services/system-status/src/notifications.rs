@@ -78,6 +78,17 @@ impl<S: NotificationsSource> NotificationsHost<S> {
         focus_report(self.adapter.set_focus_allow_list(apps))
     }
 
+    /// Select a named Focus profile (`personal`/`work`/`sleep`/`custom`). One
+    /// explicit write; the service rejects an unknown id.
+    pub fn set_focus_profile(&mut self, id: &str) -> Value {
+        focus_report(self.adapter.set_focus_profile(id))
+    }
+
+    /// Replace the allowed-people list. One explicit write.
+    pub fn set_focus_allowed_people(&mut self, people: Vec<String>) -> Value {
+        focus_report(self.adapter.set_focus_allowed_people(people))
+    }
+
     /// Set one app's durable notification preference (T229a). One explicit
     /// write; the host re-reads the service afterwards.
     pub fn set_app_preference(
@@ -158,21 +169,49 @@ pub fn notifications_snapshot_view(snapshot: &NotificationsSnapshot) -> Value {
             })
         })
         .collect();
+    let profiles: Vec<Value> = focus
+        .profiles
+        .iter()
+        .map(|profile| {
+            json!({
+                "id": profile.id,
+                "name": profile.name,
+                "mode": profile.mode.name(),
+            })
+        })
+        .collect();
+    let people: Vec<Value> = snapshot
+        .people()
+        .iter()
+        .map(|person| {
+            json!({
+                "name": person.name,
+                "allowed": person.allowed,
+                "notifications": person.notifications,
+            })
+        })
+        .collect();
     json!({
         "kind": KIND_NOTIFICATIONS,
         "state": "available",
         "glyph": "bell",
-        "label": focus.label(),
+        "label": focus.profile_label(),
         "mode": focus.mode.name(),
         "modeLabel": focus.label(),
+        "profile": focus.active_profile,
+        "profileLabel": focus.profile_label(),
+        "profiles": profiles,
         "suppressing": focus.is_suppressing(),
         "dnd": focus.is_dnd(),
         "batched": focus.batched,
         "allowList": focus.allow_list,
+        "allowedPeople": focus.allowed_people,
         "activeCount": snapshot.active_count(),
         "historyCount": snapshot.history_count(),
         "appCount": apps.len(),
         "apps": apps,
+        "peopleCount": people.len(),
+        "people": people,
     })
 }
 
@@ -198,6 +237,7 @@ mod tests {
             id,
             app_name: app.to_owned(),
             summary: "hello".to_owned(),
+            sender: String::new(),
             suppressed,
             created_at_ms: 1000 + u64::from(id),
             ..NotificationRecord::default()
@@ -208,6 +248,9 @@ mod tests {
         NotificationsData {
             mode,
             allow_list: vec!["Pager".to_owned()],
+            allowed_people: vec!["Ada".to_owned()],
+            active_profile: Some("personal".to_owned()),
+            profiles: dragonfruit_notify_adapter::FocusProfile::catalog(),
             batched_count: 2,
             active: vec![record(1, "Mail", false)],
             history: vec![record(2, "Pager", true), record(3, "chat", false)],
@@ -225,17 +268,26 @@ mod tests {
     }
 
     #[test]
-    fn a_present_service_projects_the_focus_policy_and_apps() {        let mut host = NotificationsHost::new(MockNotifications::present(data(FocusMode::Focus)));
+    fn a_present_service_projects_the_focus_policy_and_apps() {
+        let mut host = NotificationsHost::new(MockNotifications::present(data(FocusMode::Focus)));
         host.refresh();
         let view = host.view();
         assert_eq!(view["state"], "available");
         assert_eq!(view["glyph"], "bell");
-        assert_eq!(view["label"], "Focus");
+        assert_eq!(view["label"], "Personal");
         assert_eq!(view["mode"], "focus");
+        assert_eq!(view["modeLabel"], "Focus");
+        assert_eq!(view["profile"], "personal");
+        assert_eq!(view["profileLabel"], "Personal");
+        assert_eq!(view["profiles"][0]["id"], "dnd");
+        assert_eq!(view["profiles"][1]["id"], "personal");
+        assert_eq!(view["profiles"][3]["mode"], "dnd");
         assert_eq!(view["suppressing"], true);
         assert_eq!(view["dnd"], false);
         assert_eq!(view["batched"], 2);
         assert_eq!(view["allowList"][0], "Pager");
+        assert_eq!(view["allowedPeople"][0], "Ada");
+        assert_eq!(view["peopleCount"], 0);
         assert_eq!(view["activeCount"], 1);
         assert_eq!(view["historyCount"], 2);
         assert_eq!(view["appCount"], 3);
@@ -345,15 +397,13 @@ mod tests {
         use dragonfruit_notify_adapter::AppPreference;
         let mut host = NotificationsHost::new(MockNotifications::present(data(FocusMode::Off)));
         host.refresh();
-        host.adapter_mut()
-            .source_mut()
-            .set_app_preference(
-                "Mail",
-                AppPreference {
-                    allowed: false,
-                    ..AppPreference::DEFAULT
-                },
-            );
+        host.adapter_mut().source_mut().set_app_preference(
+            "Mail",
+            AppPreference {
+                allowed: false,
+                ..AppPreference::DEFAULT
+            },
+        );
         host.refresh();
         assert_eq!(host.view()["apps"][1]["status"], "Off");
     }

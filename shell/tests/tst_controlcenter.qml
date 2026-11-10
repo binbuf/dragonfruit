@@ -145,11 +145,12 @@ Item {
             };
         }
 
-        function focusModel(mode, batchedCount) {
+        function focusModel(mode, batchedCount, profileLabel) {
             return {
                 mode: mode,
                 allowList: [],
-                batchedCount: batchedCount !== undefined ? batchedCount : 0
+                batchedCount: batchedCount !== undefined ? batchedCount : 0,
+                profileLabel: profileLabel !== undefined ? profileLabel : ""
             };
         }
 
@@ -1220,6 +1221,14 @@ lockPolicy: lockPolicyModel(600),
             compare(panel.focusLabel, "Focus");
 
             // An absent policy is the safe off default.
+            // T234: the named profile is the tile label.
+            panel.focusPolicy = focusModel("focus", 0, "Personal");
+            compare(panel.focusLabel, "Personal");
+            compare(panel.focusSubtitle, "Personal");
+            panel.focusPolicy = focusModel("dnd", 2, "Sleep");
+            compare(panel.focusLabel, "Sleep");
+            verify(panel.focusSubtitle.indexOf("2") >= 0);
+
             panel.focusPolicy = ({});
             compare(panel.focusMode, "off");
             compare(panel.focusOn, false);

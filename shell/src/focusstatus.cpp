@@ -10,8 +10,14 @@ QVariantMap focusStatusItem(const QVariantMap &policy)
     const bool active = mode == QLatin1String("focus") || mode == QLatin1String("dnd");
     const bool dnd = mode == QLatin1String("dnd");
 
-    QString name = dnd ? QCoreApplication::translate("ShellController", "Do Not Disturb")
-                       : QCoreApplication::translate("ShellController", "Focus");
+    // T234: the named profile is the user-facing label; the mode remains the
+    // one admission rule. A service that serves no profile falls back to the
+    // mode label.
+    const QString profile = policy.value(QStringLiteral("profileLabel")).toString();
+    QString name = !profile.isEmpty()
+        ? profile
+        : (dnd ? QCoreApplication::translate("ShellController", "Do Not Disturb")
+               : QCoreApplication::translate("ShellController", "Focus"));
     if (active && batched > 0) {
         name = QCoreApplication::translate("ShellController", "%1 (%2 notifications silenced)")
                    .arg(name)

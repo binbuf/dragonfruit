@@ -73,7 +73,8 @@ pub use source::{
 };
 // Re-export the reused policy vocabulary so a consumer binds to one import.
 pub use dragonfruit_notifications::{
-    AppPreference, AppPreferenceEntry, FocusMode, NotificationStyle,
+    AppPreference, AppPreferenceEntry, FocusMode, FocusProfile, NotificationStyle,
+    CUSTOM_PROFILE_ID,
 };
 
 #[cfg(test)]

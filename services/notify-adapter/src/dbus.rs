@@ -17,7 +17,9 @@
 //! the interface but returns an error or malformed JSON is reported to the
 //! adapter, which shows the item visible and inert.
 
-use dragonfruit_notifications::{AppPreference, AppPreferenceEntry, FocusMode, NotificationStyle, Urgency};
+use dragonfruit_notifications::{
+    AppPreference, AppPreferenceEntry, FocusMode, FocusProfile, NotificationStyle, Urgency,
+};
 use dragonfruit_system_adapters::AdapterError;
 use zbus::blocking::Connection;
 
@@ -48,6 +50,10 @@ trait ShellNotifications {
     fn set_focus_mode(&self, mode: &str) -> zbus::Result<bool>;
     /// Replace the per-app Focus allow list.
     fn set_focus_allow_list(&self, apps: &[String]) -> zbus::Result<()>;
+    /// Select a named Focus profile; returns whether the service accepted it.
+    fn set_focus_profile(&self, id: &str) -> zbus::Result<bool>;
+    /// Replace the allowed-people list.
+    fn set_focus_allowed_people(&self, people: &[String]) -> zbus::Result<()>;
     /// Set one app's durable notification preference (T229a).
     fn set_app_preference(
         &self,
@@ -166,6 +172,53 @@ impl NotificationsSource for DbusNotifications {
         }
     }
 
+    fn set_focus_profile(&mut self, id: &str) -> FocusOutcome {
+        let Some(connection) = self.connect() else {
+            return FocusOutcome::Absent;
+        };
+        let has_owner = match name_has_owner(&connection, NOTIFICATIONS_SERVICE) {
+            Ok(has_owner) => has_owner,
+            Err(error) => return FocusOutcome::Failed(failed(error)),
+        };
+        if !has_owner {
+            return FocusOutcome::Absent;
+        }
+        let proxy = match ShellNotificationsProxyBlocking::new(&connection) {
+            Ok(proxy) => proxy,
+            Err(error) => return FocusOutcome::Failed(failed(error)),
+        };
+        match proxy.set_focus_profile(id) {
+            Ok(true) => FocusOutcome::Applied,
+            Ok(false) => FocusOutcome::Failed(AdapterError::new(
+                "notification service rejected the focus profile",
+            )),
+            Err(error) if is_absent(&error) => FocusOutcome::Absent,
+            Err(error) => FocusOutcome::Failed(failed(error)),
+        }
+    }
+
+    fn set_focus_allowed_people(&mut self, people: Vec<String>) -> FocusOutcome {
+        let Some(connection) = self.connect() else {
+            return FocusOutcome::Absent;
+        };
+        let has_owner = match name_has_owner(&connection, NOTIFICATIONS_SERVICE) {
+            Ok(has_owner) => has_owner,
+            Err(error) => return FocusOutcome::Failed(failed(error)),
+        };
+        if !has_owner {
+            return FocusOutcome::Absent;
+        }
+        let proxy = match ShellNotificationsProxyBlocking::new(&connection) {
+            Ok(proxy) => proxy,
+            Err(error) => return FocusOutcome::Failed(failed(error)),
+        };
+        match proxy.set_focus_allowed_people(&people) {
+            Ok(()) => FocusOutcome::Applied,
+            Err(error) if is_absent(&error) => FocusOutcome::Absent,
+            Err(error) => FocusOutcome::Failed(failed(error)),
+        }
+    }
+
     fn set_app_preference(&mut self, app: &str, preference: AppPreference) -> FocusOutcome {
         let Some(connection) = self.connect() else {
             return FocusOutcome::Absent;
@@ -215,6 +268,21 @@ fn parse_data(
         .and_then(|value| value.as_array())
         .map(|values| string_array(values))
         .unwrap_or_default();
+    let allowed_people = focus
+        .get("allowedPeople")
+        .and_then(|value| value.as_array())
+        .map(|values| string_array(values))
+        .unwrap_or_default();
+    let active_profile = focus
+        .get("activeProfile")
+        .and_then(|value| value.as_str())
+        .filter(|id| !id.trim().is_empty())
+        .map(|id| id.trim().to_owned());
+    let profiles = focus
+        .get("profiles")
+        .and_then(|value| value.as_array())
+        .map(|values| parse_profiles(values))
+        .unwrap_or_default();
     let batched_count = focus
         .get("batchedCount")
         .and_then(|value| value.as_u64())
@@ -232,11 +300,54 @@ fn parse_data(
     Ok(NotificationsData {
         mode,
         allow_list,
+        allowed_people,
+        active_profile,
+        profiles,
         batched_count,
         active,
         history,
         app_preferences,
     })
+}
+
+/// Decode the service's `profiles` array, dropping malformed entries. A
+/// service that serves no catalog still reads as a valid policy: the pane
+/// then shows the three-mode selector without named profiles.
+fn parse_profiles(values: &[serde_json::Value]) -> Vec<FocusProfile> {
+    values
+        .iter()
+        .filter_map(|value| {
+            let id = string_of(value.get("id")).trim().to_owned();
+            if id.is_empty() {
+                return None;
+            }
+            let mode = value
+                .get("mode")
+                .and_then(|mode| mode.as_str())
+                .and_then(FocusMode::parse)
+                .unwrap_or(FocusMode::Focus);
+            let name = string_of(value.get("name"));
+            Some(FocusProfile {
+                id,
+                name: if name.trim().is_empty() {
+                    "Custom".to_owned()
+                } else {
+                    name.trim().to_owned()
+                },
+                mode,
+                apps: value
+                    .get("apps")
+                    .and_then(|apps| apps.as_array())
+                    .map(|apps| string_array(apps))
+                    .unwrap_or_default(),
+                people: value
+                    .get("people")
+                    .and_then(|people| people.as_array())
+                    .map(|people| string_array(people))
+                    .unwrap_or_default(),
+            })
+        })
+        .collect()
 }
 
 /// Decode the service's `appPreferences` array into the durable per-app
@@ -278,7 +389,11 @@ fn parse_app_preferences(values: &[serde_json::Value]) -> Vec<AppPreferenceEntry
         out.retain(|existing| existing.name.to_ascii_lowercase() != key);
         out.push(entry);
     }
-    out.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    out.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+    });
     out
 }
 
@@ -311,6 +426,7 @@ fn parse_record(value: &serde_json::Value) -> NotificationRecord {
         app_name: string_of(value.get("appName")),
         summary: string_of(value.get("summary")),
         urgency: urgency_from_name(&string_of(value.get("urgency"))),
+        sender: string_of(value.get("sender")),
         suppressed: value
             .get("suppressed")
             .and_then(|value| value.as_bool())

@@ -261,6 +261,12 @@ Item {
                         font.weight: Theme.primitive.font.weightMedium
                     }
 
+                    Accessible.role: Accessible.Button
+                    Accessible.name: modelData.label
+                    // The banner never steals keyboard focus; the Center is
+                    // the keyboard path for the same actions (T234).
+                    Accessible.focusable: false
+
                     MouseArea {
                         id: actionArea
                         anchors.fill: parent
@@ -274,5 +280,8 @@ Item {
 
     Accessible.role: Accessible.Alert
     Accessible.name: root.summary
-    Accessible.description: root.body
+    Accessible.description: root.hasActions
+        ? qsTr("%1. %2 actions available.").arg(root.body).arg(root.actions.length)
+        : root.body
+    Accessible.focusable: false
 }

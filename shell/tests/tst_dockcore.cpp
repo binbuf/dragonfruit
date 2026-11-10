@@ -2086,6 +2086,14 @@ private slots:
         QCOMPARE(dnd.value(QStringLiteral("selected")).toBool(), true);
         QCOMPARE(dnd.value(QStringLiteral("accessibleName")).toString(),
                  QStringLiteral("Do Not Disturb"));
+
+        // T234: a named profile is the user-facing label.
+        const QVariantMap personal = focusStatusItem(
+            QVariantMap{ { QStringLiteral("mode"), QStringLiteral("focus") },
+                         { QStringLiteral("profileLabel"), QStringLiteral("Personal") } });
+        QCOMPARE(personal.value(QStringLiteral("accessibleName")).toString(),
+                 QStringLiteral("Personal"));
+        QCOMPARE(personal.value(QStringLiteral("selected")).toBool(), false);
     }
 
     void theFocusStatusItemSurfacesTheSuppressedBatchCount()
@@ -2120,6 +2128,12 @@ private slots:
         const QJsonObject dnd = QJsonDocument::fromJson(policy.takeFirst().at(0).toByteArray())
                                      .object();
         QCOMPARE(dnd.value(QStringLiteral("mode")).toString(), QStringLiteral("dnd"));
+        // T234: the mock carries the named-profile presentation too.
+        QCOMPARE(dnd.value(QStringLiteral("profileLabel")).toString(),
+                 QStringLiteral("Do Not Disturb"));
+        QCOMPARE(dnd.value(QStringLiteral("profiles")).toArray().size(), 5);
+        QCOMPARE(dnd.value(QStringLiteral("activeProfile")).toString(),
+                 QStringLiteral("dnd"));
 
         // Unknown names are rejected and leave the mode unchanged.
         client.setFocusMode(QStringLiteral("nonsense"));

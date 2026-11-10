@@ -36,7 +36,8 @@ pub use model::{
     DEFAULT_TIMEOUT_MS, HISTORY_CAPACITY,
 };
 pub use policy::{
-    AppPreference, AppPreferenceEntry, FocusMode, FocusPolicy, NotificationStyle,
+    AppPreference, AppPreferenceEntry, FocusMode, FocusPolicy, FocusProfile, NotificationStyle,
+    CUSTOM_PROFILE_ID,
 };
 pub use view::{banners_json, focus_policy_json, history_json};
 
