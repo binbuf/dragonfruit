@@ -37,11 +37,13 @@ document is 70 pt (28 pt title row + 42 pt toolbar); Safari Settings is 88 pt
 (32 pt title row + 56 pt toolbar).
 
 AppKit reports a 16×16 pt accessibility/hit frame around each traffic light.
-The reference build is 2× and the close button measures 28 px, so the drawn
-circle is 14 pt centred inside the 16 pt frame. The measured insets are 8 pt
-in a 32 pt bar and 18 pt in a 52 pt bar, applied to the frame on both axes, and
-the spacing is 23 pt centre-to-centre. Drawing the 16 pt frame as the circle is
-what made the lights look oversized. Tab, path, status and format bars are
+The reference build is 2× and the close button's full extent measures 28 px
+(14 pt). We draw a 13 pt circle centred inside the 16 pt frame, the lower
+bound of the ±1 pt acceptance, because the 14 pt fill read slightly oversized
+against the reference MacBook Pro. The measured insets are 8 pt in a 32 pt bar
+and 18 pt in a 52 pt bar, applied to the frame on both axes, and the spacing
+is 23 pt centre-to-centre. Drawing the 16 pt frame as the circle is what made
+the lights look oversized. Tab, path, status and format bars are
 content, not chrome: Finder adds a 28 pt tab bar, a 30 pt path bar and a 28 pt
 status bar inside the content area. Hiding the toolbar is a mode change that
 also hides the Finder sidebar and moves the status bar.
@@ -68,12 +70,12 @@ table. A `TitleBar` inside an `AppWindow` inherits the window's
 52 pt.
 
 Traffic-light geometry is also one table: `component.trafficLights.buttonSize`
-(16 pt AppKit AX/hit frame), `diameter` (14 pt drawn circle), and `spacing`
+(16 pt AppKit AX/hit frame), `diameter` (13 pt drawn circle), and `spacing`
 (23 pt centre-to-centre). The inset is derived from the title row, not the
 final chrome height: `(titleRow - buttonSize) / 2`, applied on both axes. That
 yields 8 pt in the 32 pt `titlebar` row and 18 pt in the 52 pt `unified` row,
 and keeps `expanded`/`preference` lights in their 28/32 pt title row instead of
-pushing them into the toolbar. The visible circle sits 1 pt inside the frame.
+pushing them into the toolbar. The visible circle sits 1.5 pt inside the frame.
 The hover glyphs use the 7 pt Tabler box: the minus and cross are ~4.7 pt
 marks with a ~1.2 pt stroke, and the `maximize` corner brackets reach ~5.8 pt.
 The compositor rasterizes the same lines with per-pixel coverage, so the SSD
@@ -354,7 +356,7 @@ baselines (0/32/40/48/52/88 pt), `unified` plus the 14 pt labelled row is
 66 pt, and an app-specific toolbar row can take an expanded document to 70 pt.
 The first-party `TitleBar` and the compositor SSD renderer both read the same
 table, so their height and traffic-light geometry cannot drift. Traffic lights
-use a 16 pt AX/hit frame with a 14 pt drawn circle, 23 pt centre spacing, and
+use a 16 pt AX/hit frame with a 13 pt drawn circle, 23 pt centre spacing, and
 a title-row-derived inset (8 pt in a 32 pt bar, 18 pt in a 52 pt bar).
 Settings and Files are 52 pt `unified` windows; their main toolbar is the
 titlebar row, while the Files path bar (30 pt) stays content. `_NET_FRAME_EXTENTS`

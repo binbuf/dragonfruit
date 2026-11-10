@@ -163,8 +163,8 @@ impl WindowChrome {
     }
 
     /// The measured 8/18 pt inset is to the 16 pt AppKit accessibility frame,
-    /// and it applies on both axes. The drawn 14 pt circle is centred inside
-    /// that frame, so its visible edge sits 1 pt further in.
+    /// and it applies on both axes. The drawn 13 pt circle is centred inside
+    /// that frame, so its visible edge sits 1.5 pt further in.
     pub const fn traffic_inset(self) -> i32 {
         let inset = (self.title_row_height() - traffic_lights::BUTTON_SIZE as i32) / 2;
         if inset > 0 {
@@ -561,7 +561,7 @@ impl TitlebarElement {
         titlebar: Rectangle<i32, Logical>,
         chrome: WindowChrome,
     ) -> Vec<TrafficLightButton> {
-        // The 16 pt token is the AX/hit frame; the visible circle is 14 pt
+        // The 16 pt token is the AX/hit frame; the visible circle is 13 pt
         // and is drawn centred inside it.
         let size = traffic_lights::BUTTON_SIZE as i32;
         // The token is centre-to-centre; advance by exactly that much.
@@ -678,7 +678,7 @@ impl TitlebarElement {
         }
 
         let reveal = self.revealed();
-        // The 16 pt button rect is the AX/hit frame; AppKit draws a 14 pt
+        // The 16 pt button rect is the AX/hit frame; AppKit draws a 13 pt
         // circle centred inside it. Draw the inner circle, not the frame.
         for button in &self.buttons {
             let fill = self.fill_color(button);
@@ -1092,11 +1092,11 @@ mod tests {
 
     #[test]
     fn traffic_light_geometry_is_style_derived() {
-        // The 16 pt AX frame and 14 pt drawn circle are separate tokens; the
+        // The 16 pt AX frame and 13 pt drawn circle are separate tokens; the
         // reference measured the frame, and drawing it made the lights too
         // large.
         assert_eq!(traffic_lights::BUTTON_SIZE as i32, 16);
-        assert_eq!(traffic_lights::DIAMETER as i32, 14);
+        assert_eq!(traffic_lights::DIAMETER as i32, 13);
         assert_eq!(traffic_lights::SPACING as i32, 23);
         assert_eq!(WindowChrome::new(WindowStyle::Titlebar).traffic_inset(), 8);
         assert_eq!(WindowChrome::new(WindowStyle::Unified).traffic_inset(), 18);
@@ -1392,7 +1392,7 @@ mod tests {
     }
 
     #[test]
-    fn traffic_light_draws_a_14_pt_circle_inside_the_16_pt_frame() {
+    fn traffic_light_draws_a_13_pt_circle_inside_the_16_pt_frame() {
         let titlebar = ssd(rect(0, 40, 200, 150));
         let close = titlebar.buttons[0].rect;
         assert_eq!(close.size.w, traffic_lights::BUTTON_SIZE as i32);
@@ -1416,12 +1416,12 @@ mod tests {
         assert_eq!(
             right - left,
             traffic_lights::DIAMETER as i32,
-            "the drawn circle is 14 pt, not the 16 pt AX frame"
+            "the drawn circle is 13 pt, not the 16 pt AX frame"
         );
         assert_eq!(
             left,
             close.loc.x + 1,
-            "the circle is centred 1 pt inside the frame"
+            "the circle starts 1 pt inside the frame"
         );
         assert_eq!(
             rects.iter().map(|rect| rect.loc.y).min().unwrap(),

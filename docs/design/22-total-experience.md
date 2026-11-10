@@ -332,7 +332,7 @@ Divider
 - Window chrome is a style variant, not a per-app constant: `borderless`,
   `titlebar`, `unifiedCompact`, `expanded`, `unified`, `preference` with the
   measured 0/32/40/48/52/66/88 pt baselines. Traffic lights use a 16 pt
-  AX/hit frame with a 14 pt drawn circle, 8 pt frame insets in a 32 pt bar,
+  AX/hit frame with a 13 pt drawn circle, 8 pt frame insets in a 32 pt bar,
   18 pt frame insets in a 52 pt bar, and 23 pt centre spacing.
   Tab/path/status/format bars are content, not chrome.
 - Minimize target follows `dock.minimizeIntoTileIcon` and

@@ -1098,7 +1098,7 @@ QtObject {
         }
         readonly property var windowStyle: QtObject {
             readonly property int trafficLightSize: 16
-            readonly property int trafficLightDiameter: 14
+            readonly property int trafficLightDiameter: 13
             readonly property int trafficLightSpacing: 23
             readonly property int labelledToolbarRow: 14
             readonly property var borderless: QtObject {
@@ -1142,7 +1142,7 @@ QtObject {
         }
         readonly property var trafficLights: QtObject {
             readonly property int buttonSize: 16
-            readonly property int diameter: 14
+            readonly property int diameter: 13
             readonly property int spacing: 23
             readonly property int glyphSize: 7
             readonly property bool hoverReveal: true

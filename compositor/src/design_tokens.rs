@@ -274,7 +274,7 @@ pub mod component {
     }
     pub mod window_style {
         pub const TRAFFIC_LIGHT_SIZE: f32 = 16.0_f32;
-        pub const TRAFFIC_LIGHT_DIAMETER: f32 = 14.0_f32;
+        pub const TRAFFIC_LIGHT_DIAMETER: f32 = 13.0_f32;
         pub const TRAFFIC_LIGHT_SPACING: f32 = 23.0_f32;
         pub const LABELLED_TOOLBAR_ROW: f32 = 14.0_f32;
         pub mod borderless {
@@ -318,7 +318,7 @@ pub mod component {
     }
     pub mod traffic_lights {
         pub const BUTTON_SIZE: f32 = 16.0_f32;
-        pub const DIAMETER: f32 = 14.0_f32;
+        pub const DIAMETER: f32 = 13.0_f32;
         pub const SPACING: f32 = 23.0_f32;
         pub const GLYPH_SIZE: f32 = 7.0_f32;
         pub const HOVER_REVEAL: bool = true;
