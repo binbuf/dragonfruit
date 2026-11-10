@@ -48,6 +48,7 @@ PRESET_NAMES = (
     "controlCenterOuter",
     "controlCenterModule",
     "controlCenterExpanded",
+    "controlCenterExpandedOuter",
     "notificationBanner",
     "notificationStack",
     "notificationLowerPanel",

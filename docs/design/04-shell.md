@@ -1166,6 +1166,32 @@ only log — opening Settings directly on a pane is a follow-up
 ([STATUS.md](STATUS.md) G-10). See
 [adr/0061](adr/0061-control-center-toggles-and-a11y.md).
 
+**T235 status (measured grid and Edit Controls).** The panel is now the
+measured Control Center: a 292 pt module field (`4×64 + 3×12`), four 64 pt
+columns with 12 pt gaps, and modules spanning 1×1 (64×64), 2×1 (140×64), 2×2
+(140×140) and 4×1 (292×64). `shell/control-center/ControlCenterRegistry.qml`
+owns the 22-category catalogue, the measured 13-module default inventory
+(Wi-Fi, Bluetooth, Now Playing, AirDrop, Stage Manager, Screen Mirroring, Dark
+Mode, Capture Screen, Focus, Display, Sound, AirPlay Audio, Edit Controls) and
+the packing/pages/span rules. Expanded modules grow the outer panel: the Wi-Fi
+and Bluetooth sheets are 308 pt wide (the measured 308×87 and 308×64), and
+Focus, Screen Mirroring, Now Playing, Sound, Display and Battery have their own
+sheets. The outer plate stays α=0.265/tint=0.373, capsules 0.391/0.317, and the
+expanded outer plate is the separate measured `controlCenterExpandedOuter`
+preset (0.286/0.257); Control Center remains dark glass in Light. Edit
+Controls is the 736×900 catalogue with a 245 pt sidebar and 22 categories; it
+writes the same `quickSettings.modules`/`page2`/`page3`/`pageCount`/
+`activePage`/`menuBarOnly`/`spans`/`perDisplay` keys the live panel reads, all
+through the one settingsd client. Modules without a provider show an explicit
+unavailable state and reason (AirDrop, Stage Manager, Now Playing, Keyboard
+Brightness, Fast User Switching, ...). Menu-bar pinning is the catalogue's
+separate keyboard/AT-SPI target, not the grid drag. `make
+t235-control-center-capture` records the grid, sheets, pages, resize, absence
+and Edit Controls stills; `tst_controlcenter` pins the geometry, spans,
+materials, AX/keyboard roles and persistence. Pointer drag-to-menu-bar,
+per-display surfaces and the measured open/close/expand/edit motion remain
+`OPEN` (ADR 0254).
+
 **T-11.4a status.** The OSD exists: a volume or brightness change (the Control
 Center sliders, the menu-bar volume menu, or mute) presents a brief centered
 card on the active output — the design-system glyph, a level track, and the

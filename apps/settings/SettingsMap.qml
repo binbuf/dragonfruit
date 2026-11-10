@@ -486,12 +486,16 @@ QtObject {
                          "settingsd", "menu.control.hearing", "live-on-defaults"),
                 root.row("menuBarItems", qsTr("Quick Settings"), qsTr("Menu bar items"), "list",
                          "settingsd", "quickSettings.menuBarOnly", "live-on-defaults", "shipped"),
-                root.row("perDisplay", qsTr("Quick Settings"), qsTr("Show on all displays"), "info",
-                         "settingsd -> shell", "quickSettings.perDisplay", "disabled-with-reason", "shipped"),
+                root.row("pages", qsTr("Quick Settings"), qsTr("Pages"), "list",
+                         "settingsd", "quickSettings.pageCount", "live-on-defaults", "shipped"),
+                root.row("spans", qsTr("Quick Settings"), qsTr("Control sizes"), "list",
+                         "settingsd", "quickSettings.spans", "live-on-defaults", "shipped"),
+                root.row("perDisplay", qsTr("Quick Settings"), qsTr("Show on all displays"), "toggle",
+                         "settingsd -> shell", "quickSettings.perDisplay", "live-on-defaults", "shipped"),
                 root.row("otherModules", qsTr("Quick Settings"), qsTr("Other modules"), "list",
                          "settingsd", "menu.control.*", "live-on-defaults"),
                 root.row("addControls", qsTr("Quick Settings"), qsTr("Add controls..."), "sheet",
-                         "settingsd", "menu.control.*", "live-on-defaults")
+                         "settingsd", "quickSettings.spans", "live-on-defaults")
             ],
             "menu-bar": [
                 root.row("autoHide", qsTr("Menu Bar"), qsTr("Auto-hide menu bar"), "popup",

@@ -20,10 +20,9 @@ Item {
         Component { id: shellComponent; SettingsShell { } }
 
         readonly property var defaultModules: [
-            "wifi", "bluetooth", "storage", "focus", "volume", "brightness",
-            "dark", "keyboard", "mission-control", "battery", "lock-screen",
-            "menu-bar", "software-update", "users", "printers", "privacy",
-            "accessibility", "vpn"
+            "wifi", "bluetooth", "now-playing", "airdrop", "stage-manager",
+            "screen-mirroring", "dark", "capture-screen", "focus", "brightness",
+            "volume", "airplay-audio", "edit-controls"
         ]
 
         function init() {
@@ -54,9 +53,11 @@ Item {
             var shell = make();
             compare(shell.currentPaneId, "control-center");
             var pane = paneOf(shell);
-            compare(pane.moduleRepeater.count, 18);
+            // T235: the catalogue is the 37-module measured inventory; the
+            // default panel is the 13-module subset.
+            compare(pane.moduleRepeater.count, 37);
             compare(pane.menuBarRepeater.count, 6);
-            compare(Settings.values["quickSettings.modules"].length, 18);
+            compare(Settings.values["quickSettings.modules"].length, 13);
             compare(pane.moduleEnabled("wifi"), true);
         }
 
@@ -118,11 +119,14 @@ Item {
                     defaultModules.join(","));
         }
 
-        function test_per_display_row_is_disabled_with_a_reason() {
+        function test_per_display_row_writes_the_policy() {
             var shell = make();
             var pane = paneOf(shell);
-            compare(pane.perDisplayRow.enabled, false);
-            verify(pane.perDisplayRow.description.indexOf("T235") >= 0);
+            compare(pane.perDisplayRow.enabled, true);
+            verify(pane.perDisplayRow.description.indexOf("OPEN") >= 0);
+            compare(Settings.values["quickSettings.perDisplay"], false);
+            Settings.set("quickSettings.perDisplay", true);
+            compare(Settings.values["quickSettings.perDisplay"], true);
         }
 
         function test_external_module_change_converges() {

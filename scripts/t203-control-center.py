@@ -33,6 +33,7 @@ OUT = REPO / "docs" / "captures" / "t203-control-center.json"
 MD = REPO / "docs" / "captures" / "t203-control-center.md"
 CAPTURES = REPO / "docs" / "captures"
 QML = REPO / "shell" / "control-center" / "ControlCenter.qml"
+REGISTRY = REPO / "shell" / "control-center" / "ControlCenterRegistry.qml"
 CONTROLLER = REPO / "shell" / "src" / "shellcontroller.cpp"
 PROTOCOL = REPO / "shell" / "src" / "shellprotocol.cpp"
 LAYER = REPO / "compositor" / "src" / "shell" / "layer.rs"
@@ -187,23 +188,28 @@ def check(data: dict) -> tuple[list[str], dict]:
     qml = QML.read_text()
     for needle in ("materialRegions", "controlCenterOuter",
                    "controlCenterModule", "controlCenterExpanded",
-                   "expanded-wifi", "expanded-bluetooth", "wifiNetworkList",
-                   "bluetoothExpandedList"):
+                   "controlCenterExpandedOuter", "wifiSheet", "bluetoothSheet",
+                   "module-", "expanded-"):
         if needle not in qml:
             fail(f"ControlCenter.qml is missing {needle}")
+    # T235: module and expanded region keys are constructed from the live
+    # registry tile/expanded id, so the old literal list is a dynamic key.
+    if '"module-" + tile.id' not in qml and "'module-' + tile.id" not in qml:
+        fail("ControlCenter.qml does not declare the dynamic module region key")
+    if '"expanded-" + root.expandedId' not in qml:
+        fail("ControlCenter.qml does not declare the dynamic expanded region key")
     for needle in ("setControlCenterPanelRegions",
                    "clearControlCenterPanelRegions"):
         if needle not in CONTROLLER.read_text():
             fail(f"shellcontroller.cpp is missing {needle}")
         if needle not in PROTOCOL.read_text():
             fail(f"shellprotocol.cpp is missing {needle}")
-    module_keys = set(re.findall(r'"(module-[a-z-]+)"', qml))
-    report["module_keys"] = sorted(module_keys)
-    if len(module_keys) < 18:
-        fail(f"only {len(module_keys)} module region keys declared")
-    for key in ("module-wifi", "module-bluetooth", "module-clipboard"):
-        if f'"{key}"' not in qml:
-            fail(f"missing module region key {key}")
+    # The live registry supplies the module ids; the scene declares one
+    # `module-<id>` region per visible grid tile and one `expanded-<id>` sheet.
+    registry = REGISTRY.read_text()
+    if "defaultModules" not in registry:
+        fail("ControlCenterRegistry.qml is missing defaultModules")
+    report["module_keys"] = ["module-<tile.id>", "expanded-<expandedId>"]
 
     return errors, report
 

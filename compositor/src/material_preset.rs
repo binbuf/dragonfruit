@@ -16,7 +16,7 @@
 use crate::design_tokens::{glass, semantic};
 
 /// Every optical preset, in the token file's order.
-pub const PRESET_NAMES: [&str; 13] = [
+pub const PRESET_NAMES: [&str; 14] = [
     "dock",
     "menuBarVeil",
     "menuAttached",
@@ -26,6 +26,7 @@ pub const PRESET_NAMES: [&str; 13] = [
     "controlCenterOuter",
     "controlCenterModule",
     "controlCenterExpanded",
+    "controlCenterExpandedOuter",
     "notificationBanner",
     "notificationStack",
     "notificationLowerPanel",
@@ -105,6 +106,7 @@ pub enum Preset {
     ControlCenterOuter,
     ControlCenterModule,
     ControlCenterExpanded,
+    ControlCenterExpandedOuter,
     NotificationBanner,
     NotificationStack,
     NotificationLowerPanel,
@@ -112,7 +114,7 @@ pub enum Preset {
 }
 
 impl Preset {
-    pub const ALL: [Preset; 13] = [
+    pub const ALL: [Preset; 14] = [
         Preset::Dock,
         Preset::MenuBarVeil,
         Preset::MenuAttached,
@@ -122,6 +124,7 @@ impl Preset {
         Preset::ControlCenterOuter,
         Preset::ControlCenterModule,
         Preset::ControlCenterExpanded,
+        Preset::ControlCenterExpandedOuter,
         Preset::NotificationBanner,
         Preset::NotificationStack,
         Preset::NotificationLowerPanel,
@@ -139,6 +142,7 @@ impl Preset {
             Preset::ControlCenterOuter => "controlCenterOuter",
             Preset::ControlCenterModule => "controlCenterModule",
             Preset::ControlCenterExpanded => "controlCenterExpanded",
+            Preset::ControlCenterExpandedOuter => "controlCenterExpandedOuter",
             Preset::NotificationBanner => "notificationBanner",
             Preset::NotificationStack => "notificationStack",
             Preset::NotificationLowerPanel => "notificationLowerPanel",
@@ -195,6 +199,7 @@ fn token_role(preset: Preset) -> &'static str {
         Preset::ControlCenterOuter => p::control_center_outer::ROLE,
         Preset::ControlCenterModule => p::control_center_module::ROLE,
         Preset::ControlCenterExpanded => p::control_center_expanded::ROLE,
+        Preset::ControlCenterExpandedOuter => p::control_center_expanded_outer::ROLE,
         Preset::NotificationBanner => p::notification_banner::ROLE,
         Preset::NotificationStack => p::notification_stack::ROLE,
         Preset::NotificationLowerPanel => p::notification_lower_panel::ROLE,
@@ -215,6 +220,7 @@ fn token_render(preset: Preset) -> &'static str {
         Preset::ControlCenterOuter => p::control_center_outer::RENDER,
         Preset::ControlCenterModule => p::control_center_module::RENDER,
         Preset::ControlCenterExpanded => p::control_center_expanded::RENDER,
+        Preset::ControlCenterExpandedOuter => p::control_center_expanded_outer::RENDER,
         Preset::NotificationBanner => p::notification_banner::RENDER,
         Preset::NotificationStack => p::notification_stack::RENDER,
         Preset::NotificationLowerPanel => p::notification_lower_panel::RENDER,
@@ -235,6 +241,7 @@ fn token_slider(preset: Preset) -> &'static str {
         Preset::ControlCenterOuter => p::control_center_outer::SLIDER,
         Preset::ControlCenterModule => p::control_center_module::SLIDER,
         Preset::ControlCenterExpanded => p::control_center_expanded::SLIDER,
+        Preset::ControlCenterExpandedOuter => p::control_center_expanded_outer::SLIDER,
         Preset::NotificationBanner => p::notification_banner::SLIDER,
         Preset::NotificationStack => p::notification_stack::SLIDER,
         Preset::NotificationLowerPanel => p::notification_lower_panel::SLIDER,
@@ -509,6 +516,8 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
         (Preset::ControlCenterModule, Scheme::Dark) => cal!(control_center_module, dark),
         (Preset::ControlCenterExpanded, Scheme::Light) => cal!(control_center_expanded, light),
         (Preset::ControlCenterExpanded, Scheme::Dark) => cal!(control_center_expanded, dark),
+        (Preset::ControlCenterExpandedOuter, Scheme::Light) => cal!(control_center_expanded_outer, light),
+        (Preset::ControlCenterExpandedOuter, Scheme::Dark) => cal!(control_center_expanded_outer, dark),
         (Preset::NotificationBanner, Scheme::Light) => cal!(notification_banner, light),
         (Preset::NotificationBanner, Scheme::Dark) => cal!(notification_banner, dark),
         (Preset::NotificationStack, Scheme::Light) => cal!(notification_stack, light),

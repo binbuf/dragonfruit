@@ -33,7 +33,27 @@ Item {
         { id: "printers", label: qsTr("Printers") },
         { id: "privacy", label: qsTr("Privacy") },
         { id: "accessibility", label: qsTr("Accessibility") },
-        { id: "vpn", label: qsTr("VPN") }
+        { id: "vpn", label: qsTr("VPN") },
+        // T235: the measured catalogue's addable modules.
+        { id: "now-playing", label: qsTr("Now Playing") },
+        { id: "airdrop", label: qsTr("Nearby Transfer") },
+        { id: "stage-manager", label: qsTr("Stage") },
+        { id: "screen-mirroring", label: qsTr("Screen Casting") },
+        { id: "capture-screen", label: qsTr("Capture Screen") },
+        { id: "airplay-audio", label: qsTr("Audio Casting") },
+        { id: "edit-controls", label: qsTr("Edit Controls") },
+        { id: "keyboard-brightness", label: qsTr("Keyboard Brightness") },
+        { id: "fast-user-switching", label: qsTr("Fast User Switching") },
+        { id: "clock", label: qsTr("Clock") },
+        { id: "screenshot", label: qsTr("Screenshot") },
+        { id: "shortcuts", label: qsTr("Shortcuts") },
+        { id: "utilities", label: qsTr("Utilities") },
+        { id: "voice-memos", label: qsTr("Voice Memos") },
+        { id: "home-control", label: qsTr("Home") },
+        { id: "notes", label: qsTr("Notes") },
+        { id: "hearing-accessibility", label: qsTr("Hearing Accessibility") },
+        { id: "motor-accessibility", label: qsTr("Motor Accessibility") },
+        { id: "vision-accessibility", label: qsTr("Vision Accessibility") }
     ]
 
     // The items that can be kept in the menu bar only. Each maps to the
@@ -49,10 +69,9 @@ Item {
     ]
 
     readonly property var defaultModules: [
-        "wifi", "bluetooth", "storage", "focus", "volume", "brightness",
-        "dark", "keyboard", "mission-control", "battery", "lock-screen",
-        "menu-bar", "software-update", "users", "printers", "privacy",
-        "accessibility", "vpn"
+        "wifi", "bluetooth", "now-playing", "airdrop", "stage-manager",
+        "screen-mirroring", "dark", "capture-screen", "focus", "brightness",
+        "volume", "airplay-audio", "edit-controls"
     ]
 
     readonly property var modules: {
@@ -148,6 +167,12 @@ Item {
     function resetModules() {
         Settings.setList("quickSettings.modules", root.defaultModules.slice());
         Settings.setList("quickSettings.menuBarOnly", []);
+        Settings.setList("quickSettings.page2", []);
+        Settings.setList("quickSettings.page3", []);
+        Settings.set("quickSettings.pageCount", 1);
+        Settings.set("quickSettings.activePage", 0);
+        Settings.setList("quickSettings.spans", []);
+        Settings.set("quickSettings.perDisplay", false);
     }
 
     // Test surface (used by tst_settings_quick_settings.qml).
@@ -259,18 +284,20 @@ Item {
                 id: perDisplayRow
                 width: parent.width
                 label: qsTr("Show on all displays")
-                description: qsTr("The shell exposes one Quick Settings surface "
-                                  + "today; per-display panels land with T235.")
+                description: qsTr("Off shows Quick Settings on the active display "
+                                  + "only. The per-display surfaces themselves "
+                                  + "remain OPEN.")
                 settingsId: "perDisplay"
                 owner: "settingsd -> shell/control-center"
                 settingsKey: "quickSettings.perDisplay"
-                enabled: false
                 showSeparator: false
 
-                controlData: Text {
-                    text: qsTr("Active display only")
-                    color: Theme.color.textTertiary
-                    font.pixelSize: Theme.primitive.font.sizeSm
+                controlData: Toggle {
+                    text: ""
+                    accessibleName: qsTr("Show Quick Settings on all displays")
+                    checked: Settings.values["quickSettings.perDisplay"] === true
+                    onToggled: (checked) =>
+                        Settings.set("quickSettings.perDisplay", checked)
                 }
             }
         }

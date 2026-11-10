@@ -575,6 +575,8 @@ qt_add_executable(tst_controlcenter
 )
 target_link_libraries(tst_controlcenter PRIVATE
     Qt6::QuickTest
+    Qt6::Quick
+    Qt6::Gui
     dragonfruit-design-systemplugin
     dragonfruit-shell-control-centerplugin
 )

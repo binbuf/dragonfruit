@@ -226,7 +226,7 @@ TestCase {
     }
 
     function test_glass_presets_cover_the_required_surfaces() {
-        compare(Glass.presetNames.length, 17);
+        compare(Glass.presetNames.length, 18);
         for (var i = 0; i < Glass.presetNames.length; ++i) {
             var name = Glass.presetNames[i];
             verify(Theme.glass.presets[name] !== undefined, name + " preset exists");

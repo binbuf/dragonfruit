@@ -1092,6 +1092,53 @@ pub mod glass {
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }
+        pub mod control_center_expanded_outer {
+            pub const ROLE: &str = "popup";
+            pub const RENDER: &str = "sampled";
+            pub const SLIDER: &str = "none";
+            pub mod light {
+                pub const CONFIDENCE: &str = "measured";
+                pub const PROVENANCE: &str = "REFERENCE.md controlled Control Center expanded-outer fit alpha 0.286 / tint 0.257 (SURFACE-REVIEW 6.2/6.4); the sheet grows the outer panel behind the module";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.286_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.257_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.286_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.257_f32;
+                }
+                pub const BLUR: f32 = 8.0_f32;
+                pub const EDGE: f32 = 0.3_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.1_f32;
+                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 24.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "No independent dark expanded-outer fit; adapted 0.50/0.60 so the expanded plate stays darker than the module capsules and lighter than the collapsed dark outer plate";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.5_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.6_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.5_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.6_f32;
+                }
+                pub const BLUR: f32 = 8.0_f32;
+                pub const EDGE: f32 = 0.3_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 6.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.1_f32;
+                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 24.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
         pub mod control_center_module {
             pub const ROLE: &str = "popup";
             pub const RENDER: &str = "sampled";
