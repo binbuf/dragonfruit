@@ -829,6 +829,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onChromeBufferReleased);
     connect(m_protocol, &ShellProtocol::dmabufReleased, this,
             &ShellController::onChromeDmabufReleased);
+    connect(m_protocol, &ShellProtocol::dmabufReady, this,
+            &ShellController::onChromeDmabufReady);
     connect(m_protocol, &ShellProtocol::commitDeferred, this,
             &ShellController::onChromeCommitDeferred);
     connect(m_protocol, &ShellProtocol::materialStateChanged, this,
@@ -10105,9 +10107,10 @@ void ShellController::onChromeFramePresented(const QString &surface, uint32_t ti
         m_dockPopoverTraceId = 0;
         m_dockPopoverTraceCommitted = false;
     }
+    const QString paceLabel = chromePaceLabel(surface);
     for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
         ChromePace &pace = it.value();
-        if (pace.primaryLabel != surface || !pace.dirty || pace.scheduled)
+        if (pace.primaryLabel != paceLabel || !pace.dirty || pace.scheduled)
             continue;
         // The compositor presented the frame we asked to be paced. Render the
         // next QML state only now, not on a free-running timer.
@@ -10117,10 +10120,11 @@ void ShellController::onChromeFramePresented(const QString &surface, uint32_t ti
 
 void ShellController::onChromeBufferReleased(const QString &surface)
 {
+    const QString paceLabel = chromePaceLabel(surface);
     for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
         ChromePace &pace = it.value();
-        if (pace.primaryLabel != surface || !pace.dirty || pace.scheduled
-            || m_protocol->hasPendingFrame(surface))
+        if (pace.primaryLabel != paceLabel || !pace.dirty || pace.scheduled
+            || m_protocol->hasPendingFrame(pace.primaryLabel))
             continue;
         scheduleChromeRender(it.key());
     }
@@ -10170,11 +10174,33 @@ void ShellController::onChromeDmabufReleased(const QString &surface, int slot,
     }
 }
 
-void ShellController::onChromeCommitDeferred(const QString &surface)
+void ShellController::onChromeDmabufReady(const QString &surface, bool ok)
 {
+    // The asynchronous `zwp_linux_buffer_params_v1.create` completed. A
+    // popup shares its owner's scene/producer, so resolve the pace label the
+    // same way the release path does. `ok=false` still retries: the failed
+    // slot is then observed and the surface falls back to shm.
+    Q_UNUSED(ok);
+    const QString paceLabel = chromePaceLabel(surface);
     for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
         ChromePace &pace = it.value();
-        if (pace.primaryLabel != surface)
+        if (pace.primaryLabel != paceLabel)
+            continue;
+        pace.dirty = true;
+        if (!pace.scheduled && !m_protocol->hasPendingFrame(pace.primaryLabel))
+            scheduleChromeRender(it.key());
+        else if (m_chromeFallbackTimer && !m_chromeFallbackTimer->isActive())
+            m_chromeFallbackTimer->start();
+        return;
+    }
+}
+
+void ShellController::onChromeCommitDeferred(const QString &surface)
+{
+    const QString paceLabel = chromePaceLabel(surface);
+    for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
+        ChromePace &pace = it.value();
+        if (pace.primaryLabel != paceLabel)
             continue;
         pace.dirty = true;
         if (!pace.scheduled && !m_protocol->hasPendingFrame(pace.primaryLabel))
@@ -10291,8 +10317,11 @@ ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
 }
 
 bool ShellController::commitChromeScene(QQuickWindow *window,
-                                        const QList<ChromeSceneTarget> &targets)
+                                        const QList<ChromeSceneTarget> &targets,
+                                        bool *deferred)
 {
+    if (deferred)
+        *deferred = false;
     if (!window || !m_protocol || targets.isEmpty())
         return false;
 
@@ -10459,6 +10488,8 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
         }
     }
 
+    if (deferred)
+        *deferred = !deferredTargets.isEmpty();
     return anyCommitted && deferredTargets.isEmpty();
 }
 
@@ -10697,7 +10728,8 @@ void ShellController::renderDock()
     if (m_dockPopoverTraceId != 0)
         ChromeStats::instance().traceEvent(m_dockPopoverTraceId,
                                            QStringLiteral("commit-begin"));
-    const bool committed = commitChromeScene(m_dockWindow, targets);
+    bool deferred = false;
+    const bool committed = commitChromeScene(m_dockWindow, targets, &deferred);
     if (m_dockPopoverTraceId != 0) {
         ChromeStats::instance().traceEvent(
             m_dockPopoverTraceId, QStringLiteral("commit-done"),
@@ -10709,7 +10741,7 @@ void ShellController::renderDock()
         // popover rect updates must not end the trace.
         m_dockPopoverTraceCommitted = committed && hasPopover;
     }
-    if (!committed)
+    if (!committed && !deferred)
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 }
 

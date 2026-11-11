@@ -892,6 +892,10 @@ signals:
     // T186c: a dmabuf ring slot was returned by `wl_buffer.release`. The
     // producer must not render into `slot` again until this fires.
     void dmabufReleased(const QString &surface, int slot, quint64 serial);
+    // The asynchronous `zwp_linux_buffer_params_v1.create` completed (`ok`)
+    // or failed. The controller retries the deferred commit; no roundtrip is
+    // performed on the GUI thread.
+    void dmabufReady(const QString &surface, bool ok);
     // A commit could not acquire a pooled buffer (all still busy). The
     // controller keeps the surface dirty and retries on `bufferReleased`.
     void commitDeferred(const QString &surface);
@@ -1077,8 +1081,12 @@ private:
                        const QSize &size);
     void destroyShmSlot(ShellSurfaceBuffer *buffer, int slot, bool destroyBuffer = true);
     // T-21.1d dmabuf buffer lifecycle (one reusable buffer per ring slot).
-    bool createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *buffer, int slot,
-                          const ChromeDmabufFrame &frame, QString *reason);
+    // `Deferred` means the asynchronous `created`/`failed` event is still
+    // pending; the controller retries when `dmabufReady` fires.
+    DmabufCommitResult createDmabufSlot(wl_surface *surface,
+                                        ShellSurfaceBuffer *buffer, int slot,
+                                        const ChromeDmabufFrame &frame,
+                                        QString *reason);
     void destroyDmabufSlot(ShellSurfaceBuffer *buffer, int slot,
                            bool destroyBuffer = true);
     void applyDmabufScale(wl_surface *surface, const QSize &logicalSize,
