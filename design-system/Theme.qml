@@ -1529,29 +1529,42 @@ QtObject {
         readonly property var appsDrawer: QtObject {
             readonly property int contentPadding: 64
             readonly property int panelPadding: 20
-            readonly property int panelPaddingVertical: 20
+            readonly property int panelPaddingVertical: 16
             readonly property int panelRadius: 28
+            readonly property real panelBorderOpacity: 0.32
+            readonly property real panelHighlightOpacity: 0.42
+            readonly property real panelHighlightOpacityDark: 0.2
+            readonly property real panelShadeOpacity: 0.06
+            readonly property int shadowBlur: 40
+            readonly property real shadowOpacity: 0.22
+            readonly property int shadowOffsetY: 6
             readonly property int searchWidth: 360
             readonly property int searchMaxWidth: 640
             readonly property int searchHeight: 58
-            readonly property int searchRadius: 14
-            readonly property int searchPaddingH: 14
-            readonly property int searchIconSize: 18
-            readonly property real searchFillOpacity: 0.55
-            readonly property real searchBorderOpacity: 0.55
+            readonly property int searchRadius: 16
+            readonly property int searchPaddingH: 16
+            readonly property int searchIconSize: 19
+            readonly property int searchFontSize: 16
+            readonly property real searchFillOpacity: 0.46
+            readonly property real searchBorderOpacity: 0.14
+            readonly property real searchHighlightOpacity: 0.22
+            readonly property real searchHighlightOpacityDark: 0.08
             readonly property int searchButtonSize: 34
-            readonly property int searchButtonRadius: 10
+            readonly property int searchButtonRadius: 8
             readonly property int searchButtonGap: 10
-            readonly property int searchButtonIconSize: 17
-            readonly property real searchButtonFillOpacity: 0.16
-            readonly property real searchButtonHoverOpacity: 0.28
+            readonly property int searchButtonIconSize: 18
+            readonly property real searchButtonFillOpacity: 0.0
+            readonly property real searchButtonHoverOpacity: 0.1
+            readonly property real searchButtonBorderOpacity: 0.0
             readonly property int pillGap: 8
             readonly property int chipHeight: 26
-            readonly property int chipPaddingH: 12
+            readonly property int chipPaddingH: 16
             readonly property int chipRadius: 999
-            readonly property real chipFillOpacity: 0.14
-            readonly property real chipHoverOpacity: 0.24
-            readonly property real chipSelectedOpacity: 0.86
+            readonly property int chipFontSize: 13
+            readonly property real chipFillOpacity: 0.06
+            readonly property real chipHoverOpacity: 0.12
+            readonly property real chipSelectedOpacity: 0.92
+            readonly property real chipBorderOpacity: 0.1
             readonly property int tileSize: 77
             readonly property int tileWidth: 115
             readonly property int tileHeight: 95
@@ -1562,9 +1575,10 @@ QtObject {
             readonly property int gridRowGap: 7
             readonly property int labelSize: 13
             readonly property int labelHeight: 18
-            readonly property real scrimOpacity: 0.3
-            readonly property real panelOpacity: 0.72
-            readonly property real panelFallbackOpacity: 0.86
+            readonly property real scrimOpacity: 0.26
+            readonly property real panelOpacity: 0.58
+            readonly property real panelOpacityDark: 0.68
+            readonly property real panelFallbackOpacity: 0.9
             readonly property real fallbackGlyphRatio: 0.52
             readonly property real fallbackFillOpacity: 0.12
             readonly property real fallbackBorderOpacity: 0.4

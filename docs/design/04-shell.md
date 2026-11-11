@@ -915,11 +915,18 @@ translucent category capsule chips (default `All`), and the measured
 pitch). The column count is capped at seven (the reference width) and the
 viewport at five rows; it drops to fewer columns on a narrower output and
 scrolls when the corpus is longer. The centered card is a translucent frosted
-plate (0.72 alpha on the sampled path, a 0.86 milky plate on fallback) with a
-28 pt radius, a soft floating shadow and a subtle light falloff, using 20px
-(`component.appsDrawer.panelPadding`) side padding and 20px
-(`panelPaddingVertical`) top/bottom padding, clamped to the output. Vertical
-wheel input scrolls the grid from anywhere over the card, including the search
+plate (0.58 alpha in light and 0.68 in dark on the sampled path, a 0.90 milky
+plate on fallback) with a 28 pt radius, a soft floating shadow, a 1 px top
+specular line and a subtle light falloff, using 20px
+(`component.appsDrawer.panelPadding`) side padding and 16px
+(`panelPaddingVertical`) top/bottom padding, clamped to the output. The
+search field is 58 pt high with 16 pt text, a 16 pt corner radius and an inner
+top sheen; the category capsules are 26 pt high, 13 pt labels with 16 px
+horizontal padding, and the selected capsule is the light surface plate
+(white in light, the elevated dark surface in dark) rather than an inverted
+ink pill. The Back/More controls are bare glyphs with a hover/focus capsule.
+Vertical wheel input scrolls the grid from anywhere over the card, including
+the search
 and chip rows; horizontal wheel input scrolls the chips. The list is
 built by the pure `buildAppsDrawerList` helper (`shell/src/appsdrawer.{h,cpp}`),
 which drops `noDisplay`/non-launchable records, dedupes by desktop id, maps the

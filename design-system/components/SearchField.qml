@@ -26,6 +26,9 @@ FocusScope {
     property real iconSize: Theme.controls.searchField.iconSize
     property real paddingH: Theme.controls.searchField.paddingH
     property real fontSize: Theme.controls.button.fontSize
+    // A soft top sheen for a field that sits on a glass card (the Applications
+    // drawer). 0 keeps the flat field used by every other host.
+    property real fieldHighlight: 0.0
 
     signal accepted(string text)
     signal cleared()
@@ -52,6 +55,30 @@ FocusScope {
         border.width: Theme.controls.window.borderWidth
         border.color: root.fieldBorder
         antialiasing: true
+
+        // The inner top sheen reads as the lit face of the glass field. It
+        // sits inside the fill, below the icon and text, so it never touches
+        // the glyphs.
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: Math.max(0, parent.radius - 1)
+            visible: root.fieldHighlight > 0
+            gradient: Gradient {
+                GradientStop {
+                    position: 0.0
+                    color: Qt.rgba(1, 1, 1, root.fieldHighlight)
+                }
+                GradientStop {
+                    position: 0.42
+                    color: Qt.rgba(1, 1, 1, 0)
+                }
+                GradientStop {
+                    position: 1.0
+                    color: Qt.rgba(1, 1, 1, 0)
+                }
+            }
+        }
 
         Behavior on border.color {
             ColorAnimation {
