@@ -569,11 +569,12 @@ token per role and scheme — the shader holds no literal value. A driver that
 refuses the glass shader keeps the plain blurred compose. The QML surfaces stay
 the **complement**: the menu bar already uses `material.chromeOpacity` in its
 fill (T-20.1), and the Applications card's fill uses
-`controls.appsDrawer.panelOpacity` (0.72) so the compositor material reads
-through it while the card stays a solid frosted surface on backends without
-the GPU scene-blur pass. On a DRM output outside the supported boundary
-(multi-GPU, rotated) the compositor draws the token tint/feather fallback and
-reports `blur_active=0`; QML then uses its milky complement.
+`controls.appsDrawer.panelOpacity` / `panelOpacityDark` (0.58 light / 0.68
+dark) so the compositor material reads through it while the card stays a solid
+frosted surface on backends without the GPU scene-blur pass. On a DRM output
+outside the supported boundary (multi-GPU, rotated) the compositor draws the
+token tint/feather fallback and reports `blur_active=0`; QML then uses its
+milky complement.
 
 The chrome **rollout** landed in **T-20.3**
 ([ADR 0183](adr/0183-chrome-material-rollout.md)). Every chrome namespace

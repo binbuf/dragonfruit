@@ -108,3 +108,22 @@ Spotlight-equivalent search pane) will build on them:
   never steal focus from the field mid-typing. Escape dismisses outright (the
   next open starts clean); Return on a filtered list opens the top hit when no
   arrow selection is active.
+
+## Visual refinement (2026-11-10)
+
+The card now follows the measured popover transparency more closely instead of
+the earlier 0.72 readability compromise: `panelOpacity` is 0.58 in light and
+`panelOpacityDark` is 0.68 in dark on the sampled path, with the 0.90 milky
+plate kept for the no-blur fallback. The card gains the reference's 1 px top
+specular line and a tighter 16 pt vertical inset; its shadow uses the drawer's
+own 40 pt / 0.22 / 6 pt offset instead of the generic overlay elevation.
+
+The top row is unchanged in geometry (34 pt Back, 58 pt field, 34 pt More),
+but the field now uses 16 pt type, a 16 pt radius and an inner top sheen, and
+the Back/More controls are bare glyphs whose capsule appears only on
+hover/focus. Category capsules keep the measured 26 pt height but use 13 pt
+labels and 16 px horizontal padding (the measured chip widths imply 16 px, not
+12 px), and the selected capsule is the light surface plate — white in light,
+the elevated dark surface in dark — rather than an inverted ink pill. The
+freedesktop category set, list helper, launch path, and keyboard model are
+unchanged.

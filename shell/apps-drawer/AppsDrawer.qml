@@ -172,6 +172,8 @@ Item {
         Theme.controls.appsDrawer.searchButtonGap
     readonly property real searchHeight: Theme.controls.appsDrawer.searchHeight
     readonly property real chipHeight: Theme.controls.appsDrawer.chipHeight
+    readonly property real searchChipGap: Theme.primitive.spacing.md
+    readonly property real chipGridGap: Theme.primitive.spacing.lg
     readonly property real panelWidth: Math.max(0, Math.min(
         Math.max(root.gridMaxWidth, Theme.controls.appsDrawer.searchMaxWidth)
             + 2 * root.panelPadding,
@@ -209,8 +211,8 @@ Item {
         Math.min(root.gridContentHeight, root.gridMaxHeight)
     readonly property real panelNaturalHeight:
         root.panelPaddingV + root.searchHeight
-        + Theme.primitive.spacing.lg + root.chipHeight
-        + Theme.primitive.spacing.xl + root.gridNaturalHeight
+        + root.searchChipGap + root.chipHeight
+        + root.chipGridGap + root.gridNaturalHeight
         + root.panelPaddingV
     readonly property real panelMaxHeight:
         Math.max(0, root.height - 2 * Theme.controls.appsDrawer.contentPadding / 2)
@@ -435,6 +437,9 @@ Item {
         anchors.fill: panel
         level: "overlay"
         radius: panel.radius
+        blur: Theme.controls.appsDrawer.shadowBlur
+        shadowOpacity: Theme.controls.appsDrawer.shadowOpacity
+        offset: Qt.point(0, Theme.controls.appsDrawer.shadowOffsetY)
         opacity: root.reveal
     }
 
@@ -459,7 +464,8 @@ Item {
         border.color: Glass.increaseContrast
                       ? Theme.color.textPrimary
                       : Qt.rgba(Theme.color.dockRim.r, Theme.color.dockRim.g,
-                                Theme.color.dockRim.b, 0.45)
+                                Theme.color.dockRim.b,
+                                Theme.controls.appsDrawer.panelBorderOpacity)
         antialiasing: true
 
         // A soft vertical light falloff: the top of the sheet catches a little
@@ -472,19 +478,53 @@ Item {
                 GradientStop {
                     position: 0.0
                     color: Qt.rgba(Theme.color.dockRim.r, Theme.color.dockRim.g,
-                                   Theme.color.dockRim.b, 0.12)
+                                   Theme.color.dockRim.b,
+                                   Theme.controls.appsDrawer.panelShadeOpacity * 2)
                 }
                 GradientStop {
-                    position: 0.3
+                    position: 0.32
                     color: Qt.rgba(Theme.color.dockRim.r, Theme.color.dockRim.g,
-                                   Theme.color.dockRim.b, 0.02)
+                                   Theme.color.dockRim.b, 0.0)
                 }
                 GradientStop {
                     position: 1.0
                     color: Qt.rgba(Theme.color.shadowColor.r,
                                    Theme.color.shadowColor.g,
-                                   Theme.color.shadowColor.b, 0.05)
+                                   Theme.color.shadowColor.b,
+                                   Theme.controls.appsDrawer.panelShadeOpacity)
                 }
+            }
+        }
+
+        // The 1 px specular line along the straight part of the top edge. The
+        // compositor paints the real glass rim; this keeps the same reading on
+        // the QML fallback and adds the crisp inner highlight a large glass
+        // card has in the reference. It spans only between the top corner
+        // arcs, so it never floats outside the rounded shape.
+        Rectangle {
+            objectName: "appsDrawerTopSpecular"
+            anchors.top: parent.top
+            anchors.topMargin: 1
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.max(0, parent.width - 2 * parent.radius)
+            height: 1
+            opacity: root.reveal
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop {
+                    position: 0.18
+                    color: Qt.rgba(1, 1, 1, Theme.dark
+                                      ? Theme.controls.appsDrawer.panelHighlightOpacityDark
+                                      : Theme.controls.appsDrawer.panelHighlightOpacity)
+                }
+                GradientStop {
+                    position: 0.82
+                    color: Qt.rgba(1, 1, 1, Theme.dark
+                                      ? Theme.controls.appsDrawer.panelHighlightOpacityDark
+                                      : Theme.controls.appsDrawer.panelHighlightOpacity)
+                }
+                GradientStop { position: 1.0; color: "transparent" }
             }
         }
 
@@ -567,13 +607,16 @@ Item {
                              ? Qt.rgba(Theme.color.focusRing.r,
                                        Theme.color.focusRing.g,
                                        Theme.color.focusRing.b, 0.75)
-                             : Qt.rgba(Theme.color.border.r,
-                                       Theme.color.border.g,
-                                       Theme.color.border.b,
+                             : Qt.rgba(Theme.color.textPrimary.r,
+                                       Theme.color.textPrimary.g,
+                                       Theme.color.textPrimary.b,
                                        Theme.controls.appsDrawer.searchBorderOpacity)
                 iconSize: Theme.controls.appsDrawer.searchIconSize
                 paddingH: Theme.controls.appsDrawer.searchPaddingH
-                fontSize: Theme.primitive.font.sizeLg
+                fontSize: Theme.controls.appsDrawer.searchFontSize
+                fieldHighlight: Theme.dark
+                                ? Theme.controls.appsDrawer.searchHighlightOpacityDark
+                                : Theme.controls.appsDrawer.searchHighlightOpacity
                 placeholderText: qsTr("Applications")
                 onTextChanged: root.query = text
                 // Return launches the selected tile from the text field; Escape
@@ -623,7 +666,7 @@ Item {
             id: pillScroller
             objectName: "appsDrawerPills"
             anchors.top: searchRow.bottom
-            anchors.topMargin: Theme.primitive.spacing.lg
+            anchors.topMargin: root.searchChipGap
             anchors.horizontalCenter: parent.horizontalCenter
             width: root.panelWidth - 2 * root.panelPadding
             height: root.chipHeight
@@ -681,12 +724,19 @@ Item {
                         }
 
                         Rectangle {
+                            objectName: "appsDrawerChipFill"
                             anchors.fill: parent
                             radius: Theme.controls.appsDrawer.chipRadius
+                            // The selected capsule is the same light plate as
+                            // the reference's active chip (white in light, the
+                            // elevated dark surface in dark), not an inverted
+                            // ink pill. Unselected chips are a faint glass
+                            // wash so the labels, not the capsules, carry the
+                            // category row.
                             color: chip.current
-                                ? Qt.rgba(Theme.color.textPrimary.r,
-                                          Theme.color.textPrimary.g,
-                                          Theme.color.textPrimary.b,
+                                ? Qt.rgba(Theme.color.surface.r,
+                                          Theme.color.surface.g,
+                                          Theme.color.surface.b,
                                           Theme.controls.appsDrawer.chipSelectedOpacity)
                                 : Qt.rgba(Theme.color.textPrimary.r,
                                           Theme.color.textPrimary.g,
@@ -698,7 +748,8 @@ Item {
                                           ? 0 : Theme.controls.window.borderWidth
                             border.color: Qt.rgba(Theme.color.textPrimary.r,
                                                   Theme.color.textPrimary.g,
-                                                  Theme.color.textPrimary.b, 0.18)
+                                                  Theme.color.textPrimary.b,
+                                                  Theme.controls.appsDrawer.chipBorderOpacity)
                             antialiasing: true
 
                             Behavior on color {
@@ -713,14 +764,24 @@ Item {
 
                         Text {
                             id: chipLabel
+                            objectName: "appsDrawerChipLabel"
                             anchors.centerIn: parent
                             text: chip.modelData.label
-                            color: chip.current ? Theme.color.surface
+                            color: chip.current ? Theme.color.textPrimary
                                                 : Theme.color.textSecondary
-                            font.pixelSize: Theme.primitive.font.sizeSm
+                            font.pixelSize: Theme.controls.appsDrawer.chipFontSize
                             font.weight: chip.current
                                          ? Theme.primitive.font.weightMedium
                                          : Theme.primitive.font.weightRegular
+
+                            Behavior on color {
+                                enabled: !Theme.reducedMotion
+                                ColorAnimation {
+                                    duration: Theme.motion.hover.duration
+                                    easing.type: Easing.Bezier
+                                    easing.bezierCurve: Theme.motion.hover.curve
+                                }
+                            }
                         }
 
                         HoverHandler { id: chipHover }
@@ -768,7 +829,7 @@ Item {
             id: gridFlick
             objectName: "appsDrawerGrid"
             anchors.top: pillScroller.bottom
-            anchors.topMargin: Theme.primitive.spacing.xl
+            anchors.topMargin: root.chipGridGap
             anchors.bottom: parent.bottom
             anchors.bottomMargin: root.panelPaddingV
             anchors.horizontalCenter: parent.horizontalCenter
@@ -1164,9 +1225,10 @@ Item {
     Accessible.role: Accessible.List
     Accessible.name: qsTr("Applications")
 
-    // The measured 34 pt circular chrome button used by the drawer's Back and
-    // More affordances. It is a translucent control on the card rather than a
-    // solid toolbar button, so the glass reads through it.
+    // The measured 34 pt chrome button used by the drawer's Back and More
+    // affordances. The reference controls are bare glyphs on the card: the
+    // capsule appears only on hover/focus, so the search field and the glass
+    // stay the top row's visual anchors.
     component DrawerIconButton: Item {
         id: button
 
@@ -1187,13 +1249,15 @@ Item {
             radius: Theme.controls.appsDrawer.searchButtonRadius
             color: Qt.rgba(Theme.color.textPrimary.r, Theme.color.textPrimary.g,
                            Theme.color.textPrimary.b,
-                           button.hovered
+                           button.hovered || button.activeFocus
                            ? Theme.controls.appsDrawer.searchButtonHoverOpacity
                            : Theme.controls.appsDrawer.searchButtonFillOpacity)
-            border.width: Theme.controls.window.borderWidth
+            border.width: Theme.controls.appsDrawer.searchButtonBorderOpacity > 0
+                          ? Theme.controls.window.borderWidth : 0
             border.color: Qt.rgba(Theme.color.textPrimary.r,
                                   Theme.color.textPrimary.g,
-                                  Theme.color.textPrimary.b, 0.14)
+                                  Theme.color.textPrimary.b,
+                                  Theme.controls.appsDrawer.searchButtonBorderOpacity)
             antialiasing: true
 
             Behavior on color {
@@ -1210,7 +1274,17 @@ Item {
             anchors.centerIn: parent
             name: button.icon
             size: Theme.controls.appsDrawer.searchButtonIconSize
-            color: Theme.color.textSecondary
+            color: button.hovered || button.activeFocus
+                   ? Theme.color.textPrimary : Theme.color.textSecondary
+
+            Behavior on color {
+                enabled: !Theme.reducedMotion
+                ColorAnimation {
+                    duration: Theme.motion.hover.duration
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.motion.hover.curve
+                }
+            }
         }
 
         HoverHandler { id: buttonHover }

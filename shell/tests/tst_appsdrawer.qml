@@ -310,7 +310,7 @@ Item {
                     + " (content " + grid.contentHeight + ")");
             verify(grid.contentHeight > grid.height);
 
-            var shortDock = make({ apps: many, height: 720 });
+            var shortDock = make({ apps: many, height: 640 });
             var shortGrid = findChild(shortDock, "appsDrawerGrid");
             verify(shortGrid.height < shortDock.gridMaxHeight);
             verify(shortGrid.contentHeight > shortGrid.height);
@@ -343,6 +343,59 @@ Item {
             // control on the glass card.
             compare(findChild(drawer, "appsDrawerTopSeparator"), null);
             compare(findChild(drawer, "appsDrawerPillsSeparator"), null);
+            // The field carries the measured larger type and the glass sheen.
+            compare(search.fontSize,
+                    Theme.controls.appsDrawer.searchFontSize);
+            compare(search.fieldHighlight,
+                    Theme.controls.appsDrawer.searchHighlightOpacity);
+            // The card's specular top edge is part of the glass treatment.
+            verify(findChild(drawer, "appsDrawerTopSpecular") !== null);
+        }
+
+        // The category row is a set of translucent capsules: the selected
+        // chip is the light plate (white in light, the elevated dark surface
+        // in dark) with primary ink, never an inverted black/white pill.
+        function test_category_chips_use_the_reference_selected_plate() {
+            var previousReducedMotion = Theme.reducedMotion;
+            var previousDark = Theme.dark;
+            Theme.reducedMotion = true;
+            Theme.dark = false;
+            var drawer = make({ apps: sampleApps });
+            var row = findChild(drawer, "appsDrawerCategoryControl");
+            verify(row !== null);
+            var allChip = null;
+            for (var c = 0; c < row.children.length; ++c) {
+                var candidate = row.children[c];
+                if (candidate.modelData !== undefined
+                        && candidate.modelData.key === "all") {
+                    allChip = candidate;
+                }
+            }
+            verify(allChip !== null);
+            var allFill = findChild(allChip, "appsDrawerChipFill");
+            var allLabel = findChild(allChip, "appsDrawerChipLabel");
+            compareTranslucentColor(allFill.color,
+                                    Qt.rgba(Theme.color.surface.r,
+                                            Theme.color.surface.g,
+                                            Theme.color.surface.b,
+                                            Theme.controls.appsDrawer.chipSelectedOpacity));
+            compare(allLabel.color, Theme.color.textPrimary);
+            compare(allLabel.font.pixelSize,
+                    Theme.controls.appsDrawer.chipFontSize);
+
+            drawer.category = "utilities";
+            waitForRendering(stage);
+            // The previously selected All chip is now an unselected glass
+            // capsule: faint ink fill and secondary label.
+            compareTranslucentColor(allFill.color,
+                                    Qt.rgba(Theme.color.textPrimary.r,
+                                            Theme.color.textPrimary.g,
+                                            Theme.color.textPrimary.b,
+                                            Theme.controls.appsDrawer.chipFillOpacity));
+            compare(allLabel.color, Theme.color.textSecondary);
+
+            Theme.reducedMotion = previousReducedMotion;
+            Theme.dark = previousDark;
         }
 
         // Opening the drawer puts active focus in the search field, so the
@@ -525,6 +578,16 @@ Item {
             fuzzyCompare(actual.a, expected.a, 0.001, label + " alpha");
         }
 
+        // QML color properties round their channels to 8 bits; a token alpha
+        // such as 0.06 lands on 15/255. Use this looser comparison only where
+        // the expected colour is a low-alpha translucent fill.
+        function compareTranslucentColor(actual, expected, label) {
+            fuzzyCompare(actual.r, expected.r, 0.01, label + " red");
+            fuzzyCompare(actual.g, expected.g, 0.01, label + " green");
+            fuzzyCompare(actual.b, expected.b, 0.01, label + " blue");
+            fuzzyCompare(actual.a, expected.a, 0.01, label + " alpha");
+        }
+
         function test_drawer_role_material_covers_the_applications_drawer() {
             // T-21.2c: the Applications drawer is the transient Drawer role.
             // It keeps its scrim and tile grid; the card fill switches to the
@@ -556,6 +619,16 @@ Item {
                                  state.label);
                     verify(panel.color.a >= 0.85 || state.blur,
                            state.label + " fallback must read as a plate");
+                    if (state.blur && state.tier === 0) {
+                        // The card is a light glass plate in light mode and a
+                        // slightly stronger tint in dark mode, from the two
+                        // per-scheme opacity tokens.
+                        var expected = scheme === 1
+                            ? Theme.controls.appsDrawer.panelOpacityDark
+                            : Theme.controls.appsDrawer.panelOpacity;
+                        fuzzyCompare(panel.color.a, expected, 0.02,
+                                     state.label + " card opacity");
+                    }
                 }
             }
             Theme.dark = false;

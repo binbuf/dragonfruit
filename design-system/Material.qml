@@ -148,12 +148,20 @@ QtObject {
 
     // The Applications drawer's card keeps its own translucent surface tone on
     // the sampled path; without the pass it takes the same milky plate as the
-    // popup family.
+    // popup family. The light card is a large browsing surface and reads a
+    // little clearer than a menu; the dark card needs a little more tint to
+    // keep 13 pt labels legible over a bright wallpaper.
+    function drawerOpacity() {
+        return Theme.dark ? Theme.controls.appsDrawer.panelOpacityDark
+                          : Theme.controls.appsDrawer.panelOpacity;
+    }
+
     function drawerFill(blurActive, tier, fallback) {
+        var cardOpacity = drawerOpacity();
         if (Glass.rollout !== "replacement") {
             return blurActive
                 ? Qt.rgba(Theme.color.surface.r, Theme.color.surface.g,
-                          Theme.color.surface.b, Theme.controls.appsDrawer.panelOpacity)
+                          Theme.color.surface.b, cardOpacity)
                 : Qt.rgba(Theme.color.chromeFallbackFill.r, Theme.color.chromeFallbackFill.g,
                           Theme.color.chromeFallbackFill.b,
                           Theme.controls.appsDrawer.panelFallbackOpacity);
@@ -166,7 +174,7 @@ QtObject {
         if (resolved.renderMode === "sampled-glass") {
             var baseline = Theme.glass.presets.menuDetached[
                 Theme.dark ? "dark" : "light"].calibration.neutralAlpha;
-            alpha = Math.max(0, Math.min(1, 1 - (1 - Theme.controls.appsDrawer.panelOpacity)
+            alpha = Math.max(0, Math.min(1, 1 - (1 - cardOpacity)
                                        * (1 - alpha) / (1 - baseline)));
         }
         return Qt.rgba(resolved.tint, resolved.tint, resolved.tint, alpha);
