@@ -3,7 +3,9 @@
 
 pub mod drm;
 pub mod headless;
+pub mod host_monitor;
 pub mod nested;
+pub mod present;
 pub mod synthetic_output;
 
 use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};

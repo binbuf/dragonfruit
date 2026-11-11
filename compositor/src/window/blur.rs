@@ -764,7 +764,10 @@ impl GlassSpec {
             ),
             Uniform::new(LENS_FALLOFF_UNIFORM, self.lens_width() * sx),
             Uniform::new(TINT_SCALE_UNIFORM, TINT_ADAPT_SCALE),
-            Uniform::new(GLASS_FLAT_BAND_UNIFORM, if self.flat_band { 1.0 } else { 0.0 }),
+            Uniform::new(
+                GLASS_FLAT_BAND_UNIFORM,
+                if self.flat_band { 1.0 } else { 0.0 },
+            ),
             Uniform::new(GLASS_FLAT_ALPHA_UNIFORM, self.flat_alpha),
             Uniform::new(GLASS_RIM_PEAK_UNIFORM, self.rim_peak),
             Uniform::new(GLASS_RIM_HALF_UNIFORM, self.rim_half_width * sx),
@@ -1225,7 +1228,16 @@ impl<R: TextureRenderer> RenderElement<R> for SceneTextureElement {
         _opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), R::Error> {
         let src = Rectangle::from_size(self.texture_size.to_f64());
-        R::draw_texture_from_to(frame, &self.texture, src, self.geometry, damage, None, &[], 1.0)
+        R::draw_texture_from_to(
+            frame,
+            &self.texture,
+            src,
+            self.geometry,
+            damage,
+            None,
+            &[],
+            1.0,
+        )
     }
 }
 
@@ -1421,13 +1433,7 @@ mod tests {
         // At scale 2 the logical tokens become physical pixels; the corner
         // radius is scaled with them so the SDF is device-pixel consistent.
         let panel = Rectangle::new((0, 0).into(), (800, 28).into());
-        let uniforms = spec.uniforms(
-            Size::from((1600, 56)),
-            20,
-            Scale::from(2.0),
-            panel,
-            panel,
-        );
+        let uniforms = spec.uniforms(Size::from((1600, 56)), 20, Scale::from(2.0), panel, panel);
         assert_eq!(uniforms.len(), 20);
         assert_eq!(
             uniforms[0].value,
@@ -1453,8 +1459,14 @@ mod tests {
     #[test]
     fn the_dock_blur_spec_keeps_its_measured_multi_scale_levels() {
         let spec = BlurSpec::for_dock(3.86, 27.0);
-        assert_eq!(spec.iterations, crate::window::dock_optics::DOCK_BLUR_ITERATIONS);
-        assert_eq!(spec.sharp_weights, Some(crate::window::dock_optics::DOCK_SCALE_WEIGHTS));
+        assert_eq!(
+            spec.iterations,
+            crate::window::dock_optics::DOCK_BLUR_ITERATIONS
+        );
+        assert_eq!(
+            spec.sharp_weights,
+            Some(crate::window::dock_optics::DOCK_SCALE_WEIGHTS)
+        );
         // A degrade tier scales geometry but must not re-derive the chain and
         // drop the broad level.
         let reduced = spec.scaled(0.5);
@@ -1480,13 +1492,7 @@ mod tests {
         assert_eq!(spec.corner_distance, optics.corner_lens_distance);
         assert_eq!(spec.tint_color, [optics.tint; 3]);
         let panel = Rectangle::new((10, 20).into(), (400, 80).into());
-        let uniforms = spec.uniforms(
-            Size::from((800, 160)),
-            27,
-            Scale::from(2.0),
-            panel,
-            panel,
-        );
+        let uniforms = spec.uniforms(Size::from((800, 160)), 27, Scale::from(2.0), panel, panel);
         // The flat-band switch is set and the corner lens is in physical px.
         assert_eq!(
             uniforms[9].value,

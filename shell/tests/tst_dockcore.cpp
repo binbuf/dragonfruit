@@ -357,6 +357,60 @@ private slots:
                  QStringLiteral("wayland-0"));
     }
 
+    // T238 P0: Dock launches run in their own transient user service so a
+    // shell restart cannot take them down with the shell's cgroup.
+    void appScopeCommandCarriesTheEnvironmentAndArgv()
+    {
+        QProcessEnvironment environment;
+        environment.insert(QStringLiteral("WAYLAND_DISPLAY"),
+                           QStringLiteral("dragonfruit-wayland"));
+        environment.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("wayland"));
+        const AppScopeCommand command = appScopeCommand(
+            {QStringLiteral("myapp"), QStringLiteral("--flag")}, environment,
+            QStringLiteral("dragonfruit-app-org-dragonfruit-Files-1234"));
+        QCOMPARE(command.program, QStringLiteral("systemd-run"));
+        QCOMPARE(command.unit,
+                 QStringLiteral("dragonfruit-app-org-dragonfruit-Files-1234"));
+        QVERIFY(command.arguments.contains(QStringLiteral("--user")));
+        QVERIFY(command.arguments.contains(QStringLiteral("--collect")));
+        QVERIFY(command.arguments.contains(
+            QStringLiteral("--unit=dragonfruit-app-org-dragonfruit-Files-1234")));
+        QVERIFY(command.arguments.contains(
+            QStringLiteral("--setenv=WAYLAND_DISPLAY=dragonfruit-wayland")));
+        QVERIFY(command.arguments.contains(
+            QStringLiteral("--setenv=QT_QPA_PLATFORM=wayland")));
+        const int separator = command.arguments.indexOf(QStringLiteral("--"));
+        QVERIFY(separator >= 0);
+        QCOMPARE(command.arguments.mid(separator + 1),
+                 (QStringList{QStringLiteral("myapp"), QStringLiteral("--flag")}));
+        // A transient *service* (not a scope for an existing pid) that
+        // unloads itself after exit.
+        QVERIFY(!command.arguments.contains(QStringLiteral("--scope")));
+        QVERIFY(!command.arguments.contains(QStringLiteral("--service")));
+    }
+
+    void appScopeUnitsAreUniquePerLaunch()
+    {
+        QProcessEnvironment environment;
+        const AppScopeCommand first = appScopeCommand(
+            {QStringLiteral("myapp")}, environment,
+            QStringLiteral("dragonfruit-app-org-dragonfruit-Files-aaaaaaaa"));
+        const AppScopeCommand second = appScopeCommand(
+            {QStringLiteral("myapp")}, environment,
+            QStringLiteral("dragonfruit-app-org-dragonfruit-Files-bbbbbbbb"));
+        // Two launches of the same app must be separate transient services so
+        // Force Quit can stop each instance's cgroup independently.
+        QVERIFY(first.arguments.contains(
+            QStringLiteral("--unit=dragonfruit-app-org-dragonfruit-Files-aaaaaaaa")));
+        QVERIFY(second.arguments.contains(
+            QStringLiteral("--unit=dragonfruit-app-org-dragonfruit-Files-bbbbbbbb")));
+        QVERIFY(first.arguments != second.arguments);
+        QCOMPARE(first.unit,
+                 QStringLiteral("dragonfruit-app-org-dragonfruit-Files-aaaaaaaa"));
+        QCOMPARE(second.unit,
+                 QStringLiteral("dragonfruit-app-org-dragonfruit-Files-bbbbbbbb"));
+    }
+
     // -- reveal target (T-10.6c) -----------------------------------------
 
     void revealExecutableResolvesAnAbsoluteProgram()

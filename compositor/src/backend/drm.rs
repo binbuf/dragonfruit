@@ -16,7 +16,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::allocator::Fourcc;
@@ -74,6 +74,7 @@ use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
 use crate::backend::add_seat_capabilities;
 use crate::gpu_timer::{GpuPass, GpuTimer, GpuTimerTarget};
 use crate::session::{run_session, BackendHooks};
+use crate::state::PresentationProvenance;
 use crate::window::{
     full_output_material_forced, BackdropBlurElement, BlurMissCounts, BlurMissReason,
     MaterialRegion, PanelKey, PanelPaintKey, PanelTextureSlots, RegionFilter, SceneTextureCache,
@@ -175,6 +176,11 @@ render_elements! {
     // DRM `MultiRenderer` as well as nested `GlowRenderer`.
     Blur=crate::window::BackdropBlurElement,
     Scene=crate::window::SceneTextureElement,
+    // One-quad shader shadow (T238 decoration optimisation).
+    Shadow=crate::window::ShadowElement,
+    // One-quad SDF titlebar fill / traffic light (T238 decoration
+    // optimisation).
+    Titlebar=crate::window::TitlebarShapeElement,
 }
 
 render_elements! {
@@ -359,11 +365,20 @@ where
 /// one device, so a texture is never shared across render GPUs.
 #[derive(Default)]
 struct DrmMaterialCache {
-    scene: SceneTextureCache<GlesTexture>,
+    /// Scene textures for the independently bounded material groups: slot 0
+    /// is the top group, slot 1 the bottom group.
+    scenes: Vec<SceneTextureCache<GlesTexture>>,
     panels: PanelTextureSlots<GlesTexture>,
 }
 
 impl DrmMaterialCache {
+    fn scene_slot(&mut self, slot: usize) -> &mut SceneTextureCache<GlesTexture> {
+        while self.scenes.len() <= slot {
+            self.scenes.push(SceneTextureCache::default());
+        }
+        &mut self.scenes[slot]
+    }
+
     fn trim_panels(&mut self, keys: &[PanelKey]) {
         self.panels.trim_to(keys);
     }
@@ -377,6 +392,9 @@ struct SurfaceData {
     drm_output:
         DrmOutput<GbmAllocatorDrm, GbmExporterDrm, Option<OutputPresentationFeedback>, DrmDeviceFd>,
     last_presentation_time: Option<Time<smithay::utils::Monotonic>>,
+    /// The compositor frame id of the last queued scanout, so the vblank
+    /// presentation trace can name the exact frame (T238 follow-up).
+    last_queued_frame: u64,
     vblank_throttle_timer: Option<RegistrationToken>,
     /// Reused scene/blur textures for the sampled material path.
     material: DrmMaterialCache,
@@ -413,6 +431,12 @@ struct MaterialPrograms {
     /// The menu-bar no-blur veil program (T200); a refusal keeps the
     /// flat-band glass fallback.
     veil: Option<GlesTexProgram>,
+    /// The one-quad shadow program and its white probe texture (T238
+    /// decoration optimisation); a refusal keeps the span decomposition.
+    shadow: Option<crate::window::ShadowResources>,
+    /// The one-quad titlebar fill/traffic-light program; a refusal keeps the
+    /// span decomposition.
+    titlebar: Option<crate::window::TitlebarResources>,
 }
 
 /// Everything the DRM backend owns; lives in a shared slot that the
@@ -502,6 +526,7 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
     // diagnostic run) can set `DRAGONFRUIT_DRM_MATERIAL=0` to fall back to the
     // feather stack and the shell's milky plate.
     state.material_blur_supported = env_flag_default_true(ENV_DRM_MATERIAL);
+    state.stats.presentation_provenance = PresentationProvenance::DrmVblank;
     // Session: logind/libseat takes the VT and device access. On a host with
     // no *free* seat (a workstation already running a desktop) this is where
     // bring-up stops: report it as OPEN — the T-03.2 unit is marked open, not
@@ -1156,6 +1181,7 @@ fn connector_connected(
             global,
             drm_output,
             last_presentation_time: None,
+            last_queued_frame: 0,
             vblank_throttle_timer: None,
             material: DrmMaterialCache::default(),
             gpu_timer: GpuTimer::new(),
@@ -1311,17 +1337,20 @@ fn frame_finish(
         (interval, output_name)
     };
 
-    let submit_result = {
+    let (submit_result, queued_frame) = {
         let Some(device) = data.devices.get(&dev_id) else {
             return;
         };
         let Some(surface) = device.surfaces.get(&crtc) else {
             return;
         };
-        surface
-            .drm_output
-            .frame_submitted()
-            .map_err(Into::<SwapBuffersError>::into)
+        (
+            surface
+                .drm_output
+                .frame_submitted()
+                .map_err(Into::<SwapBuffersError>::into),
+            surface.last_queued_frame,
+        )
     };
 
     let retry = match submit_result {
@@ -1333,6 +1362,13 @@ fn frame_finish(
             // compositor clock fallback above.
             if user_data.is_some() {
                 state.note_presentation(&output_name, Duration::from(clock));
+                // Actual vblank presentation, not the queue call. The shell's
+                // `wl_surface.frame` callback is sent after `queue_frame`, so
+                // this trace is the honest presentation endpoint.
+                crate::trace::log(
+                    "present",
+                    &format!("frame={queued_frame} output={output_name} drm"),
+                );
                 if let Some(interval) = presentation_interval {
                     let refresh = state.refresh_for_output(&output_name);
                     state
@@ -1342,6 +1378,8 @@ fn frame_finish(
             }
             if let Some(mut feedback) = user_data.flatten() {
                 feedback.presented(clock, Refresh::fixed(frame_duration), seq as u64, flags);
+                state.stats.presentation_feedback_sent =
+                    state.stats.presentation_feedback_sent.saturating_add(1);
             }
             false
         }
@@ -1432,6 +1470,13 @@ fn render_surface(
         return;
     }
     state.note_output_frame(&output_name);
+    // T238 follow-up: every stage and GPU query in this frame carries this id,
+    // and the vblank trace names the same id when it is presented.
+    let frame = state.stats.begin_frame();
+    crate::trace::log(
+        "frame-start",
+        &format!("frame={frame} output={output_name}"),
+    );
 
     // The refresh rate is captured before the render result is handled: the
     // empty/rejected-frame reschedule runs while this `RefCell` borrow is live.
@@ -1441,6 +1486,7 @@ fn render_surface(
         .map(|mode| mode.refresh)
         .unwrap_or(60_000);
 
+    let bind_start = Instant::now();
     let mut renderer = match data.gpus.single_renderer(&render_node) {
         Ok(renderer) => renderer,
         Err(err) => {
@@ -1451,6 +1497,10 @@ fn render_surface(
             return;
         }
     };
+    state
+        .stats
+        .record_frame_stage(crate::state::FrameStage::Bind, bind_start.elapsed());
+    let prepare_start = Instant::now();
 
     let scale = Scale::from(surface.output.current_scale().fractional_scale());
 
@@ -1458,7 +1508,7 @@ fn render_surface(
     // frame's passes (T-21.4b). Polling is asynchronous and never stalls on
     // the GPU; an unavailable/disabled timer publishes its reason.
     for sample in surface.gpu_timer.poll(&mut renderer) {
-        state.stats.gpu.record(sample.pass, sample.nanos);
+        state.stats.record_gpu_sample(sample);
     }
     let (gpu_enabled, gpu_available, gpu_reason) = surface.gpu_timer.status();
     state
@@ -1490,6 +1540,13 @@ fn render_surface(
         _,
         DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
     >(&mut renderer, state, &surface.output, scale));
+    let lock_count = custom_elements.len() as u64;
+    // T238 follow-up: source-level element counts for the final composite
+    // breakdown.
+    let mut scene_counts = crate::render::SceneElementCounts::default();
+    let menu_count: u64;
+    let desktop_count: u64;
+    let wallpaper_count: u64;
     let pointer_location = state
         .seat
         .get_pointer()
@@ -1579,7 +1636,8 @@ fn render_surface(
     if !blur_panels.is_empty() {
         let material_output = surface.output.clone();
         let output_local = Rectangle::from_size(output_geo.size);
-        let Some(region) = MaterialRegion::for_material(&blur_panels, output_local, scale) else {
+        let groups = MaterialRegion::groups_for_material(&blur_panels, output_local, scale);
+        if groups.is_empty() {
             eprintln!(
                 "dragonfruit-compositor: DRM material region unavailable for {}",
                 material_output.name()
@@ -1587,7 +1645,7 @@ fn render_surface(
             state.material_blur_supported = false;
             reschedule_probe(state, node, crtc, refresh);
             return;
-        };
+        }
         let full_output = full_output_material_forced();
         let output_size = material_output
             .current_mode()
@@ -1622,59 +1680,147 @@ fn render_surface(
                     &crate::window::veil_uniform_names(),
                 )
                 .ok();
-            MaterialPrograms { blur, glass, veil }
+            let shadow = (|| {
+                let program = gles
+                    .compile_custom_texture_shader(
+                        crate::window::SHADOW_SHADER,
+                        &crate::window::shadow_uniform_names(),
+                    )
+                    .ok()?;
+                let texture = gles
+                    .import_memory(
+                        &[255u8, 255, 255, 255],
+                        Fourcc::Abgr8888,
+                        smithay::utils::Size::from((1, 1)),
+                        false,
+                    )
+                    .ok()?;
+                Some(crate::window::ShadowResources { program, texture })
+            })();
+            let titlebar = shadow.as_ref().and_then(|resources| {
+                let program = gles
+                    .compile_custom_texture_shader(
+                        crate::window::TITLEBAR_SHADER,
+                        &crate::window::titlebar_uniform_names(),
+                    )
+                    .ok()?;
+                Some(crate::window::TitlebarResources {
+                    program,
+                    texture: resources.texture.clone(),
+                })
+            });
+            MaterialPrograms {
+                blur,
+                glass,
+                veil,
+                shadow,
+                titlebar,
+            }
         });
         // Pass one: the live scene (window menu, windows/titlebars/shadows,
-        // desktop, wallpaper) into the reusable region-sized texture. The
-        // region is the padded chrome union unless the full-output diagnostic
-        // switch is set.
+        // desktop, wallpaper) into the reusable region-sized texture(s). The
+        // default split gives the top and bottom panel groups independent
+        // bounded textures; the union rollback uses one.
+        let scene_build_start = Instant::now();
         let mut scene_elements: Vec<
             DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
         > = Vec::new();
-        scene_elements.extend(
-            crate::render::window_menu_render_elements(state, &material_output, scale)
-                .into_iter()
-                .map(DrmOutputElements::Decoration),
-        );
+        let menu = crate::render::window_menu_render_elements(state, &material_output, scale);
+        menu_count = menu.len() as u64;
+        scene_elements.extend(menu.into_iter().map(DrmOutputElements::Decoration));
         scene_elements.extend(crate::render::window_scene_render_elements::<
             UdevRenderer<'_>,
             DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
-        >(&mut renderer, state, &material_output, scale));
-        scene_elements.extend(crate::render::desktop_render_elements::<
-            _,
-            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
-        >(&mut renderer, state, &material_output, scale));
-        scene_elements.extend(
-            crate::render::wallpaper_render_elements(&mut renderer, state, &material_output, scale)
-                .into_iter()
-                .map(DrmOutputElements::Wallpaper),
-        );
-
-        surface.gpu_timer.begin(&mut renderer, GpuPass::Scene);
-        let scene_result = crate::backend::nested::render_scene_offscreen(
+        >(
             &mut renderer,
             state,
             &material_output,
             scale,
-            region,
-            &scene_elements,
-            &mut surface.material.scene,
+            &mut scene_counts,
+            programs.shadow.as_ref(),
+            programs.titlebar.as_ref(),
+        ));
+        let desktop = crate::render::desktop_render_elements::<
+            _,
+            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+        >(&mut renderer, state, &material_output, scale);
+        desktop_count = desktop.len() as u64;
+        scene_elements.extend(desktop);
+        let wallpaper =
+            crate::render::wallpaper_render_elements(&mut renderer, state, &material_output, scale);
+        wallpaper_count = wallpaper.len() as u64;
+        scene_elements.extend(wallpaper.into_iter().map(DrmOutputElements::Wallpaper));
+        state.stats.record_frame_stage(
+            crate::state::FrameStage::SceneBuild,
+            scene_build_start.elapsed(),
         );
-        surface.gpu_timer.end(&mut renderer);
-        let scene_texture = match scene_result {
-            Ok(texture) => texture,
-            Err(err) => {
-                eprintln!("dragonfruit-compositor: DRM scene pass failed: {err}");
-                state.material_blur_supported = false;
-                reschedule_probe(state, node, crtc, refresh);
-                return;
-            }
-        };
-        let scene_size = scene_texture.size();
 
-        // Pass two: one blurred texture per panel. In the default region
-        // shape the live scene elements are the output base; only the
-        // full-output diagnostic shape composites the scene texture below it.
+        state
+            .stats
+            .record_frame_stage(crate::state::FrameStage::Prepare, prepare_start.elapsed());
+        let scene_start = Instant::now();
+        let scene_epoch = state.scene_epoch();
+        let allow_skip = crate::window::scene_cache_skip_enabled() && !state.scene_is_animating();
+        let mut scene_sync = Duration::ZERO;
+        let mut scene_textures = Vec::with_capacity(groups.len());
+        for group in &groups {
+            let region = group.region;
+            state
+                .stats
+                .record_material_region_for(surface.output.name().as_str(), region.texture_size);
+            surface
+                .gpu_timer
+                .begin(&mut renderer, GpuPass::Scene, frame);
+            let cache = surface.material.scene_slot(group.slot);
+            let scene_result = crate::backend::nested::render_scene_offscreen(
+                &mut renderer,
+                state,
+                &material_output,
+                scale,
+                region,
+                &scene_elements,
+                cache,
+                scene_epoch,
+                allow_skip,
+            );
+            surface.gpu_timer.end(&mut renderer);
+            if let Some(wait) = surface.gpu_timer.finish(&mut renderer) {
+                scene_sync = scene_sync.saturating_add(wait);
+            }
+            let scene_texture = match scene_result {
+                Ok(texture) => texture,
+                Err(err) => {
+                    eprintln!("dragonfruit-compositor: DRM scene pass failed: {err}");
+                    state.material_blur_supported = false;
+                    reschedule_probe(state, node, crtc, refresh);
+                    return;
+                }
+            };
+            scene_textures.push((group.slot, region, scene_texture));
+        }
+        if !scene_sync.is_zero() {
+            state
+                .stats
+                .record_frame_stage(crate::state::FrameStage::SceneSync, scene_sync);
+        }
+        let scene_bytes: u64 = groups
+            .iter()
+            .map(|group| {
+                surface
+                    .material
+                    .scenes
+                    .get(group.slot)
+                    .map(|cache| cache.bytes())
+                    .unwrap_or(0)
+            })
+            .sum();
+        state.stats.record_material_scene_bytes(scene_bytes);
+        state
+            .stats
+            .record_frame_stage(crate::state::FrameStage::Scene, scene_start.elapsed());
+
+        // Pass two: one blurred texture per panel, using the bounded scene
+        // texture of the group that panel belongs to.
         let mut blur_drawn = 0u64;
         let mut sharp_drawn = 0u64;
         let mut downsample_max = 0u32;
@@ -1682,127 +1828,144 @@ fn render_surface(
         let mut blur_skips = 0u64;
         let mut blur_misses = BlurMissCounts::default();
         let panel_keys: Vec<PanelKey> = blur_panels.iter().map(|panel| panel.key).collect();
-        for panel in &blur_panels {
-            let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale) else {
-                continue;
-            };
-            let slot = surface.material.panels.slot(&panel.key);
-            slot.note_paint(PanelPaintKey::new(
-                panel.paint,
-                panel.corners,
-                surface.material.scene.generation(),
-            ));
-            let id = slot.id().clone();
-            if panel.filter == RegionFilter::Sharp {
-                // T200: the sharp veil samples the live scene texture directly,
-                // so its element commit follows real scene damage.
-                slot.note_sharp_scene_commit(surface.material.scene.commit());
+        let blur_start = Instant::now();
+        for (slot_index, region, scene_texture) in &scene_textures {
+            let scene_cache = &surface.material.scenes[*slot_index];
+            let group_panels = groups
+                .iter()
+                .find(|group| group.slot == *slot_index)
+                .map(|group| group.panels.as_slice())
+                .unwrap_or(&[]);
+            for panel in group_panels {
+                let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale)
+                else {
+                    continue;
+                };
+                let slot = surface.material.panels.slot(&panel.key);
+                slot.note_paint(PanelPaintKey::new(
+                    panel.paint,
+                    panel.corners,
+                    scene_cache.generation(),
+                ));
+                let id = slot.id().clone();
+                if panel.filter == RegionFilter::Sharp {
+                    // T200: the sharp veil samples the live scene texture
+                    // directly, so its element commit follows real scene
+                    // damage.
+                    slot.note_sharp_scene_commit(scene_cache.commit());
+                    let commit = slot.commit();
+                    let element = BackdropBlurElement::new(
+                        (*scene_texture).clone(),
+                        panel.panel,
+                        scene_texture.size(),
+                        panel.corners.max(),
+                        scale,
+                    )
+                    .with_id(id)
+                    .with_commit(commit)
+                    .with_texture_region(region.rect)
+                    .with_corners(panel.corners);
+                    // T200: the veil's depth-LUT shader; a refused program
+                    // keeps the flat-band glass plate rather than the raw
+                    // scene.
+                    let element = if let Some(veil) = panel.veil {
+                        match programs.veil.as_ref() {
+                            Some(program) => element.with_veil(veil, program.clone()),
+                            None => match programs.glass.as_ref() {
+                                Some(glass) => element.with_glass(panel.glass, glass.clone()),
+                                None => element,
+                            },
+                        }
+                    } else {
+                        element
+                    };
+                    custom_elements.push(DrmOutputElements::Blur(element));
+                    sharp_drawn += 1;
+                    continue;
+                }
+                let blur_key = slot.blur_key_for_scene(
+                    scene_cache,
+                    scene_src,
+                    crate::window::RegionSample {
+                        spec: panel.spec,
+                        padding: panel.sample_padding_px(),
+                        filter: panel.filter,
+                    },
+                    output_size,
+                    scale,
+                );
+                let texture = if slot.blur_cache_hit(&blur_key) {
+                    blur_skips += 1;
+                    match slot.last_texture().cloned() {
+                        Some(texture) => texture,
+                        None => {
+                            eprintln!(
+                                "dragonfruit-compositor: DRM blur cache hit without a texture"
+                            );
+                            state.material_blur_supported = false;
+                            reschedule_probe(state, node, crtc, refresh);
+                            return;
+                        }
+                    }
+                } else {
+                    let reason = slot
+                        .blur_key()
+                        .and_then(|previous| blur_key.miss_reason(previous))
+                        .unwrap_or(BlurMissReason::First);
+                    blur_misses.record(reason);
+                    slot.invalidate_blur_cache();
+                    surface.gpu_timer.begin(&mut renderer, GpuPass::Blur, frame);
+                    let blur_result = crate::backend::nested::blur_panel_texture(
+                        &mut renderer,
+                        programs.blur.as_ref(),
+                        scene_texture,
+                        scene_src,
+                        texture_panel,
+                        &panel.spec,
+                        output_size,
+                        scale,
+                        slot.textures_mut(),
+                    );
+                    surface.gpu_timer.end(&mut renderer);
+                    match blur_result {
+                        Ok((texture, allocations)) => {
+                            blur_allocations += allocations;
+                            slot.set_blur_key(blur_key);
+                            texture
+                        }
+                        Err(err) => {
+                            eprintln!("dragonfruit-compositor: DRM blur pass failed: {err}");
+                            state.material_blur_supported = false;
+                            reschedule_probe(state, node, crtc, refresh);
+                            return;
+                        }
+                    }
+                };
                 let commit = slot.commit();
+                let texture_size = texture.size();
                 let element = BackdropBlurElement::new(
-                    scene_texture.clone(),
+                    texture,
                     panel.panel,
-                    scene_texture.size(),
+                    texture_size,
                     panel.corners.max(),
                     scale,
                 )
                 .with_id(id)
                 .with_commit(commit)
-                .with_texture_region(region.rect)
+                .with_texture_panel(texture_panel)
                 .with_corners(panel.corners);
-                // T200: the veil's depth-LUT shader; a refused program keeps
-                // the flat-band glass plate rather than the raw scene.
-                let element = if let Some(veil) = panel.veil {
-                    match programs.veil.as_ref() {
-                        Some(program) => element.with_veil(veil, program.clone()),
-                        None => match programs.glass.as_ref() {
-                            Some(glass) => element.with_glass(panel.glass, glass.clone()),
-                            None => element,
-                        },
-                    }
-                } else {
-                    element
+                let element = match programs.glass.as_ref() {
+                    Some(program) => element.with_glass(panel.glass, program.clone()),
+                    None => element,
                 };
                 custom_elements.push(DrmOutputElements::Blur(element));
-                sharp_drawn += 1;
-                continue;
+                blur_drawn += 1;
+                downsample_max = downsample_max.max(panel.spec.downsample());
             }
-            let blur_key = slot.blur_key_for_scene(
-                &surface.material.scene,
-                scene_src,
-                crate::window::RegionSample {
-                    spec: panel.spec,
-                    padding: panel.sample_padding_px(),
-                    filter: panel.filter,
-                },
-                output_size,
-                scale,
-            );
-            let texture = if slot.blur_cache_hit(&blur_key) {
-                blur_skips += 1;
-                match slot.last_texture().cloned() {
-                    Some(texture) => texture,
-                    None => {
-                        eprintln!("dragonfruit-compositor: DRM blur cache hit without a texture");
-                        state.material_blur_supported = false;
-                        reschedule_probe(state, node, crtc, refresh);
-                        return;
-                    }
-                }
-            } else {
-                let reason = slot
-                    .blur_key()
-                    .and_then(|previous| blur_key.miss_reason(previous))
-                    .unwrap_or(BlurMissReason::First);
-                blur_misses.record(reason);
-                slot.invalidate_blur_cache();
-                surface.gpu_timer.begin(&mut renderer, GpuPass::Blur);
-                let blur_result = crate::backend::nested::blur_panel_texture(
-                    &mut renderer,
-                    programs.blur.as_ref(),
-                    &scene_texture,
-                    scene_src,
-                    texture_panel,
-                    &panel.spec,
-                    output_size,
-                    scale,
-                    slot.textures_mut(),
-                );
-                surface.gpu_timer.end(&mut renderer);
-                match blur_result {
-                    Ok((texture, allocations)) => {
-                        blur_allocations += allocations;
-                        slot.set_blur_key(blur_key);
-                        texture
-                    }
-                    Err(err) => {
-                        eprintln!("dragonfruit-compositor: DRM blur pass failed: {err}");
-                        state.material_blur_supported = false;
-                        reschedule_probe(state, node, crtc, refresh);
-                        return;
-                    }
-                }
-            };
-            let commit = slot.commit();
-            let texture_size = texture.size();
-            let element = BackdropBlurElement::new(
-                texture,
-                panel.panel,
-                texture_size,
-                panel.corners.max(),
-                scale,
-            )
-            .with_id(id)
-            .with_commit(commit)
-            .with_texture_panel(texture_panel)
-            .with_corners(panel.corners);
-            let element = match programs.glass.as_ref() {
-                Some(program) => element.with_glass(panel.glass, program.clone()),
-                None => element,
-            };
-            custom_elements.push(DrmOutputElements::Blur(element));
-            blur_drawn += 1;
-            downsample_max = downsample_max.max(panel.spec.downsample());
         }
+        state
+            .stats
+            .record_frame_stage(crate::state::FrameStage::Blur, blur_start.elapsed());
         // A disappeared panel releases its Kawase textures; a panel that only
         // moved or changed stacking order keeps its key, id, and textures
         // (T-21.3).
@@ -1823,23 +1986,28 @@ fn render_surface(
         }
 
         if full_output {
-            let scene_id = surface.material.scene.id();
-            let scene_commit = surface.material.scene.commit();
+            let (slot_index, _, scene_texture) = &scene_textures[0];
+            let cache = &surface.material.scenes[*slot_index];
+            let scene_id = cache.id();
+            let scene_commit = cache.commit();
             custom_elements.push(DrmOutputElements::Scene(
                 SceneTextureElement::new(
-                    scene_texture,
+                    (*scene_texture).clone(),
                     Rectangle::from_size(output_size),
-                    scene_size,
+                    scene_texture.size(),
                 )
                 .with_identity(scene_id, scene_commit),
             ));
         } else {
             // Region shape: the scene elements are the output base and the
-            // region texture is only the blur source. They are already in
+            // region textures are only the blur source. They are already in
             // front-to-back order, so appending keeps the old stack.
             custom_elements.extend(scene_elements);
         }
     } else {
+        state
+            .stats
+            .record_frame_stage(crate::state::FrameStage::Prepare, prepare_start.elapsed());
         // No sampled material this frame: release the per-panel Kawase
         // textures and keep the pre-P2 feather stack, a deterministic tint
         // under the chrome above the window space. This remains the fallback
@@ -1853,51 +2021,115 @@ fn render_surface(
 
         // The open window menu (T-01.4) composites above every window and
         // titlebar, but below the shell chrome.
-        custom_elements.extend(
-            crate::render::window_menu_render_elements(state, &surface.output, scale)
-                .into_iter()
-                .map(DrmOutputElements::Decoration),
-        );
+        let scene_build_start = Instant::now();
+        let menu = crate::render::window_menu_render_elements(state, &surface.output, scale);
+        menu_count = menu.len() as u64;
+        custom_elements.extend(menu.into_iter().map(DrmOutputElements::Decoration));
 
         // The window stack: each window's SSD titlebar, client surface, and
         // shadow stay together in `Space` stacking order. Emitting all
         // titlebars as one layer above all surfaces (and all shadows below
         // them) put a background window's titlebar over a foreground window's
         // body.
+        let (shadow, titlebar) = data
+            .programs
+            .get(&render_node)
+            .map(|p| (p.shadow.as_ref(), p.titlebar.as_ref()))
+            .unwrap_or((None, None));
         custom_elements.extend(crate::render::window_scene_render_elements::<
             UdevRenderer<'_>,
             DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
-        >(&mut renderer, state, &surface.output, scale));
+        >(
+            &mut renderer,
+            state,
+            &surface.output,
+            scale,
+            &mut scene_counts,
+            shadow,
+            titlebar,
+        ));
 
         // The Files-owned desktop layer (T-19.3) composites below every window
         // and above the per-Space wallpaper.
-        custom_elements.extend(crate::render::desktop_render_elements::<
+        let desktop = crate::render::desktop_render_elements::<
             _,
             DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
-        >(&mut renderer, state, &surface.output, scale));
+        >(&mut renderer, state, &surface.output, scale);
+        desktop_count = desktop.len() as u64;
+        custom_elements.extend(desktop);
 
         // The per-Space wallpaper is the bottom-most layer (T-05.4): it fills
         // the clear color and slides with its Space during a switch.
-        custom_elements.extend(
-            crate::render::wallpaper_render_elements(&mut renderer, state, &surface.output, scale)
-                .into_iter()
-                .map(DrmOutputElements::Wallpaper),
+        let wallpaper =
+            crate::render::wallpaper_render_elements(&mut renderer, state, &surface.output, scale);
+        wallpaper_count = wallpaper.len() as u64;
+        custom_elements.extend(wallpaper.into_iter().map(DrmOutputElements::Wallpaper));
+        state.stats.record_frame_stage(
+            crate::state::FrameStage::SceneBuild,
+            scene_build_start.elapsed(),
         );
     }
 
     let frame_mode = FrameFlags::DEFAULT; // direct scanout where possible
     let wallpaper = state.wallpaper_color_for(&surface.output);
-    surface.gpu_timer.begin(&mut renderer, GpuPass::Composite);
+    // T238 follow-up: break the final composite list down by element type.
+    let full_output = full_output_material_forced();
+    let mut composite_counts = crate::state::CompositeElementCounts {
+        lock: lock_count,
+        ..Default::default()
+    };
+    if !full_output {
+        composite_counts.titlebar = scene_counts.titlebar;
+        composite_counts.titlebar_fill = scene_counts.titlebar_fill;
+        composite_counts.titlebar_lights = scene_counts.titlebar_lights;
+        composite_counts.titlebar_glyphs = scene_counts.titlebar_glyphs;
+        composite_counts.window_content = scene_counts.window_content;
+        composite_counts.window_shadow = scene_counts.window_shadow;
+        composite_counts.motion = scene_counts.motion;
+        composite_counts.menu = menu_count;
+        composite_counts.desktop = desktop_count;
+        composite_counts.wallpaper = wallpaper_count;
+    }
+    for element in &custom_elements {
+        match element {
+            DrmOutputElements::Pointer(_) => composite_counts.pointer += 1,
+            DrmOutputElements::Space(_) => composite_counts.space += 1,
+            DrmOutputElements::Chrome(_) => composite_counts.chrome += 1,
+            DrmOutputElements::Decoration(_) => composite_counts.decoration += 1,
+            DrmOutputElements::Appear(_) => composite_counts.appear += 1,
+            DrmOutputElements::Wallpaper(_) => composite_counts.wallpaper += 1,
+            DrmOutputElements::Blur(_) => composite_counts.blur += 1,
+            DrmOutputElements::Scene(_) => composite_counts.scene += 1,
+            // The macro's uninhabited generic-catcher variant.
+            _ => {}
+        }
+    }
+    state
+        .stats
+        .record_composite_counts(composite_counts, used_material);
+    let composite_start = Instant::now();
+    surface
+        .gpu_timer
+        .begin(&mut renderer, GpuPass::Composite, frame);
     let result =
         surface
             .drm_output
             .render_frame(&mut renderer, &custom_elements, wallpaper, frame_mode);
     surface.gpu_timer.end(&mut renderer);
+    if let Some(wait) = surface.gpu_timer.finish(&mut renderer) {
+        state
+            .stats
+            .record_frame_stage(crate::state::FrameStage::CompositeSync, wait);
+    }
+    state.stats.record_frame_stage(
+        crate::state::FrameStage::Composite,
+        composite_start.elapsed(),
+    );
     // A fast GPU can have the composite result ready by the time the frame
     // returns; drain it now so a final SIGUSR1 snapshot is not one frame
     // stale. Still non-blocking.
     for sample in surface.gpu_timer.poll(&mut renderer) {
-        state.stats.gpu.record(sample.pass, sample.nanos);
+        state.stats.record_gpu_sample(sample);
     }
 
     match result {
@@ -1918,11 +2150,16 @@ fn render_surface(
                 state.stats.frames_skipped_no_damage += 1;
                 if state.has_pending_frame_callbacks() {
                     let now = state.clock.now();
+                    let callback_start = Instant::now();
                     render::send_frame_callbacks(
                         state,
                         &surface.output,
                         now.into(),
                         &render_frame_result.states,
+                    );
+                    state.stats.record_frame_stage(
+                        crate::state::FrameStage::Callback,
+                        callback_start.elapsed(),
                     );
                 }
                 // No free-running probe: the next frame is driven by a client
@@ -1936,8 +2173,16 @@ fn render_surface(
                     &surface.output,
                     &render_frame_result.states,
                 );
-                // The feedback is delivered on vblank (frame_finish).
-                match surface.drm_output.queue_frame(Some(feedback)) {
+                // The feedback is delivered on vblank (frame_finish). The
+                // queue call is the kernel submission; it can block while a
+                // scanout buffer is acquired.
+                surface.last_queued_frame = frame;
+                let submit_start = Instant::now();
+                let submit_result = surface.drm_output.queue_frame(Some(feedback));
+                state
+                    .stats
+                    .record_frame_stage(crate::state::FrameStage::Submit, submit_start.elapsed());
+                match submit_result {
                     Ok(()) => {
                         // One output-frame is queued; the scheduler must not
                         // queue another animation frame for this output until
@@ -1957,11 +2202,16 @@ fn render_surface(
                 // wait forever. It also credits input-to-photon latency and
                 // advertises the output's fractional scale to chrome.
                 let now = state.clock.now();
+                let callback_start = Instant::now();
                 render::post_repaint(
                     state,
                     &surface.output,
                     now.into(),
                     &render_frame_result.states,
+                );
+                state.stats.record_frame_stage(
+                    crate::state::FrameStage::Callback,
+                    callback_start.elapsed(),
                 );
             }
         }

@@ -145,7 +145,12 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         // not starved by an otherwise idle compositor (see
         // `DfState::frame_cadence_active`). Outside that window the loop is a
         // pure block, so a genuinely idle session still produces no frames.
-        let ticking = state.frame_cadence_active() && state.has_pending_frame_callbacks();
+        // A pending host swap already owns the frame clock: the presenter's
+        // ping wakes the loop when it returns, so retrying the cadence at
+        // refresh rate would only burn CPU while the host is not presenting.
+        let ticking = !state.present_in_flight
+            && state.frame_cadence_active()
+            && state.has_pending_frame_callbacks();
         if ticking {
             state.needs_redraw = true;
         }
@@ -201,11 +206,20 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
             }
         }
         if state.stats.frames_rendered != frames_before {
-            let frame_duration = frame_start.elapsed();
-            // T-03.1a/T-03.1b/T-04.4a/T-05.6: one entry point feeds the frame
-            // trace, the latency/degrade instruments, and the gesture-scoped
-            // budget trace, so the render loop has a single timing seam.
-            state.observe_rendered_frame(frame_duration);
+            if state.stats.frame_observed_by_backend {
+                // The nested presenter thread completed the swap and sampled
+                // the full frame duration (including the host wait) itself.
+                // Recording the loop's CPU slice here would double-count and
+                // hide the host-side cost.
+                state.stats.frame_observed_by_backend = false;
+            } else {
+                let frame_duration = frame_start.elapsed();
+                // T-03.1a/T-03.1b/T-04.4a/T-05.6: one entry point feeds the
+                // frame trace, the latency/degrade instruments, and the
+                // gesture-scoped budget trace, so the render loop has a single
+                // timing seam.
+                state.observe_rendered_frame(frame_duration);
+            }
         }
 
         // T-21.2b: re-arm the animation timer from the earliest per-output

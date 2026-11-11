@@ -1038,7 +1038,9 @@ mod tests {
             flat_band: false,
             ..flat
         };
-        let reduced_edge = DegradeTier::Reduced.glass(edge).expect("reduced keeps blur");
+        let reduced_edge = DegradeTier::Reduced
+            .glass(edge)
+            .expect("reduced keeps blur");
         assert_eq!(reduced_edge.refraction, 0.0);
         assert_eq!(reduced_edge.corner_peak, edge.corner_peak);
 

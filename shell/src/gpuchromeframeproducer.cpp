@@ -20,6 +20,20 @@
 
 namespace {
 
+// The producer accounts for the attachments it asks Qt to allocate: RGBA8
+// colour (4 bytes/pixel) plus the combined 24-bit depth/8-bit stencil render
+// buffer (4 bytes/pixel). This is an accounting estimate for the A/B memory
+// comparison, not a driver allocation report.
+qint64 fboAttachmentBytes(const QSize &size)
+{
+    return qint64(size.width()) * qint64(size.height()) * 8;
+}
+
+QString producerLabel(QQuickWindow *window)
+{
+    return window ? window->objectName() : QString();
+}
+
 QSize physicalSize(const QSize &logical, qreal dpr)
 {
     if (logical.isEmpty())
@@ -243,6 +257,8 @@ bool GpuChromeFrameProducer::ensureFramebuffer(int slot, const QSize &physical)
     if (resources.fbo) {
         ChromeDmabufExporter::closeFrame(&resources.frame);
         m_window->setRenderTarget(QQuickRenderTarget());
+        ChromeStats::instance().recordFboFree(
+            producerLabel(m_window), fboAttachmentBytes(resources.fbo->size()));
         delete resources.fbo;
         resources.fbo = nullptr;
         resources.rendered = false;
@@ -250,6 +266,8 @@ bool GpuChromeFrameProducer::ensureFramebuffer(int slot, const QSize &physical)
             m_lastRenderedSlot = -1;
     }
 
+    QElapsedTimer createTimer;
+    createTimer.start();
     QOpenGLFramebufferObjectFormat format;
     format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
     format.setInternalTextureFormat(GL_RGBA8);
@@ -271,6 +289,9 @@ bool GpuChromeFrameProducer::ensureFramebuffer(int slot, const QSize &physical)
     }
     resources.fbo->release();
     resources.rendered = false;
+    ChromeStats::instance().recordFboAlloc(
+        producerLabel(m_window), physical, fboAttachmentBytes(physical),
+        createTimer.nsecsElapsed() / 1000);
     return true;
 }
 
@@ -378,6 +399,7 @@ QImage GpuChromeFrameProducer::renderFrame()
     const int slot = m_ring.acquire();
     if (slot < 0) {
         m_exportReason = QStringLiteral("ring-exhausted");
+        ChromeStats::instance().recordRingExhausted(producerLabel(m_window));
         return QImage();
     }
     if (!renderToFramebuffer(slot)) {
@@ -489,6 +511,7 @@ bool GpuChromeFrameProducer::exportFrame(ChromeDmabufFrame *frame, QString *reas
 
     const int slot = m_ring.acquire();
     if (slot < 0) {
+        ChromeStats::instance().recordRingExhausted(producerLabel(m_window));
         if (reason)
             *reason = QStringLiteral("ring-exhausted");
         return false;
@@ -596,6 +619,8 @@ void GpuChromeFrameProducer::destroySlotResources(int slot)
     if (resources.fbo) {
         if (m_window)
             m_window->setRenderTarget(QQuickRenderTarget());
+        ChromeStats::instance().recordFboFree(
+            producerLabel(m_window), fboAttachmentBytes(resources.fbo->size()));
         delete resources.fbo;
         resources.fbo = nullptr;
     }

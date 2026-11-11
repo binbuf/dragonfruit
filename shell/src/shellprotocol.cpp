@@ -2008,7 +2008,10 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     wl_surface_damage_buffer(surface, 0, 0, frame.size.width(), frame.size.height());
     applyDockSurfaceGeometry(surface);
     wl_surface_commit(surface);
+    QElapsedTimer flushTimer;
+    flushTimer.start();
     wl_display_flush(m_display);
+    ChromeStats::instance().recordCommitFlush(flushTimer.nsecsElapsed() / 1000);
     if (surface == m_surface)
         m_menuBarPanelDirty = false;
     buffer->lastImage = QImage();
@@ -2102,6 +2105,9 @@ bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *bu
 {
     if (!surface || !buffer || !m_dmabuf || !frame.valid() || slotIndex < 0)
         return false;
+    QElapsedTimer importTimer;
+    importTimer.start();
+    qint64 roundtripUs = -1;
     ShellDmabufSlot &slot = buffer->dmabufSlots[slotIndex];
     slot.failed = false;
     slot.failReason.clear();
@@ -2112,6 +2118,9 @@ bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *bu
     if (!params) {
         if (reason)
             *reason = QStringLiteral("no-params");
+        ChromeStats::instance().recordDmabufImport(
+            surfaceLabel(surface), roundtripUs, importTimer.nsecsElapsed() / 1000,
+            false);
         return false;
     }
     slot.params = params;
@@ -2124,6 +2133,9 @@ bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *bu
         zwp_linux_buffer_params_v1_destroy(params);
         if (reason)
             *reason = QStringLiteral("dup-failed");
+        ChromeStats::instance().recordDmabufImport(
+            surfaceLabel(surface), roundtripUs, importTimer.nsecsElapsed() / 1000,
+            false);
         return false;
     }
     zwp_linux_buffer_params_v1_add(
@@ -2146,10 +2158,13 @@ bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *bu
                                       frame.format, flags);
     // `create` reports success/failure asynchronously. This is the only
     // roundtrip on the dmabuf path; the buffer is reused for later frames.
+    QElapsedTimer roundtripTimer;
+    roundtripTimer.start();
     while (slot.creating && m_display) {
         if (wl_display_roundtrip(m_display) < 0)
             break;
     }
+    roundtripUs = roundtripTimer.nsecsElapsed() / 1000;
     if (slot.params) {
         m_dmabufParams.remove(slot.params);
         zwp_linux_buffer_params_v1_destroy(slot.params);
@@ -2162,6 +2177,9 @@ bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *bu
             slot.failReason = QStringLiteral("import-failed");
         if (reason)
             *reason = slot.failReason;
+        ChromeStats::instance().recordDmabufImport(
+            surfaceLabel(surface), roundtripUs, importTimer.nsecsElapsed() / 1000,
+            false);
         return false;
     }
     slot.size = frame.size;
@@ -2169,6 +2187,8 @@ bool ShellProtocol::createDmabufSlot(wl_surface *surface, ShellSurfaceBuffer *bu
     slot.modifier = frame.modifier;
     slot.serial = frame.serial;
     ChromeStats::instance().recordDmabufBufferCreated(surfaceLabel(surface));
+    ChromeStats::instance().recordDmabufImport(
+        surfaceLabel(surface), roundtripUs, importTimer.nsecsElapsed() / 1000, true);
     qInfo().noquote() << QStringLiteral(
         "chrome dmabuf: buffer created slot=%1 format=%2 modifier=%3 stride=%4 "
         "offset=%5 size=%6x%7 surface=%8")

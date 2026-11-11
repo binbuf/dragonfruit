@@ -58,10 +58,6 @@ use smithay::utils::Physical;
 /// visible inputs lets the tracker skip an unchanged frame while still
 /// treating a real geometry/colour change as damage.
 pub(crate) fn stable_solid_id(salt: u64, rect: Rectangle<i32, Physical>, color: Color32F) -> Id {
-    thread_local! {
-        static IDS: RefCell<HashMap<u64, Id>> = RefCell::new(HashMap::new());
-    }
-
     let mut hasher = DefaultHasher::new();
     salt.hash(&mut hasher);
     rect.loc.x.hash(&mut hasher);
@@ -71,13 +67,19 @@ pub(crate) fn stable_solid_id(salt: u64, rect: Rectangle<i32, Physical>, color: 
     for component in color.components() {
         component.to_bits().hash(&mut hasher);
     }
-    let key = hasher.finish();
+    stable_id_from_key(hasher.finish())
+}
+
+/// Map a stable content key to a renderer element id. The cache keeps settled
+/// ids alive so the damage tracker can recognise an unchanged element; the
+/// bound stops an animation from growing it without limit.
+pub(crate) fn stable_id_from_key(key: u64) -> Id {
+    thread_local! {
+        static IDS: RefCell<HashMap<u64, Id>> = RefCell::new(HashMap::new());
+    }
 
     IDS.with(|ids| {
         let mut ids = ids.borrow_mut();
-        // An animation produces a new key per frame; bound the cache so a
-        // long-running session cannot grow it without limit. Settled geometry
-        // immediately re-populates and is stable again.
         if ids.len() > 8192 {
             ids.clear();
         }
@@ -105,8 +107,10 @@ pub use corner::{
     RoundedCorners,
 };
 pub use decoration::{
-    fullscreen_reveal_rect, ColorScheme, DoubleClickTracker, TitlebarDoubleClick, TitlebarElement,
-    TrafficLightKind, WindowChrome, WindowInsets, WindowStyle, DEFAULT_WINDOW_STYLE,
+    fullscreen_reveal_rect, set_titlebar_gpu, titlebar_uniform_names, ColorScheme,
+    DoubleClickTracker, TitlebarDoubleClick, TitlebarElement, TitlebarElementCounts,
+    TitlebarResources, TitlebarShapeElement, TrafficLightKind, WindowChrome, WindowInsets,
+    WindowStyle, DEFAULT_WINDOW_STYLE, TITLEBAR_SHADER,
 };
 #[allow(unused_imports)]
 pub use degrade::{
@@ -119,7 +123,11 @@ pub(crate) use material_cache::{
     SceneTextureCache, SceneTextureKey,
 };
 #[allow(unused_imports)]
-pub use material_region::{full_output_material_forced, MaterialRegion, ENV_MATERIAL_FULL_OUTPUT};
+pub use material_region::{
+    full_output_material_forced, material_disabled, scene_cache_skip_enabled,
+    split_regions_enabled, MaterialGroup, MaterialRegion, ENV_MATERIAL_FULL_OUTPUT,
+    ENV_MATERIAL_OFF, ENV_MATERIAL_REGION_GROUPS, ENV_SCENE_CACHE_SKIP,
+};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 #[allow(unused_imports)]
 pub use menubar_veil::{
@@ -143,8 +151,10 @@ pub use scanout::{covers_output, direct_scanout_candidate};
 pub use scene_transform::{SceneTransform, SceneTransformPass};
 #[allow(unused_imports)]
 pub use shadow::{
-    shadow_bounds, shadow_elements, shadow_elements_outside, shadow_elements_outside_bounds,
-    shadow_layers, ShadowLayer, ShadowLevel, ShadowSpec,
+    set_shadow_gpu, shadow_bounds, shadow_element, shadow_elements, shadow_elements_outside,
+    shadow_elements_outside_bounds, shadow_gpu_enabled, shadow_layers, shadow_uniform_names,
+    ShadowElement, ShadowLayer, ShadowLevel, ShadowResources, ShadowSpec, ENV_SHADOW_GPU,
+    SHADOW_SHADER,
 };
 pub use state::{WindowEvent, WindowState, WindowStateMachine, WindowTransition};
 

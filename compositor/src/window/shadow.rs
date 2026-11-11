@@ -20,10 +20,11 @@
 //! window's shadow shrinks with it.
 
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
-use smithay::backend::renderer::element::Kind;
+use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement};
+use smithay::backend::renderer::gles::{GlesTexProgram, GlesTexture, Uniform};
 use smithay::backend::renderer::utils::CommitCounter;
-use smithay::backend::renderer::Color32F;
-use smithay::utils::{Logical, Physical, Point, Rectangle, Scale};
+use smithay::backend::renderer::{Color32F, RendererSuper};
+use smithay::utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use crate::design_tokens::{component, semantic};
@@ -389,9 +390,457 @@ fn subtract_rect(
     pieces
 }
 
+// --- GPU shadow (T238 decoration optimisation) -----------------------------
+//
+// The span decomposition is exact and testable but costs one GL draw call per
+// span: at the full degrade tier a single window's shadow is ~2,300 solid
+// elements. The scene and final composite each submit that list, so the CPU
+// cost is dominated by draw-call setup rather than geometry.
+//
+// `SHADOW_SHADER` evaluates the same layered, truncated-Gaussian falloff and
+// rounded-rect silhouette in one fragment shader. One quad replaces every span
+// of one window's shadow, preserving the token formula while removing the
+// per-span draw calls. The span path remains the fallback (and the reference
+// the tests compare against).
+
+/// The fragment shader for one window shadow. It is compiled through
+/// [`GlesRenderer::compile_custom_texture_shader`](smithay::backend::renderer::gles::GlesRenderer::compile_custom_texture_shader),
+/// so it carries the marker and built-in varyings/uniforms every custom
+/// texture program declares. The texture is a 1×1 white probe; the shader
+/// computes the shadow field itself.
+pub const SHADOW_SHADER: &str = r#"#version 100
+
+//_DEFINES_
+
+#if defined(EXTERNAL)
+#extension GL_OES_EGL_image_external : require
+#endif
+
+precision highp float;
+#if defined(EXTERNAL)
+uniform samplerExternalOES tex;
+#else
+uniform sampler2D tex;
+#endif
+
+uniform float alpha;
+varying vec2 v_coords;
+
+// All geometry is output physical pixels. `shadow_size` is the quad; the
+// window rect is quad-local (`xy` = origin, `zw` = size).
+uniform vec2 shadow_size;
+uniform vec4 shadow_window;
+uniform float shadow_radius;
+uniform float shadow_blur;
+uniform float shadow_offset_y;
+uniform float shadow_layers;
+uniform float shadow_opacity;
+uniform vec4 shadow_color;
+uniform float shadow_cutout;
+
+const int MAX_LAYERS = 32;
+const float CUTOFF = 0.0111089965;
+
+// 1px antialiased coverage of a rounded rectangle. `p` and `center` are
+// physical pixels; positive distance is outside.
+float rounded_coverage(vec2 p, vec2 center, vec2 half_size, float radius) {
+    vec2 q = abs(p - center) - half_size + vec2(radius);
+    vec2 outside = max(q, vec2(0.0));
+    float dist = length(outside) + min(max(q.x, q.y), 0.0) - radius;
+    return clamp(0.5 - dist, 0.0, 1.0);
+}
+
+void main() {
+    vec2 p = v_coords * shadow_size;
+
+    // The drop shadow is drawn outside the window's bounds, matching
+    // `shadow_elements_outside_bounds`: the opaque surface owns the inside.
+    if (shadow_cutout > 0.5) {
+        vec2 wmin = shadow_window.xy;
+        vec2 wmax = shadow_window.xy + shadow_window.zw;
+        if (p.x > wmin.x && p.x < wmax.x && p.y > wmin.y && p.y < wmax.y) {
+            discard;
+        }
+    }
+
+    float base_alpha = shadow_color.a;
+    float opacity = shadow_opacity * base_alpha;
+    float previous = 0.0;
+    // Accumulate straight-alpha source-over in the same back-to-front layer
+    // order as `shadow_layers`.
+    vec4 accum = vec4(0.0);
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        if (float(i) >= shadow_layers) {
+            break;
+        }
+        float index = float(i);
+        float spread = (shadow_layers - index) / shadow_layers;
+        float blur = shadow_blur * spread;
+        vec2 center = shadow_window.xy + shadow_window.zw * 0.5
+                    + vec2(0.0, shadow_offset_y);
+        vec2 half_size = shadow_window.zw * 0.5 + vec2(blur);
+        float radius = shadow_radius + blur;
+        float coverage = rounded_coverage(p, center, half_size, radius);
+        if (coverage <= 0.0) {
+            continue;
+        }
+        float distance = (shadow_layers - index - 1.0) / shadow_layers;
+        float a = opacity * (exp(-4.5 * distance * distance) - CUTOFF)
+                / (1.0 - CUTOFF);
+        float layer_alpha = (a - previous) / max(1.0 - previous, 0.000001);
+        previous = a;
+        float multiplier = layer_alpha / max(base_alpha, 0.000001);
+        vec4 layer = vec4(shadow_color.rgb * multiplier,
+                          base_alpha * multiplier * coverage);
+        float out_alpha = layer.a + accum.a * (1.0 - layer.a);
+        if (out_alpha > 0.0) {
+            vec3 rgb = (layer.rgb * layer.a
+                       + accum.rgb * accum.a * (1.0 - layer.a)) / out_alpha;
+            accum = vec4(rgb, out_alpha);
+        }
+    }
+
+    // Premultiplied for Smithay's (ONE, ONE_MINUS_SRC_ALPHA) blend. The
+    // accumulator is straight-alpha source-over, so multiply the RGB by its
+    // alpha once at the end.
+    gl_FragColor = vec4(accum.rgb * accum.a, accum.a) * alpha;
+}
+"#;
+
+pub const SHADOW_SIZE_UNIFORM: &str = "shadow_size";
+pub const SHADOW_WINDOW_UNIFORM: &str = "shadow_window";
+pub const SHADOW_RADIUS_UNIFORM: &str = "shadow_radius";
+pub const SHADOW_BLUR_UNIFORM: &str = "shadow_blur";
+pub const SHADOW_OFFSET_UNIFORM: &str = "shadow_offset_y";
+pub const SHADOW_LAYERS_UNIFORM: &str = "shadow_layers";
+pub const SHADOW_OPACITY_UNIFORM: &str = "shadow_opacity";
+pub const SHADOW_COLOR_UNIFORM: &str = "shadow_color";
+pub const SHADOW_CUTOUT_UNIFORM: &str = "shadow_cutout";
+
+/// The additional uniforms [`SHADOW_SHADER`] declares.
+pub fn shadow_uniform_names() -> [smithay::backend::renderer::gles::UniformName<'static>; 9] {
+    use smithay::backend::renderer::gles::{UniformName, UniformType};
+    [
+        UniformName::new(SHADOW_SIZE_UNIFORM, UniformType::_2f),
+        UniformName::new(SHADOW_WINDOW_UNIFORM, UniformType::_4f),
+        UniformName::new(SHADOW_RADIUS_UNIFORM, UniformType::_1f),
+        UniformName::new(SHADOW_BLUR_UNIFORM, UniformType::_1f),
+        UniformName::new(SHADOW_OFFSET_UNIFORM, UniformType::_1f),
+        UniformName::new(SHADOW_LAYERS_UNIFORM, UniformType::_1f),
+        UniformName::new(SHADOW_OPACITY_UNIFORM, UniformType::_1f),
+        UniformName::new(SHADOW_COLOR_UNIFORM, UniformType::_4f),
+        UniformName::new(SHADOW_CUTOUT_UNIFORM, UniformType::_1f),
+    ]
+}
+
+/// Opt-in GPU shadow path (T238 decoration optimisation). Off by default: the
+/// span path is the reference until the three-way A/B validates the shader
+/// against captured frames at 1.0× and fractional scales.
+pub const ENV_SHADOW_GPU: &str = "DRAGONFRUIT_SHADOW_GPU";
+
+/// The process-wide GPU-shadow switch. Runtime-switchable so a capture A/B
+/// can flip it inside one compositor session, where the window placement and
+/// focus state are identical. The environment variable only seeds it.
+static SHADOW_GPU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static SHADOW_GPU_SEEDED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+
+fn seed_shadow_gpu() {
+    SHADOW_GPU_SEEDED.get_or_init(|| {
+        SHADOW_GPU.store(
+            crate::window::material_region::env_flag_enabled(
+                std::env::var(ENV_SHADOW_GPU).ok().as_deref(),
+            ),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    });
+}
+
+/// Whether the one-quad shader shadow replaces the span decomposition.
+pub fn shadow_gpu_enabled() -> bool {
+    seed_shadow_gpu();
+    SHADOW_GPU.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Override the GPU shadow path at runtime (synthetic `set shadow-gpu`).
+pub fn set_shadow_gpu(enabled: bool) {
+    SHADOW_GPU_SEEDED.get_or_init(|| ());
+    SHADOW_GPU.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// A compiled shadow program plus the 1×1 white probe texture it samples.
+/// Both are context-local, so the backend owns one per render GPU.
+#[derive(Debug, Clone)]
+pub struct ShadowResources {
+    pub program: GlesTexProgram,
+    pub texture: GlesTexture,
+}
+
+/// One window shadow drawn as a single quad (T238 decoration optimisation).
+///
+/// The geometry is the shadow's outer bounds; the fragment shader evaluates
+/// every layer and the window cutout. The stable id hashes the full parameter
+/// set, so moving or restyling a window invalidates the damage tracker while a
+/// settled window reuses its cached damage state.
+pub struct ShadowElement {
+    id: Id,
+    commit: CommitCounter,
+    geometry: Rectangle<i32, Physical>,
+    /// Window rect relative to `geometry`, in physical pixels.
+    window: Rectangle<i32, Physical>,
+    radius: f32,
+    blur: f32,
+    offset_y: f32,
+    layers: f32,
+    opacity: f32,
+    color: Color32F,
+    program: GlesTexProgram,
+    texture: GlesTexture,
+}
+
+impl ShadowElement {
+    /// Build the element for a window rect in output-local physical pixels.
+    /// `radius`, `blur`, and `offset_y` are already physical.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        window: Rectangle<i32, Physical>,
+        radius: f32,
+        blur: f32,
+        offset_y: f32,
+        layers: u32,
+        opacity: f32,
+        color: Color32F,
+        resources: &ShadowResources,
+    ) -> Self {
+        let spread = blur.max(0.0).ceil() as i32;
+        let offset = offset_y.round() as i32;
+        let geometry = Rectangle::new(
+            (window.loc.x - spread, window.loc.y + offset - spread).into(),
+            (window.size.w + spread * 2, window.size.h + spread * 2).into(),
+        );
+        let local = Rectangle::new(
+            (window.loc.x - geometry.loc.x, window.loc.y - geometry.loc.y).into(),
+            window.size,
+        );
+        let key = stable_shadow_key(window, radius, blur, offset_y, layers, opacity, color);
+        Self {
+            id: crate::window::stable_id_from_key(key),
+            commit: CommitCounter::default(),
+            geometry,
+            window: local,
+            radius,
+            blur,
+            offset_y,
+            layers: layers as f32,
+            opacity,
+            color,
+            program: resources.program.clone(),
+            texture: resources.texture.clone(),
+        }
+    }
+
+    pub fn bounds(&self) -> Rectangle<i32, Physical> {
+        self.geometry
+    }
+}
+
+impl Element for ShadowElement {
+    fn id(&self) -> &Id {
+        &self.id
+    }
+
+    fn current_commit(&self) -> CommitCounter {
+        self.commit
+    }
+
+    fn geometry(&self, _scale: Scale<f64>) -> Rectangle<i32, Physical> {
+        self.geometry
+    }
+
+    fn src(&self) -> Rectangle<f64, Buffer> {
+        Rectangle::from_size(Size::from((1.0, 1.0)))
+    }
+
+    fn alpha(&self) -> f32 {
+        1.0
+    }
+
+    fn kind(&self) -> Kind {
+        Kind::Unspecified
+    }
+}
+
+impl<R: crate::window::blur::TextureRenderer> RenderElement<R> for ShadowElement {
+    fn draw(
+        &self,
+        frame: &mut <R as RendererSuper>::Frame<'_, '_>,
+        _src: Rectangle<f64, Buffer>,
+        dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        _opaque_regions: &[Rectangle<i32, Physical>],
+    ) -> Result<(), R::Error> {
+        let uniforms = [
+            Uniform::new(SHADOW_SIZE_UNIFORM, (dst.size.w as f32, dst.size.h as f32)),
+            Uniform::new(
+                SHADOW_WINDOW_UNIFORM,
+                (
+                    self.window.loc.x as f32,
+                    self.window.loc.y as f32,
+                    self.window.size.w as f32,
+                    self.window.size.h as f32,
+                ),
+            ),
+            Uniform::new(SHADOW_RADIUS_UNIFORM, self.radius),
+            Uniform::new(SHADOW_BLUR_UNIFORM, self.blur),
+            Uniform::new(SHADOW_OFFSET_UNIFORM, self.offset_y),
+            Uniform::new(SHADOW_LAYERS_UNIFORM, self.layers),
+            Uniform::new(SHADOW_OPACITY_UNIFORM, self.opacity),
+            Uniform::new(
+                SHADOW_COLOR_UNIFORM,
+                (
+                    self.color.r(),
+                    self.color.g(),
+                    self.color.b(),
+                    self.color.a(),
+                ),
+            ),
+            Uniform::new(SHADOW_CUTOUT_UNIFORM, 1.0f32),
+        ];
+        R::draw_texture_from_to(
+            frame,
+            &self.texture,
+            Rectangle::from_size(Size::from((1.0, 1.0))),
+            dst,
+            damage,
+            Some(&self.program),
+            &uniforms,
+            1.0,
+        )
+    }
+}
+
+/// Hash every parameter that changes the shadow pixels. The element id is the
+/// damage tracker's identity, so geometry, radius, falloff, colour, and layer
+/// count all participate.
+fn stable_shadow_key(
+    window: Rectangle<i32, Physical>,
+    radius: f32,
+    blur: f32,
+    offset_y: f32,
+    layers: u32,
+    opacity: f32,
+    color: Color32F,
+) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    0x7368_6164_6f77_6750u64.hash(&mut hasher); // "shadowgpu"
+    window.loc.x.hash(&mut hasher);
+    window.loc.y.hash(&mut hasher);
+    window.size.w.hash(&mut hasher);
+    window.size.h.hash(&mut hasher);
+    radius.to_bits().hash(&mut hasher);
+    blur.to_bits().hash(&mut hasher);
+    offset_y.to_bits().hash(&mut hasher);
+    layers.hash(&mut hasher);
+    opacity.to_bits().hash(&mut hasher);
+    for component in color.components() {
+        component.to_bits().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Convert a resolved [`ShadowSpec`] and a logical window rect into one GPU
+/// shadow element, or `None` when the shadow has no spread. The rect and the
+/// spec are transformed by the window's lifecycle motion first, matching the
+/// span path.
+pub fn shadow_element(
+    window: Rectangle<i32, Logical>,
+    spec: ShadowSpec,
+    scale: Scale<f64>,
+    output_origin: Point<i32, Logical>,
+    motion: Option<MotionFrame>,
+    resources: &ShadowResources,
+) -> Option<ShadowElement> {
+    // Only the rect comes from the lifecycle transform; the fade is applied
+    // once through `opacity`. Passing the faded colour here *and* multiplying
+    // opacity by `motion_alpha` would square the appear/minimize fade.
+    let (rect, _) = motion_transform(window, Color32F::new(0.0, 0.0, 0.0, 0.0), window, motion);
+    let color = color_from_rgba(spec.color);
+    let motion_alpha = motion.map(|frame| frame.alpha).unwrap_or(1.0);
+    let motion_scale = motion
+        .map(|frame| (frame.scale.x as f32, frame.scale.y as f32))
+        .unwrap_or((1.0, 1.0));
+    let opacity = (spec.opacity * motion_alpha).clamp(0.0, 1.0);
+    let radius = spec.radius * scale.x as f32 * motion_scale.0;
+    let blur = spec.blur * scale.x as f32 * motion_scale.0;
+    let offset_y = spec.offset_y * scale.y as f32 * motion_scale.1;
+    let physical = Rectangle::new(
+        (
+            (f64::from(rect.loc.x - output_origin.x) * scale.x).round() as i32,
+            (f64::from(rect.loc.y - output_origin.y) * scale.y).round() as i32,
+        )
+            .into(),
+        (
+            (f64::from(rect.size.w) * scale.x).round().max(1.0) as i32,
+            (f64::from(rect.size.h) * scale.y).round().max(1.0) as i32,
+        )
+            .into(),
+    );
+    if physical.size.w <= 0 || physical.size.h <= 0 {
+        return None;
+    }
+    Some(ShadowElement::new(
+        physical,
+        radius,
+        blur,
+        offset_y,
+        spec.layers,
+        opacity,
+        color,
+        resources,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_shadow_shader_declares_its_uniforms() {
+        assert!(SHADOW_SHADER.contains("//_DEFINES_"));
+        assert!(SHADOW_SHADER.contains("varying vec2 v_coords;"));
+        assert!(SHADOW_SHADER.contains("uniform sampler2D tex;"));
+        assert!(SHADOW_SHADER.contains("uniform float alpha;"));
+        for name in [
+            SHADOW_SIZE_UNIFORM,
+            SHADOW_WINDOW_UNIFORM,
+            SHADOW_RADIUS_UNIFORM,
+            SHADOW_BLUR_UNIFORM,
+            SHADOW_OFFSET_UNIFORM,
+            SHADOW_LAYERS_UNIFORM,
+            SHADOW_OPACITY_UNIFORM,
+            SHADOW_COLOR_UNIFORM,
+            SHADOW_CUTOUT_UNIFORM,
+        ] {
+            assert!(
+                SHADOW_SHADER.contains(&format!("uniform")),
+                "shader missing {name}"
+            );
+            assert!(SHADOW_SHADER.contains(name), "shader missing {name}");
+        }
+        assert!(SHADOW_SHADER.contains("gl_FragColor"));
+    }
+
+    #[test]
+    fn the_shadow_uniform_names_match_the_shader() {
+        use smithay::backend::renderer::gles::UniformType;
+        let names = shadow_uniform_names();
+        let by_name: Vec<(&str, UniformType)> =
+            names.iter().map(|name| (&*name.name, name.type_)).collect();
+        assert!(by_name.contains(&(SHADOW_SIZE_UNIFORM, UniformType::_2f)));
+        assert!(by_name.contains(&(SHADOW_WINDOW_UNIFORM, UniformType::_4f)));
+        assert!(by_name.contains(&(SHADOW_COLOR_UNIFORM, UniformType::_4f)));
+        assert!(by_name.contains(&(SHADOW_LAYERS_UNIFORM, UniformType::_1f)));
+    }
     use smithay::backend::renderer::element::Element;
     use smithay::utils::{Physical, Size};
 

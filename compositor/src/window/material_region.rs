@@ -26,8 +26,46 @@ use crate::render::BlurPanel;
 /// changing the rest of the frame. It is read once per process.
 pub const ENV_MATERIAL_FULL_OUTPUT: &str = "DRAGONFRUIT_MATERIAL_FULL_OUTPUT";
 
+/// Selects how the material scene pass is bounded (T238 follow-up).
+///
+/// `union` renders one scene texture over the padded union of every panel.
+/// With a menu bar at the top and a Dock at the bottom that union spans almost
+/// the whole output, so the scene pass renders far more than either panel
+/// samples. `split` (the default) gives the top and bottom panel groups
+/// independent regions/textures, so each pass is bounded to the strip that
+/// actually feeds a blur or veil.
+pub const ENV_MATERIAL_REGION_GROUPS: &str = "DRAGONFRUIT_MATERIAL_REGION_GROUPS";
+
+/// Diagnostic switch that disables the sampled material pass entirely.
+///
+/// The control for the T238 three-way comparison: no scene texture, no Kawase
+/// chain, no glass/veil compose, and no feather backdrop. Chrome surfaces are
+/// still drawn, so the composite cost of the scene itself can be measured
+/// without any material work.
+pub const ENV_MATERIAL_OFF: &str = "DRAGONFRUIT_MATERIAL_OFF";
+
+/// Opt-in fast path for the material scene cache (T238 follow-up).
+///
+/// When enabled, a frame whose scene-content epoch is unchanged reuses the
+/// existing scene texture without walking the element list through the damage
+/// tracker. The default stays off until the event-driven epoch hooks have been
+/// validated on native and multi-monitor sessions.
+pub const ENV_SCENE_CACHE_SKIP: &str = "DRAGONFRUIT_SCENE_CACHE_SKIP";
+
+/// Whether the event-driven scene-cache skip is enabled.
+pub fn scene_cache_skip_enabled() -> bool {
+    static SKIP: OnceLock<bool> = OnceLock::new();
+    *SKIP.get_or_init(|| env_flag_enabled(std::env::var(ENV_SCENE_CACHE_SKIP).ok().as_deref()))
+}
+
+/// Whether the diagnostic no-material arm is active.
+pub fn material_disabled() -> bool {
+    static DISABLED: OnceLock<bool> = OnceLock::new();
+    *DISABLED.get_or_init(|| env_flag_enabled(std::env::var(ENV_MATERIAL_OFF).ok().as_deref()))
+}
+
 /// Whether an explicit environment value enables a default-off flag.
-fn env_flag_enabled(value: Option<&str>) -> bool {
+pub(crate) fn env_flag_enabled(value: Option<&str>) -> bool {
     matches!(
         value
             .map(|value| value.trim().to_ascii_lowercase())
@@ -43,6 +81,37 @@ pub fn full_output_material_forced() -> bool {
         let value = std::env::var(ENV_MATERIAL_FULL_OUTPUT).ok();
         env_flag_enabled(value.as_deref())
     })
+}
+
+/// Whether the independently bounded top/bottom material regions are enabled.
+///
+/// The T238 comparison measured the split arm at roughly one fifth of the
+/// union's scene CPU time with unchanged panel sources, so it is the default.
+/// `DRAGONFRUIT_MATERIAL_REGION_GROUPS=union` keeps the previous single-union
+/// implementation as a rollback/diagnostic arm.
+pub fn split_regions_enabled() -> bool {
+    static SPLIT: OnceLock<bool> = OnceLock::new();
+    *SPLIT.get_or_init(|| {
+        !matches!(
+            std::env::var(ENV_MATERIAL_REGION_GROUPS)
+                .ok()
+                .map(|value| value.trim().to_ascii_lowercase())
+                .as_deref(),
+            Some("union" | "off" | "0" | "false")
+        )
+    })
+}
+
+/// One bounded material scene pass: the region to render, the panels whose
+/// blur/veil samples it, and the stable scene-texture slot.
+#[derive(Debug, Clone)]
+pub struct MaterialGroup {
+    pub region: MaterialRegion,
+    pub panels: Vec<BlurPanel>,
+    /// Scene-cache slot: 0 for the top group, 1 for the bottom group. Stable
+    /// across frames so a menu bar appearing does not re-home the Dock's
+    /// texture.
+    pub slot: usize,
 }
 
 /// The output-local rectangle a material pass must render, plus the scene
@@ -185,6 +254,92 @@ impl MaterialRegion {
         }
     }
 
+    /// Resolve one or two independently bounded material groups.
+    ///
+    /// The control arm (`union`) and the full-output diagnostic return a
+    /// single group over every panel. The `split` arm partitions panels by
+    /// their centre against the output's vertical midpoint and resolves one
+    /// padded union per half. A top menu bar and a bottom Dock therefore get
+    /// separate textures instead of one nearly-full-output union.
+    pub fn groups_for_material(
+        panels: &[BlurPanel],
+        output: Rectangle<i32, Logical>,
+        scale: Scale<f64>,
+    ) -> Vec<MaterialGroup> {
+        Self::groups_for_material_mode(
+            panels,
+            output,
+            scale,
+            split_regions_enabled(),
+            full_output_material_forced(),
+        )
+    }
+
+    /// The renderer-free grouping decision. `split` and `full_output` are
+    /// passed explicitly so the headless tests can exercise every arm without
+    /// mutating process-wide environment flags.
+    pub(crate) fn groups_for_material_mode(
+        panels: &[BlurPanel],
+        output: Rectangle<i32, Logical>,
+        scale: Scale<f64>,
+        split: bool,
+        full_output: bool,
+    ) -> Vec<MaterialGroup> {
+        if panels.is_empty() {
+            return Vec::new();
+        }
+        let single = |region: MaterialRegion, slot: usize| MaterialGroup {
+            region,
+            panels: panels.to_vec(),
+            slot,
+        };
+        if full_output {
+            return Self::full_output(output, scale)
+                .map(|region| vec![single(region, 0)])
+                .unwrap_or_default();
+        }
+        if !split {
+            return Self::from_panels(panels, output, scale)
+                .or_else(|| Self::full_output(output, scale))
+                .map(|region| vec![single(region, 0)])
+                .unwrap_or_default();
+        }
+
+        let midpoint = output.loc.y.saturating_add(output.size.h / 2);
+        let mut top: Vec<BlurPanel> = Vec::new();
+        let mut bottom: Vec<BlurPanel> = Vec::new();
+        for panel in panels {
+            let center = panel.panel.loc.y.saturating_add(panel.panel.size.h / 2);
+            if center < midpoint {
+                top.push(*panel);
+            } else {
+                bottom.push(*panel);
+            }
+        }
+
+        let mut groups = Vec::with_capacity(2);
+        for (slot, group) in [(0usize, top), (1usize, bottom)] {
+            if group.is_empty() {
+                continue;
+            }
+            if let Some(region) = Self::from_panels(&group, output, scale) {
+                groups.push(MaterialGroup {
+                    region,
+                    panels: group,
+                    slot,
+                });
+            }
+        }
+        if groups.is_empty() {
+            // Safety net for a degenerate panel set: keep the old fallback.
+            Self::full_output(output, scale)
+                .map(|region| vec![single(region, 0)])
+                .unwrap_or_default()
+        } else {
+            groups
+        }
+    }
+
     /// Map a panel into this region.
     ///
     /// Returns the part of `panel` visible in the region (output-local
@@ -223,9 +378,9 @@ impl MaterialRegion {
 mod tests {
     use super::*;
     use crate::material_preset::{Preset, RenderMode};
+    use crate::render::RegionPaint;
     use crate::window::blur::{BlurSpec, GlassSpec, RegionFilter};
     use crate::window::{ColorScheme, CornerRadii, DegradeTier};
-    use crate::render::RegionPaint;
 
     fn paint() -> RegionPaint {
         RegionPaint {
@@ -344,8 +499,8 @@ mod tests {
         let mut veil = panel((100, 100, 200, 80), 24.0);
         veil.filter = RegionFilter::Sharp;
         veil.overscan = 7;
-        let region = MaterialRegion::from_panels(&[veil], screen, 1.0.into())
-            .expect("visible veil");
+        let region =
+            MaterialRegion::from_panels(&[veil], screen, 1.0.into()).expect("visible veil");
         assert_eq!(
             region.rect,
             Rectangle::new((92, 92).into(), (216, 96).into()),
@@ -528,7 +683,15 @@ mod tests {
         let screen = output(1280, 800);
         let panel_rect = Rectangle::new((1200, 760).into(), (200, 100).into());
         let region = MaterialRegion::from_panels(
-            &[panel((panel_rect.loc.x, panel_rect.loc.y, panel_rect.size.w, panel_rect.size.h), 8.0)],
+            &[panel(
+                (
+                    panel_rect.loc.x,
+                    panel_rect.loc.y,
+                    panel_rect.size.w,
+                    panel_rect.size.h,
+                ),
+                8.0,
+            )],
             screen,
             1.0.into(),
         )
@@ -546,12 +709,9 @@ mod tests {
 
         // The physical clamp at 1.5x wins over the panel's independently
         // rounded size: the source never reaches past the texture.
-        let region = MaterialRegion::from_panels(
-            &[panel((1199, 759, 81, 41), 12.0)],
-            screen,
-            1.5.into(),
-        )
-        .expect("visible panel");
+        let region =
+            MaterialRegion::from_panels(&[panel((1199, 759, 81, 41), 12.0)], screen, 1.5.into())
+                .expect("visible panel");
         let (visible, src) = region
             .panel_source(
                 Rectangle::new((1199, 759).into(), (81, 41).into()),
@@ -620,6 +780,118 @@ mod tests {
             dock_only_2x.texture_size.h,
             dock_only_2x.texture_size.w as u64 * dock_only_2x.texture_size.h as u64
         );
+    }
+
+    #[test]
+    fn split_groups_bound_top_and_bottom_independently() {
+        let screen = output(1920, 1200);
+        let top = panel((0, 0, 1920, 30), 12.0);
+        let bottom = panel((600, 1100, 720, 80), 12.0);
+        let scale = 1.0.into();
+
+        let union =
+            MaterialRegion::groups_for_material_mode(&[top, bottom], screen, scale, false, false);
+        assert_eq!(union.len(), 1);
+        assert!(
+            union[0].region.rect.size.h > 1000,
+            "the union spans the top and bottom panels: {:?}",
+            union[0].region.rect
+        );
+
+        let split =
+            MaterialRegion::groups_for_material_mode(&[top, bottom], screen, scale, true, false);
+        assert_eq!(split.len(), 2);
+        assert_eq!(split[0].slot, 0);
+        assert_eq!(split[1].slot, 1);
+        assert_eq!(split[0].panels.len(), 1);
+        assert_eq!(split[1].panels.len(), 1);
+        assert!(
+            split[0].region.rect.size.h < 100,
+            "the top strip is bounded: {:?}",
+            split[0].region.rect
+        );
+        assert!(
+            split[1].region.rect.size.h < 200,
+            "the bottom strip is bounded: {:?}",
+            split[1].region.rect
+        );
+        // The two regions do not overlap the empty middle of the output.
+        assert!(!split[0]
+            .region
+            .rect
+            .overlaps(Rectangle::new((0, 500).into(), (1920, 200).into())));
+        assert!(!split[1]
+            .region
+            .rect
+            .overlaps(Rectangle::new((0, 500).into(), (1920, 200).into())));
+    }
+
+    #[test]
+    fn split_preserves_each_panels_absolute_scene_source() {
+        let screen = output(1920, 1200);
+        let top = panel((0, 0, 1920, 30), 12.0);
+        let bottom = panel((600, 1100, 720, 80), 12.0);
+        let scale = 1.0.into();
+        let union =
+            MaterialRegion::groups_for_material_mode(&[top, bottom], screen, scale, false, false);
+        let split =
+            MaterialRegion::groups_for_material_mode(&[top, bottom], screen, scale, true, false);
+
+        let absolute = |region: &MaterialRegion, panel: &BlurPanel| {
+            let (_, src) = region.panel_source(panel.panel, scale).expect("source");
+            (
+                region.physical.loc.x + src.loc.x as i32,
+                region.physical.loc.y + src.loc.y as i32,
+                src.size.w as i32,
+                src.size.h as i32,
+            )
+        };
+
+        // The bottom panel samples the same scene pixels in both arms even
+        // though the region origin (and therefore the buffer coordinate)
+        // differs. This is the visual-equivalence contract for the split.
+        assert_eq!(
+            absolute(&union[0].region, &bottom),
+            absolute(&split[1].region, &bottom)
+        );
+        assert_eq!(
+            absolute(&union[0].region, &top),
+            absolute(&split[0].region, &top)
+        );
+    }
+
+    #[test]
+    fn split_preserves_absolute_sources_at_fractional_scale() {
+        let screen = output(1920, 1200);
+        let top = panel((0, 0, 1920, 30), 12.0);
+        let bottom = panel((600, 1100, 720, 80), 12.0);
+        let scale = Scale::from(1.5);
+        let union =
+            MaterialRegion::groups_for_material_mode(&[top, bottom], screen, scale, false, false);
+        let split =
+            MaterialRegion::groups_for_material_mode(&[top, bottom], screen, scale, true, false);
+        assert_eq!(split.len(), 2);
+        let absolute = |region: &MaterialRegion, panel: &BlurPanel| {
+            let (_, src) = region.panel_source(panel.panel, scale).expect("source");
+            (
+                region.physical.loc.x + src.loc.x as i32,
+                region.physical.loc.y + src.loc.y as i32,
+                src.size.w as i32,
+                src.size.h as i32,
+            )
+        };
+        // Fractional rounding is applied once per region; the absolute source
+        // must still match the union arm at the panel.
+        assert_eq!(
+            absolute(&union[0].region, &bottom),
+            absolute(&split[1].region, &bottom)
+        );
+        assert_eq!(
+            absolute(&union[0].region, &top),
+            absolute(&split[0].region, &top)
+        );
+        assert!(split[0].region.texture_size.w > 0);
+        assert!(split[1].region.texture_size.h > 0);
     }
 
     #[test]

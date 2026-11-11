@@ -186,8 +186,7 @@ impl DockOptics {
         let distance = distance_pt.max(0.0);
         let width = self.edge_width.max(0.01);
         let core = RIM_CORE_WEIGHT
-            * (-std::f32::consts::LN_2 * (distance / width).powf(RIM_TAIL_POWER))
-                .exp();
+            * (-std::f32::consts::LN_2 * (distance / width).powf(RIM_TAIL_POWER)).exp();
         let broad = RIM_BROAD_WEIGHT
             * (-std::f32::consts::LN_2 * distance / (width * RIM_BROAD_SCALE)).exp();
         let tail = self.edge_tail.max(0.01);
@@ -339,11 +338,7 @@ mod tests {
     fn the_dock_fit_matches_every_measured_checker_period() {
         for optics in [DockOptics::light(), DockOptics::dark()] {
             let curve = optics.checker_mtf_curve();
-            for (index, (actual, target)) in curve
-                .iter()
-                .zip(DOCK_CHECKER_TARGETS)
-                .enumerate()
-            {
+            for (index, (actual, target)) in curve.iter().zip(DOCK_CHECKER_TARGETS).enumerate() {
                 assert!(
                     (actual - target).abs() <= DOCK_MTF_TOLERANCE,
                     "period {} pt: {actual} vs {target}",
@@ -367,8 +362,7 @@ mod tests {
         assert!((light.rim_half_amplitude_distance() - 1.0).abs() <= 0.25);
         assert!((light.rim_profile(1.0) - 0.397 / 2.0).abs() < 0.02);
         assert!((light.rim_ten_percent_distance() - 2.5).abs() <= 0.5);
-        assert!((light.rim_profile(light.rim_ten_percent_distance()) - 0.397 * 0.1).abs()
-            < 0.01);
+        assert!((light.rim_profile(light.rim_ten_percent_distance()) - 0.397 * 0.1).abs() < 0.01);
         assert!((light.rim_tail_distance() - 6.0).abs() <= 1.0);
         assert!((light.rim_one_percent_distance() - 6.0).abs() <= 1.0);
         assert!(light.rim_profile(6.0).abs() < 0.01);
@@ -395,12 +389,14 @@ mod tests {
         // The gate is exactly zero on a flat top/bottom edge and flat side.
         assert_eq!(DockOptics::corner_gate(0.0, 1.0), 0.0);
         assert_eq!(DockOptics::corner_gate(1.0, 0.0), 0.0);
-        assert!((DockOptics::corner_gate(
-            std::f32::consts::FRAC_1_SQRT_2,
-            std::f32::consts::FRAC_1_SQRT_2
-        ) - 1.0)
-            .abs()
-            < 1e-6);
+        assert!(
+            (DockOptics::corner_gate(
+                std::f32::consts::FRAC_1_SQRT_2,
+                std::f32::consts::FRAC_1_SQRT_2
+            ) - 1.0)
+                .abs()
+                < 1e-6
+        );
         assert_eq!(optics.flat_edge_displacement(), 0.0);
         // Monotone rise to the peak, then decay.
         assert!(optics.corner_displacement(7.5) < peak);

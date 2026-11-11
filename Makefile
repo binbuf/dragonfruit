@@ -65,7 +65,7 @@ endif
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast gate-checks \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
         t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
-        t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare \
+        t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare t238-dock-popover-ab t238-dock-popover-ab-native t238-material-regions t238-material-workloads t238-shadow-capture t238-decoration-matrix t238-nested-responsiveness t238-presenter-lifecycle t238-native-acceptance t238-wake-swap-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update stage dist package \
         files-capture t230d-files-capture t231-extras-capture t232-extras-capture t233-menubar-capture t234-notifications-capture t235-control-center-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration t235a-dock-perimeter-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
@@ -91,6 +91,16 @@ help:
 	@echo "  make t21-vrr-mixed-refresh — T-21.2b VRR/chrome-callback + 60/144 mixed trace"
 	@echo "  make t21-presentation-bench — T-21.4b nested presentation benchmark + report"
 	@echo "  make t21-presentation-compare — T-21.4b T183-vs-v0.1.1 comparison report"
+	@echo "  make t238-dock-popover-ab — T238 Dock popover stable-size A/B (nested)"
+	@echo "  make t238-dock-popover-ab-native — T238 native 4K/144 material-tier A/B"
+	@echo "  make t238-material-regions — T238 material union/off/split/full comparison (nested)"
+	@echo "  make t238-material-workloads — T238 split/full/full-skip under changing content"
+	@echo "  make t238-shadow-capture — T238 decoration visual A/B (spans vs shaders)"
+	@echo "  make t238-decoration-matrix — T238 decoration A/B at 1x/1.5x/2x, themes, hover"
+	@echo "  make t238-nested-responsiveness — T238 minimized/backgrounded/occluded nested probe"
+	@echo "  make t238-presenter-lifecycle — T238 minimize/restore, resize, EGL fault, disconnect, shutdown"
+	@echo "  make t238-native-acceptance — T238 free-seat 4K/144 spans vs split-deco acceptance"
+	@echo "  make t238-wake-swap-audit — T238 protocol trace of wake-only swaps and host cost"
 	@echo "  make multi-gpu-validation — T-03.4 multi-GPU import/fallback validation"
 	@echo "  make drm-soak — T-03.4 100-cycle teardown soak + one DRM session cycle"
 	@echo "  make second-vt-validation — T-12.6c second-VT preflight/selection + one real cycle"
@@ -434,6 +444,73 @@ t21-presentation-bench: build
 # docs/captures/t21-presentation-bench-compare.md.
 t21-presentation-compare:
 	python3 scripts/t21-presentation-compare.py
+
+# T238: the Dock popover stable-size A/B. Runs the same nested 144 Hz session
+# twice with only DRAGONFRUIT_DOCK_STABLE_POPOVER changed, opens the real
+# chooser popover 100 times per configuration, and writes the per-stage trace
+# comparison. Diagnostic only; the oversized surface is not a production
+# default. Needs a host Wayland session and the built tree; not part of
+# `make e2e`.
+t238-dock-popover-ab: build
+	bash scripts/t238-dock-popover-ab.sh
+
+# T238 native follow-up: the same opening A/B on a free DRM seat at the
+# display's native 4K/144 mode, with Full/Reduced/Minimal material. Writes an
+# explicit OPEN artifact when the live session owns DRM master. Needs a free
+# seat and the built tree; not part of `make e2e`.
+t238-dock-popover-ab-native: build
+	bash scripts/t238-dock-popover-ab-native.sh
+
+# T238 follow-up: current material vs material disabled vs independently
+# bounded top/bottom regions, with per-frame CPU/GPU correlation. PROBE=1 adds
+# the diagnostic glFinish arm (serialising; synchronization evidence only).
+t238-material-regions: build
+	cargo build --release -p dragonfruit-compositor
+	bash scripts/t238-material-regions.sh
+
+# T238 follow-up: split vs full-output under static, scroll, drag, resize,
+# video, Mission Control, and scheme-pulse workloads. Fresh compositor/shell
+# per pair; release compositor; explicit OPEN when no host session is present.
+t238-material-workloads: build
+	cargo build --release -p dragonfruit-compositor
+	bash scripts/t238-material-workloads.sh
+
+# T238 decoration visual A/B: one compositor session, four captures
+# (baseline spans, shadow shader, titlebar shader, both). Compares the images
+# and reports the changed-pixel count and maximum channel difference.
+t238-shadow-capture: build
+	cargo build --release -p dragonfruit-compositor
+	bash scripts/t238-shadow-capture.sh
+
+# T238 decoration validation matrix: one session per output scale, four
+# captures per theme/hover state, plus diff statistics.
+t238-decoration-matrix: build
+	cargo build --release -p dragonfruit-compositor
+	bash scripts/t238-decoration-matrix.sh
+
+# T238 P0 regression: the child nested compositor must stay responsive when
+# the host minimizes, backgrounds, or fully covers its window.
+t238-nested-responsiveness: build
+	cargo build --release -p dragonfruit-compositor
+	bash scripts/t238-nested-responsiveness.sh
+
+# T238 presenter lifecycle: minimize/restore, resize, one-shot EGL faults,
+# host disconnect, and shutdown while the host swap is blocked.
+t238-presenter-lifecycle: build
+	cargo build --release -p dragonfruit-compositor
+	bash scripts/t238-presenter-lifecycle.sh
+
+# T238 native acceptance: free DRM seat only. Writes an explicit OPEN artifact
+# when the live session owns DRM master.
+t238-native-acceptance: build
+	cargo build --release -p dragonfruit-compositor
+	bash scripts/t238-native-acceptance.sh
+
+# T238 wake-only swap audit: a Wayland proxy records whether no-damage swaps
+# commit a buffer and full-surface damage, and measures the host CPU cost.
+t238-wake-swap-audit: build
+	cargo build --release -p dragonfruit-compositor
+	bash scripts/t238-wake-swap-audit.sh
 
 # T-03.2: the DRM first bring-up probe. On a host with a free seat it starts
 # the DRM backend and records the capture/trace; with no free seat it records

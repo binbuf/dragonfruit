@@ -485,6 +485,12 @@ private slots:
     // A settingsd key changed (local optimistic write echo or daemon signal):
     // re-read the Dock view and re-lay-out.
     void onSettingsChanged(const QString &key, const QVariant &value);
+    // T238 P0: these are connected by name in `start()`, so they must be
+    // real slots. They were declared in the private implementation section,
+    // which made every `SLOT(schedule*Render())` connect fail at runtime.
+    void scheduleBannerRender();
+    void scheduleNotificationCenterRender();
+    void scheduleControlCenterRender();
 
 private:
     // T-14.1a/T-14.1c: load the app-index corpus and subscribe to its
@@ -530,6 +536,8 @@ private:
     // immediately instead of waiting for the compositor's close ghost.
     void quitDockApp(const QString &appId, const QString &desktopId, bool temporary);
     void forceQuitDockApp(const QString &appId, const QString &desktopId, bool temporary);
+    void appendDockLaunchScope(const QString &desktopId, const QString &scope);
+    void appendDockLaunchPid(const QString &desktopId, qint64 pid);
     // T236: publish the apps the Dock menu should render as hidden so its
     // Hide/Show row and running dot follow the shell's Hide verbs.
     void publishDockHiddenApps();
@@ -626,7 +634,6 @@ private:
     // card height (T-11.1b).
     void applyBannerInputRegion();
     void renderBanner();
-    void scheduleBannerRender();
     // Notification Center (T204): map/unmap the top-right overlay, push the
     // normalized service history, and commit its frames. The pure
     // `NotificationCenter` state owns selection and action validation.
@@ -642,7 +649,6 @@ private:
     void renderWidgetGallery();
     void scheduleWidgetGalleryRender();
     void applyWidgetGalleryData();
-    void scheduleNotificationCenterRender();
     void updateNotificationCenterGeometry();
     // Control Center panel (T-11.3a): seed the panel's tile state, map/unmap
     // the top-right overlay surface, and commit its frames from the scene
@@ -652,7 +658,6 @@ private:
     void hideControlCenter();
     void applyControlCenterData();
     void renderControlCenter();
-    void scheduleControlCenterRender();
     // Fit the fixed-height panel below the menu bar when a fractional scale
     // leaves less logical output than the 1x design assumed (T-21.1b).
     void updateControlCenterGeometry();
@@ -1155,6 +1160,14 @@ private:
         // surface (bar + popup). Hold the producer slot until every surface
         // returned its wl_buffer.
         ChromeDmabufReleaseTracker dmabufUsers;
+        // T238: the last physical scene size handed to the producer. A change
+        // is a scene resize (and, for the GPU rail, an FBO/ring generation
+        // retirement). The stable-popover A/B expects this to stay flat.
+        QSize preparedSize;
+        // T238: first-commit monotonic timestamps for exported serials. The
+        // entry is removed when the last surface releases it, so the shared
+        // Dock + popover hold time is measurable.
+        QHash<quint64, qint64> dmabufCommitNs;
     };
     QHash<ChromeFrameProducer *, ChromePace> m_chromePaces;
     QTimer *m_chromeFallbackTimer = nullptr;
@@ -1367,6 +1380,12 @@ private:
     int m_dockItemOffsetY = 0;
     int m_dockPopoverX = 0;
     int m_dockPopoverY = 0;
+    // T238: one correlation trace per Dock popover opening, from the
+    // `popoverChanged` signal to the first presented frame callback.
+    bool m_dockPopoverWasOpen = false;
+    quint64 m_dockPopoverTraceId = 0;
+    quint64 m_pendingDockPopoverTraceId = 0;
+    bool m_dockPopoverTraceCommitted = false;
     // Scene-graph frame gates (FR-14): the Dock and menu-bar windows commit
     // from `afterRendering`, and the gate suppresses the re-entrant frame the
     // `grabWindow()` readback itself produces.
@@ -1406,7 +1425,11 @@ private:
     QSet<QString> m_quittingApps;
     // T236: the pid of the process the shell launched for a desktop id, so
     // Force Quit can terminate it. Bounded to the most recent launches.
-    QHash<QString, qint64> m_dockLaunchPids;
+    // Per-launch pids/scopes, keyed by desktop id. A list (not one entry)
+    // supports multiple instances of the same app: Force Quit stops every
+    // live instance, not just the most recent launch.
+    QHash<QString, QList<qint64>> m_dockLaunchPids;
+    QHash<QString, QStringList> m_dockLaunchScopes;
     // `menu.recentItems`: how many recency entries the system menu shows.
     int m_menuRecentItems = 10;
     QString m_systemUserName;
