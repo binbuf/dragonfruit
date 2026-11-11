@@ -25,6 +25,7 @@
 //! The client's own input regions are untouched: nothing here routes input.
 
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
+use smithay::backend::renderer::gles::{GlesTexProgram, GlesTexture};
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::Color32F;
 use smithay::utils::{Logical, Physical, Point, Rectangle, Scale};
@@ -483,6 +484,22 @@ impl DoubleClickTracker {
     }
 }
 
+/// Source-level breakdown of one titlebar's render elements (T238 decoration
+/// profiling): the rounded fill spans, the antialiased traffic-light circle
+/// spans, and the glyph spans.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TitlebarElementCounts {
+    pub fill: u64,
+    pub lights: u64,
+    pub glyphs: u64,
+}
+
+impl TitlebarElementCounts {
+    pub fn total(&self) -> u64 {
+        self.fill + self.lights + self.glyphs
+    }
+}
+
 /// A fully resolved SSD titlebar: geometry, insets, controls, and the
 /// transient draw state (focus/hover) for one window in one frame.
 #[derive(Debug, Clone, PartialEq)]
@@ -644,6 +661,24 @@ impl TitlebarElement {
         output_origin: Point<i32, Logical>,
         motion: Option<MotionFrame>,
     ) -> Vec<SolidColorRenderElement> {
+        self.render_elements_counted(
+            scale,
+            output_origin,
+            motion,
+            &mut TitlebarElementCounts::default(),
+        )
+    }
+
+    /// [`Self::render_elements`] with a source-level breakdown (T238
+    /// decoration profiling): how many spans the fill, the traffic lights, and
+    /// the glyphs contribute. The element list is unchanged.
+    pub fn render_elements_counted(
+        &self,
+        scale: Scale<f64>,
+        output_origin: Point<i32, Logical>,
+        motion: Option<MotionFrame>,
+        counts: &mut TitlebarElementCounts,
+    ) -> Vec<SolidColorRenderElement> {
         let mut elements = Vec::new();
         let origin = output_origin;
         let to_physical = |rect: Rectangle<i32, Logical>| rect.to_physical_precise_round(scale);
@@ -675,6 +710,7 @@ impl TitlebarElement {
             let (rect, color) =
                 motion_transform(span, color_from_rgba(self.scheme.chrome()), target, motion);
             push(to_physical(local(rect)), color);
+            counts.fill += 1;
         }
 
         let reveal = self.revealed();
@@ -690,6 +726,7 @@ impl TitlebarElement {
             let (button_rect, button_fill) = motion_transform(visual, fill, target, motion);
             for span in circle_spans(button_rect, scale, origin) {
                 push(span.rect, button_fill * span.coverage);
+                counts.lights += 1;
             }
             if button.enabled && reveal {
                 // Scale the glyph with the same lifecycle frame as the
@@ -704,6 +741,7 @@ impl TitlebarElement {
                 let glyph_size = traffic_lights::GLYPH_SIZE as f64 * glyph_scale;
                 for span in glyph_spans(button.kind, glyph_frame, glyph_size, scale, origin) {
                     push(span.rect, glyph_color * span.coverage);
+                    counts.glyphs += 1;
                 }
             }
         }
@@ -712,6 +750,106 @@ impl TitlebarElement {
         // front-to-back and draws them in reverse, and an opaque element culls
         // everything that follows it. Without this reversal the opaque chrome
         // fill would cull its own lights and glyphs (they would never appear).
+        elements.reverse();
+        elements
+    }
+
+    /// The scene element list for this titlebar (T238 decoration
+    /// optimisation). With `resources` and the GPU titlebar path enabled, the
+    /// rounded fill and each traffic-light circle are one SDF quad; the glyph
+    /// strokes (only visible on hover) stay spans. Otherwise this is exactly
+    /// [`Self::render_elements_counted`].
+    pub fn render_scene_elements<E>(
+        &self,
+        scale: Scale<f64>,
+        output_origin: Point<i32, Logical>,
+        motion: Option<MotionFrame>,
+        counts: &mut TitlebarElementCounts,
+        resources: Option<&TitlebarResources>,
+    ) -> Vec<E>
+    where
+        E: From<SolidColorRenderElement> + From<TitlebarShapeElement>,
+    {
+        let Some(resources) = resources.filter(|_| titlebar_gpu_enabled()) else {
+            return self
+                .render_elements_counted(scale, output_origin, motion, counts)
+                .into_iter()
+                .map(E::from)
+                .collect();
+        };
+        let origin = output_origin;
+        let to_physical = |rect: Rectangle<i32, Logical>| rect.to_physical_precise_round(scale);
+        let local = |rect: Rectangle<i32, Logical>| {
+            Rectangle::new(
+                (rect.loc.x - origin.x, rect.loc.y - origin.y).into(),
+                rect.size,
+            )
+        };
+        let target = self.content;
+        let mut elements: Vec<E> = Vec::new();
+
+        // The fill keeps its top-corner span decomposition (15 rows): a
+        // per-corner SDF would need a four-component uniform, and the fill is
+        // cheap next to the traffic lights. Its bottom edge joins the content
+        // square, which the span mask already expresses exactly.
+        for span in CornerMask::titlebar().spans(self.titlebar) {
+            let (rect, color) =
+                motion_transform(span, color_from_rgba(self.scheme.chrome()), target, motion);
+            elements.push(E::from(solid_element(
+                0x7469_746c_6669_6c6c, // "tilfill"
+                to_physical(local(rect)),
+                color,
+            )));
+            counts.fill += 1;
+        }
+
+        let reveal = self.revealed();
+        for button in &self.buttons {
+            let fill = self.fill_color(button);
+            let visual = traffic_light_visual_rect(button.rect);
+            let (button_rect, button_fill) = motion_transform(visual, fill, target, motion);
+            let physical = to_physical(local(button_rect));
+            // Match `circle_spans`: the circle is inscribed in the shorter
+            // side and centred, so a fractional-scale rect that rounds to a
+            // non-square is still a circle, not a stadium.
+            let diameter = physical.size.w.min(physical.size.h);
+            let circle = Rectangle::new(
+                (
+                    physical.loc.x + (physical.size.w - diameter) / 2,
+                    physical.loc.y + (physical.size.h - diameter) / 2,
+                )
+                    .into(),
+                (diameter, diameter).into(),
+            );
+            elements.push(E::from(TitlebarShapeElement::new(
+                circle,
+                diameter as f32 / 2.0,
+                button_fill,
+                resources,
+            )));
+            counts.lights += 1;
+            if button.enabled && reveal {
+                let (glyph_frame, glyph_color) = motion_transform(
+                    visual,
+                    color_from_rgba(self.scheme.traffic_glyph()),
+                    target,
+                    motion,
+                );
+                let glyph_scale = f64::from(glyph_frame.size.w) / f64::from(visual.size.w);
+                let glyph_size = traffic_lights::GLYPH_SIZE as f64 * glyph_scale;
+                for span in glyph_spans(button.kind, glyph_frame, glyph_size, scale, origin) {
+                    elements.push(E::from(solid_element(
+                        0x7469_7467_6c79_7068, // "titglyph"
+                        span.rect,
+                        glyph_color * span.coverage,
+                    )));
+                    counts.glyphs += 1;
+                }
+            }
+        }
+
+        // Back-to-front: fill, lights, glyphs. Smithay draws the reversed
+        // list, so the opaque fill lands first and the lights/glyphs above it.
         elements.reverse();
         elements
     }
@@ -992,9 +1130,242 @@ fn distance_to_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> 
     ((px - qx).powi(2) + (py - qy).powi(2)).sqrt()
 }
 
+// --- GPU titlebar shapes (T238 decoration optimisation) --------------------
+//
+// The titlebar's fill and traffic lights are drawn as solid spans today: the
+// rounded fill is ~15 rows and each antialiased circle is ~60 spans, so one
+// window's titlebar costs ~195 draw calls. The fill is a rounded rectangle and
+// each light is a circle (a rounded rectangle with radius = half its side), so
+// both can be one SDF quad per shape. Glyph strokes stay spans and are only
+// emitted while the pointer reveals them.
+
+/// One-quad circle/rounded-rect fragment shader. `tb_radius` is a single
+/// physical corner radius; a value of half the shorter side is a circle.
+pub const TITLEBAR_SHADER: &str = r#"#version 100
+
+//_DEFINES_
+
+#if defined(EXTERNAL)
+#extension GL_OES_EGL_image_external : require
+#endif
+
+precision highp float;
+#if defined(EXTERNAL)
+uniform samplerExternalOES tex;
+#else
+uniform sampler2D tex;
+#endif
+
+uniform float alpha;
+varying vec2 v_coords;
+
+uniform vec2 tb_size;
+uniform float tb_radius;
+uniform vec4 tb_color;
+
+void main() {
+    vec2 half_size = tb_size * 0.5;
+    vec2 p = v_coords * tb_size - half_size;
+    float radius = min(tb_radius, min(half_size.x, half_size.y));
+    vec2 q = abs(p) - half_size + vec2(radius);
+    float dist = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+    float coverage = clamp(0.5 - dist, 0.0, 1.0);
+    // Smithay blends with (ONE, ONE_MINUS_SRC_ALPHA), so the fragment must
+    // be premultiplied. Emitting straight RGB made the transparent corners
+    // write their colour at full strength, which read as a square light.
+    float a = tb_color.a * coverage;
+    gl_FragColor = vec4(tb_color.rgb * a, a) * alpha;
+}
+"#;
+
+pub const TITLEBAR_SIZE_UNIFORM: &str = "tb_size";
+pub const TITLEBAR_RADIUS_UNIFORM: &str = "tb_radius";
+pub const TITLEBAR_COLOR_UNIFORM: &str = "tb_color";
+
+/// The additional uniforms [`TITLEBAR_SHADER`] declares.
+pub fn titlebar_uniform_names() -> [smithay::backend::renderer::gles::UniformName<'static>; 3] {
+    use smithay::backend::renderer::gles::{UniformName, UniformType};
+    [
+        UniformName::new(TITLEBAR_SIZE_UNIFORM, UniformType::_2f),
+        UniformName::new(TITLEBAR_RADIUS_UNIFORM, UniformType::_1f),
+        UniformName::new(TITLEBAR_COLOR_UNIFORM, UniformType::_4f),
+    ]
+}
+
+/// Opt-in GPU titlebar shapes. Off by default until the capture A/B validates
+/// the shader against the span rasterizer.
+pub const ENV_TITLEBAR_GPU: &str = "DRAGONFRUIT_TITLEBAR_GPU";
+
+static TITLEBAR_GPU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static TITLEBAR_GPU_SEEDED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+
+/// Whether the fill and traffic lights use one SDF quad each.
+pub fn titlebar_gpu_enabled() -> bool {
+    TITLEBAR_GPU_SEEDED.get_or_init(|| {
+        TITLEBAR_GPU.store(
+            crate::window::material_region::env_flag_enabled(
+                std::env::var(ENV_TITLEBAR_GPU).ok().as_deref(),
+            ),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    });
+    TITLEBAR_GPU.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Override the GPU titlebar path at runtime (`set titlebar-gpu on|off`).
+pub fn set_titlebar_gpu(enabled: bool) {
+    TITLEBAR_GPU_SEEDED.get_or_init(|| ());
+    TITLEBAR_GPU.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// A compiled titlebar-shape program plus the 1×1 white probe texture.
+#[derive(Debug, Clone)]
+pub struct TitlebarResources {
+    pub program: GlesTexProgram,
+    pub texture: GlesTexture,
+}
+
+/// One rounded-rect or circle titlebar shape drawn as a single quad.
+pub struct TitlebarShapeElement {
+    id: smithay::backend::renderer::element::Id,
+    commit: CommitCounter,
+    geometry: Rectangle<i32, Physical>,
+    radius: f32,
+    color: Color32F,
+    program: GlesTexProgram,
+    texture: GlesTexture,
+}
+
+impl TitlebarShapeElement {
+    /// `geometry` is output-local physical; `radius` is physical. A radius of
+    /// half the shorter side is a circle (the traffic lights).
+    pub fn new(
+        geometry: Rectangle<i32, Physical>,
+        radius: f32,
+        color: Color32F,
+        resources: &TitlebarResources,
+    ) -> Self {
+        let key = {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            0x7469_746c_6562_7364u64.hash(&mut hasher); // "titlebsd"
+            geometry.loc.x.hash(&mut hasher);
+            geometry.loc.y.hash(&mut hasher);
+            geometry.size.w.hash(&mut hasher);
+            geometry.size.h.hash(&mut hasher);
+            radius.to_bits().hash(&mut hasher);
+            for component in color.components() {
+                component.to_bits().hash(&mut hasher);
+            }
+            hasher.finish()
+        };
+        Self {
+            id: crate::window::stable_id_from_key(key),
+            commit: CommitCounter::default(),
+            geometry,
+            radius,
+            color,
+            program: resources.program.clone(),
+            texture: resources.texture.clone(),
+        }
+    }
+}
+
+impl smithay::backend::renderer::element::Element for TitlebarShapeElement {
+    fn id(&self) -> &smithay::backend::renderer::element::Id {
+        &self.id
+    }
+
+    fn current_commit(&self) -> CommitCounter {
+        self.commit
+    }
+
+    fn geometry(&self, _scale: Scale<f64>) -> Rectangle<i32, Physical> {
+        self.geometry
+    }
+
+    fn src(&self) -> Rectangle<f64, smithay::utils::Buffer> {
+        Rectangle::from_size(smithay::utils::Size::from((1.0, 1.0)))
+    }
+
+    fn alpha(&self) -> f32 {
+        1.0
+    }
+
+    fn kind(&self) -> smithay::backend::renderer::element::Kind {
+        smithay::backend::renderer::element::Kind::Unspecified
+    }
+}
+
+impl<R: crate::window::blur::TextureRenderer> smithay::backend::renderer::element::RenderElement<R>
+    for TitlebarShapeElement
+{
+    fn draw(
+        &self,
+        frame: &mut <R as smithay::backend::renderer::RendererSuper>::Frame<'_, '_>,
+        _src: Rectangle<f64, smithay::utils::Buffer>,
+        dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        _opaque_regions: &[Rectangle<i32, Physical>],
+    ) -> Result<(), R::Error> {
+        use smithay::backend::renderer::gles::Uniform;
+        let uniforms = [
+            Uniform::new(
+                TITLEBAR_SIZE_UNIFORM,
+                (dst.size.w as f32, dst.size.h as f32),
+            ),
+            Uniform::new(TITLEBAR_RADIUS_UNIFORM, self.radius),
+            Uniform::new(
+                TITLEBAR_COLOR_UNIFORM,
+                (
+                    self.color.r(),
+                    self.color.g(),
+                    self.color.b(),
+                    self.color.a(),
+                ),
+            ),
+        ];
+        R::draw_texture_from_to(
+            frame,
+            &self.texture,
+            Rectangle::from_size(smithay::utils::Size::from((1.0, 1.0))),
+            dst,
+            damage,
+            Some(&self.program),
+            &uniforms,
+            1.0,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_titlebar_shader_declares_its_uniforms() {
+        assert!(TITLEBAR_SHADER.contains("//_DEFINES_"));
+        assert!(TITLEBAR_SHADER.contains("varying vec2 v_coords;"));
+        assert!(TITLEBAR_SHADER.contains("uniform sampler2D tex;"));
+        assert!(TITLEBAR_SHADER.contains("uniform float alpha;"));
+        assert!(TITLEBAR_SHADER.contains("uniform vec2 tb_size;"));
+        assert!(TITLEBAR_SHADER.contains("uniform float tb_radius;"));
+        assert!(TITLEBAR_SHADER.contains("uniform vec4 tb_color;"));
+        assert!(TITLEBAR_SHADER.contains("gl_FragColor"));
+        // The shader must not carry token literals: every value is a uniform.
+        assert!(!TITLEBAR_SHADER.contains("14.0"));
+    }
+
+    #[test]
+    fn the_titlebar_uniform_names_match_the_shader() {
+        use smithay::backend::renderer::gles::UniformType;
+        let names = titlebar_uniform_names();
+        let by_name: Vec<(&str, UniformType)> =
+            names.iter().map(|name| (&*name.name, name.type_)).collect();
+        assert!(by_name.contains(&(TITLEBAR_SIZE_UNIFORM, UniformType::_2f)));
+        assert!(by_name.contains(&(TITLEBAR_RADIUS_UNIFORM, UniformType::_1f)));
+        assert!(by_name.contains(&(TITLEBAR_COLOR_UNIFORM, UniformType::_4f)));
+    }
     use smithay::backend::renderer::element::Element;
     use smithay::utils::Size;
 

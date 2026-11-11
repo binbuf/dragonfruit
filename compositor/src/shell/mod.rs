@@ -198,6 +198,16 @@ pub struct ShellProtocolState {
 }
 
 impl ShellProtocolState {
+    /// The chrome namespace for a live `df_layer_surface` surface, if any.
+    /// Used by the T238 trace to label the compositor's receive/present
+    /// timestamps without exposing the layer list.
+    pub fn namespace_for_surface(&self, surface: &WlSurface) -> Option<&str> {
+        self.layers
+            .iter()
+            .find(|entry| entry.surface == *surface)
+            .map(|entry| entry.state.namespace.as_str())
+    }
+
     /// Register the private globals. `df_core` is advertised to everyone;
     /// the others are advertised but refuse untrusted binds.
     pub fn new(display: &DisplayHandle) -> Self {
@@ -2748,7 +2758,7 @@ impl Dispatch<df_workspace::DfWorkspace, WorkspaceUserData> for DfState {
                         .workspaces
                         .set_wallpaper_image(&output, index, source, fit)
                     {
-                        state.needs_redraw = true;
+                        state.mark_scene_dirty();
                         state.sync_workspaces();
                     }
                 }
@@ -2811,8 +2821,20 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
                         size: (width as i32, height as i32).into(),
                         refresh: refresh as i32,
                     };
-                    output.change_current_state(Some(mode), None, None, None);
-                    geometry_changed = true;
+                    // T238 P0: an unchanged mode must not reconfigure every
+                    // chrome surface. The Displays pane can echo the live mode.
+                    let current = output.current_mode();
+                    let changed = current
+                        .map(|current| {
+                            current.size.w != mode.size.w
+                                || current.size.h != mode.size.h
+                                || current.refresh != mode.refresh
+                        })
+                        .unwrap_or(true);
+                    if changed {
+                        output.change_current_state(Some(mode), None, None, None);
+                        geometry_changed = true;
+                    }
                 } else {
                     eprintln!(
                         "dragonfruit-compositor: ignoring invalid mode request {width}x{height}"
@@ -2823,13 +2845,17 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
                 // A non-finite or non-positive scale would poison every
                 // later geometry conversion; keep the current scale.
                 if scale.is_finite() && scale > 0.0 {
-                    output.change_current_state(
-                        None,
-                        None,
-                        Some(OutputScale::Fractional(scale)),
-                        None,
-                    );
-                    geometry_changed = true;
+                    // T238 P0: only a real scale change reconfigures chrome.
+                    let current = output.current_scale().fractional_scale();
+                    if (current - scale).abs() > f64::EPSILON {
+                        output.change_current_state(
+                            None,
+                            None,
+                            Some(OutputScale::Fractional(scale)),
+                            None,
+                        );
+                        geometry_changed = true;
+                    }
                 } else {
                     eprintln!("dragonfruit-compositor: ignoring invalid scale request {scale}");
                 }
@@ -2841,8 +2867,11 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
                         .map(|value| value as u32)
                         .unwrap_or(0),
                 );
-                output.change_current_state(None, Some(transform), None, None);
-                geometry_changed = true;
+                // T238 P0: an unchanged transform must not reconfigure chrome.
+                if output.current_transform() != transform {
+                    output.change_current_state(None, Some(transform), None, None);
+                    geometry_changed = true;
+                }
             }
             df_output::Request::SetVrr { .. } | df_output::Request::SetNightLight { .. } => {
                 // VRR and night-light plumbing is a T-16 displays-pane item

@@ -41,6 +41,8 @@
 //! query scanout
 //! query degrade
 //! query material
+//! query scene
+//! query frames
 //! query grid
 //! query gesture
 //! query switcher
@@ -62,6 +64,8 @@
 //! set degrade-budget <microseconds>
 //! set material-path gpu|software
 //! set material-blur-supported on|off
+//! set shadow-gpu on|off
+//! set titlebar-gpu on|off
 //! set color-scheme light|dark
 //! minimize <window-id>
 //! restore <window-id>
@@ -126,6 +130,7 @@ use smithay::backend::input::{
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, Mode, PostAction};
 
+use crate::backend::present::PresentFault;
 use crate::magnifier::MagnifierMode;
 use crate::state::DfState;
 use crate::window::{
@@ -719,6 +724,14 @@ pub enum SyntheticCommand {
     /// the compositor materials render with and the resolved chrome/shadow
     /// tones, followed by `end`.
     QueryMaterial,
+    /// Read-only scene-cache introspection (T238 follow-up): the live scene
+    /// content epoch, whether a redraw is pending, and whether a scene
+    /// animation is forcing the cache to render every frame.
+    QueryScene,
+    /// Read-only frame accounting (T238 follow-up): separate render attempts,
+    /// damage frames, wake-only swaps, presenter submissions/completions,
+    /// coalesced/superseded frames, client feedback, and host redraw pacing.
+    QueryFrames,
     /// Read-only Mission Control grid introspection (T-05.1a): the overview's
     /// grid progress and one `grid` line per placed live surface, followed by
     /// `end`. T-05.3 adds a `grid drag` line while a live representation is
@@ -823,6 +836,14 @@ pub enum SyntheticCommand {
     /// Declare whether the sampled backdrop pass is implemented on the GPU
     /// path (T-21.2c test plumbing).
     SetMaterialBlurSupported(bool),
+    /// Toggle the one-quad shader shadow at runtime (T238 decoration A/B).
+    SetShadowGpu(bool),
+    /// Toggle the one-quad SDF titlebar at runtime (T238 decoration A/B).
+    SetTitlebarGpu(bool),
+    /// Inject a one-shot presenter fault (T238 lifecycle test plumbing):
+    /// `bad-surface` exercises the surface-loss recovery, `other` the retry
+    /// path, and `none` clears it.
+    SetPresentFault(Option<PresentFault>),
     /// Set the live light/dark color scheme the compositor materials render
     /// with (T-04.4b test/capture plumbing): `light` or `dark`.
     SetColorScheme(ColorScheme),
@@ -1001,6 +1022,8 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("scanout") => SyntheticCommand::QueryScanout,
             Some("degrade") => SyntheticCommand::QueryDegrade,
             Some("material") => SyntheticCommand::QueryMaterial,
+            Some("scene") => SyntheticCommand::QueryScene,
+            Some("frames") => SyntheticCommand::QueryFrames,
             Some("grid") => SyntheticCommand::QueryGrid,
             Some("spaces") => SyntheticCommand::QuerySpaces,
             Some("wallpaper") => SyntheticCommand::QueryWallpaper,
@@ -1182,6 +1205,30 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                     return Err(format!("expected on|off, got {other:?}"));
                 }
             },
+            Some("shadow-gpu") => match parts.next() {
+                Some("on") | Some("1") => SyntheticCommand::SetShadowGpu(true),
+                Some("off") | Some("0") => SyntheticCommand::SetShadowGpu(false),
+                other => {
+                    return Err(format!("expected on|off, got {other:?}"));
+                }
+            },
+            Some("titlebar-gpu") => match parts.next() {
+                Some("on") | Some("1") => SyntheticCommand::SetTitlebarGpu(true),
+                Some("off") | Some("0") => SyntheticCommand::SetTitlebarGpu(false),
+                other => {
+                    return Err(format!("expected on|off, got {other:?}"));
+                }
+            },
+            Some("present-fault") => match parts.next() {
+                Some("bad-surface") => {
+                    SyntheticCommand::SetPresentFault(Some(PresentFault::BadSurface))
+                }
+                Some("other") => SyntheticCommand::SetPresentFault(Some(PresentFault::Other)),
+                Some("none") | None => SyntheticCommand::SetPresentFault(None),
+                other => {
+                    return Err(format!("expected bad-surface|other|none, got {other:?}"));
+                }
+            },
             Some("magnifier") => match parts.next() {
                 Some("on") | Some("1") => SyntheticCommand::SetMagnifier(true),
                 Some("off") | Some("0") => SyntheticCommand::SetMagnifier(false),
@@ -1325,6 +1372,15 @@ impl SyntheticCommand {
             SyntheticCommand::QueryMaterial => {
                 unreachable!("query material is handled by apply_datagram")
             }
+            SyntheticCommand::QueryScene => {
+                unreachable!("query scene is handled by apply_datagram")
+            }
+            SyntheticCommand::QueryFrames => {
+                unreachable!("query frames is handled by apply_datagram")
+            }
+            SyntheticCommand::SetPresentFault(_) => {
+                unreachable!("present-fault is handled by apply_datagram")
+            }
             SyntheticCommand::QueryGrid => {
                 unreachable!("query grid is handled by apply_datagram")
             }
@@ -1392,6 +1448,12 @@ impl SyntheticCommand {
             }
             SyntheticCommand::SetMaterialBlurSupported(_) => {
                 unreachable!("set material-blur-supported is handled by apply_datagram")
+            }
+            SyntheticCommand::SetShadowGpu(_) => {
+                unreachable!("set shadow-gpu is handled by apply_datagram")
+            }
+            SyntheticCommand::SetTitlebarGpu(_) => {
+                unreachable!("set titlebar-gpu is handled by apply_datagram")
             }
             SyntheticCommand::SetColorScheme(_) => {
                 unreachable!("set color-scheme is handled by apply_datagram")
@@ -1565,6 +1627,24 @@ fn apply_datagram_reply(
                 }
                 applied += 1;
             }
+            Ok(SyntheticCommand::QueryScene) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = scene_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryFrames) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = frames_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
             Ok(SyntheticCommand::QueryGrid) => {
                 if let Some((socket, peer)) = &reply {
                     let report = grid_report(state);
@@ -1721,6 +1801,21 @@ fn apply_datagram_reply(
             }
             Ok(SyntheticCommand::SetMaterialBlurSupported(supported)) => {
                 state.set_material_blur_supported(supported);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetShadowGpu(enabled)) => {
+                crate::window::set_shadow_gpu(enabled);
+                state.needs_redraw = true;
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetPresentFault(fault)) => {
+                state.present_fault = fault;
+                state.needs_redraw = true;
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetTitlebarGpu(enabled)) => {
+                crate::window::set_titlebar_gpu(enabled);
+                state.needs_redraw = true;
                 applied += 1;
             }
             Ok(SyntheticCommand::SetColorScheme(scheme)) => {
@@ -2177,6 +2272,44 @@ fn degrade_report(state: &DfState) -> String {
 /// always `Minimal` on the software/headless path — so a headless test can
 /// prove both schemes, the tier fallback, and the software fallback without a
 /// GPU.
+/// The `query scene` report: the live scene-content epoch and the two flags
+/// that decide whether the material scene cache may skip its traversal.
+fn scene_report(state: &DfState) -> String {
+    format!(
+        "scene epoch={} needs_redraw={} animations={}\nend\n",
+        state.scene_epoch(),
+        state.needs_redraw as u32,
+        state.scene_is_animating() as u32,
+    )
+}
+
+/// The `query frames` report: explicit nested frame accounting and the
+/// provenance of the presentation timestamps. `completed` counts swaps, not
+/// physically presented frames; `host_redraws` is the independent host
+/// frame-callback pacing signal.
+fn frames_report(state: &DfState) -> String {
+    let stats = &state.stats;
+    format!(
+        "frames attempts={} damage={} no_damage_swaps={} submitted={} completed={} \
+         failed={} coalesced={} superseded={} feedback_sent={} present_stalls={} \
+         in_flight={} host_feedback=unavailable presentation_source={}\n\
+         superseded {}\nend\n",
+        stats.frame_attempts,
+        stats.damage_frames,
+        stats.frames_skipped_no_damage,
+        stats.frames_submitted,
+        stats.frames_rendered,
+        stats.swaps_failed,
+        stats.frames_coalesced,
+        stats.frames_superseded,
+        stats.presentation_feedback_sent,
+        stats.present_stalls,
+        state.present_in_flight as u32,
+        stats.presentation_provenance.as_str(),
+        stats.superseded_summary(),
+    )
+}
+
 fn material_report(state: &DfState) -> String {
     let scheme = state.color_scheme;
     // The selected tier and the effective tier the material actually renders
@@ -2944,6 +3077,34 @@ mod tests {
         assert_eq!(
             parse_command("query material").unwrap(),
             SyntheticCommand::QueryMaterial
+        );
+        assert_eq!(
+            parse_command("query scene").unwrap(),
+            SyntheticCommand::QueryScene
+        );
+        assert_eq!(
+            parse_command("query frames").unwrap(),
+            SyntheticCommand::QueryFrames
+        );
+        assert_eq!(
+            parse_command("set present-fault bad-surface").unwrap(),
+            SyntheticCommand::SetPresentFault(Some(PresentFault::BadSurface))
+        );
+        assert_eq!(
+            parse_command("set present-fault none").unwrap(),
+            SyntheticCommand::SetPresentFault(None)
+        );
+        assert_eq!(
+            parse_command("set shadow-gpu on").unwrap(),
+            SyntheticCommand::SetShadowGpu(true)
+        );
+        assert_eq!(
+            parse_command("set shadow-gpu off").unwrap(),
+            SyntheticCommand::SetShadowGpu(false)
+        );
+        assert_eq!(
+            parse_command("set titlebar-gpu on").unwrap(),
+            SyntheticCommand::SetTitlebarGpu(true)
         );
         assert_eq!(
             parse_command("set color-scheme light").unwrap(),

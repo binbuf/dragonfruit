@@ -97,7 +97,8 @@ use std::time::{Duration, Instant};
 
 use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
 use crate::app_switcher::{AppSwitcher, SwitchStep, SwitcherApp};
-use crate::gpu_timer::GpuStats;
+use crate::backend::present::PresentFault;
+use crate::gpu_timer::{GpuPass, GpuSample, GpuStats};
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
 use crate::input::gestures::GestureRecognizer;
@@ -172,6 +173,613 @@ pub struct FrameSample {
     pub duration_us: u32,
     /// Time since the previous rendered frame (`0` for the first).
     pub interval_ms: u32,
+}
+
+/// How stale a superseded frame was when the host swap returned.
+///
+/// All three ages are measured from the frame's build start, not from a
+/// physical vblank. On the nested rail the completion timestamp is the host
+/// frame callback (`eglSwapBuffers` return); the host may present it later.
+/// On DRM the same accounting would use the page-flip timestamp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SupersededSample {
+    /// Age of the frame's scene content when it was handed to the presenter.
+    pub submit_age_us: u32,
+    /// Age of the frame's scene content when the swap completed.
+    pub completion_age_us: u32,
+    /// How long the newer scene had existed when the swap completed. This is
+    /// the interval the next frame has to catch up.
+    pub newer_scene_age_us: u32,
+    /// Whether the superseded frame was a damage frame or a wake-only swap.
+    pub damage: bool,
+}
+
+/// One stage of the compositor's frame path (T238). These separate work the
+/// compositor executes from time it spends waiting on another component:
+/// buffer acquisition (`Bind`), scene/material preparation, blur, composite,
+/// backend submission, and client frame-callback work. `Submit` on the nested
+/// rail is the host swapchain wait; on DRM it is the kernel queue call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameStage {
+    Bind,
+    Prepare,
+    Scene,
+    Blur,
+    Composite,
+    Submit,
+    Callback,
+    /// Diagnostic `glFinish` wait after the scene pass (GPU work still
+    /// outstanding when the CPU finished submitting it).
+    SceneSync,
+    /// Diagnostic `glFinish` wait after the final composite.
+    CompositeSync,
+    /// CPU time to build the scene element list (titlebar/shadow/span
+    /// geometry, element construction). Separate from `Prepare` and `Scene`
+    /// so decoration cost can be attributed to geometry building rather than
+    /// the GL draw submission (T238 decoration profiling).
+    SceneBuild,
+}
+
+impl FrameStage {
+    pub const ALL: [FrameStage; 10] = [
+        FrameStage::Bind,
+        FrameStage::Prepare,
+        FrameStage::Scene,
+        FrameStage::Blur,
+        FrameStage::Composite,
+        FrameStage::Submit,
+        FrameStage::Callback,
+        FrameStage::SceneSync,
+        FrameStage::CompositeSync,
+        FrameStage::SceneBuild,
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            FrameStage::Bind => "bind",
+            FrameStage::Prepare => "prepare",
+            FrameStage::Scene => "scene",
+            FrameStage::Blur => "blur",
+            FrameStage::Composite => "composite",
+            FrameStage::Submit => "submit",
+            FrameStage::Callback => "callback",
+            FrameStage::SceneSync => "scene_sync",
+            FrameStage::CompositeSync => "composite_sync",
+            FrameStage::SceneBuild => "scene_build",
+        }
+    }
+
+    const fn index(self) -> usize {
+        match self {
+            FrameStage::Bind => 0,
+            FrameStage::Prepare => 1,
+            FrameStage::Scene => 2,
+            FrameStage::Blur => 3,
+            FrameStage::Composite => 4,
+            FrameStage::Submit => 5,
+            FrameStage::Callback => 6,
+            FrameStage::SceneSync => 7,
+            FrameStage::CompositeSync => 8,
+            FrameStage::SceneBuild => 9,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct StageTiming {
+    samples: VecDeque<u32>,
+    samples_total: u64,
+    max_us: u32,
+}
+
+impl StageTiming {
+    const CAPACITY: usize = RenderStats::FRAME_TRACE_CAPACITY;
+
+    fn record(&mut self, duration: Duration) {
+        let us = duration.as_micros().min(u128::from(u32::MAX)) as u32;
+        if self.samples.len() == Self::CAPACITY {
+            self.samples.pop_front();
+        }
+        self.samples.push_back(us);
+        self.samples_total += 1;
+        self.max_us = self.max_us.max(us);
+    }
+
+    fn summary(&self, name: &str) -> String {
+        if self.samples.is_empty() {
+            return format!(
+                "{name}_samples=0 {name}_p50_us=0 {name}_p95_us=0 \
+                 {name}_p99_us=0 {name}_max_us=0"
+            );
+        }
+        let mut sorted: Vec<u32> = self.samples.iter().copied().collect();
+        sorted.sort_unstable();
+        format!(
+            "{name}_samples={} {name}_p50_us={} {name}_p95_us={} \
+             {name}_p99_us={} {name}_max_us={}",
+            self.samples_total,
+            frame_percentile(&sorted, 50),
+            frame_percentile(&sorted, 95),
+            frame_percentile(&sorted, 99),
+            self.max_us,
+        )
+    }
+}
+
+/// Bounded per-stage frame timings. The ring describes the current window;
+/// `samples_total` is the lifetime count so a short window is not mistaken
+/// for the whole session.
+#[derive(Debug, Default)]
+pub struct FrameStages {
+    bind: StageTiming,
+    prepare: StageTiming,
+    scene: StageTiming,
+    blur: StageTiming,
+    composite: StageTiming,
+    submit: StageTiming,
+    callback: StageTiming,
+    scene_sync: StageTiming,
+    composite_sync: StageTiming,
+    scene_build: StageTiming,
+}
+
+impl FrameStages {
+    pub fn record(&mut self, stage: FrameStage, duration: Duration) {
+        match stage {
+            FrameStage::Bind => self.bind.record(duration),
+            FrameStage::Prepare => self.prepare.record(duration),
+            FrameStage::Scene => self.scene.record(duration),
+            FrameStage::Blur => self.blur.record(duration),
+            FrameStage::Composite => self.composite.record(duration),
+            FrameStage::Submit => self.submit.record(duration),
+            FrameStage::Callback => self.callback.record(duration),
+            FrameStage::SceneSync => self.scene_sync.record(duration),
+            FrameStage::CompositeSync => self.composite_sync.record(duration),
+            FrameStage::SceneBuild => self.scene_build.record(duration),
+        }
+    }
+
+    fn timing(&self, stage: FrameStage) -> &StageTiming {
+        match stage {
+            FrameStage::Bind => &self.bind,
+            FrameStage::Prepare => &self.prepare,
+            FrameStage::Scene => &self.scene,
+            FrameStage::Blur => &self.blur,
+            FrameStage::Composite => &self.composite,
+            FrameStage::Submit => &self.submit,
+            FrameStage::Callback => &self.callback,
+            FrameStage::SceneSync => &self.scene_sync,
+            FrameStage::CompositeSync => &self.composite_sync,
+            FrameStage::SceneBuild => &self.scene_build,
+        }
+    }
+
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::with_capacity(FrameStage::ALL.len());
+        for stage in FrameStage::ALL {
+            parts.push(self.timing(stage).summary(stage.name()));
+        }
+        parts.join(" ")
+    }
+}
+
+/// One frame's CPU stage durations joined with its GPU timer results.
+///
+/// Percentile rings answer "how long did this stage usually take", but they
+/// cannot say whether the CPU was blocked waiting for the GPU in the same
+/// frame. This entry keeps the per-frame pair until the (later) GPU query
+/// result arrives, so the summary can report per-frame totals and the
+/// CPU-versus-GPU gap.
+#[derive(Debug, Clone, Copy)]
+struct FrameTimelineEntry {
+    frame: u64,
+    cpu: [u32; FrameStage::ALL.len()],
+    cpu_seen: u16,
+    gpu: [u32; 3],
+    gpu_seen: u8,
+    /// Set once the frame's scene/composite CPU+GPU pair has been joined, so
+    /// a late duplicate sample cannot double-count it.
+    joined: bool,
+}
+
+impl Default for FrameTimelineEntry {
+    fn default() -> Self {
+        Self {
+            frame: 0,
+            cpu: [0; FrameStage::ALL.len()],
+            cpu_seen: 0,
+            gpu: [0; 3],
+            gpu_seen: 0,
+            joined: false,
+        }
+    }
+}
+
+impl FrameTimelineEntry {
+    fn has_cpu(&self, stage: FrameStage) -> bool {
+        self.cpu_seen & (1 << stage.index()) != 0
+    }
+
+    fn has_gpu(&self, pass: GpuPass) -> bool {
+        self.gpu_seen & (1 << pass.index()) != 0
+    }
+}
+
+/// Bounded per-frame CPU/GPU correlation (T238 follow-up).
+#[derive(Debug)]
+struct FrameTimeline {
+    entries: VecDeque<FrameTimelineEntry>,
+    current: u64,
+    /// Frames whose scene CPU and scene GPU samples were both present.
+    matched: u64,
+    /// Frames with a CPU scene sample but no GPU scene sample by dump time.
+    cpu_without_gpu: u64,
+    /// GPU scene samples whose frame id was no longer in the ring.
+    gpu_without_cpu: u64,
+    /// Joined frames whose scene/composite GPU query returned zero. A zero is
+    /// a real "no draws were submitted" result (the damage tracker found the
+    /// scene texture unchanged), not a missing sample.
+    scene_gpu_zero: u64,
+    composite_gpu_zero: u64,
+    /// Per-frame `scene + composite` CPU and GPU totals, and their signed
+    /// difference (`cpu - gpu`), newest last.
+    cpu_total: VecDeque<u32>,
+    gpu_total: VecDeque<u32>,
+    gap: VecDeque<i32>,
+    /// Per-pass per-frame totals, so scene and composite can be judged
+    /// independently instead of only as a sum.
+    scene_cpu: VecDeque<u32>,
+    scene_gpu: VecDeque<u32>,
+    composite_cpu: VecDeque<u32>,
+    composite_gpu: VecDeque<u32>,
+    scene_gap: VecDeque<i32>,
+    composite_gap: VecDeque<i32>,
+}
+
+impl Default for FrameTimeline {
+    fn default() -> Self {
+        Self {
+            entries: VecDeque::new(),
+            current: 0,
+            matched: 0,
+            cpu_without_gpu: 0,
+            gpu_without_cpu: 0,
+            scene_gpu_zero: 0,
+            composite_gpu_zero: 0,
+            cpu_total: VecDeque::new(),
+            gpu_total: VecDeque::new(),
+            gap: VecDeque::new(),
+            scene_cpu: VecDeque::new(),
+            scene_gpu: VecDeque::new(),
+            composite_cpu: VecDeque::new(),
+            composite_gpu: VecDeque::new(),
+            scene_gap: VecDeque::new(),
+            composite_gap: VecDeque::new(),
+        }
+    }
+}
+
+impl FrameTimeline {
+    /// Frames kept for correlation. Large enough that a query landing one or
+    /// two frames late always finds its CPU entry.
+    const CAPACITY: usize = 512;
+
+    fn begin(&mut self) -> u64 {
+        self.current = self.current.wrapping_add(1).max(1);
+        if self.entries.len() == Self::CAPACITY {
+            if let Some(old) = self.entries.pop_front() {
+                self.note_evicted(&old);
+            }
+        }
+        self.entries.push_back(FrameTimelineEntry {
+            frame: self.current,
+            ..FrameTimelineEntry::default()
+        });
+        self.current
+    }
+
+    fn record_cpu(&mut self, frame: u64, stage: FrameStage, duration: Duration) {
+        let us = duration.as_micros().min(u128::from(u32::MAX)) as u32;
+        if let Some(index) = self.entries.iter().rposition(|entry| entry.frame == frame) {
+            let entry = &mut self.entries[index];
+            entry.cpu[stage.index()] = us;
+            entry.cpu_seen |= 1 << stage.index();
+        }
+    }
+
+    fn record_gpu(&mut self, sample: GpuSample) {
+        let micros = (sample.nanos / 1_000).min(u64::from(u32::MAX)) as u32;
+        let Some(index) = self
+            .entries
+            .iter()
+            .rposition(|entry| entry.frame == sample.frame)
+        else {
+            self.gpu_without_cpu = self.gpu_without_cpu.saturating_add(1);
+            return;
+        };
+        {
+            let entry = &mut self.entries[index];
+            // Two bounded scene groups issue one query each; a pass's
+            // per-frame value is the sum, not the last sample.
+            let index = sample.pass.index();
+            entry.gpu[index] = entry.gpu[index].saturating_add(micros);
+            entry.gpu_seen |= 1 << index;
+        }
+        self.try_join_at(index);
+    }
+
+    fn try_join_at(&mut self, index: usize) {
+        let entry = &mut self.entries[index];
+        if entry.joined {
+            return;
+        }
+        // Anchor the join on the composite: it is present on every rendered
+        // frame, including the diagnostic no-material arm. The scene pass is
+        // optional (material off) and is joined only when both halves exist.
+        if !(entry.has_cpu(FrameStage::Composite) && entry.has_gpu(GpuPass::Composite)) {
+            return;
+        }
+        let has_scene = entry.has_cpu(FrameStage::Scene) && entry.has_gpu(GpuPass::Scene);
+        let scene_cpu = entry.cpu[FrameStage::Scene.index()];
+        let composite_cpu = entry.cpu[FrameStage::Composite.index()];
+        let scene_gpu = entry.gpu[GpuPass::Scene.index()];
+        let composite_gpu = entry.gpu[GpuPass::Composite.index()];
+        let cpu_total = scene_cpu.saturating_add(composite_cpu);
+        let gpu_total = scene_gpu.saturating_add(composite_gpu);
+        entry.joined = true;
+        self.matched = self.matched.saturating_add(1);
+        let gap = i64::from(cpu_total) - i64::from(gpu_total);
+        push_bounded(&mut self.cpu_total, cpu_total);
+        push_bounded(&mut self.gpu_total, gpu_total);
+        push_bounded(
+            &mut self.gap,
+            gap.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        );
+        if has_scene {
+            if scene_gpu == 0 {
+                self.scene_gpu_zero = self.scene_gpu_zero.saturating_add(1);
+            }
+            push_bounded(&mut self.scene_cpu, scene_cpu);
+            push_bounded(&mut self.scene_gpu, scene_gpu);
+            push_bounded(
+                &mut self.scene_gap,
+                (i64::from(scene_cpu) - i64::from(scene_gpu))
+                    .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            );
+        }
+        if composite_gpu == 0 {
+            self.composite_gpu_zero = self.composite_gpu_zero.saturating_add(1);
+        }
+        push_bounded(&mut self.composite_cpu, composite_cpu);
+        push_bounded(&mut self.composite_gpu, composite_gpu);
+        push_bounded(
+            &mut self.composite_gap,
+            (i64::from(composite_cpu) - i64::from(composite_gpu))
+                .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        );
+    }
+
+    fn note_evicted(&mut self, entry: &FrameTimelineEntry) {
+        if !entry.joined && entry.has_cpu(FrameStage::Scene) && !entry.has_gpu(GpuPass::Scene) {
+            self.cpu_without_gpu = self.cpu_without_gpu.saturating_add(1);
+        }
+    }
+
+    fn summary(&self) -> String {
+        // A frame still in the ring without its GPU result is pending, not
+        // unmatched: the query may land one or two frames later. Only the
+        // evicted entries above are truly unmatched.
+        let pending = self
+            .entries
+            .iter()
+            .filter(|entry| {
+                !entry.joined && entry.has_cpu(FrameStage::Scene) && !entry.has_gpu(GpuPass::Scene)
+            })
+            .count();
+        let cpu = sorted(&self.cpu_total);
+        let gpu = sorted(&self.gpu_total);
+        let gap = sorted_signed(&self.gap);
+        let scene_cpu = sorted(&self.scene_cpu);
+        let scene_gpu = sorted(&self.scene_gpu);
+        let composite_cpu = sorted(&self.composite_cpu);
+        let composite_gpu = sorted(&self.composite_gpu);
+        let scene_gap = sorted_signed(&self.scene_gap);
+        let composite_gap = sorted_signed(&self.composite_gap);
+        format!(
+            "frames={} current_frame={} matched={} pending={} cpu_without_gpu={} \
+             gpu_without_cpu={} cpu_total_samples={} cpu_total_p50_us={} \
+             cpu_total_p95_us={} cpu_total_p99_us={} gpu_total_samples={} \
+             gpu_total_p50_us={} gpu_total_p95_us={} gpu_total_p99_us={} \
+             gap_samples={} gap_p50_us={} gap_p95_us={} gap_p99_us={} \
+             scene_cpu_p50_us={} scene_cpu_p95_us={} scene_gpu_p50_us={} \
+             scene_gpu_p95_us={} scene_gpu_zero={} scene_gap_p50_us={} \
+             scene_gap_p95_us={} composite_cpu_p50_us={} composite_cpu_p95_us={} \
+             composite_gpu_p50_us={} composite_gpu_p95_us={} \
+             composite_gpu_zero={} composite_gap_p50_us={} composite_gap_p95_us={}",
+            self.entries.len(),
+            self.current,
+            self.matched,
+            pending,
+            self.cpu_without_gpu,
+            self.gpu_without_cpu,
+            cpu.len(),
+            frame_percentile(&cpu, 50),
+            frame_percentile(&cpu, 95),
+            frame_percentile(&cpu, 99),
+            gpu.len(),
+            frame_percentile(&gpu, 50),
+            frame_percentile(&gpu, 95),
+            frame_percentile(&gpu, 99),
+            gap.len(),
+            signed_percentile(&gap, 50),
+            signed_percentile(&gap, 95),
+            signed_percentile(&gap, 99),
+            frame_percentile(&scene_cpu, 50),
+            frame_percentile(&scene_cpu, 95),
+            frame_percentile(&scene_gpu, 50),
+            frame_percentile(&scene_gpu, 95),
+            self.scene_gpu_zero,
+            signed_percentile(&scene_gap, 50),
+            signed_percentile(&scene_gap, 95),
+            frame_percentile(&composite_cpu, 50),
+            frame_percentile(&composite_cpu, 95),
+            frame_percentile(&composite_gpu, 50),
+            frame_percentile(&composite_gpu, 95),
+            self.composite_gpu_zero,
+            signed_percentile(&composite_gap, 50),
+            signed_percentile(&composite_gap, 95),
+        )
+    }
+}
+
+fn push_bounded<T>(ring: &mut VecDeque<T>, value: T) {
+    if ring.len() == FrameTimeline::CAPACITY {
+        ring.pop_front();
+    }
+    ring.push_back(value);
+}
+
+fn sorted(ring: &VecDeque<u32>) -> Vec<u32> {
+    let mut values: Vec<u32> = ring.iter().copied().collect();
+    values.sort_unstable();
+    values
+}
+
+fn sorted_signed(ring: &VecDeque<i32>) -> Vec<i32> {
+    let mut values: Vec<i32> = ring.iter().copied().collect();
+    values.sort_unstable();
+    values
+}
+
+fn signed_percentile(sorted: &[i32], percent: usize) -> i32 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let last = sorted.len() - 1;
+    let rank = (percent * last) / 100;
+    sorted[rank.min(last)]
+}
+
+/// Element-type breakdown of the final composite draw list (T238 follow-up).
+///
+/// `chrome`/`decoration`/... are the backend enum variants actually submitted.
+/// `titlebar`/`window_content`/... attribute the scene list to the builder
+/// that produced it, so the dominant `Decoration` count can be explained.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct CompositeElementCounts {
+    pub chrome: u64,
+    pub decoration: u64,
+    pub appear: u64,
+    pub wallpaper: u64,
+    pub blur: u64,
+    pub scene: u64,
+    pub pointer: u64,
+    pub space: u64,
+    pub titlebar: u64,
+    pub titlebar_fill: u64,
+    pub titlebar_lights: u64,
+    pub titlebar_glyphs: u64,
+    pub window_content: u64,
+    pub window_shadow: u64,
+    /// Physical shadow fragment area (shader quad) and span upper bound.
+    pub shadow_area: u64,
+    pub shadow_span_area: u64,
+    /// Physical titlebar shape area.
+    pub titlebar_area: u64,
+    pub motion: u64,
+    pub menu: u64,
+    pub desktop: u64,
+    pub lock: u64,
+}
+
+impl CompositeElementCounts {
+    /// The sum of the backend variants: the elements the final composite
+    /// actually submitted. The source fields are a second view of the same
+    /// scene list and are deliberately not added here.
+    pub fn variant_total(&self) -> u64 {
+        self.chrome
+            .saturating_add(self.decoration)
+            .saturating_add(self.appear)
+            .saturating_add(self.wallpaper)
+            .saturating_add(self.blur)
+            .saturating_add(self.scene)
+            .saturating_add(self.pointer)
+            .saturating_add(self.space)
+    }
+
+    pub fn add(&mut self, other: &Self) {
+        self.chrome = self.chrome.saturating_add(other.chrome);
+        self.decoration = self.decoration.saturating_add(other.decoration);
+        self.appear = self.appear.saturating_add(other.appear);
+        self.wallpaper = self.wallpaper.saturating_add(other.wallpaper);
+        self.blur = self.blur.saturating_add(other.blur);
+        self.scene = self.scene.saturating_add(other.scene);
+        self.pointer = self.pointer.saturating_add(other.pointer);
+        self.space = self.space.saturating_add(other.space);
+        self.titlebar = self.titlebar.saturating_add(other.titlebar);
+        self.titlebar_fill = self.titlebar_fill.saturating_add(other.titlebar_fill);
+        self.titlebar_lights = self.titlebar_lights.saturating_add(other.titlebar_lights);
+        self.titlebar_glyphs = self.titlebar_glyphs.saturating_add(other.titlebar_glyphs);
+        self.window_content = self.window_content.saturating_add(other.window_content);
+        self.window_shadow = self.window_shadow.saturating_add(other.window_shadow);
+        self.shadow_area = self.shadow_area.saturating_add(other.shadow_area);
+        self.shadow_span_area = self.shadow_span_area.saturating_add(other.shadow_span_area);
+        self.titlebar_area = self.titlebar_area.saturating_add(other.titlebar_area);
+        self.motion = self.motion.saturating_add(other.motion);
+        self.menu = self.menu.saturating_add(other.menu);
+        self.desktop = self.desktop.saturating_add(other.desktop);
+        self.lock = self.lock.saturating_add(other.lock);
+    }
+
+    pub fn max_with(&mut self, other: &Self) {
+        self.chrome = self.chrome.max(other.chrome);
+        self.decoration = self.decoration.max(other.decoration);
+        self.appear = self.appear.max(other.appear);
+        self.wallpaper = self.wallpaper.max(other.wallpaper);
+        self.blur = self.blur.max(other.blur);
+        self.scene = self.scene.max(other.scene);
+        self.pointer = self.pointer.max(other.pointer);
+        self.space = self.space.max(other.space);
+        self.titlebar = self.titlebar.max(other.titlebar);
+        self.titlebar_fill = self.titlebar_fill.max(other.titlebar_fill);
+        self.titlebar_lights = self.titlebar_lights.max(other.titlebar_lights);
+        self.titlebar_glyphs = self.titlebar_glyphs.max(other.titlebar_glyphs);
+        self.window_content = self.window_content.max(other.window_content);
+        self.window_shadow = self.window_shadow.max(other.window_shadow);
+        self.shadow_area = self.shadow_area.max(other.shadow_area);
+        self.shadow_span_area = self.shadow_span_area.max(other.shadow_span_area);
+        self.titlebar_area = self.titlebar_area.max(other.titlebar_area);
+        self.motion = self.motion.max(other.motion);
+        self.menu = self.menu.max(other.menu);
+        self.desktop = self.desktop.max(other.desktop);
+        self.lock = self.lock.max(other.lock);
+    }
+
+    fn fields(&self) -> [(&'static str, u64); 21] {
+        [
+            ("chrome", self.chrome),
+            ("decoration", self.decoration),
+            ("appear", self.appear),
+            ("wallpaper", self.wallpaper),
+            ("blur", self.blur),
+            ("scene", self.scene),
+            ("pointer", self.pointer),
+            ("space", self.space),
+            ("titlebar", self.titlebar),
+            ("titlebar_fill", self.titlebar_fill),
+            ("titlebar_lights", self.titlebar_lights),
+            ("titlebar_glyphs", self.titlebar_glyphs),
+            ("window_content", self.window_content),
+            ("window_shadow", self.window_shadow),
+            ("shadow_area", self.shadow_area),
+            ("shadow_span_area", self.shadow_span_area),
+            ("titlebar_area", self.titlebar_area),
+            ("motion", self.motion),
+            ("menu", self.menu),
+            ("desktop", self.desktop),
+            ("lock", self.lock),
+        ]
+    }
 }
 
 /// One output's actual presentation intervals, measured at vblank on the DRM
@@ -279,13 +887,78 @@ pub struct OutputMaterialStats {
     pub material_region: (i32, i32),
 }
 
+/// Where a presentation timestamp came from. A swap completion is not proof
+/// of physical presentation; only a DRM vblank (or a host `wp_presentation`
+/// event, where reachable) is.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum PresentationProvenance {
+    /// No presentation sample has been recorded.
+    #[default]
+    Unknown,
+    /// The DRM backend's page-flip/vblank timestamp.
+    DrmVblank,
+    /// The nested presenter's `eglSwapBuffers` completion, which is the host
+    /// frame callback. The nested rail cannot reach the host's
+    /// `wp_presentation` through winit's Rust Wayland backend.
+    NestedSwapCompletion,
+}
+
+impl PresentationProvenance {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PresentationProvenance::Unknown => "unknown",
+            PresentationProvenance::DrmVblank => "drm-vblank",
+            PresentationProvenance::NestedSwapCompletion => "nested-swap-completion",
+        }
+    }
+}
+
 /// Render-path counters (FR-5: verified via render-path counters) plus the
 /// per-frame timing trace T-11 U-2 needs for the FR-8 frame budget.
 #[derive(Debug, Default)]
 pub struct RenderStats {
-    /// Frames actually rendered (or scanout-composited).
+    /// Completed swaps (damage frames plus no-damage wake-only swaps). This is
+    /// **not** a presented-frame count: a swap can return before the host
+    /// presents it.
     pub frames_rendered: u64,
-    /// Renders skipped because the damage tracker found no damage (FR-2).
+    /// Frames that reached the point of building a frame (after the in-flight
+    /// and output-deadline gates). Includes damage and no-damage frames.
+    pub frame_attempts: u64,
+    /// Frames whose damage tracker returned a damage region.
+    pub damage_frames: u64,
+    /// Frames handed to the presenter (damage + no-damage swaps).
+    pub frames_submitted: u64,
+    /// Presenter swaps that returned an error (including surface loss).
+    pub swaps_failed: u64,
+    /// Pending-swap intervals during which at least one new frame was
+    /// requested. The main loop deliberately coalesces these instead of
+    /// queueing another frame behind the one in flight.
+    pub frames_coalesced: u64,
+    /// Frames presented after the scene epoch had already advanced. The next
+    /// frame catches up; a high count means the host is pacing the presenter
+    /// slower than the scene changes.
+    pub frames_superseded: u64,
+    /// Superseded damage frames and wake-only swaps, reported separately so
+    /// stale wake-only swaps cannot inflate the stale-pixel ratio.
+    pub superseded_damage: u64,
+    pub superseded_no_damage: u64,
+    /// Bounded ring of superseded-frame ages, newest last.
+    superseded_samples: VecDeque<SupersededSample>,
+    /// Frames for which the compositor sent `wp_presentation` feedback to its
+    /// own clients (not host feedback; the nested rail cannot reach that).
+    pub presentation_feedback_sent: u64,
+    /// Provenance of the presentation timestamps fed to `PresentationStats`.
+    pub presentation_provenance: PresentationProvenance,
+    /// A backend that completes frames asynchronously (the nested presenter
+    /// thread) records the frame-time sample itself. The session loop must
+    /// not record a second sample for the same frame.
+    pub frame_observed_by_backend: bool,
+    /// Swaps that waited more than two refresh periods for the host. This is
+    /// the nested rail's starvation signal: the session loop stayed
+    /// responsive, but the host stopped presenting the window.
+    pub present_stalls: u64,
+    /// No-damage wake-only swaps (FR-2). These still swap and send client
+    /// frame callbacks, but they are not separate damage presentations.
     pub frames_skipped_no_damage: u64,
     /// Frames pushed through the direct-scanout path instead of GL
     /// compositing (DRM backend only).
@@ -359,6 +1032,26 @@ pub struct RenderStats {
     /// `direct_scanouts` is reported separately so a fullscreen frame can
     /// never be mistaken for a material frame.
     pub material_frames: u64,
+    /// Offscreen scene passes built across the session (T238 follow-up): one
+    /// per bounded material group per sampled frame.
+    pub material_scene_passes: u64,
+    /// Scene passes skipped because the scene-content epoch was unchanged and
+    /// the cache/tracker still matched (T238 follow-up).
+    pub material_scene_skips: u64,
+    /// The current scene-texture allocation bytes across the material groups.
+    pub material_scene_bytes: u64,
+    /// Elements offered to and kept by the scene pass's region filter. The
+    /// difference is the off-region draw work the bounded pass avoids.
+    pub scene_elements_total: u64,
+    pub scene_elements_kept: u64,
+    /// Final-composite element counts (T238 follow-up): the draw list the
+    /// output pass submits, and how many output frames submitted one. This is
+    /// the per-element CPU cost the composite stage still owns.
+    pub composite_frames: u64,
+    pub composite_elements: u64,
+    /// Element-type totals and per-frame maxima for the final composite.
+    pub composite_counts: CompositeElementCounts,
+    pub composite_counts_max: CompositeElementCounts,
     /// Output-frames whose policy selected the no-material direct-scanout
     /// path (a fullscreen client with no overlapping visible material). The
     /// actual [`Self::direct_scanouts`] counter remains DRM-primary-plane only.
@@ -384,6 +1077,11 @@ pub struct RenderStats {
     /// reports `gpu_time=unavailable` when the extension or renderer is
     /// missing; the counters never fall back to CPU timings.
     pub gpu: GpuStats,
+    /// Per-stage frame-path timings (T238): work vs wait inside the frame.
+    pub stages: FrameStages,
+    /// Per-frame CPU/GPU correlation (T238 follow-up): joins the stage timings
+    /// above with the asynchronous GPU timer results by frame id.
+    timeline: FrameTimeline,
     /// Emit the full per-frame trace from [`DfState::dump_stats`]
     /// (`DRAGONFRUIT_FRAME_TRACE`).
     verbose: bool,
@@ -400,6 +1098,38 @@ impl RenderStats {
             verbose: std::env::var_os("DRAGONFRUIT_FRAME_TRACE").is_some(),
             ..Self::default()
         }
+    }
+
+    /// Start a rendered frame and return its id. The id is attached to every
+    /// CPU stage and GPU query in this frame, so the two can be joined.
+    pub fn begin_frame(&mut self) -> u64 {
+        self.timeline.begin()
+    }
+
+    /// Record one frame-path stage (T238). Called by the backend at the
+    /// boundary of each stage; the summary separates execution from waits.
+    pub fn record_frame_stage(&mut self, stage: FrameStage, duration: Duration) {
+        self.stages.record(stage, duration);
+        let frame = self.timeline.current;
+        self.timeline.record_cpu(frame, stage, duration);
+    }
+
+    /// Record one completed GPU timer sample. It feeds both the aggregate
+    /// per-pass ring and the per-frame timeline.
+    pub fn record_gpu_sample(&mut self, sample: GpuSample) {
+        self.gpu.record(sample.pass, sample.nanos);
+        self.timeline.record_gpu(sample);
+    }
+
+    /// The `frame stage timing` line. Empty stages still report `samples=0`
+    /// so a backend that does not implement one cannot look like a zero cost.
+    pub fn frame_stage_summary(&self) -> String {
+        self.stages.summary()
+    }
+
+    /// The `frame timeline` line: per-frame CPU/GPU totals and matching.
+    pub fn frame_timeline_summary(&self) -> String {
+        self.timeline.summary()
     }
 
     /// Record one rendered frame: how long the compositor work took and how
@@ -431,6 +1161,137 @@ impl RenderStats {
     /// Recorded frame samples, oldest first.
     pub fn frame_samples(&self) -> impl Iterator<Item = &FrameSample> {
         self.samples.iter()
+    }
+
+    /// Superseded-frame samples kept for the age summary.
+    pub const SUPERSEDED_CAPACITY: usize = 512;
+
+    /// Record one frame whose scene content was already stale when the host
+    /// swap completed. The next frame catches up; this ring measures how far
+    /// behind the presented pixels were, separately from the render budget.
+    pub fn record_superseded(&mut self, sample: SupersededSample) {
+        self.frames_superseded = self.frames_superseded.saturating_add(1);
+        if sample.damage {
+            self.superseded_damage = self.superseded_damage.saturating_add(1);
+        } else {
+            self.superseded_no_damage = self.superseded_no_damage.saturating_add(1);
+        }
+        if self.superseded_samples.len() == Self::SUPERSEDED_CAPACITY {
+            self.superseded_samples.pop_front();
+        }
+        self.superseded_samples.push_back(sample);
+    }
+
+    /// The `superseded` age line. Ages are microseconds since the frame's
+    /// build start; `newer` is how long the newer scene existed at swap
+    /// completion. Completion is the host swap return on the nested rail, not
+    /// a physical vblank.
+    pub fn superseded_summary(&self) -> String {
+        let count = self.superseded_samples.len();
+        if count == 0 {
+            return format!(
+                "samples=0 damage={} no_damage={} submit_p50_us=0 submit_p95_us=0 \
+                 submit_max_us=0 completion_p50_us=0 completion_p95_us=0 \
+                 completion_max_us=0 newer_p50_us=0 newer_p95_us=0 newer_max_us=0",
+                self.superseded_damage, self.superseded_no_damage
+            );
+        }
+        let mut submit: Vec<u32> = self
+            .superseded_samples
+            .iter()
+            .map(|sample| sample.submit_age_us)
+            .collect();
+        let mut completion: Vec<u32> = self
+            .superseded_samples
+            .iter()
+            .map(|sample| sample.completion_age_us)
+            .collect();
+        let mut newer: Vec<u32> = self
+            .superseded_samples
+            .iter()
+            .map(|sample| sample.newer_scene_age_us)
+            .collect();
+        submit.sort_unstable();
+        completion.sort_unstable();
+        newer.sort_unstable();
+        format!(
+            "samples={count} damage={} no_damage={} \
+             submit_p50_us={} submit_p95_us={} submit_max_us={} \
+             completion_p50_us={} completion_p95_us={} completion_max_us={} \
+             newer_p50_us={} newer_p95_us={} newer_max_us={}",
+            self.superseded_damage,
+            self.superseded_no_damage,
+            frame_percentile(&submit, 50),
+            frame_percentile(&submit, 95),
+            submit[count - 1],
+            frame_percentile(&completion, 50),
+            frame_percentile(&completion, 95),
+            completion[count - 1],
+            frame_percentile(&newer, 50),
+            frame_percentile(&newer, 95),
+            newer[count - 1],
+        )
+    }
+
+    /// Record one final-composite draw list by element type. Updates the
+    /// lifetime totals and the per-frame maximum, and (with frame tracing on)
+    /// emits one `frame-elements` line for first-half/second-half growth
+    /// checks.
+    pub fn record_composite_counts(
+        &mut self,
+        counts: CompositeElementCounts,
+        material_frame: bool,
+    ) {
+        let frame = self.timeline.current;
+        let total = counts.variant_total();
+        self.composite_frames = self.composite_frames.saturating_add(1);
+        self.composite_elements = self.composite_elements.saturating_add(total);
+        self.composite_counts.add(&counts);
+        self.composite_counts_max.max_with(&counts);
+        let mut detail = format!(
+            "frame={frame} total={total} material={}",
+            material_frame as u8
+        );
+        for (name, value) in counts.fields() {
+            detail.push_str(&format!(" {name}={value}"));
+        }
+        crate::trace::log("frame-elements", &detail);
+    }
+
+    /// The `composite elements` line: lifetime totals and per-frame maxima.
+    pub fn composite_element_summary(&self) -> String {
+        let mut line = format!(
+            "frames={} total={} total_max={}",
+            self.composite_frames,
+            self.composite_elements,
+            self.composite_counts_max.variant_total(),
+        );
+        for ((name, total), (_, max)) in self
+            .composite_counts
+            .fields()
+            .into_iter()
+            .zip(self.composite_counts_max.fields())
+        {
+            line.push_str(&format!(" {name}_total={total} {name}_max={max}"));
+        }
+        line
+    }
+
+    /// Record one bounded scene pass and how many elements it submitted.
+    pub fn record_scene_elements(&mut self, total: usize, kept: usize) {
+        self.material_scene_passes = self.material_scene_passes.saturating_add(1);
+        self.scene_elements_total = self.scene_elements_total.saturating_add(total as u64);
+        self.scene_elements_kept = self.scene_elements_kept.saturating_add(kept as u64);
+    }
+
+    /// Record one scene pass avoided by the event-driven cache skip.
+    pub fn record_scene_skip(&mut self) {
+        self.material_scene_skips = self.material_scene_skips.saturating_add(1);
+    }
+
+    /// Record the current scene-texture allocation bytes.
+    pub fn record_material_scene_bytes(&mut self, bytes: u64) {
+        self.material_scene_bytes = bytes;
     }
 
     /// Record one chrome buffer import (T-21.1a). `shm_bytes` is `Some` for a
@@ -676,6 +1537,26 @@ pub struct DfState {
     /// Set when something asked for a new frame; cleared by the render
     /// pass. Damage-driven rendering starts here (FR-2).
     pub needs_redraw: bool,
+    /// A backend completed a frame asynchronously and is waiting for the host
+    /// to release it (nested presenter). The session loop keeps dispatching
+    /// but must not retry the frame cadence at refresh rate while the host
+    /// owns the swap; the presenter's ping wakes the loop on completion.
+    pub present_in_flight: bool,
+    /// One-shot presenter fault injected by the synthetic-input harness. The
+    /// nested backend consumes it at the next handoff; production sessions
+    /// leave it `None`.
+    pub present_fault: Option<PresentFault>,
+    /// Advances whenever the live scene pixels could change: a window or
+    /// desktop surface commit, window geometry/stacking/focus, wallpaper,
+    /// scheme/degrade, or an overview/magnifier transition. The material
+    /// scene cache compares it to skip the damage-tracker walk on frames where
+    /// only chrome changed (T238 follow-up). Chrome commits deliberately do
+    /// not advance it.
+    scene_epoch: u64,
+    /// When the current [`Self::scene_epoch`] became current. Superseded-frame
+    /// ages use it to report how long the newer scene waited for the next
+    /// frame.
+    scene_epoch_changed_at: Instant,
     /// After input, hold a short frame cadence so a client waiting on its
     /// frame callback can paint the response even though the compositor is
     /// otherwise idle (see [`DfState::frame_cadence_active`]).
@@ -1063,6 +1944,10 @@ impl DfState {
         DfState {
             running: true,
             needs_redraw: true,
+            present_in_flight: false,
+            present_fault: None,
+            scene_epoch: 1,
+            scene_epoch_changed_at: Instant::now(),
             frame_cadence_until: None,
             display_handle: display_handle.clone(),
             loop_handle,
@@ -1536,7 +2421,7 @@ impl DfState {
             }
         }
         if changed {
-            self.needs_redraw = true;
+            self.mark_scene_dirty();
         }
     }
 
@@ -1553,6 +2438,8 @@ impl DfState {
             }
         }
         self.apply_workspace_layout();
+        // A Space switch changes the wallpaper even when no window moved.
+        self.mark_scene_dirty();
     }
 
     /// Dispatch a workspace action from any trigger (keyboard, gesture, hot
@@ -2214,6 +3101,9 @@ impl DfState {
         let hovered = self.titlebar_hover_at(location);
         if hovered != self.hovered_titlebar {
             self.hovered_titlebar = hovered;
+            // The traffic-light glyphs and titlebar hover state are scene
+            // pixels drawn by the compositor.
+            self.mark_scene_dirty();
             true
         } else {
             false
@@ -2517,7 +3407,7 @@ impl DfState {
         if self.window_on_active_space(window) {
             let geometry = self.windows.geometry(window).unwrap_or_default();
             self.space.map_element(window.clone(), geometry.loc, true);
-            self.needs_redraw = true;
+            self.mark_scene_dirty();
         }
         if self.active_window.as_ref() == Some(window) {
             return;
@@ -2615,13 +3505,13 @@ impl DfState {
             bounds,
             self.color_scheme,
         ));
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
     }
 
     /// Close the window menu, if one is open.
     pub fn close_window_menu(&mut self) {
         if self.window_menu.take().is_some() {
-            self.needs_redraw = true;
+            self.mark_scene_dirty();
         }
     }
 
@@ -2835,7 +3725,7 @@ impl DfState {
         self.windows
             .set_floating_geometry(window, Rectangle::new(location, size));
         self.space.map_element(window.clone(), location, false);
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
     }
 
     /// Resize a floating window and push the new size to the client.
@@ -2846,7 +3736,7 @@ impl DfState {
         self.windows.set_floating_geometry(window, geometry);
         self.space.map_element(window.clone(), geometry.loc, false);
         self.configure_window_size(window, geometry.size);
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
     }
 
     /// Client min/max-size and aspect hints for a window.
@@ -3046,7 +3936,7 @@ impl DfState {
             self.begin_window_motion(&target, WindowMotionKind::Minimize, geometry);
             self.broadcast_state(&target);
         }
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
     }
 
     /// Restore a minimized window and its transients (FR-6).
@@ -3083,7 +3973,7 @@ impl DfState {
             self.begin_window_motion(&target, WindowMotionKind::Restore, geometry);
             self.broadcast_state(&target);
         }
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
     }
 
     /// Minimize the window with compositor id `id` (synthetic-input / shell
@@ -3200,7 +4090,7 @@ impl DfState {
             self.space.unmap_elem(window);
         }
         self.broadcast_state(window);
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
     }
 
     /// Update a mapped window's decoration tier after an `xdg-decoration`
@@ -3242,7 +4132,7 @@ impl DfState {
             return;
         }
         self.reapply_insets(window);
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
     }
 
     /// Set a mapped window's chrome style by id (T230b test/protocol seam).
@@ -3256,7 +4146,7 @@ impl DfState {
             return false;
         }
         self.reapply_insets(&window);
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
         true
     }
 
@@ -3405,7 +4295,7 @@ impl DfState {
             title: None,
         });
         self.space.unmap_elem(window);
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
     }
 
     /// Compute and store a popup's constrained geometry (FR-11).
@@ -3752,6 +4642,7 @@ impl DfState {
             self.window_motion_driver = true;
             self.start_animation(|state: &mut DfState, now: u64| state.step_window_motions(now));
         }
+        self.mark_scene_dirty();
         true
     }
 
@@ -3944,7 +4835,9 @@ impl DfState {
     /// feature that wants a deterministic tier.
     pub fn set_degrade_tier(&mut self, tier: DegradeTier) {
         self.degrade.force(tier);
-        self.needs_redraw = true;
+        // The tier changes the titlebar/shadow tokens, so the scene pixels
+        // change even when no client committed.
+        self.mark_scene_dirty();
     }
 
     /// Set the frame budget the degrade controller selects against (T-04.4a),
@@ -3973,6 +4866,40 @@ impl DfState {
         }
     }
 
+    /// The current scene-content generation. It advances only when the live
+    /// scene could have changed, never for a chrome-only commit.
+    pub fn scene_epoch(&self) -> u64 {
+        self.scene_epoch
+    }
+
+    /// When the current scene epoch became current.
+    pub fn scene_epoch_changed_at(&self) -> Instant {
+        self.scene_epoch_changed_at
+    }
+
+    /// Mark the live scene dirty and request a frame. Callers must only use
+    /// this for scene-affecting changes; chrome-only paths set
+    /// `needs_redraw` directly so the material scene cache can be skipped.
+    pub fn mark_scene_dirty(&mut self) {
+        self.scene_epoch = self.scene_epoch.wrapping_add(1);
+        self.scene_epoch_changed_at = Instant::now();
+        self.needs_redraw = true;
+    }
+
+    /// Whether a live window/overview/magnifier/menu transform changes the
+    /// scene geometry every frame. The scene-cache fast path must not skip
+    /// while one is active, because the content epoch does not advance per
+    /// animation tick.
+    pub fn scene_is_animating(&self) -> bool {
+        self.windows.active_motions().next().is_some()
+            || self.overview.is_active()
+            || self.overview.is_discrete()
+            || self.overview.overview_active()
+            || self.overview.desktop_revealed()
+            || self.magnifier().is_active()
+            || self.window_menu.is_some()
+    }
+
     /// Whether an overview transition or settled overview/reveal is live, so
     /// the rendered frame belongs to the T-05.6 gesture budget. A workspace
     /// slide, Mission Control, and Desktop Reveal all count: they are the same
@@ -3993,7 +4920,7 @@ impl DfState {
              frames_rendered={} frames_skipped_no_damage={} direct_scanouts={} \
              animation_frames_stepped={} client_wakeups={} \
              latency_us_last={} latency_us_max={} latency_samples={} latency_dropped={} \
-             scene_transforms={} scene_transform_skipped={}",
+             scene_transforms={} scene_transform_skipped={} present_stalls={}",
             self.stats.frames_rendered,
             self.stats.frames_skipped_no_damage,
             self.stats.direct_scanouts,
@@ -4010,7 +4937,41 @@ impl DfState {
             // fields (ADR 0009 append-only).
             self.scene_pass.applications(),
             self.scene_pass.skipped(),
+            self.stats.present_stalls,
         );
+        println!(
+            "dragonfruit-compositor: presentation provenance ({label}): source={}",
+            self.stats.presentation_provenance.as_str(),
+        );
+        // Nested frame accounting: separate the counters that the generic
+        // `frames_rendered` total conflates. `completed` counts swaps (damage
+        // and wake-only); it is not a presented-frame count. Host
+        // `wp_presentation` feedback is unreachable through winit's Rust
+        // Wayland backend, so `host_feedback=unavailable` is explicit.
+        if self.stats.presentation_provenance == PresentationProvenance::NestedSwapCompletion {
+            println!(
+                "dragonfruit-compositor: nested frame accounting ({label}): \
+                 attempts={} damage={} no_damage_swaps={} submitted={} completed={} \
+                 failed={} coalesced={} superseded={} feedback_sent={} \
+                 host_feedback=unavailable presentation_source={}",
+                self.stats.frame_attempts,
+                self.stats.damage_frames,
+                self.stats.frames_skipped_no_damage,
+                self.stats.frames_submitted,
+                self.stats.frames_rendered,
+                self.stats.swaps_failed,
+                self.stats.frames_coalesced,
+                self.stats.frames_superseded,
+                self.stats.presentation_feedback_sent,
+                self.stats.presentation_provenance.as_str(),
+            );
+        }
+        if self.stats.frames_superseded > 0 {
+            println!(
+                "dragonfruit-compositor: superseded ages ({label}): {}",
+                self.stats.superseded_summary()
+            );
+        }
         // Chrome transport imports (T-21.1a): the shell side reports the same
         // commits as `chrome stats`; this line is the compositor's import and
         // frame-callback half of the baseline. T-21.1c advances
@@ -4153,7 +5114,11 @@ impl DfState {
              blur_miss_scene={} blur_miss_source={} blur_miss_spec={} \
              blur_miss_chain={} blur_downsample_max={} \
              material_allocations={} material_scene_allocations={} \
-             material_panel_allocations={} material_region_px={} material_region={}x{}",
+             material_panel_allocations={} material_region_px={} material_region={}x{} \
+             material_scene_passes={} material_scene_skips={} \
+             material_scene_bytes={} scene_elements_total={} \
+             scene_elements_kept={} composite_frames={} composite_elements={} \
+             material_off={} region_groups={} scene_cache_skip={} full_output={}",
             self.material_pass.applications(),
             self.material_pass.skipped(),
             self.material_path.name(),
@@ -4173,6 +5138,28 @@ impl DfState {
             self.stats.material_region_px,
             self.stats.material_region.0,
             self.stats.material_region.1,
+            self.stats.material_scene_passes,
+            self.stats.material_scene_skips,
+            self.stats.material_scene_bytes,
+            self.stats.scene_elements_total,
+            self.stats.scene_elements_kept,
+            self.stats.composite_frames,
+            self.stats.composite_elements,
+            crate::window::material_disabled() as u32,
+            if crate::window::split_regions_enabled() {
+                "split"
+            } else {
+                "union"
+            },
+            crate::window::scene_cache_skip_enabled() as u32,
+            crate::window::full_output_material_forced() as u32,
+        );
+        // T238 follow-up: what the final composite actually submitted. The
+        // variant totals and the source totals are two views of the same list;
+        // the per-frame maxima are the growth check.
+        println!(
+            "dragonfruit-compositor: composite elements ({label}): {}",
+            self.stats.composite_element_summary(),
         );
         // GPU timer queries (T-21.4b): opt-in, asynchronous GL_TIME_ELAPSED
         // samples around the scene, per-panel blur, and final composite
@@ -4210,6 +5197,20 @@ impl DfState {
         println!(
             "dragonfruit-compositor: frame timing ({label}): {}",
             self.stats.frame_summary()
+        );
+        // T238: per-stage frame-path timings. `submit` is the backend/host
+        // wait; `bind` is buffer acquisition; the other stages are work.
+        println!(
+            "dragonfruit-compositor: frame stage timing ({label}): {}",
+            self.stats.frame_stage_summary()
+        );
+        // T238 follow-up: per-frame CPU/GPU totals joined by frame id. The
+        // stage line above is an aggregate of independent samples; this line
+        // says whether the same frame's CPU work and GPU execution actually
+        // overlap, and how many frames could not be matched.
+        println!(
+            "dragonfruit-compositor: frame timeline ({label}): {}",
+            self.stats.frame_timeline_summary()
         );
         // Actual vblank intervals per output (DRM only). This is the
         // presentation-side complement to the CPU frame-time line above: a
@@ -4474,7 +5475,7 @@ impl DfState {
                 self.broadcast_overview();
             }
         }
-        self.needs_redraw = true;
+        self.mark_scene_dirty();
     }
 
     /// Route the Mission Control selection round-trip for a live surface
@@ -4662,7 +5663,7 @@ impl DfState {
         if self.color_scheme != scheme {
             self.color_scheme = scheme;
             self.material_revision = self.material_revision.wrapping_add(1);
-            self.needs_redraw = true;
+            self.mark_scene_dirty();
         }
     }
 
@@ -4703,7 +5704,7 @@ impl DfState {
             self.material_revision = self.material_revision.wrapping_add(1);
             // One repaint of the material scene; never a work-area reconfigure
             // and never a persistent frame cadence.
-            self.needs_redraw = true;
+            self.mark_scene_dirty();
         }
     }
 
@@ -5436,6 +6437,14 @@ impl CompositorHandler for DfState {
         // attaches a fresh wl_shm buffer on every chrome commit; dmabuf is the
         // T-21.1d path and stays zero until it lands.
         if self.is_above_window_chrome_surface(surface) {
+            // T238: the shell's commit trace and this receive timestamp line
+            // up by epoch ms; the next `DFTRACE present` for the output is the
+            // actual presentation endpoint.
+            let namespace = self
+                .shell
+                .namespace_for_surface(surface)
+                .unwrap_or("unknown");
+            crate::trace::log("chrome-commit", &format!("surface={namespace}"));
             let import = with_states(surface, |states| {
                 let mut guard = states.cached_state.get::<SurfaceAttributes>();
                 let attrs = guard.current();
@@ -5481,6 +6490,7 @@ impl CompositorHandler for DfState {
             .chain(self.space.elements())
             .find(|window| window.wl_surface().as_deref() == Some(surface))
             .cloned();
+        let scene_surface = window.is_some();
         if let Some(window) = window {
             window.on_commit();
             crate::trace::log("commit", "");
@@ -5515,8 +6525,17 @@ impl CompositorHandler for DfState {
         }
 
         // A new client buffer means new pixels: request a render pass
-        // (FR-2: damage-driven rendering starts at commit granularity).
-        self.needs_redraw = true;
+        // (FR-2: damage-driven rendering starts at commit granularity). Only
+        // a window or desktop-layer surface changes the live scene; a chrome
+        // commit (Dock/menu popover animation) must not invalidate the scene
+        // cache.
+        let scene_surface =
+            scene_surface || self.shell.namespace_for_surface(surface) == Some("desktop");
+        if scene_surface {
+            self.mark_scene_dirty();
+        } else {
+            self.needs_redraw = true;
+        }
     }
 
     fn destroyed(&mut self, surface: &WlSurface) {
@@ -5972,6 +6991,10 @@ impl SeatHandler for DfState {
                 self.shortcuts.set_focused_app(None);
             }
             self.active_window = new_active;
+            // Focus changes the titlebar/traffic-light colors and the shadow
+            // treatment, so the live scene changed even without a client
+            // buffer commit.
+            self.mark_scene_dirty();
             // A following magnifier pans to the newly focused window (T-16.6b).
             self.refresh_magnifier_follow();
         }
@@ -6337,6 +7360,70 @@ mod tests {
     }
 
     #[test]
+    fn frame_timeline_joins_cpu_and_gpu_by_frame_id() {
+        let mut stats = RenderStats::new();
+        let frame = stats.begin_frame();
+        stats.record_frame_stage(FrameStage::Scene, Duration::from_micros(6_000));
+        stats.record_frame_stage(FrameStage::Composite, Duration::from_micros(8_000));
+        stats.record_gpu_sample(GpuSample {
+            pass: GpuPass::Scene,
+            nanos: 4_000_000,
+            frame,
+        });
+        stats.record_gpu_sample(GpuSample {
+            pass: GpuPass::Composite,
+            nanos: 9_000_000,
+            frame,
+        });
+
+        let summary = stats.frame_timeline_summary();
+        assert_eq!(field(&summary, "matched"), "1");
+        assert_eq!(field(&summary, "cpu_total_p50_us"), "14000");
+        assert_eq!(field(&summary, "gpu_total_p50_us"), "13000");
+        assert_eq!(field(&summary, "gap_p50_us"), "1000");
+
+        // A result whose CPU entry has already left the ring is counted as
+        // unmatched instead of being silently joined to another frame.
+        stats.record_gpu_sample(GpuSample {
+            pass: GpuPass::Scene,
+            nanos: 1_000,
+            frame: frame + 10_000,
+        });
+        assert_eq!(
+            field(&stats.frame_timeline_summary(), "gpu_without_cpu"),
+            "1"
+        );
+    }
+
+    #[test]
+    fn frame_timeline_sums_multiple_scene_groups_per_frame() {
+        let mut stats = RenderStats::new();
+        let frame = stats.begin_frame();
+        stats.record_frame_stage(FrameStage::Scene, Duration::from_micros(3_000));
+        stats.record_frame_stage(FrameStage::Composite, Duration::from_micros(4_000));
+        // Two bounded groups issue one scene query each; the per-frame total
+        // must be their sum, not whichever sample arrived last.
+        stats.record_gpu_sample(GpuSample {
+            pass: GpuPass::Scene,
+            nanos: 1_500_000,
+            frame,
+        });
+        stats.record_gpu_sample(GpuSample {
+            pass: GpuPass::Scene,
+            nanos: 2_500_000,
+            frame,
+        });
+        stats.record_gpu_sample(GpuSample {
+            pass: GpuPass::Composite,
+            nanos: 5_000_000,
+            frame,
+        });
+        let summary = stats.frame_timeline_summary();
+        assert_eq!(field(&summary, "matched"), "1");
+        assert_eq!(field(&summary, "gpu_total_p50_us"), "9000");
+    }
+
+    #[test]
     fn frame_summary_describes_the_window_not_the_lifetime() {
         let mut stats = RenderStats::new();
         // Fill the ring with 1 ms frames, then replace it with 100 ms frames.
@@ -6535,5 +7622,37 @@ mod tests {
         assert_eq!(field(&summary, "refresh_hz"), "144.000");
         assert_eq!(field(&summary, "source"), "override");
         assert_eq!(field(&summary, "budget_us"), "6944");
+    }
+
+    #[test]
+    fn superseded_ages_separate_damage_from_wake_only() {
+        let mut stats = RenderStats::default();
+        stats.record_superseded(SupersededSample {
+            submit_age_us: 1_000,
+            completion_age_us: 5_000,
+            newer_scene_age_us: 3_000,
+            damage: true,
+        });
+        stats.record_superseded(SupersededSample {
+            submit_age_us: 2_000,
+            completion_age_us: 8_000,
+            newer_scene_age_us: 6_000,
+            damage: false,
+        });
+        stats.record_superseded(SupersededSample {
+            submit_age_us: 3_000,
+            completion_age_us: 9_000,
+            newer_scene_age_us: 7_000,
+            damage: true,
+        });
+        let summary = stats.superseded_summary();
+        assert_eq!(field(&summary, "samples"), "3");
+        assert_eq!(field(&summary, "damage"), "2");
+        assert_eq!(field(&summary, "no_damage"), "1");
+        assert_eq!(field(&summary, "submit_p50_us"), "2000");
+        assert_eq!(field(&summary, "completion_p50_us"), "8000");
+        assert_eq!(field(&summary, "newer_p50_us"), "6000");
+        assert_eq!(field(&summary, "completion_max_us"), "9000");
+        assert_eq!(stats.frames_superseded, 3);
     }
 }

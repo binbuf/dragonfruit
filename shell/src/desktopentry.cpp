@@ -3,6 +3,7 @@
 
 #include "appindexclient.h"
 
+#include <QDir>
 #include <QStandardPaths>
 
 namespace {
@@ -233,6 +234,24 @@ QStringList DesktopEntryIndex::buildLaunchCommand(const DesktopEntry &entry,
         }
     }
     return argv;
+}
+
+AppScopeCommand appScopeCommand(const QStringList &argv,
+                                const QProcessEnvironment &environment,
+                                const QString &unit)
+{
+    AppScopeCommand command;
+    command.program = QStringLiteral("systemd-run");
+    command.unit = unit;
+    command.arguments << QStringLiteral("--user")
+                      << QStringLiteral("--collect")
+                      << QStringLiteral("--unit=%1").arg(unit)
+                      << QStringLiteral("--working-directory=%1").arg(QDir::homePath());
+    const QStringList values = environment.toStringList();
+    for (const QString &entry : values)
+        command.arguments << QStringLiteral("--setenv=%1").arg(entry);
+    command.arguments << QStringLiteral("--") << argv;
+    return command;
 }
 
 QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base,

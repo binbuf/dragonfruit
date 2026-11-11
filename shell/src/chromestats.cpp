@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "chromestats.h"
 
+#include <QDateTime>
 #include <QDebug>
 #include <QtGlobal>
 
@@ -72,6 +73,9 @@ ChromeStats::ChromeStats()
 {
     const QByteArray value = qgetenv("DRAGONFRUIT_CHROME_STATS");
     m_enabled = !value.isEmpty() && value != "0";
+    const QByteArray trace = qgetenv("DRAGONFRUIT_CHROME_TRACE");
+    m_traceEnabled = !trace.isEmpty() && trace != "0";
+    m_traceClock.start();
 }
 
 void ChromeStats::recordSceneFrame()
@@ -283,6 +287,205 @@ void ChromeStats::recordDmabufSyncWait(qint64 waitUs, bool timeout)
     Q_UNUSED(waitUs);
 }
 
+void ChromeStats::recordSceneResize(const QString &surface, const QSize &from,
+                                    const QSize &to)
+{
+    if (!m_enabled || surface.isEmpty())
+        return;
+    ++m_sceneResizes;
+    ++m_surfaces[surface].sceneResizes;
+    qInfo().noquote() << QStringLiteral(
+        "chrome resize: surface=%1 from=%2x%3 to=%4x%5")
+        .arg(surface)
+        .arg(from.width())
+        .arg(from.height())
+        .arg(to.width())
+        .arg(to.height());
+}
+
+void ChromeStats::recordFboAlloc(const QString &surface, const QSize &size,
+                                 qint64 bytes, qint64 createUs)
+{
+    if (!m_enabled)
+        return;
+    const quint64 accounted = quint64(qMax<qint64>(0, bytes));
+    ++m_fboAllocs;
+    m_fboBytesLive += accounted;
+    m_fboBytesPeak = qMax(m_fboBytesPeak, m_fboBytesLive);
+    if (createUs >= 0)
+        m_fboCreateUs.append(createUs);
+    if (surface.isEmpty())
+        return;
+    SurfaceStats &stats = m_surfaces[surface];
+    ++stats.fboAllocs;
+    stats.fboBytesLive += accounted;
+    stats.fboBytesPeak = qMax(stats.fboBytesPeak, stats.fboBytesLive);
+    qInfo().noquote() << QStringLiteral(
+        "chrome fbo: surface=%1 trace_id=%2 size=%3x%4 bytes=%5 create_us=%6 "
+        "t_ms=%7")
+        .arg(surface)
+        .arg(activeTraceId())
+        .arg(size.width())
+        .arg(size.height())
+        .arg(accounted)
+        .arg(createUs)
+        .arg(QDateTime::currentMSecsSinceEpoch());
+}
+
+void ChromeStats::recordFboFree(const QString &surface, qint64 bytes)
+{
+    if (!m_enabled)
+        return;
+    const quint64 accounted = quint64(qMax<qint64>(0, bytes));
+    m_fboBytesLive -= qMin(m_fboBytesLive, accounted);
+    if (surface.isEmpty())
+        return;
+    SurfaceStats &stats = m_surfaces[surface];
+    stats.fboBytesLive -= qMin(stats.fboBytesLive, accounted);
+}
+
+void ChromeStats::recordDmabufImport(const QString &surface, qint64 roundtripUs,
+                                     qint64 totalUs, bool ok)
+{
+    if (!m_enabled)
+        return;
+    ++m_dmabufImports;
+    if (!ok)
+        ++m_dmabufImportFailures;
+    if (roundtripUs >= 0)
+        m_dmabufRoundtripUs.append(roundtripUs);
+    if (totalUs >= 0)
+        m_dmabufImportUs.append(totalUs);
+    if (surface.isEmpty())
+        return;
+    SurfaceStats &stats = m_surfaces[surface];
+    ++stats.dmabufImports;
+    if (!ok)
+        ++stats.dmabufImportFailures;
+    qInfo().noquote() << QStringLiteral(
+        "chrome import: surface=%1 trace_id=%2 roundtrip_us=%3 total_us=%4 "
+        "ok=%5 t_ms=%6")
+        .arg(surface)
+        .arg(activeTraceId())
+        .arg(roundtripUs)
+        .arg(totalUs)
+        .arg(ok ? 1 : 0)
+        .arg(QDateTime::currentMSecsSinceEpoch());
+}
+
+void ChromeStats::recordDmabufHold(const QString &surface, qint64 holdUs,
+                                   qint64 sharedHoldUs, bool lastUser)
+{
+    if (!m_enabled)
+        return;
+    if (holdUs >= 0)
+        m_dmabufHoldUs.append(holdUs);
+    if (lastUser && sharedHoldUs >= 0)
+        m_dmabufSharedHoldUs.append(sharedHoldUs);
+    if (surface.isEmpty())
+        return;
+    SurfaceStats &stats = m_surfaces[surface];
+    if (holdUs >= 0)
+        stats.dmabufHoldUs.append(holdUs);
+    if (lastUser && sharedHoldUs >= 0)
+        stats.dmabufSharedHoldUs.append(sharedHoldUs);
+}
+
+void ChromeStats::recordRingExhausted(const QString &surface)
+{
+    if (!m_enabled)
+        return;
+    ++m_ringExhausted;
+    if (!surface.isEmpty())
+        ++m_surfaces[surface].ringExhausted;
+}
+
+void ChromeStats::recordCommitFlush(qint64 flushUs)
+{
+    if (!m_enabled || flushUs < 0)
+        return;
+    m_commitFlushUs.append(flushUs);
+}
+
+void ChromeStats::recordPopoverOpen(const QString &kind, qint64 openUs)
+{
+    if (!m_enabled)
+        return;
+    ++m_popoverOpens;
+    if (openUs >= 0)
+        m_popoverOpenUs.append(openUs);
+    if (kind.isEmpty())
+        return;
+    SurfaceStats &stats = m_surfaces[kind];
+    ++stats.popoverOpens;
+    if (openUs >= 0)
+        stats.popoverOpenUs.append(openUs);
+}
+
+quint64 ChromeStats::activeTraceId() const
+{
+    return m_traceStack.isEmpty() ? 0 : m_traceStack.constLast();
+}
+
+quint64 ChromeStats::beginTrace(const QString &kind, const QString &detail)
+{
+    if (!m_traceEnabled)
+        return 0;
+    const quint64 id = ++m_traceSeq;
+    m_traceStartNs.insert(id, m_traceClock.nsecsElapsed());
+    m_traceStack.append(id);
+    QString line = QStringLiteral(
+        "chrome trace id=%1 stage=begin kind=%2 t_ms=%3")
+        .arg(id)
+        .arg(kind)
+        .arg(QDateTime::currentMSecsSinceEpoch());
+    if (!detail.isEmpty())
+        line += QStringLiteral(" detail=%1").arg(detail);
+    qInfo().noquote() << line;
+    return id;
+}
+
+void ChromeStats::traceEvent(quint64 id, const QString &stage,
+                             const QString &detail)
+{
+    if (!m_traceEnabled || id == 0)
+        return;
+    const auto it = m_traceStartNs.constFind(id);
+    const qint64 startNs = it == m_traceStartNs.constEnd() ? m_traceClock.nsecsElapsed()
+                                                          : it.value();
+    const qint64 elapsedUs = (m_traceClock.nsecsElapsed() - startNs) / 1000;
+    QString line = QStringLiteral(
+        "chrome trace id=%1 stage=%2 dt_us=%3 t_ms=%4")
+        .arg(id)
+        .arg(stage)
+        .arg(elapsedUs)
+        .arg(QDateTime::currentMSecsSinceEpoch());
+    if (!detail.isEmpty())
+        line += QStringLiteral(" detail=%1").arg(detail);
+    qInfo().noquote() << line;
+}
+
+qint64 ChromeStats::endTrace(quint64 id, const QString &detail)
+{
+    if (!m_traceEnabled || id == 0)
+        return -1;
+    const auto it = m_traceStartNs.constFind(id);
+    if (it == m_traceStartNs.constEnd())
+        return -1;
+    const qint64 elapsedUs = (m_traceClock.nsecsElapsed() - it.value()) / 1000;
+    m_traceStartNs.erase(it);
+    m_traceStack.removeAll(id);
+    QString line = QStringLiteral(
+        "chrome trace id=%1 stage=end dt_us=%2 t_ms=%3")
+        .arg(id)
+        .arg(elapsedUs)
+        .arg(QDateTime::currentMSecsSinceEpoch());
+    if (!detail.isEmpty())
+        line += QStringLiteral(" detail=%1").arg(detail);
+    qInfo().noquote() << line;
+    return elapsedUs;
+}
+
 void ChromeStats::recordFrameCallback(const QString &surface, qint64 callbackUs)
 {
     if (!m_enabled)
@@ -345,6 +548,30 @@ QStringList ChromeStats::summaryLines(const QString &label) const
                  .arg(m_dmabufSyncTimeouts)
                  .arg(m_copies);
 
+    // T238: the A/B stage line. Kept separate from `chrome stats` so the
+    // existing report parsers keep reading the same prefix and field set.
+    lines << QStringLiteral(
+                 "chrome stage stats (%1): scene_resizes=%2 fbo_allocs=%3 "
+                 "fbo_bytes_live=%4 fbo_bytes_peak=%5 dmabuf_imports=%6 "
+                 "dmabuf_import_failures=%7 ring_exhausted=%8 popover_opens=%9 "
+                 "%10 %11 %12 %13 %14 %15 %16")
+                 .arg(label)
+                 .arg(m_sceneResizes)
+                 .arg(m_fboAllocs)
+                 .arg(m_fboBytesLive)
+                 .arg(m_fboBytesPeak)
+                 .arg(m_dmabufImports)
+                 .arg(m_dmabufImportFailures)
+                 .arg(m_ringExhausted)
+                 .arg(m_popoverOpens)
+                 .arg(timingText("fbo_create_us", m_fboCreateUs))
+                 .arg(timingText("dmabuf_import_us", m_dmabufImportUs))
+                 .arg(timingText("dmabuf_roundtrip_us", m_dmabufRoundtripUs))
+                 .arg(timingText("dmabuf_hold_us", m_dmabufHoldUs))
+                 .arg(timingText("dmabuf_shared_hold_us", m_dmabufSharedHoldUs))
+                 .arg(timingText("commit_flush_us", m_commitFlushUs))
+                 .arg(timingText("popover_open_us", m_popoverOpenUs));
+
     QStringList names = m_surfaces.keys();
     names.sort();
     for (const QString &name : names) {
@@ -356,7 +583,10 @@ QStringList ChromeStats::summaryLines(const QString &label) const
                      "shm_bytes=%12 copy_bytes=%13 damage_pixels=%14 skipped=%15 "
                      "fallback=%16 renders=%17 dmabuf_commits=%18 dmabuf_bytes=%19 "
                      "dmabuf_deferred=%20 dmabuf_fallbacks=%21 %22 %23 "
-                     "dmabuf_buffers=%24 dmabuf_allocs=%25 dmabuf_reuses=%26 copies=%27")
+                     "dmabuf_buffers=%24 dmabuf_allocs=%25 dmabuf_reuses=%26 "
+                     "copies=%27 scene_resizes=%28 fbo_allocs=%29 "
+                     "fbo_bytes_live=%30 dmabuf_imports=%31 "
+                     "ring_exhausted=%32 popover_opens=%33 %34 %35")
                      .arg(label)
                      .arg(name)
                      .arg(stats.path)
@@ -383,7 +613,16 @@ QStringList ChromeStats::summaryLines(const QString &label) const
                      .arg(stats.dmabufBuffers)
                      .arg(stats.dmabufAllocs)
                      .arg(stats.dmabufReuses)
-                     .arg(stats.copies);
+                     .arg(stats.copies)
+                     .arg(stats.sceneResizes)
+                     .arg(stats.fboAllocs)
+                     .arg(stats.fboBytesLive)
+                     .arg(stats.dmabufImports)
+                     .arg(stats.ringExhausted)
+                     .arg(stats.popoverOpens)
+                     .arg(timingText("dmabuf_hold_us", stats.dmabufHoldUs))
+                     .arg(timingText("dmabuf_shared_hold_us",
+                                     stats.dmabufSharedHoldUs));
     }
     return lines;
 }
@@ -399,9 +638,19 @@ void ChromeStats::emitStats(const QString &label)
     // cumulative; only the timing rings are windowed.
     m_commitUs.clear();
     m_frameCallbackUs.clear();
+    m_fboCreateUs.clear();
+    m_dmabufImportUs.clear();
+    m_dmabufRoundtripUs.clear();
+    m_dmabufHoldUs.clear();
+    m_dmabufSharedHoldUs.clear();
+    m_commitFlushUs.clear();
+    m_popoverOpenUs.clear();
     for (auto it = m_surfaces.begin(); it != m_surfaces.end(); ++it) {
         it.value().commitUs.clear();
         it.value().frameCallbackUs.clear();
+        it.value().dmabufHoldUs.clear();
+        it.value().dmabufSharedHoldUs.clear();
+        it.value().popoverOpenUs.clear();
     }
 }
 

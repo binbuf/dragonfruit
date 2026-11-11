@@ -527,7 +527,12 @@ pub fn backdrop_elements(
     spec: BackdropSpec,
     scale: Scale<f64>,
 ) -> Vec<SolidColorRenderElement> {
-    backdrop_elements_with_corners(rect, spec, CornerRadii::uniform(spec.radius.round() as i32), scale)
+    backdrop_elements_with_corners(
+        rect,
+        spec,
+        CornerRadii::uniform(spec.radius.round() as i32),
+        scale,
+    )
 }
 
 /// Convert the backdrop layers into solid render elements with independent

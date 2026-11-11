@@ -15,6 +15,7 @@ use std::borrow::BorrowMut;
 use std::collections::VecDeque;
 use std::ffi::CStr;
 use std::os::raw::c_void;
+use std::time::{Duration, Instant};
 
 use smithay::backend::egl::ffi::egl::types::EGLSurface;
 use smithay::backend::renderer::gles::{ffi, GlesRenderer};
@@ -22,6 +23,31 @@ use smithay::backend::renderer::glow::GlowRenderer;
 
 /// Environment flag that turns the timer queries on.
 pub const ENV_GPU_TIMING: &str = "DRAGONFRUIT_GPU_TIMING";
+
+/// Diagnostic flag that adds a `glFinish` after each timed pass.
+///
+/// The normal path never waits on the GPU: `GL_TIME_ELAPSED` measures GPU
+/// execution asynchronously. With this probe on, the CPU blocks until the pass
+/// has actually finished, which separates "GPU work still outstanding when the
+/// CPU submitted" from "CPU/driver time spent inside the draw calls". It
+/// serialises the frame, so it is a profiling arm, not a steady-state mode.
+pub const ENV_GPU_FINISH_PROBE: &str = "DRAGONFRUIT_GPU_FINISH_PROBE";
+
+/// Whether the diagnostic `glFinish` probe is enabled (read once).
+pub fn finish_probe_enabled() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| {
+        std::env::var(ENV_GPU_FINISH_PROBE)
+            .ok()
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "on" | "yes" | "enabled"
+                )
+            })
+            .unwrap_or(false)
+    })
+}
 
 /// Queries kept in flight. A query result usually lands one or two frames
 /// after it is issued; a bounded pool keeps a slow GPU from growing the ring.
@@ -66,7 +92,7 @@ impl GpuPass {
         }
     }
 
-    const fn index(self) -> usize {
+    pub(crate) const fn index(self) -> usize {
         match self {
             GpuPass::Scene => 0,
             GpuPass::Blur => 1,
@@ -76,10 +102,15 @@ impl GpuPass {
 }
 
 /// One completed GPU timer sample, in nanoseconds.
+///
+/// `frame` is the compositor frame the query was issued in. The CPU stage
+/// timings use the same id, so the two halves can be joined per frame instead
+/// of compared as unrelated percentile rings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GpuSample {
     pub pass: GpuPass,
     pub nanos: u64,
+    pub frame: u64,
 }
 
 /// Aggregated GPU timer samples for `dump_stats` (T-21.4b).
@@ -197,6 +228,7 @@ impl GpuTimerTarget for GlowRenderer {
 struct PendingQuery {
     query: u32,
     pass: GpuPass,
+    frame: u64,
 }
 
 /// The query entry points. GLES exposes the `EXT` names; desktop GL exposes
@@ -308,9 +340,10 @@ impl GpuTimer {
         (self.enabled, available, reason)
     }
 
-    /// Start a timer query for `pass`. Nested queries and an exhausted pool
-    /// are skipped rather than stalling the frame.
-    pub fn begin<T: GpuTimerTarget + ?Sized>(&mut self, target: &mut T, pass: GpuPass) {
+    /// Start a timer query for `pass` in compositor frame `frame`. Nested
+    /// queries and an exhausted pool are skipped rather than stalling the
+    /// frame.
+    pub fn begin<T: GpuTimerTarget + ?Sized>(&mut self, target: &mut T, pass: GpuPass, frame: u64) {
         if !self.enabled || self.open.is_some() {
             return;
         }
@@ -321,7 +354,7 @@ impl GpuTimer {
             api.begin(gl, GL_TIME_ELAPSED, query);
         });
         match result {
-            Ok(()) => self.open = Some(PendingQuery { query, pass }),
+            Ok(()) => self.open = Some(PendingQuery { query, pass, frame }),
             Err(_) => {
                 self.free.push(query);
                 self.mark_unavailable("context-error");
@@ -382,6 +415,7 @@ impl GpuTimer {
                 samples.push(GpuSample {
                     pass: pending.pass,
                     nanos,
+                    frame: pending.frame,
                 });
             }
         });
@@ -390,6 +424,25 @@ impl GpuTimer {
             return Vec::new();
         }
         samples
+    }
+
+    /// Diagnostic only: block until every GL command submitted so far has
+    /// finished, and return the wall time spent waiting. `None` unless
+    /// [`finish_probe_enabled`] is set, so a disabled probe records no sample.
+    ///
+    /// This is the "GPU fence wait" measurement. Called immediately after a
+    /// pass's `end()`, the result is the GPU work still outstanding when the
+    /// CPU finished submitting that pass; the pass's CPU wall time minus this
+    /// wait is the time the CPU/driver spent inside the submission.
+    pub fn finish<T: GpuTimerTarget + ?Sized>(&self, target: &mut T) -> Option<Duration> {
+        if !finish_probe_enabled() {
+            return None;
+        }
+        let start = Instant::now();
+        let _ = with_gl(target.gles_mut(), |gl| unsafe {
+            gl.Finish();
+        });
+        Some(start.elapsed())
     }
 
     fn ensure_initialised(&mut self, gles: &mut GlesRenderer) {

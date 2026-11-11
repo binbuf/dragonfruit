@@ -35,6 +35,10 @@ T21_SOCKET=""
 T21_SYNTH=""
 T21_COMPOSITOR_PID=""
 T21_SHELL_PID=""
+# The measurement scripts can point at a release build without changing the
+# library's default (the nested rail has always used the debug binary).
+T21_COMPOSITOR_BIN="${T21_COMPOSITOR_BIN:-$T21_ROOT/target/debug/dragonfruit-compositor}"
+T21_SHELL_BIN="${T21_SHELL_BIN:-$T21_ROOT/build/shell/src/dragonfruit-shell}"
 T21_X11_PIDS=""
 
 t21_capture_init() {
@@ -112,7 +116,7 @@ t21_start_compositor() {
           "$XDG_RUNTIME_DIR/$T21_SOCKET.launch-token" \
           "$T21_SYNTH"
     DRAGONFRUIT_SYNTHETIC_INPUT="$T21_SYNTH" \
-        "$T21_ROOT/target/debug/dragonfruit-compositor" \
+        "$T21_COMPOSITOR_BIN" \
         --backend "$backend" --socket-name "$T21_SOCKET" \
         >"$log" 2>&1 &
     T21_COMPOSITOR_PID=$!
@@ -146,7 +150,7 @@ t21_start_shell() {
     shift
     local env_args=("$@")
     env "${env_args[@]}" WAYLAND_DISPLAY="$T21_SOCKET" \
-        "$T21_ROOT/build/shell/src/dragonfruit-shell" \
+        "$T21_SHELL_BIN" \
         --socket-name "$T21_SOCKET" >"$log" 2>&1 &
     T21_SHELL_PID=$!
     local i

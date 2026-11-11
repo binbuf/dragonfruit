@@ -30,8 +30,8 @@ use crate::material_preset::{Preset, RenderMode};
 use crate::render::RegionPaint;
 use crate::window::blur::{BlurSpec, RegionFilter};
 use crate::window::corner::CornerRadii;
-use crate::window::degrade::DegradeTier;
 use crate::window::decoration::ColorScheme;
+use crate::window::degrade::DegradeTier;
 
 /// The allocation identity of a scene texture.
 ///
@@ -91,6 +91,10 @@ pub(crate) struct SceneTextureCache<T> {
     /// nothing; a reallocation or region-size/scale change resets it and
     /// forces one full region render.
     tracker: Option<(SceneTextureKey, Point<i32, Physical>, OutputDamageTracker)>,
+    /// The scene-content epoch this texture was last rendered at (T238
+    /// follow-up). Equal to the live epoch only while the scene has not
+    /// changed; the renderer can then skip the damage-tracker walk entirely.
+    last_epoch: Option<u64>,
 }
 
 impl<T> Default for SceneTextureCache<T> {
@@ -104,6 +108,7 @@ impl<T> Default for SceneTextureCache<T> {
             last_damage: Vec::new(),
             generation: 0,
             tracker: None,
+            last_epoch: None,
         }
     }
 }
@@ -197,13 +202,52 @@ impl<T> SceneTextureCache<T> {
         self.texture = Some(texture);
         self.key = Some(key);
         self.tracker = None;
+        self.last_epoch = None;
         self.allocations += 1;
         self.generation = self.generation.wrapping_add(1);
+    }
+
+    /// The scene-content epoch this texture was last rendered at.
+    pub(crate) fn last_epoch(&self) -> Option<u64> {
+        self.last_epoch
+    }
+
+    /// Remember that the texture now contains the scene at `epoch`.
+    pub(crate) fn set_last_epoch(&mut self, epoch: u64) {
+        self.last_epoch = Some(epoch);
+    }
+
+    /// Whether the scene texture can be reused without walking the element
+    /// list: the allocation and tracker match the region, and the scene
+    /// content epoch is unchanged since the last render.
+    pub(crate) fn can_skip(
+        &self,
+        key: SceneTextureKey,
+        origin: Point<i32, Physical>,
+        epoch: u64,
+    ) -> bool {
+        self.texture.is_some()
+            && !self.needs_alloc(key)
+            && self.tracker_matches(key, origin)
+            && self.last_epoch == Some(epoch)
     }
 
     /// Lifetime allocation count (test/diagnostic evidence).
     pub(crate) fn allocations(&self) -> u64 {
         self.allocations
+    }
+
+    /// The allocated scene texture's RGBA byte size (`0` before the first
+    /// allocation). Reported as material memory evidence.
+    pub(crate) fn bytes(&self) -> u64 {
+        self.key
+            .map(|key| {
+                let size = key.size();
+                (size.w.max(0) as u64)
+                    .saturating_mul(size.h.max(0) as u64)
+                    .saturating_mul(4)
+            })
+            .unwrap_or(0)
     }
 
     /// The tracker is tied to the region origin even when the texture can be reused.
@@ -227,6 +271,9 @@ impl<T> SceneTextureCache<T> {
         tracker: OutputDamageTracker,
     ) {
         self.tracker = Some((key, origin, tracker));
+        // A fresh tracker has no retained element states, so the next render
+        // must happen even if the scene epoch happens to match.
+        self.last_epoch = None;
         self.generation = self.generation.wrapping_add(1);
     }
 
@@ -261,12 +308,7 @@ impl PanelKey {
     /// (T197). The region key joins the surface identity, so two cards on the
     /// same overlay keep separate element ids and blur textures even when
     /// their geometry swaps.
-    pub fn for_region(
-        namespace: &str,
-        layer: u32,
-        surface_id: u32,
-        region_key: &str,
-    ) -> Self {
+    pub fn for_region(namespace: &str, layer: u32, surface_id: u32, region_key: &str) -> Self {
         let mut hasher = DefaultHasher::new();
         namespace.hash(&mut hasher);
         layer.hash(&mut hasher);
@@ -372,11 +414,7 @@ pub(crate) struct PanelPaintKey {
 }
 
 impl PanelPaintKey {
-    pub(crate) fn new(
-        paint: RegionPaint,
-        corners: CornerRadii,
-        output_generation: u64,
-    ) -> Self {
+    pub(crate) fn new(paint: RegionPaint, corners: CornerRadii, output_generation: u64) -> Self {
         let bits = |value: f32| {
             if value.is_finite() {
                 value.to_bits()
@@ -660,6 +698,47 @@ mod tests {
     }
 
     #[test]
+    fn a_scene_cache_can_skip_only_at_the_same_epoch_key_and_origin() {
+        use smithay::backend::renderer::damage::OutputDamageTracker;
+        use smithay::utils::{Point, Transform};
+
+        let mut cache: SceneTextureCache<u32> = SceneTextureCache::default();
+        let key = SceneTextureKey::new(size(400, 80), output(1920, 1200), 1.5.into());
+        let origin = Point::<i32, Physical>::from((10, 20));
+        cache.install(7, key);
+        cache.set_tracker(
+            key,
+            origin,
+            OutputDamageTracker::new(
+                Size::<i32, Physical>::from((400, 80)),
+                Scale::from(1.5),
+                Transform::Normal,
+            ),
+        );
+        assert!(!cache.can_skip(key, origin, 1), "no epoch recorded yet");
+        cache.set_last_epoch(1);
+        assert!(cache.can_skip(key, origin, 1));
+        assert!(!cache.can_skip(key, origin, 2), "scene changed");
+        assert!(
+            !cache.can_skip(key, Point::from((11, 20)), 1),
+            "region moved"
+        );
+        let bigger = SceneTextureKey::new(size(500, 80), output(1920, 1200), 1.5.into());
+        assert!(!cache.can_skip(bigger, origin, 1), "region grew");
+        // A tracker reset must force a render even at the same epoch.
+        cache.set_tracker(
+            key,
+            origin,
+            OutputDamageTracker::new(
+                Size::<i32, Physical>::from((400, 80)),
+                Scale::from(1.5),
+                Transform::Normal,
+            ),
+        );
+        assert!(!cache.can_skip(key, origin, 1));
+    }
+
+    #[test]
     fn a_scene_texture_grows_once_and_reuses_the_larger_texture() {
         let mut cache: SceneTextureCache<u32> = SceneTextureCache::default();
         let key = SceneTextureKey::new(size(400, 80), output(1920, 1200), 1.5.into());
@@ -763,27 +842,62 @@ mod tests {
         let src: Rectangle<f64, Buffer> = Rectangle::new((0.0, 0.0).into(), (10.0, 10.0).into());
         let chain = Size::<i32, Physical>::from((1920, 1080));
         let scale = Scale::from(1.5);
-        let base = PanelBlurKey::new(1, 0, src, sample(spec, 24, RegionFilter::Filtered), chain, scale);
+        let base = PanelBlurKey::new(
+            1,
+            0,
+            src,
+            sample(spec, 24, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
 
         assert_eq!(
             base,
-            PanelBlurKey::new(1, 0, src, sample(spec, 24, RegionFilter::Filtered), chain, scale)
+            PanelBlurKey::new(
+                1,
+                0,
+                src,
+                sample(spec, 24, RegionFilter::Filtered),
+                chain,
+                scale
+            )
         );
 
         assert_ne!(
             base,
-            PanelBlurKey::new(1, 1, src, sample(spec, 24, RegionFilter::Filtered), chain, scale),
+            PanelBlurKey::new(
+                1,
+                1,
+                src,
+                sample(spec, 24, RegionFilter::Filtered),
+                chain,
+                scale
+            ),
             "a scene commit must invalidate the cached blur"
         );
         assert_ne!(
             base,
-            PanelBlurKey::new(2, 0, src, sample(spec, 24, RegionFilter::Filtered), chain, scale),
+            PanelBlurKey::new(
+                2,
+                0,
+                src,
+                sample(spec, 24, RegionFilter::Filtered),
+                chain,
+                scale
+            ),
             "a scene generation change must invalidate the cached blur"
         );
         let moved: Rectangle<f64, Buffer> = Rectangle::new((1.0, 0.0).into(), (10.0, 10.0).into());
         assert_ne!(
             base,
-            PanelBlurKey::new(1, 0, moved, sample(spec, 24, RegionFilter::Filtered), chain, scale),
+            PanelBlurKey::new(
+                1,
+                0,
+                moved,
+                sample(spec, 24, RegionFilter::Filtered),
+                chain,
+                scale
+            ),
             "a panel source move must invalidate the cached blur"
         );
         assert_ne!(
@@ -816,7 +930,14 @@ mod tests {
         );
         assert_ne!(
             base,
-            PanelBlurKey::new(1, 0, src, sample(spec, 24, RegionFilter::Filtered), chain, Scale::from(2.0),),
+            PanelBlurKey::new(
+                1,
+                0,
+                src,
+                sample(spec, 24, RegionFilter::Filtered),
+                chain,
+                Scale::from(2.0),
+            ),
             "a scale change must invalidate the cached blur"
         );
     }
@@ -865,27 +986,57 @@ mod tests {
         let spec = BlurSpec::new(8.0, 10.0);
         let chain = output(300, 200);
         let scale = Scale::from(1.5);
-        let base = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
+        let base = panel.blur_key_for_scene(
+            &scene,
+            src,
+            sample(spec, 12, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
         panel.textures_mut().push(1);
         panel.set_blur_key(base);
 
         scene.note_scene_damage(Some(vec![rect(0, 0, 300, 20)]));
-        let unrelated = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
+        let unrelated = panel.blur_key_for_scene(
+            &scene,
+            src,
+            sample(spec, 12, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
         assert!(panel.blur_cache_hit(&unrelated));
 
         // Only the padding intersects; the top edge of the plate still samples it.
         scene.note_scene_damage(Some(vec![rect(100, 90, 10, 5)]));
-        let nearby = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
+        let nearby = panel.blur_key_for_scene(
+            &scene,
+            src,
+            sample(spec, 12, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
         assert_eq!(nearby.miss_reason(&base), Some(BlurMissReason::Scene));
         panel.set_blur_key(nearby);
-        let settled = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
+        let settled = panel.blur_key_for_scene(
+            &scene,
+            src,
+            sample(spec, 12, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
         assert!(panel.blur_cache_hit(&settled));
 
         // The slot missed two scene commits. The latest damage alone would
         // miss a change inside the panel from the earlier commit.
         scene.note_scene_damage(Some(vec![rect(100, 105, 10, 5)]));
         scene.note_scene_damage(Some(vec![rect(0, 0, 300, 20)]));
-        let skipped = panel.blur_key_for_scene(&scene, src, sample(spec, 12, RegionFilter::Filtered), chain, scale);
+        let skipped = panel.blur_key_for_scene(
+            &scene,
+            src,
+            sample(spec, 12, RegionFilter::Filtered),
+            chain,
+            scale,
+        );
         assert_eq!(skipped.miss_reason(&nearby), Some(BlurMissReason::Scene));
     }
 
@@ -915,10 +1066,7 @@ mod tests {
         let module = PanelKey::for_region("control-center", 3, 9, "module-wifi");
         assert_ne!(outer, module);
         assert_ne!(outer, surface);
-        assert_eq!(
-            outer,
-            PanelKey::for_region("control-center", 3, 9, "outer")
-        );
+        assert_eq!(outer, PanelKey::for_region("control-center", 3, 9, "outer"));
         assert_ne!(
             outer,
             PanelKey::for_region("control-center", 3, 9, "module-wifi")

@@ -89,3 +89,20 @@ private:
 // QPA. Pure and unit-tested (T-14.7g).
 QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base,
                                          const QString &waylandDisplay = QString());
+
+// A `systemd-run --user` invocation that starts `argv` in its own transient
+// service/scope. Keeping the command pure makes the isolation path testable
+// without a running user manager.
+struct AppScopeCommand {
+    QString program;
+    QStringList arguments;
+    QString unit;
+};
+
+// Build the `systemd-run` command for a transient user service. The service
+// inherits `environment` via explicit `--setenv` entries (the user manager's
+// environment is not the shell's), and the unit name carries the app identity
+// so Force Quit can stop the whole cgroup.
+AppScopeCommand appScopeCommand(const QStringList &argv,
+                                const QProcessEnvironment &environment,
+                                const QString &unit);

@@ -16,7 +16,7 @@ use smithay::backend::renderer::element::surface::{
 use smithay::backend::renderer::element::utils::{
     Relocate, RelocateRenderElement, RescaleRenderElement,
 };
-use smithay::backend::renderer::element::{AsRenderElements, Kind, RenderElementStates};
+use smithay::backend::renderer::element::{AsRenderElements, Element, Kind, RenderElementStates};
 use smithay::backend::renderer::utils::{with_renderer_surface_state, CommitCounter};
 use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer};
 use smithay::desktop::utils::{
@@ -230,6 +230,9 @@ pub fn chrome_backdrop_render_elements(
     output: &Output,
     scale: Scale<f64>,
 ) -> Vec<SolidColorRenderElement> {
+    if crate::window::material_disabled() {
+        return Vec::new();
+    }
     let Some(output_geometry) = state.space.output_geometry(output) else {
         return Vec::new();
     };
@@ -430,6 +433,9 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
     // did not establish the sampled scene path (multi-GPU/rotated DRM, or a
     // failed material frame) keeps the same fallback even for a veil: the
     // sharp path still needs the compositor's scene texture (T197).
+    if crate::window::material_disabled() {
+        return Vec::new();
+    }
     if !state.material_path.gpu_blur() || !state.material_blur_supported {
         return Vec::new();
     }
@@ -686,23 +692,59 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
 ///
 /// The open window menu is still a separate layer above this stack: it is a
 /// transient popup, not part of any window.
+/// Source-level breakdown of the scene element list (T238 follow-up).
+///
+/// The final composite's `Decoration` variant mixes titlebar spans, window
+/// shadow spans, and menu solids. These counters attribute the list to the
+/// code that produced it, so the ~1,590-element frame can be explained instead
+/// of guessed at.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct SceneElementCounts {
+    pub titlebar: u64,
+    /// Titlebar fill spans (rounded chrome).
+    pub titlebar_fill: u64,
+    /// Traffic-light circle spans.
+    pub titlebar_lights: u64,
+    /// Traffic-light glyph spans.
+    pub titlebar_glyphs: u64,
+    pub window_content: u64,
+    pub window_shadow: u64,
+    /// Physical pixels covered by the one-quad shadow shader (the whole
+    /// window + blur bounds, including the part the window itself covers).
+    /// This is the shadow pass's fragment area, so overdraw is explicit.
+    pub shadow_area: u64,
+    /// Physical pixels covered by span shadows (sum of span rects; spans can
+    /// overlap, so this is an upper bound on their fragment area).
+    pub shadow_span_area: u64,
+    /// Physical pixels covered by titlebar shapes.
+    pub titlebar_area: u64,
+    /// Shadow elements attributed to an active window lifecycle motion.
+    pub motion: u64,
+}
+
 pub fn window_scene_render_elements<R, E>(
     renderer: &mut R,
     state: &mut DfState,
     output: &Output,
     scale: Scale<f64>,
+    counts: &mut SceneElementCounts,
+    shadow: Option<&crate::window::ShadowResources>,
+    titlebar: Option<&crate::window::TitlebarResources>,
 ) -> Vec<E>
 where
     R: Renderer + ImportAll,
     R::TextureId: Clone + 'static,
     E: From<WaylandSurfaceRenderElement<R>>
         + From<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>
-        + From<SolidColorRenderElement>,
+        + From<SolidColorRenderElement>
+        + From<crate::window::ShadowElement>
+        + From<crate::window::TitlebarShapeElement>,
 {
     let Some(output_geometry) = state.space.output_geometry(output) else {
         return Vec::new();
     };
     let now = state.now_msec();
+    let titlebar_resources = titlebar;
     let shadow_spec = resolved_shadow_spec(state);
     let mut elements: Vec<E> = Vec::new();
     let mut scene_region: Option<Rectangle<i32, Logical>> = None;
@@ -727,13 +769,25 @@ where
 
         // The titlebar belongs to this window and sits above its content.
         if let Some(titlebar) = state.titlebar_element(window) {
-            elements.extend(
-                titlebar
-                    .render_elements(scale, output_geometry.loc, motion)
-                    .into_iter()
-                    .map(E::from),
+            let mut titlebar_counts = crate::window::TitlebarElementCounts::default();
+            let titlebar_elements: Vec<E> = titlebar.render_scene_elements(
+                scale,
+                output_geometry.loc,
+                motion,
+                &mut titlebar_counts,
+                titlebar_resources,
             );
+            counts.titlebar += titlebar_elements.len() as u64;
+            counts.titlebar_fill += titlebar_counts.fill;
+            counts.titlebar_lights += titlebar_counts.lights;
+            counts.titlebar_glyphs += titlebar_counts.glyphs;
+            counts.titlebar_area = counts.titlebar_area.saturating_add(
+                (titlebar.titlebar.size.w.max(0) as u64)
+                    .saturating_mul(titlebar.titlebar.size.h.max(0) as u64),
+            );
+            elements.extend(titlebar_elements);
         }
+        let content_start = elements.len();
         if let Some(transformed) = push_window_content(
             renderer,
             &mut elements,
@@ -744,17 +798,25 @@ where
         ) {
             merge_region(&mut scene_region, transformed);
         }
+        counts.window_content += (elements.len() - content_start) as u64;
+        if motion.is_some() {
+            counts.motion += (elements.len() - content_start) as u64;
+        }
         // The shadow sits below its own content, but above the windows it
         // covers — not in a global layer under the whole stack.
+        let shadow_start = elements.len();
         push_window_shadow(
             &mut elements,
+            counts,
             state,
             window,
             output_geometry,
             scale,
             shadow_spec,
             motion,
+            shadow,
         );
+        counts.window_shadow += (elements.len() - shadow_start) as u64;
     }
     // Minimizing/closing ghosts keep their complete decoration stack too.
     for (window, motion) in state.windows.active_motions() {
@@ -783,14 +845,26 @@ where
         let location_phys = location.to_physical_precise_round(scale);
         let frame = state.window_render_frame(window, now);
         if let Some(titlebar) = state.titlebar_element_for_motion(window) {
-            elements.extend(
-                titlebar
-                    .render_elements(scale, output_geometry.loc, frame)
-                    .into_iter()
-                    .map(E::from),
+            let mut titlebar_counts = crate::window::TitlebarElementCounts::default();
+            let titlebar_elements: Vec<E> = titlebar.render_scene_elements(
+                scale,
+                output_geometry.loc,
+                frame,
+                &mut titlebar_counts,
+                titlebar_resources,
             );
+            counts.titlebar += titlebar_elements.len() as u64;
+            counts.titlebar_fill += titlebar_counts.fill;
+            counts.titlebar_lights += titlebar_counts.lights;
+            counts.titlebar_glyphs += titlebar_counts.glyphs;
+            counts.titlebar_area = counts.titlebar_area.saturating_add(
+                (titlebar.titlebar.size.w.max(0) as u64)
+                    .saturating_mul(titlebar.titlebar.size.h.max(0) as u64),
+            );
+            elements.extend(titlebar_elements);
         }
         if let Some(frame) = frame {
+            let content_start = elements.len();
             if let Some(transformed) = push_window_content(
                 renderer,
                 &mut elements,
@@ -801,16 +875,22 @@ where
             ) {
                 merge_region(&mut scene_region, transformed);
             }
+            counts.window_content += (elements.len() - content_start) as u64;
+            counts.motion += (elements.len() - content_start) as u64;
         }
+        let shadow_start = elements.len();
         push_window_shadow(
             &mut elements,
+            counts,
             state,
             window,
             output_geometry,
             scale,
             shadow_spec,
             frame,
+            shadow,
         );
+        counts.window_shadow += (elements.len() - shadow_start) as u64;
     }
     if let Some(mut region) = scene_region {
         region.loc -= output_geometry.loc;
@@ -855,14 +935,16 @@ where
 /// Push one window's elevation-token shadow into `elements`.
 fn push_window_shadow<E>(
     elements: &mut Vec<E>,
+    counts: &mut SceneElementCounts,
     state: &DfState,
     window: &smithay::desktop::Window,
     output_geometry: Rectangle<i32, Logical>,
     scale: Scale<f64>,
     spec: ShadowSpec,
     motion: Option<crate::window::MotionFrame>,
+    resources: Option<&crate::window::ShadowResources>,
 ) where
-    E: From<SolidColorRenderElement>,
+    E: From<SolidColorRenderElement> + From<crate::window::ShadowElement>,
 {
     // A fullscreen window is the whole output; it casts no shadow.
     if state.windows.state(window) == Some(WindowState::Fullscreen) {
@@ -872,18 +954,40 @@ fn push_window_shadow<E>(
         return;
     };
     let window_rect = state.insets_for(window).outset(geometry);
-    elements.extend(
-        shadow_elements_outside_bounds(
+    // T238 decoration optimisation: one shader quad instead of ~2,300 spans
+    // when the GPU shadow path is enabled and the backend compiled it.
+    if let (Some(resources), true) = (resources, crate::window::shadow_gpu_enabled()) {
+        if let Some(element) = crate::window::shadow_element(
             window_rect,
             spec,
             scale,
             output_geometry.loc,
             motion,
-            window_rect,
-        )
-        .into_iter()
-        .map(E::from),
+            resources,
+        ) {
+            let bounds = element.geometry(scale);
+            counts.shadow_area = counts.shadow_area.saturating_add(
+                (bounds.size.w.max(0) as u64).saturating_mul(bounds.size.h.max(0) as u64),
+            );
+            elements.push(E::from(element));
+            return;
+        }
+    }
+    let spans = shadow_elements_outside_bounds(
+        window_rect,
+        spec,
+        scale,
+        output_geometry.loc,
+        motion,
+        window_rect,
     );
+    for span in &spans {
+        let bounds = span.geometry(scale);
+        counts.shadow_span_area = counts.shadow_span_area.saturating_add(
+            (bounds.size.w.max(0) as u64).saturating_mul(bounds.size.h.max(0) as u64),
+        );
+    }
+    elements.extend(spans.into_iter().map(E::from));
 }
 
 /// Resolve the active scheme/degrade shadow geometry once per output frame.

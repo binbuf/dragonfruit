@@ -79,14 +79,67 @@ public:
     void setDmabufSyncMode(const QString &mode);
     void recordDmabufSyncWait(qint64 waitUs, bool timeout);
 
+    // T238: stage timings for the Dock popover A/B. These are recorded even
+    // when only `DRAGONFRUIT_CHROME_STATS` is set; the correlation trace is a
+    // separate opt-in (`DRAGONFRUIT_CHROME_TRACE`).
+    //
+    // One scene-size change. The Dock popover currently grows the shared Dock
+    // scene on open; the stable-popover flag removes this event.
+    void recordSceneResize(const QString &surface, const QSize &from,
+                           const QSize &to);
+    // One render-target allocation. `bytes` is the attachment footprint the
+    // producer accounts for (RGBA8 colour + combined depth/stencil), not a
+    // driver-reported allocation. Live/peak make the extra resident cost of a
+    // permanently reserved popover budget visible.
+    void recordFboAlloc(const QString &surface, const QSize &size, qint64 bytes,
+                        qint64 createUs);
+    void recordFboFree(const QString &surface, qint64 bytes);
+    // One first-use dmabuf import. `roundtripUs` is the blocking
+    // `wl_display_roundtrip` wait inside `createDmabufSlot()`; `totalUs`
+    // includes params setup, fd dup, and the round trip.
+    void recordDmabufImport(const QString &surface, qint64 roundtripUs,
+                            qint64 totalUs, bool ok);
+    // One producer slot returned to the ring. `holdUs` is commit -> this
+    // surface's release; `sharedHoldUs` (when `lastUser`) is first commit ->
+    // last release for a scene shared by the Dock and its popover. This is the
+    // shared-frame backpressure measurement.
+    void recordDmabufHold(const QString &surface, qint64 holdUs,
+                          qint64 sharedHoldUs, bool lastUser);
+    // The producer had no free ring slot when a frame was requested.
+    void recordRingExhausted(const QString &surface);
+    // Time spent in `wl_display_flush` after a commit. A blocked socket is a
+    // compositor-submission stall that the fence wait cannot explain.
+    void recordCommitFlush(qint64 flushUs);
+    // Popover-open request (the shell's `popoverChanged` signal) to the first
+    // frame callback for that commit. This is request-to-visible, not hardware
+    // input-to-visible; the trace carries the raw timestamps for that.
+    void recordPopoverOpen(const QString &kind, qint64 openUs);
+
     // A `wl_surface.frame` callback was delivered for `surface`.
     void recordFrameCallback(const QString &surface, qint64 callbackUs);
     // A render driven by the bounded safety tick because no frame callback
     // arrived (a degraded compositor).
     void recordFallbackRender();
 
-    // The greppable `chrome stats` / `chrome surface` lines for `label`. The
-    // emit path prints these; tests read them without capturing qInfo.
+    // T238 correlation trace. `DRAGONFRUIT_CHROME_TRACE=1` emits one line per
+    // stage with a monotonically increasing id. Timestamps carry both epoch
+    // milliseconds (matching the compositor's `DFTRACE`) and a microsecond
+    // delta from the interaction start, so individual openings can be lined
+    // up with compositor frame/present traces without protocol changes.
+    bool traceEnabled() const { return m_traceEnabled; }
+    // The innermost open interaction, or 0. Import/allocation event lines use
+    // this so a cold dma-buf wait can be attributed to one opening.
+    quint64 activeTraceId() const;
+    // Returns 0 when tracing is off.
+    quint64 beginTrace(const QString &kind, const QString &detail = QString());
+    void traceEvent(quint64 id, const QString &stage,
+                    const QString &detail = QString());
+    // Ends the interaction and returns its elapsed microseconds (or -1).
+    qint64 endTrace(quint64 id, const QString &detail = QString());
+
+    // The greppable `chrome stats` / `chrome stage stats` / `chrome surface`
+    // lines for `label`. The emit path prints these; tests read them without
+    // capturing qInfo.
     QStringList summaryLines(const QString &label) const;
 
     // Microseconds since the last render completion, or -1 when no readback
@@ -131,8 +184,19 @@ private:
         quint64 dmabufBuffers = 0;
         quint64 dmabufAllocs = 0;
         quint64 dmabufReuses = 0;
+        quint64 sceneResizes = 0;
+        quint64 fboAllocs = 0;
+        quint64 fboBytesLive = 0;
+        quint64 fboBytesPeak = 0;
+        quint64 dmabufImports = 0;
+        quint64 dmabufImportFailures = 0;
+        quint64 ringExhausted = 0;
+        quint64 popoverOpens = 0;
         QVector<qint64> commitUs;
         QVector<qint64> frameCallbackUs;
+        QVector<qint64> dmabufHoldUs;
+        QVector<qint64> dmabufSharedHoldUs;
+        QVector<qint64> popoverOpenUs;
     };
 
     ChromeStats();
@@ -163,10 +227,31 @@ private:
     QString m_dmabufSyncMode = QStringLiteral("none");
     quint64 m_frameCallbacks = 0;
     quint64 m_signalDumps = 0;
+    quint64 m_sceneResizes = 0;
+    quint64 m_fboAllocs = 0;
+    quint64 m_fboBytesLive = 0;
+    quint64 m_fboBytesPeak = 0;
+    quint64 m_dmabufImports = 0;
+    quint64 m_dmabufImportFailures = 0;
+    quint64 m_ringExhausted = 0;
+    quint64 m_popoverOpens = 0;
     QVector<qint64> m_commitUs;
     QVector<qint64> m_frameCallbackUs;
+    QVector<qint64> m_fboCreateUs;
+    QVector<qint64> m_dmabufImportUs;
+    QVector<qint64> m_dmabufRoundtripUs;
+    QVector<qint64> m_dmabufHoldUs;
+    QVector<qint64> m_dmabufSharedHoldUs;
+    QVector<qint64> m_commitFlushUs;
+    QVector<qint64> m_popoverOpenUs;
     QHash<QString, SurfaceStats> m_surfaces;
     QElapsedTimer m_renderTimer;
+
+    bool m_traceEnabled = false;
+    quint64 m_traceSeq = 0;
+    QElapsedTimer m_traceClock;
+    QHash<quint64, qint64> m_traceStartNs;
+    QVector<quint64> m_traceStack;
 };
 
 // Percentile helpers shared with the summary (nearest-rank, 0-based).

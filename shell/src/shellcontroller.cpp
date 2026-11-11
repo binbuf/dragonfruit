@@ -35,12 +35,15 @@
 #include <QWheelEvent>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStyleHints>
 #include <QUrl>
+#include <QUuid>
 
 #include <cstdio>
 #include <csignal>
+#include <ctime>
 #include <sys/types.h>
 #include <memory>
 
@@ -74,6 +77,15 @@
 
 namespace {
 
+// T238: one monotonic clock for dmabuf hold times. It must be comparable
+// across the shell's commit and release callbacks, not just within one frame.
+qint64 monotonicNs()
+{
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return qint64(now.tv_sec) * 1'000'000'000 + now.tv_nsec;
+}
+
 // How long a launch may take to map its first window before the Dock treats
 // it as failed (T-10 section 8.5). Interim until app-index owns activation.
 constexpr qint64 kLaunchTimeoutMs = 8000;
@@ -106,26 +118,82 @@ const QString kAppIndexService = QStringLiteral("org.dragonfruit.AppIndex1");
 const QString kAppIndexPath = QStringLiteral("/org/dragonfruit/AppIndex1");
 const QString kAppIndexInterface = QStringLiteral("org.dragonfruit.AppIndex1");
 
-// The Dock's offscreen buffer reserves a fixed popover headroom (above a
-// bottom Dock / beside a vertical one) and side gutters so opening a
-// menu/chooser/stack never resizes the render target on the open frame
-// (T-14.7c). The Dock QML clamps the popover rectangle into this budget, so
-// the values are a hard budget, not just a hint.
+// The Dock reserves a popover headroom (above a bottom Dock / beside a
+// vertical one) and side gutters only while a popover is open. Opening one
+// therefore *does* resize the shared Dock scene and retire/recreate its
+// render target and dma-buf slots on the open frame (T-14.7c). The QML clamps
+// the popover rectangle into this budget, so the values are a hard budget,
+// not just a hint.
+//
+// `DRAGONFRUIT_DOCK_STABLE_POPOVER=1` is the T238 diagnostic that keeps the
+// budget resident for the whole session so the A/B can separate the resize /
+// reallocation cost from the rest of the popover path. It is not the default:
+// the permanent choice is measured separately against a content-sized popup
+// producer.
+//
+// Memory: the stable scene is (dock + 2*gutter) x (dock + headroom) pixels.
+// For the 3840x228 -> 4800x708 case, the extra RGBA8 storage is ~9.6 MiB per
+// FBO (~29 MiB for the three ring slots), excluding depth/stencil and other
+// resources. The producer reports the exact accounted attachment bytes
+// (RGBA8 + combined depth/stencil) as `fbo_bytes_live`/`fbo_bytes_peak` in
+// `chrome stage stats`.
 constexpr int kDockPopoverHeadroom = 320;
 constexpr int kDockPopoverGutter = 320;
+
+bool dockStablePopoverEnabled()
+{
+    static const bool enabled = []() {
+        const QByteArray value =
+            qgetenv("DRAGONFRUIT_DOCK_STABLE_POPOVER").trimmed().toLower();
+        return !value.isEmpty() && value != "0" && value != "off"
+            && value != "false";
+    }();
+    return enabled;
+}
 
 // Launch an app detached from the shell. The shell forces the offscreen QPA
 // for its own chrome (`main.cpp`), so the app-launch environment scrubs it
 // (see `appLaunchEnvironment`) or a Qt client would render offscreen and never
 // map a window.
 bool launchDetachedFromShell(const QStringList &argv, const QString &waylandDisplay,
-                             qint64 *pid)
+                             qint64 *pid, QString *scopeUnit = nullptr,
+                             const QString &scopeKey = QString())
 {
     if (argv.isEmpty())
         return false;
+    if (scopeUnit)
+        scopeUnit->clear();
+    const QProcessEnvironment environment = appLaunchEnvironment(
+        QProcessEnvironment::systemEnvironment(), waylandDisplay);
+    // T238 P0: Dock apps live in their own transient user service, so a shell
+    // restart cannot take them down with the shell's cgroup. The unit name
+    // keeps the desktop identity for Force Quit and Dock management.
+    if (scopeUnit) {
+        QString sanitized = scopeKey;
+        sanitized.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9]+")),
+                          QStringLiteral("-"));
+        sanitized.remove(QRegularExpression(QStringLiteral("^-+|-+$")));
+        if (sanitized.isEmpty())
+            sanitized = QStringLiteral("app");
+        sanitized = sanitized.left(48);
+        const QString unit = QStringLiteral("dragonfruit-app-%1-%2")
+                                 .arg(sanitized,
+                                      QUuid::createUuid().toString(QUuid::Id128).left(8));
+        const AppScopeCommand command = appScopeCommand(argv, environment, unit);
+        QProcess systemd;
+        systemd.setProgram(command.program);
+        systemd.setArguments(command.arguments);
+        qint64 launched = 0;
+        if (systemd.startDetached(&launched)) {
+            *scopeUnit = unit;
+            if (pid)
+                *pid = 0;
+            return true;
+        }
+        // No user manager/systemd-run: fall through to the direct launch.
+    }
     QProcess process;
-    process.setProcessEnvironment(appLaunchEnvironment(
-        QProcessEnvironment::systemEnvironment(), waylandDisplay));
+    process.setProcessEnvironment(environment);
     process.setProgram(argv.first());
     process.setArguments(argv.mid(1));
     process.setWorkingDirectory(QDir::homePath());
@@ -484,18 +552,17 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (!m_gpuChromeRequested) {
         ChromeStats::instance().setGpuPath(QStringLiteral("off"));
     }
-    if (ChromeStats::instance().enabled()) {
-        // The signal handler writes one byte to a self-pipe; the notifier
-        // emits from the Qt thread so the stats line cannot race rendering.
-        ChromeStats::installSignalHandler();
-        const int fd = ChromeStats::signalFd();
-        if (fd >= 0) {
-            m_chromeStatsNotifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
-            connect(m_chromeStatsNotifier, &QSocketNotifier::activated, this, []() {
-                if (ChromeStats::takeSignal())
-                    ChromeStats::instance().emitSignalStats();
-            });
-        }
+    // The SIGUSR1 handler is installed unconditionally: with stats disabled
+    // it still drains the self-pipe, so a diagnostic signal can never
+    // terminate the shell. `emitSignalStats()` is the opt-in no-op.
+    ChromeStats::installSignalHandler();
+    const int statsFd = ChromeStats::signalFd();
+    if (statsFd >= 0) {
+        m_chromeStatsNotifier = new QSocketNotifier(statsFd, QSocketNotifier::Read, this);
+        connect(m_chromeStatsNotifier, &QSocketNotifier::activated, this, []() {
+            if (ChromeStats::takeSignal())
+                ChromeStats::instance().emitSignalStats();
+        });
     }
     m_protocol = new ShellProtocol(this);
     // T230: focus and window-state events are part of the initial scene
@@ -2451,6 +2518,88 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         timer->start();
     }
 
+    // T238 A/B seam: repeat the Dock popover open/close path a fixed number of
+    // times so the stable-popover diagnostic has >=100 openings per
+    // configuration. This is a measurement fixture, never a normal-session
+    // behavior. The shell trace carries one id per opening; the stage timings
+    // and allocation counts come from `chrome stage stats`.
+    if (qEnvironmentVariableIsSet("DF_DOCK_POPOVER_AB")) {
+        int target = qEnvironmentVariableIntValue("DF_DOCK_POPOVER_AB");
+        if (target <= 0)
+            target = 100;
+        int intervalMs =
+            qEnvironmentVariableIntValue("DF_DOCK_POPOVER_AB_INTERVAL_MS");
+        if (intervalMs <= 0)
+            intervalMs = 350;
+        auto *timer = new QTimer(this);
+        timer->setInterval(intervalMs);
+        auto state = std::make_shared<int>(0); // 0=waiting, 1=open, 2=closed
+        auto opened = std::make_shared<int>(0);
+        connect(timer, &QTimer::timeout, this,
+                [this, timer, target, state, opened]() {
+            if (!m_dockItem)
+                return;
+            QMetaObject::invokeMethod(m_dockItem, "reveal");
+            const bool chooserOpen =
+                m_dockItem->property("chooserOpen").toBool();
+            if (*state == 0) {
+                if (chooserOpen) {
+                    QMetaObject::invokeMethod(m_dockItem, "closeChooserFixture");
+                    *state = 2;
+                    return;
+                }
+                m_pendingDockPopoverTraceId = ChromeStats::instance().beginTrace(
+                    QStringLiteral("dock-popover"),
+                    QStringLiteral("fixture-request stable=%1")
+                        .arg(dockStablePopoverEnabled() ? 1 : 0));
+                QMetaObject::invokeMethod(m_dockItem, "openChooserFixture");
+                if (!m_dockItem->property("chooserOpen").toBool()) {
+                    // No grouped entry yet; retry on the next tick.
+                    if (m_pendingDockPopoverTraceId != 0) {
+                        ChromeStats::instance().endTrace(
+                            m_pendingDockPopoverTraceId,
+                            QStringLiteral("not-ready"));
+                        m_pendingDockPopoverTraceId = 0;
+                    }
+                    return;
+                }
+                *state = 1;
+                ++*opened;
+                qInfo() << "shell: Dock popover A/B open" << *opened << "/"
+                        << target;
+                return;
+            }
+            if (*state == 1) {
+                QMetaObject::invokeMethod(m_dockItem, "closeChooserFixture");
+                *state = 2;
+                return;
+            }
+            if (*opened >= target) {
+                timer->stop();
+                qInfo() << "shell: Dock popover A/B complete count=" << *opened;
+                timer->deleteLater();
+                return;
+            }
+            m_pendingDockPopoverTraceId = ChromeStats::instance().beginTrace(
+                QStringLiteral("dock-popover"),
+                QStringLiteral("fixture-request stable=%1")
+                    .arg(dockStablePopoverEnabled() ? 1 : 0));
+            QMetaObject::invokeMethod(m_dockItem, "openChooserFixture");
+            if (!m_dockItem->property("chooserOpen").toBool()) {
+                if (m_pendingDockPopoverTraceId != 0) {
+                    ChromeStats::instance().endTrace(
+                        m_pendingDockPopoverTraceId, QStringLiteral("not-ready"));
+                    m_pendingDockPopoverTraceId = 0;
+                }
+                return;
+            }
+            *state = 1;
+            ++*opened;
+            qInfo() << "shell: Dock popover A/B open" << *opened << "/" << target;
+        });
+        timer->start();
+    }
+
     // Capture/demo seam (T-14.7p): open the hover chooser once the Dock is up,
     // without a synthetic pointer dwell. `DF_DOCK_HOVER_FIXTURE=retarget` also
     // places the magnification pointer between two grouped entries and
@@ -3370,22 +3519,55 @@ void ShellController::quitDockApp(const QString &appId, const QString &desktopId
     scheduleDockRender();
 }
 
+void ShellController::appendDockLaunchScope(const QString &desktopId, const QString &scope)
+{
+    QStringList &scopes = m_dockLaunchScopes[desktopId];
+    scopes.append(scope);
+    // Bound one app's instance history; a launcher loop must not grow it.
+    while (scopes.size() > 8)
+        scopes.removeFirst();
+    if (m_dockLaunchScopes.size() > 128)
+        m_dockLaunchScopes.erase(m_dockLaunchScopes.begin());
+}
+
+void ShellController::appendDockLaunchPid(const QString &desktopId, qint64 pid)
+{
+    QList<qint64> &pids = m_dockLaunchPids[desktopId];
+    pids.append(pid);
+    while (pids.size() > 8)
+        pids.removeFirst();
+    if (m_dockLaunchPids.size() > 128)
+        m_dockLaunchPids.erase(m_dockLaunchPids.begin());
+}
+
 void ShellController::forceQuitDockApp(const QString &appId, const QString &desktopId,
                                        bool temporary)
 {
     if (!m_protocol || appId.isEmpty())
         return;
-    const qint64 pid = m_dockLaunchPids.value(desktopId, 0);
+    const QList<qint64> pids = m_dockLaunchPids.take(desktopId);
+    const QStringList scopes = m_dockLaunchScopes.take(desktopId);
     bool signalled = false;
-    if (pid > 0) {
+    for (const QString &scope : scopes) {
+        // Stopping the transient user service kills that instance's whole
+        // cgroup without touching the shell's. Every recorded instance is
+        // stopped, so two launches of the same app both go away.
+        const bool stopped = QProcess::startDetached(
+            QStringLiteral("systemctl"),
+            {QStringLiteral("--user"), QStringLiteral("stop"), scope});
+        signalled = signalled || stopped;
+        if (!stopped)
+            qWarning() << "shell: Force Quit could not stop scope" << scope;
+    }
+    for (qint64 pid : pids) {
         // Only signal a process that is still alive; a stale pid must never
         // hit an unrelated process after reuse.
-        if (::kill(static_cast<pid_t>(pid), 0) == 0) {
-            signalled = ::kill(static_cast<pid_t>(pid), SIGKILL) == 0;
-            if (!signalled)
+        if (pid > 0 && ::kill(static_cast<pid_t>(pid), 0) == 0) {
+            const bool killed = ::kill(static_cast<pid_t>(pid), SIGKILL) == 0;
+            signalled = signalled || killed;
+            if (!killed)
                 qWarning() << "shell: Force Quit could not SIGKILL" << desktopId << "pid" << pid;
         }
-        m_dockLaunchPids.remove(desktopId);
     }
     // Always ask the compositor to retire the windows: for a shell-launched
     // app the SIGKILL already disconnects the client, and for an app the shell
@@ -8233,12 +8415,16 @@ void ShellController::launchFiles(const QString &argument)
         return;
     }
     qint64 pid = 0;
-    if (!launchDetachedFromShell(argv, m_waylandDisplay, &pid))
+    QString scopeUnit;
+    if (!launchDetachedFromShell(argv, m_waylandDisplay, &pid, &scopeUnit, files.id))
         qWarning() << "shell: cannot open Files at" << argument << ":" << argv.first();
     else {
-        qInfo() << "shell: opened Files at" << argument << "(pid" << pid << ")";
+        qInfo() << "shell: opened Files at" << argument << "(pid" << pid << "scope"
+                << scopeUnit << ")";
+        if (!scopeUnit.isEmpty())
+            appendDockLaunchScope(files.id, scopeUnit);
         if (pid > 0)
-            m_dockLaunchPids.insert(files.id, pid);
+            appendDockLaunchPid(files.id, pid);
     }
 }
 
@@ -8347,24 +8533,19 @@ void ShellController::launchDockAppWithFiles(const QString &desktopId, const QSt
     // (T-14.7l). A missing rect or key is a no-op (centered fallback).
     sendLaunchOrigin(desktopId);
     qint64 pid = 0;
-    if (!launchDetachedFromShell(argv, m_waylandDisplay, &pid)) {
+    QString scopeUnit;
+    if (!launchDetachedFromShell(argv, m_waylandDisplay, &pid, &scopeUnit, desktopId)) {
         failDockLaunch(desktopId, QStringLiteral("QProcess::startDetached failed"));
         return;
     }
+    if (!scopeUnit.isEmpty())
+        appendDockLaunchScope(desktopId, scopeUnit);
     qInfo() << "shell: Dock launched" << entry.name << "pid" << pid
+            << (scopeUnit.isEmpty() ? QString()
+                                    : QStringLiteral("scope %1").arg(scopeUnit))
             << (files.isEmpty() ? QString() : QStringLiteral("with %1 file(s)").arg(files.size()));
-    if (pid > 0) {
-        // T236: remember the process the shell spawned so the Dock's Force
-        // Quit can terminate it. The map is session-bounded by the set of
-        // distinct launched apps; a relaunch refreshes the pid.
-        m_dockLaunchPids.insert(desktopId, pid);
-        if (m_dockLaunchPids.size() > 128) {
-            // A pathological launcher loop must not grow the map forever;
-            // drop the oldest insertion (QHash order is arbitrary but this is
-            // only a safety valve, not a recency policy).
-            m_dockLaunchPids.erase(m_dockLaunchPids.begin());
-        }
-    }
+    if (pid > 0)
+        appendDockLaunchPid(desktopId, pid);
     m_launchStates.insert(desktopId, QStringLiteral("launching"));
     m_launchStart.insert(desktopId, QDateTime::currentMSecsSinceEpoch());
     m_launchDeadlines.insert(desktopId, QDateTime::currentMSecsSinceEpoch() + kLaunchTimeoutMs);
@@ -8843,10 +9024,14 @@ void ShellController::showCurrentBanner()
         m_bannerExpiry.setSingleShot(true);
         m_bannerExpiry.setInterval(static_cast<int>(
             qBound<qint64>(qint64(0), remaining, qint64(86400000))));
+        // T238 P0: `Qt::UniqueConnection` is invalid for a lambda (Qt refuses
+        // it and the connect silently fails, so the banner never expires).
+        // Disconnect the previous arming explicitly, then connect once.
+        disconnect(&m_bannerExpiry, nullptr, this, nullptr);
         connect(&m_bannerExpiry, &QTimer::timeout, this, [this, armedId]() {
             if (m_bannerId == armedId && m_notificationClient)
                 m_notificationClient->expire(armedId);
-        }, Qt::UniqueConnection);
+        });
         m_bannerExpiry.start();
     }
     // T205: a banner appearing while the Center is open moves the stack down.
@@ -9510,6 +9695,33 @@ void ShellController::onDockPinnedOrderChanged(const QVariant &desktopIds)
 
 void ShellController::onDockPopoverChanged()
 {
+    const bool open = m_dockItem
+        && m_dockItem->property("popoverOpen").toBool();
+    if (open && !m_dockPopoverWasOpen) {
+        if (m_dockPopoverTraceId != 0)
+            ChromeStats::instance().endTrace(m_dockPopoverTraceId,
+                                             QStringLiteral("superseded"));
+        m_dockPopoverTraceId = m_pendingDockPopoverTraceId;
+        m_pendingDockPopoverTraceId = 0;
+        if (m_dockPopoverTraceId == 0) {
+            m_dockPopoverTraceId = ChromeStats::instance().beginTrace(
+                QStringLiteral("dock-popover"),
+                QStringLiteral("stable=%1")
+                    .arg(dockStablePopoverEnabled() ? 1 : 0));
+        }
+        m_dockPopoverTraceCommitted = false;
+    } else if (!open && m_dockPopoverWasOpen && m_dockPopoverTraceId != 0) {
+        // The open was not paced to a frame callback (or the popover closed
+        // before one arrived). Record the request-to-close interval rather
+        // than leaking the trace entry.
+        const qint64 elapsed = ChromeStats::instance().endTrace(
+            m_dockPopoverTraceId, QStringLiteral("closed-before-present"));
+        if (elapsed >= 0)
+            ChromeStats::instance().recordPopoverOpen(QStringLiteral("dock"),
+                                                      elapsed);
+        m_dockPopoverTraceId = 0;
+    }
+    m_dockPopoverWasOpen = open;
     // The popover fade/scale is QML-driven; the scene-graph hook commits
     // every frame it renders (FR-14).
     scheduleDockRender();
@@ -9713,6 +9925,12 @@ void ShellController::prepareChromeScene(QQuickWindow *window, QQuickItem *item,
         item->setScale(itemScale);
     const QSize buffer = ChromeScale::bufferSize(windowLogical, scale);
     if (producer) {
+        auto pace = m_chromePaces.find(producer);
+        if (pace != m_chromePaces.end() && pace.value().preparedSize != buffer) {
+            ChromeStats::instance().recordSceneResize(
+                pace.value().primaryLabel, pace.value().preparedSize, buffer);
+            pace.value().preparedSize = buffer;
+        }
         // T-21.1d: the GPU producer renders a physical FBO but keeps the QML
         // scene in logical units; it needs the same scale the software path
         // bakes into the QImage DPR.
@@ -9875,6 +10093,18 @@ void ShellController::renderChromeProducer(ChromeFrameProducer *producer, bool f
 void ShellController::onChromeFramePresented(const QString &surface, uint32_t time)
 {
     Q_UNUSED(time);
+    if (surface == QLatin1String("dock") && m_dockPopoverTraceId != 0
+        && m_dockPopoverTraceCommitted) {
+        ChromeStats::instance().traceEvent(m_dockPopoverTraceId,
+                                           QStringLiteral("frame-presented"));
+        const qint64 elapsed = ChromeStats::instance().endTrace(
+            m_dockPopoverTraceId, QStringLiteral("presented"));
+        if (elapsed >= 0)
+            ChromeStats::instance().recordPopoverOpen(QStringLiteral("dock"),
+                                                      elapsed);
+        m_dockPopoverTraceId = 0;
+        m_dockPopoverTraceCommitted = false;
+    }
     for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
         ChromePace &pace = it.value();
         if (pace.primaryLabel != surface || !pace.dirty || pace.scheduled)
@@ -9907,7 +10137,29 @@ void ShellController::onChromeDmabufReleased(const QString &surface, int slot,
         // A shared scene has one wl_buffer per surface. Only the last release
         // returns the producer's ring slot; an earlier popover release must
         // not let the next frame overwrite the still-visible bar buffer.
-        if (!pace.dmabufUsers.release(serial))
+        const qint64 nowNs = monotonicNs();
+        const auto commitIt = pace.dmabufCommitNs.constFind(serial);
+        const qint64 holdUs = commitIt == pace.dmabufCommitNs.constEnd()
+            ? -1
+            : (nowNs - commitIt.value()) / 1000;
+        const bool lastUser = pace.dmabufUsers.release(serial);
+        qint64 sharedHoldUs = -1;
+        if (lastUser) {
+            sharedHoldUs = holdUs;
+            pace.dmabufCommitNs.remove(serial);
+        }
+        ChromeStats::instance().recordDmabufHold(surface, holdUs, sharedHoldUs,
+                                                 lastUser);
+        if (m_dockPopoverTraceId != 0) {
+            ChromeStats::instance().traceEvent(
+                m_dockPopoverTraceId, QStringLiteral("dmabuf-release"),
+                QStringLiteral("surface=%1 slot=%2 last=%3 hold_us=%4")
+                    .arg(surface)
+                    .arg(slot)
+                    .arg(lastUser ? 1 : 0)
+                    .arg(holdUs));
+        }
+        if (!lastUser)
             return;
         if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(pace.producer))
             gpu->releaseDmabufFrame(slot, serial);
@@ -10005,8 +10257,13 @@ ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
         ChromeStats::instance().setGpuPath(QStringLiteral("dmabuf"));
         ChromeStats::instance().setTransportPath(QStringLiteral("render-control+dmabuf"));
         auto it = m_chromePaces.find(gpu);
-        if (it != m_chromePaces.end())
+        if (it != m_chromePaces.end()) {
             it.value().dmabufUsers.acquire(frame.serial);
+            // First commit for this serial anchors the shared hold time. A
+            // second surface committing the same scene must not reset it.
+            if (!it.value().dmabufCommitNs.contains(frame.serial))
+                it.value().dmabufCommitNs.insert(frame.serial, monotonicNs());
+        }
         return result;
     }
 
@@ -10041,6 +10298,12 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
 
     ChromeFrameProducer *producer = m_producers.value(window);
     auto *gpu = qobject_cast<GpuChromeFrameProducer *>(producer);
+    const bool traceDock = window == m_dockWindow && m_dockPopoverTraceId != 0;
+    const auto trace = [this, traceDock](const QString &stage,
+                                         const QString &detail = QString()) {
+        if (traceDock)
+            ChromeStats::instance().traceEvent(m_dockPopoverTraceId, stage, detail);
+    };
 
     QList<int> deferredTargets;
     bool anyCommitted = false;
@@ -10067,7 +10330,18 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
         // One scene render for every target. The first target owns the stats
         // label; a shared popover does not add a second render.
         ChromeStats::instance().recordRender(targets.first().label);
-        if (gpu->exportFrame(&frame, &exportReason)) {
+        trace(QStringLiteral("export-begin"),
+              QStringLiteral("ring_live=%1 ring_alloc=%2")
+                  .arg(gpu->dmabufRingLiveCount())
+                  .arg(gpu->dmabufRingAllocations()));
+        const bool exported = gpu->exportFrame(&frame, &exportReason);
+        trace(QStringLiteral("export-done"),
+              QStringLiteral("ok=%1 reason=%2 slot=%3 serial=%4")
+                  .arg(exported ? 1 : 0)
+                  .arg(exportReason.isEmpty() ? QStringLiteral("none") : exportReason)
+                  .arg(frame.slot)
+                  .arg(frame.serial));
+        if (exported) {
             int successCount = 0;
             bool anyHardFailure = false;
             for (int index = 0; index < targets.size(); ++index) {
@@ -10079,6 +10353,8 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
                     continue;
                 }
                 QString reason;
+                trace(QStringLiteral("target-commit-begin"),
+                      QStringLiteral("target=%1").arg(target.label));
                 const ShellProtocol::DmabufCommitResult result =
                     commitChromeDmabufTarget(gpu, target.label, frame,
                                              target.logicalSize, target.sourceRect,
@@ -10086,10 +10362,29 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
                 if (result == ShellProtocol::DmabufCommitResult::Committed) {
                     anyCommitted = true;
                     ++successCount;
+                    trace(QStringLiteral("target-committed"),
+                          QStringLiteral("target=%1 size=%2x%3 source=%4,%5,%6x%7")
+                              .arg(target.label)
+                              .arg(target.logicalSize.width())
+                              .arg(target.logicalSize.height())
+                              .arg(target.sourceRect.x())
+                              .arg(target.sourceRect.y())
+                              .arg(target.sourceRect.width())
+                              .arg(target.sourceRect.height()));
                 } else if (result == ShellProtocol::DmabufCommitResult::Deferred) {
                     deferredTargets.append(index);
+                    trace(QStringLiteral("target-deferred"),
+                          QStringLiteral("target=%1 reason=%2")
+                              .arg(target.label,
+                                   reason.isEmpty() ? QStringLiteral("none")
+                                                    : reason));
                 } else {
                     anyHardFailure = true;
+                    trace(QStringLiteral("target-failed"),
+                          QStringLiteral("target=%1 reason=%2")
+                              .arg(target.label,
+                                   reason.isEmpty() ? QStringLiteral("none")
+                                                    : reason));
                 }
             }
             if (successCount == 0) {
@@ -10279,8 +10574,12 @@ void ShellController::renderDock()
 
     // Use a strip for ordinary Dock frames. Give the shared scene its full
     // popover budget for the lifetime of an overlay, including its fade out.
-    const int headroom = hasPopover ? kDockPopoverHeadroom : 0;
-    const int leftGutter = hasPopover ? kDockPopoverGutter : 0;
+    // T238: the stable-popover diagnostic keeps that budget (and therefore
+    // the scene size, FBO generation, and dma-buf slots) resident for the
+    // whole session, so the A/B can isolate the open-frame resize cost.
+    const bool reservePopoverBudget = hasPopover || dockStablePopoverEnabled();
+    const int headroom = reservePopoverBudget ? kDockPopoverHeadroom : 0;
+    const int leftGutter = reservePopoverBudget ? kDockPopoverGutter : 0;
     const bool originChanged = leftGutter != m_dockItemOffsetX || headroom != m_dockItemOffsetY;
     m_dockItemOffsetX = leftGutter;
     m_dockItemOffsetY = headroom;
@@ -10288,6 +10587,17 @@ void ShellController::renderDock()
     const int windowHeight = m_dockHeight + headroom;
     prepareChromeScene(m_dockWindow, m_dockItem, QSize(m_dockWidth, m_dockHeight),
                        QSize(windowWidth, windowHeight), m_chromeScale);
+    if (m_dockPopoverTraceId != 0) {
+        ChromeStats::instance().traceEvent(
+            m_dockPopoverTraceId, QStringLiteral("scene-prepared"),
+            QStringLiteral("scene=%1x%2 dock=%3x%4 popover=%5 headroom=%6")
+                .arg(windowWidth)
+                .arg(windowHeight)
+                .arg(m_dockWidth)
+                .arg(m_dockHeight)
+                .arg(hasPopover ? 1 : 0)
+                .arg(headroom));
+    }
     auto *gpuProducer =
         qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_dockWindow));
     // The software producer's window is the physical buffer, so the scene
@@ -10384,7 +10694,22 @@ void ShellController::renderDock()
         m_protocol->hideDockPopup();
     }
 
-    if (!commitChromeScene(m_dockWindow, targets))
+    if (m_dockPopoverTraceId != 0)
+        ChromeStats::instance().traceEvent(m_dockPopoverTraceId,
+                                           QStringLiteral("commit-begin"));
+    const bool committed = commitChromeScene(m_dockWindow, targets);
+    if (m_dockPopoverTraceId != 0) {
+        ChromeStats::instance().traceEvent(
+            m_dockPopoverTraceId, QStringLiteral("commit-done"),
+            QStringLiteral("ok=%1 targets=%2")
+                .arg(committed ? 1 : 0)
+                .arg(targets.size()));
+        // Only a frame that actually carried the popover target is the
+        // request-to-visible endpoint. A reveal/settle frame before the
+        // popover rect updates must not end the trace.
+        m_dockPopoverTraceCommitted = committed && hasPopover;
+    }
+    if (!committed)
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 }
 

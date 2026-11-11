@@ -2216,6 +2216,17 @@ Rectangle {
         return false;
     }
 
+    // T238 A/B seam: close the fixture-opened chooser without a synthetic
+    // click-away. The production close paths (focus loss, Escape, activation)
+    // are unchanged; this only makes the repeated-opening benchmark
+    // deterministic. Never set in a normal session.
+    function closeChooserFixture() {
+        if (!chooserOpen)
+            return false;
+        windowChooser.hide();
+        return true;
+    }
+
     // Capture/demo seam (T-14.7n): scroll the open chooser's bounded viewport
     // mid-list and highlight a visible row, so the live visual check shows a
     // long list scrolled with the per-row actions revealed. Never set in a

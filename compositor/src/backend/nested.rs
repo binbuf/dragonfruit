@@ -9,14 +9,15 @@
 //! shared session loop fd-driven — there is no polling thread.
 
 use std::cell::RefCell;
+use std::mem::ManuallyDrop;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use smithay::backend::allocator::Fourcc;
 use smithay::utils::{Buffer as BufferCoord, Physical, Point, Size, Size as BufferSize};
 
-use smithay::backend::egl::EGLDevice;
-use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::backend::egl::{ffi, EGLDevice};
+use smithay::backend::renderer::damage::{OutputDamageTracker, RenderOutputResult};
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::{
@@ -32,13 +33,15 @@ use smithay::render_elements;
 use smithay::utils::Rectangle;
 use smithay::wayland::presentation::Refresh;
 
+use crate::backend::present::{DamageMode, PresentDone, PresentError, PresentRequest, Presenter};
 use crate::backend::{add_output, add_seat_capabilities};
 use crate::gpu_timer::{GpuPass, GpuTimer};
 use crate::session::{run_session, BackendHooks};
+use crate::state::PresentationProvenance;
 use crate::window::{
     full_output_material_forced, BlurMissCounts, BlurMissReason, MaterialRegion, PanelKey,
     PanelPaintKey, PanelTextureSlots, RegionFilter, SceneTextureCache, SceneTextureKey,
-    TextureRenderer,
+    ShadowResources, TextureRenderer,
 };
 use crate::{render, LOCKSTEP_VERSION};
 
@@ -57,6 +60,11 @@ render_elements! {
     // The GPU-sampled backdrop blur (T-20.1): a Kawase-downsampled scene
     // region drawn under a chrome panel, clipped to its rounded corners.
     Blur=crate::window::BackdropBlurElement,
+    // One-quad shader shadow (T238 decoration optimisation).
+    Shadow=crate::window::ShadowElement,
+    // One-quad SDF titlebar fill / traffic light (T238 decoration
+    // optimisation).
+    Titlebar=crate::window::TitlebarShapeElement,
 }
 
 // The frame element list after the magnifier pass (T-16.6b): the untransformed
@@ -138,12 +146,10 @@ pub fn run(socket_name: &str) -> Result<(), String> {
         .map(std::path::PathBuf::from);
     let install_path = synthetic_path.clone();
 
-    let (mut backend, winit_loop) = winit::init_from_attributes::<GlowRenderer>(
-        nested_window_attributes(),
-    )
-    .map_err(|e| {
-        format!("failed to open a nested window (is there a Wayland session?): {e}")
-    })?;
+    let (mut backend, winit_loop) =
+        winit::init_from_attributes::<GlowRenderer>(nested_window_attributes()).map_err(|e| {
+            format!("failed to open a nested window (is there a Wayland session?): {e}")
+        })?;
     backend.window().set_title("Dragonfruit");
 
     // Filled by the init hook; read by the render hook.
@@ -161,6 +167,10 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 // report blur as active. The DRM rail leaves this false until
                 // P2 lands there.
                 state.material_blur_supported = true;
+                // The nested rail's only presentation signal is the host
+                // frame callback / swap completion. Physical vblank feedback
+                // is not reachable through winit's Rust Wayland backend.
+                state.stats.presentation_provenance = PresentationProvenance::NestedSwapCompletion;
                 let window_size = backend.window_size();
                 // T-16.3b: the nested output's scale. Fractional values let a
                 // live session exercise chrome sizing and the per-surface
@@ -315,12 +325,105 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                             None
                         }
                     };
+                // T238 decoration optimisation: compile the one-quad shadow
+                // program and a 1x1 white probe texture on the same renderer.
+                // Failure is non-fatal: the span decomposition remains.
+                let shadow = {
+                    let gles: &mut GlesRenderer =
+                        std::borrow::BorrowMut::borrow_mut(backend.renderer());
+                    match gles
+                        .compile_custom_texture_shader(
+                            crate::window::SHADOW_SHADER,
+                            &crate::window::shadow_uniform_names(),
+                        )
+                        .and_then(|program| {
+                            gles.import_memory(
+                                &[255u8, 255, 255, 255],
+                                Fourcc::Abgr8888,
+                                Size::from((1, 1)),
+                                false,
+                            )
+                            .map(|texture| ShadowResources { program, texture })
+                        }) {
+                        Ok(resources) => Some(resources),
+                        Err(err) => {
+                            eprintln!(
+                                "dragonfruit-compositor: shadow shader unavailable ({err}); \
+                                 using span shadows"
+                            );
+                            None
+                        }
+                    }
+                };
+                if shadow.is_some() {
+                    crate::trace::log("material", "shadow-program=compiled");
+                }
+                let titlebar = shadow.as_ref().and_then(|resources| {
+                    let gles: &mut GlesRenderer =
+                        std::borrow::BorrowMut::borrow_mut(backend.renderer());
+                    match gles.compile_custom_texture_shader(
+                        crate::window::TITLEBAR_SHADER,
+                        &crate::window::titlebar_uniform_names(),
+                    ) {
+                        Ok(program) => Some(crate::window::TitlebarResources {
+                            program,
+                            texture: resources.texture.clone(),
+                        }),
+                        Err(err) => {
+                            eprintln!(
+                                "dragonfruit-compositor: titlebar shader unavailable ({err}); \
+                                 using span traffic lights"
+                            );
+                            None
+                        }
+                    }
+                });
+                if titlebar.is_some() {
+                    crate::trace::log("material", "titlebar-program=compiled");
+                }
+                // T238 P0: move the host swap off the session loop. The EGL
+                // context is released before each handoff and made current
+                // again on the next bind; the presenter owns only the raw
+                // display/context handles and the per-frame surface.
+                let (ping, ping_source) = calloop::ping::make_ping()
+                    .map_err(|error| format!("failed to create present wakeup: {error}"))?;
+                state
+                    .loop_handle
+                    .insert_source(ping_source, |_, _, _| ())
+                    .map_err(|error| format!("failed to register present wakeup: {error}"))?;
+                let context = backend.renderer().egl_context();
+                let display = context.display().get_display_handle().handle as usize;
+                let context_handle = context.get_context_handle() as usize;
+                let damage_mode = DamageMode::from_extensions(context.display().extensions());
+                let presenter = Presenter::spawn(display, context_handle, damage_mode, ping)?;
+                // Host liveness: winit can leave the session idle (or
+                // unpaced) when the host socket closes. A separate connection
+                // to the host display wakes the loop on EOF so the nested
+                // compositor exits instead of spinning.
+                let (host_ping, host_source) = calloop::ping::make_ping()
+                    .map_err(|error| format!("failed to create host-monitor wakeup: {error}"))?;
+                state
+                    .loop_handle
+                    .insert_source(host_source, |_, _, state| {
+                        eprintln!(
+                            "dragonfruit-compositor: host Wayland connection closed; \
+                             shutting down the nested session"
+                        );
+                        crate::trace::log("host-disconnected", "monitor");
+                        state.running = false;
+                    })
+                    .map_err(|error| format!("failed to register host-monitor wakeup: {error}"))?;
+                if let Err(error) = crate::backend::host_monitor::spawn(host_ping) {
+                    eprintln!("dragonfruit-compositor: {error}");
+                }
                 *shared_init.borrow_mut() = Some(NestedData {
                     blur_program,
                     glass_program,
                     veil_program,
+                    shadow,
+                    titlebar,
                     material_textures: MaterialTextureCache::default(),
-                    backend,
+                    backend: ManuallyDrop::new(backend),
                     damage_tracker: OutputDamageTracker::new(
                         window_size,
                         smithay::utils::Scale::from(scale),
@@ -329,6 +432,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                     tracker_scale: scale,
                     tracker_size: (window_size.w, window_size.h),
                     gpu_timer: GpuTimer::new(),
+                    presenter,
+                    pending: None,
+                    pending_dirty: false,
                 });
                 Ok(())
             }),
@@ -344,6 +450,14 @@ pub fn run(socket_name: &str) -> Result<(), String> {
             }),
         },
     );
+    // Stop the presenter before the EGL surface/context are dropped. If the
+    // host has stalled the swap, the worker may still be inside
+    // `eglSwapBuffers`; `shutdown` leaks the backend in that case instead of
+    // freeing objects the worker still uses. This only happens on process
+    // exit while the host is not presenting the window.
+    if let Some(data) = shared.borrow_mut().take() {
+        data.shutdown();
+    }
     // The synthetic socket node is session state, not a leak; remove it even
     // when `run_session` returns an error.
     if let Some(path) = &synthetic_path {
@@ -367,20 +481,34 @@ pub fn run(socket_name: &str) -> Result<(), String> {
 /// the session.
 #[derive(Default)]
 struct MaterialTextureCache {
-    scene: SceneTextureCache<GlesTexture>,
+    /// Scene textures for the independently bounded material groups: slot 0
+    /// is the top group, slot 1 the bottom group. The union/control arm uses
+    /// slot 0 only.
+    scenes: Vec<SceneTextureCache<GlesTexture>>,
     /// One slot per chrome panel; each slot holds the textures for that
     /// panel's Kawase passes (the last one is the composed result).
     panels: PanelTextureSlots<GlesTexture>,
 }
 
 impl MaterialTextureCache {
+    fn scene_slot(&mut self, slot: usize) -> &mut SceneTextureCache<GlesTexture> {
+        while self.scenes.len() <= slot {
+            self.scenes.push(SceneTextureCache::default());
+        }
+        &mut self.scenes[slot]
+    }
+
     fn trim_panels(&mut self, keys: &[PanelKey]) {
         self.panels.trim_to(keys);
     }
 }
 
 struct NestedData {
-    backend: WinitGraphicsBackend<GlowRenderer>,
+    /// The EGL/GL owner. It is `ManuallyDrop` so [`NestedData::shutdown`] can
+    /// leak it when the presenter is still blocked in the host swap; dropping
+    /// it while the presenter thread might still use the surface would be a
+    /// use-after-free.
+    backend: ManuallyDrop<WinitGraphicsBackend<GlowRenderer>>,
     /// The compiled Kawase downsample program (T-20.1), or `None` when the
     /// driver refused it; the blur then falls back to a plain bilinear
     /// downsample chain, which still samples the live scene.
@@ -393,6 +521,12 @@ struct NestedData {
     /// driver refused it; the sharp veil then falls back to the flat-band
     /// glass compose.
     veil_program: Option<GlesTexProgram>,
+    /// The compiled one-quad shadow program and its white probe texture
+    /// (T238 decoration optimisation), or `None` when the driver refused it.
+    shadow: Option<ShadowResources>,
+    /// The compiled titlebar-shape program (T238 decoration optimisation),
+    /// or `None` when the driver refused it.
+    titlebar: Option<crate::window::TitlebarResources>,
     /// Reused scene/blur textures for the two-pass material pass.
     material_textures: MaterialTextureCache,
     damage_tracker: OutputDamageTracker,
@@ -406,9 +540,76 @@ struct NestedData {
     tracker_size: (i32, i32),
     /// Opt-in GPU timer queries for the benchmark (T-21.4b).
     gpu_timer: GpuTimer,
+    /// Off-loop host swap (T238 P0). The main loop builds and draws a frame,
+    /// releases the EGL context, and hands the surface to this thread; the
+    /// host's frame-callback wait can no longer starve client dispatch,
+    /// synthetic input, or signals.
+    presenter: Presenter,
+    /// The frame currently owned by the presenter. At most one is in flight,
+    /// which is also what makes the context handoff unambiguous.
+    pending: Option<PendingPresent>,
+    /// A new frame was requested while `pending` was in flight. Counted once
+    /// per pending interval so `frames_coalesced` is not a loop-iteration
+    /// count.
+    pending_dirty: bool,
+}
+
+/// Post-swap work that must run on the session loop after the presenter
+/// finishes a frame: presentation feedback, client frame callbacks, stats.
+struct PendingPresent {
+    frame: u64,
+    /// When the frame's render began, so the recorded frame time includes the
+    /// presenter's host wait.
+    started: Instant,
+    output: smithay::output::Output,
+    states: smithay::backend::renderer::element::RenderElementStates,
+    feedback: Option<smithay::desktop::utils::OutputPresentationFeedback>,
+    /// A damage frame is a real presentation; the no-damage swap only wakes
+    /// clients waiting on a frame callback.
+    damage: bool,
+    /// The live scene epoch when this frame's build started. If it advances
+    /// before the swap completes, the presented pixels were already
+    /// superseded by newer scene content.
+    scene_epoch: u64,
+    /// When this frame's scene content was built. Superseded ages are measured
+    /// from here, not from the physical presentation time.
+    scene_built_at: Instant,
+    /// When the frame was handed to the presenter.
+    submitted_at: Instant,
+    /// When the scene first advanced past [`Self::scene_epoch`], if that
+    /// happened before the handoff. `None` means the scene was still current
+    /// at submission; a later advance is read from the live state.
+    scene_changed_at: Option<Instant>,
 }
 
 impl NestedData {
+    /// Stop the presenter and release the EGL backend.
+    ///
+    /// This is the **only** path that may drop the EGL objects, and it is only
+    /// called after `run_session` returns (process exit). If the presenter is
+    /// still blocked in `eglSwapBuffers` after the two-second grace period,
+    /// the whole session is forgotten: the worker keeps using a live EGL
+    /// surface/context and the process exits without freeing them. In-process
+    /// recovery (a `BadSurface` swap) never calls this; it rebinds and retries
+    /// on the session loop with the presenter idle.
+    fn shutdown(mut self) {
+        if !self.presenter.stop() {
+            eprintln!(
+                "dragonfruit-compositor: present thread still blocked at shutdown; \
+                 leaking the EGL backend"
+            );
+            // The worker may still dereference the surface/context. Forget the
+            // whole session instead of dropping `backend` underneath it.
+            std::mem::forget(self);
+            return;
+        }
+        // The presenter is joined, so no worker can touch EGL. `backend` is
+        // `ManuallyDrop`; drop it explicitly before the remaining fields.
+        // SAFETY: `shutdown` consumes `self` and drops the backend exactly
+        // once, after the presenter has stopped.
+        unsafe { ManuallyDrop::drop(&mut self.backend) };
+    }
+
     /// Rebuild the damage tracker when its static output mode (physical size
     /// or scale) no longer matches the live output.
     fn ensure_tracker(&mut self, size: (i32, i32), scale: f64) {
@@ -427,9 +628,204 @@ impl NestedData {
         self.tracker_size = size;
         self.tracker_scale = scale;
     }
+
+    /// Make the EGL context current on the window surface again after the
+    /// presenter released it. `EGL_BUFFER_AGE` is only meaningful while the
+    /// surface is current, and the damage tracker's no-damage skip depends on
+    /// it.
+    fn make_current(&mut self) -> bool {
+        let (display, context) = {
+            let context = self.backend.renderer().egl_context();
+            (
+                context.display().get_display_handle(),
+                context.get_context_handle(),
+            )
+        };
+        let surface = self.backend.egl_surface().get_surface_handle();
+        // SAFETY: the display/context/surface are alive and owned by `backend`,
+        // and the presenter is idle (`pending` is `None`) before this runs.
+        unsafe {
+            ffi::egl::MakeCurrent(display.handle, surface, surface, context) != ffi::egl::FALSE
+        }
+    }
+
+    /// Finish a frame whose host swap the presenter completed. This runs on
+    /// the session loop, so client dispatch and input kept running while the
+    /// presenter waited for the host.
+    fn finish_present(
+        &mut self,
+        state: &mut crate::state::DfState,
+        done: PresentDone,
+    ) -> Result<(), String> {
+        let Some(pending) = self.pending.take() else {
+            return Ok(());
+        };
+        state.present_in_flight = false;
+        debug_assert_eq!(pending.frame, done.frame);
+        if crate::trace::enabled() {
+            thread_local! {
+                static PRESENT_TIMING_LOGS: std::cell::Cell<u32> =
+                    const { std::cell::Cell::new(0) };
+            }
+            let logged = PRESENT_TIMING_LOGS.with(|count| {
+                let value = count.get();
+                count.set(value.saturating_add(1));
+                value
+            });
+            if logged < 20 {
+                crate::trace::log(
+                    "present-timing",
+                    &format!(
+                        "frame={} make_current_us={} swap_us={} total_us={}",
+                        pending.frame,
+                        done.make_current.as_micros(),
+                        done.swap.as_micros(),
+                        done.duration.as_micros()
+                    ),
+                );
+            }
+        }
+        state
+            .stats
+            .record_frame_stage(crate::state::FrameStage::Submit, done.duration);
+        let refresh = pending
+            .output
+            .current_mode()
+            .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
+            .unwrap_or(Duration::from_secs_f64(1.0 / 60.0));
+        if done.duration > refresh.saturating_mul(2) {
+            state.stats.present_stalls = state.stats.present_stalls.saturating_add(1);
+            crate::trace::log(
+                "present-stall",
+                &format!(
+                    "frame={} output={} waited_us={}",
+                    pending.frame,
+                    pending.output.name(),
+                    done.duration.as_micros()
+                ),
+            );
+        }
+        if state.scene_epoch() > pending.scene_epoch {
+            // The scene changed while this frame was in flight. The host
+            // presented the older pixels; the next frame will catch up. Record
+            // the age of the presented content at handoff and at swap
+            // completion, plus how long the newer scene has been waiting.
+            let newer_scene_at = pending
+                .scene_changed_at
+                .unwrap_or_else(|| state.scene_epoch_changed_at());
+            let submit_age = pending
+                .submitted_at
+                .saturating_duration_since(pending.scene_built_at);
+            let completion_age = done
+                .completed
+                .saturating_duration_since(pending.scene_built_at);
+            let newer_scene_age = done.completed.saturating_duration_since(newer_scene_at);
+            let to_us = |duration: Duration| duration.as_micros().min(u128::from(u32::MAX)) as u32;
+            state
+                .stats
+                .record_superseded(crate::state::SupersededSample {
+                    submit_age_us: to_us(submit_age),
+                    completion_age_us: to_us(completion_age),
+                    newer_scene_age_us: to_us(newer_scene_age),
+                    damage: pending.damage,
+                });
+        }
+        match done.result {
+            Ok(()) => {
+                if pending.damage {
+                    state.note_presentation(&pending.output.name(), done.presented_at);
+                    crate::trace::log(
+                        "present",
+                        &format!(
+                            "frame={} output={} nested",
+                            pending.frame,
+                            pending.output.name()
+                        ),
+                    );
+                    if let Some(mut feedback) = pending.feedback {
+                        feedback.presented::<_, smithay::utils::Monotonic>(
+                            done.presented_at,
+                            Refresh::fixed(refresh),
+                            0,
+                            wp_presentation_feedback::Kind::Vsync,
+                        );
+                        state.stats.presentation_feedback_sent =
+                            state.stats.presentation_feedback_sent.saturating_add(1);
+                    }
+                    let callback_start = Instant::now();
+                    render::post_repaint(
+                        state,
+                        &pending.output,
+                        done.presented_at,
+                        &pending.states,
+                    );
+                    state.stats.record_frame_stage(
+                        crate::state::FrameStage::Callback,
+                        callback_start.elapsed(),
+                    );
+                } else {
+                    let callback_start = Instant::now();
+                    render::send_frame_callbacks(
+                        state,
+                        &pending.output,
+                        done.presented_at,
+                        &pending.states,
+                    );
+                    state.stats.record_frame_stage(
+                        crate::state::FrameStage::Callback,
+                        callback_start.elapsed(),
+                    );
+                    crate::trace::log("wake-clients", "nested");
+                }
+                state.stats.frames_rendered += 1;
+                let duration = done.completed.saturating_duration_since(pending.started);
+                state.observe_rendered_frame(duration);
+                state.stats.frame_observed_by_backend = true;
+                Ok(())
+            }
+            Err(PresentError::BadSurface) => {
+                state.stats.swaps_failed = state.stats.swaps_failed.saturating_add(1);
+                // The host destroyed/recreated the surface. Only Smithay's
+                // `EGLSurface::swap_buffers` path recreates it, so run one
+                // blocking swap on the loop thread. This is rare (a surface
+                // loss), and it is the only way to restore the presenter's
+                // surface handle.
+                eprintln!(
+                    "dragonfruit-compositor: nested present lost the EGL surface; \
+                     recreating through the synchronous path"
+                );
+                if self.backend.bind().is_ok() {
+                    let _ = self.backend.submit(None);
+                }
+                state.needs_redraw = true;
+                Ok(())
+            }
+            Err(PresentError::Other(message)) => {
+                state.stats.swaps_failed = state.stats.swaps_failed.saturating_add(1);
+                Err(format!("nested present failed: {message}"))
+            }
+        }
+    }
 }
 
 fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Result<(), String> {
+    // Finish any swap the presenter completed while the loop was dispatching.
+    // This must run before the output/deadline check so a completion is
+    // processed even on an otherwise idle iteration.
+    while let Some(done) = data.presenter.try_recv() {
+        data.finish_present(state, done)?;
+    }
+    if data.pending.is_some() {
+        // The host still owns the previous frame. Keep the loop free for
+        // client dispatch, input, and signals; the presenter's ping wakes us
+        // when the swap returns. Count one coalesced request per pending
+        // interval, not one per loop iteration.
+        if state.needs_redraw && !data.pending_dirty {
+            data.pending_dirty = true;
+            state.stats.frames_coalesced = state.stats.frames_coalesced.saturating_add(1);
+        }
+        return Ok(());
+    }
     let Some(output) = state.space.outputs().next().cloned() else {
         state.needs_redraw = false;
         return Ok(());
@@ -444,6 +840,23 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
     }
     state.needs_redraw = false;
     state.note_output_frame(&output.name());
+    state.stats.frame_attempts = state.stats.frame_attempts.saturating_add(1);
+    data.pending_dirty = false;
+    // Frame time spans scene build, draw, and the presenter's host wait.
+    let frame_start = Instant::now();
+    // The scene content this frame renders is the state as of build start.
+    // Superseded ages are measured from this point; if the epoch advances
+    // during the build or the host wait, the presented pixels are already old.
+    let scene_built_at = frame_start;
+    let scene_epoch_at_build = state.scene_epoch();
+    // T238 follow-up: every stage and GPU query in this frame carries this id.
+    // The trace lets the shell/driver join a commit with the exact presented
+    // frame instead of guessing from a millisecond window.
+    let frame = state.stats.begin_frame();
+    crate::trace::log(
+        "frame-start",
+        &format!("frame={frame} output={}", output.name()),
+    );
     // Open this frame's material pass, so the chrome backdrop is applied at
     // most once per output (T-04.2).
     state.begin_render_frame();
@@ -469,6 +882,11 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
         // full damage frame while it is active (T-16.6b).
         0
     } else {
+        // The presenter released the context after the last swap. Make it
+        // current on the surface again before asking for the back-buffer age;
+        // otherwise the query returns no age and the damage tracker stops
+        // skipping unchanged frames.
+        data.make_current();
         data.backend.buffer_age().unwrap_or(0)
     };
     // T-13.3b: a capture requested by the trusted shell is produced from a
@@ -480,15 +898,22 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
         .as_ref()
         .and_then(|capture| capture.rect);
     let mut captured: Option<Result<(image::RgbaImage, String), String>> = None;
+    let bind_start = Instant::now();
     let render_result = match data.backend.bind() {
         Ok((renderer, mut framebuffer)) => {
+            // Buffer acquisition can wait for a free host swapchain buffer;
+            // record it separately from the render work.
+            state
+                .stats
+                .record_frame_stage(crate::state::FrameStage::Bind, bind_start.elapsed());
+            let prepare_start = Instant::now();
             let scale = smithay::utils::Scale::from(output.current_scale().fractional_scale());
             let output_geometry = state.space.output_geometry(&output).unwrap_or_default();
             // Collect any GPU timer results from earlier frames before
             // starting this frame's passes (T-21.4b). Polling never waits on
             // the GPU; unavailable/disabled timers publish their reason.
             for sample in data.gpu_timer.poll(renderer) {
-                state.stats.gpu.record(sample.pass, sample.nanos);
+                state.stats.record_gpu_sample(sample);
             }
             let (gpu_enabled, gpu_available, gpu_reason) = data.gpu_timer.status();
             state
@@ -519,6 +944,13 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     .record_direct_scanout_candidate(output.name().as_str());
             }
             let mut custom_elements: Vec<NestedOutputElements<GlowRenderer>>;
+            // T238 follow-up: source-level element counts for the final
+            // composite breakdown.
+            let mut scene_counts = crate::render::SceneElementCounts::default();
+            let menu_count: u64;
+            let desktop_count: u64;
+            let wallpaper_count: u64;
+            let lock_count: u64;
             if !blur_panels.is_empty() {
                 // Two-pass composition (T-20.1/T-21.3). Pass one renders the
                 // scene (wallpaper, desktop, windows, shadows, titlebars) into
@@ -528,8 +960,12 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 // live scene texture inside this render pass — never a
                 // screenshot or screencopy.
                 let output_local = Rectangle::from_size(output_geometry.size);
-                let region = MaterialRegion::for_material(&blur_panels, output_local, scale)
-                    .ok_or_else(|| "material region unavailable".to_owned())?;
+                // The control arm renders one padded union; the split arm
+                // gives the top and bottom panel groups independent textures.
+                let groups = MaterialRegion::groups_for_material(&blur_panels, output_local, scale);
+                if groups.is_empty() {
+                    return Err("material region unavailable".to_owned());
+                }
                 let full_output = full_output_material_forced();
                 // The Kawase chain's first destination stays full-output
                 // sized: its texture size is part of the panel's visual
@@ -538,88 +974,174 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     .current_mode()
                     .map(|mode| mode.size)
                     .unwrap_or_default();
+                let scene_build_start = Instant::now();
                 let mut scene_elements: Vec<NestedOutputElements<GlowRenderer>> = Vec::new();
-                scene_elements.extend(
-                    crate::render::window_menu_render_elements(state, &output, scale)
-                        .into_iter()
-                        .map(NestedOutputElements::Decoration),
-                );
+                let menu = crate::render::window_menu_render_elements(state, &output, scale);
+                menu_count = menu.len() as u64;
+                scene_elements.extend(menu.into_iter().map(NestedOutputElements::Decoration));
                 scene_elements.extend(crate::render::window_scene_render_elements(
-                    renderer, state, &output, scale,
-                ));
-                scene_elements.extend(crate::render::desktop_render_elements(
-                    renderer, state, &output, scale,
-                ));
-                scene_elements.extend(
-                    crate::render::wallpaper_render_elements(renderer, state, &output, scale)
-                        .into_iter()
-                        .map(NestedOutputElements::Wallpaper),
-                );
-                data.gpu_timer.begin(renderer, GpuPass::Scene);
-                let scene_texture_result = render_scene_offscreen(
                     renderer,
                     state,
                     &output,
                     scale,
-                    region,
-                    &scene_elements,
-                    &mut data.material_textures.scene,
+                    &mut scene_counts,
+                    data.shadow.as_ref(),
+                    data.titlebar.as_ref(),
+                ));
+                let desktop =
+                    crate::render::desktop_render_elements(renderer, state, &output, scale);
+                desktop_count = desktop.len() as u64;
+                scene_elements.extend(desktop);
+                let wallpaper =
+                    crate::render::wallpaper_render_elements(renderer, state, &output, scale);
+                wallpaper_count = wallpaper.len() as u64;
+                scene_elements.extend(wallpaper.into_iter().map(NestedOutputElements::Wallpaper));
+                state.stats.record_frame_stage(
+                    crate::state::FrameStage::SceneBuild,
+                    scene_build_start.elapsed(),
                 );
-                data.gpu_timer.end(renderer);
-                let scene_texture = scene_texture_result?;
-                let scene_size = scene_texture.size();
+                state
+                    .stats
+                    .record_frame_stage(crate::state::FrameStage::Prepare, prepare_start.elapsed());
                 // A locked session composites only the lock surface, prepended
                 // so it sits above every window and chrome surface (T-12.3a).
                 custom_elements =
                     crate::lock::lock_render_elements(renderer, state, &output, scale);
+                lock_count = custom_elements.len() as u64;
                 // Chrome surfaces (menu bar, drawer, overlays) composite above
                 // the blur.
                 custom_elements.extend(crate::render::chrome_render_elements(
                     renderer, state, &output, scale,
                 ));
-                let blur = build_blur_elements(
-                    renderer,
-                    BlurPrograms {
-                        blur: data.blur_program.as_ref(),
-                        glass: data.glass_program.as_ref(),
-                        veil: data.veil_program.as_ref(),
-                        chain_size,
-                    },
-                    &blur_panels,
-                    BlurScene {
-                        texture: &scene_texture,
-                        cache: &data.material_textures.scene,
-                        region,
-                    },
-                    scale,
-                    BlurTargets {
-                        panels: &mut data.material_textures.panels,
-                        timer: &mut data.gpu_timer,
-                    },
-                )?;
-                state.stats.record_material_panel_allocations_for(
-                    output.name().as_str(),
-                    blur.allocations,
-                );
-                state.stats.record_blur_skips(blur.skips);
-                state.stats.record_blur_misses(blur.misses);
-                custom_elements.extend(blur.elements);
-                // The blur elements exist and are in the draw list; this is
-                // the counter to trust over `blur_passes` (which only says the
-                // panels resolved).
-                let filtered: Vec<_> = blur_panels
-                    .iter()
-                    .filter(|panel| panel.filter.schedules_blur())
-                    .collect();
-                if !filtered.is_empty() {
-                    let downsample_max = filtered
-                        .iter()
-                        .map(|panel| panel.spec.downsample())
-                        .max()
-                        .unwrap_or(0);
+
+                // One scene pass per bounded group. The stage timing is the
+                // whole frame's scene work, not one sample per group: the
+                // advisor's per-frame totals must not be inflated by counting
+                // the top and bottom passes as unrelated samples.
+                let scene_start = Instant::now();
+                let scene_epoch = state.scene_epoch();
+                let allow_skip =
+                    crate::window::scene_cache_skip_enabled() && !state.scene_is_animating();
+                let mut scene_sync = Duration::ZERO;
+                let mut scene_textures = Vec::with_capacity(groups.len());
+                for group in &groups {
+                    let region = group.region;
                     state
                         .stats
-                        .record_blur_draw(downsample_max, filtered.len() as u64);
+                        .record_material_region_for(output.name().as_str(), region.texture_size);
+                    data.gpu_timer.begin(renderer, GpuPass::Scene, frame);
+                    let cache = data.material_textures.scene_slot(group.slot);
+                    let scene_texture_result = render_scene_offscreen(
+                        renderer,
+                        state,
+                        &output,
+                        scale,
+                        region,
+                        &scene_elements,
+                        cache,
+                        scene_epoch,
+                        allow_skip,
+                    );
+                    data.gpu_timer.end(renderer);
+                    if let Some(wait) = data.gpu_timer.finish(renderer) {
+                        scene_sync = scene_sync.saturating_add(wait);
+                    }
+                    scene_textures.push((group.slot, region, scene_texture_result?));
+                }
+                if !scene_sync.is_zero() {
+                    state
+                        .stats
+                        .record_frame_stage(crate::state::FrameStage::SceneSync, scene_sync);
+                }
+                let scene_bytes: u64 = groups
+                    .iter()
+                    .map(|group| {
+                        data.material_textures
+                            .scenes
+                            .get(group.slot)
+                            .map(|cache| cache.bytes())
+                            .unwrap_or(0)
+                    })
+                    .sum();
+                state.stats.record_material_scene_bytes(scene_bytes);
+                state
+                    .stats
+                    .record_frame_stage(crate::state::FrameStage::Scene, scene_start.elapsed());
+
+                let blur_start = Instant::now();
+                let mut blur_allocations = 0u64;
+                let mut blur_skips = 0u64;
+                let mut blur_misses = BlurMissCounts::default();
+                let mut blur_drawn = 0u64;
+                let mut downsample_max = 0u32;
+                for (slot, region, scene_texture) in &scene_textures {
+                    let scene_cache = &data.material_textures.scenes[*slot];
+                    let blur = build_blur_elements(
+                        renderer,
+                        BlurPrograms {
+                            blur: data.blur_program.as_ref(),
+                            glass: data.glass_program.as_ref(),
+                            veil: data.veil_program.as_ref(),
+                            chain_size,
+                        },
+                        &groups
+                            .iter()
+                            .find(|group| group.slot == *slot)
+                            .map(|group| group.panels.as_slice())
+                            .unwrap_or(&[]),
+                        BlurScene {
+                            texture: scene_texture,
+                            cache: scene_cache,
+                            region: *region,
+                        },
+                        scale,
+                        BlurTargets {
+                            panels: &mut data.material_textures.panels,
+                            timer: &mut data.gpu_timer,
+                            frame,
+                        },
+                    )?;
+                    blur_allocations += blur.allocations;
+                    blur_skips += blur.skips;
+                    blur_misses.first += blur.misses.first;
+                    blur_misses.scene += blur.misses.scene;
+                    blur_misses.source += blur.misses.source;
+                    blur_misses.spec += blur.misses.spec;
+                    blur_misses.chain += blur.misses.chain;
+                    custom_elements.extend(blur.elements);
+                    let filtered: Vec<_> = groups
+                        .iter()
+                        .find(|group| group.slot == *slot)
+                        .map(|group| {
+                            group
+                                .panels
+                                .iter()
+                                .filter(|panel| panel.filter.schedules_blur())
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    if !filtered.is_empty() {
+                        blur_drawn += filtered.len() as u64;
+                        downsample_max = downsample_max.max(
+                            filtered
+                                .iter()
+                                .map(|panel| panel.spec.downsample())
+                                .max()
+                                .unwrap_or(0),
+                        );
+                    }
+                }
+                state
+                    .stats
+                    .record_frame_stage(crate::state::FrameStage::Blur, blur_start.elapsed());
+                state.stats.record_material_panel_allocations_for(
+                    output.name().as_str(),
+                    blur_allocations,
+                );
+                state.stats.record_blur_skips(blur_skips);
+                state.stats.record_blur_misses(blur_misses);
+                if blur_drawn > 0 {
+                    state.stats.record_blur_draw(downsample_max, blur_drawn);
                 }
                 state.stats.record_material_frame(output.name().as_str());
                 if full_output {
@@ -627,13 +1149,15 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     // is the output base, exactly like the pre-T-21.3 path.
                     // The scene cache owns the stable id and the commit that
                     // advances only when the offscreen scene changed (T-21.3).
-                    let scene_id = data.material_textures.scene.id();
-                    let scene_commit = data.material_textures.scene.commit();
+                    let (slot, _, scene_texture) = &scene_textures[0];
+                    let cache = &data.material_textures.scenes[*slot];
+                    let scene_id = cache.id();
+                    let scene_commit = cache.commit();
                     custom_elements.push(NestedOutputElements::Blur(
                         crate::window::BackdropBlurElement::new(
-                            scene_texture,
+                            (*scene_texture).clone(),
                             Rectangle::new((0, 0).into(), output_geometry.size),
-                            scene_size,
+                            scene_texture.size(),
                             0,
                             scale,
                         )
@@ -642,13 +1166,21 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     ));
                 } else {
                     // Region shape: the scene elements are the output base and
-                    // the region texture is only the blur source. The list is
-                    // already front-to-back (window menu, windows, desktop,
+                    // the region textures are only the blur source. The list
+                    // is already front-to-back (window menu, windows, desktop,
                     // wallpaper), so appending it below the blur preserves the
                     // old stacking order.
                     custom_elements.extend(scene_elements);
                 }
+                // Release the slots of panels that disappeared this frame.
+                // This runs once after every group, not per group, so a panel
+                // in the other half is not dropped.
+                let panel_keys: Vec<PanelKey> = blur_panels.iter().map(|panel| panel.key).collect();
+                data.material_textures.trim_panels(&panel_keys);
             } else {
+                state
+                    .stats
+                    .record_frame_stage(crate::state::FrameStage::Prepare, prepare_start.elapsed());
                 // No sampled material this frame: release the per-panel Kawase
                 // textures (T-21.3 lifetime audit) and keep the pre-T-20
                 // single-pass path: chrome + the feather backdrop (no GPU
@@ -657,6 +1189,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 data.material_textures.trim_panels(&[]);
                 custom_elements =
                     crate::lock::lock_render_elements(renderer, state, &output, scale);
+                lock_count = custom_elements.len() as u64;
                 custom_elements.extend(crate::render::chrome_render_elements(
                     renderer, state, &output, scale,
                 ));
@@ -668,23 +1201,70 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                         .into_iter()
                         .map(NestedOutputElements::Decoration),
                 );
-                custom_elements.extend(
-                    crate::render::window_menu_render_elements(state, &output, scale)
-                        .into_iter()
-                        .map(NestedOutputElements::Decoration),
-                );
+                let scene_build_start = Instant::now();
+                let menu = crate::render::window_menu_render_elements(state, &output, scale);
+                menu_count = menu.len() as u64;
+                custom_elements.extend(menu.into_iter().map(NestedOutputElements::Decoration));
                 custom_elements.extend(crate::render::window_scene_render_elements(
-                    renderer, state, &output, scale,
+                    renderer,
+                    state,
+                    &output,
+                    scale,
+                    &mut scene_counts,
+                    data.shadow.as_ref(),
+                    data.titlebar.as_ref(),
                 ));
-                custom_elements.extend(crate::render::desktop_render_elements(
-                    renderer, state, &output, scale,
-                ));
-                custom_elements.extend(
-                    crate::render::wallpaper_render_elements(renderer, state, &output, scale)
-                        .into_iter()
-                        .map(NestedOutputElements::Wallpaper),
+                let desktop =
+                    crate::render::desktop_render_elements(renderer, state, &output, scale);
+                desktop_count = desktop.len() as u64;
+                custom_elements.extend(desktop);
+                let wallpaper =
+                    crate::render::wallpaper_render_elements(renderer, state, &output, scale);
+                wallpaper_count = wallpaper.len() as u64;
+                custom_elements.extend(wallpaper.into_iter().map(NestedOutputElements::Wallpaper));
+                state.stats.record_frame_stage(
+                    crate::state::FrameStage::SceneBuild,
+                    scene_build_start.elapsed(),
                 );
             }
+            // T238 follow-up: break the final composite list down by element
+            // type. The source counters are a second view of the scene list;
+            // in full-output mode that list is the offscreen pass, not the
+            // final composite, so only the variant counts apply.
+            let full_output = full_output_material_forced();
+            let mut composite_counts = crate::state::CompositeElementCounts {
+                lock: lock_count,
+                ..Default::default()
+            };
+            if !full_output {
+                composite_counts.titlebar = scene_counts.titlebar;
+                composite_counts.titlebar_fill = scene_counts.titlebar_fill;
+                composite_counts.titlebar_lights = scene_counts.titlebar_lights;
+                composite_counts.titlebar_glyphs = scene_counts.titlebar_glyphs;
+                composite_counts.window_content = scene_counts.window_content;
+                composite_counts.window_shadow = scene_counts.window_shadow;
+                composite_counts.shadow_area = scene_counts.shadow_area;
+                composite_counts.shadow_span_area = scene_counts.shadow_span_area;
+                composite_counts.titlebar_area = scene_counts.titlebar_area;
+                composite_counts.motion = scene_counts.motion;
+                composite_counts.menu = menu_count;
+                composite_counts.desktop = desktop_count;
+                composite_counts.wallpaper = wallpaper_count;
+            }
+            for element in &custom_elements {
+                match element {
+                    NestedOutputElements::Chrome(_) => composite_counts.chrome += 1,
+                    NestedOutputElements::Decoration(_) => composite_counts.decoration += 1,
+                    NestedOutputElements::Appear(_) => composite_counts.appear += 1,
+                    NestedOutputElements::Wallpaper(_) => composite_counts.wallpaper += 1,
+                    NestedOutputElements::Blur(_) => composite_counts.blur += 1,
+                    // The macro's uninhabited generic-catcher variant.
+                    _ => {}
+                }
+            }
+            state
+                .stats
+                .record_composite_counts(composite_counts, !blur_panels.is_empty());
             // The compositor magnifier (T-16.6b) scales and pans the whole
             // scene about the output centre. Inactive, this is the identity;
             // active, every element is rescale+relocate wrapped. The live
@@ -705,7 +1285,8 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     capture_rect,
                 ));
             }
-            data.gpu_timer.begin(renderer, GpuPass::Composite);
+            let composite_start = Instant::now();
+            data.gpu_timer.begin(renderer, GpuPass::Composite, frame);
             let render_result = data.damage_tracker.render_output(
                 renderer,
                 &mut framebuffer,
@@ -714,8 +1295,17 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 state.wallpaper_color_for(&output),
             );
             data.gpu_timer.end(renderer);
+            if let Some(wait) = data.gpu_timer.finish(renderer) {
+                state
+                    .stats
+                    .record_frame_stage(crate::state::FrameStage::CompositeSync, wait);
+            }
+            state.stats.record_frame_stage(
+                crate::state::FrameStage::Composite,
+                composite_start.elapsed(),
+            );
             for sample in data.gpu_timer.poll(renderer) {
-                state.stats.gpu.record(sample.pass, sample.nanos);
+                state.stats.record_gpu_sample(sample);
             }
             render_result
         }
@@ -734,67 +1324,79 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
         }
     };
 
-    match render_result.damage {
-        Some(damage) => {
-            // Partial-submit with the tracked damage region.
-            if let Err(err) = data.backend.submit(Some(damage)) {
-                if let Some(result) = captured.take() {
-                    resolve_capture(state, result);
-                }
-                return Err(format!("nested submit failed: {err}"));
-            }
-            state.stats.frames_rendered += 1;
-
-            // T-21.2b presentation timestamp source: Smithay's winit
-            // `submit()` swaps the buffer and returns only
-            // `Result<(), SwapBuffersError>`; it exposes no platform vblank
-            // timestamp. The completion of `submit()` is therefore the
-            // closest presentation time the nested rail has. Capture it
-            // immediately after the successful swap, before frame-callback
-            // work, and feed it to the per-output presentation clock. Only a
-            // damage frame is a presentation: the no-damage branch below
-            // swaps without new pixels and must not create a clock sample.
-            // The fixed mode period remains the deadline source; T188b/c must
-            // not infer VRR from this interval.
-            let now = state.clock.now();
-            state.note_presentation(&output.name(), now.into());
-            let frame_duration = output
-                .current_mode()
-                .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
-                .unwrap_or(Duration::from_secs_f64(1.0 / 60.0));
-            let mut feedback =
-                render::take_presentation_feedback(state, &output, &render_result.states);
-            feedback.presented(
-                now,
-                Refresh::fixed(frame_duration),
-                0,
-                wp_presentation_feedback::Kind::Vsync,
-            );
-            render::post_repaint(state, &output, now.into(), &render_result.states);
-            crate::trace::log("present", "nested");
-        }
-        None => {
-            // No damage, no render, no client wakeups (FR-2) — except that a
-            // woken compositor must still reply to a client that is waiting on
-            // its frame callback (an input-driven frame usually has no damage
-            // yet; the client's repaint is what produces it). An idle
-            // compositor is never woken, so this adds nothing to the idle
-            // budget.
-            state.stats.frames_skipped_no_damage += 1;
-            if let Err(err) = data.backend.submit(None) {
-                if let Some(result) = captured.take() {
-                    resolve_capture(state, result);
-                }
-                return Err(format!("nested submit failed: {err}"));
-            }
-            let now = state.clock.now();
-            render::send_frame_callbacks(state, &output, now.into(), &render_result.states);
-            crate::trace::log("wake-clients", "nested");
-        }
-    }
-    if let Some(result) = captured {
+    // The capture is a readback of the offscreen pass, independent of the
+    // host swap; answer it before the frame leaves the main thread.
+    if let Some(result) = captured.take() {
         resolve_capture(state, result);
     }
+
+    // Destructure before the handoff: `damage` borrows the tracker, while
+    // `states` is owned by this frame.
+    let (damage, states) = {
+        let RenderOutputResult { damage, states, .. } = render_result;
+        (damage.cloned(), states)
+    };
+    let damage_frame = damage.is_some();
+    let feedback =
+        damage_frame.then(|| render::take_presentation_feedback(state, &output, &states));
+    let window_size = data.backend.window_size();
+    let damage_rects = damage.as_ref().map(|rects| {
+        rects
+            .iter()
+            .map(|rect| {
+                [
+                    rect.loc.x,
+                    window_size.h - rect.loc.y - rect.size.h,
+                    rect.size.w,
+                    rect.size.h,
+                ]
+            })
+            .collect::<Vec<_>>()
+    });
+    // winit registers its own frame callback; keep that bookkeeping on the
+    // loop thread before the surface is handed over.
+    data.backend.window().pre_present_notify();
+    let surface = data.backend.egl_surface().get_surface_handle() as usize;
+    // Release the context so the presenter can make the same context current
+    // on its own thread. The next bind makes it current here again.
+    if let Err(error) = data.backend.renderer().egl_context().unbind() {
+        return Err(format!(
+            "nested present could not release the EGL context: {error:?}"
+        ));
+    }
+    if let Err(error) = data.presenter.submit(PresentRequest {
+        frame,
+        surface,
+        damage: damage_rects,
+        fault: state.present_fault.take(),
+    }) {
+        return Err(format!("nested present handoff failed: {error}"));
+    }
+    state.stats.frames_submitted = state.stats.frames_submitted.saturating_add(1);
+    if damage_frame {
+        state.stats.damage_frames = state.stats.damage_frames.saturating_add(1);
+    } else {
+        // No damage, no render, no client wakeups (FR-2) — except that a woken
+        // compositor must still reply to a client waiting on its frame
+        // callback. The presenter defers that reply until the swap returns.
+        state.stats.frames_skipped_no_damage += 1;
+    }
+    let submitted_at = Instant::now();
+    let scene_changed_at =
+        (state.scene_epoch() > scene_epoch_at_build).then(|| state.scene_epoch_changed_at());
+    data.pending = Some(PendingPresent {
+        frame,
+        started: frame_start,
+        output,
+        states,
+        feedback,
+        damage: damage_frame,
+        scene_epoch: scene_epoch_at_build,
+        scene_built_at,
+        submitted_at,
+        scene_changed_at,
+    });
+    state.present_in_flight = true;
     Ok(())
 }
 
@@ -822,6 +1424,11 @@ pub(crate) fn render_scene_offscreen<R, E>(
     region: MaterialRegion,
     elements: &[E],
     cache: &mut SceneTextureCache<GlesTexture>,
+    // The live scene-content epoch and whether an unchanged epoch may reuse
+    // the texture without walking the element list (T238 follow-up). The
+    // caller disables the skip while a scene animation is live.
+    epoch: u64,
+    allow_skip: bool,
 ) -> Result<GlesTexture, String>
 where
     R: Renderer
@@ -840,6 +1447,16 @@ where
     let buffer_size =
         BufferSize::<i32, BufferCoord>::from((region.texture_size.w, region.texture_size.h));
     let key = SceneTextureKey::new(buffer_size, output_size, scale);
+    if allow_skip && cache.can_skip(key, region.physical.loc, epoch) {
+        state
+            .stats
+            .record_material_region_for(output.name().as_str(), region.texture_size);
+        state.stats.record_scene_skip();
+        return cache
+            .texture()
+            .cloned()
+            .ok_or_else(|| "scene texture cache unexpectedly empty".to_owned());
+    }
     if cache.needs_alloc(key) {
         let texture = renderer
             .create_buffer(Fourcc::Abgr8888, buffer_size)
@@ -874,11 +1491,30 @@ where
     // Relocate the output-local elements into the region's physical space.
     // `&E` implements `RenderElement`, so this borrows the caller's list
     // instead of consuming it; the same list is drawn live in region mode.
+    //
+    // Only elements that intersect the bounded region are submitted. Without
+    // this the tracker still scissors them, but every off-region window,
+    // titlebar, shadow, and wallpaper draw call is issued into a texture that
+    // cannot contain it. The filter is also what makes the top/bottom split
+    // pay off: each strip submits only the elements that can reach it.
     let offset = Point::<i32, Physical>::from((-region.physical.loc.x, -region.physical.loc.y));
+    let total_elements = elements.len();
+    let mut kept_elements = 0usize;
     let relocated: Vec<_> = elements
         .iter()
+        .filter(|element| {
+            let geometry = element.geometry(scale);
+            if geometry.size.w <= 0 || geometry.size.h <= 0 {
+                return false;
+            }
+            geometry.overlaps(region.physical)
+        })
+        .inspect(|_| kept_elements += 1)
         .map(|element| RelocateRenderElement::from_element(element, offset, Relocate::Relative))
         .collect();
+    state
+        .stats
+        .record_scene_elements(total_elements, kept_elements);
     let damage = {
         let tracker = cache
             .tracker_mut()
@@ -892,6 +1528,7 @@ where
         result.damage.cloned()
     };
     cache.note_scene_damage(damage);
+    cache.set_last_epoch(epoch);
     Ok(texture)
 }
 
@@ -911,6 +1548,8 @@ struct BlurPrograms<'a> {
 struct BlurTargets<'a> {
     panels: &'a mut PanelTextureSlots<GlesTexture>,
     timer: &'a mut GpuTimer,
+    /// Compositor frame id for the blur timer queries (T238 follow-up).
+    frame: u64,
 }
 
 /// The scene texture and identity one blur build samples.
@@ -948,7 +1587,6 @@ fn build_blur_elements(
     let mut allocations = 0u64;
     let mut skips = 0u64;
     let mut misses = BlurMissCounts::default();
-    let keys: Vec<PanelKey> = panels.iter().map(|panel| panel.key).collect();
     for panel in panels {
         let Some((texture_panel, scene_src)) = scene.region.panel_source(panel.panel, scale) else {
             continue;
@@ -1025,7 +1663,7 @@ fn build_blur_elements(
             // Clear the key before touching the chain: a failed render must
             // not let the next frame reuse a partially written texture.
             slot.invalidate_blur_cache();
-            targets.timer.begin(renderer, GpuPass::Blur);
+            targets.timer.begin(renderer, GpuPass::Blur, targets.frame);
             let texture_result = blur_panel_texture(
                 renderer,
                 programs.blur,
@@ -1064,9 +1702,8 @@ fn build_blur_elements(
         };
         elements.push(NestedOutputElements::Blur(element));
     }
-    // Release the slots of panels that disappeared this frame. A panel that
-    // merely moved or changed stacking order keeps its key, id, and textures.
-    targets.panels.trim_to(&keys);
+    // The caller trims the panel slots once after every material group, so a
+    // panel in the other half is not dropped by this group's build.
     Ok(BlurBuild {
         elements,
         allocations,
@@ -1185,8 +1822,12 @@ where
     // source-over pass with an alpha chosen so the running sum reaches the
     // convex target weight; the result is exactly `sum(weight_i * level_i)`.
     let composite_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((
-        (texture_panel.size.w.max(1) as f64 * scale.x).round().max(1.0) as i32,
-        (texture_panel.size.h.max(1) as f64 * scale.y).round().max(1.0) as i32,
+        (texture_panel.size.w.max(1) as f64 * scale.x)
+            .round()
+            .max(1.0) as i32,
+        (texture_panel.size.h.max(1) as f64 * scale.y)
+            .round()
+            .max(1.0) as i32,
     ));
     let composite_index = spec.iterations as usize;
     while slot.len() <= composite_index {
@@ -1216,17 +1857,8 @@ where
         let mut frame = renderer
             .render(&mut target, dst.size, Transform::Normal)
             .map_err(|err| format!("blur composite render failed: {err}"))?;
-        R::draw_texture_from_to(
-            &mut frame,
-            scene,
-            scene_src,
-            dst,
-            &[dst],
-            None,
-            &[],
-            1.0,
-        )
-        .map_err(|err| format!("blur composite sharp draw failed: {err:?}"))?;
+        R::draw_texture_from_to(&mut frame, scene, scene_src, dst, &[dst], None, &[], 1.0)
+            .map_err(|err| format!("blur composite sharp draw failed: {err:?}"))?;
     }
     // Levels 1..=5, in order. The alpha is the level weight over the weight
     // already painted; this makes the final pixel the weighted sum without
