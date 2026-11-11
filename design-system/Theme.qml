@@ -1256,6 +1256,7 @@ QtObject {
             }
             readonly property var chooser: QtObject {
                 readonly property int maxRows: 7
+                readonly property int quickWindowRows: 5
                 readonly property int scrollbarWidth: 8
                 readonly property int scrollbarMargin: 2
                 readonly property int hoverDwell: 280

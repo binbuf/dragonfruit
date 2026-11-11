@@ -3455,6 +3455,105 @@ Item {
             compare(menu.entries[10].label, "Force Quit");
         }
 
+        function test_menu_bounds_the_quick_window_list_and_opens_the_chooser() {
+            var list = [];
+            for (var i = 0; i < 20; ++i)
+                list.push({ windowId: String(i + 1), title: "Window " + (i + 1) });
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", list) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var quickRows = 0;
+            for (var j = 0; j < labels.length; ++j) {
+                if (labels[j].indexOf("Window ") === 0)
+                    ++quickRows;
+            }
+            compare(quickRows, Theme.controls.dock.chooser.quickWindowRows);
+            verify(labels.indexOf("Choose a Window…") >= 0);
+            // The bounded quicklist keeps every lifecycle and pinning command
+            // in the same menu.
+            verify(labels.indexOf("Show All Windows") >= 0);
+            verify(labels.indexOf("Remove from Dock") >= 0);
+            verify(labels.indexOf("Options") >= 0);
+            verify(labels.indexOf("Hide") >= 0);
+            verify(labels.indexOf("Quit") >= 0);
+            verify(labels.indexOf("Force Quit") >= 0);
+
+            menu.activate(labels.indexOf("Choose a Window…"));
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            compare(menu.open, false);
+            compare(chooser.open, true);
+            compare(chooser.rowCount, 20);
+            compare(chooser.scrolls, true);
+        }
+
+        function test_bounded_menu_scrolls_lifecycle_rows_into_view() {
+            var list = [];
+            for (var i = 0; i < 20; ++i)
+                list.push({ windowId: String(i + 1), title: "Window " + (i + 1) });
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                popoverHeadroom: 200, popoverGutter: 320,
+                outputWidth: 1280, outputHeight: 400,
+                entries: [ multiWindow("files", "Files", list) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            var menu = findChild(dock, "entryMenu");
+            compare(menu.scrolls, true);
+            verify(menu.height <= dock.popoverAvailableRect.h + 0.001);
+            var scroll = findChild(menu, "contextMenuScroll");
+            compare(scroll.flickable.contentY, 0);
+            keyClick(Qt.Key_End);
+            wait(50);
+            verify(scroll.flickable.contentY > 0,
+                   "End must scroll the last command into the bounded menu");
+            compare(menu.entries[menu.highlightedIndex].label, "Force Quit");
+            // The now-visible row dispatches its action.
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            keyClick(Qt.Key_Return);
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "force_quit");
+        }
+
+        function test_menu_placement_stays_inside_the_output_area() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom",
+                popoverHeadroom: 320, popoverGutter: 320,
+                outputWidth: 400, outputHeight: 800,
+                entries: [ app("files", "Files", true),
+                           app("settings", "Settings", true) ]
+            });
+            dock.openEntryMenu(dock.items[1]);
+            waitForRendering(stage);
+            var rect = dock.popoverRect;
+            verify(rect.x >= 0);
+            verify(rect.x + rect.w <= 400 + 0.001);
+            verify(rect.y >= -320 - 0.001);
+            verify(rect.y + rect.h <= dock.height + 0.001);
+
+            // A vertical Dock keeps its popover beside the plate and inside
+            // the output's horizontal extent.
+            var left = make(dockComponent, {
+                width: 124, height: 720, position: "left",
+                popoverHeadroom: 320, popoverGutter: 320,
+                outputWidth: 400, outputHeight: 720,
+                entries: [ app("files", "Files", true) ]
+            });
+            left.openEntryMenu(left.items[0]);
+            waitForRendering(stage);
+            var leftRect = left.popoverRect;
+            verify(leftRect.x >= left.plateRect.x + left.plateRect.w - 0.001);
+            verify(leftRect.x + leftRect.w <= 400 + 0.001);
+            verify(leftRect.y >= -0.001);
+            verify(leftRect.y + leftRect.h <= 720 + 0.001);
+        }
+
         function test_app_options_submenu_has_assign_login_and_show_in_files() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

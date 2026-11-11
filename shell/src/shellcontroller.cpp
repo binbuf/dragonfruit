@@ -10582,6 +10582,17 @@ void ShellController::renderDock()
         m_dockItem->setProperty("outputOriginX", origin.x());
     if (qRound(m_dockItem->property("outputOriginY").toReal()) != origin.y())
         m_dockItem->setProperty("outputOriginY", origin.y());
+    // The output's logical size bounds popover placement together with the
+    // pre-sized render budget, so a menu near an output edge is placed inside
+    // the visible area instead of the transparent gutter.
+    const QRect outputGeometry =
+        m_protocol ? m_protocol->primaryOutputGeometry() : QRect();
+    const int outputWidth = outputGeometry.isValid() ? outputGeometry.width() : 0;
+    const int outputHeight = outputGeometry.isValid() ? outputGeometry.height() : 0;
+    if (qRound(m_dockItem->property("outputWidth").toReal()) != outputWidth)
+        m_dockItem->setProperty("outputWidth", outputWidth);
+    if (qRound(m_dockItem->property("outputHeight").toReal()) != outputHeight)
+        m_dockItem->setProperty("outputHeight", outputHeight);
 
     // The Dock popover (context menu / window chooser) in Dock-scene
     // coordinates; empty when nothing is open. `popoverRect` keys on the

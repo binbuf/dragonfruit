@@ -30,6 +30,10 @@ FocusScope {
 
     property var entry: null
     property Item anchorItem: null
+    // The rectangle, in parent coordinates, the chooser may occupy. The Dock
+    // passes the intersection of the output area and its render budget so the
+    // bounded list never exceeds the committed overlay.
+    property var availableRect: null
     property bool open: false
     // T-21.2c: the Dock applies the compositor's Popup role state here.
     property bool materialBlurActive: true
@@ -66,8 +70,20 @@ FocusScope {
             ? entry.windowList : []
     readonly property int rowCount: windows.length
     readonly property int visibleRows: Math.min(rowCount, maxRows)
-    readonly property real listHeight: visibleRows * rowHeight
-    readonly property bool scrolls: rowCount > maxRows
+    readonly property real availableWidth:
+        availableRect && availableRect.w > 0 ? availableRect.w : Number.MAX_VALUE
+    readonly property real availableHeight:
+        availableRect && availableRect.h > 0 ? availableRect.h : Number.MAX_VALUE
+    // The fixed header, separator, padding, and arrow footprint. The list
+    // takes whatever is left inside the available rectangle.
+    readonly property real chromeHeight:
+        padding + rowHeight + separator.height + padding + arrowSize / 2
+    readonly property real maxListHeight:
+        availableHeight > 0 ? Math.max(0, availableHeight - chromeHeight)
+                            : Number.MAX_VALUE
+    readonly property real listHeight:
+        Math.min(visibleRows * rowHeight, maxListHeight)
+    readonly property bool scrolls: rowCount * rowHeight > listHeight + 0.5
 
     // A projection can close/minimize windows while the chooser is open. Keep
     // the keyboard highlight on a real row; a stale index would make Return
@@ -193,10 +209,10 @@ FocusScope {
         }
     }
 
-    width: Math.max(Theme.controls.contextMenu.minWidth,
-                    rowsContent.implicitWidth + 2 * root.padding)
-    height: root.padding + headerRow.height + separator.height + root.listHeight
-            + root.padding + root.arrowSize / 2
+    width: Math.min(Math.max(Theme.controls.contextMenu.minWidth,
+                             rowsContent.implicitWidth + 2 * root.padding),
+                    root.availableWidth)
+    height: Math.min(root.chromeHeight + root.listHeight, root.availableHeight)
     visible: opacity > 0
     scale: root.open ? 1.0 : 0.97
     transformOrigin: Item.Bottom

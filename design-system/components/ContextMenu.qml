@@ -22,6 +22,33 @@ Item {
     property int openSubmenuIndex: -1
     property int submenuHighlightedIndex: -1
     property int preferredWidth: Theme.controls.contextMenu.minWidth
+    // The rectangle, in parent coordinates, this menu family may occupy.
+    // Callers that commit a single popover rectangle (the Dock) pass the
+    // intersection of the output area and the render budget. When unset the
+    // menu keeps the legacy natural size so standalone callers are unchanged.
+    property var availableRect: null
+    // An optional hard width cap independent of `availableRect` (a host may
+    // know a narrower safe width). -1 means no extra cap.
+    property real maxWidth: -1
+    readonly property real availableWidth:
+        Math.min(availableRect && availableRect.w > 0 ? availableRect.w
+                                                      : Number.MAX_VALUE,
+                 maxWidth > 0 ? maxWidth : Number.MAX_VALUE)
+    readonly property real availableHeight:
+        availableRect && availableRect.h > 0 ? availableRect.h : Number.MAX_VALUE
+    // The available rectangle translated into this item's coordinates, so a
+    // nested panel can decide which side has room and clamp its own box.
+    readonly property var localAvailableRect: {
+        if (!root.availableRect || root.availableRect.w <= 0
+                || root.availableRect.h <= 0)
+            return null;
+        return {
+            x: root.availableRect.x - root.x,
+            y: root.availableRect.y - root.y,
+            w: root.availableRect.w,
+            h: root.availableRect.h
+        };
+    }
     property string accessibleName: ""
     // T202: the shared detached-menu preset and backdrop ownership. App-owned
     // content menus keep `local` and paint the opaque plate; desktop menus
@@ -157,15 +184,34 @@ Item {
         }
         return { x: x, y: y, w: w, h: h };
     }
-    // Flip the nested panel to the menu's left when it would leave the
-    // parent (e.g. a right-edge Dock, whose menu opens toward the left).
+    // The gap between the parent card and a nested panel.
+    readonly property real submenuGap: Theme.primitive.spacing.xxs
+    // Room for a nested panel on each side of this menu, in root coordinates.
+    // `availableRect` is the binding constraint when a host supplies one;
+    // otherwise the legacy parent-width flip is kept.
+    readonly property real submenuSpaceRight: root.localAvailableRect
+        ? Math.max(0, root.localAvailableRect.x + root.localAvailableRect.w
+                      - (root.width + root.submenuGap))
+        : Number.MAX_VALUE
+    readonly property real submenuSpaceLeft: root.localAvailableRect
+        ? Math.max(0, -root.submenuGap - root.localAvailableRect.x)
+        : Number.MAX_VALUE
+    // Flip the nested panel to the menu's left when that side has more room.
+    // A right-edge Dock's menu opens toward the left, so its submenu follows.
     readonly property bool submenuFlips: {
+        if (root.localAvailableRect)
+            return root.submenuSpaceLeft > root.submenuSpaceRight;
         var parentWidth = root.parent ? root.parent.width : 0;
         if (parentWidth <= 0 || submenuPanel.width <= 0)
             return false;
-        return root.x + root.width + Theme.primitive.spacing.xxs + submenuPanel.width
+        return root.x + root.width + root.submenuGap + submenuPanel.width
                 > parentWidth;
     }
+    readonly property real submenuMaxWidth:
+        root.localAvailableRect
+            ? Math.max(1, root.submenuFlips ? root.submenuSpaceLeft
+                                            : root.submenuSpaceRight)
+            : Number.MAX_VALUE
 
     function show() {
         root.open = true;
@@ -304,12 +350,62 @@ Item {
         }
         return y;
     }
+    // The row's top offset in the scrolled viewport. A nested panel follows
+    // its parent row while the menu scrolls.
+    function rowViewportY(index) {
+        var flickable = rowView.flickable;
+        return root.rowY(index) - (flickable ? flickable.contentY : 0);
+    }
+    // Keep the keyboard-highlighted row fully inside the bounded viewport.
+    // The same math the chooser, picker, and stack popover use.
+    function keepRowVisible(index) {
+        if (!root.scrolls || index < 0 || index >= root.entries.length)
+            return;
+        var flickable = rowView.flickable;
+        if (!flickable || flickable.height <= 0)
+            return;
+        var padding = Theme.controls.contextMenu.padding;
+        var top = root.rowY(index) - padding;
+        var entry = root.entries[index];
+        var height = entry && entry.type === "separator"
+                     ? padding : Theme.controls.contextMenu.rowHeight;
+        if (top < flickable.contentY)
+            flickable.contentY = Math.max(0, top);
+        else if (top + height > flickable.contentY + flickable.height)
+            flickable.contentY = Math.min(top + height - flickable.height,
+                                          Math.max(0, flickable.contentHeight
+                                                      - flickable.height));
+    }
 
     enabled: root.open
     visible: opacity > 0
-    width: Math.max(root.preferredWidth,
-                    rowColumn.implicitWidth + 2 * Theme.controls.contextMenu.padding)
-    height: rowColumn.implicitHeight + 2 * Theme.controls.contextMenu.padding
+    // The widest row's natural width. The Column cannot report it once each
+    // row stretches to the panel width (a positioner measures child widths),
+    // so read the delegates' implicit widths directly and let the panel size
+    // itself before the rows are constrained by `availableWidth`.
+    readonly property real naturalRowWidth: {
+        var width = 0;
+        for (var i = 0; i < rowRepeater.count; ++i) {
+            var row = rowRepeater.itemAt(i);
+            if (row && row.implicitWidth > width)
+                width = row.implicitWidth;
+        }
+        return width;
+    }
+    readonly property real desiredWidth:
+        Math.max(root.preferredWidth,
+                 root.naturalRowWidth + 2 * Theme.controls.contextMenu.padding)
+    readonly property real desiredHeight:
+        rowColumn.implicitHeight + 2 * Theme.controls.contextMenu.padding
+    // The menu never grows past the rectangle its host committed. A taller
+    // model scrolls inside the card instead of being clipped by the overlay.
+    readonly property bool scrolls: root.desiredHeight > root.availableHeight + 0.5
+    readonly property real scrollbarGutter: root.scrolls
+        ? Theme.controls.scrollView.scrollbarWidth
+          + Theme.controls.scrollView.scrollbarMargin
+        : 0
+    width: Math.min(root.desiredWidth, root.availableWidth)
+    height: Math.min(root.desiredHeight, root.availableHeight)
     scale: root.open ? 1.0 : root.closeScale
     transformOrigin: Item.TopLeft
     opacity: root.open ? 1.0 : 0.0
@@ -317,10 +413,21 @@ Item {
     focus: root.open
     activeFocusOnTab: root.open
 
+    onHighlightedIndexChanged: root.keepRowVisible(root.highlightedIndex)
+    onOpenSubmenuIndexChanged: {
+        root.keepRowVisible(root.openSubmenuIndex);
+        Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
+    }
+    onSubmenuHighlightedIndexChanged:
+        Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
+    onEntriesChanged: root.keepRowVisible(root.highlightedIndex);
+    onHeightChanged: root.keepRowVisible(root.highlightedIndex);
     onOpenChanged: {
         if (root.open) {
             root.highlightedIndex = -1;
             root.closeSubmenu();
+            if (rowView.flickable)
+                rowView.flickable.contentY = 0;
             root.moveHighlight(1);
             root.forceActiveFocus();
             root.opened();
@@ -389,22 +496,33 @@ Item {
         antialiasing: true
     }
 
-    Column {
-        id: rowColumn
+    ScrollView {
+        id: rowView
+        objectName: "contextMenuScroll"
         x: Theme.controls.contextMenu.padding
         y: Theme.controls.contextMenu.padding
-        width: root.width - 2 * Theme.controls.contextMenu.padding
+        width: Math.max(0, root.width - 2 * Theme.controls.contextMenu.padding)
+        height: Math.max(0, root.height - 2 * Theme.controls.contextMenu.padding)
+        interactive: root.scrolls
+        scrollbarVisible: root.scrolls
 
-        Repeater {
-            model: root.entries
-            delegate: MenuRow {
-                required property var modelData
-                objectName: "menuRow" + modelData.index
-                entry: modelData
-                highlighted: root.highlightedIndex === modelData.index
-                onRowHovered: (index) => root.onMainRowHovered(index)
-                onRowLeft: root.onMainRowLeft()
-                onRowActivated: (index) => root.activate(index)
+        Column {
+            id: rowColumn
+            width: Math.max(0, rowView.width - root.scrollbarGutter)
+
+            Repeater {
+                id: rowRepeater
+                model: root.entries
+                delegate: MenuRow {
+                    required property var modelData
+                    objectName: "menuRow" + modelData.index
+                    entry: modelData
+                    constrainedWidth: parent ? parent.width : -1
+                    highlighted: root.highlightedIndex === modelData.index
+                    onRowHovered: (index) => root.onMainRowHovered(index)
+                    onRowLeft: root.onMainRowLeft()
+                    onRowActivated: (index) => root.activate(index)
+                }
             }
         }
     }
@@ -416,10 +534,19 @@ Item {
         enabled: root.open && root.openSubmenuIndex >= 0
         entriesList: root.submenuEntries
         highlightIndex: root.submenuHighlightedIndex
+        availableWidth: root.submenuMaxWidth
+        availableHeight: root.availableHeight
         x: root.submenuFlips
-           ? -submenuPanel.width - Theme.primitive.spacing.xxs
-           : root.width + Theme.primitive.spacing.xxs
-        y: root.rowY(root.openSubmenuIndex)
+           ? -submenuPanel.width - root.submenuGap
+           : root.width + root.submenuGap
+        y: {
+            var y = root.rowViewportY(root.openSubmenuIndex);
+            var rect = root.localAvailableRect;
+            if (rect && rect.h > 0)
+                y = Math.max(rect.y,
+                             Math.min(rect.y + rect.h - submenuPanel.height, y));
+            return y;
+        }
         visible: opacity > 0
         opacity: (root.openSubmenuIndex >= 0 && root.submenuEntries.length > 0) ? 1.0 : 0.0
         scale: root.openSubmenuIndex >= 0 ? 1.0 : 0.97
@@ -514,13 +641,61 @@ Item {
 
         property var entriesList: []
         property int highlightIndex: -1
+        property real availableWidth: Number.MAX_VALUE
+        property real availableHeight: Number.MAX_VALUE
 
         signal rowHovered(int index)
         signal rowActivated(int index)
 
-        width: Math.max(root.preferredWidth,
-                        subColumn.implicitWidth + 2 * Theme.controls.contextMenu.padding)
-        height: subColumn.implicitHeight + 2 * Theme.controls.contextMenu.padding
+        readonly property real naturalRowWidth: {
+            var width = 0;
+            for (var i = 0; i < subRepeater.count; ++i) {
+                var row = subRepeater.itemAt(i);
+                if (row && row.implicitWidth > width)
+                    width = row.implicitWidth;
+            }
+            return width;
+        }
+        readonly property real desiredWidth:
+            Math.max(root.preferredWidth,
+                     subPanel.naturalRowWidth + 2 * Theme.controls.contextMenu.padding)
+        readonly property real desiredHeight:
+            subColumn.implicitHeight + 2 * Theme.controls.contextMenu.padding
+        readonly property bool scrolls: subPanel.desiredHeight
+                                        > subPanel.availableHeight + 0.5
+        readonly property real scrollbarGutter: subPanel.scrolls
+            ? Theme.controls.scrollView.scrollbarWidth
+              + Theme.controls.scrollView.scrollbarMargin
+            : 0
+        width: Math.min(subPanel.desiredWidth, subPanel.availableWidth)
+        height: Math.min(subPanel.desiredHeight, subPanel.availableHeight)
+
+        // The row's top offset in the scrolled viewport.
+        function keepHighlightVisible() {
+            if (!subPanel.scrolls || subPanel.highlightIndex < 0
+                    || subPanel.highlightIndex >= subPanel.entriesList.length)
+                return;
+            var flickable = subView.flickable;
+            if (!flickable || flickable.height <= 0)
+                return;
+            var padding = Theme.controls.contextMenu.padding;
+            var y = padding;
+            for (var i = 0; i < subPanel.highlightIndex; ++i) {
+                var e = subPanel.entriesList[i];
+                y += (e.type === "separator") ? padding
+                                              : Theme.controls.contextMenu.rowHeight;
+            }
+            var top = y - padding;
+            var entry = subPanel.entriesList[subPanel.highlightIndex];
+            var height = entry && entry.type === "separator"
+                         ? padding : Theme.controls.contextMenu.rowHeight;
+            if (top < flickable.contentY)
+                flickable.contentY = Math.max(0, top);
+            else if (top + height > flickable.contentY + flickable.height)
+                flickable.contentY = Math.min(top + height - flickable.height,
+                                              Math.max(0, flickable.contentHeight
+                                                          - flickable.height));
+        }
 
         Shadow {
             width: subPanel.width
@@ -541,20 +716,31 @@ Item {
             antialiasing: true
         }
 
-        Column {
-            id: subColumn
+        ScrollView {
+            id: subView
+            objectName: "submenuScroll"
             x: Theme.controls.contextMenu.padding
             y: Theme.controls.contextMenu.padding
-            width: subPanel.width - 2 * Theme.controls.contextMenu.padding
+            width: Math.max(0, subPanel.width - 2 * Theme.controls.contextMenu.padding)
+            height: Math.max(0, subPanel.height - 2 * Theme.controls.contextMenu.padding)
+            interactive: subPanel.scrolls
+            scrollbarVisible: subPanel.scrolls
 
-            Repeater {
-                model: subPanel.entriesList
-                delegate: MenuRow {
-                    required property var modelData
-                    entry: modelData
-                    highlighted: subPanel.highlightIndex === modelData.index
-                    onRowHovered: (index) => subPanel.rowHovered(index)
-                    onRowActivated: (index) => subPanel.rowActivated(index)
+            Column {
+                id: subColumn
+                width: Math.max(0, subView.width - subPanel.scrollbarGutter)
+
+                Repeater {
+                    id: subRepeater
+                    model: subPanel.entriesList
+                    delegate: MenuRow {
+                        required property var modelData
+                        entry: modelData
+                        constrainedWidth: parent ? parent.width : -1
+                        highlighted: subPanel.highlightIndex === modelData.index
+                        onRowHovered: (index) => subPanel.rowHovered(index)
+                        onRowActivated: (index) => subPanel.rowActivated(index)
+                    }
                 }
             }
         }

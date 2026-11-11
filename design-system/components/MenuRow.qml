@@ -21,6 +21,11 @@ Item {
     property int labelFontSize: Theme.controls.button.fontSize
     property int checkSize: Theme.controls.button.fontSize
     property int shortcutGap: Theme.controls.contextMenu.shortcutGap
+    // A host that has already resolved the panel width sets this so every row
+    // takes exactly that width and a long label elides. -1 keeps the shared
+    // behavior: the row contributes its natural width to the Column and then
+    // stretches to the resolved panel width.
+    property real constrainedWidth: -1
 
     signal rowHovered(int index)
     signal rowLeft()
@@ -34,8 +39,11 @@ Item {
     // The row contributes its natural width to the Column first, then
     // stretches to the resolved menu width so every highlight bar spans the
     // full panel. `Math.max` keeps the initial zero-width pass from collapsing
-    // the menu to its minimum width.
-    width: Math.max(implicitWidth, parent ? parent.width : 0)
+    // the menu to its minimum width. A capped menu passes `constrainedWidth`
+    // so the row never exceeds the available space and its label elides.
+    width: root.constrainedWidth > 0
+           ? root.constrainedWidth
+           : Math.max(implicitWidth, parent ? parent.width : 0)
     height: root.isSeparator ? root.padding : root.rowHeight
     implicitWidth: root.isSeparator ? 0
                    : root.padding * 2
@@ -88,6 +96,7 @@ Item {
 
     Text {
         id: labelText
+        objectName: "menuRowLabel"
         visible: !root.isSeparator
         text: root.entry.label || ""
         color: root.highlighted ? Theme.color.accentContent : Theme.color.textPrimary
