@@ -973,6 +973,12 @@ Rectangle {
     // compositor's coordinates. Zero until the output is known.
     property real outputOriginX: 0
     property real outputOriginY: 0
+    // The primary output's logical size (T-14.7c follow-up). Zero until the
+    // shell has an output geometry. It bounds popover placement together with
+    // the render budget so a menu near an output edge cannot be committed
+    // off-screen or past the pre-sized scene.
+    property real outputWidth: 0
+    property real outputHeight: 0
 
     // The last entry whose tile was reported, and the rect as reported, so a
     // settled re-layout can re-emit only when the geometry actually moved
@@ -2911,12 +2917,16 @@ Rectangle {
         var minimized = e.kind === "minimized";
         var list = e.windowList !== undefined && e.windowList !== null
                    ? e.windowList : [];
-        // The window list (T-10 sections 9/13): shown for any entry that
-        // carries an app's windows, including a minimized-window entry (its
-        // owning app's full list). The frontmost window is checked and each
-        // minimized row is marked.
+        // The quick window list (T-10 sections 9/13): shown for any entry
+        // that carries an app's windows, including a minimized-window entry
+        // (its owning app's full list). The frontmost window is checked and
+        // each minimized row is marked. A long list is bounded to the first
+        // `quickWindowRows` rows; "Choose a Window…" opens the complete
+        // bounded chooser so the menu never exceeds the committed overlay.
         if (list.length > 0) {
-            for (var i = 0; i < list.length; ++i) {
+            var quickRows = Math.min(list.length,
+                                     Theme.controls.dock.chooser.quickWindowRows);
+            for (var i = 0; i < quickRows; ++i) {
                 var w = list[i] || {};
                 var label = w.title !== undefined ? w.title : qsTr("Window");
                 if (w.minimized === true)
@@ -2926,6 +2936,12 @@ Rectangle {
                     shortcut: w.workspaceName !== undefined ? w.workspaceName : "",
                     action: "activate_window",
                     payload: { windowId: w.windowId }
+                });
+            }
+            if (list.length > quickRows) {
+                out.push({
+                    type: "item", label: qsTr("Choose a Window…"),
+                    action: "choose_window", payload: { appId: e.appId }
                 });
             }
             out.push({ type: "separator" });
@@ -3326,16 +3342,70 @@ Rectangle {
         return gap * (a + b) / (2 * iconSize);
     }
 
-    // The popover placement clamps into the shell's pre-sized buffer budget
-    // (T-14.7c); a zero budget (the QML default, and every standalone test)
-    // leaves the legacy unbounded placement so a tall menu can still open
-    // above the Dock.
+    // The gap between the plate and a popover card, matching the placement
+    // offsets below.
+    readonly property real popoverEdgeGap: 4
+
+    // The rectangle a popover family may occupy, in Dock-local coordinates.
+    // It is the intersection of the output area (when the shell has reported
+    // it) and the pre-sized render budget, bounded to the side of the plate
+    // the popover opens toward. A zero budget (the QML default, and every
+    // standalone test) leaves the legacy unbounded placement.
+    readonly property var popoverAvailableRect: {
+        if (popoverHeadroom <= 0 && popoverGutter <= 0)
+            return null;
+        var minX = 0;
+        var maxX = 0;
+        var minY = 0;
+        var maxY = 0;
+        if (axisIsX) {
+            // Above the plate; never over the icons.
+            minX = outputWidth > 0 ? 0 : -popoverGutter;
+            maxX = outputWidth > 0 ? Math.min(width + popoverGutter, outputWidth)
+                                   : width + popoverGutter;
+            minY = outputHeight > 0
+                   ? -Math.min(popoverHeadroom,
+                               Math.max(0, outputHeight - height))
+                   : -popoverHeadroom;
+            maxY = panelRect.y - popoverEdgeGap;
+        } else if (position === "left") {
+            // Beside the plate, toward the output interior.
+            minX = panelRect.x + panelRect.w + popoverEdgeGap;
+            maxX = outputWidth > 0 ? Math.min(width + popoverGutter, outputWidth)
+                                   : width + popoverGutter;
+            minY = 0;
+            maxY = outputHeight > 0 ? Math.min(height, outputHeight) : height;
+        } else {
+            minX = outputWidth > 0
+                   ? -Math.min(popoverGutter, Math.max(0, outputWidth - width))
+                   : -popoverGutter;
+            maxX = panelRect.x - popoverEdgeGap;
+            minY = 0;
+            maxY = outputHeight > 0 ? Math.min(height, outputHeight) : height;
+        }
+        if (maxX < minX)
+            maxX = minX;
+        if (maxY < minY)
+            maxY = minY;
+        return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+
+    // The popover placement clamps into the available rectangle: the output
+    // area and the pre-sized buffer budget together (T-14.7c).
     function clampPopoverX(px, w) {
+        var available = popoverAvailableRect;
+        if (available && available.w > 0)
+            return Math.max(available.x,
+                            Math.min(available.x + available.w - w, px));
         if (popoverGutter <= 0)
             return px;
         return Math.max(-popoverGutter, Math.min(width + popoverGutter - w, px));
     }
     function clampPopoverY(py, h) {
+        var available = popoverAvailableRect;
+        if (available && available.h > 0)
+            return Math.max(available.y,
+                            Math.min(available.y + available.h - h, py));
         if (popoverHeadroom <= 0)
             return py;
         // Keep the popover inside the pre-sized headroom; when the content is
@@ -4236,6 +4306,7 @@ Rectangle {
         id: entryMenu
         objectName: "entryMenu"
         model: dock.menuModel
+        availableRect: dock.popoverAvailableRect
         materialPreset: "menuDetached"
         materialBackdrop: "trusted"
         materialBlurActive: dock.popupMaterialBlurActive
@@ -4299,6 +4370,13 @@ Rectangle {
                 dock.menuActionRequested(item.action, item.payload);
                 return;
             }
+            // A bounded quicklist hands the complete window list to the
+            // chooser, which owns its own scroll and keyboard traversal.
+            if (item.action === "choose_window") {
+                if (dock.menuEntry)
+                    dock.openChooser(dock.menuEntry);
+                return;
+            }
             // The Applications launcher's Open row toggles the drawer locally
             // (T-19.2 follow-up).
             if (item.action === "open_apps_drawer") {
@@ -4334,6 +4412,7 @@ Rectangle {
         objectName: "windowChooser"
         entry: dock.chooserEntry
         anchorItem: dock.chooserAnchor
+        availableRect: dock.popoverAvailableRect
         materialBlurActive: dock.popupMaterialBlurActive
         materialTier: dock.popupMaterialTier
         materialFallback: dock.popupMaterialFallback

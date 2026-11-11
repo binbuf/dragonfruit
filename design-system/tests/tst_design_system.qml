@@ -735,6 +735,17 @@ TestCase {
         compare(triggeredSpy.signalArguments[0][0], 1);
     }
 
+    function test_menu_bar_dropdown_grows_to_fit_a_long_label() {
+        var m = make(menuComponent, {
+            title: "File",
+            model: [{ label: "A menu command with a much longer label" }]
+        });
+        m.openMenu();
+        waitForRendering(stage);
+        verify(m.contentRect.w > Theme.controls.menuBarMenu.minWidth,
+               "the shared menu row must still widen a menu-bar dropdown");
+    }
+
     function test_menu_type_ahead_skips_disabled_rows() {
         var m = make(menuComponent, {
             title: "File",
@@ -1079,6 +1090,76 @@ TestCase {
         waitForRendering(stage);
         verify(cm.contentRect.w > closedWidth,
                "an open submenu must extend the committed content rect");
+    }
+
+    function test_context_menu_bounds_its_height_and_scrolls_to_the_highlight() {
+        var model = [];
+        for (var i = 0; i < 20; ++i)
+            model.push({ label: "Row " + i });
+        var cm = make(contextMenuComponent, {
+            model: model,
+            availableRect: { x: 0, y: 0, w: 400, h: 200 }
+        });
+        cm.showAt(0, 0);
+        waitForRendering(stage);
+        verify(cm.height <= 200 + 0.001,
+               "a bounded menu must not exceed its available height");
+        compare(cm.scrolls, true);
+        var scroll = findChild(cm, "contextMenuScroll");
+        verify(scroll !== null);
+        compare(scroll.flickable.contentY, 0);
+        keyClick(Qt.Key_End);
+        wait(50);
+        verify(scroll.flickable.contentY > 0,
+               "End must scroll the highlighted row into the viewport");
+        var top = cm.rowY(cm.highlightedIndex) - Theme.controls.contextMenu.padding;
+        verify(top >= scroll.flickable.contentY - 0.5);
+        verify(top + Theme.controls.contextMenu.rowHeight
+               <= scroll.flickable.contentY + scroll.flickable.height + 0.5);
+    }
+
+    function test_context_menu_caps_its_width_and_elides_rows() {
+        var cm = make(contextMenuComponent, {
+            model: [{ label: "A window title that is far too long for a narrow output" }],
+            availableRect: { x: 0, y: 0, w: 240, h: 400 }
+        });
+        cm.showAt(0, 0);
+        waitForRendering(stage);
+        compare(cm.width, 240);
+        var row = findChild(cm, "menuRow0");
+        verify(row !== null);
+        compare(row.width, cm.width - 2 * Theme.controls.contextMenu.padding);
+        var label = findChild(row, "menuRowLabel");
+        verify(label !== null);
+        tryVerify(function() { return label.truncated; });
+    }
+
+    function test_context_menu_submenu_bounds_and_scrolls_to_the_highlight() {
+        var submenu = [];
+        for (var i = 0; i < 20; ++i)
+            submenu.push({ label: "Sub " + i });
+        var cm = make(contextMenuComponent, {
+            model: [{ label: "Options", type: "submenu", submenu: submenu }],
+            availableRect: { x: 0, y: 0, w: 500, h: 220 }
+        });
+        cm.showAt(0, 0);
+        waitForRendering(stage);
+        cm.openSubmenu(0);
+        waitForRendering(stage);
+        var panel = findChild(cm, "submenuPanel");
+        verify(panel !== null);
+        verify(panel.height <= 220 + 0.001,
+               "a submenu must not exceed the available rectangle");
+        compare(panel.scrolls, true);
+        for (var j = 0; j < 15; ++j)
+            keyClick(Qt.Key_Down);
+        wait(50);
+        var scroll = findChild(panel, "submenuScroll");
+        verify(scroll !== null);
+        verify(scroll.flickable.contentY > 0,
+               "submenu navigation must scroll the highlighted row into view");
+        verify(panel.y >= -0.5);
+        verify(panel.y + panel.height <= 220 + 0.5);
     }
 
     // -- Shortcut hints and menu row anatomy --------------------------------
