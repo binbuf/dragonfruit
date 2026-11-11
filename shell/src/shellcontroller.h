@@ -575,7 +575,8 @@ private:
         quintptr lockSurfaceId = 0;
     };
     bool commitChromeScene(QQuickWindow *window,
-                           const QList<ChromeSceneTarget> &targets);
+                           const QList<ChromeSceneTarget> &targets,
+                           bool *deferred = nullptr);
     // One dmabuf target commit, including the per-surface stats path and the
     // producer-slot release bookkeeping for a shared scene.
     ShellProtocol::DmabufCommitResult commitChromeDmabufTarget(
@@ -902,6 +903,7 @@ private:
     void onChromeFramePresented(const QString &surface, uint32_t time);
     void onChromeBufferReleased(const QString &surface);
     void onChromeDmabufReleased(const QString &surface, int slot, quint64 serial);
+    void onChromeDmabufReady(const QString &surface, bool ok);
     void onChromeCommitDeferred(const QString &surface);
     void onChromeFallbackTick();
     QImage renderChromeFrame(QQuickWindow *window);
