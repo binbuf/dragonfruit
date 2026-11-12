@@ -146,18 +146,35 @@ Item {
     }
 
     TapHandler {
-        onTapped: root.rowActivated(root.entry.index)
+        id: rowTap
+        // Remember the row identity the press started on. A live model update
+        // can replace the delegate's entry under the pointer; releasing must
+        // not run the command that took its place.
+        property string pressedKey: ""
+        onPressedChanged: if (pressed)
+                              rowTap.pressedKey = root.entry.key !== undefined
+                                                  ? String(root.entry.key) : ""
+        onTapped: {
+            var currentKey = root.entry.key !== undefined
+                             ? String(root.entry.key) : "";
+            var targetKey = rowTap.pressedKey !== "" ? rowTap.pressedKey
+                                                      : currentKey;
+            rowTap.pressedKey = "";
+            if (targetKey === "" || targetKey === currentKey)
+                root.rowActivated(root.entry.index);
+        }
     }
 
     Accessible.role: Accessible.MenuItem
     Accessible.name: root.entry.label || ""
     // A disabled row's reason is the useful description; an enabled row keeps
-    // its chord hint. Checked state is exposed separately below.
+    // its chord hint. Checked and selected state are exposed separately below.
     Accessible.description: root.disabled && root.disabledReason.length > 0
                             ? root.disabledReason
                             : (root.entry.shortcut || "")
     Accessible.checkable: root.entry.checkable === true
     Accessible.checked: root.entry.checked === true
+    Accessible.selected: root.highlighted
     Accessible.ignored: root.isSeparator
     Accessible.onPressAction: root.rowActivated(root.entry.index)
 }

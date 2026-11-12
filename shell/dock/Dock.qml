@@ -2932,7 +2932,10 @@ Rectangle {
                 if (w.minimized === true)
                     label += qsTr(" (minimized)");
                 out.push({
-                    type: "item", label: label, checked: w.focused === true,
+                    type: "item",
+                    id: "window:" + (w.windowId !== undefined
+                                     && w.windowId !== null ? w.windowId : i),
+                    label: label, checked: w.focused === true,
                     shortcut: w.workspaceName !== undefined ? w.workspaceName : "",
                     action: "activate_window",
                     payload: { windowId: w.windowId }
@@ -2940,13 +2943,15 @@ Rectangle {
             }
             if (list.length > quickRows) {
                 out.push({
-                    type: "item", label: qsTr("Choose a Window…"),
+                    type: "item", id: "choose_window",
+                    label: qsTr("Choose a Window…"),
                     action: "choose_window", payload: { appId: e.appId }
                 });
             }
             out.push({ type: "separator" });
             out.push({
-                type: "item", label: qsTr("Show All Windows"),
+                type: "item", id: "show_all_windows",
+                label: qsTr("Show All Windows"),
                 action: "show_all_windows", payload: { appId: e.appId }
             });
             out.push({ type: "separator" });
@@ -2956,11 +2961,11 @@ Rectangle {
             // window list plus Quit; it is not an app entry, so there is no
             // Keep/Remove or Options.
             out.push({
-                type: "item", label: qsTr("Quit"),
+                type: "item", id: "quit", label: qsTr("Quit"),
                 action: "quit", payload: { appId: e.appId, desktopId: e.desktopId }
             });
             out.push({
-                type: "item", label: qsTr("Force Quit"),
+                type: "item", id: "force_quit", label: qsTr("Force Quit"),
                 action: "force_quit", payload: { appId: e.appId, desktopId: e.desktopId }
             });
             return out;
@@ -2969,56 +2974,64 @@ Rectangle {
             var hidden = dock.isAppHidden(e.appId);
             if (e.pinned === true) {
                 out.push({
-                    type: "item", label: qsTr("Remove from Dock"),
+                    type: "item", id: "remove_from_dock",
+                    label: qsTr("Remove from Dock"),
                     action: "remove_from_dock", payload: { desktopId: e.desktopId }
                 });
             } else {
                 out.push({
-                    type: "item", label: qsTr("Keep in Dock"),
+                    type: "item", id: "keep_in_dock",
+                    label: qsTr("Keep in Dock"),
                     action: "keep_in_dock", payload: { desktopId: e.desktopId }
                 });
             }
             out.push({
-                type: "submenu", label: qsTr("Options"), submenu: optionsMenuModel(e)
+                type: "submenu", id: "options", label: qsTr("Options"),
+                submenu: optionsMenuModel(e)
             });
             out.push({ type: "separator" });
             // T236: the app-level visibility verbs. Hide minimizes every
             // visible window through the shell's one tracked Hide path; Show
-            // restores exactly the windows that Hide minimized.
+            // restores exactly the windows that Hide minimized. The row keeps
+            // one identity across the label/action swap so a live update does
+            // not move the highlight to a different command.
             out.push({
-                type: "item", label: hidden ? qsTr("Show") : qsTr("Hide"),
+                type: "item", id: "app_visibility",
+                label: hidden ? qsTr("Show") : qsTr("Hide"),
                 action: hidden ? "show_app" : "hide_app",
                 payload: { appId: e.appId, desktopId: e.desktopId }
             });
             out.push({
-                type: "item", label: qsTr("Quit"),
+                type: "item", id: "quit", label: qsTr("Quit"),
                 action: "quit",
                 payload: { appId: e.appId, desktopId: e.desktopId,
                            temporary: e.kind === "temporary" }
             });
             out.push({
-                type: "item", label: qsTr("Force Quit"),
+                type: "item", id: "force_quit", label: qsTr("Force Quit"),
                 action: "force_quit",
                 payload: { appId: e.appId, desktopId: e.desktopId,
                            temporary: e.kind === "temporary" }
             });
         } else if (e.missing !== true) {
             out.push({
-                type: "item", label: qsTr("Open"),
+                type: "item", id: "open", label: qsTr("Open"),
                 action: "open", payload: { desktopId: e.desktopId }
             });
             out.push({
-                type: "submenu", label: qsTr("Options"), submenu: optionsMenuModel(e)
+                type: "submenu", id: "options", label: qsTr("Options"),
+                submenu: optionsMenuModel(e)
             });
             out.push({
-                type: "item", label: qsTr("Show in Files"),
+                type: "item", id: "show_in_files", label: qsTr("Show in Files"),
                 action: "show_in_files",
                 payload: { desktopId: e.desktopId, appId: e.appId }
             });
             if (e.pinned === true) {
                 out.push({ type: "separator" });
                 out.push({
-                    type: "item", label: qsTr("Remove from Dock"),
+                    type: "item", id: "remove_from_dock",
+                    label: qsTr("Remove from Dock"),
                     action: "remove_from_dock", payload: { desktopId: e.desktopId }
                 });
             }
@@ -3036,27 +3049,32 @@ Rectangle {
         var appId = e.appId !== undefined ? e.appId : "";
         var out = [];
         out.push({
-            type: "item", label: qsTr("Assign to This Desktop"),
+            type: "item", id: "assign_this",
+            label: qsTr("Assign to This Desktop"),
             action: "assign_to",
             payload: { desktopId: id, appId: appId, target: "this" }
         });
         out.push({
-            type: "item", label: qsTr("Assign to All Desktops"),
+            type: "item", id: "assign_all",
+            label: qsTr("Assign to All Desktops"),
             action: "assign_to",
             payload: { desktopId: id, appId: appId, target: "all" }
         });
         out.push({
-            type: "item", label: qsTr("Assign to None"),
+            type: "item", id: "assign_none",
+            label: qsTr("Assign to None"),
             action: "assign_to",
             payload: { desktopId: id, appId: appId, target: "none" }
         });
         out.push({ type: "separator" });
         out.push({
-            type: "item", label: qsTr("Open at Login"),
+            type: "item", id: "open_at_login",
+            label: qsTr("Open at Login"),
             action: "open_at_login", payload: { desktopId: id }
         });
         out.push({
-            type: "item", label: qsTr("Show in Files"),
+            type: "item", id: "options_show_in_files",
+            label: qsTr("Show in Files"),
             action: "show_in_files", payload: { desktopId: id, appId: appId }
         });
         return out;
@@ -3069,35 +3087,35 @@ Rectangle {
     function dividerMenuModel() {
         var out = [];
         out.push({
-            type: "item",
+            type: "item", id: "toggle_magnification",
             label: magnification > 0 ? qsTr("Turn Magnification Off")
                                      : qsTr("Turn Magnification On"),
             action: "toggle_magnification", checkable: true,
             checked: magnification > 0
         });
         out.push({
-            type: "item",
+            type: "item", id: "toggle_autohide",
             label: autoHide ? qsTr("Turn Hiding Off") : qsTr("Turn Hiding On"),
             action: "toggle_autohide", checkable: true, checked: autoHide
         });
         out.push({ type: "separator" });
         out.push({
-            type: "submenu", label: qsTr("Position on Screen"),
+            type: "submenu", id: "position", label: qsTr("Position on Screen"),
             submenu: [
                 {
-                    type: "item", label: qsTr("Bottom"),
+                    type: "item", id: "position_bottom", label: qsTr("Bottom"),
                     action: "set_position", checkable: true,
                     checked: position === "bottom",
                     payload: { position: "bottom" }
                 },
                 {
-                    type: "item", label: qsTr("Left"),
+                    type: "item", id: "position_left", label: qsTr("Left"),
                     action: "set_position", checkable: true,
                     checked: position === "left",
                     payload: { position: "left" }
                 },
                 {
-                    type: "item", label: qsTr("Right"),
+                    type: "item", id: "position_right", label: qsTr("Right"),
                     action: "set_position", checkable: true,
                     checked: position === "right",
                     payload: { position: "right" }
@@ -3106,11 +3124,13 @@ Rectangle {
         });
         out.push({ type: "separator" });
         out.push({
-            type: "item", label: qsTr("Add Application…"),
+            type: "item", id: "add_application",
+            label: qsTr("Add Application…"),
             action: "add_application"
         });
         out.push({
-            type: "item", label: qsTr("Dock Settings…"),
+            type: "item", id: "open_dock_settings",
+            label: qsTr("Dock Settings…"),
             action: "open_dock_settings"
         });
         return out;
@@ -3123,14 +3143,17 @@ Rectangle {
         var out = [];
         if (trashConfirming) {
             out.push({
-                type: "item", label: qsTr("Empty the Trash?"), enabled: false
+                type: "item", id: "empty_trash_question",
+                label: qsTr("Empty the Trash?"), enabled: false
             });
             out.push({
-                type: "item", label: qsTr("Empty Trash"),
+                type: "item", id: "empty_trash_confirm",
+                label: qsTr("Empty Trash"),
                 action: "empty_trash"
             });
             out.push({
-                type: "item", label: qsTr("Cancel"),
+                type: "item", id: "empty_trash_cancel",
+                label: qsTr("Cancel"),
                 action: "cancel_empty_trash"
             });
             return out;
@@ -3140,17 +3163,18 @@ Rectangle {
         // section 16 lifecycle).
         if (!trashAvailable) {
             out.push({
-                type: "item", label: qsTr("Trash unavailable"), enabled: false
+                type: "item", id: "trash_unavailable",
+                label: qsTr("Trash unavailable"), enabled: false
             });
             return out;
         }
         out.push({
-            type: "item", label: qsTr("Open"),
+            type: "item", id: "open_trash", label: qsTr("Open"),
             action: "open_trash"
         });
         out.push({ type: "separator" });
         out.push({
-            type: "item", label: qsTr("Empty Trash"),
+            type: "item", id: "empty_trash", label: qsTr("Empty Trash"),
             action: "empty_trash_confirmation", enabled: trashFull,
             keepOpen: true
         });
@@ -3164,19 +3188,22 @@ Rectangle {
         var out = [];
         if (e && e.id !== "__downloads__") {
             out.push({
-                type: "item", label: qsTr("Open in Files"),
+                type: "item", id: "open_stack_folder",
+                label: qsTr("Open in Files"),
                 action: "open_stack_folder",
                 payload: { path: e.path }
             });
             out.push({ type: "separator" });
             out.push({
-                type: "item", label: qsTr("Remove from Dock"),
+                type: "item", id: "remove_folder_pin",
+                label: qsTr("Remove from Dock"),
                 action: "remove_folder_pin",
                 payload: { path: e.path }
             });
         } else {
             out.push({
-                type: "item", label: qsTr("Open in Files"),
+                type: "item", id: "open_downloads_folder",
+                label: qsTr("Open in Files"),
                 action: "open_downloads_folder"
             });
         }
@@ -3190,12 +3217,14 @@ Rectangle {
     function appsLauncherMenuModel() {
         var out = [];
         out.push({
-            type: "item", label: qsTr("Open Applications"),
+            type: "item", id: "open_apps_drawer",
+            label: qsTr("Open Applications"),
             action: "open_apps_drawer"
         });
         out.push({ type: "separator" });
         out.push({
-            type: "item", label: qsTr("Remove from Dock"),
+            type: "item", id: "launcher_remove_from_dock",
+            label: qsTr("Remove from Dock"),
             action: "remove_from_dock", enabled: false
         });
         return out;
