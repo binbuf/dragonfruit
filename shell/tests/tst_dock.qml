@@ -3281,6 +3281,32 @@ Item {
             compare(dock.revealed, true);
         }
 
+        function test_edge_travel_keeps_the_reveal_deadline() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: false,
+                entries: [ app("a", "A", true) ]
+            });
+            mouseMove(stage, 640, dock.height + 40);
+            dock.hide();
+            waitForRendering(stage);
+            compare(dock.revealed, false);
+            // Enter the band and keep moving inside it every 30 ms. Each
+            // update must retain the deadline started on entry instead of
+            // restarting it, so edge travel cannot postpone the reveal.
+            var deadline = Theme.controls.dock.revealDelay + 80;
+            var elapsed = 0;
+            var x = 600;
+            while (elapsed < deadline && !dock.revealed) {
+                mouseMove(dock, x, dock.height - 1);
+                wait(30);
+                elapsed += 30;
+                x = x === 600 ? 620 : 600;
+            }
+            wait(50);
+            compare(dock.revealed, true,
+                    "continuous edge movement must not postpone the reveal");
+        }
+
         function test_leaving_the_dock_rehides_after_delay() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160, autoHide: true, revealed: true,
