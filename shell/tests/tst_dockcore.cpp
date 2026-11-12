@@ -1715,6 +1715,124 @@ private slots:
         QCOMPARE(countKind(tight.entries, QStringLiteral("pinned")), 1);
     }
 
+    // -- layout metrics (T-14.7v) -----------------------------------------
+
+    void layoutMetricsMatchTheRenderedPlate()
+    {
+        // One app + Downloads + Trash at 32 px with the production tokens:
+        // 3 icons, one divider, one icon gap (14), two divider gaps (22 each),
+        // and both 16 px end paddings = 187 px. This is the cross-check from
+        // the review; the old planner omitted the divider gap and padding and
+        // reported 139 px for the same plate.
+        const DockLayoutSpacing spacing{14, 22, 1, 16};
+        const DockLayoutMetrics metrics =
+            planDockLayout(makeOverflowEntries(1, 0, 0, 0), 2, true);
+        QCOMPARE(metrics.iconCount, 3);
+        QCOMPARE(metrics.dividerCount, 1);
+        QCOMPARE(metrics.iconGapCount, 1);
+        QCOMPARE(metrics.dividerGapCount, 2);
+        QCOMPARE(metrics.paddingCount, 2);
+        QCOMPARE(metrics.lengthFor(32, spacing), qint64(187));
+
+        // A 187 px axis fits; a 180 px axis is an error, not a false fit.
+        const QVariantList entries = makeOverflowEntries(1, 0, 0, 0);
+        const DockOverflowResult fits =
+            applyDockOverflow(entries, 187, 32, 32, 64, spacing, 2, true);
+        QVERIFY(!fits.clamped);
+        QVERIFY(!fits.overflowed);
+
+        const DockOverflowResult tight =
+            applyDockOverflow(entries, 180, 32, 32, 64, spacing, 2, true);
+        QVERIFY(tight.clamped);
+        QVERIFY(tight.overflowed);
+        QCOMPARE(tight.iconSize, 32);
+    }
+
+    void layoutMetricsCollapseTheHiddenMinimizedRegion()
+    {
+        // Minimized rows are rendered unless `dock.minimizeIntoTileIcon` hides
+        // them. The visible plan keeps their region and both boundaries; the
+        // hidden plan removes the rows, the boundaries, and both divider gaps.
+        const DockLayoutSpacing spacing{14, 22, 1, 16};
+        const QVariantList entries = makeOverflowEntries(1, 0, 0, 2);
+        const DockLayoutMetrics visible = planDockLayout(entries, 2, true);
+        QCOMPARE(visible.iconCount, 5);
+        QCOMPARE(visible.dividerCount, 2);
+        QCOMPARE(visible.lengthFor(32, spacing), qint64(310));
+
+        const DockLayoutMetrics hidden = planDockLayout(entries, 2, false);
+        QCOMPARE(hidden.iconCount, 3);
+        QCOMPARE(hidden.dividerCount, 1);
+        QCOMPARE(hidden.lengthFor(32, spacing), qint64(187));
+    }
+
+    void layoutMetricsIncludeEveryPinnedFolderInTheFixedTail()
+    {
+        // The QML fixed tail is Downloads + every pinned folder + Trash. With
+        // two folder pins the planner must reserve four fixed entries, not the
+        // old constant two: 5 icons + 1 divider + 3 icon gaps + 2 divider gaps
+        // + 2 paddings = 279 px at 32 px.
+        const DockLayoutSpacing spacing{14, 22, 1, 16};
+        const QVariantList entries = makeOverflowEntries(1, 0, 0, 0);
+        const DockLayoutMetrics metrics = planDockLayout(entries, 4, true);
+        QCOMPARE(metrics.iconCount, 5);
+        QCOMPARE(metrics.dividerCount, 1);
+        QCOMPARE(metrics.lengthFor(32, spacing), qint64(279));
+
+        const DockOverflowResult fits =
+            applyDockOverflow(entries, 279, 32, 32, 64, spacing, 4, true);
+        QVERIFY(!fits.clamped);
+
+        const DockOverflowResult tight =
+            applyDockOverflow(entries, 278, 32, 32, 64, spacing, 4, true);
+        QVERIFY(tight.clamped);
+        QVERIFY(tight.overflowed);
+    }
+
+    void overflowRecomputesBoundariesAfterDroppingARegion()
+    {
+        // Two pins, three recents, Downloads, Trash. The full set has two
+        // dividers (pinned | tail and tail | fixed). At 300 px the recents are
+        // dropped one by one; once the tail is empty its divider and both of
+        // its 22 px gaps must disappear too, leaving one pinned | fixed rule.
+        const DockLayoutSpacing spacing{14, 22, 1, 16};
+        const QVariantList entries = makeOverflowEntries(2, 0, 3, 0);
+        const DockLayoutMetrics full = planDockLayout(entries, 2, true);
+        QCOMPARE(full.dividerCount, 2);
+        QCOMPARE(full.lengthFor(32, spacing), qint64(402));
+
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 300, 32, 32, 64, spacing, 2, true);
+        QVERIFY(result.clamped);
+        QVERIFY(!result.overflowed);
+        QCOMPARE(result.hiddenRecent, 3);
+        QCOMPARE(result.hiddenTemporary, 0);
+        QCOMPARE(countKind(result.entries, QStringLiteral("recent")), 0);
+        QCOMPARE(countKind(result.entries, QStringLiteral("pinned")), 2);
+
+        const DockLayoutMetrics visible = planDockLayout(result.entries, 2, true);
+        QCOMPARE(visible.dividerCount, 1);
+        QCOMPARE(visible.lengthFor(32, spacing), qint64(233));
+    }
+
+    void overflowReservesACellEvenWhenItCannotFit()
+    {
+        // Ten pins and one running group: the non-droppable content fits in
+        // 620 px but the overflow cell does not. The hidden group must still
+        // have a cell (reachable through the app region's scroll path) and the
+        // result must report the error instead of silently dropping it.
+        const DockLayoutSpacing spacing{14, 22, 1, 16};
+        const QVariantList entries = makeOverflowEntries(10, 1, 0, 0);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 620, 32, 32, 64, spacing, 2, true);
+        QVERIFY(result.clamped);
+        QVERIFY(result.overflowed);
+        QCOMPARE(result.hiddenTemporary, 1);
+        QCOMPARE(result.overflowShown, 1);
+        QCOMPARE(countKind(result.entries, QStringLiteral("overflow")), 1);
+        QCOMPARE(countKind(result.entries, QStringLiteral("temporary")), 0);
+    }
+
     // -- overflow clamp (T-10 section 5.1) --------------------------------
 
     void overflowFitsLeavesTheLayoutAlone()

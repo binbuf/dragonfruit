@@ -473,131 +473,171 @@ static DockOverflowResult buildOverflowResult(const QVariantList &entries, int k
                                               int keptRecent, bool showOverflow,
                                               DockOverflowResult result);
 
+qint64 DockLayoutMetrics::lengthFor(int iconSize, const DockLayoutSpacing &spacing) const
+{
+    if (itemCount() <= 0)
+        return 0;
+    return qint64(iconCount) * iconSize
+         + qint64(dividerCount) * spacing.dividerWidth
+         + qint64(iconGapCount) * spacing.gap
+         + qint64(dividerGapCount) * spacing.dividerGap
+         + qint64(paddingCount) * spacing.paddingAlong;
+}
+
+DockLayoutMetrics planDockLayout(const QVariantList &entries, int fixedCount,
+                                 bool minimizedVisible)
+{
+    DockLayoutMetrics metrics;
+    metrics.regions = planDockRegions(entries, fixedCount, minimizedVisible);
+    metrics.iconCount = metrics.regions.pinned + metrics.regions.tail
+                      + metrics.regions.minimized + metrics.regions.fixed;
+    metrics.dividerCount = metrics.regions.dividerCount();
+    const int items = metrics.itemCount();
+    if (items <= 0)
+        return metrics;
+
+    // The plate's along-axis padding is present only when there is content.
+    metrics.paddingCount = 2;
+    const int gaps = items - 1;
+    // A divider is always internal (the fixed tail follows the last app
+    // region), so both of its adjacent gaps use `dividerGap`. Collapsed
+    // regions remove the divider and its two gaps together.
+    metrics.dividerGapCount = qMin(gaps, 2 * metrics.dividerCount);
+    metrics.iconGapCount = gaps - metrics.dividerGapCount;
+    return metrics;
+}
+
 DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableLength,
                                      int requestedIconSize, int iconMin, int iconMax,
                                      int gap, int dividerWidth, int fixedCount,
                                      bool minimizedVisible)
 {
+    return applyDockOverflow(entries, availableLength, requestedIconSize, iconMin,
+                             iconMax, DockLayoutSpacing{gap, gap, dividerWidth, 0},
+                             fixedCount, minimizedVisible);
+}
+
+DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableLength,
+                                     int requestedIconSize, int iconMin, int iconMax,
+                                     const DockLayoutSpacing &spacing, int fixedCount,
+                                     bool minimizedVisible)
+{
     DockOverflowResult result;
     result.entries = entries;
     result.iconSize = qBound(iconMin, requestedIconSize, iconMax);
+    const int requested = result.iconSize;
+    if (availableLength <= 0 || result.iconSize <= 0)
+        return result;
 
-    int pinned = 0;
+    const auto lengthAt = [&spacing](const DockLayoutMetrics &layout, int icon) {
+        return layout.lengthFor(icon, spacing);
+    };
+    const auto metricsFor = [fixedCount, minimizedVisible](const QVariantList &list) {
+        return planDockLayout(list, fixedCount, minimizedVisible);
+    };
+
+    // The full content fits at the requested size: nothing is hidden.
+    const DockLayoutMetrics full = metricsFor(entries);
+    if (full.itemCount() <= 0)
+        return result;
+    if (lengthAt(full, requested) <= availableLength) {
+        result.iconSize = requested;
+        return result;
+    }
+
+    // The largest icon in the token range whose whole content fits. The
+    // content length is linear in the icon size, so one division is exact.
+    int icon = iconMin;
+    if (full.iconCount > 0) {
+        const qint64 fit = (availableLength - lengthAt(full, 0)) / full.iconCount;
+        icon = int(qBound(qint64(iconMin), fit, qint64(requested)));
+    }
+    if (lengthAt(full, icon) <= availableLength) {
+        result.iconSize = icon;
+        result.clamped = icon < requested;
+        return result;
+    }
+
+    // Even at the minimum the full set overflows. Count only the entries the
+    // renderer actually shows: pinned, running/recent/overflow, minimized
+    // (when visible), and the fixed tail. Unknown kinds are not rendered.
     int temporary = 0;
     int recent = 0;
-    int minimized = 0;
-    int other = 0;
-    for (int i = 0; i < entries.size(); ++i) {
-        const QString kind = entries.at(i).toMap().value(QStringLiteral("kind")).toString();
-        if (kind == QLatin1String("pinned"))
-            ++pinned;
-        else if (kind == QLatin1String("temporary"))
+    for (const QVariant &value : entries) {
+        const QString kind = value.toMap().value(QStringLiteral("kind")).toString();
+        if (kind == QLatin1String("temporary"))
             ++temporary;
         else if (kind == QLatin1String("recent"))
             ++recent;
-        else if (kind == QLatin1String("minimized"))
-            ++minimized;
-        else
-            ++other;
     }
-    if (!minimizedVisible)
-        minimized = 0;
 
-    // Every region boundary contributes a divider item (T-14.7v): the pinned |
-    // temporary/recent rule, the app | minimized rule, and the minimized |
-    // stacks/Trash rule. The fixed tail is the two fixed entries.
-    const int dividerCount =
-        planDockRegions(entries, fixedCount, minimizedVisible).dividerCount();
+    result.iconSize = iconMin;
+    result.clamped = true;
 
-    // The dividers plus the two fixed entries are never droppable; pinned and
-    // minimized are never dropped either.
-    const int nonDroppable = pinned + fixedCount + minimized + other + dividerCount;
-    const int droppable = temporary + recent;
-    const int count = nonDroppable + droppable;
-    if (availableLength <= 0 || count <= 1 || result.iconSize <= 0)
-        return result;
-
-    // Icons are `icon` wide and dividers `dividerWidth`; the gaps between
-    // adjacent items are `gap`. Every divider is internal (the fixed tail
-    // always follows it) so it contributes two of the gaps at most; a Dock
-    // whose regions collapse may have fewer. `n - 1` gaps are always charged.
-    const auto totalFor = [&](int icon, int n) -> qint64 {
-        if (n <= 0)
-            return 0;
-        if (n <= dividerCount)
-            return qint64(n) * dividerWidth;
-        return qint64(n - dividerCount) * icon + qint64(dividerCount) * dividerWidth
-               + qint64(n - 1) * gap;
+    // Build a candidate visible set and evaluate its *own* region boundaries.
+    // A region that disappears frees its divider and both of its gaps; keeping
+    // the full-set boundary count would make the fit disagree with the plate.
+    const auto candidateFor = [&](int keptTemporary, int keptRecent,
+                                  bool showOverflow) {
+        DockOverflowResult candidate;
+        candidate.entries = entries;
+        candidate.iconSize = iconMin;
+        candidate.clamped = true;
+        candidate = buildOverflowResult(entries, keptTemporary, keptRecent,
+                                        showOverflow, candidate);
+        candidate.hiddenTemporary = temporary - keptTemporary;
+        candidate.hiddenRecent = recent - keptRecent;
+        candidate.overflowShown = showOverflow ? candidate.hiddenTemporary : 0;
+        return candidate;
+    };
+    const auto fits = [&](const DockOverflowResult &candidate) {
+        return lengthAt(metricsFor(candidate.entries), iconMin) <= availableLength;
     };
 
-    int icon = result.iconSize;
-    if (totalFor(icon, count) > availableLength) {
-        // The largest icon in the token range whose whole content fits.
-        const int fit = dividerCount >= count
-            ? iconMin
-            : int((availableLength - qint64(dividerCount) * dividerWidth
-                   - qint64(count - 1) * gap) / (count - dividerCount));
-        icon = qBound(iconMin, fit, result.iconSize);
+    // Recents are suggestions and the least important: keep every running
+    // group visible and silently drop as many recents as needed. No overflow
+    // affordance is required because no live group is folded away.
+    for (int keptRecent = recent; keptRecent >= 0; --keptRecent) {
+        const DockOverflowResult candidate = candidateFor(temporary, keptRecent, false);
+        if (fits(candidate)) {
+            result = candidate;
+            return result;
+        }
     }
-    // The whole content fits at the clamped size: nothing is hidden.
-    if (totalFor(icon, count) <= availableLength) {
-        result.iconSize = icon;
-        result.clamped = icon < qBound(iconMin, requestedIconSize, iconMax);
+
+    // Some running groups must fold. Reserve one terminal overflow cell and
+    // keep as many groups visible as fit; recents are not kept while groups
+    // are hidden. The first fitting candidate keeps the most groups.
+    if (temporary > 0) {
+        for (int keptTemporary = temporary - 1; keptTemporary >= 0; --keptTemporary) {
+            const DockOverflowResult candidate = candidateFor(keptTemporary, 0, true);
+            if (fits(candidate)) {
+                result = candidate;
+                return result;
+            }
+        }
+        // Even the cell does not fit beside the non-droppable content. Keep it
+        // anyway so hidden groups remain reachable through the app region's
+        // scroll path, and report the error instead of dropping them.
+        result = candidateFor(0, 0, true);
+        result.overflowed = true;
         return result;
     }
 
-    // Even at the minimum the full set overflows. The largest number of
-    // entries that still fits becomes the budget for the visible set; the rest
-    // of the running groups fold into one terminal overflow cell. Pinned,
-    // minimized, fixed, and the divider are never dropped, so the budget below
-    // them is the error state the caller warns about.
-    icon = iconMin;
-    int maxVisible = count;
-    while (maxVisible > 0 && totalFor(iconMin, maxVisible) > availableLength)
-        --maxVisible;
-
-    result.iconSize = icon;
-
-    if (maxVisible < nonDroppable) {
-        // Not even the non-droppable content fits: fall back to the legacy
-        // clamp, hiding every droppable entry and reporting the error.
-        result.hiddenTemporary = temporary;
-        result.hiddenRecent = recent;
-        result.overflowed = true;
-        result.clamped = true;
-        return buildOverflowResult(entries, 0, 0, false, result);
-    }
-
-    const int capacity = maxVisible - nonDroppable;
-    // Recents are the least important: keep as many temporary running groups
-    // as fit first, then fill any remaining capacity with recents.
-    int keptTemporary = qMin(temporary, capacity);
-    int keptRecent = qMin(recent, capacity - keptTemporary);
-    int hiddenTemporary = temporary - keptTemporary;
-    int hiddenRecent = recent - keptRecent;
-
-    // A hidden running group becomes reachable through one overflow cell. The
-    // cell consumes one visible slot, so when groups are hidden and there is
-    // room for a cell, fold one more visible group in to make room. With no
-    // room left for even the cell, fall back to dropping silently (below).
-    bool showOverflow = false;
-    if (hiddenTemporary >= 1 && capacity >= 1) {
-        // `keptRecent` is necessarily 0 here (a hidden temporary means the
-        // capacity was exhausted by temporaries), so this always frees a
-        // temporary slot rather than a recent one.
-        if (keptTemporary > 0) {
-            --keptTemporary;
-            ++hiddenTemporary;
+    // No running groups to fold: drop only as many recents as needed.
+    for (int keptRecent = recent - 1; keptRecent >= 0; --keptRecent) {
+        const DockOverflowResult candidate = candidateFor(0, keptRecent, false);
+        if (fits(candidate)) {
+            result = candidate;
+            return result;
         }
-        showOverflow = hiddenTemporary >= 1;
     }
 
-    result.hiddenTemporary = hiddenTemporary;
-    result.hiddenRecent = hiddenRecent;
-    result.overflowShown = showOverflow ? hiddenTemporary : 0;
-    result.overflowed = false;
-    result.clamped = true;
-    return buildOverflowResult(entries, keptTemporary, keptRecent, showOverflow, result);
+    // Non-droppable content still exceeds the axis at the minimum size. Keep
+    // every entry and report the error; the caller warns and the Dock keeps
+    // its reachable overflow affordance for a later scroll path.
+    result.overflowed = true;
+    return result;
 }
 
 // Assemble the visible entry list from the kept temporary/recent counts: drop
