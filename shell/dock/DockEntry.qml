@@ -171,6 +171,12 @@ Item {
     // The artwork is inset from the indicator edge so the dot has room.
     readonly property real artworkX: indicatorEdge === "left" ? indicatorSpace : 0
     readonly property real artworkY: indicatorEdge === "bottom" ? 0 : 0
+    // The artwork's painted top edge, including the app badge that floats
+    // partly outside the top-right corner (docs/dock.md §4). The Dock's hover
+    // label clears this extent so the badge never reaches the capsule.
+    readonly property real artworkTop:
+        artworkY - (showAppBadge
+                    ? appBadgeSize * Theme.controls.dock.appBadge.outsideRatio : 0)
 
     // Scale only the artwork on press so the indicator stays put; the
     // design-system pressed state (motion.hover).

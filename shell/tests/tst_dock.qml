@@ -21,6 +21,11 @@ Item {
         Component { id: entryComponent; DockEntry { } }
         Component { id: glyphComponent; DockGlyph { } }
         Component { id: backdropComponent; Rectangle { } }
+        Component { id: chooserPopoverComponent; DockWindowChooser { } }
+        Component { id: stackPopoverComponent; DockStackPopover { } }
+        Component { id: pickerPopoverComponent; DockAppPicker { } }
+        Component { id: overflowPopoverComponent; DockOverflowPopover { } }
+        Component { id: trashPopoverComponent; DockTrashEmptyPopover { } }
 
         SignalSpy { id: activatedSpy; signalName: "entryActivated" }
         SignalSpy { id: menuSpy; signalName: "entryContextMenuRequested" }
@@ -5152,6 +5157,32 @@ Item {
             compare(dock.chooserOpen, false);
         }
 
+        // Finding 10: every Dock popover retires input at logical close, not
+        // when its opacity fade ends. A closing popover must not stay enabled
+        // in the same scene that receives input for the popover replacing it.
+        function test_popovers_retire_input_at_logical_close_data() {
+            return [
+                { tag: "chooser", component: chooserPopoverComponent },
+                { tag: "stack", component: stackPopoverComponent },
+                { tag: "picker", component: pickerPopoverComponent },
+                { tag: "overflow", component: overflowPopoverComponent },
+                { tag: "trash", component: trashPopoverComponent }
+            ];
+        }
+
+        function test_popovers_retire_input_at_logical_close(data) {
+            var popover = make(data.component, {});
+            compare(popover.open, false);
+            compare(popover.enabled, false,
+                    "a closed popover is not interactive");
+            popover.open = true;
+            waitForRendering(stage);
+            compare(popover.enabled, true);
+            popover.open = false;
+            compare(popover.enabled, false,
+                    "logical close disables input before the fade finishes");
+        }
+
         function test_chooser_anchor_survives_a_delegate_rebuild() {
             var dock = hoverFixtureDock({
                 entries: [ multiWindow("files", "Files", manyWindows(2)) ]
@@ -7628,6 +7659,23 @@ Item {
             compare(dock.tooltipOpen, false);
         }
 
+        // Finding 10: the name label is pointer feedback. Beginning keyboard
+        // navigation must close an already-visible label instead of leaving it
+        // over a tile while the focus ring moves.
+        function test_keyboard_navigation_closes_the_visible_tooltip() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            tryCompare(dock, "tooltipOpen", true);
+            dock.beginKeyboardNavigation();
+            compare(dock.tooltipOpen, false,
+                    "keyboard entry dismisses the name label");
+            compare(dock.keyboardFocused, true);
+        }
+
         function test_tooltip_state_text_for_windows_folder_and_trash() {
             var withWindows = { id: "a", appId: "a", name: "Safari", kind: "pinned",
                                 running: true, pinned: true, desktopId: "a.desktop",
@@ -7675,6 +7723,85 @@ Item {
                          dock.plateRect.y - Theme.controls.tooltip.offset, 0.501);
             verify(tooltip.y + tooltip.height <= entry.y + 0.5,
                    "the default peak still leaves the label above the artwork");
+        }
+
+        // Finding 9: at maximum magnification the artwork rises above the
+        // plate, so a plate-anchored label would cover the icon. The label
+        // must clear the union of the plate and the current artwork.
+        function test_tooltip_clears_artwork_at_maximum_magnification() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, iconSize: 60, magnification: 1.0,
+                entries: [ app("a", "Safari", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            dock.pointerAlong = dock._baseline.centers[0];
+            dock.smoothPointerAlong = dock.pointerAlong;
+            tryCompare(dock, "magnifying", true);
+            waitForMagnify();
+            var tooltip = findChild(dock, "dockTooltip");
+            tryCompare(tooltip, "visible", true);
+            verify(entry.iconSize > dock.iconSize * 1.9,
+                   "the tile reaches the maximum magnification: " + entry.iconSize);
+            verify(entry.y < dock.plateRect.y,
+                   "the magnified artwork rises above the plate");
+            fuzzyCompare(tooltip.y + tooltip.height,
+                         entry.y - Theme.controls.tooltip.offset, 0.501);
+            verify(tooltip.y + tooltip.height <= entry.y + 0.5,
+                   "the label sits entirely above the artwork");
+        }
+
+        // An app badge floats above the tile's top-right corner. The label
+        // must clear that painted overhang too, not just the artwork box.
+        function test_tooltip_clears_a_badge_above_the_artwork() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, iconSize: 60, magnification: 1.0,
+                entries: [ app("a", "Safari", true, { badge: 3 }) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            dock.pointerAlong = dock._baseline.centers[0];
+            dock.smoothPointerAlong = dock.pointerAlong;
+            tryCompare(dock, "magnifying", true);
+            waitForMagnify();
+            var tooltip = findChild(dock, "dockTooltip");
+            tryCompare(tooltip, "visible", true);
+            var paintedTop = entry.y + entry.artworkTop;
+            verify(paintedTop < entry.y,
+                   "the app badge rises above the artwork box");
+            fuzzyCompare(tooltip.y + tooltip.height,
+                         paintedTop - Theme.controls.tooltip.offset,
+                         0.501);
+        }
+
+        // When the output work area leaves no room above the magnified tile,
+        // the label moves beside the tile instead of over its artwork.
+        function test_tooltip_moves_beside_the_tile_when_above_has_no_room() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, iconSize: 60, magnification: 1.0,
+                popoverHeadroom: 320, outputHeight: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            dock.pointerAlong = dock._baseline.centers[0];
+            dock.smoothPointerAlong = dock.pointerAlong;
+            tryCompare(dock, "magnifying", true);
+            waitForMagnify();
+            var tooltip = findChild(dock, "dockTooltip");
+            tryCompare(tooltip, "visible", true);
+            compare(dock.tooltipPlacement === "left"
+                    || dock.tooltipPlacement === "right", true,
+                    "the label moves beside the tile");
+            if (dock.tooltipPlacement === "left") {
+                verify(tooltip.x + tooltip.width
+                       <= entry.x - Theme.controls.tooltip.offset + 0.5,
+                       "the side label clears the tile's artwork");
+            } else {
+                verify(tooltip.x >= entry.x + entry.width
+                       + Theme.controls.tooltip.offset - 0.5,
+                       "the side label clears the tile's artwork");
+            }
         }
 
         // The controlled reference capsule: 33 pt tall, pill radius, 8 pt

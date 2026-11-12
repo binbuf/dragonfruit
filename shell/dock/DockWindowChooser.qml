@@ -369,6 +369,11 @@ FocusScope {
                              rowsContent.implicitWidth + 2 * root.padding),
                     root.availableWidth)
     height: Math.min(root.chromeHeight + root.listHeight, root.availableHeight)
+    // Logical close retires input immediately; the opacity/scale fade below
+    // only finishes the visual transition (reliability §10). A closing popover
+    // must not stay enabled in the same scene that receives input for the one
+    // replacing it.
+    enabled: root.open
     visible: opacity > 0
     scale: root.open ? 1.0 : 0.97
     transformOrigin: Item.Bottom

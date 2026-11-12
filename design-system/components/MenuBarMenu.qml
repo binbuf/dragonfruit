@@ -496,13 +496,25 @@ Item {
                 event.accepted = true;
                 break;
             case Qt.Key_Home:
-                root.highlightedIndex = -1;
-                root.moveHighlight(1);
+                // Home/End act on the active level: the open submenu when
+                // there is one, otherwise the parent menu (reliability §10).
+                if (root.openSubmenuIndex >= 0) {
+                    root.submenuHighlightedIndex = -1;
+                    root.moveSubmenuHighlight(1);
+                } else {
+                    root.highlightedIndex = -1;
+                    root.moveHighlight(1);
+                }
                 event.accepted = true;
                 break;
             case Qt.Key_End:
-                root.highlightedIndex = root.entries.length;
-                root.moveHighlight(-1);
+                if (root.openSubmenuIndex >= 0) {
+                    root.submenuHighlightedIndex = root.submenuEntries.length;
+                    root.moveSubmenuHighlight(-1);
+                } else {
+                    root.highlightedIndex = root.entries.length;
+                    root.moveHighlight(-1);
+                }
                 event.accepted = true;
                 break;
             case Qt.Key_Return:

@@ -1097,6 +1097,64 @@ TestCase {
         compare(cm.open, false);
     }
 
+    // Finding 10: Home/End must move the active level. Moving the parent while
+    // a submenu is open left the child's selection on its previous row.
+    function test_context_menu_home_and_end_act_on_the_open_submenu() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { id: "alpha", label: "Alpha" },
+                { id: "options", label: "Options", type: "submenu",
+                  submenu: [ { id: "one", label: "One" },
+                             { id: "two", label: "Two" },
+                             { id: "three", label: "Three" } ] },
+                { id: "zulu", label: "Zulu" }
+            ]
+        });
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        cm.openSubmenu(1);
+        compare(cm.openSubmenuIndex, 1);
+        compare(cm.highlightedIndex, 1);
+        compare(cm.submenuHighlightedIndex, 0);
+        keyClick(Qt.Key_End);
+        compare(cm.openSubmenuIndex, 1, "the submenu stays open");
+        compare(cm.highlightedIndex, 1, "the parent highlight does not move");
+        compare(cm.submenuHighlightedIndex, 2, "End selects the last child");
+        keyClick(Qt.Key_Home);
+        compare(cm.openSubmenuIndex, 1);
+        compare(cm.highlightedIndex, 1);
+        compare(cm.submenuHighlightedIndex, 0, "Home selects the first child");
+    }
+
+    // Finding 10: type-ahead follows the active menu level, like the menu bar.
+    function test_context_menu_type_ahead_targets_the_active_level() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { id: "open", label: "Open" },
+                { id: "options", label: "Options", type: "submenu",
+                  submenu: [ { id: "text", label: "Text Editor" },
+                             { id: "image", label: "Image Viewer" } ] },
+                { id: "quit", label: "Quit" }
+            ]
+        });
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        cm.openSubmenu(1);
+        cm.typeAhead("im");
+        compare(cm.openSubmenuIndex, 1);
+        compare(cm.highlightedIndex, 1, "the parent stays on the submenu row");
+        compare(cm.submenuHighlightedIndex, 1, "type-ahead selects a child");
+        // A printable key reaches the same active level through the handler.
+        keyClick(Qt.Key_T);
+        compare(cm.submenuHighlightedIndex, 0,
+                "the key handler drives type-ahead on the submenu");
+        // With the submenu closed, type-ahead searches the parent rows.
+        keyClick(Qt.Key_Escape);
+        compare(cm.openSubmenuIndex, -1);
+        cm.typeAhead("q");
+        compare(cm.highlightedIndex, 2);
+    }
+
     function test_context_menu_content_rect_covers_submenu() {
         var cm = make(contextMenuComponent, {
             model: [
@@ -1428,6 +1486,34 @@ TestCase {
         compare(m.open, true);
         keyClick(Qt.Key_Escape);
         compare(m.open, false);
+    }
+
+    // Finding 10: the menu bar shares the same active-level Home/End rule as
+    // the context menu.
+    function test_menu_home_and_end_act_on_the_open_submenu() {
+        var m = make(menuComponent, {
+            title: "File",
+            model: [
+                { label: "Alpha" },
+                { label: "Options", type: "submenu",
+                  submenu: [ { label: "One" }, { label: "Two" },
+                             { label: "Three" } ] },
+                { label: "Zulu" }
+            ]
+        });
+        m.openMenu();
+        waitForRendering(stage);
+        m.openSubmenu(1);
+        compare(m.openSubmenuIndex, 1);
+        compare(m.highlightedIndex, 1);
+        keyClick(Qt.Key_End);
+        compare(m.openSubmenuIndex, 1, "the submenu stays open");
+        compare(m.highlightedIndex, 1, "the parent highlight does not move");
+        compare(m.submenuHighlightedIndex, 2, "End selects the last child");
+        keyClick(Qt.Key_Home);
+        compare(m.openSubmenuIndex, 1);
+        compare(m.highlightedIndex, 1);
+        compare(m.submenuHighlightedIndex, 0, "Home selects the first child");
     }
 
     function test_menu_content_rect_covers_submenu() {
