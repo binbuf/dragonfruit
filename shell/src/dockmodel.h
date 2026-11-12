@@ -201,6 +201,41 @@ struct DockRegionPlan {
 DockRegionPlan planDockRegions(const QVariantList &entries, int fixedCount,
                                bool minimizedVisible);
 
+// The along-axis spacing tokens the Dock renders with. Kept separate from the
+// entry model so the fit calculation and the QML plate use one rule: icons are
+// `iconSize`, dividers `dividerWidth`, an icon pair `gap`, either side of a
+// divider `dividerGap`, and both plate ends `paddingAlong`.
+struct DockLayoutSpacing {
+    int gap = 0;
+    int dividerGap = 0;
+    int dividerWidth = 1;
+    int paddingAlong = 0;
+};
+
+// The pure along-axis layout of a Dock entry list: the region plan plus the
+// exact number of icons, dividers, icon gaps, divider gaps, and end paddings
+// the QML renderer will lay out. `lengthFor` is the authoritative content
+// length used by both the overflow fit and the rendered plate (T-14.7v).
+struct DockLayoutMetrics {
+    DockRegionPlan regions;
+    int iconCount = 0;
+    int dividerCount = 0;
+    int iconGapCount = 0;
+    int dividerGapCount = 0;
+    int paddingCount = 0;
+
+    int itemCount() const { return iconCount + dividerCount; }
+    qint64 lengthFor(int iconSize, const DockLayoutSpacing &spacing) const;
+};
+
+// Count the exact rendered layout for `entries` plus the separately supplied
+// fixed tail. A divider is internal, so every boundary contributes two
+// `dividerGap`s; all other adjacent icon pairs contribute one `gap`. The
+// plate adds `paddingAlong` at each end when it has any content. Pure and
+// unit-tested (tst_dockcore).
+DockLayoutMetrics planDockLayout(const QVariantList &entries, int fixedCount,
+                                 bool minimizedVisible);
+
 // The T-10 section 5.1 overflow clamp, revisited by T-14.7q. A Dock wider
 // than its output is an error state: `dock.size` is clamped so the content
 // fits, and when even the minimum icon cannot fit everything, running groups
@@ -211,9 +246,9 @@ DockRegionPlan planDockRegions(const QVariantList &entries, int fixedCount,
 // (suggestions, not running groups) are still dropped silently, and pinned,
 // minimized, and fixed entries are never dropped. The icon-size clamp remains
 // the outer fallback when even one overflow cell cannot fit. `fixedCount` is
-// the number of permanent non-app entries besides the divider (the Downloads
-// stack and the Trash); the divider is always counted. `minimizedVisible` is
-// false when `dock.minimizeIntoTileIcon` hides the minimized entries.
+// the actual fixed tail (the Downloads stack, every pinned folder, and the
+// Trash); the divider is counted from the regions that survive. `minimizedVisible`
+// is false when `dock.minimizeIntoTileIcon` hides the minimized entries.
 struct DockOverflowResult {
     QVariantList entries; // `entries`, overflow removable entries replaced by
                           // the terminal overflow entry when one is present
@@ -231,6 +266,18 @@ struct DockOverflowResult {
 DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableLength,
                                      int requestedIconSize, int iconMin, int iconMax,
                                      int gap, int dividerWidth, int fixedCount = 2,
+                                     bool minimizedVisible = true);
+
+// The production overload: fit against the same divider gaps and end padding
+// the QML plate renders. `fixedCount` is the actual fixed tail (Downloads,
+// every pinned folder, and Trash), not a constant. When live running groups
+// must be folded, an overflow cell is reserved even if that means reporting
+// `overflowed` for a later scroll path; hidden groups are never silently
+// dropped.
+DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableLength,
+                                     int requestedIconSize, int iconMin, int iconMax,
+                                     const DockLayoutSpacing &spacing,
+                                     int fixedCount = 2,
                                      bool minimizedVisible = true);
 
 // T-10 section 8.1 bounce clocks. The measured reference launch lift is one

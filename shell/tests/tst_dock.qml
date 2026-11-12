@@ -1525,6 +1525,28 @@ Item {
                          left._baseline.total + 2 * left.paddingAlong, 0.001);
         }
 
+        function test_content_length_counts_divider_gaps_and_pinned_folders() {
+            // One app + Downloads + two pinned folders + Trash: five icons,
+            // one divider, three icon gaps, two divider gaps, and both end
+            // paddings. This is the same rule the shell's overflow planner
+            // uses, so a narrow axis cannot fit in C++ while the plate
+            // overflows in QML.
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                entries: [ app("files", "Files", true) ],
+                folderPins: [
+                    { id: "folder:/tmp/a", path: "/tmp/a", name: "A" },
+                    { id: "folder:/tmp/b", path: "/tmp/b", name: "B" }
+                ]
+            });
+            compare(dock.fixedEntryCount, 4);
+            var expected = 5 * dock.iconSize + dock.dividerWidth
+                         + 3 * dock.gap + 2 * dock.dividerGap
+                         + 2 * dock.paddingAlong;
+            fuzzyCompare(dock.contentLength, expected, 0.001);
+            fuzzyCompare(dock.plateRect.w, dock.contentLength, 0.001);
+        }
+
         // T-14.7u: the resting plate is one icon plus two paddings; the running
         // indicator lives inside the anchored-edge padding rather than in a band
         // added on top of it.

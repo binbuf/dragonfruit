@@ -1206,6 +1206,11 @@ Rectangle {
         out.push(trashEntry);
         return out;
     }
+    // The fixed tail the overflow planner must reserve, including every
+    // user-pinned folder. The shell reads this instead of assuming the two
+    // permanent members, so the fit calculation and the rendered plate agree
+    // (T-14.7v).
+    readonly property int fixedEntryCount: fixedEntries.length
     // The resize-handle divider (T-10 section 5): the boundary between the app
     // region and the right (minimized/stacks/Trash) region. It is the only
     // divider that carries the drag handle. The pinned | temporary/recent rule
@@ -1380,6 +1385,12 @@ Rectangle {
         }
         return { sizes: sizes, positions: positions, centers: centers, total: total };
     }
+
+    // The authoritative along-axis length of the resting plate: the baseline
+    // content plus both end paddings. The shell's overflow planner uses the
+    // same rule (icons, dividers, per-boundary gaps, and end padding) so a
+    // narrow axis cannot "fit" in C++ while the rendered plate exceeds it.
+    readonly property real contentLength: _baseline.total + 2 * paddingAlong
 
     // Index of the icon item nearest the pointer (never the divider). The
     // anchor decision is made from the **raw** `pointerAlong`, so the filter

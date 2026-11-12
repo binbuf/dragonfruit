@@ -7995,14 +7995,20 @@ void ShellController::onAppIndexChanged(const QString &interests)
 // The T-10 section 5.1 overflow clamp: given the full entry list and the
 // output length along the Dock axis, bound the icon size to what fits and hide
 // overflow temporary/recent entries (recents first, then temporaries; pinned
-// are never dropped). The divider is always present and the stack/Trash are
-// the two fixed entries.
+// are never dropped). The fixed tail is the Downloads stack, every pinned
+// folder, and Trash; the QML renderer is the source of that count so the fit
+// and the plate cannot disagree (T-14.7v).
 DockOverflowResult ShellController::computeDockOverflow() const
 {
     if (!m_dockItem)
         return {};
-    const int gap = qRound(m_dockItem->property("gap").toReal());
-    const int dividerWidth = qRound(m_dockItem->property("dividerWidth").toReal());
+    const DockLayoutSpacing spacing{
+        qRound(m_dockItem->property("gap").toReal()),
+        qRound(m_dockItem->property("dividerGap").toReal()),
+        qRound(m_dockItem->property("dividerWidth").toReal()),
+        qRound(m_dockItem->property("paddingAlong").toReal()),
+    };
+    const int fixedCount = qMax(0, m_dockItem->property("fixedEntryCount").toInt());
     const int iconMin = qRound(m_dockItem->property("iconSizeMin").toReal());
     const int iconMax = qRound(m_dockItem->property("iconSizeMax").toReal());
     int available = m_dockPosition == ShellProtocol::DockPosition::Bottom
@@ -8013,7 +8019,7 @@ DockOverflowResult ShellController::computeDockOverflow() const
     if (m_dockOverflowFixture && m_dockOverflowFixtureWidth > 0)
         available = qMin(available, m_dockOverflowFixtureWidth);
     return applyDockOverflow(m_dockAllEntries, available, iconSizeForSize(m_dockConfig.size),
-                             iconMin, iconMax, gap, dividerWidth, 2,
+                             iconMin, iconMax, spacing, fixedCount,
                              !m_dockConfig.minimizeIntoTileIcon);
 }
 
