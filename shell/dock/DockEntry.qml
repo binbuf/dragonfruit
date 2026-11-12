@@ -93,6 +93,11 @@ Item {
     // to the inactive state and the accessible name says so; the artwork stays
     // present (the Dock is how a hidden app is found again).
     property bool hidden: false
+    // A quit is in flight and the compositor still reports the app
+    // (reliability §6). The tile stays visible and interactive with a
+    // restrained pending treatment until exit is confirmed, or until the
+    // request is cancelled by a refused close or an attention request.
+    property bool quitting: false
     // The app owns the focused window (T-14.7ac). macOS distinguishes the
     // active app's running dot from a merely running one; an entry that does
     // not carry the flag is treated as active so direct-model callers and
@@ -187,13 +192,14 @@ Item {
             return items;
         }
         var label = missing ? qsTr(", not found")
+                  : quitting ? qsTr(", quitting")
                   : launching ? qsTr(", launching")
                   : failed ? qsTr(", failed to launch")
                   : running ? qsTr(", running")
                               + (hidden ? " " + qsTr("(hidden)")
                                         : active ? " " + qsTr("(active)") : "")
                   : qsTr(", not running");
-        if (attention && !missing && !launching)
+        if (attention && !missing && !launching && !quitting)
             label += qsTr(", needs attention");
         if (badge > 0 && !isMinimized)
             label += qsTr(", %1 new").arg(badge);
@@ -226,9 +232,10 @@ Item {
         }
         var windows = entry.windowList !== undefined && entry.windowList !== null
                       ? entry.windowList.length : 0;
+        var pending = quitting ? qsTr(" — quitting") : "";
         if (windows > 1)
-            return name + qsTr(" — %1 windows").arg(windows);
-        return name;
+            return name + qsTr(" — %1 windows").arg(windows) + pending;
+        return name + pending;
     }
 
     // The state badge (failure/missing/Trash-unavailable) wins over every
@@ -464,7 +471,8 @@ Item {
         y: root.artworkY
         scale: root.pressedScale * root.pulseScale * root.liftScale
         transformOrigin: Item.Center
-        opacity: root.launching ? 0.6
+        opacity: root.quitting ? 0.6
+                 : root.launching ? 0.6
                  : root.missing ? 0.45
                  : root.trashUnavailable ? 0.4 : 1.0
 

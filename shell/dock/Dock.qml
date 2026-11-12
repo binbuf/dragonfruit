@@ -171,7 +171,9 @@ Rectangle {
     // `entries`, so the Repeater model — and every live delegate's hover and
     // press state — survives a bounce. Each value is
     // `{ phase: 0..1, attention: bool }` and, for a minimize reaction,
-    // `{ minimize: true, minimizePhase: 0..1 }` (T-14.7s).
+    // `{ minimize: true, minimizePhase: 0..1 }` (T-14.7s). A quit in flight
+    // adds `{ quitting: true }` so the tile stays visible with a restrained
+    // pending state until the compositor confirms exit (reliability §6).
     property var bouncePhases: ({})
 
     // Keyboard navigation (T-10 section 20). The shell sets
@@ -3068,8 +3070,7 @@ Rectangle {
             out.push({
                 type: "item", id: "quit", label: qsTr("Quit"),
                 action: "quit",
-                payload: { appId: e.appId, desktopId: e.desktopId,
-                           temporary: e.kind === "temporary" }
+                payload: { appId: e.appId, desktopId: e.desktopId }
             });
             out.push({
                 type: "item", id: "force_quit", label: qsTr("Force Quit"),
@@ -3077,8 +3078,7 @@ Rectangle {
                 enabled: caps.forceQuit,
                 disabledReason: caps.forceQuit
                     ? "" : qsTr("No safe process handle is available for this app."),
-                payload: { appId: e.appId, desktopId: e.desktopId,
-                           temporary: e.kind === "temporary" }
+                payload: { appId: e.appId, desktopId: e.desktopId }
             });
         } else if (e.missing !== true) {
             out.push({
@@ -3566,6 +3566,19 @@ Rectangle {
             return true;
         var info = bouncePhases ? bouncePhases[entry.id] : undefined;
         return info !== undefined && info.attention === true;
+    }
+
+    // The quit-in-flight pending state for an entry (reliability §6). The
+    // shell publishes it in `bouncePhases` so the tile stays visible without
+    // rebuilding the entry model; an entry-embedded `quitting` wins for direct
+    // model callers.
+    function entryQuitting(entry) {
+        if (!entry)
+            return false;
+        if (entry.quitting === true)
+            return true;
+        var info = bouncePhases ? bouncePhases[entry.id] : undefined;
+        return info !== undefined && info.quitting === true;
     }
 
     // The minimize-reaction phase for an entry (T-14.7s): the shell publishes
@@ -4338,6 +4351,7 @@ Rectangle {
             indicatorEdge: dock.indicatorEdge
             showIndicator: dock.showIndicators
             hidden: dock.isAppHidden(modelData.appId)
+            quitting: dock.entryQuitting(modelData)
             keyboardFocused: dock.keyboardFocused && modelData.id === dock.focusedItemId
             reorderHint: dock.reorderHintFor(modelData)
             externalDropTarget: dock.externalDragActive

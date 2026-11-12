@@ -357,19 +357,21 @@ opacity while the app is hidden. Per-app Show restores exactly the windows that
 app hid (or its minimized set when the tracked ids are gone), so it never
 touches another app's window. A manual minimize does not mark an app hidden.
 
-Quit closes every window through `df_toplevel.close`; for an unpinned app the
-temporary entry is removed from the next Dock build immediately (the pure
-`filterDockQuittingEntries`) instead of waiting for the compositor's close
-ghost. The mark clears when the app leaves the projection, and after an
-eight-second fallback if the app refuses to close, so an unsaved-changes prompt
-cannot hide the tile forever. Force Quit terminates only the exact instances the
-shell launched: the direct path records a pidfd-backed process handle while
-ownership is known (or a start-time-validated fallback on kernels without
-pidfd), so signalling never hits a recycled PID, while the managed path keeps
-the validated transient-unit name and stops it through an asynchronous
-`systemctl --user stop` whose exit status is observed. The row is advertised
-only while one of those identities is tracked; an app the shell did not launch
-disables it with a reason instead of silently degrading to the close request.
+Quit closes every window through `df_toplevel.close`. The tile (pinned or
+temporary) stays visible and interactive with a restrained pending state until
+the compositor projection confirms the app exited, because a quit can raise an
+unsaved-document prompt and removing the entry would take away the affordance
+during the user's decision. The pending state clears when the app leaves the
+projection, when it requests attention, or after an eight-second fallback; each
+request carries a generation so an older timeout cannot clear a newer one.
+Force Quit terminates only the exact instances the shell launched: the direct
+path records a pidfd-backed process handle while ownership is known (or a
+start-time-validated fallback on kernels without pidfd), so signalling never
+hits a recycled PID, while the managed path keeps the validated transient-unit
+name and stops it through an asynchronous `systemctl --user stop` whose exit
+status is observed. The row is advertised only while one of those identities is
+tracked; an app the shell did not launch disables it with a reason instead of
+silently degrading to the close request.
 The menu's Settings row opens `settings://pane/desktop-dock`, not a placeholder.
 See [ADR 0256](adr/0256-dock-lifecycle-menu-and-hidden-state.md).
 

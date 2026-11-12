@@ -534,10 +534,10 @@ private:
     // T236: Dock Quit / Force Quit. Quit asks the compositor to close every
     // window; Force Quit additionally terminates the exact process instances
     // the shell launched for `desktopId` (pidfd-backed handles) or stops the
-    // validated transient units it created. Both drop the temporary Dock entry
-    // immediately instead of waiting for the compositor's close ghost.
-    void quitDockApp(const QString &appId, const QString &desktopId, bool temporary);
-    void forceQuitDockApp(const QString &appId, const QString &desktopId, bool temporary);
+    // validated transient units it created. Both keep the entry visible with a
+    // pending state until the projection confirms exit (reliability §6).
+    void quitDockApp(const QString &appId, const QString &desktopId);
+    void forceQuitDockApp(const QString &appId, const QString &desktopId);
     void appendDockLaunchUnit(const QString &desktopId, const QString &unit);
     void appendDockLaunchProcess(const QString &desktopId, qint64 pid);
     // Drop handles whose process instance has exited so a stale identity never
@@ -1438,10 +1438,12 @@ private:
     // T236: apps whose windows the Hide verb minimized. The Dock menu reads
     // this to offer Show instead of Hide and the running dot dims while set.
     QSet<QString> m_hiddenApps;
-    // T236: apps whose quit is in flight. Their temporary Dock entry is
-    // removed immediately; the mark clears when the compositor retires the
-    // app or after the fallback timeout.
-    QSet<QString> m_quittingApps;
+    // T236: apps whose quit is in flight, keyed by request generation. The
+    // entry (and its minimized rows) stays visible with a restrained pending
+    // state until the compositor projection confirms exit; the mark also clears
+    // on attention or after the fallback timeout. The generation keeps an older
+    // timeout from clearing a newer request (reliability §6).
+    DockQuitRequests m_quittingApps;
     // T236: the stable termination identities the shell acquired while it
     // owned a launch, keyed by desktop id. Process handles are pidfd-backed
     // (or start-time validated) so Force Quit never signals a recycled PID;

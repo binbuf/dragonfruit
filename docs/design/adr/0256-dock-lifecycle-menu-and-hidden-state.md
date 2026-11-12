@@ -51,8 +51,9 @@ request: `df_toplevel` exposes per-window `close`, `minimize`, and `unminimize`.
 - `filterDockQuittingEntries` is pure and unit-tested; the pid kill remains a
   thin, non-testable OS seam. T243 owns the global Force Quit list, warning,
   and confirmation; this ADR only owns the Dock's row and its process seam.
-- An app that ignores a quit becomes visible again after the fallback window,
-  which is honest: the projection, not the request, is the truth.
+- An app that ignores a quit keeps its tile; the pending state clears after the
+  fallback window, which is honest: the projection, not the request, is the
+  truth.
 
 ## Amendment (2026-11) — stable Force Quit identity
 
@@ -73,3 +74,23 @@ assumptions:
   when neither identity is tracked, and dispatch revalidates before acting. An
   app the shell did not launch is no longer described as force-quittable when
   only a close request is possible.
+
+## Amendment (2026-11) — quit keeps the tile until exit
+
+The original decision removed an unpinned app's temporary entry immediately
+when Quit was requested, with an eight-second fallback that made it visible
+again. That optimistic removal hid the app's affordance exactly when a close
+could raise an unsaved-document prompt. The Dock reliability review §6 changed
+it:
+
+- **Quit is pending, not removal.** The tile (and its minimized rows) stays
+  visible and interactive with a restrained pending state until the compositor
+  projection confirms the app exited. The entry model is not rebuilt for the
+  pending state; it rides the per-entry phase map.
+- **The pending state clears on refusal or attention.** An attention request or
+  the eight-second fallback clears the pending state without removing the tile;
+  the projection remains the truth.
+- **Timeouts carry a request generation.** A newer quit request supersedes an
+  older one, so a stale fallback timeout cannot clear the newer pending state.
+- `filterDockQuittingEntries` is retired. The pending state is published through
+  the per-entry phase map, and `DockQuitRequests` owns the per-app generation.
