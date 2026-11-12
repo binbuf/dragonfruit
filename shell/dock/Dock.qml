@@ -1101,6 +1101,7 @@ Rectangle {
 
     function reveal() {
         revealTimer.stop();
+        revealDwellArmed = false;
         // A reveal supersedes a pending re-hide; without this, a hide timer
         // started before the reveal can fire and slide the Dock straight back
         // out.
@@ -1110,6 +1111,10 @@ Rectangle {
     }
     function hide() {
         hideTimer.stop();
+        // A new concealment starts a fresh dwell the next time the pointer
+        // enters the band, even if it never left it while hidden.
+        revealTimer.stop();
+        revealDwellArmed = false;
         if (autoHide && revealed)
             revealed = false;
     }
@@ -1131,6 +1136,24 @@ Rectangle {
 
     // The reveal delay lets a pointer passing over the edge continue without
     // summoning the Dock; a pointer that dwells reveals it (section 15).
+    // Dwell starts once on entering the band and keeps its original deadline
+    // while the pointer moves inside it, so edge travel cannot postpone the
+    // reveal. The Timer deadline is monotonic; moving within the band must not
+    // restart it.
+    property bool revealDwellArmed: false
+
+    function updateRevealDwell(px, py) {
+        if (!autoHide || revealed || !pointInEdgeBand(px, py)) {
+            revealTimer.stop();
+            revealDwellArmed = false;
+            return;
+        }
+        if (!revealDwellArmed) {
+            revealDwellArmed = true;
+            revealTimer.start();
+        }
+    }
+
     Timer {
         id: revealTimer
         interval: Theme.controls.dock.revealDelay
@@ -4997,14 +5020,9 @@ Rectangle {
             dock.pointerAlong = dock.axisIsX ? p.x : p.y;
             // While hidden the only hit area is the edge band, so a dwell
             // there reveals the Dock after the reveal delay (section 15).
-            if (dock.autoHide && !dock.revealed) {
-                if (dock.pointInEdgeBand(p.x, p.y))
-                    revealTimer.restart();
-                else
-                    revealTimer.stop();
-            } else {
-                revealTimer.stop();
-            }
+            // Moving inside the band keeps the running deadline; only a fresh
+            // entry starts it.
+            dock.updateRevealDwell(p.x, p.y);
             if (dock.autoHide && dock.revealed)
                 hideTimer.stop();
         }
@@ -5014,6 +5032,7 @@ Rectangle {
             } else {
                 dock.pointerAlong = -1;
                 revealTimer.stop();
+                revealDwellArmed = false;
                 dock.hideTooltip();
                 if (dock.chooserOpen && dock.chooserHoverOpened)
                     chooserCloseTimer.restart();
