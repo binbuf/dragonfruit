@@ -130,6 +130,33 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
                               const QHash<QString, QString> &launchStates,
                               const QStringList &recentIds = {});
 
+// What an app menu command can actually do for one entry. The
+// capability map travels with the entry so QML can disable an unavailable row
+// with a reason, and dispatch revalidates the same fields before acting. The
+// controller has no sticky-window/all-Spaces or app-assignment model yet
+// (T-04/T-05), login items are T-24, and the compositor exposes only the
+// unfiltered overview request, so those capabilities are false until the
+// backend lands. Pure and unit-tested (tst_dockcore).
+struct DockActionCapabilities {
+    bool assignThisDesktop = false;
+    bool assignAllDesktops = false;
+    bool assignNone = false;
+    bool openAtLogin = false;
+    bool keepInDock = false;
+    bool showAppWindows = false;
+    bool showOverview = true;
+
+    QVariantMap toVariantMap() const;
+};
+
+DockActionCapabilities dockActionCapabilities(const QVariantMap &entry);
+
+// Revalidate one menu action against the entry it would act on. `target`
+// distinguishes the three `assign_to` choices. Actions that are not
+// capability-gated return true. Pure and unit-tested (tst_dockcore).
+bool dockActionAvailable(const QVariantMap &entry, const QString &action,
+                         const QString &target = {});
+
 // Human-readable fallback name for an unresolved identity: the last
 // reverse-DNS segment, with any `.desktop` suffix removed.
 QString displayNameForIdentity(const QString &identity);

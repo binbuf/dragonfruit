@@ -745,6 +745,10 @@ private:
     // phases live in a separate map so a bounce never resets the Repeater
     // (T-14.7c).
     void rebuildDockEntries();
+    // The current Dock entry an action payload targets, or an empty
+    // map when the entry disappeared. Dispatch revalidates the same
+    // capabilities the menu published before acting.
+    QVariantMap dockEntryForAction(const QVariantMap &payload) const;
     // Rebuild the Add Application picker rows from the in-memory corpus and
     // the persisted pin set, and push them (plus the app-index availability
     // flag) onto the Dock (T-14.7e). `reloadCorpus` re-enumerates first when

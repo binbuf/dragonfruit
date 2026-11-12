@@ -723,6 +723,84 @@ private slots:
                  QStringLiteral("org.example.Terminal.desktop"));
     }
 
+    // Unavailable app-menu commands disable with a reason instead
+    // of running a handler that only logs pending work.
+    void actionCapabilitiesGateUnavailableAppMenuCommands()
+    {
+        const QVariantMap running{
+            {QStringLiteral("kind"), QStringLiteral("temporary")},
+            {QStringLiteral("appId"), QStringLiteral("org.example.Terminal")},
+            {QStringLiteral("desktopId"), QStringLiteral("org.example.Terminal.desktop")},
+            {QStringLiteral("running"), true},
+            {QStringLiteral("windows"), 1},
+        };
+        const DockActionCapabilities caps = dockActionCapabilities(running);
+        QVERIFY(caps.assignThisDesktop);
+        QVERIFY(!caps.assignAllDesktops);
+        QVERIFY(!caps.assignNone);
+        QVERIFY(!caps.openAtLogin);
+        QVERIFY(caps.keepInDock);
+        QVERIFY(!caps.showAppWindows);
+        QVERIFY(caps.showOverview);
+        QVERIFY(dockActionAvailable(running, QStringLiteral("keep_in_dock")));
+        QVERIFY(dockActionAvailable(running, QStringLiteral("assign_to"),
+                                    QStringLiteral("this")));
+        QVERIFY(!dockActionAvailable(running, QStringLiteral("assign_to"),
+                                     QStringLiteral("all")));
+        QVERIFY(!dockActionAvailable(running, QStringLiteral("assign_to"),
+                                     QStringLiteral("none")));
+        QVERIFY(!dockActionAvailable(running, QStringLiteral("open_at_login")));
+        QVERIFY(!dockActionAvailable(running, QStringLiteral("show_app_windows")));
+        QVERIFY(dockActionAvailable(running, QStringLiteral("show_overview")));
+
+        // An unresolved running app has no desktop id to persist, so Keep in
+        // Dock must not be offered as an enabled command.
+        QVariantMap unresolved = running;
+        unresolved.insert(QStringLiteral("desktopId"), QString());
+        QVERIFY(!dockActionCapabilities(unresolved).keepInDock);
+        QVERIFY(!dockActionAvailable(unresolved, QStringLiteral("keep_in_dock")));
+
+        // Assign to This Desktop moves live windows; an idle pin has none.
+        QVariantMap idle = running;
+        idle.insert(QStringLiteral("running"), false);
+        QVERIFY(!dockActionCapabilities(idle).assignThisDesktop);
+        QVERIFY(!dockActionAvailable(idle, QStringLiteral("assign_to"),
+                                     QStringLiteral("this")));
+    }
+
+    void mergePublishesActionCapabilitiesWithEachEntry()
+    {
+        DesktopEntryIndex index;
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("org.example.Terminal.desktop"), QStringLiteral("Terminal"),
+                      QStringLiteral("term")),
+        });
+        const QVariantList running{
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("term")},
+                        {QStringLiteral("appId"), QStringLiteral("org.example.Terminal")},
+                        {QStringLiteral("name"), QStringLiteral("Terminal")},
+                        {QStringLiteral("kind"), QStringLiteral("temporary")},
+                        {QStringLiteral("running"), true},
+                        {QStringLiteral("windows"), 1}},
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("unresolved")},
+                        {QStringLiteral("appId"), QStringLiteral("org.example.Unresolved")},
+                        {QStringLiteral("name"), QStringLiteral("Unresolved")},
+                        {QStringLiteral("kind"), QStringLiteral("temporary")},
+                        {QStringLiteral("running"), true},
+                        {QStringLiteral("windows"), 1}},
+        };
+        const QVariantList entries =
+            buildDockEntries({}, index, running, QHash<QString, QString>());
+        QCOMPARE(entries.size(), 2);
+        const QVariantMap resolvedCaps =
+            entries.at(0).toMap().value(QStringLiteral("capabilities")).toMap();
+        QCOMPARE(resolvedCaps.value(QStringLiteral("keepInDock")).toBool(), true);
+        QCOMPARE(resolvedCaps.value(QStringLiteral("assignThisDesktop")).toBool(), true);
+        const QVariantMap unresolvedCaps =
+            entries.at(1).toMap().value(QStringLiteral("capabilities")).toMap();
+        QCOMPARE(unresolvedCaps.value(QStringLiteral("keepInDock")).toBool(), false);
+    }
+
     // -- fixed-menu app open plan (T-09 follow-up) -----------------------
 
     void planAppOpenLaunchesWhenNotRunning()

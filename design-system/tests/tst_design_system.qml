@@ -1032,6 +1032,28 @@ TestCase {
         compare(triggeredSpy.count, 0);
     }
 
+    function test_context_menu_normalizes_disabled_reason() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { label: "Assign to All Desktops", enabled: false,
+                  disabledReason: "Not available yet." },
+                { label: "Options", type: "submenu",
+                  submenu: [{ label: "Open at Login", enabled: false,
+                              disabledReason: "Login items are not available." }] }
+            ]
+        });
+        // The shared normalization must carry the reason to MenuRow's
+        // accessibility description; it used to be dropped.
+        compare(cm.entries[0].enabled, false);
+        compare(cm.entries[0].disabledReason, "Not available yet.");
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        cm.openSubmenu(1);
+        compare(cm.submenuEntries[0].enabled, false);
+        compare(cm.submenuEntries[0].disabledReason,
+                "Login items are not available.");
+    }
+
     function test_context_menu_submenu_opens_and_activates() {
         var cm = make(contextMenuComponent, {
             model: [
