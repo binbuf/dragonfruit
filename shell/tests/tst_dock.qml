@@ -4341,6 +4341,177 @@ Item {
             compare(dock.chooserOpen, false);
         }
 
+        function test_chooser_keeps_its_row_order_across_a_focus_only_update() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B" },
+                    { windowId: "3", title: "C" }
+                ]) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            compare(chooser.windows[0].windowId, "1");
+            // The projection moves the newly focused B to the front. The open
+            // chooser keeps the order the user is looking at, but the focused
+            // marker follows the live projection.
+            dock.entries = [ multiWindow("files", "Files", [
+                { windowId: "2", title: "B", focused: true },
+                { windowId: "1", title: "A" },
+                { windowId: "3", title: "C" }
+            ]) ];
+            waitForRendering(stage);
+            chooser = findChild(dock, "windowChooser");
+            compare(chooser.windows[0].windowId, "1");
+            compare(chooser.windows[1].windowId, "2");
+            verify(chooser.windows[0].focused !== true);
+            compare(chooser.windows[1].focused, true);
+        }
+
+        function test_chooser_selection_follows_the_window_id_when_rows_shift() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B" },
+                    { windowId: "3", title: "C" }
+                ]) ]
+            });
+            windowSpy.target = dock;
+            windowSpy.clear();
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            chooser.moveSelectionTo(2);
+            compare(chooser.currentWindowId, "3");
+            // A closes; C slides from row 2 to row 1. Return must still
+            // activate C.
+            dock.entries = [ multiWindow("files", "Files", [
+                { windowId: "2", title: "B" },
+                { windowId: "3", title: "C", focused: true }
+            ]) ];
+            waitForRendering(stage);
+            chooser = findChild(dock, "windowChooser");
+            compare(chooser.currentWindowId, "3");
+            compare(chooser.currentIndex, 1);
+            chooser.activateCurrent();
+            compare(windowSpy.count, 1);
+            compare(windowSpy.signalArguments[0][0], "3");
+        }
+
+        function test_chooser_selection_moves_to_the_nearest_survivor() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B" },
+                    { windowId: "3", title: "C" }
+                ]) ]
+            });
+            windowSpy.target = dock;
+            windowSpy.clear();
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            chooser.moveSelectionTo(1);
+            compare(chooser.currentWindowId, "2");
+            // The selected B closes. Row 1 now holds C; the highlight and its
+            // accessible state move there rather than staying on a stale ID.
+            dock.entries = [ multiWindow("files", "Files", [
+                { windowId: "1", title: "A", focused: true },
+                { windowId: "3", title: "C" }
+            ]) ];
+            waitForRendering(stage);
+            chooser = findChild(dock, "windowChooser");
+            compare(chooser.currentWindowId, "3");
+            compare(chooser.currentIndex, 1);
+            chooser.activateCurrent();
+            compare(windowSpy.count, 1);
+            compare(windowSpy.signalArguments[0][0], "3");
+        }
+
+        function test_chooser_action_revalidates_the_window_before_dispatch() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B" }
+                ]) ]
+            });
+            windowSpy.target = dock;
+            windowCloseSpy.target = dock;
+            windowSpy.clear();
+            windowCloseSpy.clear();
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            // The target disappears between arming and dispatch. Neither
+            // activation nor close may fall through to the surviving row.
+            dock.entries = [ multiWindow("files", "Files", [
+                { windowId: "1", title: "A", focused: true }
+            ]) ];
+            waitForRendering(stage);
+            chooser.activateWindowById("2");
+            chooser.closeWindowById("2");
+            compare(windowSpy.count, 0);
+            compare(windowCloseSpy.count, 0);
+        }
+
+        function test_menu_selection_follows_the_window_id_across_a_reorder() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B" },
+                    { windowId: "3", title: "C" }
+                ]) ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            var menu = findChild(dock, "entryMenu");
+            menu.moveHighlight(1);
+            compare(menu.entries[menu.highlightedIndex].label, "B");
+            // B becomes focused and leads the projection. The menu highlight
+            // follows B to row 0 instead of staying on row 1 (C).
+            dock.entries = [ multiWindow("files", "Files", [
+                { windowId: "2", title: "B", focused: true },
+                { windowId: "1", title: "A" },
+                { windowId: "3", title: "C" }
+            ]) ];
+            waitForRendering(stage);
+            menu = findChild(dock, "entryMenu");
+            compare(menu.highlightedIndex, 0);
+            compare(menu.entries[menu.highlightedIndex].label, "B");
+            keyClick(Qt.Key_Return);
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "activate_window");
+            compare(menuActionSpy.signalArguments[0][1].windowId, "2");
+        }
+
+        function test_menu_selection_survives_a_hide_show_label_swap() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            var menu = findChild(dock, "entryMenu");
+            var hideIndex = menuLabels(menu).indexOf("Hide");
+            verify(hideIndex >= 0);
+            menu.highlightedIndex = hideIndex;
+            compare(menu.entries[menu.highlightedIndex].label, "Hide");
+            // The app becomes hidden. The row keeps one action identity even
+            // though its label and action swap, so the highlight stays there.
+            dock.hiddenApps = ["files"];
+            waitForRendering(stage);
+            menu = findChild(dock, "entryMenu");
+            compare(menu.entries[menu.highlightedIndex].label, "Show");
+        }
+
         function test_chooser_row_accessible_name_carries_state() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

@@ -21,6 +21,15 @@ Item {
     // The main-menu row whose submenu is open, -1 when none (section 13).
     property int openSubmenuIndex: -1
     property int submenuHighlightedIndex: -1
+    // The stable identities behind the three numeric selection properties.
+    // A live model update can insert, remove, or reorder rows; the key keeps
+    // the highlight on the same command instead of the same row number.
+    property string highlightedKey: ""
+    property string openSubmenuKey: ""
+    property string submenuHighlightedKey: ""
+    // The identity of a row that armed the submenu hover timer. A row that
+    // disappears before the timer fires must not open its replacement.
+    property string pendingHoverKey: ""
     property int preferredWidth: Theme.controls.contextMenu.minWidth
     // The rectangle, in parent coordinates, this menu family may occupy.
     // Callers that commit a single popover rectangle (the Dock) pass the
@@ -81,12 +90,51 @@ Item {
     signal opened()
     signal closed()
 
-    readonly property var entries: {
+    // A stable identity for a row. An explicit `id`/`key` wins (the Dock tags
+    // every action); otherwise derive one from the action target or the label
+    // so a live update can follow the same command across reordering.
+    function stableKey(item, index) {
+        var m = item || {};
+        if (m.key !== undefined && m.key !== null && String(m.key) !== "")
+            return String(m.key);
+        if (m.id !== undefined && m.id !== null && String(m.id) !== "")
+            return String(m.id);
+        if (m.action !== undefined && m.action !== null && String(m.action) !== "") {
+            var parts = [String(m.action)];
+            var payload = m.payload;
+            if (payload && typeof payload === "object") {
+                var names = ["windowId", "desktopId", "appId", "path",
+                             "target", "position"];
+                for (var i = 0; i < names.length; ++i) {
+                    if (payload[names[i]] !== undefined
+                            && payload[names[i]] !== null)
+                        parts.push(names[i] + "=" + String(payload[names[i]]));
+                }
+            }
+            return parts.join("|");
+        }
+        if (m.type === "separator")
+            return "separator";
+        return String(m.type || "item") + "|" + String(m.label || "");
+    }
+    function normalizeModel(list) {
         var out = [];
-        for (var i = 0; i < root.model.length; ++i) {
-            var m = root.model[i] || {};
+        if (!list)
+            return out;
+        var seen = ({});
+        for (var i = 0; i < list.length; ++i) {
+            var m = list[i] || {};
+            var base = root.stableKey(m, i);
+            var key = base;
+            var occurrence = 0;
+            while (seen[key] === true) {
+                occurrence += 1;
+                key = base + "#" + occurrence;
+            }
+            seen[key] = true;
             out.push({
                 index: i,
+                key: key,
                 type: m.type === "separator" ? "separator"
                       : (m.type === "submenu" ? "submenu" : "item"),
                 label: m.label || "",
@@ -100,6 +148,7 @@ Item {
         }
         return out;
     }
+    readonly property var entries: root.normalizeModel(root.model)
     // The raw children of the currently open submenu (for `triggered`).
     readonly property var submenuModel: {
         if (root.openSubmenuIndex < 0)
@@ -108,25 +157,7 @@ Item {
         return e && e.submenu ? e.submenu : [];
     }
     // The normalized rows of the open submenu (same shape as `entries`).
-    readonly property var submenuEntries: {
-        var out = [];
-        for (var i = 0; i < root.submenuModel.length; ++i) {
-            var m = root.submenuModel[i] || {};
-            out.push({
-                index: i,
-                type: m.type === "separator" ? "separator"
-                      : (m.type === "submenu" ? "submenu" : "item"),
-                label: m.label || "",
-                shortcut: m.shortcut || "",
-                enabled: m.enabled !== false,
-                checked: m.checked === true,
-                checkable: m.checkable === true || m.checked === true,
-                keepOpen: m.keepOpen === true,
-                submenu: m.submenu || m.items || []
-            });
-        }
-        return out;
-    }
+    readonly property var submenuEntries: root.normalizeModel(root.submenuModel)
     readonly property var menuModel: {
         var out = [];
         for (var i = 0; i < root.entries.length; ++i) {
@@ -225,12 +256,113 @@ Item {
         root.y = y;
         root.show();
     }
+    function keyAt(list, index) {
+        return index >= 0 && index < list.length ? list[index].key : "";
+    }
+    function indexOfKey(list, key) {
+        if (key === "")
+            return -1;
+        for (var i = 0; i < list.length; ++i) {
+            if (list[i].key === key)
+                return i;
+        }
+        return -1;
+    }
+    function isSelectableEntry(entry) {
+        return entry !== undefined && entry.type !== "separator"
+                && entry.enabled !== false;
+    }
+    // The closest row that can take the highlight after a model update.
+    function nearestSelectableIndex(list, preferred) {
+        if (list.length === 0)
+            return -1;
+        var start = Math.max(0, Math.min(list.length - 1, preferred));
+        for (var distance = 0; distance < list.length; ++distance) {
+            var after = start + distance;
+            if (after < list.length && root.isSelectableEntry(list[after]))
+                return after;
+            var before = start - distance;
+            if (distance > 0 && before >= 0
+                    && root.isSelectableEntry(list[before]))
+                return before;
+        }
+        return -1;
+    }
+    // Follow the highlighted command across a live model update. When its
+    // identity disappears, move to the nearest surviving enabled row so the
+    // highlight and its accessible state never point at a different command.
+    function reconcileSelection() {
+        var previous = root.highlightedIndex;
+        var key = root.highlightedKey;
+        if (key === "" && previous >= 0)
+            key = root.keyAt(root.entries, previous);
+        var index = root.indexOfKey(root.entries, key);
+        if (index < 0) {
+            if (key === "" && previous < 0) {
+                root.highlightedIndex = -1;
+                root.highlightedKey = "";
+                root.reconcileSubmenuSelection();
+                return;
+            }
+            index = root.nearestSelectableIndex(root.entries, previous);
+            if (index < 0) {
+                root.highlightedIndex = -1;
+                root.highlightedKey = "";
+                root.reconcileSubmenuSelection();
+                return;
+            }
+            key = root.keyAt(root.entries, index);
+        }
+        root.highlightedIndex = index;
+        root.highlightedKey = key;
+        root.keepRowVisible(index);
+        root.reconcileSubmenuSelection();
+    }
+    function reconcileSubmenuSelection() {
+        if (root.openSubmenuIndex < 0) {
+            root.openSubmenuKey = "";
+            root.submenuHighlightedIndex = -1;
+            root.submenuHighlightedKey = "";
+            return;
+        }
+        var openKey = root.openSubmenuKey;
+        if (openKey === "")
+            openKey = root.keyAt(root.entries, root.openSubmenuIndex);
+        var openIndex = root.indexOfKey(root.entries, openKey);
+        if (openIndex < 0) {
+            root.openSubmenuIndex = -1;
+            root.openSubmenuKey = "";
+            root.submenuHighlightedIndex = -1;
+            root.submenuHighlightedKey = "";
+            return;
+        }
+        root.openSubmenuIndex = openIndex;
+        var key = root.submenuHighlightedKey;
+        if (key === "" && root.submenuHighlightedIndex >= 0)
+            key = root.keyAt(root.submenuEntries, root.submenuHighlightedIndex);
+        var index = root.indexOfKey(root.submenuEntries, key);
+        if (index < 0) {
+            if (key === "" && root.submenuHighlightedIndex < 0)
+                return;
+            index = root.nearestSelectableIndex(root.submenuEntries,
+                                                root.submenuHighlightedIndex);
+            key = root.keyAt(root.submenuEntries, index);
+        }
+        root.submenuHighlightedIndex = index;
+        root.submenuHighlightedKey = key;
+    }
     function activate(index) {
-        var e = root.entries[index];
+        // Resolve the identity the caller saw against the current model, so a
+        // row that moved since the press still runs its own command.
+        var key = root.keyAt(root.entries, index);
+        var resolved = key !== "" ? root.indexOfKey(root.entries, key) : index;
+        if (resolved < 0)
+            return;
+        var e = root.entries[resolved];
         if (!e || e.type === "separator" || !e.enabled)
             return;
         if (e.type === "submenu") {
-            root.openSubmenu(index);
+            root.openSubmenu(resolved);
             return;
         }
         root.triggered(e.index, root.model[e.index]);
@@ -239,9 +371,16 @@ Item {
         if (!e.keepOpen)
             root.hide();
     }
+    function activateHighlighted() {
+        var index = root.indexOfKey(root.entries, root.highlightedKey);
+        if (index < 0)
+            index = root.highlightedIndex;
+        root.activate(index);
+    }
     function moveHighlight(delta) {
         submenuTimer.stop();
         pendingHoverIndex = -1;
+        pendingHoverKey = "";
         var count = root.entries.length;
         if (count === 0)
             return;
@@ -260,6 +399,8 @@ Item {
         if (!e || e.type !== "submenu" || !e.enabled)
             return;
         submenuTimer.stop();
+        pendingHoverIndex = -1;
+        pendingHoverKey = "";
         root.highlightedIndex = index;
         root.openSubmenuIndex = index;
         root.submenuHighlightedIndex = -1;
@@ -268,12 +409,14 @@ Item {
     function closeSubmenu() {
         submenuTimer.stop();
         pendingHoverIndex = -1;
+        pendingHoverKey = "";
         root.openSubmenuIndex = -1;
         root.submenuHighlightedIndex = -1;
     }
     function moveSubmenuHighlight(delta) {
         submenuTimer.stop();
         pendingHoverIndex = -1;
+        pendingHoverKey = "";
         var count = root.submenuEntries.length;
         if (count === 0)
             return;
@@ -288,7 +431,12 @@ Item {
         }
     }
     function activateSubmenu(index) {
-        var e = root.submenuEntries[index];
+        var key = root.keyAt(root.submenuEntries, index);
+        var resolved = key !== "" ? root.indexOfKey(root.submenuEntries, key)
+                                  : index;
+        if (resolved < 0)
+            return;
+        var e = root.submenuEntries[resolved];
         if (!e || e.type === "separator" || !e.enabled)
             return;
         // Nested submenus are a follow-up; the chevron is shown but the row
@@ -298,6 +446,13 @@ Item {
         root.triggered(e.index, root.submenuModel[e.index]);
         if (!e.keepOpen)
             root.hide();
+    }
+    function activateSubmenuHighlighted() {
+        var index = root.indexOfKey(root.submenuEntries,
+                                    root.submenuHighlightedKey);
+        if (index < 0)
+            index = root.submenuHighlightedIndex;
+        root.activateSubmenu(index);
     }
     // Keep the parent selected while the pointer crosses toward its submenu.
     // Entering the child cancels this pending change, including a diagonal
@@ -310,6 +465,7 @@ Item {
             return;
         submenuTimer.stop();
         pendingHoverIndex = index;
+        pendingHoverKey = root.keyAt(root.entries, index);
         if (root.openSubmenuIndex >= 0 && root.openSubmenuIndex !== index) {
             submenuTimer.start();
             return;
@@ -323,17 +479,25 @@ Item {
         if (root.openSubmenuIndex < 0) {
             submenuTimer.stop();
             pendingHoverIndex = -1;
+            pendingHoverKey = "";
         }
     }
     function enterSubmenu() {
         submenuTimer.stop();
         pendingHoverIndex = -1;
+        pendingHoverKey = "";
         root.highlightedIndex = root.openSubmenuIndex;
     }
     function commitHover() {
         if (!root.open)
             return;
-        var index = pendingHoverIndex;
+        // The row that armed the dwell may have disappeared. Never open
+        // whatever row now occupies its number.
+        var index = root.indexOfKey(root.entries, pendingHoverKey);
+        if (index < 0) {
+            root.closeSubmenu();
+            return;
+        }
         root.closeSubmenu();
         var e = root.entries[index];
         root.highlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
@@ -413,14 +577,31 @@ Item {
     focus: root.open
     activeFocusOnTab: root.open
 
-    onHighlightedIndexChanged: root.keepRowVisible(root.highlightedIndex)
+    onHighlightedIndexChanged: {
+        var key = root.keyAt(root.entries, root.highlightedIndex);
+        if (root.highlightedKey !== key)
+            root.highlightedKey = key;
+        root.keepRowVisible(root.highlightedIndex);
+    }
     onOpenSubmenuIndexChanged: {
+        var key = root.keyAt(root.entries, root.openSubmenuIndex);
+        if (root.openSubmenuKey !== key)
+            root.openSubmenuKey = key;
         root.keepRowVisible(root.openSubmenuIndex);
         Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
     }
-    onSubmenuHighlightedIndexChanged:
+    onSubmenuHighlightedIndexChanged: {
+        var key = root.keyAt(root.submenuEntries,
+                             root.submenuHighlightedIndex);
+        if (root.submenuHighlightedKey !== key)
+            root.submenuHighlightedKey = key;
         Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
-    onEntriesChanged: root.keepRowVisible(root.highlightedIndex);
+    }
+    onEntriesChanged: root.reconcileSelection();
+    onSubmenuEntriesChanged: {
+        if (root.openSubmenuIndex >= 0)
+            root.reconcileSubmenuSelection();
+    }
     onHeightChanged: root.keepRowVisible(root.highlightedIndex);
     onOpenChanged: {
         if (root.open) {
@@ -602,8 +783,12 @@ Item {
             event.accepted = true;
             break;
         case Qt.Key_Right:
-            if (root.openSubmenuIndex < 0)
-                root.openSubmenu(root.highlightedIndex);
+            if (root.openSubmenuIndex < 0) {
+                var index = root.indexOfKey(root.entries, root.highlightedKey);
+                if (index < 0)
+                    index = root.highlightedIndex;
+                root.openSubmenu(index);
+            }
             event.accepted = true;
             break;
         case Qt.Key_Left:
@@ -624,10 +809,12 @@ Item {
         case Qt.Key_Return:
         case Qt.Key_Enter:
         case Qt.Key_Space:
+            // Dispatch the selected identity, not the numeric row it had
+            // when the highlight last moved.
             if (root.openSubmenuIndex >= 0)
-                root.activateSubmenu(root.submenuHighlightedIndex);
+                root.activateSubmenuHighlighted();
             else
-                root.activate(root.highlightedIndex);
+                root.activateHighlighted();
             event.accepted = true;
             break;
         }

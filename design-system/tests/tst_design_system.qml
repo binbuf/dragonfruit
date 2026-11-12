@@ -1162,6 +1162,109 @@ TestCase {
         verify(panel.y + panel.height <= 220 + 0.5);
     }
 
+    function test_context_menu_selection_follows_a_stable_row_identity() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { id: "a", label: "Alpha" },
+                { id: "b", label: "Beta" },
+                { id: "c", label: "Gamma" }
+            ]
+        });
+        triggeredSpy.target = cm;
+        triggeredSpy.clear();
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        cm.moveHighlight(1);
+        compare(cm.entries[cm.highlightedIndex].label, "Beta");
+        // A live update moves Beta to the front. The highlight follows the
+        // identity instead of staying on row 1, which now holds Gamma.
+        cm.model = [
+            { id: "b", label: "Beta" },
+            { id: "a", label: "Alpha" },
+            { id: "c", label: "Gamma" }
+        ];
+        waitForRendering(stage);
+        compare(cm.highlightedIndex, 0);
+        compare(cm.entries[cm.highlightedIndex].label, "Beta");
+        keyClick(Qt.Key_Return);
+        compare(triggeredSpy.count, 1);
+        compare(triggeredSpy.signalArguments[0][1].id, "b");
+    }
+
+    function test_context_menu_selection_moves_to_the_nearest_survivor() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { id: "a", label: "Alpha" },
+                { id: "b", label: "Beta" },
+                { id: "c", label: "Gamma" }
+            ]
+        });
+        triggeredSpy.target = cm;
+        triggeredSpy.clear();
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        cm.moveHighlight(1);
+        compare(cm.entries[cm.highlightedIndex].label, "Beta");
+        // Beta disappears. Row 1 now holds Gamma; the selection identity must
+        // move to that surviving row rather than silently retargeting.
+        cm.model = [
+            { id: "a", label: "Alpha" },
+            { id: "c", label: "Gamma" }
+        ];
+        waitForRendering(stage);
+        compare(cm.entries[cm.highlightedIndex].label, "Gamma");
+        keyClick(Qt.Key_Return);
+        compare(triggeredSpy.count, 1);
+        compare(triggeredSpy.signalArguments[0][1].id, "c");
+    }
+
+    function test_context_menu_selection_skips_a_disabled_survivor() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { id: "a", label: "Alpha" },
+                { id: "b", label: "Beta" },
+                { id: "c", label: "Gamma", enabled: false }
+            ]
+        });
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        cm.moveHighlight(1);
+        compare(cm.entries[cm.highlightedIndex].label, "Beta");
+        cm.model = [
+            { id: "a", label: "Alpha" },
+            { id: "c", label: "Gamma", enabled: false }
+        ];
+        waitForRendering(stage);
+        compare(cm.entries[cm.highlightedIndex].label, "Alpha");
+    }
+
+    function test_context_menu_submenu_selection_follows_its_identity() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { id: "options", label: "Options", type: "submenu",
+                  submenu: [ { id: "one", label: "One" },
+                             { id: "two", label: "Two" } ] }
+            ]
+        });
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        cm.openSubmenu(0);
+        cm.moveSubmenuHighlight(1);
+        compare(cm.submenuEntries[cm.submenuHighlightedIndex].label, "Two");
+        // A new row appears before the submenu and its children reorder. Both
+        // the open panel and its highlight follow the stable identities.
+        cm.model = [
+            { id: "new", label: "New" },
+            { id: "options", label: "Options", type: "submenu",
+              submenu: [ { id: "two", label: "Two" },
+                         { id: "one", label: "One" } ] }
+        ];
+        waitForRendering(stage);
+        compare(cm.openSubmenuIndex, 1);
+        compare(cm.submenuHighlightedIndex, 0);
+        compare(cm.submenuEntries[cm.submenuHighlightedIndex].label, "Two");
+    }
+
     // -- Shortcut hints and menu row anatomy --------------------------------
 
     function test_shortcut_hint_parses_plus_chords_in_canonical_order() {

@@ -47,6 +47,17 @@ FocusScope {
     // The keyboard-highlighted row; -1 is the pinned "Show All Windows"
     // header action. It keeps the focused row scrolled into the viewport.
     property int currentIndex: -1
+    // The stable identity behind `currentIndex`. A projection can reorder the
+    // window rows (the focused window leads) or drop a window; following the
+    // ID keeps Return on the window the user selected instead of whatever row
+    // later occupies the same number.
+    property string currentWindowId: ""
+    // The row order shown while the chooser is open, keyed by window ID. The
+    // projection puts the focused window first, so a focus-only update would
+    // otherwise shuffle the rows under the pointer. Each row still reads the
+    // current projection object, so the focused and minimized markers update
+    // live.
+    property var windowOrder: []
     // Capture/demo seam (T-14.7m): force the hover treatment onto the row at
     // this index so the live visual check can show the revealed actions
     // without a synthetic pointer. Never set in a normal session.
@@ -65,9 +76,45 @@ FocusScope {
     readonly property real actionButtonSize: Math.round(rowHeight * 0.72)
     readonly property real actionGap: Theme.primitive.spacing.xxs
 
-    readonly property var windows:
+    // The live rows from the projection. The projection orders the focused
+    // window first, so this list changes order on an ordinary focus change.
+    readonly property var liveWindows:
         entry && entry.windowList !== undefined && entry.windowList !== null
             ? entry.windowList : []
+    // The rows in the order the user last saw them while the chooser is open.
+    // A window that appears later joins at the end; a window that disappears
+    // drops out. The live objects are reused, so focused/minimized markers
+    // still track the latest projection.
+    readonly property var windows: {
+        var live = root.liveWindows;
+        if (!root.open || root.windowOrder.length === 0)
+            return live;
+        var byId = ({});
+        for (var i = 0; i < live.length; ++i) {
+            var row = live[i];
+            if (!row || row.windowId === undefined || row.windowId === null)
+                return live;
+            byId[String(row.windowId)] = row;
+        }
+        var out = [];
+        var used = ({});
+        for (var j = 0; j < root.windowOrder.length; ++j) {
+            var id = root.windowOrder[j];
+            if (byId[id] !== undefined && used[id] !== true) {
+                out.push(byId[id]);
+                used[id] = true;
+            }
+        }
+        for (var k = 0; k < live.length; ++k) {
+            var liveRow = live[k];
+            var liveId = String(liveRow.windowId);
+            if (used[liveId] !== true) {
+                out.push(liveRow);
+                used[liveId] = true;
+            }
+        }
+        return out;
+    }
     readonly property int rowCount: windows.length
     readonly property int visibleRows: Math.min(rowCount, maxRows)
     readonly property real availableWidth:
@@ -85,17 +132,11 @@ FocusScope {
         Math.min(visibleRows * rowHeight, maxListHeight)
     readonly property bool scrolls: rowCount * rowHeight > listHeight + 0.5
 
-    // A projection can close/minimize windows while the chooser is open. Keep
-    // the keyboard highlight on a real row; a stale index would make Return
-    // either do nothing or act on a row the user is not looking at.
-    onRowCountChanged: {
-        if (root.rowCount === 0)
-            root.currentIndex = -1;
-        else if (root.currentIndex >= root.rowCount)
-            root.currentIndex = root.rowCount - 1;
-        if (root.currentIndex >= 0)
-            root.keepSelectionVisible();
-    }
+    // A projection can reorder, close, or minimize windows while the chooser
+    // is open. Follow the selected window ID rather than its row number; a
+    // stale index would make Return act on a row the user is not looking at.
+    onLiveWindowsChanged: root.syncWindowOrder()
+    onWindowsChanged: root.reconcileSelection()
     // The scrollbar overlays the viewport's right edge; a scrolling list
     // reserves this gutter to its right so the T-14.7m actions never sit under
     // the thumb. A short list reserves nothing (no scrollbar, unchanged rows).
@@ -110,12 +151,109 @@ FocusScope {
     readonly property real radius: Theme.controls.contextMenu.radius
 
     function hide() { root.open = false; }
+    function windowIdAt(index) {
+        var row = root.windows[index];
+        return row && row.windowId !== undefined && row.windowId !== null
+               ? String(row.windowId) : "";
+    }
+    function indexOfWindowId(windowId) {
+        if (windowId === "")
+            return -1;
+        for (var i = 0; i < root.windows.length; ++i) {
+            if (root.windowIdAt(i) === windowId)
+                return i;
+        }
+        return -1;
+    }
+    // The nearest row that survived a projection update. Window rows are all
+    // enabled, so the closest in-range position is the answer; -1 keeps the
+    // pinned header when no window rows remain.
+    function nearestWindowIndex(preferred) {
+        if (root.rowCount === 0)
+            return -1;
+        return Math.max(0, Math.min(root.rowCount - 1, preferred));
+    }
+    function setCurrentIndex(index) {
+        var next = index < 0 ? -1
+                             : Math.max(0, Math.min(root.rowCount - 1, index));
+        if (root.currentIndex !== next)
+            root.currentIndex = next;
+        root.currentWindowId = next >= 0 ? root.windowIdAt(next) : "";
+        if (next >= 0)
+            root.keepSelectionVisible();
+    }
+    // Follow the selected window ID across a projection update. When it
+    // disappeared, move to the nearest surviving row (or the header) and let
+    // the highlight and accessible state move with it.
+    function reconcileSelection() {
+        var previous = root.currentIndex;
+        var id = root.currentWindowId;
+        if (id === "" && previous >= 0)
+            id = root.windowIdAt(previous);
+        if (id === "" && previous < 0) {
+            root.setCurrentIndex(-1);
+            return;
+        }
+        var index = root.indexOfWindowId(id);
+        if (index < 0)
+            index = root.nearestWindowIndex(previous);
+        root.setCurrentIndex(index);
+    }
+    // Keep the display order stable across a projection update: surviving
+    // windows hold their places and new windows join at the end.
+    function syncWindowOrder() {
+        var live = root.liveWindows;
+        var ids = [];
+        for (var i = 0; i < live.length; ++i) {
+            var row = live[i];
+            if (!row || row.windowId === undefined || row.windowId === null)
+                continue;
+            ids.push(String(row.windowId));
+        }
+        if (!root.open) {
+            root.windowOrder = ids;
+            return;
+        }
+        var present = ({});
+        var out = [];
+        for (var j = 0; j < root.windowOrder.length; ++j) {
+            var id = root.windowOrder[j];
+            if (ids.indexOf(id) >= 0 && present[id] !== true) {
+                out.push(id);
+                present[id] = true;
+            }
+        }
+        for (var k = 0; k < ids.length; ++k) {
+            if (present[ids[k]] !== true) {
+                out.push(ids[k]);
+                present[ids[k]] = true;
+            }
+        }
+        root.windowOrder = out;
+    }
+    onCurrentIndexChanged: {
+        if (root.currentIndex < 0) {
+            if (root.currentWindowId !== "")
+                root.currentWindowId = "";
+            return;
+        }
+        var id = root.windowIdAt(root.currentIndex);
+        if (root.currentWindowId !== id)
+            root.currentWindowId = id;
+        root.keepSelectionVisible();
+    }
     function activateWindow(index) {
         var row = root.windows[index];
-        if (row && row.windowId !== undefined) {
-            root.windowActivated(row.windowId);
-            root.hide();
-        }
+        if (row && row.windowId !== undefined && row.windowId !== null)
+            root.activateWindowById(String(row.windowId));
+    }
+    function activateWindowById(windowId) {
+        // The target can disappear while a press is armed; never activate
+        // whichever window later took its place.
+        if (windowId === "" || root.indexOfWindowId(windowId) < 0)
+            return;
+        root.windowActivated(windowId);
+        root.hide();
     }
     function activateShowAll() {
         root.showAllWindows();
@@ -125,17 +263,27 @@ FocusScope {
     // the window's current state and leaves the chooser open (T-14.7m).
     function minimizeWindow(index) {
         var row = root.windows[index];
-        if (!row || row.windowId === undefined)
+        if (row && row.windowId !== undefined && row.windowId !== null)
+            root.minimizeWindowById(String(row.windowId));
+    }
+    function minimizeWindowById(windowId) {
+        var index = root.indexOfWindowId(windowId);
+        if (index < 0)
             return;
-        root.windowMinimizeRequested(row.windowId, row.minimized !== true);
+        var row = root.windows[index];
+        root.windowMinimizeRequested(windowId, row.minimized !== true);
     }
     // Close one window; the chooser stays open and its row disappears with the
     // next projection (T-14.7m).
     function closeWindow(index) {
         var row = root.windows[index];
-        if (!row || row.windowId === undefined)
+        if (row && row.windowId !== undefined && row.windowId !== null)
+            root.closeWindowById(String(row.windowId));
+    }
+    function closeWindowById(windowId) {
+        if (windowId === "" || root.indexOfWindowId(windowId) < 0)
             return;
-        root.windowCloseRequested(row.windowId);
+        root.windowCloseRequested(windowId);
     }
     // The row's accessible name keeps its active/minimized state (T-14.7m).
     function windowAccessibleName(title, focused, minimized) {
@@ -151,13 +299,11 @@ FocusScope {
     function moveSelection(delta) {
         var last = root.rowCount - 1;
         var next = root.currentIndex + delta;
-        root.currentIndex = Math.max(-1, Math.min(last, next));
-        keepSelectionVisible();
+        root.setCurrentIndex(Math.max(-1, Math.min(last, next)));
     }
 
     function moveSelectionTo(index) {
-        root.currentIndex = Math.max(-1, Math.min(root.rowCount - 1, index));
-        keepSelectionVisible();
+        root.setCurrentIndex(index);
     }
 
     // Scroll the highlighted row fully into the bounded viewport, the same
@@ -180,10 +326,19 @@ FocusScope {
     // Return activates the highlighted thing: the header action (-1) or the
     // highlighted row. Activating a row closes the chooser, matching a click.
     function activateCurrent() {
-        if (root.currentIndex < 0)
+        if (root.currentIndex < 0) {
             root.activateShowAll();
-        else
-            root.activateWindow(root.currentIndex);
+            return;
+        }
+        // Resolve the selected identity against the rows that exist now, not
+        // the index captured when the highlight moved.
+        var index = root.indexOfWindowId(root.currentWindowId);
+        if (index < 0) {
+            root.reconcileSelection();
+            index = root.indexOfWindowId(root.currentWindowId);
+        }
+        if (index >= 0)
+            root.activateWindow(index);
     }
 
     // Capture/demo seam (T-14.7n): scroll the bounded viewport to a row so the
@@ -199,7 +354,8 @@ FocusScope {
 
     onOpenChanged: {
         if (root.open) {
-            root.currentIndex = -1;
+            root.syncWindowOrder();
+            root.setCurrentIndex(-1);
             if (rowsView.flickable)
                 rowsView.flickable.contentY = 0;
             root.forceActiveFocus();
@@ -247,6 +403,14 @@ FocusScope {
         property bool destructive: false
         property bool revealed: false
         property string accessibleLabel: ""
+        // The window this action belongs to. The press remembers it so a
+        // projection that removes or replaces the row cannot retarget the
+        // release onto a different window.
+        property string targetId: ""
+        property string pressedTargetId: ""
+        // The verified identity for the current emission. Empty for a direct
+        // `activated()` call from a fixture, which falls back to `targetId`.
+        property string activationTargetId: ""
 
         signal activated()
 
@@ -286,7 +450,24 @@ FocusScope {
             color: action.contentColor
         }
         HoverHandler { id: actionHover }
-        TapHandler { id: actionTap; onTapped: action.activated() }
+        TapHandler {
+            id: actionTap
+            onPressedChanged: if (pressed)
+                                  action.pressedTargetId = action.targetId
+            onTapped: {
+                var target = action.pressedTargetId !== ""
+                             ? action.pressedTargetId : action.targetId;
+                action.pressedTargetId = "";
+                // A target that disappeared during the press cancels the
+                // action instead of retargeting it onto the row that took its
+                // place.
+                if (target !== "" && root.indexOfWindowId(target) < 0)
+                    return;
+                action.activationTargetId = target;
+                action.activated();
+                action.activationTargetId = "";
+            }
+        }
         Accessible.role: Accessible.Button
         Accessible.name: action.accessibleLabel
         Accessible.onPressAction: action.activated()
@@ -357,6 +538,7 @@ FocusScope {
         TapHandler { onTapped: root.activateShowAll() }
         Accessible.role: Accessible.MenuItem
         Accessible.name: qsTr("Show All Windows")
+        Accessible.selected: root.currentIndex === -1
         Accessible.onPressAction: root.activateShowAll()
     }
 
@@ -400,6 +582,9 @@ FocusScope {
                     height: root.rowHeight
                     readonly property bool focused: modelData.focused === true
                     readonly property bool minimized: modelData.minimized === true
+                    readonly property string windowId:
+                        modelData.windowId !== undefined && modelData.windowId !== null
+                        ? String(modelData.windowId) : ""
                     // `rowHover.hovered` is the live pointer; the fixture index
                     // forces it for the capture seam.
                     readonly property bool hovered:
@@ -483,7 +668,11 @@ FocusScope {
                             accessibleLabel: (row.minimized ? qsTr("Restore ")
                                                             : qsTr("Minimize "))
                                              + row.windowTitle
-                            onActivated: root.minimizeWindow(row.index)
+                            targetId: row.windowId
+                            onActivated: root.minimizeWindowById(
+                                minimizeAction.activationTargetId !== ""
+                                ? minimizeAction.activationTargetId
+                                : row.windowId)
                         }
                         ChooserActionButton {
                             id: closeAction
@@ -496,17 +685,33 @@ FocusScope {
                             destructive: true
                             revealed: row.showActions
                             accessibleLabel: qsTr("Close ") + row.windowTitle
-                            onActivated: root.closeWindow(row.index)
+                            targetId: row.windowId
+                            onActivated: root.closeWindowById(
+                                closeAction.activationTargetId !== ""
+                                ? closeAction.activationTargetId
+                                : row.windowId)
                         }
                     }
                     HoverHandler { id: rowHover }
-                    TapHandler { onTapped: root.activateWindow(row.index) }
+                    TapHandler {
+                        id: rowTap
+                        property string pressedWindowId: ""
+                        onPressedChanged: if (pressed)
+                                              rowTap.pressedWindowId = row.windowId
+                        onTapped: {
+                            var target = rowTap.pressedWindowId !== ""
+                                         ? rowTap.pressedWindowId : row.windowId;
+                            rowTap.pressedWindowId = "";
+                            root.activateWindowById(target);
+                        }
+                    }
                     Accessible.role: Accessible.MenuItem
                     Accessible.name: root.windowAccessibleName(row.windowTitle, row.focused,
                                                                row.minimized)
                     Accessible.checkable: true
                     Accessible.checked: row.focused
-                    Accessible.onPressAction: root.activateWindow(row.index)
+                    Accessible.selected: row.active
+                    Accessible.onPressAction: root.activateWindowById(row.windowId)
                 }
             }
         }
