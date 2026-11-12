@@ -3521,59 +3521,170 @@ void ShellController::quitDockApp(const QString &appId, const QString &desktopId
     scheduleDockRender();
 }
 
-void ShellController::appendDockLaunchScope(const QString &desktopId, const QString &scope)
+void ShellController::appendDockLaunchUnit(const QString &desktopId, const QString &unit)
 {
-    QStringList &scopes = m_dockLaunchScopes[desktopId];
-    scopes.append(scope);
+    if (desktopId.isEmpty() || unit.isEmpty())
+        return;
+    DockLaunchRecords &records = m_dockLaunchRecords[desktopId];
+    records.addUnit(unit);
     // Bound one app's instance history; a launcher loop must not grow it.
-    while (scopes.size() > 8)
-        scopes.removeFirst();
-    if (m_dockLaunchScopes.size() > 128)
-        m_dockLaunchScopes.erase(m_dockLaunchScopes.begin());
+    if (m_dockLaunchRecords.size() > 128)
+        m_dockLaunchRecords.erase(m_dockLaunchRecords.begin());
 }
 
-void ShellController::appendDockLaunchPid(const QString &desktopId, qint64 pid)
+void ShellController::appendDockLaunchProcess(const QString &desktopId, qint64 pid)
 {
-    QList<qint64> &pids = m_dockLaunchPids[desktopId];
-    pids.append(pid);
-    while (pids.size() > 8)
-        pids.removeFirst();
-    if (m_dockLaunchPids.size() > 128)
-        m_dockLaunchPids.erase(m_dockLaunchPids.begin());
+    if (desktopId.isEmpty() || pid <= 0)
+        return;
+    DockLaunchRecords &records = m_dockLaunchRecords[desktopId];
+    // Acquire the stable handle now, while the shell still owns the launch.
+    // A process that exited between startDetached and here yields no handle,
+    // which is the honest answer: Force Quit cannot name that instance.
+    if (!records.addProcess(pid)) {
+        // A launcher that handed off to an existing instance and exited is
+        // normal; Force Quit simply has no instance of its own to name.
+        qInfo() << "shell: no stable process handle for" << desktopId
+                << "pid" << pid << "; Force Quit will not signal it";
+        return;
+    }
+    if (m_dockLaunchRecords.size() > 128)
+        m_dockLaunchRecords.erase(m_dockLaunchRecords.begin());
 }
 
-void ShellController::forceQuitDockApp(const QString &appId, const QString &desktopId,
+void ShellController::pruneDockLaunchRecords()
+{
+    // The identities that can still matter belong to apps in the current
+    // projection, or to a launch that has not mapped yet. An app that left the
+    // projection (and is not still launching) cannot be force-quit from the
+    // Dock, so its handles and unit names are retired instead of lingering and
+    // advertising a stale capability.
+    QSet<QString> live;
+    for (const QVariant &value : m_runningEntries) {
+        const QVariantMap row = value.toMap();
+        const QString appId = row.value(QStringLiteral("appId")).toString();
+        if (appId.isEmpty())
+            continue;
+        live.insert(appId);
+        const DesktopEntry resolved = m_index.resolve(appId);
+        if (resolved.valid)
+            live.insert(resolved.id);
+    }
+    for (auto it = m_dockLaunchRecords.begin(); it != m_dockLaunchRecords.end();) {
+        const QString key = it.key();
+        if (!live.contains(key) && !m_launchStates.contains(key)) {
+            it = m_dockLaunchRecords.erase(it);
+            continue;
+        }
+        it.value().prune();
+        if (it.value().isEmpty())
+            it = m_dockLaunchRecords.erase(it);
+        else
+            ++it;
+    }
+}
+
+QString ShellController::dockLaunchKeyForEntry(const QVariantMap &entry) const
+{
+    QString desktopId = entry.value(QStringLiteral("desktopId")).toString();
+    if (desktopId.isEmpty()) {
+        const DesktopEntry resolved =
+            m_index.resolve(entry.value(QStringLiteral("appId")).toString());
+        if (resolved.valid)
+            desktopId = resolved.id;
+    }
+    return desktopId;
+}
+
+void ShellController::stopDockLaunchUnits(const QString &desktopId,
+                                          const QStringList &units,
+                                          const QString &appId)
+{
+    for (const QString &unit : units) {
+        const QStringList arguments = dockUnitStopArguments(unit);
+        if (arguments.isEmpty()) {
+            qWarning() << "shell: refusing to stop non-managed unit" << unit;
+            continue;
+        }
+        // Observe the stop result instead of counting helper startup as
+        // success. systemctl waits for the job, so its exit status is the
+        // service operation's result. The helper runs asynchronously so the
+        // shell's GUI thread never blocks on systemd.
+        auto *process = new QProcess(this);
+        process->setProgram(QStringLiteral("systemctl"));
+        process->setArguments(arguments);
+        // FailedToStart and finished are mutually exclusive in practice, but a
+        // single outcome guard keeps one stop from raising two notices.
+        auto handled = std::make_shared<bool>(false);
+        const auto finish = [this, process, unit, desktopId, appId, handled](
+                                DockUnitStopOutcome outcome) {
+            if (*handled)
+                return;
+            *handled = true;
+            if (outcome == DockUnitStopOutcome::Succeeded) {
+                qInfo() << "shell: Force Quit stopped managed unit" << unit;
+            } else {
+                // Keep the identity so a later Force Quit can retry, and make
+                // the failure visible rather than reporting a termination that
+                // did not happen.
+                DockLaunchRecords &records = m_dockLaunchRecords[desktopId];
+                records.retainUnit(unit);
+                qWarning() << "shell: Force Quit could not stop managed unit"
+                           << unit;
+                const QString name = m_index.byId(desktopId).name;
+                raiseDockNotice(
+                    m_notificationClient,
+                    tr("Could not force quit %1").arg(
+                        name.isEmpty() ? appId : name),
+                    tr("The application's service did not stop. It may still be running."));
+            }
+            process->deleteLater();
+        };
+        connect(process, &QProcess::errorOccurred, this,
+                [finish](QProcess::ProcessError error) {
+                    if (error == QProcess::FailedToStart)
+                        finish(DockUnitStopOutcome::NotStarted);
+                });
+        connect(process,
+                qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+                [finish](int exitCode, QProcess::ExitStatus status) {
+                    finish(dockUnitStopOutcome(
+                        exitCode, status == QProcess::NormalExit, false));
+                });
+        process->start();
+    }
+}
+
+void ShellController::forceQuitDockApp(const QString &appId, const QString &desktopIdIn,
                                        bool temporary)
 {
     if (!m_protocol || appId.isEmpty())
         return;
-    const QList<qint64> pids = m_dockLaunchPids.take(desktopId);
-    const QStringList scopes = m_dockLaunchScopes.take(desktopId);
-    bool signalled = false;
-    for (const QString &scope : scopes) {
-        // Stopping the transient user service kills that instance's whole
-        // cgroup without touching the shell's. Every recorded instance is
-        // stopped, so two launches of the same app both go away.
-        const bool stopped = QProcess::startDetached(
-            QStringLiteral("systemctl"),
-            {QStringLiteral("--user"), QStringLiteral("stop"), scope});
-        signalled = signalled || stopped;
-        if (!stopped)
-            qWarning() << "shell: Force Quit could not stop scope" << scope;
+    QString desktopId = desktopIdIn;
+    if (desktopId.isEmpty()) {
+        const DesktopEntry resolved = m_index.resolve(appId);
+        if (resolved.valid)
+            desktopId = resolved.id;
     }
-    for (qint64 pid : pids) {
-        // Only signal a process that is still alive; a stale pid must never
-        // hit an unrelated process after reuse.
-        if (pid > 0 && ::kill(static_cast<pid_t>(pid), 0) == 0) {
-            const bool killed = ::kill(static_cast<pid_t>(pid), SIGKILL) == 0;
-            signalled = signalled || killed;
-            if (!killed)
-                qWarning() << "shell: Force Quit could not SIGKILL" << desktopId << "pid" << pid;
-        }
+
+    DockLaunchRecords records;
+    const auto recordIt = m_dockLaunchRecords.find(desktopId);
+    if (recordIt != m_dockLaunchRecords.end()) {
+        records = recordIt.value();
+        m_dockLaunchRecords.erase(recordIt);
     }
-    // Always ask the compositor to retire the windows: for a shell-launched
-    // app the SIGKILL already disconnects the client, and for an app the shell
-    // did not launch this is the strongest operation the protocol offers.
+    // Revalidate the identity now: a handle may have been pruned since the
+    // menu published its capability, and a unit may already have stopped.
+    records.prune();
+    const int trackedProcesses = records.processes().size();
+    const QStringList units = records.takeUnits();
+    const int signalled = records.signalProcesses(SIGKILL);
+    if (!units.isEmpty())
+        stopDockLaunchUnits(desktopId, units, appId);
+
+    // Always ask the compositor to retire the windows. For a tracked launch
+    // the process/unit termination above is the forceful part; for an app the
+    // shell did not launch this is an ordinary close, which is why the menu
+    // does not advertise Force Quit without a tracked identity.
     m_protocol->closeApp(appId);
     if (temporary) {
         m_quittingApps.insert(appId);
@@ -3583,9 +3694,27 @@ void ShellController::forceQuitDockApp(const QString &appId, const QString &desk
                 rebuildDockEntries();
         });
     }
-    qInfo() << "shell: Dock Force Quit" << appId
-            << (signalled ? QStringLiteral("(process terminated)")
-                          : QStringLiteral("(close requested; no live launched pid)"));
+    if (signalled > 0) {
+        qInfo() << "shell: Dock Force Quit" << appId << "(SIGKILL delivered to"
+                << signalled << "of" << trackedProcesses
+                << "tracked process instance(s))";
+        if (signalled < trackedProcesses) {
+            qWarning() << "shell: Force Quit could not signal"
+                       << (trackedProcesses - signalled)
+                       << "process instance(s) for" << appId;
+        }
+    } else if (!units.isEmpty()) {
+        qInfo() << "shell: Dock Force Quit" << appId
+                << "(managed-unit stop requested for" << units.size()
+                << "instance(s))";
+    } else if (trackedProcesses > 0) {
+        qWarning() << "shell: Dock Force Quit could not signal any of"
+                   << trackedProcesses << "tracked process instance(s) for"
+                   << appId;
+    } else {
+        qInfo() << "shell: Dock Force Quit" << appId
+                << "(no tracked process identity; close requested)";
+    }
     scheduleDockRender();
 }
 
@@ -7918,6 +8047,23 @@ void ShellController::rebuildDockEntries()
         }
         m_dockAllEntries.insert(insertAt, launcher);
     }
+    // Force Quit is advertised only while a stable termination identity for the
+    // entry's app is still tracked. Prune exited handles first so the published
+    // capability follows the process state instead of a stale launch record.
+    pruneDockLaunchRecords();
+    for (QVariant &value : m_dockAllEntries) {
+        QVariantMap entry = value.toMap();
+        const QString key = dockLaunchKeyForEntry(entry);
+        const auto records = m_dockLaunchRecords.constFind(key);
+        const bool forceQuit =
+            !key.isEmpty() && records != m_dockLaunchRecords.constEnd()
+            && dockForceQuitAvailable(records.value().hasProcess(),
+                                      records.value().hasUnit());
+        entry.insert(QStringLiteral("forceQuitAvailable"), forceQuit);
+        entry.insert(QStringLiteral("capabilities"),
+                     dockActionCapabilities(entry).toVariantMap());
+        value = entry;
+    }
     // A window that just minimized starts its app's one-shot reaction pulse
     // (T-14.7s) before the entries are clamped/published. The pulse rides the
     // phase map below, never the entry model.
@@ -8430,9 +8576,9 @@ void ShellController::launchFiles(const QString &argument)
         qInfo() << "shell: opened Files at" << argument << "(pid" << pid << "scope"
                 << scopeUnit << ")";
         if (!scopeUnit.isEmpty())
-            appendDockLaunchScope(files.id, scopeUnit);
+            appendDockLaunchUnit(files.id, scopeUnit);
         if (pid > 0)
-            appendDockLaunchPid(files.id, pid);
+            appendDockLaunchProcess(files.id, pid);
     }
 }
 
@@ -8547,13 +8693,13 @@ void ShellController::launchDockAppWithFiles(const QString &desktopId, const QSt
         return;
     }
     if (!scopeUnit.isEmpty())
-        appendDockLaunchScope(desktopId, scopeUnit);
+        appendDockLaunchUnit(desktopId, scopeUnit);
     qInfo() << "shell: Dock launched" << entry.name << "pid" << pid
             << (scopeUnit.isEmpty() ? QString()
                                     : QStringLiteral("scope %1").arg(scopeUnit))
             << (files.isEmpty() ? QString() : QStringLiteral("with %1 file(s)").arg(files.size()));
     if (pid > 0)
-        appendDockLaunchPid(desktopId, pid);
+        appendDockLaunchProcess(desktopId, pid);
     m_launchStates.insert(desktopId, QStringLiteral("launching"));
     m_launchStart.insert(desktopId, QDateTime::currentMSecsSinceEpoch());
     m_launchDeadlines.insert(desktopId, QDateTime::currentMSecsSinceEpoch() + kLaunchTimeoutMs);
@@ -9603,6 +9749,26 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
         quitDockApp(appId, desktopId,
                     map.value(QStringLiteral("temporary")).toBool());
     } else if (action == QLatin1String("force_quit")) {
+        // Revalidate against the live entry: a menu opened before the app
+        // exited must not claim a forceful termination the shell can no longer
+        // perform. Without a tracked handle or unit the row is not a Force
+        // Quit, and dispatching an ordinary close under that label would be
+        // dishonest.
+        const QVariantMap entry = dockEntryForAction(map);
+        pruneDockLaunchRecords();
+        const QString key = dockLaunchKeyForEntry(entry);
+        const auto records = m_dockLaunchRecords.constFind(key);
+        const bool tracked =
+            !key.isEmpty() && records != m_dockLaunchRecords.constEnd()
+            && dockForceQuitAvailable(records.value().hasProcess(),
+                                      records.value().hasUnit());
+        if (!dockActionAvailable(entry, action) || !tracked) {
+            qInfo() << "shell: Dock Force Quit unavailable; no tracked "
+                       "termination identity for"
+                    << map.value(QStringLiteral("desktopId")).toString()
+                    << map.value(QStringLiteral("appId")).toString();
+            return;
+        }
         forceQuitDockApp(map.value(QStringLiteral("appId")).toString(),
                          map.value(QStringLiteral("desktopId")).toString(),
                          map.value(QStringLiteral("temporary")).toBool());

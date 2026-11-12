@@ -145,6 +145,12 @@ struct DockActionCapabilities {
     bool keepInDock = false;
     bool showAppWindows = false;
     bool showOverview = true;
+    // Force Quit needs a stable termination identity acquired at launch (a
+    // pidfd-backed process handle or a validated managed unit). The controller
+    // sets the entry's `forceQuitAvailable` field from its live launch records;
+    // an app the shell did not launch has neither, so the row must not promise
+    // a forceful termination it cannot perform.
+    bool forceQuit = false;
 
     QVariantMap toVariantMap() const;
 };

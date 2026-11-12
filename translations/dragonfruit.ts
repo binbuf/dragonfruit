@@ -2577,11 +2577,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Assigning an app to all desktops is not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bottom</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a Window…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2637,6 +2645,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No safe process handle is available for this app.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2658,6 +2670,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Open with %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opening apps at login is not available yet.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2693,6 +2709,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Removing an app's desktop assignment is not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Right</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2701,7 +2721,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show All Windows</source>
+        <source>Show App Windows</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2710,6 +2734,14 @@ Open source system software</source>
     </message>
     <message>
         <source>The Trash could not be emptied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The app is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This app has no desktop entry to pin.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2995,7 +3027,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show All Windows</source>
+        <source>Show Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9968,6 +10000,10 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Could not force quit %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Could not switch to application</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10005,6 +10041,10 @@ Provider: %2</source>
     </message>
     <message>
         <source>The application could not be identified.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The application's service did not stop. It may still be running.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

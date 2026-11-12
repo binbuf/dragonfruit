@@ -450,6 +450,7 @@ QVariantMap DockActionCapabilities::toVariantMap() const
         {QStringLiteral("keepInDock"), keepInDock},
         {QStringLiteral("showAppWindows"), showAppWindows},
         {QStringLiteral("showOverview"), showOverview},
+        {QStringLiteral("forceQuit"), forceQuit},
     };
 }
 
@@ -475,6 +476,12 @@ DockActionCapabilities dockActionCapabilities(const QVariantMap &entry)
     // The current compositor exposes only the unfiltered overview request.
     caps.showAppWindows = false;
     caps.showOverview = true;
+
+    // The controller publishes this from the launch records it owns: only an
+    // instance whose stable handle (or managed unit) is still tracked can be
+    // force-terminated. A plain close request is not a Force Quit.
+    caps.forceQuit =
+        entry.value(QStringLiteral("forceQuitAvailable")).toBool();
     return caps;
 }
 
@@ -500,6 +507,8 @@ bool dockActionAvailable(const QVariantMap &entry, const QString &action,
     if (action == QLatin1String("show_overview")
         || action == QLatin1String("show_all_windows"))
         return caps.showOverview;
+    if (action == QLatin1String("force_quit"))
+        return caps.forceQuit;
     // Every other action keeps its existing routing.
     return true;
 }
