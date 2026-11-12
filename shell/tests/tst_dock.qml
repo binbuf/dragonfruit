@@ -2906,6 +2906,27 @@ Item {
             verify(findChild(entry, "glyph").opacity < 1.0);
         }
 
+        // Reliability §6: a quit in flight keeps the tile visible and
+        // interactive with a restrained pending state until the compositor
+        // confirms exit. The shell publishes it through the phase map so the
+        // entry model (and its delegate) is not rebuilt.
+        function test_quitting_entry_stays_visible_and_is_accessible() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "settings", appId: "org.dragonfruit.Settings",
+                             name: "Settings", kind: "temporary", running: true } ],
+                bouncePhases: { "settings": { phase: -1, attention: false,
+                                              quitting: true } }
+            });
+            var entry = dock.itemAt(0);
+            compare(entry.kind, "temporary");
+            compare(entry.quitting, true);
+            verify(entry.Accessible.name.indexOf("quitting") >= 0);
+            verify(findChild(entry, "glyph").opacity < 1.0);
+            // The tile is still a live entry, not a removal in progress.
+            compare(dock.items[0].kind, "temporary");
+        }
+
         function test_failed_launch_shows_badge() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
@@ -3388,7 +3409,7 @@ Item {
             compare(menuActionSpy.signalArguments[0][1].appId, "files");
         }
 
-        function test_menu_force_quit_carries_the_temporary_entry_flag() {
+        function test_menu_force_quit_carries_the_app_target() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
                 entries: [ temporary("term", "Terminal") ]
@@ -3404,7 +3425,9 @@ Item {
             compare(menuActionSpy.signalArguments[0][0], "force_quit");
             compare(menuActionSpy.signalArguments[0][1].appId, "term");
             compare(menuActionSpy.signalArguments[0][1].desktopId, "term.desktop");
-            compare(menuActionSpy.signalArguments[0][1].temporary, true);
+            // Reliability §6: the tile stays visible until exit, so the action
+            // no longer distinguishes a temporary entry from a pinned one.
+            verify(menuActionSpy.signalArguments[0][1].temporary === undefined);
         }
 
         function test_force_quit_is_disabled_without_a_tracked_identity() {
@@ -3468,7 +3491,7 @@ Item {
             compare(menuActionSpy.count, 0);
         }
 
-        function test_quit_marks_a_temporary_entry_for_immediate_removal() {
+        function test_quit_carries_the_app_target_without_a_removal_flag() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
                 entries: [ temporary("term", "Terminal") ]
@@ -3480,7 +3503,10 @@ Item {
             menu.activate(menuLabels(menu).indexOf("Quit"));
             compare(menuActionSpy.count, 1);
             compare(menuActionSpy.signalArguments[0][0], "quit");
-            compare(menuActionSpy.signalArguments[0][1].temporary, true);
+            compare(menuActionSpy.signalArguments[0][1].appId, "term");
+            // Reliability §6: quit is a pending request, not an immediate
+            // removal, so the payload no longer carries a temporary flag.
+            verify(menuActionSpy.signalArguments[0][1].temporary === undefined);
         }
 
         function test_hidden_app_dot_dims_and_the_name_says_hidden() {

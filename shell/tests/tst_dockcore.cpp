@@ -1769,31 +1769,29 @@ private slots:
         QCOMPARE(dockActivationFallback(false, false), DockActivationFallback::Notice);
     }
 
-    void filterQuittingRemovesOnlyTheAppsRunningRows()
-    {        const QVariantList running{
-            QVariantMap{{QStringLiteral("id"), QStringLiteral("files")},
-                        {QStringLiteral("appId"), QStringLiteral("files")},
-                        {QStringLiteral("kind"), QStringLiteral("temporary")}},
-            QVariantMap{{QStringLiteral("id"), QStringLiteral("win:1")},
-                        {QStringLiteral("appId"), QStringLiteral("files")},
-                        {QStringLiteral("kind"), QStringLiteral("minimized")}},
-            QVariantMap{{QStringLiteral("id"), QStringLiteral("term")},
-                        {QStringLiteral("appId"), QStringLiteral("term")},
-                        {QStringLiteral("kind"), QStringLiteral("temporary")}},
-            QVariantMap{{QStringLiteral("id"), QStringLiteral("pin")},
-                        {QStringLiteral("appId"), QStringLiteral("pin")},
-                        {QStringLiteral("kind"), QStringLiteral("pinned")}},
-        };
-        const QVariantList kept = filterDockQuittingEntries(
-            running, {QStringLiteral("files")});
-        QCOMPARE(kept.size(), 2);
-        QCOMPARE(kept.at(0).toMap().value(QStringLiteral("appId")).toString(),
-                 QStringLiteral("term"));
-        QCOMPARE(kept.at(1).toMap().value(QStringLiteral("kind")).toString(),
-                 QStringLiteral("pinned"));
-        // An empty quitting set is the identity, so the common path does not
-        // rebuild the list.
-        QCOMPARE(filterDockQuittingEntries(running, {}).size(), running.size());
+    void quitRequestGenerationsRejectStaleTimeouts()
+    {
+        DockQuitRequests requests;
+        QVERIFY(requests.isEmpty());
+        const quint64 first = requests.begin(QStringLiteral("files"));
+        QVERIFY(first > 0);
+        QVERIFY(requests.contains(QStringLiteral("files")));
+        // A newer request supersedes the older one; the older timeout must not
+        // clear the pending state of the newer request.
+        const quint64 second = requests.begin(QStringLiteral("files"));
+        QVERIFY(second > first);
+        QVERIFY(!requests.clearIfCurrent(QStringLiteral("files"), first));
+        QVERIFY(requests.contains(QStringLiteral("files")));
+        QVERIFY(requests.clearIfCurrent(QStringLiteral("files"), second));
+        QVERIFY(!requests.contains(QStringLiteral("files")));
+        QVERIFY(!requests.clearIfCurrent(QStringLiteral("files"), second));
+        // An exit or attention observation cancels whatever request is current.
+        requests.begin(QStringLiteral("files"));
+        QVERIFY(requests.cancel(QStringLiteral("files")));
+        QVERIFY(!requests.cancel(QStringLiteral("files")));
+        // An empty app id is never a request.
+        QCOMPARE(requests.begin(QString()), quint64(0));
+        QVERIFY(requests.isEmpty());
     }
 
     // -- recent/suggested apps (T-10 section 17) -------------------------

@@ -2823,6 +2823,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source> — quitting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source> — unavailable</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2872,6 +2876,10 @@ Open source system software</source>
     </message>
     <message>
         <source>, not running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, quitting</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

@@ -200,26 +200,41 @@ DockActivationFallback dockActivationFallback(bool found, bool launchable)
     return launchable ? DockActivationFallback::Launch : DockActivationFallback::Notice;
 }
 
-QVariantList filterDockQuittingEntries(const QVariantList &running,
-                                       const QStringList &quittingAppIds)
+quint64 DockQuitRequests::begin(const QString &appId)
 {
-    if (quittingAppIds.isEmpty())
-        return running;
-    const QSet<QString> quitting(quittingAppIds.begin(), quittingAppIds.end());
-    QVariantList kept;
-    kept.reserve(running.size());
-    for (const QVariant &value : running) {
-        const QVariantMap map = value.toMap();
-        const QString kind = map.value(QStringLiteral("kind")).toString();
-        if (kind != QLatin1String("temporary")
-            && kind != QLatin1String("minimized")) {
-            kept.append(value);
-            continue;
-        }
-        if (!quitting.contains(map.value(QStringLiteral("appId")).toString()))
-            kept.append(value);
+    if (appId.isEmpty())
+        return 0;
+    const quint64 generation = ++m_next;
+    m_pending.insert(appId, generation);
+    return generation;
+}
+
+bool DockQuitRequests::clearIfCurrent(const QString &appId, quint64 generation)
+{
+    const auto it = m_pending.constFind(appId);
+    if (it == m_pending.constEnd() || generation == 0
+        || it.value() != generation) {
+        return false;
     }
-    return kept;
+    m_pending.erase(it);
+    return true;
+}
+
+bool DockQuitRequests::cancel(const QString &appId)
+{
+    return m_pending.remove(appId) > 0;
+}
+
+bool DockQuitRequests::contains(const QString &appId) const
+{
+    return m_pending.contains(appId);
+}
+
+QStringList DockQuitRequests::appIds() const
+{
+    QStringList ids = m_pending.keys();
+    ids.sort();
+    return ids;
 }
 
 QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList &pinnedIds,

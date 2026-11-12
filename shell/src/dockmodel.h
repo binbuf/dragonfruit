@@ -193,13 +193,28 @@ enum class DockActivationFallback {
 };
 DockActivationFallback dockActivationFallback(bool found, bool launchable);
 
-// Drop the app-level running groups (`kind: "temporary"`) and per-window
-// `minimized` rows for apps whose quit is in flight (T236). A quit removes the
-// temporary Dock entry immediately instead of leaving it until the compositor's
-// close ghost settles; pinned entries and suggestions are untouched. Pure and
-// unit-tested (tst_dockcore).
-QVariantList filterDockQuittingEntries(const QVariantList &running,
-                                       const QStringList &quittingAppIds);
+// Pending quit requests keyed by app id. Each request carries a generation so
+// an older fallback timeout cannot clear a newer request for the same app
+// (reliability review §6). Pure and unit-tested (tst_dockcore).
+class DockQuitRequests
+{
+public:
+    // Start (or supersede) a request and return its generation. An empty app
+    // id is not a request and returns 0.
+    quint64 begin(const QString &appId);
+    // Clear only when `generation` is still the current request.
+    bool clearIfCurrent(const QString &appId, quint64 generation);
+    // Clear whatever request is current, if any (exit or attention observed).
+    bool cancel(const QString &appId);
+    bool contains(const QString &appId) const;
+    bool isEmpty() const { return m_pending.isEmpty(); }
+    // Sorted app ids for deterministic iteration.
+    QStringList appIds() const;
+
+private:
+    QHash<QString, quint64> m_pending;
+    quint64 m_next = 0;
+};
 
 // Recent/suggested apps (T-10 section 17): up to `limit` entries for the
 // recency-ordered `recentIds` that are not pinned and not already running.

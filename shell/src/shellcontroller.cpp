@@ -90,6 +90,11 @@ qint64 monotonicNs()
 // it as failed (T-10 section 8.5). Interim until app-index owns activation.
 constexpr qint64 kLaunchTimeoutMs = 8000;
 
+// How long a quit may stay pending before the Dock treats the app as having
+// refused the close (an unsaved-document prompt, a hung client). The tile
+// stays visible; only the restrained pending state clears (reliability §6).
+constexpr int kDockQuitPendingTimeoutMs = 8000;
+
 // Startup readiness (first chrome paint). settingsd is a session dependency
 // and answers `GetAll` on the session bus in well under a millisecond; the
 // timeout is a failure bound for a wedged daemon, not a normal delay. The
@@ -2449,7 +2454,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                 return;
             QString appId;
             QString desktopId;
-            bool temporary = false;
             for (const QVariant &value : std::as_const(m_runningEntries)) {
                 const QVariantMap row = value.toMap();
                 if (row.value(QStringLiteral("kind")).toString()
@@ -2458,7 +2462,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                 appId = row.value(QStringLiteral("appId")).toString();
                 const DesktopEntry resolved = m_index.resolve(appId);
                 desktopId = resolved.valid ? resolved.id : QString();
-                temporary = true;
                 break;
             }
             if (appId.isEmpty())
@@ -2480,9 +2483,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                     showAppWindows(appId);
                 });
             } else if (mode == QLatin1String("quit")) {
-                quitDockApp(appId, desktopId, temporary);
+                quitDockApp(appId, desktopId);
             } else if (mode == QLatin1String("force")) {
-                forceQuitDockApp(appId, desktopId, temporary);
+                forceQuitDockApp(appId, desktopId);
             } else if (mode == QLatin1String("menu")) {
                 QMetaObject::invokeMethod(m_dockItem, "openRunningEntryMenuFixture");
             }
@@ -3498,26 +3501,35 @@ void ShellController::publishDockHiddenApps()
     scheduleDockRender();
 }
 
-void ShellController::quitDockApp(const QString &appId, const QString &desktopId, bool temporary)
+void ShellController::quitDockApp(const QString &appId, const QString &desktopId)
 {
     Q_UNUSED(desktopId);
     if (!m_protocol || appId.isEmpty())
         return;
-    // A quit of a running-but-unpinned app removes its temporary Dock entry at
-    // once (T236); a pinned app keeps its tile and only loses the running dot
-    // when the compositor retires the windows.
-    if (temporary) {
-        m_quittingApps.insert(appId);
-        rebuildDockEntries();
-        QTimer::singleShot(8000, this, [this, appId]() {
-            // The app refused to close (an unsaved-changes prompt, a hung
-            // client). Stop hiding the entry; the projection is the truth.
-            if (m_quittingApps.remove(appId))
-                rebuildDockEntries();
+    // Reliability §6: the tile stays visible with a restrained pending state
+    // until the compositor projection confirms exit. A quit can raise an
+    // unsaved-document prompt, and removing the entry would take away the
+    // affordance during the user's decision. Only a running app can be
+    // quitting: a vanished target must not leave a stale mark that a later
+    // relaunch would inherit.
+    if (appInProjection(m_runningEntries, appId)) {
+        const quint64 generation = m_quittingApps.begin(appId);
+        publishDockBouncePhases();
+        scheduleDockRender();
+        // Each request carries its own generation so an older fallback timeout
+        // cannot clear a newer request for the same app.
+        QTimer::singleShot(kDockQuitPendingTimeoutMs, this,
+                           [this, appId, generation]() {
+            if (m_quittingApps.clearIfCurrent(appId, generation)) {
+                // The app refused the close or is still waiting for the user.
+                // Keep the tile; only the pending state clears.
+                publishDockBouncePhases();
+                scheduleDockRender();
+            }
         });
     }
     m_protocol->closeApp(appId);
-    qInfo() << "shell: Dock Quit" << appId << (temporary ? "(temporary entry removed)" : "");
+    qInfo() << "shell: Dock Quit" << appId << "(entry retained until exit)";
     scheduleDockRender();
 }
 
@@ -3654,8 +3666,7 @@ void ShellController::stopDockLaunchUnits(const QString &desktopId,
     }
 }
 
-void ShellController::forceQuitDockApp(const QString &appId, const QString &desktopIdIn,
-                                       bool temporary)
+void ShellController::forceQuitDockApp(const QString &appId, const QString &desktopIdIn)
 {
     if (!m_protocol || appId.isEmpty())
         return;
@@ -3681,19 +3692,27 @@ void ShellController::forceQuitDockApp(const QString &appId, const QString &desk
     if (!units.isEmpty())
         stopDockLaunchUnits(desktopId, units, appId);
 
+    // Reliability §6: Force Quit keeps the same pending tile until the
+    // compositor confirms exit. The signal is expected to be quick, but the
+    // projection still owns the truth. Mark before the close request so a fast
+    // exit cannot arrive before the pending state exists.
+    if (appInProjection(m_runningEntries, appId)) {
+        const quint64 generation = m_quittingApps.begin(appId);
+        publishDockBouncePhases();
+        scheduleDockRender();
+        QTimer::singleShot(kDockQuitPendingTimeoutMs, this,
+                           [this, appId, generation]() {
+            if (m_quittingApps.clearIfCurrent(appId, generation)) {
+                publishDockBouncePhases();
+                scheduleDockRender();
+            }
+        });
+    }
     // Always ask the compositor to retire the windows. For a tracked launch
     // the process/unit termination above is the forceful part; for an app the
     // shell did not launch this is an ordinary close, which is why the menu
     // does not advertise Force Quit without a tracked identity.
     m_protocol->closeApp(appId);
-    if (temporary) {
-        m_quittingApps.insert(appId);
-        rebuildDockEntries();
-        QTimer::singleShot(8000, this, [this, appId]() {
-            if (m_quittingApps.remove(appId))
-                rebuildDockEntries();
-        });
-    }
     if (signalled > 0) {
         qInfo() << "shell: Dock Force Quit" << appId << "(SIGKILL delivered to"
                 << signalled << "of" << trackedProcesses
@@ -7902,7 +7921,7 @@ void ShellController::onDockStateChanged(const QVariantList &entries)
     m_runningEntries = entries;
     // T236: drop app-level marks whose app left the projection. A hidden app
     // that the user restored (a visible window reappeared) is no longer hidden
-    // either; a quit that finished stops suppressing the temporary entry.
+    // either; a quit that finished resolves its pending state.
     if (!m_hiddenApps.isEmpty()) {
         bool changed = false;
         for (auto it = m_hiddenApps.begin(); it != m_hiddenApps.end();) {
@@ -7918,17 +7937,14 @@ void ShellController::onDockStateChanged(const QVariantList &entries)
             publishDockHiddenApps();
     }
     if (!m_quittingApps.isEmpty()) {
-        bool changed = false;
-        for (auto it = m_quittingApps.begin(); it != m_quittingApps.end();) {
-            if (appInProjection(entries, *it)) {
-                ++it;
-            } else {
-                it = m_quittingApps.erase(it);
-                changed = true;
-            }
+        // A pending quit resolves when the compositor projection confirms the
+        // app exited. The tile stays visible until then (reliability §6); the
+        // rebuild below publishes the pending map without it.
+        const QStringList quitting = m_quittingApps.appIds();
+        for (const QString &appId : quitting) {
+            if (!appInProjection(entries, appId))
+                m_quittingApps.cancel(appId);
         }
-        if (changed)
-            rebuildDockEntries();
     }
     // T230: a window that closed while hidden must not stay in the Show All
     // set (the compositor handle is gone).
@@ -7980,10 +7996,6 @@ void ShellController::rebuildDockEntries()
     // phase, so a running bounce does not reset the Repeater. The phases are
     // published separately (T-14.7c).
     QVariantList running = m_runningEntries;
-    if (!m_quittingApps.isEmpty()) {
-        QStringList quitting(m_quittingApps.begin(), m_quittingApps.end());
-        running = filterDockQuittingEntries(running, quitting);
-    }
     // T236: publish the app-level Hide state so the menu offers Show and the
     // running dot dims while an app is hidden.
     publishDockHiddenApps();
@@ -8240,6 +8252,10 @@ void ShellController::publishDockBouncePhases()
         const QString kind = entry.value(QStringLiteral("kind")).toString();
         double phase = -1.0;
         bool attention = false;
+        // A quit in flight rides the same per-entry map as a restrained pending
+        // state, so the entry model and any live delegate stay intact
+        // (reliability §6).
+        const bool quitting = m_quittingApps.contains(appId);
         if (!appId.isEmpty() && now < m_attentionUntil.value(appId)) {
             // Attention bounce wins over a launch bounce for the same entry
             // and is taller/repeating (FR-4).
@@ -8261,11 +8277,13 @@ void ShellController::publishDockBouncePhases()
         } else if (m_dockConfig.minimizeReaction && m_minimizeReactionStart.contains(id)) {
             minimizePhase = dockMinimizeReactionPhase(now - m_minimizeReactionStart.value(id));
         }
-        if (phase < 0.0 && !attention && minimizePhase < 0.0)
+        if (phase < 0.0 && !attention && minimizePhase < 0.0 && !quitting)
             continue;
         QVariantMap info;
         info.insert(QStringLiteral("phase"), phase);
         info.insert(QStringLiteral("attention"), attention);
+        if (quitting)
+            info.insert(QStringLiteral("quitting"), true);
         if (minimizePhase >= 0.0) {
             info.insert(QStringLiteral("minimize"), true);
             info.insert(QStringLiteral("minimizePhase"), minimizePhase);
@@ -8300,6 +8318,13 @@ void ShellController::onDockAttention(const QString &appId)
 {
     if (appId.isEmpty())
         return;
+    // A close that needs attention (an unsaved-document prompt) is no longer
+    // pending: restore the tile's normal state immediately instead of waiting
+    // for the fallback timeout (reliability §6).
+    if (m_quittingApps.cancel(appId)) {
+        publishDockBouncePhases();
+        scheduleDockRender();
+    }
     // FR-4: attention stops on focus. An app that already holds focus needs
     // no bounce, and guarding here makes the relative order of the focused
     // and attention broadcasts irrelevant (a newly activated window is
@@ -9746,8 +9771,7 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
     } else if (action == QLatin1String("quit")) {
         const QString appId = map.value(QStringLiteral("appId")).toString();
         const QString desktopId = map.value(QStringLiteral("desktopId")).toString();
-        quitDockApp(appId, desktopId,
-                    map.value(QStringLiteral("temporary")).toBool());
+        quitDockApp(appId, desktopId);
     } else if (action == QLatin1String("force_quit")) {
         // Revalidate against the live entry: a menu opened before the app
         // exited must not claim a forceful termination the shell can no longer
@@ -9770,8 +9794,7 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
             return;
         }
         forceQuitDockApp(map.value(QStringLiteral("appId")).toString(),
-                         map.value(QStringLiteral("desktopId")).toString(),
-                         map.value(QStringLiteral("temporary")).toBool());
+                         map.value(QStringLiteral("desktopId")).toString());
     } else if (action == QLatin1String("hide_app")) {
         hideAppWindows(map.value(QStringLiteral("appId")).toString());
     } else if (action == QLatin1String("show_app")) {
