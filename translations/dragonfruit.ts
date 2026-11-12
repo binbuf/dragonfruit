@@ -2729,11 +2729,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show Progress</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show in Files</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>The Trash could not be emptied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Trash is already being emptied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Trash is empty.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2819,6 +2831,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source> — emptying</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source> — full</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2856,6 +2872,10 @@ Open source system software</source>
     </message>
     <message>
         <source>, 1 item</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, emptying</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

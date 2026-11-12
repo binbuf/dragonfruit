@@ -148,16 +148,25 @@ Rectangle {
     // Empty Trash replaces the menu model with the confirm/cancel choice
     // before the shell performs the destructive operation.
     property bool trashConfirming: false
-    // The Empty Trash operation's visible state (T-14.7r). The shell owns the
+    // The Empty Trash operation's state (T-14.7r). The shell owns the
     // asynchronous operation; the Dock renders one phase at a time in a
     // dedicated popover anchored to the Trash entry. `idle` means no operation
-    // is showing. `trashBusyVisible` gates the busy indicator behind a short
-    // delay so a fast empty never flickers through it (the shell reports the
-    // one-shot result via `handleTrashEmptyResult`).
+    // has been requested; a terminal result remains available after its card
+    // closes so it can be reopened (reliability §7). `trashBusyVisible` gates
+    // the card's busy indicator behind a short delay so a fast empty never
+    // flickers through it (the shell reports the one-shot result via
+    // `handleTrashEmptyResult`).
     property string trashEmptyPhase: "idle"      // idle | emptying | succeeded | failed
     property bool trashBusyVisible: false
     property int trashEmptyRemoved: 0
     property string trashEmptyError: ""
+    // The operation identity (reliability §7): every Empty Trash request and
+    // its result carry the same id, so a late result from a superseded
+    // operation cannot overwrite a newer one.
+    property int trashEmptyRequestId: 0
+    // The status card's presentation only. The operation and its result live
+    // in `trashEmptyPhase` above (and in the controller's TrashBridge), so
+    // closing the card never cancels or forgets the operation.
     property bool trashEmptyOpen: false
     property Item trashEmptyAnchor: null
 
@@ -1746,11 +1755,10 @@ Rectangle {
         stackPopover.hide();
         appPicker.hide();
         overflowPopover.hide();
-        // An in-flight Empty Trash owns its popover (T-14.7r): a stray
-        // dismiss must not hide the operation. A finished (or idle) one
-        // closes normally.
-        if (trashEmptyPhase !== "emptying")
-            trashEmptyPopover.hide();
+        // The Trash status card is presentation only (reliability §7): another
+        // popup may own the overlay while the operation continues in the
+        // controller. Reopen the card through the Trash menu's Show Progress.
+        trashEmptyPopover.hide();
         trashConfirming = false;
         chooserHoverTimer.stop();
         chooserCloseTimer.stop();
@@ -1763,29 +1771,51 @@ Rectangle {
     // popover opens at the Trash entry. The busy indicator waits out
     // `busyDelay` so a fast empty skips it. The shell starts the actual work
     // from the emitted `menuActionRequested("empty_trash")` that follows.
+    // Returns false when an operation is already active, so a second request
+    // is never dispatched (reliability §7).
     function beginTrashEmpty() {
+        if (trashEmptyPhase === "emptying")
+            return false;
         trashConfirming = false;
         entryMenu.hide();
+        // Clears the previous result and allocates the request id.
+        resetTrashEmptyState();
         trashEmptyPhase = "emptying";
-        trashEmptyRemoved = 0;
-        trashEmptyError = "";
-        trashBusyVisible = false;
         var idx = indexOfItemId("__trash__");
         trashEmptyAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
         trashEmptyAnchor = trashEmptyAnchorProxy;
         trashBusyDelayTimer.restart();
         trashEmptyPopover.open = true;
         announceTrashEmpty(qsTr("Emptying the Trash"));
+        return true;
     }
 
-    // The shell's one-shot result from the TrashBridge worker. Success shows
-    // the check and the removed count; failure shows the message and the Try
-    // Again button. A result for an already-dismissed popover is dropped.
-    function handleTrashEmptyResult(ok, removed, error) {
-        if (!trashEmptyOpen) {
-            resetTrashEmptyState();
+    // Reopen the status card without starting or retrying anything. The
+    // operation outlives its presentation, so Show Progress restores the
+    // current phase, result, or retry affordance (reliability §7).
+    function openTrashProgress() {
+        if (trashEmptyPhase === "idle")
             return;
-        }
+        closePopovers();
+        hideTooltip();
+        hideTimer.stop();
+        var idx = indexOfItemId("__trash__");
+        if (idx < 0)
+            return;
+        trashEmptyAnchorProxy.capture(entryRepeater.itemAt(idx));
+        trashEmptyAnchor = trashEmptyAnchorProxy;
+        trashEmptyPopover.open = true;
+    }
+
+    // The shell's one-shot result from the TrashBridge worker. The result is
+    // applied even when the status card is closed: the operation belongs to
+    // the controller, not to the card (reliability §7). `requestId` matches
+    // the request that produced it, so a late result from a superseded
+    // operation is ignored.
+    function handleTrashEmptyResult(ok, removed, error, requestId) {
+        if (requestId !== undefined && requestId !== null
+                && Number(requestId) !== Number(trashEmptyRequestId))
+            return;
         trashBusyDelayTimer.stop();
         trashBusyVisible = false;
         if (ok) {
@@ -1793,14 +1823,17 @@ Rectangle {
             trashEmptyRemoved = removed;
             trashEmptyError = "";
             // An empty rebuilds the Trash delegate; re-capture the snapshot
-            // anchor from the fresh one once the Repeater has settled.
-            Qt.callLater(function() {
-                if (!trashEmptyOpen)
-                    return;
-                var idx = indexOfItemId("__trash__");
-                trashEmptyAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
-                trashEmptyAnchorProxy.reposition();
-            });
+            // anchor from the fresh one once the Repeater has settled. Only an
+            // open card needs its anchor refreshed.
+            if (trashEmptyOpen) {
+                Qt.callLater(function() {
+                    if (!trashEmptyOpen)
+                        return;
+                    var idx = indexOfItemId("__trash__");
+                    trashEmptyAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+                    trashEmptyAnchorProxy.reposition();
+                });
+            }
         } else {
             trashEmptyPhase = "failed";
             trashEmptyRemoved = 0;
@@ -1815,18 +1848,20 @@ Rectangle {
     function retryTrashEmpty() {
         if (trashEmptyPhase === "emptying")
             return;
+        // A retry is a new request with its own identity.
+        resetTrashEmptyState();
         trashEmptyPhase = "emptying";
-        trashEmptyRemoved = 0;
-        trashEmptyError = "";
-        trashBusyVisible = false;
         trashBusyDelayTimer.restart();
         // The open popover's `onPhaseChanged` announces the restart; do not
         // announce the same state twice.
-        menuActionRequested("empty_trash", ({}));
+        menuActionRequested("empty_trash", ({ requestId: trashEmptyRequestId }));
     }
 
     function resetTrashEmptyState() {
         trashBusyDelayTimer.stop();
+        // Invalidate any result still in flight so an explicit reset cannot be
+        // overwritten by the operation it cleared (reliability §7).
+        trashEmptyRequestId += 1;
         trashEmptyPhase = "idle";
         trashBusyVisible = false;
         trashEmptyRemoved = 0;
@@ -1843,6 +1878,7 @@ Rectangle {
     // set in a normal session.
     function trashEmptyFixture(mode) {
         var idx = indexOfItemId("__trash__");
+        trashEmptyRequestId += 1;
         trashEmptyAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
         trashEmptyAnchor = trashEmptyAnchorProxy;
         trashBusyDelayTimer.stop();
@@ -3220,7 +3256,9 @@ Rectangle {
 
     // The Trash menu (T-10 sections 13/16): Open always; Empty Trash only
     // when non-empty. Selecting Empty Trash swaps in the confirmation step so
-    // the destructive operation is never one click away.
+    // the destructive operation is never one click away. While an empty is
+    // active, another request is disabled and Show Progress reopens the status
+    // card the operation outlived (reliability §7).
     function trashMenuModel() {
         var out = [];
         if (trashConfirming) {
@@ -3242,8 +3280,16 @@ Rectangle {
         }
         // An unreachable trash backend degrades to a single disabled row so
         // the menu never offers an operation that cannot succeed (T-10
-        // section 16 lifecycle).
+        // section 16 lifecycle). A previous operation's result stays
+        // reachable so its failure and retry information are not lost.
         if (!trashAvailable) {
+            if (trashEmptyPhase !== "idle") {
+                out.push({
+                    type: "item", id: "show_trash_progress",
+                    label: qsTr("Show Progress"),
+                    action: "show_trash_progress"
+                });
+            }
             out.push({
                 type: "item", id: "trash_unavailable",
                 label: qsTr("Trash unavailable"), enabled: false
@@ -3255,9 +3301,21 @@ Rectangle {
             action: "open_trash"
         });
         out.push({ type: "separator" });
+        if (trashEmptyPhase !== "idle") {
+            out.push({
+                type: "item", id: "show_trash_progress",
+                label: qsTr("Show Progress"),
+                action: "show_trash_progress"
+            });
+        }
+        var emptying = trashEmptyPhase === "emptying";
         out.push({
             type: "item", id: "empty_trash", label: qsTr("Empty Trash"),
-            action: "empty_trash_confirmation", enabled: trashFull,
+            action: "empty_trash_confirmation",
+            enabled: trashFull && !emptying,
+            disabledReason: emptying
+                ? qsTr("The Trash is already being emptied.")
+                : (trashFull ? "" : qsTr("The Trash is empty.")),
             keepOpen: true
         });
         return out;
@@ -4352,6 +4410,10 @@ Rectangle {
             showIndicator: dock.showIndicators
             hidden: dock.isAppHidden(modelData.appId)
             quitting: dock.entryQuitting(modelData)
+            // The Trash operation outlives its status card, so the tile itself
+            // carries the busy indication while emptying (reliability §7).
+            busy: modelData.kind === "trash"
+                  && dock.trashEmptyPhase === "emptying"
             keyboardFocused: dock.keyboardFocused && modelData.id === dock.focusedItemId
             reorderHint: dock.reorderHintFor(modelData)
             externalDropTarget: dock.externalDragActive
@@ -4487,12 +4549,19 @@ Rectangle {
                 dock.trashConfirming = false;
                 return;
             }
+            if (item.action === "show_trash_progress") {
+                dock.openTrashProgress();
+                return;
+            }
             if (item.action === "empty_trash") {
                 // Confirmed: run the operation asynchronously and swap the
                 // menu for the progress/result popover (T-14.7r). The shell
-                // starts the work from the emitted action below.
-                dock.beginTrashEmpty();
-                dock.menuActionRequested(item.action, item.payload);
+                // starts the work from the emitted action below. The request
+                // id ties the result to this exact operation (reliability §7).
+                if (dock.beginTrashEmpty()) {
+                    dock.menuActionRequested(item.action,
+                                             { requestId: dock.trashEmptyRequestId });
+                }
                 return;
             }
             // A bounded quicklist hands the complete window list to the
@@ -4772,8 +4841,10 @@ Rectangle {
             dock.popoverChanged();
         }
         onClosed: {
+            // Closing the card changes presentation only (reliability §7): the
+            // operation and its result stay in the controller so Show Progress
+            // can reopen them.
             dock.trashEmptyOpen = false;
-            dock.resetTrashEmptyState();
             dock.popoverChanged();
             dock.scheduleHide();
         }

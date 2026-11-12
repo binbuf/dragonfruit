@@ -1293,6 +1293,9 @@ QtObject {
                 readonly property int spinnerSize: 18
                 readonly property int spinnerStroke: 2
                 readonly property int spinnerSpeed: 900
+                // The Trash tile's ongoing-work ring (reliability §7).
+                readonly property int busySize: 14
+                readonly property int busyStroke: 2
             }
             readonly property var minimizeReaction: QtObject {
                 readonly property real amplitudeRatio: 0.28

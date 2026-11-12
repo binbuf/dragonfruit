@@ -4148,18 +4148,125 @@ Item {
             compare(findChild(pop, "trashEmptyCheck").visible, false);
         }
 
-        function test_empty_trash_result_after_dismiss_is_dropped() {
+        function test_empty_trash_result_after_dismiss_is_preserved_and_reopens() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160, entries: [], trashFull: true
             });
             confirmEmptyTrash(dock);
-            // Dismissing the popover resets the operation state; a late result
-            // cannot resurrect it.
+            var requestId = dock.trashEmptyRequestId;
+            // Closing the card changes presentation only; the operation state
+            // survives so Show Progress can reopen the result (reliability §7).
             findChild(dock, "trashEmptyPopover").open = false;
             waitForRendering(stage);
-            compare(dock.trashEmptyPhase, "idle");
-            dock.handleTrashEmptyResult(true, 2, "");
-            compare(dock.trashEmptyPhase, "idle");
+            compare(dock.trashEmptyPhase, "emptying");
+            compare(dock.trashEmptyOpen, false);
+            dock.handleTrashEmptyResult(true, 2, "", requestId);
+            waitForRendering(stage);
+            compare(dock.trashEmptyPhase, "succeeded");
+            compare(dock.trashEmptyRemoved, 2);
+            compare(dock.trashEmptyOpen, false);
+            dock.openTrashProgress();
+            waitForRendering(stage);
+            compare(dock.trashEmptyOpen, true);
+            var pop = findChild(dock, "trashEmptyPopover");
+            tryCompare(pop, "visible", true);
+            compare(findChild(pop, "trashEmptyCheck").visible, true);
+            verify(findChild(pop, "trashEmptyStatusText").text.indexOf("2") >= 0);
+        }
+
+        // Reliability §7: the status card may close when another popup opens;
+        // the operation keeps running and the Trash tile keeps showing it.
+        function test_trash_progress_card_closes_when_an_app_menu_opens() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ temporary("term", "Terminal") ], trashFull: true
+            });
+            confirmEmptyTrash(dock);
+            compare(dock.trashEmptyOpen, true);
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            compare(dock.trashEmptyOpen, false);
+            compare(findChild(dock, "trashEmptyPopover").open, false);
+            compare(findChild(dock, "entryMenu").open, true);
+            compare(dock.trashEmptyPhase, "emptying");
+            // Exactly one popup owns the overlay.
+            compare(dock.popoverOpen, true);
+        }
+
+        function test_trash_tile_indicates_an_operation_that_outlives_its_card() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            var trash = dock.itemAt(dock.items.length - 1);
+            compare(trash.kind, "trash");
+            compare(findChild(trash, "trashBusyIndicator").visible, false);
+            confirmEmptyTrash(dock);
+            findChild(dock, "trashEmptyPopover").open = false;
+            waitForRendering(stage);
+            compare(trash.busy, true);
+            compare(findChild(trash, "trashBusyIndicator").visible, true);
+            verify(trash.Accessible.name.indexOf("emptying") >= 0);
+            verify(trash.tooltipLabel.indexOf("emptying") >= 0);
+        }
+
+        function test_trash_menu_offers_show_progress_and_disables_empty_while_active() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            confirmEmptyTrash(dock);
+            dock.openEntryMenu(dock.trashEntry);
+            waitForRendering(stage);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var progressIndex = labels.indexOf("Show Progress");
+            verify(progressIndex >= 0);
+            var emptyIndex = labels.indexOf("Empty Trash");
+            verify(emptyIndex >= 0);
+            compare(menu.entries[emptyIndex].enabled, false);
+            verify(menu.entries[emptyIndex].disabledReason.length > 0);
+            // Show Progress reopens the same operation's card.
+            menu.activate(progressIndex);
+            waitForRendering(stage);
+            compare(findChild(dock, "entryMenu").open, false);
+            compare(dock.trashEmptyOpen, true);
+            compare(findChild(dock, "trashEmptyPopover").open, true);
+        }
+
+        function test_trash_failure_survives_card_close_and_reopens_with_retry() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            confirmEmptyTrash(dock);
+            var requestId = dock.trashEmptyRequestId;
+            findChild(dock, "trashEmptyPopover").open = false;
+            waitForRendering(stage);
+            dock.handleTrashEmptyResult(false, -1, "The Trash is read-only",
+                                        requestId);
+            waitForRendering(stage);
+            compare(dock.trashEmptyPhase, "failed");
+            compare(dock.trashEmptyError, "The Trash is read-only");
+            dock.openTrashProgress();
+            waitForRendering(stage);
+            var pop = findChild(dock, "trashEmptyPopover");
+            tryCompare(pop, "visible", true);
+            verify(findChild(pop, "trashEmptyStatusText").text.indexOf("read-only") >= 0);
+            tryCompare(findChild(pop, "trashEmptyRetry"), "visible", true);
+        }
+
+        function test_trash_result_from_a_superseded_request_is_ignored() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            var staleId = dock.trashEmptyRequestId;
+            confirmEmptyTrash(dock);
+            verify(dock.trashEmptyRequestId !== staleId);
+            dock.handleTrashEmptyResult(true, 9, "", staleId);
+            compare(dock.trashEmptyPhase, "emptying");
+            compare(dock.trashEmptyRemoved, 0);
+            // The matching result still applies.
+            dock.handleTrashEmptyResult(true, 3, "", dock.trashEmptyRequestId);
+            compare(dock.trashEmptyPhase, "succeeded");
+            compare(dock.trashEmptyRemoved, 3);
         }
 
         function test_trash_unavailable_is_dimmed_and_disabled() {

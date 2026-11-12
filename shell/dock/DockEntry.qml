@@ -98,6 +98,10 @@ Item {
     // restrained pending treatment until exit is confirmed, or until the
     // request is cancelled by a refused close or an attention request.
     property bool quitting: false
+    // The Trash's Empty operation is running (reliability §7). The operation
+    // outlives its status card, so the tile keeps a small busy ring even when
+    // the card is closed.
+    property bool busy: false
     // The app owns the focused window (T-14.7ac). macOS distinguishes the
     // active app's running dot from a merely running one; an entry that does
     // not carry the flag is treated as active so direct-model callers and
@@ -183,8 +187,11 @@ Item {
     readonly property string stateLabel: {
         if (isDivider || isLauncher)
             return "";
-        if (isTrash)
-            return trashUnavailable ? qsTr(", unavailable") : "";
+        if (isTrash) {
+            var trashState = trashUnavailable ? qsTr(", unavailable")
+                           : busy ? qsTr(", emptying") : "";
+            return trashState;
+        }
         if (isStack) {
             var items = stackCount === 1 ? qsTr(", 1 item") : qsTr(", %1 items").arg(stackCount);
             if (badge > 0)
@@ -216,8 +223,10 @@ Item {
             return name.length > 0 ? name : qsTr("Applications");
         if (isTrash) {
             var trashName = name.length > 0 ? name : qsTr("Trash");
-            return trashName + (trashUnavailable ? qsTr(" — unavailable")
-                                : trashFull ? qsTr(" — full") : qsTr(" — empty"));
+            var trashState = trashUnavailable ? qsTr(" — unavailable")
+                           : busy ? qsTr(" — emptying")
+                           : trashFull ? qsTr(" — full") : qsTr(" — empty");
+            return trashName + trashState;
         }
         if (isStack) {
             var stackName = name.length > 0 ? name : qsTr("Downloads");
@@ -518,6 +527,38 @@ Item {
         border.color: Theme.color.chrome
         x: root.artworkX + root.iconSize - width
         y: root.artworkY
+    }
+
+    // The Trash's ongoing-empty indicator (reliability §7). The status card can
+    // close while the controller keeps working, so the tile itself shows a
+    // small busy ring until the operation settles. It occupies the same
+    // top-right corner as the status badge; Trash has no status badge while it
+    // is emptying, so the two never collide.
+    Item {
+        objectName: "trashBusyIndicator"
+        visible: root.isTrash && root.busy && !root.showStatusBadge
+        width: Theme.controls.dock.trashEmpty.busySize
+        height: width
+        x: root.artworkX + root.iconSize - width
+        y: root.artworkY
+        z: 3
+
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            color: Theme.color.chrome
+            border.width: Theme.controls.window.borderWidth
+            border.color: Theme.color.border
+        }
+
+        Spinner {
+            objectName: "trashBusySpinner"
+            anchors.centerIn: parent
+            size: parent.width - 2
+            strokeWidth: Theme.controls.dock.trashEmpty.busyStroke
+            speed: Theme.controls.dock.trashEmpty.spinnerSpeed
+            running: root.busy && !root.showStatusBadge
+        }
     }
 
     // The Downloads stack's new-items badge (T-10 section 17). It shows the

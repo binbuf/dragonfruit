@@ -58,12 +58,15 @@ public:
     int empty();
 
     // Start an asynchronous Empty Trash on a one-shot worker thread and return
-    // immediately. Returns true when the operation started; false when an
-    // empty is already in flight (the second request is ignored) or the
-    // backend is unreachable. `emptyFinished` is emitted on the UI thread when
-    // the worker reports, and `changed` re-reads the store (the monitor's
-    // event-driven watch also reports it). Never blocks the caller.
-    bool emptyAsync();
+    // immediately. Returns true when the request was accepted (an unreachable
+    // backend reports its failure immediately); false when an empty is already
+    // in flight (the second request is ignored). `requestId` identifies this
+    // request and is echoed with the result so a late result from a superseded
+    // operation can be ignored; zero asks the bridge to allocate one.
+    // `emptyFinished` is emitted on the UI thread when the worker reports, and
+    // `changed` re-reads the store (the monitor's event-driven watch also
+    // reports it). Never blocks the caller.
+    bool emptyAsync(quint64 requestId = 0);
 
     // The current Empty Trash lifecycle and its last result. `emptyRemoved` is
     // valid after a `Succeeded`; `emptyError` after a `Failed`.
@@ -71,9 +74,12 @@ public:
     bool isEmptying() const { return m_emptyState == EmptyState::Emptying; }
     int emptyRemoved() const { return m_emptyRemoved; }
     QString emptyError() const { return m_emptyError; }
+    quint64 emptyRequestId() const { return m_emptyRequestId; }
 
     // Return the operation state to Idle and clear the last result. The Dock
-    // calls this when it dismisses the progress/result popover.
+    // no longer calls this when it closes the status card: the operation and
+    // its result outlive the card (reliability §7). It remains the explicit
+    // reset seam.
     void resetEmptyState();
 
     // Move `paths` into the home trash and re-read. Returns the number moved;
@@ -84,14 +90,17 @@ signals:
     void changed();
     // The Empty Trash worker started / finished. `ok` is true on success, with
     // `removed` the item count; on failure `removed` is -1 and `error` carries
-    // the message. One-shot per operation.
+    // the message. `requestId` matches the request passed to `emptyAsync`, so
+    // a late result from a superseded operation can be ignored. One-shot per
+    // operation.
     void emptyStarted();
-    void emptyFinished(bool ok, int removed, const QString &error);
+    void emptyFinished(bool ok, int removed, const QString &error,
+                       quint64 requestId);
 
 private:
     void applyState(bool force = false);
     void takeError();
-    void finishEmpty(int removed);
+    void finishEmpty(int removed, quint64 requestId);
     void joinEmptyWorker();
 
     void *m_monitor = nullptr;
@@ -105,5 +114,7 @@ private:
     EmptyState m_emptyState = EmptyState::Idle;
     int m_emptyRemoved = 0;
     QString m_emptyError;
+    quint64 m_emptyRequestId = 0;
+    quint64 m_nextEmptyRequestId = 1;
     std::thread m_emptyWorker;
 };
