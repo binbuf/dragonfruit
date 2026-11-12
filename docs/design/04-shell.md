@@ -371,7 +371,7 @@ See [ADR 0256](adr/0256-dock-lifecycle-menu-and-hidden-state.md).
 ### Dock window chooser
 
 An app with two or more windows opens the **window chooser** instead of
-activating: a popover anchored to the entry, a "Show All Windows" header, and
+activating: a popover anchored to the entry, a "Show Overview" header, and
 one row per window (most-recent first, across all Spaces) with the focused
 checkmark, a minimized marker, and the Space name. Each row carries per-window
 actions revealed on row hover (T-14.7m): a stateful **Minimize / Restore** whose
@@ -384,7 +384,7 @@ buffer still holds).
 The row list is **bounded** (T-14.7n): at most `component.dock.chooser.maxRows`
 (default 7) rows are visible and a longer list scrolls through the
 design-system `ScrollView` with `StopAtBounds`, so an app with many windows
-never produces an output-clipped popover. The `Show All Windows` header and its
+never produces an output-clipped popover. The `Show Overview` header and its
 separator are pinned above the viewport and never scroll away. A short list is
 unchanged: no scrollbar and no reserved gutter. A scrolling list reserves the
 scrollbar's width as a gutter to the right of the per-row actions so the thumb

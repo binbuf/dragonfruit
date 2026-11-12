@@ -2907,8 +2907,35 @@ Rectangle {
         return dragPointerAlong - itemHeight / 2;
     }
 
-    // The app-entry menu (T-10 section 13): the live window list, Show All
-    // Windows, Keep/Remove from Dock, Options ▸, Show in Files, and
+    // The shell publishes each app entry's command capabilities so
+    // the menu can disable an unavailable row with a reason, and dispatch can
+    // revalidate the same fields. Direct fixture models may omit the map, so
+    // derive the same defaults from the entry itself.
+    function entryCapabilities(e) {
+        var published = e && e.capabilities !== undefined && e.capabilities !== null
+                        ? e.capabilities : ({});
+        var running = e && e.running === true;
+        var desktopId = e && e.desktopId !== undefined && e.desktopId !== null
+                        ? String(e.desktopId) : "";
+        var appId = e && e.appId !== undefined && e.appId !== null
+                    ? String(e.appId) : "";
+        function cap(name, fallback) {
+            return published[name] !== undefined ? published[name] === true
+                                                 : fallback;
+        }
+        return {
+            assignThisDesktop: cap("assignThisDesktop", running && appId !== ""),
+            assignAllDesktops: cap("assignAllDesktops", false),
+            assignNone: cap("assignNone", false),
+            openAtLogin: cap("openAtLogin", false),
+            keepInDock: cap("keepInDock", desktopId !== ""),
+            showAppWindows: cap("showAppWindows", false),
+            showOverview: cap("showOverview", true)
+        };
+    }
+
+    // The app-entry menu (T-10 section 13): the live window list, Show
+    // Overview, Keep/Remove from Dock, Options ▸, Show in Files, and
     // Quit/Open. The divider menu holds the Dock options; the Trash menu
     // holds Open and Empty Trash.
     readonly property var menuModel: {
@@ -2926,6 +2953,7 @@ Rectangle {
             return appsLauncherMenuModel();
         var running = e.running === true;
         var minimized = e.kind === "minimized";
+        var caps = entryCapabilities(e);
         var list = e.windowList !== undefined && e.windowList !== null
                    ? e.windowList : [];
         // The quick window list (T-10 sections 9/13): shown for any entry
@@ -2960,11 +2988,24 @@ Rectangle {
                 });
             }
             out.push({ type: "separator" });
-            out.push({
-                type: "item", id: "show_all_windows",
-                label: qsTr("Show All Windows"),
-                action: "show_all_windows", payload: { appId: e.appId }
-            });
+            // The global overview is the action the compositor actually
+            // provides. An app-filtered request is only offered when the
+            // compositor advertises it; otherwise the label must not promise
+            // an app-specific view.
+            if (caps.showOverview) {
+                out.push({
+                    type: "item", id: "show_overview",
+                    label: qsTr("Show Overview"),
+                    action: "show_overview"
+                });
+            }
+            if (caps.showAppWindows) {
+                out.push({
+                    type: "item", id: "show_app_windows",
+                    label: qsTr("Show App Windows"),
+                    action: "show_app_windows", payload: { appId: e.appId }
+                });
+            }
             out.push({ type: "separator" });
         }
         if (minimized) {
@@ -2993,7 +3034,11 @@ Rectangle {
                 out.push({
                     type: "item", id: "keep_in_dock",
                     label: qsTr("Keep in Dock"),
-                    action: "keep_in_dock", payload: { desktopId: e.desktopId }
+                    action: "keep_in_dock",
+                    enabled: caps.keepInDock,
+                    disabledReason: caps.keepInDock
+                        ? "" : qsTr("This app has no desktop entry to pin."),
+                    payload: { desktopId: e.desktopId }
                 });
             }
             out.push({
@@ -3054,34 +3099,49 @@ Rectangle {
     // (T-24), and Show in Files (T-18). The design-system submenu is one
     // level, so the three Assign To choices are direct rows; the nested
     // macOS `Assign To ▸` form is deferred with nested submenus in the design
-    // system. The shell resolves each action against the live app state.
+    // system. Rows whose backend does not exist yet stay visible but disabled
+    // with a reason, so an enabled command always has a user-visible effect.
     function optionsMenuModel(e) {
         var id = e.desktopId !== undefined ? e.desktopId : "";
         var appId = e.appId !== undefined ? e.appId : "";
+        var caps = entryCapabilities(e);
         var out = [];
         out.push({
             type: "item", id: "assign_this",
             label: qsTr("Assign to This Desktop"),
             action: "assign_to",
+            enabled: caps.assignThisDesktop,
+            disabledReason: caps.assignThisDesktop
+                ? "" : qsTr("The app is not running."),
             payload: { desktopId: id, appId: appId, target: "this" }
         });
         out.push({
             type: "item", id: "assign_all",
             label: qsTr("Assign to All Desktops"),
             action: "assign_to",
+            enabled: caps.assignAllDesktops,
+            disabledReason: caps.assignAllDesktops
+                ? "" : qsTr("Assigning an app to all desktops is not available yet."),
             payload: { desktopId: id, appId: appId, target: "all" }
         });
         out.push({
             type: "item", id: "assign_none",
             label: qsTr("Assign to None"),
             action: "assign_to",
+            enabled: caps.assignNone,
+            disabledReason: caps.assignNone
+                ? "" : qsTr("Removing an app's desktop assignment is not available yet."),
             payload: { desktopId: id, appId: appId, target: "none" }
         });
         out.push({ type: "separator" });
         out.push({
             type: "item", id: "open_at_login",
             label: qsTr("Open at Login"),
-            action: "open_at_login", payload: { desktopId: id }
+            action: "open_at_login",
+            enabled: caps.openAtLogin,
+            disabledReason: caps.openAtLogin
+                ? "" : qsTr("Opening apps at login is not available yet."),
+            payload: { desktopId: id }
         });
         out.push({
             type: "item", id: "options_show_in_files",
@@ -4498,8 +4558,7 @@ Rectangle {
         onWindowCloseRequested: (windowId) => dock.windowCloseRequested(windowId)
         onWindowMinimizeRequested: (windowId, minimized) =>
             dock.windowMinimizeRequested(windowId, minimized)
-        onShowAllWindows: () => dock.menuActionRequested(
-            "show_all_windows", { appId: dock.chooserEntry ? dock.chooserEntry.appId : "" })
+        onShowOverview: () => dock.menuActionRequested("show_overview", ({}))
     }
 
     // The folder stack popover (T-10 section 17, T-14.7k). It serves the

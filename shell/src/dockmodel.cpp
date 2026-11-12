@@ -427,7 +427,81 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
     for (const QVariantMap &minimized : minimizedEntries)
         entries.append(minimized);
 
+    // Publish each entry's command capabilities with the entry so
+    // the menu disables unavailable rows (and explains why) from the same
+    // data dispatch revalidates.
+    for (QVariant &value : entries) {
+        QVariantMap entry = value.toMap();
+        entry.insert(QStringLiteral("capabilities"),
+                     dockActionCapabilities(entry).toVariantMap());
+        value = entry;
+    }
+
     return entries;
+}
+
+QVariantMap DockActionCapabilities::toVariantMap() const
+{
+    return QVariantMap{
+        {QStringLiteral("assignThisDesktop"), assignThisDesktop},
+        {QStringLiteral("assignAllDesktops"), assignAllDesktops},
+        {QStringLiteral("assignNone"), assignNone},
+        {QStringLiteral("openAtLogin"), openAtLogin},
+        {QStringLiteral("keepInDock"), keepInDock},
+        {QStringLiteral("showAppWindows"), showAppWindows},
+        {QStringLiteral("showOverview"), showOverview},
+    };
+}
+
+DockActionCapabilities dockActionCapabilities(const QVariantMap &entry)
+{
+    DockActionCapabilities caps;
+    const bool running = entry.value(QStringLiteral("running")).toBool();
+    const QString desktopId = entry.value(QStringLiteral("desktopId")).toString();
+    const QString appId = entry.value(QStringLiteral("appId")).toString();
+
+    // "Assign to This Desktop" moves the app's live windows to the active
+    // Space, so it needs a running app identity. The other assignment choices
+    // have no compositor model yet (T-04/T-05); login items are T-24.
+    caps.assignThisDesktop = running && !appId.isEmpty();
+    caps.assignAllDesktops = false;
+    caps.assignNone = false;
+    caps.openAtLogin = false;
+
+    // `desktopId` is the only persistable pin identity. An unresolved running
+    // app has none, so Keep in Dock must not promise to remember it.
+    caps.keepInDock = !desktopId.isEmpty();
+
+    // The current compositor exposes only the unfiltered overview request.
+    caps.showAppWindows = false;
+    caps.showOverview = true;
+    return caps;
+}
+
+bool dockActionAvailable(const QVariantMap &entry, const QString &action,
+                         const QString &target)
+{
+    const DockActionCapabilities caps = dockActionCapabilities(entry);
+    if (action == QLatin1String("assign_to")) {
+        if (target == QLatin1String("this"))
+            return caps.assignThisDesktop;
+        if (target == QLatin1String("all"))
+            return caps.assignAllDesktops;
+        if (target == QLatin1String("none"))
+            return caps.assignNone;
+        return false;
+    }
+    if (action == QLatin1String("open_at_login"))
+        return caps.openAtLogin;
+    if (action == QLatin1String("keep_in_dock"))
+        return caps.keepInDock;
+    if (action == QLatin1String("show_app_windows"))
+        return caps.showAppWindows;
+    if (action == QLatin1String("show_overview")
+        || action == QLatin1String("show_all_windows"))
+        return caps.showOverview;
+    // Every other action keeps its existing routing.
+    return true;
 }
 
 int DockRegionPlan::dividerCount() const

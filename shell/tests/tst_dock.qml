@@ -3461,14 +3461,14 @@ Item {
             });
             dock.openEntryMenu(dock.items[0]);
             var menu = findChild(dock, "entryMenu");
-            // 2 windows, sep, Show All Windows, sep, Remove, Options, sep,
+            // 2 windows, sep, Show Overview, sep, Remove, Options, sep,
             // Hide, Quit, Force Quit
             compare(menu.entries.length, 11);
             compare(menu.entries[0].label, "A");
             compare(menu.entries[0].checked, true);
             compare(menu.entries[1].label, "B (minimized)");
             compare(menu.entries[1].shortcut, "Space 2");
-            compare(menu.entries[3].label, "Show All Windows");
+            compare(menu.entries[3].label, "Show Overview");
             compare(menu.entries[5].label, "Remove from Dock");
             compare(menu.entries[6].label, "Options");
             compare(menu.entries[6].type, "submenu");
@@ -3497,7 +3497,7 @@ Item {
             verify(labels.indexOf("Choose a Window…") >= 0);
             // The bounded quicklist keeps every lifecycle and pinning command
             // in the same menu.
-            verify(labels.indexOf("Show All Windows") >= 0);
+            verify(labels.indexOf("Show Overview") >= 0);
             verify(labels.indexOf("Remove from Dock") >= 0);
             verify(labels.indexOf("Options") >= 0);
             verify(labels.indexOf("Hide") >= 0);
@@ -3579,7 +3579,7 @@ Item {
         function test_app_options_submenu_has_assign_login_and_show_in_files() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
-                entries: [ app("files", "Files", false) ]
+                entries: [ app("files", "Files", true) ]
             });
             menuActionSpy.target = dock;
             menuActionSpy.clear();
@@ -3609,13 +3609,104 @@ Item {
             verify(subLabels.indexOf("Assign to None") >= 0);
             verify(subLabels.indexOf("Open at Login") >= 0);
             verify(subLabels.indexOf("Show in Files") >= 0);
-            // Selecting a choice emits the assign action with its target.
+            // Selecting a running app's choice emits the assign action.
             var assignIndex = subLabels.indexOf("Assign to This Desktop");
+            compare(menu.submenuEntries[assignIndex].enabled, true);
             menu.activateSubmenu(assignIndex);
             compare(menuActionSpy.count, 1);
             compare(menuActionSpy.signalArguments[0][0], "assign_to");
             compare(menuActionSpy.signalArguments[0][1].target, "this");
             compare(menuActionSpy.signalArguments[0][1].desktopId, "files.desktop");
+        }
+
+        function test_options_submenu_disables_unavailable_persistent_settings() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", false) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            menu.openSubmenu(menuLabels(menu).indexOf("Options"));
+            waitForRendering(stage);
+            var rows = {};
+            for (var i = 0; i < menu.submenuEntries.length; ++i)
+                rows[menu.submenuEntries[i].label] = menu.submenuEntries[i];
+            // Assign to This Desktop needs a running app; the other persistent
+            // settings have no backend yet, so every row disables with a
+            // reason instead of silently doing nothing.
+            var disabled = ["Assign to This Desktop", "Assign to All Desktops",
+                            "Assign to None", "Open at Login"];
+            for (var j = 0; j < disabled.length; ++j) {
+                var row = rows[disabled[j]];
+                verify(row !== undefined);
+                compare(row.enabled, false, disabled[j]);
+                verify(row.disabledReason.length > 0, disabled[j]);
+            }
+            // Show in Files stays available.
+            compare(rows["Show in Files"].enabled, true);
+        }
+
+        function test_keep_in_dock_disabled_without_a_persistable_identity() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "term", appId: "term", name: "Terminal",
+                             kind: "temporary", running: true, desktopId: "" } ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var keepIndex = labels.indexOf("Keep in Dock");
+            verify(keepIndex >= 0);
+            compare(menu.entries[keepIndex].enabled, false);
+            verify(menu.entries[keepIndex].disabledReason.length > 0);
+            menu.activate(keepIndex);
+            compare(menuActionSpy.count, 0);
+        }
+
+        function test_menu_uses_published_action_capabilities() {
+            var entry = multiWindow("files", "Files", [
+                { windowId: "1", title: "A", focused: true }
+            ]);
+            entry.pinned = false;
+            // The shell publishes the capability map; a direct fixture model
+            // may also carry it. It wins over the field-derived fallback.
+            entry.capabilities = {
+                assignThisDesktop: false, assignAllDesktops: false,
+                assignNone: false, openAtLogin: false,
+                keepInDock: false, showAppWindows: false, showOverview: true
+            };
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [ entry ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            compare(menu.entries[labels.indexOf("Keep in Dock")].enabled, false);
+            compare(menu.entries[labels.indexOf("Show Overview")].enabled, true);
+        }
+
+        function test_show_overview_is_the_global_action() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true }
+                ]) ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            verify(labels.indexOf("Show Overview") >= 0);
+            // The compositor has no app-filtered overview request, so the
+            // menu must not promise "Show All Windows" or "Show App Windows".
+            compare(labels.indexOf("Show All Windows"), -1);
+            compare(labels.indexOf("Show App Windows"), -1);
+            menu.activate(labels.indexOf("Show Overview"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "show_overview");
         }
 
         function test_pinned_not_running_menu_has_options_and_show_in_files() {
@@ -3716,7 +3807,7 @@ Item {
             var labels = menuLabels(menu);
             verify(labels.indexOf("Doc (minimized)") >= 0);
             verify(labels.indexOf("Other") >= 0);
-            verify(labels.indexOf("Show All Windows") >= 0);
+            verify(labels.indexOf("Show Overview") >= 0);
             verify(labels.indexOf("Quit") >= 0);
             // A minimized-window entry is not an app entry: no Open/Options.
             compare(labels.indexOf("Open") < 0, true);

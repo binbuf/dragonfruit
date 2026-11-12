@@ -4,7 +4,7 @@ import Dragonfruit
 
 // The Dock's window chooser (T-10 section 9): an overlay popover anchored to
 // an app entry, listing that app's windows across all Spaces, most-recent
-// first. The first row is "Show All Windows"; each window row carries a
+// first. The first row is "Show Overview"; each window row carries a
 // checkmark when frontmost, a minimized marker, and its Space name.
 //
 // T-14.7m adds per-window actions: a stateful **Minimize / Restore** button
@@ -16,13 +16,13 @@ import Dragonfruit
 // The shell renders this into the Dock's `overlay` chrome surface. The
 // component owns presentation only: the Dock feeds it `entry` (the app entry
 // with its `windowList`) and relays `windowActivated`/`windowCloseRequested`/
-// `windowMinimizeRequested`/`showAllWindows` to the shell, which performs the
+// `windowMinimizeRequested`/`showOverview` to the shell, which performs the
 // compositor round-trips.
 //
 // T-14.7n bounds the row list: at most `maxRows` rows are visible
 // (`component.dock.chooser.maxRows`), a longer list scrolls through the
 // design-system `ScrollView` (the stack popover's proven viewport idiom), and
-// the "Show All Windows" header and separator stay pinned above it. The
+// the "Show Overview" header and separator stay pinned above it. The
 // popover therefore never grows past its pre-sized headroom (ADR 0100), and
 // every row (and its T-14.7m actions) stays reachable by scroll or keyboard.
 FocusScope {
@@ -44,7 +44,7 @@ FocusScope {
     // The visible-row cap; a longer window list scrolls through the rest. The
     // default is the token, not a literal.
     property int maxRows: Theme.controls.dock.chooser.maxRows
-    // The keyboard-highlighted row; -1 is the pinned "Show All Windows"
+    // The keyboard-highlighted row; -1 is the pinned "Show Overview"
     // header action. It keeps the focused row scrolled into the viewport.
     property int currentIndex: -1
     // The stable identity behind `currentIndex`. A projection can reorder the
@@ -66,7 +66,7 @@ FocusScope {
     signal windowActivated(string windowId)
     signal windowCloseRequested(string windowId)
     signal windowMinimizeRequested(string windowId, bool minimized)
-    signal showAllWindows()
+    signal showOverview()
     signal opened()
     signal closed()
 
@@ -255,8 +255,8 @@ FocusScope {
         root.windowActivated(windowId);
         root.hide();
     }
-    function activateShowAll() {
-        root.showAllWindows();
+    function activateShowOverview() {
+        root.showOverview();
         root.hide();
     }
     // The row's stateful minimize/restore action: it asks for the opposite of
@@ -327,7 +327,7 @@ FocusScope {
     // highlighted row. Activating a row closes the chooser, matching a click.
     function activateCurrent() {
         if (root.currentIndex < 0) {
-            root.activateShowAll();
+            root.activateShowOverview();
             return;
         }
         // Resolve the selected identity against the rows that exist now, not
@@ -527,7 +527,7 @@ FocusScope {
         }
         Text {
             id: headerText
-            text: qsTr("Show All Windows")
+            text: qsTr("Show Overview")
             color: Theme.color.textPrimary
             font.pixelSize: Theme.controls.button.fontSize
             anchors.verticalCenter: parent.verticalCenter
@@ -535,11 +535,11 @@ FocusScope {
             anchors.leftMargin: Theme.controls.contextMenu.padding
         }
         HoverHandler { id: headerHover }
-        TapHandler { onTapped: root.activateShowAll() }
+        TapHandler { onTapped: root.activateShowOverview() }
         Accessible.role: Accessible.MenuItem
-        Accessible.name: qsTr("Show All Windows")
+        Accessible.name: qsTr("Show Overview")
         Accessible.selected: root.currentIndex === -1
-        Accessible.onPressAction: root.activateShowAll()
+        Accessible.onPressAction: root.activateShowOverview()
     }
 
     Rectangle {

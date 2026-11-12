@@ -9546,18 +9546,44 @@ void ShellController::renderAppsDrawer()
                         }}});
 }
 
+QVariantMap ShellController::dockEntryForAction(const QVariantMap &payload) const
+{
+    const QString desktopId = payload.value(QStringLiteral("desktopId")).toString();
+    const QString appId = payload.value(QStringLiteral("appId")).toString();
+    for (const QVariant &value : m_dockAllEntries) {
+        const QVariantMap entry = value.toMap();
+        if (!desktopId.isEmpty()) {
+            if (entry.value(QStringLiteral("desktopId")).toString() == desktopId)
+                return entry;
+            continue;
+        }
+        if (!appId.isEmpty()
+            && entry.value(QStringLiteral("appId")).toString() == appId) {
+            return entry;
+        }
+    }
+    return {};
+}
+
 void ShellController::onDockEntryMenuAction(const QString &action, const QVariant &payload)
 {
     const QVariantMap map = payload.toMap();
     if (action == QLatin1String("activate_window")) {
         m_protocol->selectToplevel(map.value(QStringLiteral("windowId")).toString());
-    } else if (action == QLatin1String("show_all_windows")) {
-        // T-11 owns a filtered Mission Control; until it lands this enters the
-        // unfiltered overview (T-10 section 9).
+    } else if (action == QLatin1String("show_overview")
+               || action == QLatin1String("show_all_windows")) {
+        // The compositor exposes one unfiltered overview request.
+        // The menu labels it "Show Overview" instead of promising an
+        // app-filtered view it cannot deliver.
         m_protocol->enterMissionControl();
     } else if (action == QLatin1String("keep_in_dock")) {
         const QString id = map.value(QStringLiteral("desktopId")).toString();
-        if (!id.isEmpty() && !m_dockConfig.pinned.contains(id)) {
+        const QVariantMap entry = dockEntryForAction(map);
+        if (!dockActionAvailable(entry, action) || id.isEmpty()
+            || m_dockConfig.pinned.contains(id)) {
+            qInfo() << "shell: Dock Keep in Dock ignored; the entry has no"
+                       "persistable desktop identity:" << id;
+        } else {
             QStringList ids = m_dockConfig.pinned;
             ids.append(id);
             writeDockSetting(QStringLiteral("dock.pinned"), ids);
@@ -9591,10 +9617,15 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
     } else if (action == QLatin1String("assign_to")) {
         // The app Options submenu (T-10 section 13). "This Desktop" moves the
         // app's live windows to the active Space; "All Desktops" and "None"
-        // have no compositor assignment model yet (T-04/T-05).
+        // have no compositor assignment model yet (T-04/T-05). Revalidate the
+        // capability against the current entry so a menu opened before a
+        // projection change cannot dispatch a command that no longer applies.
         const QString target = map.value(QStringLiteral("target")).toString();
         const QString appId = map.value(QStringLiteral("appId")).toString();
-        if (target == QLatin1String("this")) {
+        const QVariantMap entry = dockEntryForAction(map);
+        if (!dockActionAvailable(entry, action, target)) {
+            qInfo() << "shell: Dock assign action unavailable" << target << appId;
+        } else if (target == QLatin1String("this")) {
             m_protocol->assignAppToActiveWorkspace(appId);
         } else if (target == QLatin1String("all")) {
             qInfo() << "shell: Dock Assign to All Desktops is pending"
@@ -9604,9 +9635,16 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
                        "(no app-assignment model, T-04/T-05):" << appId;
         }
     } else if (action == QLatin1String("open_at_login")) {
-        // T-24 owns login items; the entry point is wired.
-        qInfo() << "shell: Dock Open at Login is pending (T-24)"
-                << map.value(QStringLiteral("desktopId")).toString();
+        // T-24 owns login items; until it lands the row is disabled, and a
+        // stale menu cannot dispatch it.
+        const QVariantMap entry = dockEntryForAction(map);
+        if (dockActionAvailable(entry, action)) {
+            qInfo() << "shell: Dock Open at Login is pending (T-24)"
+                    << map.value(QStringLiteral("desktopId")).toString();
+        } else {
+            qInfo() << "shell: Dock Open at Login unavailable for"
+                    << map.value(QStringLiteral("desktopId")).toString();
+        }
     } else if (action == QLatin1String("show_in_files")) {
         showDockAppInFiles(map.value(QStringLiteral("desktopId")).toString(),
                            map.value(QStringLiteral("appId")).toString());
