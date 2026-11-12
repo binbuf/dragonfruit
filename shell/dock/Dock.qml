@@ -442,26 +442,81 @@ Rectangle {
     readonly property int tooltipDwell: Theme.controls.dock.tooltipDwell
     // "above" for a bottom Dock; the interior side for a vertical Dock so the
     // label never crosses the screen edge.
-    readonly property string tooltipPlacement:
+    readonly property string tooltipPreferredPlacement:
         position === "bottom" ? "above" : (position === "left" ? "right" : "left")
     readonly property string tooltipText:
         tooltipAnchor !== null && tooltipAnchor.tooltipLabel !== undefined
             ? tooltipAnchor.tooltipLabel : ""
-    // The reference label sits 8 pt above the Dock *plate*, not above the
-    // resting icon box: the plate is the stable anchor while the artwork
-    // grows up into the magnify band. Its x/width still follow the magnified
-    // delegate, so the capsule tracks the pointed tile frame by frame.
-    readonly property var tooltipAnchorRect: {
+    // The hovered tile's current artwork box in Dock coordinates. The layout
+    // already folds in the magnified size, the raised-cosine row translation,
+    // and the launch lift; the app badge's overhang is added below. This is
+    // therefore the painted extent the label must clear, not the resting icon
+    // box.
+    readonly property var tooltipArtworkRect: {
         if (tooltipAnchor === null)
             return null;
-        // A bottom Dock's label is plate-anchored so it clears the artwork
-        // growing into the magnify band. A vertical Dock's label sits beside
-        // the entry, so it keeps the delegate's cross-axis centre.
-        if (tooltipPlacement === "above" || tooltipPlacement === "below")
-            return { x: tooltipAnchor.x, y: plateRect.y,
-                     w: tooltipAnchor.width, h: 0 };
+        if (axisIsX) {
+            var y = tooltipAnchor.y;
+            var h = tooltipAnchor.iconSize !== undefined
+                    ? tooltipAnchor.iconSize : tooltipAnchor.height;
+            // An app badge floats above the tile; include its painted overhang
+            // so the label clears the badge as well as the artwork.
+            if (tooltipAnchor.artworkTop !== undefined) {
+                var top = tooltipAnchor.y + tooltipAnchor.artworkTop;
+                h += y - top;
+                y = top;
+            }
+            return { x: tooltipAnchor.x, y: y,
+                     w: tooltipAnchor.width, h: h };
+        }
         return { x: tooltipAnchor.x, y: tooltipAnchor.y,
                  w: tooltipAnchor.width, h: tooltipAnchor.height };
+    }
+    // The label normally sits above the plate on a bottom Dock. At high
+    // magnification the artwork rises past the plate into the magnify band, so
+    // the anchor is the union of the plate and the artwork and the label moves
+    // above both. When the output work area and render budget cannot fit that
+    // clearance, the capsule moves beside the tile instead; otherwise a tall
+    // tile would put the label over its artwork.
+    readonly property string tooltipPlacement: {
+        var preferred = tooltipPreferredPlacement;
+        if (preferred !== "above")
+            return preferred;
+        var artwork = tooltipArtworkRect;
+        if (artwork === null)
+            return preferred;
+        var available = popoverAvailableRect;
+        // No output geometry or render budget: keep the legacy unbounded
+        // placement above the plate.
+        if (available === null || available.h <= 0)
+            return preferred;
+        var top = Math.min(plateRect.y, artwork.y);
+        var clearance = Theme.controls.tooltip.offset;
+        if (top - available.y >= dockTooltip.height + clearance)
+            return preferred;
+        // Place beside the tile, on the side with the most room. The Tooltip
+        // clamps the capsule into the surface if neither side is wide enough.
+        var leftRoom = artwork.x - available.x;
+        var rightRoom = available.x + available.w - (artwork.x + artwork.w);
+        return leftRoom >= rightRoom ? "left" : "right";
+    }
+    // The reference label clears the top of the plate/artwork union by 8 pt.
+    // Its x/width still follow the magnified delegate, so the capsule tracks
+    // the pointed tile frame by frame; a side placement uses the artwork box
+    // directly so the label clears the tile's current cross-axis extent.
+    readonly property var tooltipAnchorRect: {
+        var artwork = tooltipArtworkRect;
+        if (artwork === null)
+            return null;
+        if (tooltipPlacement === "above")
+            return { x: artwork.x, y: Math.min(plateRect.y, artwork.y),
+                     w: artwork.w, h: 0 };
+        if (tooltipPlacement === "below")
+            return { x: artwork.x,
+                     y: Math.max(plateRect.y + plateRect.h,
+                                 artwork.y + artwork.h),
+                     w: artwork.w, h: 0 };
+        return artwork;
     }
 
     Timer {
@@ -1490,6 +1545,10 @@ Rectangle {
             if (chooserOpen)
                 windowChooser.hide();
         }
+        // The name label is pointer feedback. It must not linger over a tile
+        // while the focus ring moves and the keyboard owns navigation
+        // (reliability §10).
+        hideTooltip();
         keyboardFocused = true;
         // A pointer-opened popover owns the arrow keys; do not put a focus
         // ring behind it.

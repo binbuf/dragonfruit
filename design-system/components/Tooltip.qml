@@ -20,8 +20,9 @@ Item {
     property Item anchorItem: null
     // Optional geometry override for an owner whose label is anchored to a
     // stable surface edge rather than the anchor's own box (the Dock anchors
-    // vertically to the plate while following the magnified tile's x/width).
-    // `{ x, y, w, h }`; when null the anchorItem's geometry is used.
+    // above the union of the plate and the magnified artwork while following
+    // the tile's x/width). `{ x, y, w, h }`; when null the anchorItem's
+    // geometry is used.
     property var anchorRect: null
     property string text: ""
     // Where the capsule sits relative to the anchor: "above" | "below" |

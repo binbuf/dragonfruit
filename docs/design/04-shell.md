@@ -656,8 +656,9 @@ label text is the entry `name` plus its state ("3 windows", "Trash — empty",
 "Downloads — 2 items"), computed once in `DockEntry.tooltipLabel` so no QML
 consumer re-derives it and no text returns to the artwork (ADR 0092). The Dock
 owns the dwell timer and the suppression rules: a click, a drag, an external
-drag, a resize, or any open context menu/chooser/stack hides it, and it is
-never up at the same time as a popover. `anchorItem` is the live entry
+drag, a resize, or any open context menu/chooser/stack hides it, beginning
+keyboard navigation closes an already-visible label, and it is never up at the
+same time as a popover. `anchorItem` is the live entry
 delegate, so the capsule follows a magnified icon frame by frame and is clamped
 to the Dock's ends; it rides the same `popoverRect` overlay/headroom path as a
 menu so a bottom Dock's label is committed and never clipped. It is
@@ -753,6 +754,13 @@ The Dock takes keyboard focus only when the compositor hands it the keyboard
 arrow keys move between entries, Return activate, Escape release, and typing
 jump to a name (T-10 section 20). The focus tree includes every entry except
 the divider.
+
+Popup keyboard ownership follows the same lifecycle. A context menu, chooser,
+stack, picker, overflow list, or Trash status card retires input at logical
+close while its fade finishes, so a closing popover cannot receive input meant
+for the popover replacing it. Home, End, type-ahead, and activation apply to the
+active menu level, and closing a popover returns focus to the Dock's stable
+entry identity.
 
 Keyboard reordering (T-14.7t) joins that model so rearrangement is not
 pointer-only. With the Dock keyboard-focused, `Ctrl+Shift+Arrow` moves the

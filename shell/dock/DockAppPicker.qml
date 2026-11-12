@@ -143,6 +143,9 @@ FocusScope {
     width: Math.max(Theme.controls.searchField.minWidth * 2, 300)
     height: root.padding + headerRow.height + searchField.height + separator.height
             + listView.height + root.padding + root.arrowSize / 2
+    // Logical close retires input immediately; the fade only finishes visually
+    // (reliability §10).
+    enabled: root.open
     visible: opacity > 0
     scale: root.open ? 1.0 : 0.97
     transformOrigin: Item.Bottom

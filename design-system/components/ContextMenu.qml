@@ -379,6 +379,52 @@ Item {
             index = root.highlightedIndex;
         root.activate(index);
     }
+    // Type-ahead: printable keys accumulate in a short-lived buffer and move
+    // the highlight to the next enabled row whose label starts with it. The
+    // active list is the open submenu when there is one, else the main menu.
+    property string typeAheadBuffer: ""
+    function typeAheadMatch(prefix, list, current) {
+        var count = list.length;
+        for (var step = 0; step < count; ++step) {
+            var i = (current + 1 + step) % count;
+            var e = list[i];
+            if (!e || e.type === "separator" || !e.enabled)
+                continue;
+            if (String(e.label).toLocaleLowerCase().indexOf(prefix) === 0)
+                return i;
+        }
+        return -1;
+    }
+    function typeAhead(text) {
+        submenuTimer.stop();
+        pendingHoverIndex = -1;
+        pendingHoverKey = "";
+        if (!text || text.length === 0)
+            return;
+        var lower = text.toLocaleLowerCase();
+        root.typeAheadBuffer += lower;
+        typeAheadTimer.restart();
+        var list = root.openSubmenuIndex >= 0 ? root.submenuEntries : root.entries;
+        var current = root.openSubmenuIndex >= 0 ? root.submenuHighlightedIndex
+                                                 : root.highlightedIndex;
+        var match = root.typeAheadMatch(root.typeAheadBuffer, list, current);
+        // A buffer that no longer matches starts over at the newest key, so a
+        // second word ("sh" then "se") never dead-ends on the old prefix.
+        if (match < 0 && root.typeAheadBuffer.length > lower.length) {
+            root.typeAheadBuffer = lower;
+            match = root.typeAheadMatch(lower, list, current);
+        }
+        if (match < 0)
+            return;
+        if (root.openSubmenuIndex >= 0)
+            root.submenuHighlightedIndex = match;
+        else
+            root.highlightedIndex = match;
+    }
+    function clearTypeAhead() {
+        root.typeAheadBuffer = "";
+        typeAheadTimer.stop();
+    }
     function moveHighlight(delta) {
         submenuTimer.stop();
         pendingHoverIndex = -1;
@@ -609,6 +655,7 @@ Item {
         if (root.open) {
             root.highlightedIndex = -1;
             root.closeSubmenu();
+            root.clearTypeAhead();
             if (rowView.flickable)
                 rowView.flickable.contentY = 0;
             root.moveHighlight(1);
@@ -616,6 +663,7 @@ Item {
             root.opened();
         } else {
             root.closeSubmenu();
+            root.clearTypeAhead();
             root.closed();
         }
     }
@@ -658,6 +706,13 @@ Item {
         interval: Theme.controls.contextMenu.submenuDelay
         repeat: false
         onTriggered: root.commitHover()
+    }
+
+    Timer {
+        id: typeAheadTimer
+        interval: 700
+        repeat: false
+        onTriggered: root.typeAheadBuffer = ""
     }
 
     Shadow {
@@ -799,13 +854,27 @@ Item {
             event.accepted = true;
             break;
         case Qt.Key_Home:
-            root.highlightedIndex = -1;
-            root.moveHighlight(1);
+            // Home/End act on the active level: the open submenu when there is
+            // one, otherwise the parent menu (reliability §10). Moving the
+            // parent while a child is open would leave the child's selection on
+            // its previous row.
+            if (root.openSubmenuIndex >= 0) {
+                root.submenuHighlightedIndex = -1;
+                root.moveSubmenuHighlight(1);
+            } else {
+                root.highlightedIndex = -1;
+                root.moveHighlight(1);
+            }
             event.accepted = true;
             break;
         case Qt.Key_End:
-            root.highlightedIndex = root.entries.length;
-            root.moveHighlight(-1);
+            if (root.openSubmenuIndex >= 0) {
+                root.submenuHighlightedIndex = root.submenuEntries.length;
+                root.moveSubmenuHighlight(-1);
+            } else {
+                root.highlightedIndex = root.entries.length;
+                root.moveHighlight(-1);
+            }
             event.accepted = true;
             break;
         case Qt.Key_Return:
@@ -818,6 +887,15 @@ Item {
             else
                 root.activateHighlighted();
             event.accepted = true;
+            break;
+        default:
+            if (event.text.length > 0
+                    && !(event.modifiers & (Qt.ControlModifier
+                                            | Qt.AltModifier
+                                            | Qt.MetaModifier))) {
+                root.typeAhead(event.text);
+                event.accepted = true;
+            }
             break;
         }
     }

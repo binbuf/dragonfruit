@@ -130,6 +130,9 @@ FocusScope {
                     rowsContent.implicitWidth + 2 * root.padding)
     height: root.padding + headerRow.height + separator.height + root.listHeight
             + root.emptyHeight + root.padding + root.arrowSize / 2
+    // Logical close retires input immediately; the fade only finishes visually
+    // (reliability §10).
+    enabled: root.open
     visible: opacity > 0
     scale: root.open ? 1.0 : 0.97
     transformOrigin: Item.Bottom
