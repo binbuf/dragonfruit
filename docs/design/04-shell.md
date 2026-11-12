@@ -372,6 +372,12 @@ name and stops it through an asynchronous `systemctl --user stop` whose exit
 status is observed. The row is advertised only while one of those identities is
 tracked; an app the shell did not launch disables it with a reason instead of
 silently degrading to the close request.
+A pinned identity the app-index cannot resolve is still actionable: its menu
+carries a disabled **Application unavailable** explanation and an enabled
+**Remove from Dock**, so an unresolved pin never produces an empty context menu.
+The entry keeps its full name in the accessible name (plus the not-found state)
+and describes the unavailable state, and its focusable `ListItem` exposes an
+accessible press action that runs the same activation tree as a click.
 The menu's Settings row opens `settings://pane/desktop-dock`, not a placeholder.
 See [ADR 0256](adr/0256-dock-lifecycle-menu-and-hidden-state.md).
 

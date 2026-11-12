@@ -3198,7 +3198,25 @@ Rectangle {
                     ? "" : qsTr("No safe process handle is available for this app."),
                 payload: { appId: e.appId, desktopId: e.desktopId }
             });
-        } else if (e.missing !== true) {
+        } else if (e.missing === true) {
+            // An unresolved pinned identity still needs a way out of the Dock
+            // (reliability §11): the explanation is a disabled row, while the
+            // removal stays enabled so the context menu is never empty.
+            out.push({
+                type: "item", id: "application_unavailable",
+                label: qsTr("Application unavailable"),
+                enabled: false,
+                disabledReason: qsTr("This application is no longer installed.")
+            });
+            if (e.pinned === true) {
+                out.push({ type: "separator" });
+                out.push({
+                    type: "item", id: "remove_from_dock",
+                    label: qsTr("Remove from Dock"),
+                    action: "remove_from_dock", payload: { desktopId: e.desktopId }
+                });
+            }
+        } else {
             out.push({
                 type: "item", id: "open", label: qsTr("Open"),
                 action: "open", payload: { desktopId: e.desktopId }

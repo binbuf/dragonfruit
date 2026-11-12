@@ -312,8 +312,24 @@ Item {
     Accessible.focusable: !isDivider && !isExternal
     // The reorder chord (T-14.7t) is exposed as the description so it joins the
     // entry's accessibility surface when it is movable (pinned); every other
-    // entry keeps an empty description.
-    Accessible.description: root.reorderHint
+    // entry keeps an empty description. An unresolved pin also names its
+    // unavailable state here, alongside the visual status badge (reliability
+    // §11).
+    Accessible.description: {
+        var parts = [];
+        if (root.missing)
+            parts.push(qsTr("Application unavailable"));
+        if (root.reorderHint.length > 0)
+            parts.push(root.reorderHint);
+        return parts.join(". ");
+    }
+    // A focusable entry must expose an activation action. Route it through the
+    // same entry activation tree as a click so pointer, Return, and assistive
+    // technology agree on the target (reliability §11).
+    Accessible.onPressAction: {
+        if (!root.isDivider && !root.isExternal)
+            root.activated(root.entry);
+    }
 
     // Divider between regions (T-14.7v). Every region boundary draws the same
     // hairline; only the app | right-region divider carries the drag resize
