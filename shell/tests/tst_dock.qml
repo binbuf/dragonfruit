@@ -2964,6 +2964,54 @@ Item {
             compare(findChild(entry, "statusBadge").visible, true);
         }
 
+        function test_missing_pinned_app_menu_explains_and_removes() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "ghost", appId: "org.example.Ghost",
+                             desktopId: "org.example.Ghost.desktop",
+                             name: "Ghost Writer", kind: "pinned", pinned: true,
+                             running: false, missing: true } ]
+            });
+            var entry = dock.itemAt(0);
+            // The full app name stays in the accessible name; the unavailable
+            // state is also described explicitly.
+            verify(entry.Accessible.name.indexOf("Ghost Writer") === 0);
+            verify(entry.Accessible.name.indexOf("not found") >= 0);
+            verify(entry.Accessible.description.indexOf(
+                       "Application unavailable") >= 0);
+
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var unavailable = labels.indexOf("Application unavailable");
+            var remove = labels.indexOf("Remove from Dock");
+            verify(unavailable >= 0);
+            verify(remove >= 0);
+            compare(menu.entries[unavailable].enabled, false);
+            verify(menu.entries[unavailable].disabledReason.length > 0);
+            compare(menu.entries[remove].enabled, true);
+
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            menu.activate(remove);
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "remove_from_dock");
+            compare(menuActionSpy.signalArguments[0][1].desktopId,
+                    "org.example.Ghost.desktop");
+        }
+
+        function test_accessible_press_uses_the_entry_activation_tree() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", false) ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            dock.itemAt(0).Accessible.pressAction();
+            compare(activatedSpy.count, 1);
+            compare(activatedSpy.signalArguments[0][0].appId, "files");
+        }
+
         // -- Bounce and input region (T-10 section 8.1, FR-13) --------------
 
         function test_launch_bounce_lifts_the_entry() {
