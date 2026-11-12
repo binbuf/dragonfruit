@@ -362,10 +362,15 @@ temporary entry is removed from the next Dock build immediately (the pure
 `filterDockQuittingEntries`) instead of waiting for the compositor's close
 ghost. The mark clears when the app leaves the projection, and after an
 eight-second fallback if the app refuses to close, so an unsaved-changes prompt
-cannot hide the tile forever. Force Quit also signals the process the shell
-launched (`QProcess::startDetached` pid, checked for liveness before
-`SIGKILL`); an app the shell did not launch degrades to the close request. The
-menu's Settings row opens `settings://pane/desktop-dock`, not a placeholder.
+cannot hide the tile forever. Force Quit terminates only the exact instances the
+shell launched: the direct path records a pidfd-backed process handle while
+ownership is known (or a start-time-validated fallback on kernels without
+pidfd), so signalling never hits a recycled PID, while the managed path keeps
+the validated transient-unit name and stops it through an asynchronous
+`systemctl --user stop` whose exit status is observed. The row is advertised
+only while one of those identities is tracked; an app the shell did not launch
+disables it with a reason instead of silently degrading to the close request.
+The menu's Settings row opens `settings://pane/desktop-dock`, not a placeholder.
 See [ADR 0256](adr/0256-dock-lifecycle-menu-and-hidden-state.md).
 
 ### Dock window chooser

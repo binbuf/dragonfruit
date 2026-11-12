@@ -33,6 +33,7 @@
 #include "desktopentry.h"
 #include "displayspolicy.h"
 #include "dockmodel.h"
+#include "dockprocess.h"
 #include "focusschedule.h"
 #include "folderstacks.h"
 #include "lockauth.h"
@@ -531,13 +532,25 @@ private:
     // tracked ids), never another app's window.
     void showAppWindows(const QString &appId);
     // T236: Dock Quit / Force Quit. Quit asks the compositor to close every
-    // window; Force Quit additionally SIGKILLs the process the shell launched
-    // for `desktopId` when one is recorded. Both drop the temporary Dock entry
+    // window; Force Quit additionally terminates the exact process instances
+    // the shell launched for `desktopId` (pidfd-backed handles) or stops the
+    // validated transient units it created. Both drop the temporary Dock entry
     // immediately instead of waiting for the compositor's close ghost.
     void quitDockApp(const QString &appId, const QString &desktopId, bool temporary);
     void forceQuitDockApp(const QString &appId, const QString &desktopId, bool temporary);
-    void appendDockLaunchScope(const QString &desktopId, const QString &scope);
-    void appendDockLaunchPid(const QString &desktopId, qint64 pid);
+    void appendDockLaunchUnit(const QString &desktopId, const QString &unit);
+    void appendDockLaunchProcess(const QString &desktopId, qint64 pid);
+    // Drop handles whose process instance has exited so a stale identity never
+    // keeps Force Quit advertised (and never signals a recycled PID).
+    void pruneDockLaunchRecords();
+    // Stop each validated transient unit asynchronously and observe the helper
+    // result; a failed stop is re-recorded for a later retry.
+    void stopDockLaunchUnits(const QString &desktopId, const QStringList &units,
+                             const QString &appId);
+    // The launch-record key for an entry: its desktop id, or the resolved
+    // desktop id of its compositor app id (minimized rows carry only the
+    // latter).
+    QString dockLaunchKeyForEntry(const QVariantMap &entry) const;
     // T236: publish the apps the Dock menu should render as hidden so its
     // Hide/Show row and running dot follow the shell's Hide verbs.
     void publishDockHiddenApps();
@@ -1429,13 +1442,12 @@ private:
     // removed immediately; the mark clears when the compositor retires the
     // app or after the fallback timeout.
     QSet<QString> m_quittingApps;
-    // T236: the pid of the process the shell launched for a desktop id, so
-    // Force Quit can terminate it. Bounded to the most recent launches.
-    // Per-launch pids/scopes, keyed by desktop id. A list (not one entry)
-    // supports multiple instances of the same app: Force Quit stops every
-    // live instance, not just the most recent launch.
-    QHash<QString, QList<qint64>> m_dockLaunchPids;
-    QHash<QString, QStringList> m_dockLaunchScopes;
+    // T236: the stable termination identities the shell acquired while it
+    // owned a launch, keyed by desktop id. Process handles are pidfd-backed
+    // (or start-time validated) so Force Quit never signals a recycled PID;
+    // managed launches keep their validated transient-unit name. A record
+    // list (not one entry) supports multiple instances of the same app.
+    QHash<QString, DockLaunchRecords> m_dockLaunchRecords;
     // `menu.recentItems`: how many recency entries the system menu shows.
     int m_menuRecentItems = 10;
     QString m_systemUserName;

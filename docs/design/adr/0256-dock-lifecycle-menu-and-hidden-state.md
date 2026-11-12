@@ -53,3 +53,23 @@ request: `df_toplevel` exposes per-window `close`, `minimize`, and `unminimize`.
   and confirmation; this ADR only owns the Dock's row and its process seam.
 - An app that ignores a quit becomes visible again after the fallback window,
   which is honest: the projection, not the request, is the truth.
+
+## Amendment (2026-11) — stable Force Quit identity
+
+The original decision recorded the `QProcess::startDetached` PID and checked it
+for liveness before `SIGKILL`. Liveness does not prove the PID still belongs to
+the recorded launch, and the managed path counted a detached `systemctl stop`
+helper's startup as success. The Dock reliability review §5 replaced both
+assumptions:
+
+- **Direct launches record a stable handle.** `DockProcessHandle` opens a pidfd
+  while the shell owns the launch (or keeps the PID plus the `/proc` start time
+  when pidfd is unavailable) and revalidates immediately before signalling, so
+  a recycled PID is never targeted. Handles are pruned when the instance exits.
+- **Managed launches observe the stop.** The validated transient-unit name is
+  retained and `systemctl --user stop` runs asynchronously; only a normal zero
+  exit counts as success, and a failure is reported and retained for retry.
+- **Force Quit is capability-gated.** The menu disables the row with a reason
+  when neither identity is tracked, and dispatch revalidates before acting. An
+  app the shell did not launch is no longer described as force-quittable when
+  only a close request is possible.

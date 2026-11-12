@@ -2930,7 +2930,11 @@ Rectangle {
             openAtLogin: cap("openAtLogin", false),
             keepInDock: cap("keepInDock", desktopId !== ""),
             showAppWindows: cap("showAppWindows", false),
-            showOverview: cap("showOverview", true)
+            showOverview: cap("showOverview", true),
+            // The shell publishes this only while it holds a stable
+            // termination identity for the launched instance. A fixture model
+            // without a published map keeps the old enabled default.
+            forceQuit: cap("forceQuit", running || (e && e.kind === "minimized"))
         };
     }
 
@@ -3018,7 +3022,11 @@ Rectangle {
             });
             out.push({
                 type: "item", id: "force_quit", label: qsTr("Force Quit"),
-                action: "force_quit", payload: { appId: e.appId, desktopId: e.desktopId }
+                action: "force_quit",
+                enabled: caps.forceQuit,
+                disabledReason: caps.forceQuit
+                    ? "" : qsTr("No safe process handle is available for this app."),
+                payload: { appId: e.appId, desktopId: e.desktopId }
             });
             return out;
         }
@@ -3066,6 +3074,9 @@ Rectangle {
             out.push({
                 type: "item", id: "force_quit", label: qsTr("Force Quit"),
                 action: "force_quit",
+                enabled: caps.forceQuit,
+                disabledReason: caps.forceQuit
+                    ? "" : qsTr("No safe process handle is available for this app."),
                 payload: { appId: e.appId, desktopId: e.desktopId,
                            temporary: e.kind === "temporary" }
             });

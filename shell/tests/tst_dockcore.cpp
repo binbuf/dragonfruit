@@ -11,6 +11,7 @@
 #include "desktopentry.h"
 #include "dockdrops.h"
 #include "dockmodel.h"
+#include "dockprocess.h"
 #include "dockprojection.h"
 #include "folderstacks.h"
 #include "filestarget.h"
@@ -25,12 +26,14 @@
 #include "trayclient.h"
 #include "trashbridge.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QProcessEnvironment>
 #include <QSet>
 #include <QSignalSpy>
@@ -38,6 +41,7 @@
 #include <QTest>
 #include <QUrl>
 
+#include <csignal>
 #include <cstdlib>
 
 namespace {
@@ -799,6 +803,137 @@ private slots:
         const QVariantMap unresolvedCaps =
             entries.at(1).toMap().value(QStringLiteral("capabilities")).toMap();
         QCOMPARE(unresolvedCaps.value(QStringLiteral("keepInDock")).toBool(), false);
+    }
+
+    // -- Force Quit identity and completion (dock reliability §5) ---------
+
+    void processStartTimeIdentifiesALiveProcess()
+    {
+        const qint64 self = QCoreApplication::applicationPid();
+        QVERIFY(dockProcessStartTime(self) > 0);
+        // A PID that cannot name a process has no identity.
+        QCOMPARE(dockProcessStartTime(0), quint64(0));
+        QCOMPARE(dockProcessStartTime(-1), quint64(0));
+    }
+
+    void processHandleSignalsTheRecordedInstanceOnly()
+    {
+        const qint64 self = QCoreApplication::applicationPid();
+        DockProcessHandle handle = DockProcessHandle::open(self);
+        QVERIFY(handle.isValid());
+        QVERIFY(handle.isAlive());
+        // Signal 0 is the liveness probe; it must go through the stable
+        // identity, not a bare PID.
+        QVERIFY(handle.signal(0));
+
+        handle.close();
+        QVERIFY(!handle.isValid());
+        QVERIFY(!handle.signal(0));
+
+        QVERIFY(!DockProcessHandle::open(0).isValid());
+        QVERIFY(!DockProcessHandle::open(-1).isValid());
+    }
+
+    void processHandleDoesNotSignalAnExitedInstance()
+    {
+        QProcess child;
+        child.start(QStringLiteral("sleep"), {QStringLiteral("30")});
+        QVERIFY(child.waitForStarted(5000));
+        const qint64 pid = child.processId();
+        DockProcessHandle handle = DockProcessHandle::open(pid);
+        QVERIFY(handle.isValid());
+        QVERIFY(handle.isAlive());
+
+        child.kill();
+        QVERIFY(child.waitForFinished(5000));
+        QVERIFY(handle.waitForExit(2000));
+        QVERIFY(!handle.isAlive());
+        // The recorded instance is gone; a recycled PID is never signalled.
+        QVERIFY(!handle.signal(SIGKILL));
+    }
+
+    void launchRecordsAcquireAndRetireIdentities()
+    {
+        DockLaunchRecords records;
+        QVERIFY(records.isEmpty());
+        QVERIFY(!records.canForceQuit());
+        QVERIFY(records.addProcess(QCoreApplication::applicationPid()));
+        QVERIFY(records.hasProcess());
+        QVERIFY(records.canForceQuit());
+        QCOMPARE(records.prune(), 0);
+        QCOMPARE(records.processCount(), 1);
+
+        // No process, no stable identity.
+        QVERIFY(!records.addProcess(0));
+        records.addUnit(QStringLiteral("dragonfruit-app-org-dragonfruit-Files-1234"));
+        records.addUnit(QStringLiteral("dragonfruit-app-org-dragonfruit-Files-1234"));
+        QCOMPARE(records.units().size(), 1);
+        // A name outside the shell's namespace is never recorded.
+        records.addUnit(QStringLiteral("systemd-journald.service"));
+        QCOMPARE(records.units().size(), 1);
+
+        const QStringList units = records.takeUnits();
+        QCOMPARE(units.size(), 1);
+        QVERIFY(records.units().isEmpty());
+        QVERIFY(records.canForceQuit()); // the process handle remains
+
+        records.retainUnit(units.first());
+        QCOMPARE(records.units().size(), 1);
+        records.clear();
+        QVERIFY(records.isEmpty());
+        QVERIFY(!records.canForceQuit());
+    }
+
+    void managedUnitStopIsValidatedAndObservable()
+    {
+        const QString unit =
+            QStringLiteral("dragonfruit-app-org-dragonfruit-Files-1234");
+        QVERIFY(isDockManagedUnitName(unit));
+        QVERIFY(!isDockManagedUnitName(QString()));
+        QVERIFY(!isDockManagedUnitName(QStringLiteral("dragonfruit-app-")));
+        QVERIFY(!isDockManagedUnitName(
+            QStringLiteral("dragonfruit-app-bad;name")));
+        QVERIFY(!isDockManagedUnitName(
+            QStringLiteral("systemd-journald.service")));
+
+        QCOMPARE(dockUnitStopArguments(unit),
+                 (QStringList{QStringLiteral("--user"), QStringLiteral("stop"),
+                              unit}));
+        QVERIFY(dockUnitStopArguments(QStringLiteral("other.service")).isEmpty());
+
+        // Helper startup is not success: only a normal, zero exit means the
+        // service operation completed.
+        QCOMPARE(dockUnitStopOutcome(0, true, false),
+                 DockUnitStopOutcome::Succeeded);
+        QCOMPARE(dockUnitStopOutcome(1, true, false),
+                 DockUnitStopOutcome::Failed);
+        QCOMPARE(dockUnitStopOutcome(0, false, false),
+                 DockUnitStopOutcome::Failed);
+        QCOMPARE(dockUnitStopOutcome(0, false, true),
+                 DockUnitStopOutcome::NotStarted);
+    }
+
+    void forceQuitCapabilityRequiresATrackedIdentity()
+    {
+        QVERIFY(!dockForceQuitAvailable(false, false));
+        QVERIFY(dockForceQuitAvailable(true, false));
+        QVERIFY(dockForceQuitAvailable(false, true));
+        QVERIFY(dockForceQuitAvailable(true, true));
+
+        const QVariantMap untracked{
+            {QStringLiteral("kind"), QStringLiteral("temporary")},
+            {QStringLiteral("appId"), QStringLiteral("org.example.Terminal")},
+            {QStringLiteral("desktopId"),
+             QStringLiteral("org.example.Terminal.desktop")},
+            {QStringLiteral("running"), true},
+        };
+        QVERIFY(!dockActionCapabilities(untracked).forceQuit);
+        QVERIFY(!dockActionAvailable(untracked, QStringLiteral("force_quit")));
+
+        QVariantMap tracked = untracked;
+        tracked.insert(QStringLiteral("forceQuitAvailable"), true);
+        QVERIFY(dockActionCapabilities(tracked).forceQuit);
+        QVERIFY(dockActionAvailable(tracked, QStringLiteral("force_quit")));
     }
 
     // -- fixed-menu app open plan (T-09 follow-up) -----------------------

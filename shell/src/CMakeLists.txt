@@ -102,6 +102,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     displayspolicy.cpp
     dockdrops.cpp
     dockmodel.cpp
+    dockprocess.cpp
+    dockprocess.h
     dockprojection.cpp
     filestarget.cpp
     folderstacks.cpp

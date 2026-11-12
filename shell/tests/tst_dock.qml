@@ -3407,6 +3407,67 @@ Item {
             compare(menuActionSpy.signalArguments[0][1].temporary, true);
         }
 
+        function test_force_quit_is_disabled_without_a_tracked_identity() {
+            var entry = temporary("term", "Terminal");
+            // The shell publishes forceQuit only while it holds a pidfd-backed
+            // handle or a validated managed unit. Without one, the row must
+            // not promise a forceful termination.
+            entry.capabilities = { forceQuit: false };
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [ entry ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var index = labels.indexOf("Force Quit");
+            verify(index >= 0);
+            compare(menu.entries[index].enabled, false);
+            verify(menu.entries[index].disabledReason.length > 0);
+            menu.activate(index);
+            compare(menuActionSpy.count, 0);
+        }
+
+        function test_force_quit_is_enabled_for_a_tracked_launch() {
+            var entry = temporary("term", "Terminal");
+            entry.capabilities = { forceQuit: true };
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [ entry ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var index = labels.indexOf("Force Quit");
+            verify(index >= 0);
+            compare(menu.entries[index].enabled, true);
+            menu.activate(index);
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "force_quit");
+        }
+
+        function test_minimized_force_quit_uses_the_published_capability() {
+            var entry = { id: "win:1", appId: "term", name: "Terminal",
+                          kind: "minimized", running: false,
+                          windowList: [{ windowId: "1", title: "A" }],
+                          capabilities: { forceQuit: false } };
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [ entry ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var index = labels.indexOf("Force Quit");
+            verify(index >= 0);
+            compare(menu.entries[index].enabled, false);
+            menu.activate(index);
+            compare(menuActionSpy.count, 0);
+        }
+
         function test_quit_marks_a_temporary_entry_for_immediate_removal() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
