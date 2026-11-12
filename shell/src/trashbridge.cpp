@@ -80,15 +80,19 @@ int TrashBridge::empty()
     return removed;
 }
 
-bool TrashBridge::emptyAsync()
+bool TrashBridge::emptyAsync(quint64 requestId)
 {
     // One operation at a time (T-14.7r): a second Empty Trash while emptying
     // is ignored.
     if (m_emptyState == EmptyState::Emptying)
         return false;
 
+    const quint64 resolvedId =
+        requestId != 0 ? requestId : m_nextEmptyRequestId++;
+
     resetEmptyState();
     m_emptyState = EmptyState::Emptying;
+    m_emptyRequestId = resolvedId;
     emit emptyStarted();
 
     if (!m_monitor) {
@@ -97,15 +101,17 @@ bool TrashBridge::emptyAsync()
         m_emptyState = EmptyState::Failed;
         m_emptyError = QStringLiteral("no trash monitor");
         m_error = m_emptyError;
-        emit emptyFinished(false, -1, m_emptyError);
+        emit emptyFinished(false, -1, m_emptyError, resolvedId);
         return true;
     }
 
     joinEmptyWorker();
-    m_emptyWorker = std::thread([this]() {
+    m_emptyWorker = std::thread([this, resolvedId]() {
         const int removed = df_files_trash_monitor_empty(m_monitor);
         QMetaObject::invokeMethod(
-            this, [this, removed]() { finishEmpty(removed); },
+            this, [this, removed, resolvedId]() {
+                finishEmpty(removed, resolvedId);
+            },
             Qt::QueuedConnection);
     });
     return true;
@@ -116,16 +122,20 @@ void TrashBridge::resetEmptyState()
     m_emptyState = EmptyState::Idle;
     m_emptyRemoved = 0;
     m_emptyError.clear();
+    m_emptyRequestId = 0;
 }
 
-void TrashBridge::finishEmpty(int removed)
+void TrashBridge::finishEmpty(int removed, quint64 requestId)
 {
+    // A result from a superseded operation must not overwrite the current one.
+    if (m_emptyState != EmptyState::Emptying || requestId != m_emptyRequestId)
+        return;
     if (removed >= 0) {
         applyState();
         m_emptyState = EmptyState::Succeeded;
         m_emptyRemoved = removed;
         m_emptyError.clear();
-        emit emptyFinished(true, removed, QString());
+        emit emptyFinished(true, removed, QString(), requestId);
         return;
     }
     takeError();
@@ -133,7 +143,7 @@ void TrashBridge::finishEmpty(int removed)
     m_emptyRemoved = 0;
     m_emptyError = m_error.isEmpty() ? QStringLiteral("failed to empty the trash")
                                      : m_error;
-    emit emptyFinished(false, -1, m_emptyError);
+    emit emptyFinished(false, -1, m_emptyError, requestId);
 }
 
 void TrashBridge::joinEmptyWorker()

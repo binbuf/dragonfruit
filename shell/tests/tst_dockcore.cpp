@@ -1387,9 +1387,10 @@ private slots:
         QSignalSpy finished(&trash, &TrashBridge::emptyFinished);
         QVERIFY(finished.isValid());
 
-        QVERIFY(trash.emptyAsync());
+        QVERIFY(trash.emptyAsync(42));
         QVERIFY(trash.isEmptying());
         QVERIFY(trash.emptyState() == TrashBridge::EmptyState::Emptying);
+        QCOMPARE(trash.emptyRequestId(), quint64(42));
 
         QTRY_VERIFY(!trash.isEmptying());
         QVERIFY(trash.emptyState() == TrashBridge::EmptyState::Succeeded);
@@ -1397,6 +1398,7 @@ private slots:
         QCOMPARE(finished.count(), 1);
         QCOMPARE(finished.at(0).at(0).toBool(), true);
         QCOMPARE(finished.at(0).at(1).toInt(), 2);
+        QCOMPARE(finished.at(0).at(3).toULongLong(), quint64(42));
         QVERIFY(trash.emptyError().isEmpty());
         QVERIFY(!trash.isFull());
         QCOMPARE(trash.itemCount(), 0);
@@ -1419,10 +1421,11 @@ private slots:
 
         TrashBridge trash;
         trash.start();
-        QVERIFY(trash.emptyAsync());
+        QVERIFY(trash.emptyAsync(11));
         QVERIFY(trash.isEmptying());
-        QVERIFY(!trash.emptyAsync());
+        QVERIFY(!trash.emptyAsync(22));
         QVERIFY(trash.isEmptying());
+        QCOMPARE(trash.emptyRequestId(), quint64(11));
 
         QTRY_VERIFY(!trash.isEmptying());
         QVERIFY(trash.emptyState() == TrashBridge::EmptyState::Succeeded);
@@ -1438,12 +1441,14 @@ private slots:
         QSignalSpy finished(&trash, &TrashBridge::emptyFinished);
         QVERIFY(finished.isValid());
 
-        QVERIFY(trash.emptyAsync());
+        QVERIFY(trash.emptyAsync(7));
         QVERIFY(!trash.isEmptying());
         QVERIFY(trash.emptyState() == TrashBridge::EmptyState::Failed);
+        QCOMPARE(trash.emptyRequestId(), quint64(7));
         QCOMPARE(finished.count(), 1);
         QCOMPARE(finished.at(0).at(0).toBool(), false);
         QCOMPARE(finished.at(0).at(1).toInt(), -1);
+        QCOMPARE(finished.at(0).at(3).toULongLong(), quint64(7));
         QVERIFY(!trash.emptyError().isEmpty());
 
         trash.resetEmptyState();

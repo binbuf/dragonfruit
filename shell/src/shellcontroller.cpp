@@ -9867,8 +9867,12 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
         // asynchronously on the Trash bridge worker so the shell UI thread
         // never blocks (T-14.7r). A second request while emptying, or an
         // unreachable backend, is reported to the Dock rather than hanging.
+        // The request id ties the result back to this exact operation
+        // (reliability §7).
+        const quint64 requestId =
+            map.value(QStringLiteral("requestId")).toULongLong();
         if (m_trash) {
-            if (!m_trash->emptyAsync() && !m_trash->isEmptying()) {
+            if (!m_trash->emptyAsync(requestId) && !m_trash->isEmptying()) {
                 // The operation could not start (no monitor). emptyAsync
                 // already emitted the failure result; nothing more to do.
                 qWarning() << "shell: cannot empty the Trash:"
@@ -9878,7 +9882,8 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
             QMetaObject::invokeMethod(
                 m_dockItem, "handleTrashEmptyResult",
                 Q_ARG(QVariant, false), Q_ARG(QVariant, -1),
-                Q_ARG(QVariant, QStringLiteral("no trash monitor")));
+                Q_ARG(QVariant, QStringLiteral("no trash monitor")),
+                Q_ARG(QVariant, QVariant::fromValue(requestId)));
         }
     }
     scheduleDockRender();
@@ -9979,16 +9984,21 @@ void ShellController::onTrashChanged()
     scheduleDockRender();
 }
 
-void ShellController::onTrashEmptyFinished(bool ok, int removed, const QString &error)
+void ShellController::onTrashEmptyFinished(bool ok, int removed,
+                                           const QString &error,
+                                           quint64 requestId)
 {
     // The worker reported on the UI thread; hand the one-shot result to the
     // Dock's progress/result popover (T-14.7r). The bridge's `changed` signal
-    // separately updates the icon/badge from the real store.
+    // separately updates the icon/badge from the real store. The request id
+    // lets the Dock reject a result from a superseded operation
+    // (reliability §7).
     if (!m_dockItem)
         return;
     QMetaObject::invokeMethod(
         m_dockItem, "handleTrashEmptyResult",
-        Q_ARG(QVariant, ok), Q_ARG(QVariant, removed), Q_ARG(QVariant, error));
+        Q_ARG(QVariant, ok), Q_ARG(QVariant, removed), Q_ARG(QVariant, error),
+        Q_ARG(QVariant, QVariant::fromValue(requestId)));
     if (!ok)
         qWarning() << "shell: cannot empty the Trash:" << error;
     scheduleDockRender();

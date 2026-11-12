@@ -52,3 +52,21 @@ a Files listing, not the Dock's count-only monitor.
 - A later determinate-progress task must first add a progress seam to
   `files-core` (a callback or a streamed count on the empty op) before the
   popover can show `N of M`; the current indeterminate ring is the fallback.
+
+## Amendment (2026-11) — the operation outlives the popover
+
+The original decision tied `resetEmptyState()` to the Dock dismissing the
+result popover and described the result as visible state only. The Dock
+reliability review §7 separated the two:
+
+- **Closing the card does not reset the operation.** The bridge remains the
+  owner of `Emptying`/`Succeeded`/`Failed`; the Dock keeps a terminal result so
+  the Trash menu's **Show Progress** can reopen the card, including its retry
+  affordance after a failure.
+- **The card is not the overlay owner while another popup is open.** The Trash
+  tile shows a small busy ring and names the operation in its accessible label
+  and tooltip, so the progress remains discoverable after the card closes.
+- **Each request carries an id.** `emptyAsync(requestId)` echoes that id on
+  `emptyFinished`, and `finishEmpty` ignores a result whose id no longer matches
+  the current operation. The Dock applies the same check, so a late result
+  cannot overwrite a newer request.

@@ -94,3 +94,24 @@ it:
   older one, so a stale fallback timeout cannot clear the newer pending state.
 - `filterDockQuittingEntries` is retired. The pending state is published through
   the per-entry phase map, and `DockQuitRequests` owns the per-app generation.
+
+## Amendment (2026-11) — Trash progress outlives its card
+
+The original Trash presentation let an in-flight Empty Trash keep its status
+card open while another popup opened, so two components could claim the same
+overlay and focus. The Dock reliability review §7 separated the operation from
+its presentation:
+
+- **The controller owns the operation.** `TrashBridge` keeps the empty state and
+  result; the Dock's card is only a view of it. Closing the card no longer
+  resets the operation or discards a late result.
+- **One popup owns the overlay.** Another popup may close the Trash card while
+  the operation continues. The Trash tile carries a small busy ring and its
+  accessible name/tooltip say "emptying".
+- **Show Progress reopens the card.** The Trash menu offers **Show Progress**
+  whenever an operation or result exists, disables a second **Empty Trash**
+  while the operation is active, and preserves a completed result or failure
+  retry after the card closes.
+- **Requests and results share one identity.** Each Empty Trash request carries
+  a request id that the bridge echoes with its result; a late result from a
+  superseded operation is ignored by both the bridge and the Dock.
