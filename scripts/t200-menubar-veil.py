@@ -12,7 +12,8 @@ hardware-independent acceptance fixture:
   0.451/0.477/0.409/0.218/0.0 table over L=0/0.251/0.502/0.784/1.0, so the
   veil is invisible over white;
 * the LUT is monotone and the Dark baseline matches the coverage captures:
-  ~0.125 alpha over mid-grey and invisible over white;
+  ~0.125 alpha over mid-grey, invisible over white, and subtle over a dark
+  window (the scaled Light curve used to put its strongest wash there);
 * the checker transmission at a fixed depth is independent of checker size
   (the veil has no spatial kernel);
 * the text/glyph foreground flips to black over a light rendered bar and
@@ -183,8 +184,21 @@ def evaluate(data: dict) -> tuple[list[str], dict]:
               f"Dark background {bg}: output {out} is outside 0.02 of {expected}")
     check(abs(dark["veil"]["adaptScale"][2] - 0.26026) <= 1e-6,
           "Dark adaptation keeps the coverage mid-grey fit")
+    check(dark["veil"]["adaptScale"][1] < dark["veil"]["adaptScale"][2],
+          "Dark adaptation peaks at mid-grey, not 25% grey")
     check(dark["veil"]["adaptScale"][-1] == 0.0,
           "Dark adaptation ends at 0.0 over white")
+    # A dark window under the bar is the case that made the scaled Light
+    # curve read as a visible wash band: keep the near-black response low.
+    dark_window_alpha = adapted_alpha(alpha_at(dark_lut, 5), 0.12,
+                                      dark["veil"]["adaptLuma"],
+                                      dark["veil"]["adaptScale"])
+    check(dark_window_alpha < 0.08,
+          f"Dark veil over a dark window is too strong: {dark_window_alpha}")
+    dark_backgrounds["0.12"] = {
+        "alpha": round(dark_window_alpha, 6),
+        "limit": 0.08,
+    }
     report["dark_background_adaptation"] = dark_backgrounds
 
     # Wallpaper polarity selects the pair independently of app appearance.

@@ -9,6 +9,8 @@
 //! shared session loop fd-driven — there is no polling thread.
 
 use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::mem::ManuallyDrop;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -23,6 +25,7 @@ use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::{
     Relocate, RelocateRenderElement, RescaleRenderElement,
 };
+use smithay::backend::renderer::element::Element;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexProgram, GlesTexture};
 use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportAll, ImportDma, ImportMem, ImportMemWl, Renderer, Texture};
@@ -1475,19 +1478,6 @@ where
         .ok_or_else(|| "scene texture cache unexpectedly empty".to_owned())?;
     let clear = state.wallpaper_color_for(output);
     let tracker_size = Size::<i32, Physical>::from((region.texture_size.w, region.texture_size.h));
-    // Keep the scene damage tracker across frames (T-21.3). The first frame
-    // (or the first frame after a reallocation/region change) renders the
-    // whole region; later frames render only the damage the live elements
-    // report, and an unchanged scene renders nothing at all. Age 1 keeps
-    // Smithay from re-damaging the whole output on every call while still
-    // retaining the last element states.
-    if !cache.tracker_matches(key, region.physical.loc) {
-        cache.set_tracker(
-            key,
-            region.physical.loc,
-            OutputDamageTracker::new(tracker_size, scale, Transform::Normal),
-        );
-    }
     // Relocate the output-local elements into the region's physical space.
     // `&E` implements `RenderElement`, so this borrows the caller's list
     // instead of consuming it; the same list is drawn live in region mode.
@@ -1515,6 +1505,31 @@ where
     state
         .stats
         .record_scene_elements(total_elements, kept_elements);
+    // The element filter above means a window that leaves the bounded region
+    // is never submitted to the damage tracker. Its last pixels would stay in
+    // the cached scene texture; the menu-bar veil samples that texture
+    // directly, so it read as a ghost of the departed window. Detect the set
+    // change and reset the tracker, forcing one full region repaint.
+    let mut element_hasher = DefaultHasher::new();
+    for element in &relocated {
+        element.id().hash(&mut element_hasher);
+    }
+    if cache.note_region_elements(element_hasher.finish()) {
+        cache.reset_tracker();
+    }
+    // Keep the scene damage tracker across frames (T-21.3). The first frame
+    // (or the first frame after a reallocation/region change) renders the
+    // whole region; later frames render only the damage the live elements
+    // report, and an unchanged scene renders nothing at all. Age 1 keeps
+    // Smithay from re-damaging the whole output on every call while still
+    // retaining the last element states.
+    if !cache.tracker_matches(key, region.physical.loc) {
+        cache.set_tracker(
+            key,
+            region.physical.loc,
+            OutputDamageTracker::new(tracker_size, scale, Transform::Normal),
+        );
+    }
     let damage = {
         let tracker = cache
             .tracker_mut()

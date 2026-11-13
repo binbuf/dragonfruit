@@ -5,10 +5,11 @@
 #
 # Runs the same shell revision twice in the nested 144 Hz session:
 #
-#   baseline  DRAGONFRUIT_DOCK_STABLE_POPOVER=0  (current strip <-> popover
-#             scene resize on every open)
-#   stable    DRAGONFRUIT_DOCK_STABLE_POPOVER=1  (popover budget resident for
-#             the whole session)
+#   baseline  DRAGONFRUIT_DOCK_STABLE_POPOVER=0  (content-sized scene: the
+#             resting strip <-> the current overlay, reused within one
+#             interaction session)
+#   stable    DRAGONFRUIT_DOCK_STABLE_POPOVER=1  (full popover budget resident
+#             for the whole session)
 #
 # Each configuration opens and closes the real window-chooser popover at least
 # `CYCLES` times (default 100). The shell emits one `chrome trace id=...` per

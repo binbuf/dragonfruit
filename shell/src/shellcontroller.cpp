@@ -123,18 +123,20 @@ const QString kAppIndexService = QStringLiteral("org.dragonfruit.AppIndex1");
 const QString kAppIndexPath = QStringLiteral("/org/dragonfruit/AppIndex1");
 const QString kAppIndexInterface = QStringLiteral("org.dragonfruit.AppIndex1");
 
-// The Dock reserves a popover headroom (above a bottom Dock / beside a
-// vertical one) and side gutters only while a popover is open. Opening one
-// therefore *does* resize the shared Dock scene and retire/recreate its
-// render target and dma-buf slots on the open frame (T-14.7c). The QML clamps
-// the popover rectangle into this budget, so the values are a hard budget,
-// not just a hint.
+// The largest rectangle a Dock popover may occupy above a bottom Dock / beside
+// a vertical one. `Dock.qml` clamps placement and the committed overlay into
+// this budget, so the values are a hard placement bound, not just a hint.
+//
+// The offscreen scene is *not* pre-sized to this budget: `renderDock()` uses
+// the actual overlay rect to grow the Dock scene only as far as the content
+// needs (reliability §12). The margin is grow-only for one interaction
+// session and is released when the overlay, pointer, and keyboard focus have
+// all left, so a hover sweep does not retire the render target per tile.
 //
 // `DRAGONFRUIT_DOCK_STABLE_POPOVER=1` is the T238 diagnostic that keeps the
-// budget resident for the whole session so the A/B can separate the resize /
-// reallocation cost from the rest of the popover path. It is not the default:
-// the permanent choice is measured separately against a content-sized popup
-// producer.
+// full budget resident for the whole session so the A/B can separate the
+// resize/reallocation cost from the rest of the popover path. It is not the
+// default: the A/B showed it spends memory without improving open latency.
 //
 // Memory: the stable scene is (dock + 2*gutter) x (dock + headroom) pixels.
 // For the 3840x228 -> 4800x708 case, the extra RGBA8 storage is ~9.6 MiB per
@@ -7390,6 +7392,9 @@ void ShellController::applyDockSettings(bool reconfigure)
     const bool positionChanged = position != m_dockPosition;
     m_dockPosition = position;
     if (positionChanged) {
+        // The overlay opens toward a different edge now, so the strip-relative
+        // scene margins from the old edge are no longer meaningful.
+        m_dockSceneBudget.reset();
         if (position == ShellProtocol::DockPosition::Bottom) {
             m_dockHeight = m_dockThickness;
             m_dockWidth = 0;
@@ -8853,6 +8858,12 @@ void ShellController::onDockPointerLeft()
         return;
     sendChromePointer(m_dockWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                       m_dockButtons);
+    // Leaving the Dock ends the overlay interaction session, so release the
+    // content-sized scene margins instead of holding them until the next
+    // unrelated render (reliability §12). A Dock that never allocated an
+    // overlay needs no extra commit here.
+    if (!m_dockSceneBudget.margins().isZero())
+        scheduleDockRender();
 }
 
 void ShellController::onDockPopupPointerMoved(qreal x, qreal y)
@@ -10857,31 +10868,55 @@ void ShellController::renderDock()
     const int ph = popover.height();
     const bool hasPopover = !popover.isEmpty();
 
-    // Use a strip for ordinary Dock frames. Give the shared scene its full
-    // popover budget for the lifetime of an overlay, including its fade out.
-    // T238: the stable-popover diagnostic keeps that budget (and therefore
-    // the scene size, FBO generation, and dma-buf slots) resident for the
-    // whole session, so the A/B can isolate the open-frame resize cost.
-    const bool reservePopoverBudget = hasPopover || dockStablePopoverEnabled();
-    const int headroom = reservePopoverBudget ? kDockPopoverHeadroom : 0;
-    const int leftGutter = reservePopoverBudget ? kDockPopoverGutter : 0;
+    // The Dock scene is the resting strip plus only the space the current
+    // overlay actually uses. Growing it to the full placement budget made
+    // every hover label pay for a tall menu and resize the shared scene
+    // (reliability §12). The budget is grow-only for the interaction session
+    // and is released once the overlay, pointer, and keyboard focus are all
+    // gone, so a sweep between tiles reuses one allocation. T238's
+    // stable-popover diagnostic still keeps the full budget resident so the
+    // A/B can isolate the open-frame resize cost.
+    DockSceneMargins sceneMargins;
+    if (dockStablePopoverEnabled()) {
+        sceneMargins.top = kDockPopoverHeadroom;
+        sceneMargins.left = kDockPopoverGutter;
+        sceneMargins.right = kDockPopoverGutter;
+    } else {
+        const bool popoverOpen = m_dockItem->property("popoverOpen").toBool();
+        // A held button keeps the gesture's allocation even if the pointer
+        // briefly leaves the strip; releasing it ends the session.
+        const bool interactionActive = popoverOpen
+            || m_dockButtons != Qt::NoButton
+            || m_dockPointerPosition.has_value() || m_dockKeyboardFocused;
+        sceneMargins = m_dockSceneBudget.update(
+            QSize(m_dockWidth, m_dockHeight), popover,
+            outputGeometry.isValid() ? outputGeometry.size() : QSize(),
+            interactionActive);
+    }
+    const int headroom = sceneMargins.top;
+    const int leftGutter = sceneMargins.left;
     const bool originChanged = leftGutter != m_dockItemOffsetX || headroom != m_dockItemOffsetY;
     m_dockItemOffsetX = leftGutter;
     m_dockItemOffsetY = headroom;
-    const int windowWidth = m_dockWidth + 2 * leftGutter;
-    const int windowHeight = m_dockHeight + headroom;
+    const QSize sceneSize =
+        sceneMargins.sceneSize(QSize(m_dockWidth, m_dockHeight));
+    const int windowWidth = sceneSize.width();
+    const int windowHeight = sceneSize.height();
     prepareChromeScene(m_dockWindow, m_dockItem, QSize(m_dockWidth, m_dockHeight),
                        QSize(windowWidth, windowHeight), m_chromeScale);
     if (m_dockPopoverTraceId != 0) {
         ChromeStats::instance().traceEvent(
             m_dockPopoverTraceId, QStringLiteral("scene-prepared"),
-            QStringLiteral("scene=%1x%2 dock=%3x%4 popover=%5 headroom=%6")
+            QStringLiteral("scene=%1x%2 dock=%3x%4 popover=%5 margins=%6,%7,%8,%9")
                 .arg(windowWidth)
                 .arg(windowHeight)
                 .arg(m_dockWidth)
                 .arg(m_dockHeight)
                 .arg(hasPopover ? 1 : 0)
-                .arg(headroom));
+                .arg(sceneMargins.top)
+                .arg(sceneMargins.right)
+                .arg(sceneMargins.bottom)
+                .arg(sceneMargins.left));
     }
     auto *gpuProducer =
         qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_dockWindow));

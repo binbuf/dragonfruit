@@ -95,6 +95,11 @@ pub(crate) struct SceneTextureCache<T> {
     /// follow-up). Equal to the live epoch only while the scene has not
     /// changed; the renderer can then skip the damage-tracker walk entirely.
     last_epoch: Option<u64>,
+    /// Hash of the element ids that intersected this region on the last
+    /// render. A change means an element entered or left the bounded region;
+    /// the tracker's previous state may not cover the area it vacated, so the
+    /// region must be repainted instead of leaving stale pixels behind.
+    region_elements: Option<u64>,
 }
 
 impl<T> Default for SceneTextureCache<T> {
@@ -109,6 +114,7 @@ impl<T> Default for SceneTextureCache<T> {
             generation: 0,
             tracker: None,
             last_epoch: None,
+            region_elements: None,
         }
     }
 }
@@ -203,6 +209,7 @@ impl<T> SceneTextureCache<T> {
         self.key = Some(key);
         self.tracker = None;
         self.last_epoch = None;
+        self.region_elements = None;
         self.allocations += 1;
         self.generation = self.generation.wrapping_add(1);
     }
@@ -215,6 +222,27 @@ impl<T> SceneTextureCache<T> {
     /// Remember that the texture now contains the scene at `epoch`.
     pub(crate) fn set_last_epoch(&mut self, epoch: u64) {
         self.last_epoch = Some(epoch);
+    }
+
+    /// Record the set of elements that intersected the bounded region this
+    /// frame. Returns `true` when it changed since the last render.
+    ///
+    /// The damage tracker only sees elements that are submitted. When an
+    /// element leaves the region it is filtered out before the tracker runs;
+    /// its old pixels would otherwise survive in the cached scene texture and
+    /// the menu-bar veil would show a ghost of the departed window. A set
+    /// change therefore forces a full region repaint.
+    pub(crate) fn note_region_elements(&mut self, hash: u64) -> bool {
+        let changed = self.region_elements != Some(hash);
+        self.region_elements = Some(hash);
+        changed
+    }
+
+    /// Drop the retained damage tracker so the next render repaints the whole
+    /// region. Used when the element set changes without a region reallocation.
+    pub(crate) fn reset_tracker(&mut self) {
+        self.tracker = None;
+        self.last_epoch = None;
     }
 
     /// Whether the scene texture can be reused without walking the element
@@ -736,6 +764,40 @@ mod tests {
             ),
         );
         assert!(!cache.can_skip(key, origin, 1));
+    }
+
+    #[test]
+    fn a_changed_region_element_set_forces_a_full_region_repaint() {
+        use smithay::backend::renderer::damage::OutputDamageTracker;
+        use smithay::utils::{Point, Transform};
+
+        let mut cache: SceneTextureCache<u32> = SceneTextureCache::default();
+        let key = SceneTextureKey::new(size(400, 80), output(1920, 1200), 1.5.into());
+        let origin = Point::<i32, Physical>::from((10, 20));
+        cache.install(7, key);
+        cache.set_tracker(
+            key,
+            origin,
+            OutputDamageTracker::new(
+                Size::<i32, Physical>::from((400, 80)),
+                Scale::from(1.5),
+                Transform::Normal,
+            ),
+        );
+        cache.set_last_epoch(1);
+        assert!(cache.can_skip(key, origin, 1));
+
+        // The first frame has no recorded set, then an unchanged set is a
+        // no-op. A window leaving the bounded region changes the hash; the
+        // caller resets the tracker and the cache can no longer skip.
+        assert!(cache.note_region_elements(0xabc));
+        assert!(!cache.note_region_elements(0xabc));
+        assert!(cache.note_region_elements(0xdef));
+        cache.reset_tracker();
+        assert!(
+            !cache.can_skip(key, origin, 1),
+            "a departed element must force a full region repaint"
+        );
     }
 
     #[test]

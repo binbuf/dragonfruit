@@ -3443,6 +3443,103 @@ private slots:
         QCOMPARE(clampDockTileRect(QRect(5, 6, 7, 8), QRect()), QRect(5, 6, 7, 8));
     }
 
+    // -- Dock scene allocation (reliability §12) -------------------------
+
+    void dockSceneMarginsCoverOnlyTheOverlayContent()
+    {
+        const QSize dock(800, 160);
+        // An overlay inside the strip needs no extra scene.
+        QVERIFY(dockSceneMargins(dock, QRect(100, 40, 120, 30)).isZero());
+        QVERIFY(dockSceneMargins(dock, QRect()).isZero());
+
+        // A menu above a bottom Dock grows only the headroom.
+        const DockSceneMargins above = dockSceneMargins(dock, QRect(100, -200, 200, 250));
+        QCOMPARE(above.top, 200);
+        QCOMPARE(above.left, 0);
+        QCOMPARE(above.right, 0);
+        QCOMPARE(above.bottom, 0);
+        QCOMPARE(above.sceneSize(dock), QSize(800, 360));
+        QCOMPARE(above.itemOrigin(), QPoint(0, 200));
+
+        // A card past the left/right/bottom edges grows those margins.
+        const DockSceneMargins sides = dockSceneMargins(dock, QRect(-150, 120, 500, 80));
+        QCOMPARE(sides.left, 150);
+        QCOMPARE(sides.top, 0);
+        QCOMPARE(sides.right, 0);
+        QCOMPARE(sides.bottom, 40);
+        QCOMPARE(sides.sceneSize(dock), QSize(950, 200));
+
+        const DockSceneMargins right = dockSceneMargins(dock, QRect(700, 0, 300, 160));
+        QCOMPARE(right.right, 200);
+        QCOMPARE(right.sceneSize(dock), QSize(1000, 160));
+    }
+
+    void dockSceneMarginsClampToTheOutput()
+    {
+        const QSize dock(800, 160);
+        const QRect overlay(-100, -100, 1000, 400);
+        const DockSceneMargins unbounded = dockSceneMargins(dock, overlay);
+        QCOMPARE(unbounded.left, 100);
+        QCOMPARE(unbounded.top, 100);
+        QCOMPARE(unbounded.right, 100);
+        QCOMPARE(unbounded.bottom, 140);
+        QCOMPARE(unbounded.sceneSize(dock), QSize(1000, 400));
+
+        // The scene can never exceed the output; placement already keeps the
+        // overlay inside it, so trimming here is defensive.
+        const DockSceneMargins bounded =
+            dockSceneMargins(dock, overlay, QSize(900, 300));
+        QCOMPARE(bounded.sceneSize(dock), QSize(900, 300));
+        // The trailing margin is trimmed first, then the leading margin.
+        QCOMPARE(bounded.right, 0);
+        QCOMPARE(bounded.left, 100);
+        QCOMPARE(bounded.bottom, 40);
+        QCOMPARE(bounded.top, 100);
+    }
+
+    void dockSceneBudgetGrowsOnlyWithinASession()
+    {
+        const QSize dock(800, 160);
+        DockSceneBudget budget;
+        const QRect menu(100, -200, 200, 250);
+        const QRect tooltip(300, -30, 90, 24);
+
+        // A tall menu opens the session.
+        DockSceneMargins margins =
+            budget.update(dock, menu, QSize(1920, 1080), true);
+        QCOMPARE(margins.top, 200);
+        QCOMPARE(margins.sceneSize(dock), QSize(800, 360));
+
+        // A smaller tooltip later in the same session reuses the allocation
+        // instead of retiring the render target.
+        margins = budget.update(dock, tooltip, QSize(1920, 1080), true);
+        QCOMPARE(margins.top, 200);
+
+        // The overlay fade ends but the pointer/keyboard session continues.
+        margins = budget.update(dock, QRect(), QSize(1920, 1080), true);
+        QCOMPARE(margins.top, 200);
+
+        // Leaving the interaction releases it.
+        margins = budget.update(dock, QRect(), QSize(1920, 1080), false);
+        QVERIFY(margins.isZero());
+
+        // A new session starts from the new content, not the old peak.
+        margins = budget.update(dock, tooltip, QSize(1920, 1080), true);
+        QCOMPARE(margins.top, 30);
+        QCOMPARE(margins.sceneSize(dock), QSize(800, 190));
+    }
+
+    void dockSceneBudgetResetsForANewDockSize()
+    {
+        DockSceneBudget budget;
+        const QRect menu(100, -200, 200, 250);
+        QCOMPARE(budget.update(QSize(800, 160), menu, QSize(), true).top, 200);
+        // The Dock grows; the old strip-relative margins are not reused.
+        const DockSceneMargins resized =
+            budget.update(QSize(900, 200), QRect(), QSize(), true);
+        QVERIFY(resized.isZero());
+    }
+
     // -- the real-session return row (T-12.6b) ---------------------------
 
     void systemMenuHasNoReturnRowForANormalSession()

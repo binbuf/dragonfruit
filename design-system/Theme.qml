@@ -231,7 +231,7 @@ QtObject {
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "baseline"
-                    readonly property string provenance: "No standalone dark veil was measured in the first campaign; the coverage dark captures over neutral black/mid/white give a top alpha of ~0.125 over mid-grey and zero over white. Dragonfruit uses the measured light depth shape at a 0.48 peak, scaled by 0.286 of the light luminance response to match the mid-grey capture."
+                    readonly property string provenance: "No standalone dark veil was measured in the first campaign; the coverage dark captures over neutral black/mid/white give a top alpha of ~0.125 over mid-grey and zero over white. Dragonfruit uses the measured light depth shape at a 0.48 peak, with a best-guess luminance response that peaks at the measured mid-grey coverage and falls toward zero over black and white. Keeping the near-black response low avoids a visible wash band over a dark window under the bar."
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.48
@@ -251,7 +251,7 @@ QtObject {
                         readonly property real alpha90: 0.00835
                         readonly property real alpha95: 0.0
                         readonly property var adaptLuma: [0.0, 0.25, 0.5, 0.78, 1.0]
-                        readonly property var adaptScale: [0.286, 0.30316, 0.26026, 0.13728, 0.0]
+                        readonly property var adaptScale: [0.06, 0.14, 0.26026, 0.13728, 0.0]
                     }
                     readonly property real blur: 0.0
                     readonly property real edge: 0.0
@@ -1293,7 +1293,6 @@ QtObject {
                 readonly property int spinnerSize: 18
                 readonly property int spinnerStroke: 2
                 readonly property int spinnerSpeed: 900
-                // The Trash tile's ongoing-work ring (reliability §7).
                 readonly property int busySize: 14
                 readonly property int busyStroke: 2
             }

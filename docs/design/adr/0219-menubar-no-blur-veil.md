@@ -34,9 +34,11 @@ menu bar is explicitly not supposed to do.
   `1.0/1.06/0.91/0.48/0.0` at `L=0/0.25/0.5/0.78/1.0`, so the top-of-bar
   response is 0.451/0.477/0.409/0.218/0.0 over the report's five neutral
   backgrounds and the veil is invisible over white. The Dark baseline keeps
-  the same depth shape at a 0.48 peak but uses a best-guess coverage curve
-  (0.286 of the Light response) that gives ~0.125 alpha over mid-grey and zero
-  over white. Both LUTs end at exactly zero by 95 pt.
+  the same depth shape at a 0.48 peak but uses a best-guess coverage curve that
+  peaks at the measured mid-grey fit (~0.125 alpha) and falls to zero over
+  white. Its near-black response is deliberately low: scaling the Light curve
+  directly put the strongest black wash over a dark window, where the band is
+  most visible. Both LUTs end at exactly zero by 95 pt.
 - A bounded local luminance probe supplies the adaptation; there is no
   separate readability floor. The measured Light model is already readable,
   and the reference Dark captures show the text/glyph colour, not a darker
@@ -59,8 +61,16 @@ menu bar is explicitly not supposed to do.
   scheme-appropriate milky fallback plate.
 - The veil element's commit follows the scene cache's damage commit, so a
   moving window under the bar damages the veil while a settled scene does not.
-  Fullscreen suppression still hides the `top` layer, so the veil contributes
-  no panel and the output remains direct-scanout eligible.
+  The bounded scene texture may reuse a larger allocation from an earlier
+  region; its source mapping is against the current region's content size, and
+  an element leaving the region resets the damage tracker so the vacated strip
+  is repainted rather than leaking stale pixels through the veil. Fullscreen
+  suppression still hides the `top` layer, so the veil contributes no panel and
+  the output remains direct-scanout eligible.
+- Desktop icons start below the veil's 95 pt visual extent, not just the 28 pt
+  reserved strip. The bar is transparent on the replacement rail, so an icon
+  laid out inside the visual band would read as a ghost label under the menu
+  bar even though the veil itself is correct.
 - `query material` prints a `material veil mode=… extent=… strip=… alphas=…`
   diagnostic so a capture log can prove the no-blur mode and the LUT in use.
 
@@ -72,7 +82,9 @@ menu bar is explicitly not supposed to do.
   applying the black-background LUT everywhere. This fixes the visible white
   band over light wallpapers that the fixed-LUT implementation produced.
 - The visual extent can exceed the surface's committed/input strip without
-  changing reservation or hit testing.
+  changing reservation or hit testing. The desktop-icon inset follows the
+  visual extent, while normal windows still start below the 28 pt strip, so the
+  veil stays visual-only for window placement.
 - Dark is a documented best-guess fit to the coverage captures, not a
   controlled macOS profile; a dedicated Dark sweep can retune the curve later
   without changing the rendering model.

@@ -1297,6 +1297,23 @@ Item {
             verify(surface.iconView.tileSelectionColor !== Theme.color.accentMuted);
         }
 
+        function test_desktop_icons_start_below_the_menu_bar_veil() {
+            var surface = makeDesktop();
+            // The bar's veil is visual-only past the 28 pt strip, but it still
+            // paints over the desktop band; icons must not sit inside it.
+            compare(surface.menuBarVisualInset,
+                    Theme.glass.presets.menuBarVeil.extent);
+            compare(surface.iconView.anchors.topMargin,
+                    surface.menuBarVisualInset);
+
+            var saved = Settings.values["menu.showBackground"];
+            Settings.set("menu.showBackground", false);
+            tryVerify(function() {
+                return surface.menuBarVisualInset === Theme.controls.menuBar.height;
+            });
+            Settings.set("menu.showBackground", saved);
+        }
+
         function test_desktop_icons_can_be_free_placed_and_cleaned_up() {
             var surface = makeDesktop();
             waitForRendering(stage);

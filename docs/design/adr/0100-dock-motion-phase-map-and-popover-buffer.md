@@ -75,3 +75,35 @@ render target mid-gesture.
   null `QImage::copy`.
 - `Dock.qml`'s `laidOutOnce`/`dragSettling`/`Behavior on iconSize` are the
   motion contract: the first configure snaps, everything after springs.
+
+## Amendment (2026-11) — content-sized, session-scoped Dock scene
+
+The original decision pre-sized the Dock window to the full
+`popoverHeadroom`/`popoverGutter` budget at configure time. The T238 A/B then
+measured that keeping that budget resident removes the resize storm but costs
+~29–45 MiB of accounted FBO storage and does not move the open latency
+([`t238-dock-popover-ab.md`](../../captures/t238-dock-popover-ab.md)). The Dock
+reliability review §12 therefore rejected the always-resident budget as the
+default.
+
+- **The scene is the strip plus the current overlay.** The shell sizes the
+  offscreen window to the resting Dock plus only the margins the open popover
+  or hover label extends past it (`dockSceneMargins`). A small tooltip no
+  longer pays for a tall menu.
+- **The budget is grow-only for one interaction session.** `DockSceneBudget`
+  keeps the margins while the overlay, pointer, or keyboard focus is active,
+  so sweeping between tiles or opening a submenu reuses one allocation
+  instead of retiring the render target per hover. When the session ends the
+  margins return to zero.
+- **The allocation is bounded by the output work area**, and a Dock resize
+  resets the strip-relative margins.
+- **Placement and scene size are separate.** `popoverHeadroom`/`popoverGutter`
+  remain the QML placement/clamp budget; they are no longer the scene size.
+  `DRAGONFRUIT_DOCK_STABLE_POPOVER` still reserves the full budget for the
+  A/B diagnostic.
+- **A separate popup producer remains an option, not a requirement.** The
+  measurements did not justify a second scene/producer for latency; the
+  content-sized shared scene removes the fixed memory floor while preserving
+  compositor-paced rendering, dma-buf transport, and per-card material
+  regions. Revisit a dedicated producer only if native traces show a
+  remaining allocation or pacing cost.

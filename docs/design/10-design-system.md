@@ -275,8 +275,9 @@ sharp live scene, not a blur. Light is a white lift measured at 0.451 at 5 pt
 and zero by 95 pt, scaled by the measured background-luminance response
 (`1.0/1.06/0.91/0.48/0.0` at `L=0/0.25/0.5/0.78/1.0`) so it disappears over
 white; Dark is the same depth shape at a 0.48 peak with a best-guess coverage
-curve (0.286 of the Light response), giving a subtler black wash that also
-disappears over white. A bounded local luminance probe supplies the adaptation,
+curve that peaks at the measured mid-grey fit and also disappears over white,
+with a deliberately low near-black response so a dark window under the bar does
+not show a wash band. A bounded local luminance probe supplies the adaptation,
 but the displayed backdrop is always the sharp centre sample. The shell injects
 the wallpaper's top-band luma to choose white glyphs with the dark wash by default,
 or black glyphs with the light lift on very bright backgrounds, independently

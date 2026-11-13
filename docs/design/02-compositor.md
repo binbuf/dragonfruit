@@ -695,8 +695,9 @@ path and `VEIL_SHADER` samples the live scene directly; the measured Light
 depth LUT (0.451 at 5 pt, zero by 95 pt) is a white lift scaled by the measured
 background-luminance response (`1.0/1.06/0.91/0.48/0.0` at
 `L=0/0.25/0.5/0.78/1.0`, so it is invisible over white). Dark uses the same
-depth shape at a 0.48 peak with a best-guess coverage curve (0.286 of the Light
-response), giving a much subtler black wash that also disappears over white. A
+depth shape at a 0.48 peak with a best-guess coverage curve that peaks at the
+measured mid-grey fit and also disappears over white; its near-black response
+is deliberately low so a dark window under the bar does not show a wash band. A
 bounded local luminance probe supplies the adaptation; there is no separate
 readability floor. The displayed scene is never spatially filtered. The shell
 injects the wallpaper's top-band luma so `MenuBar.qml` can flip the text and

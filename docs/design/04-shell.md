@@ -391,8 +391,8 @@ actions revealed on row hover (T-14.7m): a stateful **Minimize / Restore** whose
 glyph and accessible name follow the window's minimized state, and a
 destructive **Close** tinted with the danger token. The buttons are icon-only
 and keyboard-inert — the chooser keeps its focus — and their footprint is
-reserved, so revealing them never resizes the popover (ADR 0100's pre-sized
-buffer still holds).
+reserved, so revealing them never resizes the popover or the Dock scene's
+content-sized overlay allocation (ADR 0100).
 
 The row list is **bounded** (T-14.7n): at most `component.dock.chooser.maxRows`
 (default 7) rows are visible and a longer list scrolls through the
@@ -430,8 +430,8 @@ The chooser anchors to a small geometry-proxy `Item` (`chooserAnchorProxy`) that
 snapshots the target delegate's rect in the Dock's coordinates and outlives the
 delegate: a projection/pin rebuild destroys and recreates the Repeater delegate
 but re-captures the proxy and re-parents it to force a reposition, so the
-popover is never orphaned. It allocates no surface and stays inside the existing
-popover buffer (ADR 0100). The live visual check is
+popover is never orphaned. It allocates no surface and stays inside the Dock
+scene's content-sized overlay allocation (ADR 0100). The live visual check is
 `docs/captures/t14-dock-hover-chooser.png` (`make
 dock-hover-chooser-capture`).
 
@@ -666,10 +666,10 @@ drag, a resize, or any open context menu/chooser/stack hides it, beginning
 keyboard navigation closes an already-visible label, and it is never up at the
 same time as a popover. `anchorItem` is the live entry
 delegate, so the capsule follows a magnified icon frame by frame and is clamped
-to the Dock's ends; it rides the same `popoverRect` overlay/headroom path as a
-menu so a bottom Dock's label is committed and never clipped. It is
-presentational only — no focus, no key capture; the entry's accessible name
-already carries the state.
+to the Dock's ends; it rides the same content-sized `popoverRect` overlay path
+as a menu so a bottom Dock's label is committed and never clipped, without
+allocating a menu-sized scene for the capsule. It is presentational only — no
+focus, no key capture; the entry's accessible name already carries the state.
 
 ### Dock motion and frame discipline
 
@@ -682,16 +682,19 @@ the Repeater model is never
 reassigned for a bounce, so delegates are not recreated and hover/press state
 survives. The 16 ms tick only advances the map and stops the moment both
 clocks are empty, so the settled Dock contributes zero wakeups. While a
-menu/chooser/stack is open, the shell pre-sizes the buffer to a fixed
-`popoverHeadroom`/`popoverGutter` budget and `Dock.qml` clamps every popover
-into it. Opening and closing the popover currently changes the scene height
-between the resting and headroom sizes; [the chrome stability
-proposal](proposals/chrome-stability-and-performance.md) S2 removes that
-transition by keeping the full budget allocated for the life of the output.
-`dock.size`/overflow changes and the drag-gap close ease with the
-non-overshooting `motion.dockMagnify` token (reduced motion is duration 0); the
-first configure snaps and magnification stays progress-based. The T-14.7c
-trace lives at `docs/captures/t14-dock-motion-trace.txt`. See
+popover or hover label is visible, the shell sizes the Dock scene to the
+resting strip plus only the part of the overlay that extends past it, bounded
+by the output work area (`dockSceneMargins`). The margins are grow-only for
+one pointer/keyboard interaction session (`DockSceneBudget`) and are released
+when the overlay, pointer, and keyboard focus have all left, so a sweep between
+tiles or a submenu reuses one allocation instead of recreating the render
+target. `popoverHeadroom`/`popoverGutter` remain the QML placement/clamp
+budget, not the scene size; the `DRAGONFRUIT_DOCK_STABLE_POPOVER` diagnostic
+still reserves the full budget for the T238 A/B. `dock.size`/overflow changes
+and the drag-gap close ease with the non-overshooting `motion.dockMagnify`
+token (reduced motion is duration 0); the first configure snaps and
+magnification stays progress-based. The T-14.7c trace lives at
+`docs/captures/t14-dock-motion-trace.txt`. See
 [ADR 0100](adr/0100-dock-motion-phase-map-and-popover-buffer.md) and the
 T-14.7c unit.
 
