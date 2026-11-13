@@ -878,6 +878,13 @@ pub struct BackdropBlurElement {
     texture_region: Rectangle<i32, Logical>,
     /// The texture's buffer size (the downsampled panel region).
     texture_size: Size<i32, Buffer>,
+    /// The buffer size the sampled content actually occupies. A filtered
+    /// panel's texture is resampled to `texture_size`; a sharp scene texture
+    /// may be a larger cache that reuses space when the region shrinks, so its
+    /// content occupies only the region's physical size at the texture origin.
+    /// Source mapping must use this size, never the allocation size, or the
+    /// veil samples stale pixels from the unused tail of the texture.
+    source_size: Size<i32, Buffer>,
     /// The panel's per-corner clipping radii in logical pixels (T197).
     corners: CornerRadii,
     scale: Scale<f64>,
@@ -908,6 +915,7 @@ impl BackdropBlurElement {
             panel,
             texture_region: panel,
             texture_size,
+            source_size: texture_size,
             corners: CornerRadii::uniform(corner_radius),
             scale,
             glass: None,
@@ -969,6 +977,13 @@ impl BackdropBlurElement {
         spec: crate::window::menubar_veil::VeilSpec,
         program: GlesTexProgram,
     ) -> Self {
+        // The sharp veil samples the live scene texture, which the cache may
+        // have grown for an earlier, larger region. Its content occupies the
+        // current region's physical size at the texture origin; the unused
+        // tail is stale. Map source coordinates against the content, not the
+        // allocation.
+        let content = self.texture_region.to_physical_precise_round(self.scale);
+        self.source_size = Size::from((content.size.w, content.size.h));
         self.veil = Some((spec, program));
         self
     }
@@ -1051,7 +1066,7 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
         };
         for span in self.spans() {
             let Some((visible, src)) =
-                map_span_to_texture(span, self.texture_region, self.texture_size)
+                map_span_to_texture(span, self.texture_region, self.source_size)
             else {
                 continue;
             };
@@ -1563,6 +1578,26 @@ mod tests {
         assert_eq!(visible, panel);
         assert_eq!(src.loc, Point::from((60.0, 20.0)));
         assert_eq!(src.size, Size::from((200.0, 80.0)));
+    }
+
+    #[test]
+    fn a_sharp_scene_source_uses_the_content_size_not_the_allocation() {
+        // The scene cache may reuse a texture that is larger than the current
+        // region. The sharp veil's content occupies only the region's physical
+        // size at the texture origin; the tail is stale. The source mapping
+        // must use the content size, or the veil samples that stale tail.
+        let region = Rectangle::new(Point::from((0, 0)), Size::from((1920, 95)));
+        let panel = region;
+        let content = Size::from((3840, 190));
+        let allocation = Size::from((3840, 380));
+        let (visible, src) = map_span_to_texture(panel, region, content).expect("sharp span");
+        assert_eq!(visible, panel);
+        assert_eq!(
+            src,
+            Rectangle::new(Point::from((0.0, 0.0)), Size::from((3840.0, 190.0)))
+        );
+        let (_, stale) = map_span_to_texture(panel, region, allocation).expect("allocated span");
+        assert_eq!(stale.size, Size::from((3840.0, 380.0)));
     }
 
     #[test]

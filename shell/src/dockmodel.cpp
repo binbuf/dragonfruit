@@ -738,6 +738,86 @@ DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableL
     return result;
 }
 
+namespace {
+
+// Shrink one axis of the scene so `dock + before + after` never exceeds the
+// output. The trailing margin is reduced first because the Dock is anchored to
+// the opposite edge; any remaining excess comes off the leading margin.
+void clampSceneAxis(int dockLength, int *before, int *after, int maxLength)
+{
+    if (maxLength <= 0)
+        return;
+    int excess = dockLength + *before + *after - maxLength;
+    if (excess <= 0)
+        return;
+    const int trimAfter = qMin(*after, excess);
+    *after -= trimAfter;
+    excess -= trimAfter;
+    *before = qMax(0, *before - excess);
+}
+
+} // namespace
+
+DockSceneMargins dockSceneMargins(const QSize &dock, const QRect &overlay,
+                                  const QSize &outputSize)
+{
+    DockSceneMargins margins;
+    if (dock.isEmpty() || overlay.isEmpty())
+        return margins;
+    if (overlay.x() < 0)
+        margins.left = -overlay.x();
+    if (overlay.y() < 0)
+        margins.top = -overlay.y();
+    const int overlayRight = overlay.x() + overlay.width();
+    const int overlayBottom = overlay.y() + overlay.height();
+    if (overlayRight > dock.width())
+        margins.right = overlayRight - dock.width();
+    if (overlayBottom > dock.height())
+        margins.bottom = overlayBottom - dock.height();
+    // Placement is already clamped to the output, so this is defensive: a
+    // malformed rect must never make the scene larger than the output.
+    if (outputSize.isValid()) {
+        clampSceneAxis(dock.width(), &margins.left, &margins.right,
+                       outputSize.width());
+        clampSceneAxis(dock.height(), &margins.top, &margins.bottom,
+                       outputSize.height());
+    }
+    return margins;
+}
+
+void DockSceneBudget::reset()
+{
+    m_margins = DockSceneMargins();
+    m_dockSize = QSize();
+}
+
+DockSceneMargins DockSceneBudget::update(const QSize &dock, const QRect &overlay,
+                                         const QSize &outputSize, bool sessionActive)
+{
+    if (dock != m_dockSize) {
+        // A Dock resize/reposition invalidates the strip-relative margins.
+        m_margins = DockSceneMargins();
+        m_dockSize = dock;
+    }
+    const DockSceneMargins required = dockSceneMargins(dock, overlay, outputSize);
+    if (!required.isZero()) {
+        m_margins.top = qMax(m_margins.top, required.top);
+        m_margins.right = qMax(m_margins.right, required.right);
+        m_margins.bottom = qMax(m_margins.bottom, required.bottom);
+        m_margins.left = qMax(m_margins.left, required.left);
+    } else if (!sessionActive) {
+        m_margins = DockSceneMargins();
+    }
+    // An output change can shrink the space the retained margins describe.
+    if (outputSize.isValid()) {
+        clampSceneAxis(dock.width(), &m_margins.left, &m_margins.right,
+                       outputSize.width());
+        clampSceneAxis(dock.height(), &m_margins.top, &m_margins.bottom,
+                       outputSize.height());
+    }
+    return m_margins;
+}
+
 // Assemble the visible entry list from the kept temporary/recent counts: drop
 // the tail of each droppable region and, when asked, append the terminal
 // overflow entry carrying every hidden running group in original order. The

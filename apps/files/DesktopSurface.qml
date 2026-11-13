@@ -66,6 +66,16 @@ FocusScope {
     // app text colour.
     property real backgroundLuma: Settings.wallpaperLuminance
 
+    // The menu bar's compositor veil is visual-only below its 28 pt strip, but
+    // it still paints over the desktop band. Desktop icons must start below
+    // the full veil extent; otherwise their labels read as ghosts through the
+    // transparent bar. With the bar background off there is no veil, so only
+    // the strip needs to be cleared.
+    readonly property int menuBarVisualInset:
+        Settings.values["menu.showBackground"] !== false
+            ? Theme.glass.presets.menuBarVeil.extent
+            : Theme.controls.menuBar.height
+
     // T227: `desktop.showItems`. "On Desktop" shows the Files icons;
     // "In Stage Manager" hides them for the Stage Manager host (T242).
     readonly property bool itemsVisible:
@@ -302,6 +312,7 @@ FocusScope {
     FilesIconView {
         id: iconView
         anchors.fill: parent
+        anchors.topMargin: root.menuBarVisualInset
         visible: root.itemsVisible
         directory: directory
         selectedId: root.selectedId

@@ -1400,6 +1400,11 @@ private:
     int m_dockItemOffsetY = 0;
     int m_dockPopoverX = 0;
     int m_dockPopoverY = 0;
+    // Content-sized scene margins for the current overlay interaction session
+    // (reliability §12). The budget grows as a popover or hover label needs
+    // space and is released when the pointer, keyboard focus, and overlay all
+    // leave, so a tooltip no longer pays the full popover placement budget.
+    DockSceneBudget m_dockSceneBudget;
     // T238: one correlation trace per Dock popover opening, from the
     // `popoverChanged` signal to the first presented frame callback.
     bool m_dockPopoverWasOpen = false;

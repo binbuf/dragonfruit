@@ -260,10 +260,15 @@ impl VeilSpec {
         let panel_h = panel.size.h.max(1) as f32;
         let offset_x = (texture_region.loc.x - panel.loc.x) as f32 / panel_w;
         let offset_y = (texture_region.loc.y - panel.loc.y) as f32 / panel_h;
-        let uv_scale_x = texture_region.size.w.max(1) as f32 / panel_w;
-        let uv_scale_y = texture_region.size.h.max(1) as f32 / panel_h;
+        // `v_coords` is normalized over the whole allocated texture, which can
+        // be larger than the region the scene cache last rendered (it grows
+        // and reuses space). The content is 1:1 at the texture origin, so the
+        // panel-local coordinate is `(v_coords * texture_size - (panel -
+        // region) * scale) / (panel * scale)`.
         let sx = scale.x.max(f64::EPSILON) as f32;
         let sy = scale.y.max(f64::EPSILON) as f32;
+        let uv_scale_x = texture_size.w.max(1) as f32 / (panel_w * sx);
+        let uv_scale_y = texture_size.h.max(1) as f32 / (panel_h * sy);
         let probe_x = self.probe * sx / texture_size.w.max(1) as f32;
         let probe_y = self.probe * sy / texture_size.h.max(1) as f32;
         vec![
@@ -446,10 +451,21 @@ mod tests {
             );
         }
         // The Dark curve is the best guess fitted to the coverage captures:
-        // much subtler than Light, peaking near mid-grey and zero over white.
+        // much subtler than Light, peaking at the measured mid-grey sample and
+        // zero over white. Scaling the Light curve directly would put the
+        // strongest black wash over a near-black window, where the band is
+        // most visible; keep the near-black response low instead.
         let dark = spec(Scheme::Dark);
         assert!((dark.adaptation(0.5) - 0.26026).abs() < 1e-6);
         assert_eq!(dark.adaptation(1.0), 0.0);
+        assert!(
+            dark.adaptation(0.25) < dark.adaptation(0.5),
+            "the Dark response must peak at mid-grey, not at 25% grey"
+        );
+        assert!(
+            dark.adapted_alpha(5.0, 0.12) < 0.08,
+            "a dark window under the bar must not show a strong veil band"
+        );
         for luma in [0.0, 0.25, 0.5, 0.78, 1.0] {
             assert!(dark.adaptation(luma) < 0.31);
         }
@@ -515,6 +531,34 @@ mod tests {
                 "depth {depth} must keep the measured alpha"
             );
         }
+    }
+
+    #[test]
+    fn veil_depth_uses_the_allocated_texture_size_for_its_uv_mapping() {
+        use smithay::backend::renderer::gles::UniformValue;
+
+        let veil = spec(Scheme::Dark);
+        let scale = Scale::from(2.0);
+        let panel = Rectangle::new((0, 0).into(), (1920, 95).into());
+        let texture = Size::from((3840, 380));
+        let uniforms = veil.uniforms(scale, panel, panel, texture);
+        let pair = |name: &str| match uniforms.iter().find(|u| u.name == name).unwrap().value {
+            UniformValue::_2f(x, y) => (f64::from(x), f64::from(y)),
+            _ => panic!("expected vec2 for {name}"),
+        };
+        let offset = pair(VEIL_PANEL_UV_OFFSET_UNIFORM);
+        let uv_scale = pair(VEIL_PANEL_UV_SCALE_UNIFORM);
+        // A pixel 40 pt below the top of the panel is at v_coords.y =
+        // 40*2/380 of the allocated texture; the reconstructed panel depth
+        // must still be 40/95. Using the region size (190) as the texture size
+        // would halve it.
+        let v_coords_y = 40.0 * 2.0 / 380.0;
+        let panel_uv_y = offset.1 + v_coords_y * uv_scale.1;
+        assert!(
+            (panel_uv_y - 40.0 / 95.0).abs() < 1e-5,
+            "panel depth {panel_uv_y} != {}",
+            40.0 / 95.0
+        );
     }
 
     #[test]

@@ -205,10 +205,18 @@ def main() -> int:
                  "Dark LUT ends at zero by 95 pt")
     # The coverage captures give a much subtler Dark wash than the original
     # 0.48 baseline; the curve must keep the mid-grey fit and disappear over
-    # white.
-    for expected, actual in zip((0.286, 0.30316, 0.26026, 0.13728, 0.0),
+    # white. It must also peak at mid-grey rather than at 25% grey: a black
+    # wash is most visible over a dark window, so the near-black response
+    # stays low instead of scaling the Light curve directly.
+    for expected, actual in zip((0.06, 0.14, 0.26026, 0.13728, 0.0),
                                 dark_veil["veil"]["adaptScale"]):
         checks.near(actual, expected, "Dark adaptation scale")
+    checks.check(dark_veil["veil"]["adaptScale"][1]
+                 < dark_veil["veil"]["adaptScale"][2],
+                 "Dark adaptation peaks at mid-grey, not 25% grey")
+    checks.check(dark_veil["veil"]["alpha5"]
+                 * dark_veil["veil"]["adaptScale"][0] < 0.08,
+                 "Dark veil stays subtle over a dark window")
 
     # T206: first-party app chrome. The measured Light Settings/Files fits and
     # the measured Dark Files fits are exact; Settings Dark is an adaptation

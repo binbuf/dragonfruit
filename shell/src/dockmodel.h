@@ -5,7 +5,9 @@
 #pragma once
 
 #include <QHash>
+#include <QPoint>
 #include <QRect>
+#include <QSize>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -327,6 +329,56 @@ DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableL
                                      const DockLayoutSpacing &spacing,
                                      int fixedCount = 2,
                                      bool minimizedVisible = true);
+
+// The padding the Dock scene needs around the resting strip so the current
+// overlay (popover card or hover label) is inside the offscreen buffer. The
+// scene is the strip plus these margins; sizing it to the content instead of
+// the full placement budget keeps a small tooltip from paying for a tall
+// menu, and a session-scoped grow-only budget avoids a resize per hover
+// (reliability §12). `overlay` is in Dock-local coordinates; `outputSize`
+// bounds the result to the output work area and may be invalid. Pure and
+// unit-tested (tst_dockcore).
+struct DockSceneMargins {
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+    int left = 0;
+
+    bool operator==(const DockSceneMargins &) const = default;
+    bool isZero() const
+    {
+        return top == 0 && right == 0 && bottom == 0 && left == 0;
+    }
+    QSize sceneSize(const QSize &dock) const
+    {
+        return QSize(dock.width() + left + right,
+                     dock.height() + top + bottom);
+    }
+    QPoint itemOrigin() const { return QPoint(left, top); }
+};
+
+// The minimal margins that contain `overlay` plus the Dock strip, capped to
+// `outputSize` when it is valid. An empty overlay yields zero margins.
+DockSceneMargins dockSceneMargins(const QSize &dock, const QRect &overlay,
+                                  const QSize &outputSize = QSize());
+
+// Grow-only scene budget for one pointer/keyboard interaction session. While
+// a session is active the margins never shrink, so sweeping between tiles or
+// opening a submenu does not recreate the render target; when the session
+// ends the allocation returns to zero. The Dock strip itself never changes
+// size. Pure and unit-tested (tst_dockcore).
+class DockSceneBudget
+{
+public:
+    DockSceneMargins update(const QSize &dock, const QRect &overlay,
+                            const QSize &outputSize, bool sessionActive);
+    DockSceneMargins margins() const { return m_margins; }
+    void reset();
+
+private:
+    DockSceneMargins m_margins;
+    QSize m_dockSize;
+};
 
 // T-10 section 8.1 bounce clocks. The measured reference launch lift is one
 // 15 pt hop over ~300 ms; the full multi-bounce is unresolved, so the launch

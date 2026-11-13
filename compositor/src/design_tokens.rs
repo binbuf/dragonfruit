@@ -432,6 +432,7 @@ pub mod component {
         }
         pub mod chooser {
             pub const MAX_ROWS: f32 = 7.0_f32;
+            pub const QUICK_WINDOW_ROWS: f32 = 5.0_f32;
             pub const SCROLLBAR_WIDTH: f32 = 8.0_f32;
             pub const SCROLLBAR_MARGIN: f32 = 2.0_f32;
             pub const HOVER_DWELL: f32 = 280.0_f32;
@@ -468,6 +469,8 @@ pub mod component {
             pub const SPINNER_SIZE: f32 = 18.0_f32;
             pub const SPINNER_STROKE: f32 = 2.0_f32;
             pub const SPINNER_SPEED: f32 = 900.0_f32;
+            pub const BUSY_SIZE: f32 = 14.0_f32;
+            pub const BUSY_STROKE: f32 = 2.0_f32;
         }
         pub mod minimize_reaction {
             pub const AMPLITUDE_RATIO: f32 = 0.28_f32;
@@ -896,7 +899,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "baseline";
-                pub const PROVENANCE: &str = "No standalone dark veil was measured in the first campaign; the coverage dark captures over neutral black/mid/white give a top alpha of ~0.125 over mid-grey and zero over white. Dragonfruit uses the measured light depth shape at a 0.48 peak, scaled by 0.286 of the light luminance response to match the mid-grey capture.";
+                pub const PROVENANCE: &str = "No standalone dark veil was measured in the first campaign; the coverage dark captures over neutral black/mid/white give a top alpha of ~0.125 over mid-grey and zero over white. Dragonfruit uses the measured light depth shape at a 0.48 peak, with a best-guess luminance response that peaks at the measured mid-grey coverage and falls toward zero over black and white. Keeping the near-black response low avoids a visible wash band over a dark window under the bar.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.48_f32;
@@ -916,7 +919,7 @@ pub mod glass {
                     pub const ALPHA_90: f32 = 0.00835_f32;
                     pub const ALPHA_95: f32 = 0.0_f32;
                     pub const ADAPT_LUMA: [f32; 5] = [0.0_f32, 0.25_f32, 0.5_f32, 0.78_f32, 1.0_f32];
-                    pub const ADAPT_SCALE: [f32; 5] = [0.286_f32, 0.30316_f32, 0.26026_f32, 0.13728_f32, 0.0_f32];
+                    pub const ADAPT_SCALE: [f32; 5] = [0.06_f32, 0.14_f32, 0.26026_f32, 0.13728_f32, 0.0_f32];
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
