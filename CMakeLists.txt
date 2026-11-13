@@ -32,12 +32,24 @@ enable_testing()
 # the shell's Dock Trash bridge both link it, so the imported target and its
 # one cargo invocation are defined here rather than in either consumer.
 find_program(DF_CARGO_EXECUTABLE cargo REQUIRED)
+# The staticlib must come from the same profile as this CMake build: a packaged
+# Release build has no target/debug tree, and Ninja must know the archive is a
+# byproduct of the cargo target or it fails with "no known rule to make it".
+if(CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
+    set(DF_CARGO_PROFILE_FLAG --release)
+    set(DF_CARGO_TARGET_DIR "${CMAKE_SOURCE_DIR}/target/release")
+else()
+    set(DF_CARGO_PROFILE_FLAG "")
+    set(DF_CARGO_TARGET_DIR "${CMAKE_SOURCE_DIR}/target/debug")
+endif()
 set(DF_FILES_CORE_STATICLIB
-    "${CMAKE_SOURCE_DIR}/target/debug/libdragonfruit_files_core.a")
+    "${DF_CARGO_TARGET_DIR}/libdragonfruit_files_core.a")
 add_custom_target(dragonfruit-files-core-ffi
     COMMAND ${DF_CARGO_EXECUTABLE} build -p dragonfruit-files-core
+            ${DF_CARGO_PROFILE_FLAG}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Building dragonfruit-files-core staticlib (T-10.4b bridge)"
+    BYPRODUCTS "${DF_FILES_CORE_STATICLIB}"
     VERBATIM
 )
 add_library(dragonfruit-files-core STATIC IMPORTED GLOBAL)
