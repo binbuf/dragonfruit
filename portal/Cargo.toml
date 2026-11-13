@@ -29,7 +29,7 @@ df-ipc.workspace = true
 # 09-files.md): `Location` normalizes the presenter's selection into the
 # portal's `file://` URIs and `DirectoryModel`/`StdFsSource` is the listing
 # seam the picker UI drives. A library link, never a process.
-dragonfruit-files-core = { path = "../services/files-core", version = "0.1.0" }
+dragonfruit-files-core = { path = "../services/files-core", version = "0.3.0" }
 zbus = { version = "=5.19.0", features = ["blocking-api"] }
 
 [dev-dependencies]
@@ -38,4 +38,4 @@ serde = "=1.0.229"
 # object on a private bus and checks the projection against it. This is a
 # dev-only link; the shipped backend reads settingsd over D-Bus, never as a
 # library.
-dragonfruit-settingsd = { path = "../services/settingsd", version = "0.1.0" }
+dragonfruit-settingsd = { path = "../services/settingsd", version = "0.3.0" }

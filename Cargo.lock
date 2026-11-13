@@ -490,7 +490,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
 name = "df-ipc"
-version = "0.1.0"
+version = "0.3.0"
 
 [[package]]
 name = "digest"
@@ -531,7 +531,7 @@ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
 name = "dragonfruit-accessibility-adapter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "zbus",
@@ -539,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-account-adapter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "serde",
@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-app-index"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "df-ipc",
  "libc",
@@ -560,7 +560,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-audio"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "serde_json",
@@ -568,7 +568,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-bluetooth"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "serde",
@@ -578,7 +578,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-compositor"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "bitflags 2.13.2",
  "calloop 0.14.4",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-dev"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "calloop 0.14.4",
  "df-ipc",
@@ -609,11 +609,11 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-distro-adapters"
-version = "0.1.0"
+version = "0.3.0"
 
 [[package]]
 name = "dragonfruit-files-core"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "tempfile",
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-firewall"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-distro-adapters",
  "dragonfruit-system-adapters",
@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-general-adapter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "serde_json",
@@ -637,14 +637,14 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-input"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
 ]
 
 [[package]]
 name = "dragonfruit-lock-adapter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-session",
  "dragonfruit-system-adapters",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-lock-auth"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "tempfile",
@@ -660,7 +660,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-menu-broker"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "df-ipc",
  "serde",
@@ -670,14 +670,14 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-menubar-adapter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
 ]
 
 [[package]]
 name = "dragonfruit-networkmanager"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "serde",
@@ -687,7 +687,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-notifications"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "df-ipc",
  "serde",
@@ -697,7 +697,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-notify-adapter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-notifications",
  "dragonfruit-system-adapters",
@@ -707,14 +707,14 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-overview"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
 ]
 
 [[package]]
 name = "dragonfruit-power"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "serde",
@@ -724,7 +724,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-printer-adapter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "serde",
@@ -733,7 +733,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-privacy-adapter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "serde",
@@ -743,7 +743,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-session"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "df-ipc",
  "libc",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-settingsd"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "df-ipc",
  "serde",
@@ -763,7 +763,7 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-storage"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
  "serde",
@@ -773,11 +773,11 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-system-adapters"
-version = "0.1.0"
+version = "0.3.0"
 
 [[package]]
 name = "dragonfruit-system-status"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-accessibility-adapter",
  "dragonfruit-account-adapter",
@@ -801,14 +801,14 @@ dependencies = [
 
 [[package]]
 name = "dragonfruit-update-adapter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "dragonfruit-system-adapters",
 ]
 
 [[package]]
 name = "dragonfruit-wallpaperd"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3121,7 +3121,7 @@ checksum = "163b33ed8786455e2fa5d72f554057ce3f3182425434f756cd39c99839d88e23"
 
 [[package]]
 name = "xdg-desktop-portal-dragonfruit"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "df-ipc",
  "dragonfruit-files-core",

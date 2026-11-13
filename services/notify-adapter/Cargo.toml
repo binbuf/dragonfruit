@@ -15,8 +15,8 @@ rust-version.workspace = true
 # through the service's own D-Bus surface, and exposes the three-state contract
 # from `dragonfruit-system-adapters`. Nothing above this crate sees a zbus type.
 [dependencies]
-dragonfruit-notifications = { path = "../notifications", version = "0.1.0" }
-dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+dragonfruit-notifications = { path = "../notifications", version = "0.3.0" }
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.3.0" }
 serde_json = "=1.0.151"
 zbus = { version = "=5.19.0", features = ["blocking-api"] }
 

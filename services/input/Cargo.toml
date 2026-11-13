@@ -16,7 +16,7 @@ rust-version.workspace = true
 # lives in `dragonfruit-system-adapters` and nothing above this crate sees a
 # libinput type.
 [dependencies]
-dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.3.0" }
 
 [lib]
 name = "dragonfruit_input"
