@@ -184,4 +184,6 @@ df_qml_lint(design-system
 )
 
 add_subdirectory(gallery)
-add_subdirectory(tests)
+if(DF_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

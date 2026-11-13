@@ -30,4 +30,6 @@ qt_add_resources(dragonfruit-system-font "inter"
 target_link_libraries(dragonfruit-system-font PUBLIC Qt6::Gui)
 target_include_directories(dragonfruit-system-font PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_subdirectory(tests)
+if(DF_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

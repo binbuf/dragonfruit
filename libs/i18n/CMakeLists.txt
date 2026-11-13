@@ -24,4 +24,6 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/translations/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/dragonfruit/translations"
     FILES_MATCHING PATTERN "*.ts")
 
-add_subdirectory(tests)
+if(DF_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
