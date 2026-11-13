@@ -155,4 +155,6 @@ df_qml_lint(app-files
     DesktopSurface.qml
 )
 
-add_subdirectory(tests)
+if(DF_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

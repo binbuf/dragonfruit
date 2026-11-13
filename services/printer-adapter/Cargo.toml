@@ -16,7 +16,7 @@ rust-version.workspace = true
 # in one parser and stays behind the `PrintSource` seam. The dependency-free
 # contract lives in `dragonfruit-system-adapters`.
 [dependencies]
-dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.3.0" }
 serde = { version = "=1.0.229", features = ["derive"] }
 
 [dev-dependencies]

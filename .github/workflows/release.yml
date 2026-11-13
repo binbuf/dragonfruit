@@ -80,34 +80,77 @@ jobs:
 
       - name: Build DEB + tar
         run: |
+          set -o pipefail
           scripts/package.sh \
             --version "${{ steps.version.outputs.value }}" \
             --output dist \
-            --formats tar,deb
+            --formats tar,deb 2>&1 | tee build-deb.log
+
+      - name: Build diagnostics
+        if: failure()
+        run: |
+          if [ -f build-deb.log ]; then
+            tail -n 10 build-deb.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          else
+            echo "::error::LOG-MISSING build-deb.log"
+          fi
 
       - name: Install smoke test
         run: |
-          apt-get install -y ./dist/*.deb
-          dpkg -L dragonfruit-desktop \
-            | grep -qx /usr/share/wayland-sessions/dragonfruit.desktop
-          for b in /usr/bin/dragonfruit-* /usr/bin/xdg-desktop-portal-dragonfruit; do
-            [ -x "$b" ] || continue
-            file "$b" | grep -q ELF || continue
-            if ldd "$b" | grep -q 'not found'; then
-              echo "unresolved shared libraries in $b"
-              ldd "$b"
-              exit 1
-            fi
-          done
+          set -o pipefail
+          {
+            apt-get install -y ./dist/*.deb
+            dpkg -L dragonfruit-desktop \
+              | grep -qx /usr/share/wayland-sessions/dragonfruit.desktop
+            for b in /usr/bin/dragonfruit-* /usr/bin/xdg-desktop-portal-dragonfruit; do
+              [ -x "$b" ] || continue
+              file "$b" | grep -q ELF || continue
+              if ldd "$b" | grep -q 'not found'; then
+                echo "unresolved shared libraries in $b"
+                ldd "$b"
+                exit 1
+              fi
+            done
+          } 2>&1 | tee smoke-deb.log
+
+      - name: Smoke diagnostics
+        if: failure()
+        run: |
+          if [ -f smoke-deb.log ]; then
+            echo "::error::DISK $(df -h /__w | tail -n 1)"
+            tail -n 8 smoke-deb.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          else
+            echo "::error::LOG-MISSING smoke-deb.log"
+          fi
 
       - name: Source tarball
         run: |
-          mkdir -p dist
-          git archive \
-            --format=tar.gz \
-            --prefix="dragonfruit-${{ steps.version.outputs.value }}/" \
-            -o "dist/dragonfruit-${{ steps.version.outputs.value }}-source.tar.gz" \
-            HEAD
+          set -o pipefail
+          {
+            # Container jobs can see the workspace as a different owner.
+            git config --global --add safe.directory "$GITHUB_WORKSPACE"
+            mkdir -p dist
+            git archive \
+              --format=tar.gz \
+              --prefix="dragonfruit-${{ steps.version.outputs.value }}/" \
+              -o "dist/dragonfruit-${{ steps.version.outputs.value }}-source.tar.gz" \
+              HEAD
+          } 2>&1 | tee source-deb.log
+
+      - name: Source diagnostics
+        if: failure()
+        run: |
+          if [ -f source-deb.log ]; then
+            tail -n 10 source-deb.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          else
+            echo "::error::LOG-MISSING source-deb.log"
+          fi
 
       - name: Refresh checksums
         run: |
@@ -165,10 +208,28 @@ jobs:
 
       - name: Build RPM
         run: |
+          set -o pipefail
           scripts/package.sh \
             --version "${{ steps.version.outputs.value }}" \
             --output dist \
-            --formats rpm
+            --formats rpm 2>&1 | tee build-rpm.log
+
+      - name: Build diagnostics
+        if: failure()
+        run: |
+          if [ -f build-rpm.log ]; then
+            echo "::error::LOG-BEGIN lines=$(wc -l < build-rpm.log) bytes=$(wc -c < build-rpm.log)"
+            grep -n -A6 -B3 -E 'CMake Error|error\[|error:|FAILED|undefined reference|ninja:' build-rpm.log \
+              | tail -n 80 | while IFS= read -r line; do
+                  echo "::error::$line"
+                done
+            echo "::error::LOG-TAIL"
+            tail -n 40 build-rpm.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          else
+            echo "::error::LOG-MISSING build-rpm.log"
+          fi
 
       - name: Install smoke test
         run: |
@@ -234,10 +295,28 @@ jobs:
 
       - name: Build Arch package
         run: |
+          set -o pipefail
           scripts/package.sh \
             --version "${{ steps.version.outputs.value }}" \
             --output dist \
-            --formats arch
+            --formats arch 2>&1 | tee build-arch.log
+
+      - name: Build diagnostics
+        if: failure()
+        run: |
+          if [ -f build-arch.log ]; then
+            echo "::error::LOG-BEGIN lines=$(wc -l < build-arch.log) bytes=$(wc -c < build-arch.log)"
+            grep -n -A6 -B3 -E 'CMake Error|error\[|error:|FAILED|undefined reference|ninja:' build-arch.log \
+              | tail -n 80 | while IFS= read -r line; do
+                  echo "::error::$line"
+                done
+            echo "::error::LOG-TAIL"
+            tail -n 40 build-arch.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          else
+            echo "::error::LOG-MISSING build-arch.log"
+          fi
 
       - name: Install smoke test
         run: |
