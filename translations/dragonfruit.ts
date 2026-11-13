@@ -2565,6 +2565,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Application unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Assign to All Desktops</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2757,6 +2761,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>This application is no longer installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Trash</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2920,6 +2928,10 @@ Open source system software</source>
     </message>
     <message>
         <source>9+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Application unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
