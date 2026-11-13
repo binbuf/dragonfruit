@@ -43,6 +43,7 @@ PRESET_NAMES = (
     "menuBarVeil",
     "menuAttached",
     "menuDetached",
+    "appsDrawer",
     "statusMenu",
     "tooltip",
     "controlCenterOuter",
@@ -95,7 +96,7 @@ PERSISTENT_ROLES = ("chrome", "dock")
 # anchors directly. The detached/status menu presets follow the same measured
 # curve as a relative adjustment (their default fits are preserved).
 SLIDER_PRESET = "menuAttached"
-RELATIVE_SLIDER_PRESETS = ("menuDetached", "statusMenu")
+RELATIVE_SLIDER_PRESETS = ("menuDetached", "appsDrawer", "statusMenu")
 
 
 class PresetError(ValueError):

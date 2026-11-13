@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
+import QtQuick.Shapes
 import Dragonfruit
 
 // A software-renderer-friendly drop shadow. Qt's shader effects (MultiEffect,
@@ -26,6 +27,10 @@ Item {
     property color shadowColor: Theme.color.shadowColor
     property point offset: Qt.point(0, elevation.offsetY)
     property int layers: elevation.layers
+    // Cut the panel's own rounded rect out of every layer. A translucent
+    // surface that lets the compositor's glass through must not paint the
+    // shadow's interior over it; only the ring outside the card is a shadow.
+    property bool cutout: false
 
     // Match the compositor's truncated Gaussian and source-over integration.
     function cumulativeAlpha(distance) {
@@ -43,17 +48,55 @@ Item {
 
     Repeater {
         model: Math.max(1, root.layers)
-        delegate: Rectangle {
+        delegate: Item {
+            id: layer
+
             required property int index
             readonly property real spread: (Math.max(1, root.layers) - index) / Math.max(1, root.layers)
-            x: root.offset.x - root.blur * spread
-            y: root.offset.y - root.blur * spread
-            width: root.width + 2 * root.blur * spread
-            height: root.height + 2 * root.blur * spread
-            radius: root.radius + root.blur * spread
-            color: root.shadowColor
+            readonly property real layerX: root.offset.x - root.blur * spread
+            readonly property real layerY: root.offset.y - root.blur * spread
+            readonly property real outerWidth: root.width + 2 * root.blur * spread
+            readonly property real outerHeight: root.height + 2 * root.blur * spread
+            readonly property real outerRadius: root.radius + root.blur * spread
+
+            x: layerX
+            y: layerY
+            width: outerWidth
+            height: outerHeight
             opacity: root.layerOpacity(index)
-            antialiasing: true
+            visible: root.shadowColor.a > 0 && opacity > 0
+
+            Rectangle {
+                anchors.fill: parent
+                visible: !root.cutout
+                radius: layer.outerRadius
+                color: root.shadowColor
+                antialiasing: true
+            }
+
+            Shape {
+                anchors.fill: parent
+                visible: root.cutout
+                ShapePath {
+                    fillColor: root.shadowColor
+                    strokeColor: "transparent"
+                    fillRule: ShapePath.OddEvenFill
+                    PathRectangle {
+                        x: 0
+                        y: 0
+                        width: layer.outerWidth
+                        height: layer.outerHeight
+                        radius: layer.outerRadius
+                    }
+                    PathRectangle {
+                        x: -layer.layerX
+                        y: -layer.layerY
+                        width: root.width
+                        height: root.height
+                        radius: root.radius
+                    }
+                }
+            }
         }
     }
 }

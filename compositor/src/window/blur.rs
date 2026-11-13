@@ -296,8 +296,10 @@ vec3 oklab_to_linear(vec3 c) {
 
 // The measured Snell displacement at `depth` logical points inside the rim.
 // The height field is monotone, `h(t) = H (1 - (1-t)^m)^p`; the surface slope
-// drives Snell's law, and the horizontal component on the 45-degree diagonal
-// is the fitted -4 / -8.5 / -9.6 pt at 5 / 10 / 15 pt.
+// drives Snell's law. The fitted -4 / -8.5 / -9.6 pt at 5 / 10 / 15 pt is the
+// displacement across the short ends, where the measured vertical grid line
+// was tracked. Applied along the outward normal, the 45-degree corner has a
+// smaller horizontal component; the short side has the full fitted value.
 float snell_shift(float depth, float bezel_px, vec4 field) {
     float t = clamp(depth / max(bezel_px, 1.0), 0.0, 1.0);
     if (t <= 0.0 || t >= 1.0) return 0.0;
@@ -309,6 +311,19 @@ float snell_shift(float depth, float bezel_px, vec4 field) {
     float theta_i = atan(slope);
     float theta_r = asin(clamp(sin(theta_i) / max(field.y, 1.0), -1.0, 1.0));
     return h * tan(theta_i - theta_r) / 1.41421356;
+}
+
+// The measured plate lens is an end lens: strongest across the short sides
+// (the left/right ends of a horizontal Dock, the top/bottom ends of a vertical
+// one) and fading along the long edges. Only the long-axis component of the
+// distance from the nearest corner centre controls the gain, so the whole
+// short side shares one rounded refraction. The old `4*nx^2*ny^2` normal
+// product instead peaked on the 45-degree diagonal, leaving the middle of each
+// short side flat and producing two diagonal lobes there.
+float end_gain(vec2 half_size, vec2 p, vec2 size, float reach) {
+    vec2 offset = max(half_size - abs(p), vec2(0.0));
+    float along = (size.x >= size.y) ? offset.x : offset.y;
+    return exp(-along / max(reach, 1.0));
 }
 
 void main() {
@@ -333,19 +348,22 @@ void main() {
     // direction: the SDF normal jumps across interior medial axes.
     vec2 rim_normal = squircle_normal(outside, q, shape.y);
     float ol = length(outside);
+    // Shared by the blurred body and the sharp bevel overlay. The measured
+    // short end keeps the full lens; the long flats keep the measured ~0.5 pt.
+    float measured_end_gain = end_gain(half_size, p, glass_size, corner_tail);
 
     vec2 uv = v_coords;
     if (flat_band > 0.5) {
         // Physical bevel: a continuous height field refracted through Snell's
-        // law. The smooth `4*nx^2*ny^2` corner gain is not a hard gate: it
-        // leaves the measured ~0.5 pt on the flats and reaches the full
-        // measured displacement at the 45-degree corner. `shape.x` is the
-        // materialize axis (1.0 at the measured default).
+        // law. The end-lens gain is not a hard gate: it leaves the measured
+        // ~0.5 pt on the long flats and reaches the full measured short-side
+        // displacement across the whole end. `shape.x` is the materialize
+        // axis (1.0 at the measured default).
         if (corner_peak > 0.0 && inside < corner_tail) {
             float corner_gate = 4.0 * rim_normal.x * rim_normal.x
                               * rim_normal.y * rim_normal.y;
             if (shape.y > 2.0) {
-                float gain = mix(0.05, 1.0, corner_gate);
+                float gain = mix(0.05, 1.0, measured_end_gain);
                 float shift = snell_shift(inside, corner_tail, bevel);
                 uv -= rim_normal * (shift * gain * shape.x) * uv_per_px;
             } else {
@@ -536,6 +554,15 @@ float snell_shift(float depth, float bezel_px, vec4 field) {
     return h * tan(theta_i - theta_r) / 1.41421356;
 }
 
+// Same measured end-lens field as the blurred body. The sharp overlay must
+// use it too, or the clear bevel and the frosted body would disagree and show
+// a visible inner contour.
+float end_gain(vec2 half_size, vec2 p, vec2 size, float reach) {
+    vec2 offset = max(half_size - abs(p), vec2(0.0));
+    float along = (size.x >= size.y) ? offset.x : offset.y;
+    return exp(-along / max(reach, 1.0));
+}
+
 void main() {
     vec2 panel_uv = panel_uv_offset + v_coords * panel_uv_scale;
     vec2 p = (panel_uv - 0.5) * glass_size;
@@ -549,14 +576,19 @@ void main() {
     vec2 normal = squircle_normal(outside, q, shape.y);
     float corner_gate = 4.0 * normal.x * normal.x
                       * normal.y * normal.y;
+    float measured_end_gain = end_gain(half_size, p, glass_size, corner_tail);
+    float shift = snell_shift(inside, corner_tail, bevel);
+    float peak_shift = snell_shift(corner_distance, corner_tail, bevel);
+    float lens_strength = clamp(shift / max(peak_shift, 1e-4), 0.0, 1.0);
 
-    // The sharp overlay is corner-only. The measured flat top/bottom edge is
-    // ~0.5 pt and belongs to the blurred body; a wide sharp band there would
-    // overwrite the measured flat-band MTF. The corner gate broadens the
-    // band only where the reference actually shows the compressed bevel.
-    float bevel_band = max(corner_distance * 1.6, rim_tail * 3.0);
-    float band = corner_gate
-        * (1.0 - smoothstep(bevel_band * 0.45, max(bevel_band, 1.0), inside));
+    // The sharp overlay is the clear end bevel. It wraps the whole short side
+    // and fades along the long edges into the frosted body, so the reference's
+    // broad end lens is sharp while the measured flat top/bottom keeps its
+    // 19.2 % sharp / Gaussian mixture. The old corner gate made two 45-degree
+    // wedges and left the middle of each end frosted. The overlay follows the
+    // lens displacement itself, so the clear-to-frosted transition has no
+    // inner contour.
+    float band = smoothstep(0.08, 0.50, measured_end_gain) * lens_strength;
     // Preserve the body's measured specular line and tail: the sharp overlay
     // starts just inside them rather than covering the rim.
     float rim_guard = smoothstep(rim_tail * 1.1, max(rim_tail * 1.8, 1.0),
@@ -574,8 +606,7 @@ void main() {
 
     if (corner_peak > 0.0 && inside < corner_tail) {
         if (shape.y > 2.0) {
-            float gain = mix(0.05, 1.0, corner_gate);
-            float shift = snell_shift(inside, corner_tail, bevel);
+            float gain = mix(0.05, 1.0, measured_end_gain);
             uv -= normal * (shift * gain * shape.x) * uv_per_px;
         } else {
             float t = inside / max(corner_distance, 1.0);

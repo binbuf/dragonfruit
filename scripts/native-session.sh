@@ -1031,6 +1031,36 @@ terminate_dragonfruit_sessions() {
     done
 }
 
+# End the current Dragonfruit login the way the session entry expects.
+#
+# The compositor is a systemd *user* unit under user@UID.service, not a
+# process in the logind session scope (the entry script is). `loginctl
+# terminate-session` therefore kills the entry before its logout teardown runs
+# while the compositor keeps the DRM seat, whenever the user manager outlives
+# the login — which it does here because the user has lingering enabled (and
+# because launched apps are transient user units of their own). The next login
+# then starts the target against a live compositor and a socket the entry has
+# just unlinked, which is the greeter/login freeze.
+#
+# Stopping the user target is the path the entry is built for: the compositor
+# anchor exits, the entry stops the remaining units, clears the hand-off
+# files, and the display manager gets the seat back.
+end_dragonfruit_session() {
+    if ! systemctl --user is-active --quiet dragonfruit-session.target 2>/dev/null; then
+        # No live user target (a stale login, or `--force` from a text
+        # console): clean up the way `recover` does.
+        stop_native_session
+        terminate_dragonfruit_sessions
+        return 0
+    fi
+
+    say "stopping the Dragonfruit user session; the session entry returns the seat"
+    # Waiting is safe even from inside the session: launched apps (including
+    # the terminal running this script) are transient user units, not members
+    # of the target, so stopping it does not kill the caller mid-teardown.
+    systemctl --user stop dragonfruit-session.target || true
+}
+
 # Whether the current user still has a working graphical session that is not
 # the failed Dragonfruit one. Used to avoid restarting a login manager out
 # from under a desktop when recovery is run over SSH.

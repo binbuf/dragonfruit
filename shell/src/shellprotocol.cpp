@@ -1468,9 +1468,16 @@ bool ShellProtocol::setAppsDrawerInputRegion(int width, int height)
         return false;
     if (width > 0 && height > 0)
         wl_region_add(region, 0, 0, width, height);
-    // Applied with the next buffer commit (`commitAppsDrawerImage`).
     wl_surface_set_input_region(m_appsDrawerSurface, region);
     wl_region_destroy(region);
+    // Apply the region now. The drawer's first frame can be deferred behind a
+    // frame callback, and an idle launcher may not commit again for a while;
+    // waiting for "the next buffer commit" left the first open/reopen with the
+    // previous empty region, so wheel and click input fell through to the
+    // window below. A state-only commit is valid and keeps the current buffer.
+    wl_surface_commit(m_appsDrawerSurface);
+    if (m_display)
+        wl_display_flush(m_display);
     return true;
 }
 

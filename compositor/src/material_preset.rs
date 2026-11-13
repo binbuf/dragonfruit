@@ -16,11 +16,12 @@
 use crate::design_tokens::{glass, semantic};
 
 /// Every optical preset, in the token file's order.
-pub const PRESET_NAMES: [&str; 14] = [
+pub const PRESET_NAMES: [&str; 15] = [
     "dock",
     "menuBarVeil",
     "menuAttached",
     "menuDetached",
+    "appsDrawer",
     "statusMenu",
     "tooltip",
     "controlCenterOuter",
@@ -101,6 +102,7 @@ pub enum Preset {
     MenuBarVeil,
     MenuAttached,
     MenuDetached,
+    AppsDrawer,
     StatusMenu,
     Tooltip,
     ControlCenterOuter,
@@ -114,11 +116,12 @@ pub enum Preset {
 }
 
 impl Preset {
-    pub const ALL: [Preset; 14] = [
+    pub const ALL: [Preset; 15] = [
         Preset::Dock,
         Preset::MenuBarVeil,
         Preset::MenuAttached,
         Preset::MenuDetached,
+        Preset::AppsDrawer,
         Preset::StatusMenu,
         Preset::Tooltip,
         Preset::ControlCenterOuter,
@@ -137,6 +140,7 @@ impl Preset {
             Preset::MenuBarVeil => "menuBarVeil",
             Preset::MenuAttached => "menuAttached",
             Preset::MenuDetached => "menuDetached",
+            Preset::AppsDrawer => "appsDrawer",
             Preset::StatusMenu => "statusMenu",
             Preset::Tooltip => "tooltip",
             Preset::ControlCenterOuter => "controlCenterOuter",
@@ -158,6 +162,7 @@ impl Preset {
     pub const fn role(self) -> Role {
         match self {
             Preset::Dock => Role::Dock,
+            Preset::AppsDrawer => Role::Drawer,
             Preset::MenuBarVeil | Preset::WindowChrome => Role::Chrome,
             _ => Role::Popup,
         }
@@ -194,6 +199,7 @@ fn token_role(preset: Preset) -> &'static str {
         Preset::MenuBarVeil => p::menu_bar_veil::ROLE,
         Preset::MenuAttached => p::menu_attached::ROLE,
         Preset::MenuDetached => p::menu_detached::ROLE,
+        Preset::AppsDrawer => p::apps_drawer::ROLE,
         Preset::StatusMenu => p::status_menu::ROLE,
         Preset::Tooltip => p::tooltip::ROLE,
         Preset::ControlCenterOuter => p::control_center_outer::ROLE,
@@ -215,6 +221,7 @@ fn token_render(preset: Preset) -> &'static str {
         Preset::MenuBarVeil => p::menu_bar_veil::RENDER,
         Preset::MenuAttached => p::menu_attached::RENDER,
         Preset::MenuDetached => p::menu_detached::RENDER,
+        Preset::AppsDrawer => p::apps_drawer::RENDER,
         Preset::StatusMenu => p::status_menu::RENDER,
         Preset::Tooltip => p::tooltip::RENDER,
         Preset::ControlCenterOuter => p::control_center_outer::RENDER,
@@ -236,6 +243,7 @@ fn token_slider(preset: Preset) -> &'static str {
         Preset::MenuBarVeil => p::menu_bar_veil::SLIDER,
         Preset::MenuAttached => p::menu_attached::SLIDER,
         Preset::MenuDetached => p::menu_detached::SLIDER,
+        Preset::AppsDrawer => p::apps_drawer::SLIDER,
         Preset::StatusMenu => p::status_menu::SLIDER,
         Preset::Tooltip => p::tooltip::SLIDER,
         Preset::ControlCenterOuter => p::control_center_outer::SLIDER,
@@ -538,6 +546,8 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
         (Preset::NotificationLowerPanel, Scheme::Dark) => cal!(notification_lower_panel, dark),
         (Preset::WindowChrome, Scheme::Light) => cal!(window_chrome, light),
         (Preset::WindowChrome, Scheme::Dark) => cal!(window_chrome, dark),
+        (Preset::AppsDrawer, Scheme::Light) => cal!(apps_drawer, light),
+        (Preset::AppsDrawer, Scheme::Dark) => cal!(apps_drawer, dark),
     };
     // T203: the flat-band + rim + capsule-end lens fields are carried for the
     // Dock and the Control Center family. Other presets keep the legacy
@@ -556,6 +566,8 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
     let lens = match (preset, scheme) {
         (Preset::Dock, Scheme::Light) => Some(lens!(dock, light)),
         (Preset::Dock, Scheme::Dark) => Some(lens!(dock, dark)),
+        (Preset::AppsDrawer, Scheme::Light) => Some(lens!(apps_drawer, light)),
+        (Preset::AppsDrawer, Scheme::Dark) => Some(lens!(apps_drawer, dark)),
         (Preset::ControlCenterOuter, Scheme::Light) => Some(lens!(control_center_outer, light)),
         (Preset::ControlCenterOuter, Scheme::Dark) => Some(lens!(control_center_outer, dark)),
         (Preset::ControlCenterModule, Scheme::Light) => Some(lens!(control_center_module, light)),
@@ -1026,6 +1038,21 @@ mod tests {
     }
 
     #[test]
+    fn apps_drawer_is_a_large_sampled_glass_card() {
+        let light = resolve(input(Preset::AppsDrawer, Scheme::Light));
+        assert_eq!(light.render_mode, RenderMode::SampledGlass);
+        assert!(light.alpha > 0.9);
+        assert!(light.blur >= 10.0);
+        assert!(light.edge > 0.0);
+        assert!(light.corner_lens_peak > 0.0);
+        // The drawer follows the appearance slider relative to the measured
+        // menu curve instead of freezing at one fit.
+        assert!(light.slider_applied);
+        let dark = resolve(input(Preset::AppsDrawer, Scheme::Dark));
+        assert!(dark.alpha > 0.9);
+    }
+
+    #[test]
     fn light_slider_uses_all_three_anchors() {
         for (position, expected_alpha, expected_tint) in [
             (0.0, 0.732, 0.953),
@@ -1055,8 +1082,10 @@ mod tests {
                     ..input(preset, scheme)
                 });
                 let direct = preset == Preset::MenuAttached && scheme == Scheme::Light;
-                let relative = matches!(preset, Preset::MenuDetached | Preset::StatusMenu)
-                    && scheme == Scheme::Light;
+                let relative = matches!(
+                    preset,
+                    Preset::MenuDetached | Preset::AppsDrawer | Preset::StatusMenu
+                ) && scheme == Scheme::Light;
                 assert_eq!(
                     low.slider_applied,
                     direct || relative,

@@ -74,6 +74,29 @@ left the fallback segmented and double-painted.
   `tier=reduced` for every Dock row, so the lens evidence is taken on the
   production tier rather than `Full`.
 
+## Amendment (2026-11-12) — physical bevel and measured Gaussian
+
+The corner-gated UV nudge and the five-level Kawase composite were superseded by
+the physical-bevel plate model in
+[`docs/proposals/dock-plate-liquid-glass.md`](../../proposals/dock-plate-liquid-glass.md)
+(R1–R5, implemented in `3911430`/`32400c4`). The uniform-perimeter decision
+above still holds; the changes are the measured two-path Gaussian
+(`sharpFraction` 0.192, σ 3.86 pt), a padded sample domain, a height-field/
+Snell bevel with a body lens, an environment-modulated Fresnel/specular rim,
+a continuous-curvature squircle, and a perceptual interior tone. The
+corner-gated `4·nx²·ny²` support was initially kept as the flat-edge guard, but
+it now gates a physical bevel rather than a UV nudge. `tests/glass/test_glass_shader.py`
+and `tst_dock` pin the replacement; the old directional terms stay removed.
+
+Follow-up (2026-11-12): the remaining `4·nx²·ny²` gain is gone. The measured
+−4 / −8.5 / −9.6 pt at 5 / 10 / 15 pt is the **short-end** displacement, where
+the outward normal is horizontal; the normal product instead peaked on the
+45-degree corner diagonals, leaving the middle of each short side nearly flat
+and reading as an X-shaped refraction. The body and the sharp overlay now share
+`DockOptics::bevel_end_gain`, a monotone long-axis falloff: the whole short side
+keeps the full lens, the long edges keep the measured ~0.5 pt, and a vertical
+Dock applies the same rule to its short top/bottom ends.
+
 ## References
 
 - `docs/design/proposals/dock-liquid-glass-perimeter.md`

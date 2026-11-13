@@ -48,7 +48,7 @@ def resolve(value, root: dict, trail: tuple[str, ...] = ()):
 
 def qml_literal(value) -> str:
     if isinstance(value, str):
-        return json.dumps(value)
+        return json.dumps(value, ensure_ascii=False)
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):
@@ -78,7 +78,7 @@ def rust_literal(value, kind: str) -> str:
         if kind == "color" and re.fullmatch(r"#[0-9a-fA-F]{8}", value):
             a, r, g, b = (int(value[i : i + 2], 16) for i in (1, 3, 5, 7))
             return f"[{r:#04x}, {g:#04x}, {b:#04x}, {a:#04x}]"
-        return json.dumps(value)
+        return json.dumps(value, ensure_ascii=False)
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):

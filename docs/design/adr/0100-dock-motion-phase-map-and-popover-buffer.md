@@ -79,7 +79,7 @@ render target mid-gesture.
 ## Amendment (2026-11) — content-sized, session-scoped Dock scene
 
 The original decision pre-sized the Dock window to the full
-`popoverHeadroom`/`popoverGutter` budget at configure time. The T238 A/B then
+`popoverHeadroom`/`popoverGutter` budget at configure time. The `t238-*` A/B then
 measured that keeping that budget resident removes the resize storm but costs
 ~29–45 MiB of accounted FBO storage and does not move the open latency
 ([`t238-dock-popover-ab.md`](../../captures/t238-dock-popover-ab.md)). The Dock

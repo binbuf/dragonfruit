@@ -158,10 +158,11 @@ class GPU:
             raise AssertionError(log.value.decode())
         return shader
 
-    def program(self, defines):
-        if defines in self.programs:
-            return self.programs[defines]
-        fragment = self.shader(0x8B30, GLASS.replace("//_DEFINES_", defines))
+    def program(self, defines, source=GLASS):
+        key = ("bevel:" if source is BEVEL else "") + defines
+        if key in self.programs:
+            return self.programs[key]
+        fragment = self.shader(0x8B30, source.replace("//_DEFINES_", defines))
         program = self.g("glCreateProgram", c.c_uint)()
         attach = self.g("glAttachShader", None, c.c_uint, c.c_uint)
         attach(program, self.vertex)
@@ -176,7 +177,7 @@ class GPU:
             self.g("glGetProgramInfoLog", None, c.c_uint, c.c_int,
                    c.POINTER(c.c_int), c.c_char_p)(program, len(log), None, log)
             raise AssertionError(log.value.decode())
-        self.programs[defines] = program
+        self.programs[key] = program
         return program
 
     def texture(self):
@@ -198,8 +199,8 @@ class GPU:
     def render(self, width, height, scale, *, rows=False, dark=False,
                peak=9.6, solid=False, phase=0, defines="", flat_band=True,
                coverage_aa=0.0, squircle=2.0, tone_weight=0.0, materialize=1.0,
-               solid_color=None, flat_alpha=None):
-        self.current_program = self.program(defines)
+               solid_color=None, flat_alpha=None, ramp=False, bevel=False):
+        self.current_program = self.program(defines, BEVEL if bevel else GLASS)
         self.g("glUseProgram", None, c.c_uint)(self.current_program)
         bind_texture = self.g("glBindTexture", None, c.c_uint, c.c_uint)
         upload = self.g("glTexImage2D", None, c.c_uint, c.c_int, c.c_int,
@@ -223,6 +224,12 @@ class GPU:
                 i = (y * width + x) * 4
                 if solid_color is not None:
                     pixels[i:i + 4] = bytes((*solid_color, 255))
+                elif ramp:
+                    # A horizontal ramp turns the output red channel into the
+                    # sampled x coordinate, so a lens displacement is directly
+                    # readable as a value delta.
+                    pixels[i:i + 4] = bytes((round(255 * x / max(width - 1, 1)),
+                                             127, 127, 255))
                 else:
                     pixels[i:i + 4] = bytes((127, 127, 127, 255) if solid
                                             else (x_values[x], y_values[y], 127, 255))
@@ -392,16 +399,16 @@ class GlassShaderTests(unittest.TestCase):
             "the Snell bevel must displace the corner")
 
     def test_snell_flat_edge_is_small_but_nonzero(self):
-        # The measured flat top/bottom is ~0.5 pt, not zero. The smooth corner
-        # gain leaves a small continuous displacement on every flat side.
+        # The measured long top/bottom edge is ~0.5 pt, not zero; the short
+        # left/right ends carry the broad measured lens. The old 45-degree
+        # corner gate left the end middles nearly flat, so the end must now be
+        # clearly stronger than the long flat.
         w, h, scale = 966, 156, 2
         lens, _ = self.gpu.render(w, h, scale, squircle=4.0)
         plain, _ = self.gpu.render(w, h, scale, squircle=4.0, peak=0)
         for name, (x, y) in {
             "top": (w // 2, 30),
             "bottom": (w // 2, h - 31),
-            "left": (30, h // 2),
-            "right": (w - 31, h // 2),
         }.items():
             with self.subTest(edge=name):
                 a = (y * w + x) * 4
@@ -409,6 +416,82 @@ class GlassShaderTests(unittest.TestCase):
                 self.assertGreater(delta, 0, f"{name} has no flat-edge lens")
                 self.assertLessEqual(delta, 16,
                                      f"{name} flat-edge lens is too strong")
+        for name, (x, y) in {
+            "left": (30, h // 2),
+            "right": (w - 31, h // 2),
+        }.items():
+            with self.subTest(edge=name):
+                a = (y * w + x) * 4
+                delta = max(abs(lens[a + c] - plain[a + c]) for c in range(3))
+                self.assertGreater(delta, 16,
+                                   f"{name} end lens is missing or too weak")
+
+    def test_vertical_dock_lenses_its_short_top_and_bottom_ends(self):
+        # The same rule follows the plate's long axis, so a left/right Dock
+        # lenses its short top/bottom ends and keeps its long left/right sides
+        # at the measured flat.
+        w, h, scale = 156, 966, 2
+        lens, _ = self.gpu.render(w, h, scale, squircle=4.0)
+        plain, _ = self.gpu.render(w, h, scale, squircle=4.0, peak=0)
+        for name, (x, y) in {
+            "top": (w // 2, 30),
+            "bottom": (w // 2, h - 31),
+        }.items():
+            with self.subTest(edge=name):
+                a = (y * w + x) * 4
+                delta = max(abs(lens[a + c] - plain[a + c]) for c in range(3))
+                self.assertGreater(delta, 16,
+                                   f"{name} end lens is missing or too weak")
+        for name, (x, y) in {
+            "left": (30, h // 2),
+            "right": (w - 31, h // 2),
+        }.items():
+            with self.subTest(edge=name):
+                a = (y * w + x) * 4
+                delta = max(abs(lens[a + c] - plain[a + c]) for c in range(3))
+                self.assertLessEqual(delta, 16,
+                                     f"{name} long-edge lens is too strong")
+
+    def test_short_end_lens_is_one_smooth_band_not_two_diagonal_lobes(self):
+        # A horizontal ramp makes the sampled x coordinate the red channel, so
+        # the lens displacement is directly readable. Track it down the right
+        # short end at 15 pt inside the rim. The measured reference has one
+        # rounded band over the whole end; the old corner gate had two maxima
+        # on the 45-degree diagonals and a near-zero saddle in the middle.
+        w, h, scale = 400, 156, 2
+        lens, _ = self.gpu.render(w, h, scale, squircle=4.0, ramp=True,
+                                  flat_alpha=0.0, tone_weight=0.0)
+        plain, _ = self.gpu.render(w, h, scale, squircle=4.0, ramp=True,
+                                   flat_alpha=0.0, tone_weight=0.0, peak=0)
+        x = w - 31
+        values = []
+        for y in range(h // 2 - 45, h // 2 + 46, 9):
+            a = (y * w + x) * 4
+            values.append(plain[a] - lens[a])
+        # Every sample down the end is displaced: no X-shaped saddle.
+        self.assertGreater(min(values), 2,
+                           f"short end has an X saddle: {values}")
+        # The profile is one smooth band, not two narrow diagonal spikes.
+        self.assertLess(max(values) - min(values), 40,
+                        f"short end is not a smooth band: {values}")
+
+    def test_bevel_overlay_is_a_short_end_band(self):
+        # The sharp overlay must cover the whole short end and leave the long
+        # top/bottom edge to the measured frosted body. The old corner-gated
+        # band had two diagonal wedges and a frosted saddle in the middle.
+        w, h, scale = 966, 156, 2
+        out, _ = self.gpu.render(w, h, scale, bevel=True, solid=True,
+                                 flat_alpha=0.0, squircle=4.0)
+        x = 30
+        y = h // 2
+        self.assertGreater(out[(y * w + x) * 4 + 3], 200,
+                           "the short-end bevel is not sharp")
+        self.assertEqual(out[(30 * w + w // 2) * 4 + 3], 0,
+                         "the long edge must keep the frosted body")
+        alphas = [out[(yy * w + x) * 4 + 3]
+                  for yy in range(h // 2 - 45, h // 2 + 46, 9)]
+        self.assertGreater(min(alphas), 128,
+                           f"the short-end bevel has an X saddle: {alphas}")
 
     def test_oklab_tone_matches_the_measured_curve(self):
         source = (200, 60, 40)
@@ -691,6 +774,17 @@ class GlassShaderTests(unittest.TestCase):
                 middle = [out[(h // 2 * w + x) * 4]
                           for x in range(w // 2 - 50, w // 2 + 50)]
                 self.assertGreater(max(middle) - min(middle), 100)
+
+    def test_both_programs_use_the_measured_short_end_gain(self):
+        # The body and the sharp bevel must share the end-lens field, or the
+        # clear bevel and the frosted body show a visible inner contour. The
+        # 45-degree `4*nx^2*ny^2` gate must not drive the squircle path.
+        for name, source in (("glass", GLASS), ("bevel", BEVEL)):
+            with self.subTest(program=name):
+                self.assertIn("float end_gain(", source)
+                self.assertIn("measured_end_gain", source)
+                self.assertNotIn("float band = corner_gate", source)
+        self.assertNotIn("float gain = mix(0.05, 1.0, corner_gate);", GLASS)
 
     def test_bevel_program_compiles(self):
         for extra in ("", "#define NO_ALPHA", "#define DEBUG_FLAGS",

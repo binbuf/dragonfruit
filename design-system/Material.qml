@@ -147,8 +147,8 @@ QtObject {
     }
 
     // The Applications drawer's card keeps its own translucent surface tone on
-    // the sampled path; without the pass it takes the same milky plate as the
-    // popup family. The light card is a large browsing surface and reads a
+    // the legacy path; without a sampled pass it takes the same milky plate as
+    // the popup family. The light card is a large browsing surface and reads a
     // little clearer than a menu; the dark card needs a little more tint to
     // keep 13 pt labels legible over a bright wallpaper.
     function drawerOpacity() {
@@ -156,27 +156,40 @@ QtObject {
                           : Theme.controls.appsDrawer.panelOpacity;
     }
 
+    function drawerResolution(blurActive, tier, fallback) {
+        return menuResolution("appsDrawer", blurActive, tier, fallback, true);
+    }
+
+    // True when the compositor's sampled drawer glass is drawing the card.
+    // The card fill then stays transparent: the compositor owns the blur,
+    // edge lens, specular rim and adaptive tint in one place, and QML owns
+    // only the content and the fallback plate.
+    function drawerUsesCompositor(blurActive, tier, fallback) {
+        var resolved = drawerResolution(blurActive, tier, fallback);
+        return resolved !== null && resolved.renderMode === "sampled-glass";
+    }
+
     function drawerFill(blurActive, tier, fallback) {
-        var cardOpacity = drawerOpacity();
         if (Glass.rollout !== "replacement") {
             return blurActive
                 ? Qt.rgba(Theme.color.surface.r, Theme.color.surface.g,
-                          Theme.color.surface.b, cardOpacity)
+                          Theme.color.surface.b, drawerOpacity())
                 : Qt.rgba(Theme.color.chromeFallbackFill.r, Theme.color.chromeFallbackFill.g,
                           Theme.color.chromeFallbackFill.b,
                           Theme.controls.appsDrawer.panelFallbackOpacity);
         }
-        var resolved = menuResolution("menuDetached", blurActive, tier, fallback, true);
-        // Apps is a translucent browsing surface. Its material fit remains
-        // unmeasured; keep the card-opacity token, with the menu slider's
-        // relative change and the shared accessibility override.
-        var alpha = resolved.alpha;
-        if (resolved.renderMode === "sampled-glass") {
-            var baseline = Theme.glass.presets.menuDetached[
-                Theme.dark ? "dark" : "light"].calibration.neutralAlpha;
-            alpha = Math.max(0, Math.min(1, 1 - (1 - cardOpacity)
-                                       * (1 - alpha) / (1 - baseline)));
+        var resolved = drawerResolution(blurActive, tier, fallback);
+        if (resolved === null) {
+            return Qt.rgba(Theme.color.chromeFallbackFill.r, Theme.color.chromeFallbackFill.g,
+                           Theme.color.chromeFallbackFill.b,
+                           Theme.controls.appsDrawer.panelFallbackOpacity);
         }
-        return Qt.rgba(resolved.tint, resolved.tint, resolved.tint, alpha);
+        // The sampled material is compositor-owned; an opaque QML fill would
+        // hide the blur/rim/lens behind it.
+        if (resolved.renderMode === "sampled-glass")
+            return Qt.rgba(0, 0, 0, 0);
+        // Reduce Transparency, no sampled blur, software and Minimal keep the
+        // readable resolved plate.
+        return Qt.rgba(resolved.tint, resolved.tint, resolved.tint, resolved.alpha);
     }
 }

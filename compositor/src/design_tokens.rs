@@ -770,7 +770,7 @@ pub mod component {
         pub const SCRIM_OPACITY: f32 = 0.26_f32;
         pub const PANEL_OPACITY: f32 = 0.58_f32;
         pub const PANEL_OPACITY_DARK: f32 = 0.68_f32;
-        pub const PANEL_FALLBACK_OPACITY: f32 = 0.9_f32;
+        pub const PANEL_FALLBACK_OPACITY: f32 = 0.97_f32;
         pub const FALLBACK_GLYPH_RATIO: f32 = 0.52_f32;
         pub const FALLBACK_FILL_OPACITY: f32 = 0.12_f32;
         pub const FALLBACK_BORDER_OPACITY: f32 = 0.4_f32;
@@ -834,7 +834,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur sigma 3.86pt first fit";
+                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; short-end lens displacement 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left end), 50pt influence radius, ~0.5pt on the long flats; blur sigma 3.86pt first fit";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub const TONE_WEIGHT: f32 = 1.0_f32;
                 pub mod calibration {
@@ -856,7 +856,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur and rim reuse the light fit because the dark rim was not separately fitted";
+                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), short-end lens displacement 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left end), 50pt influence radius, ~0.5pt on the long flats; blur and rim reuse the light fit because the dark rim was not separately fitted";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub const TONE_WEIGHT: f32 = 1.0_f32;
                 pub mod calibration {
@@ -1013,6 +1013,53 @@ pub mod glass {
                 pub const BLUR: f32 = 10.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
                 pub const EDGE_WIDTH: f32 = 0.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+        }
+        pub mod apps_drawer {
+            pub const ROLE: &str = "drawer";
+            pub const RENDER: &str = "sampled";
+            pub const SLIDER: &str = "lightRelative";
+            pub mod light {
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "The Apps material fit is OPEN in macos-design-review §4.5; this preset keeps the measured popover glass family's near-white tint, 10 pt frost and rim model, but raises the large 844x577 Spotlight Apps card to the near-opaque 0.97 reading required for a browsing surface. The 14 pt frost, measured rim and restrained corner lens remain. The reference describes a large light glass panel whose gradient/vibrancy was not inverted in that pass.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.97_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.96_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.97_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.96_f32;
+                }
+                pub const BLUR: f32 = 14.0_f32;
+                pub const EDGE: f32 = 0.22_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 8.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.12_f32;
+                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 20.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
+                pub const FOREGROUND: f32 = 0.0_f32;
+            }
+            pub mod dark {
+                pub const CONFIDENCE: &str = "adapted";
+                pub const PROVENANCE: &str = "No dark Apps fit was measured; adapt the measured dark detached-menu tint (0.26) and the same large-card frost/rim/lens at the near-opaque 0.97 reading so 13 pt labels stay legible over a bright wallpaper.";
+                pub const COLOUR_SPACE: &str = "srgb";
+                pub mod calibration {
+                    pub const NEUTRAL_ALPHA: f32 = 0.97_f32;
+                    pub const NEUTRAL_TINT: f32 = 0.26_f32;
+                    pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.97_f32;
+                    pub const PERCEPTUAL_TINT: f32 = 0.26_f32;
+                }
+                pub const BLUR: f32 = 16.0_f32;
+                pub const EDGE: f32 = 0.2_f32;
+                pub const EDGE_WIDTH: f32 = 1.0_f32;
+                pub const EDGE_TAIL: f32 = 8.0_f32;
+                pub const SHARP_FRACTION: f32 = 0.12_f32;
+                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 20.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }

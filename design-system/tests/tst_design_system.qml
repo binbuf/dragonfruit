@@ -227,7 +227,7 @@ TestCase {
     }
 
     function test_glass_presets_cover_the_required_surfaces() {
-        compare(Glass.presetNames.length, 18);
+        compare(Glass.presetNames.length, 19);
         for (var i = 0; i < Glass.presetNames.length; ++i) {
             var name = Glass.presetNames[i];
             verify(Theme.glass.presets[name] !== undefined, name + " preset exists");
@@ -235,6 +235,26 @@ TestCase {
             verify(resolved.renderMode !== undefined, name + " resolves");
             compare(resolved.preset, name);
         }
+    }
+
+    // The Applications drawer is a large light glass card, not a menu. Its
+    // preset carries the sampled blur plus the rim/lens the compositor needs
+    // to read as liquid glass; the card QML fill stays transparent.
+    function test_apps_drawer_preset_is_large_glass() {
+        var light = Glass.resolve("appsDrawer", {
+            scheme: "light", rollout: "replacement"
+        });
+        compare(light.renderMode, "sampled-glass");
+        verify(light.alpha > 0.9 && light.alpha <= 1.0,
+               "light drawer alpha " + light.alpha);
+        verify(light.blur >= 10, "light drawer blur " + light.blur);
+        verify(light.edge > 0, "light drawer rim " + light.edge);
+        verify(light.cornerLensPeak > 0, "light drawer lens " + light.cornerLensPeak);
+        var dark = Glass.resolve("appsDrawer", {
+            scheme: "dark", rollout: "replacement"
+        });
+        compare(dark.renderMode, "sampled-glass");
+        verify(dark.alpha > 0.9, "dark drawer alpha " + dark.alpha);
     }
 
     function test_glass_light_slider_anchors() {
@@ -267,7 +287,8 @@ TestCase {
             var name = Glass.presetNames[i];
             var low = Glass.resolve(name, { scheme: "light", rollout: "replacement", slider: 0 });
             var high = Glass.resolve(name, { scheme: "light", rollout: "replacement", slider: 1 });
-            var relative = name === "menuDetached" || name === "statusMenu";
+            var relative = name === "menuDetached" || name === "appsDrawer"
+                    || name === "statusMenu";
             var expected = name === "menuAttached" || relative;
             compare(low.sliderApplied, expected, name + " slider support");
             if (relative) {

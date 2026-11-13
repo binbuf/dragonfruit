@@ -37,6 +37,13 @@ Item {
     property int materialFallback: 0
     readonly property string materialFallbackReason:
         Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
+    // True when the compositor's sampled drawer glass is drawing the card
+    // (blur + edge lens + specular rim + adaptive tint). The QML fill then
+    // stays transparent so the material is not painted twice; the fallback
+    // paths keep the readable milky plate.
+    readonly property bool compositorGlass:
+        Material.drawerUsesCompositor(materialBlurActive, materialTier,
+                                      materialFallback)
 
     signal appLaunched(string desktopId, real tileX, real tileY, real tileW, real tileH)
     signal dismissRequested()
@@ -181,15 +188,15 @@ Item {
     // The grid's usable width inside the card; it decides how many columns fit.
     readonly property real gridAvailableWidth:
         Math.max(root.tileWidth, root.panelWidth - 2 * root.panelPadding)
-    // The columns actually laid out: capped at seven, fewer on a narrow output,
-    // and fewer again when the corpus is smaller than a full row, so the row of
-    // tiles keeps equal padding at both ends.
+    // The columns actually laid out: capped at seven and fewer on a narrow
+    // output. The column count never follows the filtered result count: a
+    // search that narrows the grid must not reflow the card horizontally on
+    // every keystroke. Results stay on the measured 115 pt pitch and the card
+    // keeps one stable width, exactly like the reference Spotlight Apps grid.
     readonly property int usedColumns: Math.max(1, Math.min(
         root.maxColumns,
-        Math.min(root.visibleApps.length > 0 ? root.visibleApps.length
-                                            : root.maxColumns,
-                 Math.floor((root.gridAvailableWidth + root.gridGap)
-                            / (root.tileWidth + root.gridGap)))))
+        Math.floor((root.gridAvailableWidth + root.gridGap)
+                   / (root.tileWidth + root.gridGap))))
     readonly property real gridWidth:
         root.usedColumns * root.tileWidth + (root.usedColumns - 1) * root.gridGap
     readonly property int columns: root.usedColumns
@@ -345,24 +352,45 @@ Item {
     // column band, and the card-level handler below catches vertical wheels
     // over the search field, chips, and side gutters. Pixel deltas keep
     // touchpads smooth; a discrete wheel steps one row.
-    function scrollGridByWheel(event) {
+    //
+    // The live shell also calls `scrollByWheelAt` directly. The drawer's
+    // offscreen QQuickRenderControl window delivers pointer presses to the
+    // scene but not wheel events to the QML pointer handlers, so relying only
+    // on the WheelHandler left the native drawer unscrollable. The shell owns
+    // the one delta conversion and drives this method from its axis router;
+    // the handler remains the QML/test path.
+    function scrollGridByDelta(pixelY, angleY) {
         // A discrete wheel notch arrives with both a small pixel delta and a
         // 120-unit angle delta from the shell. Use whichever is larger so one
         // notch steps a row instead of a few pixels, while a high-resolution
         // touchpad still uses its precise pixel delta.
-        var pixel = event.pixelDelta.y;
-        var angle = event.angleDelta.y / 120
-                * (root.tileHeight + root.gridRowGap);
+        var pixel = pixelY;
+        var angle = angleY / 120 * (root.tileHeight + root.gridRowGap);
         var delta = Math.abs(angle) > Math.abs(pixel) ? angle : pixel;
-        if (delta === 0)
-            return;
+        if (delta === 0 || !gridFlick)
+            return false;
         var maxY = Math.max(0, gridFlick.contentHeight - gridFlick.height);
         if (maxY <= 0)
-            return;
+            return false;
         gridFlick.cancelFlick();
         gridFlick.contentY = Math.max(0, Math.min(maxY,
                                                   gridFlick.contentY - delta));
-        event.accepted = true;
+        return true;
+    }
+
+    function scrollByWheelAt(x, y, pixelY, angleY) {
+        if (!panel)
+            return false;
+        // A wheel over the transparent output margin is not over the card and
+        // must not scroll the grid.
+        if (!panel.contains(panel.mapFromItem(root, x, y)))
+            return false;
+        return scrollGridByDelta(pixelY, angleY);
+    }
+
+    function scrollGridByWheel(event) {
+        if (scrollGridByDelta(event.pixelDelta.y, event.angleDelta.y))
+            event.accepted = true;
     }
 
     function openMoreMenu() {
@@ -434,12 +462,17 @@ Item {
     // sampled backdrop; this keeps the card legible on the software/fallback
     // path and gives the translucent plate the reference's lifted edge.
     Shadow {
+        objectName: "appsDrawerShadow"
         anchors.fill: panel
         level: "overlay"
         radius: panel.radius
         blur: Theme.controls.appsDrawer.shadowBlur
         shadowOpacity: Theme.controls.appsDrawer.shadowOpacity
         offset: Qt.point(0, Theme.controls.appsDrawer.shadowOffsetY)
+        // The sampled card fill is transparent so the compositor's glass
+        // shows through; keep the shadow outside the card or it would darken
+        // that glass from inside the surface.
+        cutout: root.compositorGlass
         opacity: root.reveal
     }
 
@@ -460,7 +493,10 @@ Item {
                                    root.materialFallback)
         opacity: root.reveal
         scale: 1.0
-        border.width: Theme.controls.window.borderWidth
+        // The compositor paints the glass rim on the sampled path; the QML
+        // hairline is only the fallback complement.
+        border.width: root.compositorGlass
+                      ? 0 : Theme.controls.window.borderWidth
         border.color: Glass.increaseContrast
                       ? Theme.color.textPrimary
                       : Qt.rgba(Theme.color.dockRim.r, Theme.color.dockRim.g,
@@ -474,6 +510,10 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: parent.radius
+            // On the sampled path the compositor's adaptive tint supplies the
+            // body; keep only a trace of the vertical falloff so the card
+            // still catches light like a large sheet of glass.
+            opacity: root.compositorGlass ? 0.35 : 1.0
             gradient: Gradient {
                 GradientStop {
                     position: 0.0
@@ -508,7 +548,9 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.max(0, parent.width - 2 * parent.radius)
             height: 1
-            opacity: root.reveal
+            // The compositor's specular rim already draws this line on the
+            // sampled path; showing both would read as a clipped white stroke.
+            opacity: root.reveal * (root.compositorGlass ? 0.0 : 1.0)
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
@@ -545,7 +587,6 @@ Item {
         // side gutters still scrolls the grid. The grid Flickable's own
         // handler accepts first when the pointer is over the column band.
         WheelHandler {
-            target: null
             onWheel: (event) => {
                 if (event.pixelDelta.y === 0 && event.angleDelta.y === 0)
                     return;
@@ -680,7 +721,6 @@ Item {
             // plain vertical wheel is left to the card-level handler so it
             // scrolls the grid from anywhere over the card.
             WheelHandler {
-                target: null
                 onWheel: (event) => {
                     const delta = event.pixelDelta.x || event.angleDelta.x;
                     if (delta !== 0) {
@@ -842,7 +882,6 @@ Item {
             interactive: contentHeight > height
 
             WheelHandler {
-                target: null
                 onWheel: (event) => root.scrollGridByWheel(event)
             }
 
@@ -882,6 +921,17 @@ Item {
                         readonly property real iconSize: root.iconSize
                         readonly property real highlightSize:
                             tile.iconSize + Theme.primitive.spacing.sm
+                        // Load artwork only for the rows the user can see (one
+                        // row of margin). The Repeater still lays out the whole
+                        // corpus, but a large index no longer decodes every
+                        // icon the moment the drawer opens; off-screen icons
+                        // load as they scroll into view.
+                        readonly property bool iconInView:
+                            tile.y + tile.height
+                                >= gridFlick.contentY - root.tileHeight
+                            && tile.y
+                                <= gridFlick.contentY + gridFlick.height
+                                   + root.tileHeight
 
                         width: root.tileWidth
                         height: root.tileHeight
@@ -931,7 +981,7 @@ Item {
                             id: appIcon
                             objectName: "appsDrawerTileIcon"
                             visible: tile.iconUrl.length > 0 && status === Image.Ready
-                            source: tile.iconUrl
+                            source: tile.iconInView ? tile.iconUrl : ""
                             sourceSize.width: Theme.controls.appsDrawer.iconSourceSize
                             sourceSize.height: Theme.controls.appsDrawer.iconSourceSize
                             width: tile.iconSize
