@@ -206,8 +206,11 @@ detected package command.
 (the compositor, or you just want every app restarted): it rebuilds, refreshes
 the install links/units (skip with `--no-install`), keeps Dragonfruit
 preselected, then ends the current login session so the display manager comes
-back with the new binaries. `--reboot` reboots the machine instead of only
-logging out.
+back with the new binaries. It ends the session by stopping the Dragonfruit
+user target — the teardown the session entry is built for — rather than by
+`loginctl terminate-session`, which cannot stop the compositor (a user unit)
+and leaves it holding the seat when the user manager lingers. `--reboot`
+reboots the machine instead of only logging out.
 
 Before arming the login, `start` writes the per-user runtime environment the
 dev build needs (the Qt toolchain and user-space sysroot library paths) and
@@ -1035,12 +1038,11 @@ terminate_dragonfruit_sessions() {
 #
 # The compositor is a systemd *user* unit under user@UID.service, not a
 # process in the logind session scope (the entry script is). `loginctl
-# terminate-session` therefore kills the entry before its logout teardown runs
-# while the compositor keeps the DRM seat, whenever the user manager outlives
-# the login — which it does here because the user has lingering enabled (and
-# because launched apps are transient user units of their own). The next login
-# then starts the target against a live compositor and a socket the entry has
-# just unlinked, which is the greeter/login freeze.
+# terminate-session` therefore kills the entry before its logout teardown runs,
+# while the compositor keeps the DRM seat whenever the user manager outlives
+# the login. This dev host enables lingering, so the user manager does outlive
+# it. The next login then starts the target against a live compositor and a
+# socket the entry has just unlinked, which is the greeter/login freeze.
 #
 # Stopping the user target is the path the entry is built for: the compositor
 # anchor exits, the entry stops the remaining units, clears the hand-off
@@ -1055,10 +1057,15 @@ end_dragonfruit_session() {
     fi
 
     say "stopping the Dragonfruit user session; the session entry returns the seat"
-    # Waiting is safe even from inside the session: launched apps (including
-    # the terminal running this script) are transient user units, not members
-    # of the target, so stopping it does not kill the caller mid-teardown.
-    systemctl --user stop dragonfruit-session.target || true
+    # systemd owns the stop job, so it completes even if this terminal exits
+    # when the compositor does. The terminal is a transient user unit of its
+    # own, not a member of the target, so the stop itself does not kill the
+    # caller before the request is queued.
+    if ! systemctl --user stop dragonfruit-session.target; then
+        say "could not stop the Dragonfruit user session cleanly"
+        say "switch to a text console (Ctrl+Alt+F3) and run: make native-recover"
+        return 1
+    fi
 }
 
 # Whether the current user still has a working graphical session that is not
@@ -1336,17 +1343,7 @@ cmd_rebuild() {
 
     say "rebuild complete; ending the Dragonfruit session"
     say "the display manager will return with Dragonfruit preselected; log back in to pick up the new binaries"
-    local session_id="${XDG_SESSION_ID:-}"
-    if command -v loginctl >/dev/null 2>&1 && [ -n "$session_id" ]; then
-        if ! loginctl terminate-session "$session_id"; then
-            say "loginctl could not end the session; stopping the Dragonfruit session target"
-            systemctl --user stop dragonfruit-session.target >/dev/null 2>&1 || true
-        fi
-    else
-        say "no logind session id; stopping the Dragonfruit session target"
-        systemctl --user stop dragonfruit-session.target >/dev/null 2>&1 || true
-        say "if the greeter does not return, switch to a text console and run: make native-recover"
-    fi
+    end_dragonfruit_session
 }
 
 cmd_restart() {

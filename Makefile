@@ -1187,8 +1187,11 @@ dev-full: build
 # a broken Dragonfruit login can always be undone without logging into it.
 # `make native-rebuild` is the full-session cycle: rebuild, refresh the install,
 # then log out/relogin with Dragonfruit preselected; `make native-reboot` does
-# the same but reboots the machine. Both accept NATIVE_ARGS (for example
-# `NATIVE_ARGS=--no-install` for a binary-only rebuild).
+# the same but reboots the machine. Rebuild ends the session by stopping the
+# Dragonfruit user target, so the compositor releases the seat and the next
+# login starts clean even when the systemd user manager outlives the login.
+# Both accept NATIVE_ARGS (for example `NATIVE_ARGS=--no-install` for a
+# binary-only rebuild).
 #
 # The native session defaults to the **release** profile because it is the
 # dogfooding/deployment rail; `make native-debug` (or NATIVE_ARGS=--debug) is
