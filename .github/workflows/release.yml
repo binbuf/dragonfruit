@@ -97,18 +97,30 @@ jobs:
 
       - name: Install smoke test
         run: |
-          apt-get install -y ./dist/*.deb
-          dpkg -L dragonfruit-desktop \
-            | grep -qx /usr/share/wayland-sessions/dragonfruit.desktop
-          for b in /usr/bin/dragonfruit-* /usr/bin/xdg-desktop-portal-dragonfruit; do
-            [ -x "$b" ] || continue
-            file "$b" | grep -q ELF || continue
-            if ldd "$b" | grep -q 'not found'; then
-              echo "unresolved shared libraries in $b"
-              ldd "$b"
-              exit 1
-            fi
-          done
+          set -o pipefail
+          {
+            apt-get install -y ./dist/*.deb
+            dpkg -L dragonfruit-desktop \
+              | grep -qx /usr/share/wayland-sessions/dragonfruit.desktop
+            for b in /usr/bin/dragonfruit-* /usr/bin/xdg-desktop-portal-dragonfruit; do
+              [ -x "$b" ] || continue
+              file "$b" | grep -q ELF || continue
+              if ldd "$b" | grep -q 'not found'; then
+                echo "unresolved shared libraries in $b"
+                ldd "$b"
+                exit 1
+              fi
+            done
+          } 2>&1 | tee smoke-deb.log
+
+      - name: Smoke diagnostics
+        if: failure()
+        run: |
+          if [ -f smoke-deb.log ]; then
+            tail -n 200 smoke-deb.log | base64 -w0 | fold -w 60000 | while IFS= read -r line; do
+              echo "::error::LOG:$line"
+            done
+          fi
 
       - name: Source tarball
         run: |
