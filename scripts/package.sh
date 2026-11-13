@@ -296,7 +296,9 @@ build_deb() {
             | LC_ALL=C sort -z \
             | xargs -0 md5sum >DEBIAN/md5sums
     )
+    say "md5sums written"
 
+    say "running dpkg-deb"
     dpkg-deb --build --root-owner-group "$debroot" "$OUTPUT/$debname"
     say "built $debname"
     rm -rf "$debroot"

@@ -90,14 +90,7 @@ jobs:
         if: failure()
         run: |
           if [ -f build-deb.log ]; then
-            echo "::error::DISK $(df -h /__w | tail -n 1)"
-            echo "::error::MEM $(grep -E 'MemTotal|MemAvailable' /proc/meminfo | tr '\n' ' ')"
-            grep -n -iE 'error|failed|fatal|killed|signal|no space|out of memory|undefined reference|collect2|ninja:' build-deb.log \
-              | tail -n 5 | while IFS= read -r line; do
-                  echo "::error::$line"
-                done
-            echo "::error::TAIL"
-            tail -n 3 build-deb.log | while IFS= read -r line; do
+            tail -n 10 build-deb.log | while IFS= read -r line; do
               echo "::error::$line"
             done
           else
