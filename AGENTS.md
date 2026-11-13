@@ -4,6 +4,10 @@
 
 - When writing anything that will be checked into git, do not use anything proprietary, copyrighted, or trademarked such as names, words, phrases, or material.
 
+## Documentation rules
+
+- Don't add anything into git that isn't part of core design and ADRs. Proposals, tracks, diagnostics, logs should be gitignored.
+
 ## Git staging and commits
 
 Before every `git add` or `git commit`:
