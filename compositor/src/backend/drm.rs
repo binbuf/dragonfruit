@@ -1857,7 +1857,21 @@ fn render_surface(
                 .map(|group| group.panels.as_slice())
                 .unwrap_or(&[]);
             for panel in group_panels {
-                let Some((texture_panel, scene_src)) = region.panel_source(panel.panel, scale)
+                // The measured Dock's bevel and Gaussian need scene samples
+                // beyond the visible silhouette. The region is already padded
+                // by `sample_padding_px`; expose that margin to the blur and
+                // UV mapping exactly like the nested path. Without it the
+                // body blur clamps at the panel edge while the sharp bevel
+                // samples the padded scene, so the perimeter reads as two
+                // different glasses.
+                let source_padding =
+                    if panel.spec.is_measured() && crate::window::drm_padded_blur_enabled() {
+                        panel.sample_padding_px()
+                    } else {
+                        0
+                    };
+                let Some((texture_panel, scene_src)) =
+                    region.panel_source_padded(panel.panel, source_padding, scale)
                 else {
                     continue;
                 };

@@ -199,7 +199,8 @@ class GPU:
     def render(self, width, height, scale, *, rows=False, dark=False,
                peak=9.6, solid=False, phase=0, defines="", flat_band=True,
                coverage_aa=0.0, squircle=2.0, tone_weight=0.0, materialize=1.0,
-               solid_color=None, flat_alpha=None, ramp=False, bevel=False):
+               solid_color=None, flat_alpha=None, ramp=False, bevel=False,
+               window_edge=None, window_value=255, wallpaper_value=24):
         self.current_program = self.program(defines, BEVEL if bevel else GLASS)
         self.g("glUseProgram", None, c.c_uint)(self.current_program)
         bind_texture = self.g("glBindTexture", None, c.c_uint, c.c_uint)
@@ -222,7 +223,14 @@ class GPU:
         for y in range(height):
             for x in range(width):
                 i = (y * width + x) * 4
-                if solid_color is not None:
+                if window_edge is not None:
+                    # One opaque window edge over a uniform wallpaper. This is
+                    # the controlled fixture the reference study uses: the same
+                    # content can be presented as wallpaper or as a window.
+                    value = (window_value if x >= window_edge
+                             else wallpaper_value)
+                    pixels[i:i + 4] = bytes((value, value, value, 255))
+                elif solid_color is not None:
                     pixels[i:i + 4] = bytes((*solid_color, 255))
                 elif ramp:
                     # A horizontal ramp turns the output red channel into the
@@ -475,23 +483,64 @@ class GlassShaderTests(unittest.TestCase):
         self.assertLess(max(values) - min(values), 40,
                         f"short end is not a smooth band: {values}")
 
-    def test_bevel_overlay_is_a_short_end_band(self):
-        # The sharp overlay must cover the whole short end and leave the long
-        # top/bottom edge to the measured frosted body. The old corner-gated
-        # band had two diagonal wedges and a frosted saddle in the middle.
+    def test_bevel_overlay_is_a_narrow_short_end_band(self):
+        # The sharp overlay is the measured short-end clear/caustic band:
+        # ~12 pt adjacent to the 6 pt rim, not the full 50 pt lens influence.
+        # It must cover the whole short end (no X saddle) and leave both the
+        # long top/bottom edge and the deep interior to the frosted body.
         w, h, scale = 966, 156, 2
         out, _ = self.gpu.render(w, h, scale, bevel=True, solid=True,
                                  flat_alpha=0.0, squircle=4.0)
-        x = 30
         y = h // 2
-        self.assertGreater(out[(y * w + x) * 4 + 3], 200,
-                           "the short-end bevel is not sharp")
+        near = w - 1 - 20  # 10 pt inside the right short end
+        deep = w - 1 - 60  # 30 pt inside
+        self.assertGreater(out[(y * w + near) * 4 + 3], 180,
+                           "the short-end caustic band is not sharp")
+        self.assertEqual(out[(y * w + deep) * 4 + 3], 0,
+                         "the sharp band reaches too far into the plate")
         self.assertEqual(out[(30 * w + w // 2) * 4 + 3], 0,
                          "the long edge must keep the frosted body")
-        alphas = [out[(yy * w + x) * 4 + 3]
+        alphas = [out[(yy * w + near) * 4 + 3]
                   for yy in range(h // 2 - 45, h // 2 + 46, 9)]
         self.assertGreater(min(alphas), 128,
                            f"the short-end bevel has an X saddle: {alphas}")
+
+    def test_flattened_window_edge_is_lensed_but_separate_layer_is_not(self):
+        # Controlled A/B for the 2026-11-13 reference layer-equivalence result.
+        # Flattened: one wallpaper+window texture, then the lens. The window
+        # edge must move outward with the lens. Separate-layer: lens the dark
+        # wallpaper only, then composite the bright window on top; the edge
+        # stays at its original position because the lens never saw it.
+        w, h, scale = 966, 156, 2
+        edge = w - 60  # 30 pt from the right short end
+        flat, _ = self.gpu.render(w, h, scale, squircle=4.0, window_edge=edge,
+                                  flat_alpha=0.0, tone_weight=0.0)
+        dark, _ = self.gpu.render(w, h, scale, squircle=4.0,
+                                  solid_color=(24, 24, 24),
+                                  flat_alpha=0.0, tone_weight=0.0)
+        separate = bytearray(dark)
+        for y in range(h):
+            for x in range(edge, w):
+                i = (y * w + x) * 4
+                separate[i:i + 4] = bytes((255, 255, 255, 255))
+
+        def edge_at(pixels):
+            row = h // 2
+            for x in range(edge - 20, min(edge + 40, w)):
+                if pixels[(row * w + x) * 4] >= 128:
+                    return x
+            return None
+
+        flat_edge = edge_at(flat)
+        separate_edge = edge_at(separate)
+        self.assertIsNotNone(flat_edge)
+        self.assertIsNotNone(separate_edge)
+        self.assertGreater(flat_edge - edge, 2,
+                           f"the flattened window edge did not move outward: "
+                           f"{flat_edge} vs {edge}")
+        self.assertLessEqual(abs(separate_edge - edge), 1,
+                             f"the separate-layer edge moved unexpectedly: "
+                             f"{separate_edge} vs {edge}")
 
     def test_oklab_tone_matches_the_measured_curve(self):
         source = (200, 60, 40)

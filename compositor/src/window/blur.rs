@@ -578,17 +578,15 @@ void main() {
                       * normal.y * normal.y;
     float measured_end_gain = end_gain(half_size, p, glass_size, corner_tail);
     float shift = snell_shift(inside, corner_tail, bevel);
-    float peak_shift = snell_shift(corner_distance, corner_tail, bevel);
-    float lens_strength = clamp(shift / max(peak_shift, 1e-4), 0.0, 1.0);
 
-    // The sharp overlay is the clear end bevel. It wraps the whole short side
-    // and fades along the long edges into the frosted body, so the reference's
-    // broad end lens is sharp while the measured flat top/bottom keeps its
-    // 19.2 % sharp / Gaussian mixture. The old corner gate made two 45-degree
-    // wedges and left the middle of each end frosted. The overlay follows the
-    // lens displacement itself, so the clear-to-frosted transition has no
-    // inner contour.
-    float band = smoothstep(0.08, 0.50, measured_end_gain) * lens_strength;
+    // The sharp overlay is the measured short-end clear/caustic band. The
+    // 2026-11-13 refraction study measures that band at ~12 pt adjacent to the
+    // 6 pt rim, while the lens displacement itself keeps its ~50 pt influence
+    // in the body. Keep the overlay on the rim-adjacent band: following the
+    // full displacement made the left/right edge read as a wide clear stripe.
+    float caustic_end = corner_distance + rim_tail * 0.5;
+    float caustic = 1.0 - smoothstep(rim_tail * 1.1, caustic_end, inside);
+    float band = smoothstep(0.08, 0.50, measured_end_gain) * caustic;
     // Preserve the body's measured specular line and tail: the sharp overlay
     // starts just inside them rather than covering the rim.
     float rim_guard = smoothstep(rim_tail * 1.1, max(rim_tail * 1.8, 1.0),

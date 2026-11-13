@@ -97,6 +97,15 @@ and reading as an X-shaped refraction. The body and the sharp overlay now share
 keeps the full lens, the long edges keep the measured ~0.5 pt, and a vertical
 Dock applies the same rule to its short top/bottom ends.
 
+Follow-up (2026-11-13, reference study `49024a6`): the reference confirms the
+Dock is one flattened wallpaper + window + shadow backdrop, not separate
+layers. The perimeter correction is to keep the body lens at its measured
+50 pt influence while narrowing the sharp overlay to the measured ~12 pt
+rim-adjacent clear/caustic band, and to use the padded blur source on the DRM
+path as the nested path already does. The flattened scene order, the padded
+DRM source and the narrow caustic band are the durable decisions; the
+diagnostic A/B stills remain local-only.
+
 ## References
 
 - `docs/design/proposals/dock-liquid-glass-perimeter.md`
