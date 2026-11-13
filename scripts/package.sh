@@ -252,6 +252,7 @@ build_tar() {
     install -m 0755 "$root/packaging/tar/uninstall.sh" "$tmp/$top/uninstall.sh"
     install -m 0644 "$root/packaging/tar/README.md" "$tmp/$top/INSTALL.md"
     tar -C "$tmp" -czf "$OUTPUT/$top.tar.gz" "$top"
+    say "built $top.tar.gz"
     rm -rf "$tmp"
 }
 
@@ -296,7 +297,8 @@ build_deb() {
             | xargs -0 md5sum >DEBIAN/md5sums
     )
 
-    dpkg-deb --build --root-owner-group "$debroot" "$OUTPUT/$debname" >/dev/null
+    dpkg-deb --build --root-owner-group "$debroot" "$OUTPUT/$debname"
+    say "built $debname"
     rm -rf "$debroot"
 }
 
@@ -392,6 +394,7 @@ for format in "${format_list[@]}"; do
     esac
 done
 
+say "writing SHA256SUMS"
 (
     cd "$OUTPUT"
     find . -maxdepth 1 -type f \
