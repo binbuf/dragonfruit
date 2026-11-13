@@ -155,6 +155,7 @@ QtObject {
                     readonly property string confidence: "measured"
                     readonly property string provenance: "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur sigma 3.86pt first fit"
                     readonly property string colourSpace: "srgb"
+                    readonly property real toneWeight: 1.0
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.253
                         readonly property real neutralTint: 0.604
@@ -176,6 +177,7 @@ QtObject {
                     readonly property string confidence: "measured"
                     readonly property string provenance: "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur and rim reuse the light fit because the dark rim was not separately fitted"
                     readonly property string colourSpace: "srgb"
+                    readonly property real toneWeight: 1.0
                     readonly property var calibration: QtObject {
                         readonly property real neutralAlpha: 0.149
                         readonly property real neutralTint: 0.207
@@ -1218,10 +1220,10 @@ QtObject {
             readonly property int iconSize: 48
             readonly property int iconSizeMin: 32
             readonly property int iconSizeMax: 64
-            readonly property int padding: 15
-            readonly property int paddingAlong: 16
+            readonly property int padding: 16
+            readonly property real paddingAlong: 8.5
             readonly property int gap: 14
-            readonly property int radius: 27
+            readonly property real radius: 26.9
             readonly property int indicatorSize: 4
             readonly property int indicatorGap: 8
             readonly property real magnifyPeak: 1.217

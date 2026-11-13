@@ -355,6 +355,7 @@ impl MaterialRole {
             corner_distance: 0.0,
             corner_tail: 0.0,
             coverage_aa: 0.0,
+            ..GlassSpec::default()
         }
     }
 }
@@ -723,7 +724,7 @@ mod tests {
         assert_eq!(light.opacity, semantic::light::material::DOCK_OPACITY);
         assert_eq!(light.opacity, 0.5);
         assert_eq!(light.radius, component::dock::RADIUS);
-        assert_eq!(light.radius, 27.0);
+        assert_eq!(light.radius, 26.9);
         assert_eq!(light.color, ColorScheme::Light.dock_fill());
         // 30 px blur / 6 px per layer = 5 feather layers.
         assert_eq!(light.layers, 5);

@@ -43,6 +43,40 @@ void main() {
 """
 
 
+def _srgb_to_linear(c):
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _linear_to_srgb(c):
+    c = max(0.0, min(1.0, c))
+    return c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+
+
+def _oklab(rgb):
+    r, g, b = (_srgb_to_linear(v) for v in rgb)
+    l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
+    m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
+    s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
+    l, m, s = (v ** (1 / 3) for v in (l, m, s))
+    return [
+        0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+        1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+        0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+    ]
+
+
+def _srgb_from_oklab(lab):
+    l_ = lab[0] + 0.3963377774 * lab[1] + 0.2158037573 * lab[2]
+    m_ = lab[0] - 0.1055613458 * lab[1] - 0.0638541728 * lab[2]
+    s_ = lab[0] - 0.0894841775 * lab[1] - 1.2914855480 * lab[2]
+    l, m, s = l_ ** 3, m_ ** 3, s_ ** 3
+    return [
+        _linear_to_srgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+        _linear_to_srgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+        _linear_to_srgb(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s),
+    ]
+
+
 class GPU:
     def __init__(self):
         self.display = self.context = self.surface = None
@@ -163,7 +197,8 @@ class GPU:
 
     def render(self, width, height, scale, *, rows=False, dark=False,
                peak=9.6, solid=False, phase=0, defines="", flat_band=True,
-               coverage_aa=0.0):
+               coverage_aa=0.0, squircle=2.0, tone_weight=0.0, materialize=1.0,
+               solid_color=None, flat_alpha=None):
         self.current_program = self.program(defines)
         self.g("glUseProgram", None, c.c_uint)(self.current_program)
         bind_texture = self.g("glBindTexture", None, c.c_uint, c.c_uint)
@@ -186,15 +221,19 @@ class GPU:
         for y in range(height):
             for x in range(width):
                 i = (y * width + x) * 4
-                pixels[i:i + 4] = bytes((127, 127, 127, 255) if solid
-                                        else (x_values[x], y_values[y], 127, 255))
+                if solid_color is not None:
+                    pixels[i:i + 4] = bytes((*solid_color, 255))
+                else:
+                    pixels[i:i + 4] = bytes((127, 127, 127, 255) if solid
+                                            else (x_values[x], y_values[y], 127, 255))
         data = (c.c_ubyte * len(pixels)).from_buffer(pixels)
         upload(0x0DE1, 0, 0x1908, width, height, 0, 0x1908, 0x1401, data)
         alpha, tone = (.149, .207) if dark else (.253, .604)
+        band = alpha if flat_alpha is None else flat_alpha
         scalars = dict(alpha=1, glass_radius=27 * scale, refraction=13.6 * scale,
-                       specular=.397, specular_width=scale, tint_amount=alpha,
+                       specular=.397, specular_width=scale, tint_amount=band,
                        lens_falloff=24 * scale, tint_scale=1, flat_band=float(flat_band),
-                       flat_alpha=alpha, rim_peak=.397, rim_half_width=scale,
+                       flat_alpha=band, rim_peak=.397, rim_half_width=scale,
                        rim_tail=6 * scale, corner_peak=peak * scale,
                        corner_distance=15 * scale, corner_tail=50 * scale, tint=0,
                        coverage_aa=coverage_aa)
@@ -205,6 +244,10 @@ class GPU:
         self.uniform("panel_uv_offset", 0, 0)
         self.uniform("panel_uv_scale", 1, 1)
         self.uniform("uv_per_px", 1 / width, 1 / height)
+        self.uniform("bevel", 45 * scale, 1.5, 4.0, 1.4)
+        self.uniform("perceptual", tone_weight, 0.2696, 0.6559, 1.244)
+        self.uniform("shape", materialize, squircle)
+        self.uniform("perceptual_chroma", 1.0916)
         sampler = self.g("glGetUniformLocation", c.c_int, c.c_uint, c.c_char_p)(
             self.current_program, b"tex")
         self.g("glUniform1i", None, c.c_int, c.c_int)(sampler, 0)
@@ -320,6 +363,75 @@ class GlassShaderTests(unittest.TestCase):
         self.assertTrue(partial, "the SDF corner must produce partial coverage")
         inner = out[(4 * w + w // 2) * 4 + 3]
         self.assertGreaterEqual(inner, 250, "the interior must stay opaque")
+
+    def test_squircle_extends_the_corner(self):
+        # At 1x/1.5x/2x the measured corner is continuous, not circular. A
+        # point outside the circular arc but inside the squircle must gain
+        # coverage; the straight interior must not move.
+        w, h, scale = 966, 156, 2
+        circle, _ = self.gpu.render(w, h, scale, solid=True, coverage_aa=1,
+                                    squircle=2.0)
+        squircle, _ = self.gpu.render(w, h, scale, solid=True, coverage_aa=1,
+                                      squircle=4.0)
+        self.assertEqual(circle[(10 * w + 10) * 4 + 3], 0)
+        self.assertEqual(squircle[(10 * w + 10) * 4 + 3], 255)
+        self.assertEqual(circle[(h // 2 * w + w // 2) * 4 + 3],
+                         squircle[(h // 2 * w + w // 2) * 4 + 3])
+
+    def test_snell_bevel_displaces_the_corner(self):
+        w, h, scale = 966, 156, 2
+        lens, _ = self.gpu.render(w, h, scale, squircle=4.0)
+        plain, _ = self.gpu.render(w, h, scale, squircle=4.0, peak=0)
+        radius = 27 * scale
+        inside = 15 * scale
+        point = radius - radius / math.sqrt(2) + inside / math.sqrt(2)
+        x = y = round(point)
+        a = (y * w + x) * 4
+        self.assertGreater(
+            max(abs(lens[a + c] - plain[a + c]) for c in range(3)), 20,
+            "the Snell bevel must displace the corner")
+
+    def test_snell_flat_edge_is_small_but_nonzero(self):
+        # The measured flat top/bottom is ~0.5 pt, not zero. The smooth corner
+        # gain leaves a small continuous displacement on every flat side.
+        w, h, scale = 966, 156, 2
+        lens, _ = self.gpu.render(w, h, scale, squircle=4.0)
+        plain, _ = self.gpu.render(w, h, scale, squircle=4.0, peak=0)
+        for name, (x, y) in {
+            "top": (w // 2, 30),
+            "bottom": (w // 2, h - 31),
+            "left": (30, h // 2),
+            "right": (w - 31, h // 2),
+        }.items():
+            with self.subTest(edge=name):
+                a = (y * w + x) * 4
+                delta = max(abs(lens[a + c] - plain[a + c]) for c in range(3))
+                self.assertGreater(delta, 0, f"{name} has no flat-edge lens")
+                self.assertLessEqual(delta, 16,
+                                     f"{name} flat-edge lens is too strong")
+
+    def test_oklab_tone_matches_the_measured_curve(self):
+        source = (200, 60, 40)
+        neutral, _ = self.gpu.render(760, 117, 1.5, solid_color=source,
+                                     flat_alpha=0.0, tone_weight=0.0, peak=0)
+        toned, _ = self.gpu.render(760, 117, 1.5, solid_color=source,
+                                   flat_alpha=0.0, tone_weight=1.0, peak=0)
+        i = (58 * 760 + 380) * 4
+        self.assertEqual(tuple(neutral[i:i + 3]), source)
+        lab = _oklab([v / 255 for v in source])
+        lab[0] = 0.2696 + 0.6559 * lab[0] ** 1.244
+        lab[1] *= 1.0916
+        lab[2] *= 1.0916
+        expected = [round(v * 255) for v in _srgb_from_oklab(lab)]
+        for channel in range(3):
+            self.assertLessEqual(abs(toned[i + channel] - expected[channel]), 3,
+                                 f"tone channel {channel}: "
+                                 f"{toned[i + channel]} vs {expected[channel]}")
+        # A neutral backdrop keeps the sRGB fit exactly (chroma gate).
+        grey = (128, 128, 128)
+        toned_grey, _ = self.gpu.render(760, 117, 1.5, solid_color=grey,
+                                        flat_alpha=0.0, tone_weight=1.0, peak=0)
+        self.assertEqual(tuple(toned_grey[i:i + 3]), grey)
 
     def test_gaussian_blur_is_symmetric_and_normalized(self):
         w, h = 128, 8

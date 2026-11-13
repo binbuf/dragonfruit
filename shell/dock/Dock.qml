@@ -4246,18 +4246,42 @@ Rectangle {
     // straight top/bottom lift. `w`/`h` are the already inset box (the Shape's
     // own size). `strokeWidth` defaults to the rim hairline; each glow band
     // passes its own width so all strokes share one path definition.
+    // Continuous-corner path shared by the QML fallback fill, rim and glow.
+    // The sampled compositor uses the same exponent in its SDF, so the
+    // software fallback and the authoritative path agree at the corner. A
+    // superellipse corner (`|x/r|^n + |y/r|^n = 1`) has continuous curvature;
+    // 12 line segments per corner are below a tenth of a pixel at the Dock's
+    // 26.9 pt radius and keep the software Shape renderer cheap.
+    function squirclePath(w, h, radius, power) {
+        var r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
+        if (r <= 0)
+            return "M 0 0 L " + w + " 0 L " + w + " " + h + " L 0 " + h + " Z";
+        var n = power === undefined ? 4 : power;
+        var e = 2 / n;
+        var steps = 12;
+        function corner(cx, cy, a0, a1) {
+            for (var i = 0; i <= steps; ++i) {
+                var a = (a0 + (a1 - a0) * i / steps) * Math.PI / 180;
+                var c = Math.cos(a);
+                var s = Math.sin(a);
+                d += " L " + (cx + r * Math.sign(c) * Math.pow(Math.abs(c), e))
+                   + " " + (cy + r * Math.sign(s) * Math.pow(Math.abs(s), e));
+            }
+        }
+        var d = "M " + r + " 0 L " + (w - r) + " 0";
+        corner(w - r, r, -90, 0);
+        corner(w - r, h - r, 0, 90);
+        corner(r, h - r, 90, 180);
+        corner(r, r, 180, 270);
+        return d + " Z";
+    }
+
     function rimOutlinePath(w, h, strokeWidth) {
         if (strokeWidth === undefined)
             strokeWidth = Theme.controls.dock.plate.rimHeight;
         var d = strokeWidth / 2;
-        var r = Math.max(0, Math.min(Theme.controls.dock.radius - d,
-                                      Math.min(w, h) / 2));
-        return "M " + r + " 0"
-             + " L " + (w - r) + " 0 A " + r + " " + r + " 0 0 1 " + w + " " + r
-             + " L " + w + " " + (h - r) + " A " + r + " " + r + " 0 0 1 "
-             + (w - r) + " " + h
-             + " L " + r + " " + h + " A " + r + " " + r + " 0 0 1 0 " + (h - r)
-             + " L 0 " + r + " A " + r + " " + r + " 0 0 1 " + r + " 0 Z";
+        return squirclePath(w, h,
+                            Math.max(0, Theme.controls.dock.radius - d));
     }
 
     // The surface input region: the visible bar plus the currently magnified
@@ -4314,6 +4338,16 @@ Rectangle {
         readonly property real plateW: dock.panelRect.w
         readonly property real plateH: dock.panelRect.h
         readonly property real plateRadius: Theme.controls.dock.radius
+        readonly property color fillColor: dock.replacementPlate
+            ? Qt.rgba(dock.glassOptics.tint, dock.glassOptics.tint,
+                      dock.glassOptics.tint, 1)
+            : (dock.materialBlurActive && !Glass.reduceTransparency
+               ? Theme.color.dockFill : Theme.color.dockFallbackFill)
+        readonly property real fillOpacity: dock.replacementPlate
+            ? dock.glassOptics.alpha
+            : (dock.materialBlurActive && !Glass.reduceTransparency
+               ? Theme.controls.dock.plate.fillOpacity
+               : Theme.material.dockFallbackOpacity)
 
         x: dock.axisIsX || dock.position === "right" ? dock.panelRect.x : 0
         y: dock.panelRect.y
@@ -4329,29 +4363,29 @@ Rectangle {
         // strokes (T235a). The reference has no outer shadow and no darker
         // side, so none is drawn here. The same layers work for a bottom, left
         // or right Dock; there is no `position` branch.
-        Rectangle {
+        Shape {
             objectName: "dockBar"
             visible: !dock.sampledPlate
             x: dockPlate.plateX
             y: dockPlate.plateY
             width: dockPlate.plateW
             height: dockPlate.plateH
-            radius: dockPlate.plateRadius
-            // With the sampled pass active the compositor paints the flat
-            // band/rim, so this layer is hidden. Unsupported paths and the
-            // accessibility override keep one coherent shell-painted plate:
-            // the replacement look uses the resolved neutral alpha/tint, the
-            // legacy look keeps its milky fallback.
-            color: dock.replacementPlate
-                   ? Qt.rgba(dock.glassOptics.tint, dock.glassOptics.tint,
-                             dock.glassOptics.tint, 1)
-                   : (dock.materialBlurActive && !Glass.reduceTransparency
-                      ? Theme.color.dockFill : Theme.color.dockFallbackFill)
-            opacity: dock.replacementPlate
-                     ? dock.glassOptics.alpha
-                     : (dock.materialBlurActive && !Glass.reduceTransparency
-                        ? Theme.controls.dock.plate.fillOpacity
-                        : Theme.material.dockFallbackOpacity)
+            // Test/diagnostic properties mirroring the old Rectangle fill;
+            // the actual shape is the shared squircle path.
+            property real radius: dockPlate.plateRadius
+            property color color: dockPlate.fillColor
+            preferredRendererType: Shape.GeometryRenderer
+            antialiasing: true
+            opacity: dockPlate.fillOpacity
+            ShapePath {
+                fillColor: dockPlate.fillColor
+                strokeColor: "transparent"
+                PathSvg {
+                    path: dock.squirclePath(dockPlate.plateW,
+                                            dockPlate.plateH,
+                                            dockPlate.plateRadius)
+                }
+            }
         }
 
         // The inner glow: two or three concentric full-perimeter strokes
@@ -4470,18 +4504,30 @@ Rectangle {
         // The border is an Increase Contrast ink only, never the normal plate
         // edge: the reference has no dark side and the rim already carries the
         // perimeter. It is a uniform hairline, not a directional outline.
-        Rectangle {
+        Shape {
             objectName: "dockBorder"
             visible: !dock.sampledPlate && Glass.increaseContrast
-            x: dockPlate.plateX
-            y: dockPlate.plateY
-            width: dockPlate.plateW
-            height: dockPlate.plateH
-            radius: dockPlate.plateRadius
-            color: "transparent"
-            border.width: Theme.controls.dock.plate.borderWidth
-            border.color: Theme.color.dockBorder
+            readonly property real borderInset:
+                Theme.controls.dock.plate.borderWidth / 2
+            x: dockPlate.plateX + borderInset
+            y: dockPlate.plateY + borderInset
+            width: Math.max(0, dockPlate.plateW - 2 * borderInset)
+            height: Math.max(0, dockPlate.plateH - 2 * borderInset)
+            preferredRendererType: Shape.GeometryRenderer
+            antialiasing: true
             opacity: Theme.controls.dock.plate.borderOpacity
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: Theme.color.dockBorder
+                strokeWidth: Theme.controls.dock.plate.borderWidth
+                PathSvg {
+                    path: dock.squirclePath(
+                        dockPlate.plateW - Theme.controls.dock.plate.borderWidth,
+                        dockPlate.plateH - Theme.controls.dock.plate.borderWidth,
+                        dockPlate.plateRadius
+                            - Theme.controls.dock.plate.borderWidth / 2)
+                }
+            }
         }
     }
 
