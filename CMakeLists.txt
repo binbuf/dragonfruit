@@ -24,6 +24,7 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Quick QuickTest Test DBus)
 # `find_package(Qt6 6.8 ...)` above.
 qt_standard_project_setup(REQUIRES 6.8)
 
+option(DF_BUILD_TESTS "Build the Qt/QML test targets" ON)
 enable_testing()
 
 # The files-core bridge (T-10.4b, ADR 0049; T-10.6a): the Rust crate is built
