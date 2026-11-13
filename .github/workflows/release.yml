@@ -90,12 +90,8 @@ jobs:
         if: failure()
         run: |
           if [ -f build-deb.log ]; then
-            {
-              grep -n -A8 -B2 -E 'CMake Error|error\[|error:|FAILED|undefined reference' build-deb.log | tail -n 60 || true
-              echo "--- tail ---"
-              tail -n 15 build-deb.log
-            } | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error::$line"
+            tail -n 200 build-deb.log | base64 -w0 | fold -w 60000 | while IFS= read -r line; do
+              echo "::error::LOG:$line"
             done
           fi
 
@@ -189,12 +185,8 @@ jobs:
         if: failure()
         run: |
           if [ -f build-rpm.log ]; then
-            {
-              grep -n -A8 -B2 -E 'CMake Error|error\[|error:|FAILED|undefined reference' build-rpm.log | tail -n 60 || true
-              echo "--- tail ---"
-              tail -n 15 build-rpm.log
-            } | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error::$line"
+            tail -n 200 build-rpm.log | base64 -w0 | fold -w 60000 | while IFS= read -r line; do
+              echo "::error::LOG:$line"
             done
           fi
 
@@ -272,12 +264,8 @@ jobs:
         if: failure()
         run: |
           if [ -f build-arch.log ]; then
-            {
-              grep -n -A8 -B2 -E 'CMake Error|error\[|error:|FAILED|undefined reference' build-arch.log | tail -n 60 || true
-              echo "--- tail ---"
-              tail -n 15 build-arch.log
-            } | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error::$line"
+            tail -n 200 build-arch.log | base64 -w0 | fold -w 60000 | while IFS= read -r line; do
+              echo "::error::LOG:$line"
             done
           fi
 
