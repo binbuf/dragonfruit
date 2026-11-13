@@ -281,12 +281,12 @@ build_deb() {
 
     # Use # as the delimiter: the Depends value itself contains | alternatives.
     sed \
-        -e "s#@VERSION@|$VERSION#g" \
-        -e "s#@ARCH@|$DEB_ARCH#g" \
-        -e "s#@SIZE@|$size#g" \
-        -e "s#@DEPENDS@|$depends#g" \
-        -e "s#@RECOMMENDS@|$recommends#g" \
-        -e "s#@SUGGESTS@|$suggests#g" \
+        -e "s#@VERSION@#$VERSION#g" \
+        -e "s#@ARCH@#$DEB_ARCH#g" \
+        -e "s#@SIZE@#$size#g" \
+        -e "s#@DEPENDS@#$depends#g" \
+        -e "s#@RECOMMENDS@#$recommends#g" \
+        -e "s#@SUGGESTS@#$suggests#g" \
         "$root/packaging/debian/control.in" >"$debroot/DEBIAN/control"
 
     install -m 0755 "$root/packaging/debian/postinst" "$debroot/DEBIAN/postinst"
