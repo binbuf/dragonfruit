@@ -79,8 +79,19 @@ Item {
         width: root.width
         height: Theme.controls.menuBar.height - 2 * Theme.primitive.spacing.xs
         radius: Theme.controls.menuBar.hoverRadius
-        color: clockHover.hovered ? Theme.color.controlHover : "transparent"
+        readonly property color hoverFill: Qt.rgba(
+            root.foreground.r, root.foreground.g, root.foreground.b,
+            Theme.controls.menuBar.hoverOpacity)
+        color: clockHover.hovered ? hoverFill : "transparent"
         antialiasing: true
+
+        Behavior on color {
+            enabled: !Theme.reducedMotion
+            ColorAnimation {
+                duration: Theme.controls.menuBar.hoverDuration
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 
     Row {

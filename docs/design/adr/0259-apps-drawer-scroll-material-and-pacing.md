@@ -2,6 +2,10 @@
 
 Status: accepted (2026-11-12)
 
+> The near-opaque 0.97 alpha in this ADR is superseded by
+> [ADR 0260](0260-apps-drawer-translucent-glass.md); the committed input,
+> direct wheel path and stable-grid decisions remain in force.
+
 This corrects the live Applications drawer regressions reported after ADR
 [0244](0244-frosted-menu-and-drawer-stability.md): the first open/reopen could
 not scroll or click, the card was a flat translucent slab when the material

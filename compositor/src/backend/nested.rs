@@ -1668,7 +1668,7 @@ fn build_blur_elements(
         let Some((texture_panel, scene_src)) =
             scene
                 .region
-                .panel_source_padded(panel.panel, source_padding, scale)
+                .panel_source_padded(panel.source_panel(), source_padding, scale)
         else {
             continue;
         };

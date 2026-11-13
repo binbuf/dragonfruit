@@ -341,13 +341,13 @@ QtObject {
                 readonly property string slider: "lightRelative"
                 readonly property var light: QtObject {
                     readonly property string confidence: "adapted"
-                    readonly property string provenance: "The Apps material fit is OPEN in macos-design-review §4.5; this preset keeps the measured popover glass family's near-white tint, 10 pt frost and rim model, but raises the large 844x577 Spotlight Apps card to the near-opaque 0.97 reading required for a browsing surface. The 14 pt frost, measured rim and restrained corner lens remain. The reference describes a large light glass panel whose gradient/vibrancy was not inverted in that pass."
+                    readonly property string provenance: "The Apps material fit is OPEN in macos-design-review §4.5, which describes a large light glass panel. The sampled panel gray (#B3B3B3) over the capture's black backdrop resolves to a roughly 0.72-opaque near-white sheet, so this preset keeps the popover family's near-white tint, measured rim and restrained corner lens with a 14 pt frost instead of the earlier 0.97 near-opaque plate."
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
-                        readonly property real neutralAlpha: 0.97
+                        readonly property real neutralAlpha: 0.72
                         readonly property real neutralTint: 0.96
                         readonly property real perceptualWeight: 0.0
-                        readonly property real perceptualAlpha: 0.97
+                        readonly property real perceptualAlpha: 0.72
                         readonly property real perceptualTint: 0.96
                     }
                     readonly property real blur: 14.0
@@ -362,13 +362,13 @@ QtObject {
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "adapted"
-                    readonly property string provenance: "No dark Apps fit was measured; adapt the measured dark detached-menu tint (0.26) and the same large-card frost/rim/lens at the near-opaque 0.97 reading so 13 pt labels stay legible over a bright wallpaper."
+                    readonly property string provenance: "No dark Apps fit was measured; use the light card's transmission with the measured dark detached-menu tint (0.26) at 0.82 alpha, so the glass still reads over a bright wallpaper while 13 pt labels keep contrast."
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
-                        readonly property real neutralAlpha: 0.97
+                        readonly property real neutralAlpha: 0.82
                         readonly property real neutralTint: 0.26
                         readonly property real perceptualWeight: 0.0
-                        readonly property real perceptualAlpha: 0.97
+                        readonly property real perceptualAlpha: 0.82
                         readonly property real perceptualTint: 0.26
                     }
                     readonly property real blur: 16.0
@@ -1242,6 +1242,9 @@ QtObject {
             readonly property int hideDelay: 350
             readonly property int radius: 10
             readonly property int hoverRadius: 6
+            readonly property real hoverOpacity: 0.08
+            readonly property real openOpacity: 0.14
+            readonly property int hoverDuration: 90
             readonly property color foregroundOnLight: "#000000"
             readonly property color foregroundOnDark: "#ffffff"
             readonly property color foregroundSecondaryOnLight: "#000000"
@@ -1643,7 +1646,7 @@ QtObject {
             readonly property real scrimOpacity: 0.26
             readonly property real panelOpacity: 0.58
             readonly property real panelOpacityDark: 0.68
-            readonly property real panelFallbackOpacity: 0.97
+            readonly property real panelFallbackOpacity: 0.92
             readonly property real fallbackGlyphRatio: 0.52
             readonly property real fallbackFillOpacity: 0.12
             readonly property real fallbackBorderOpacity: 0.4

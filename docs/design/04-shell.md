@@ -951,11 +951,13 @@ viewport at five rows; it drops to fewer columns on a narrower output and
 scrolls when the corpus is longer. The column count is independent of the
 filtered result count: a search that narrows the grid must not reflow the card
 horizontally on every keystroke. The centered card is the compositor's sampled
-`appsDrawer` glass (near-opaque 0.97 alpha, a 14 pt light / 16 pt dark frost,
-rim and restrained corner lens) with a 28 pt radius and a soft floating
-shadow; the QML fill is transparent on that path, so the compositor owns the
-material once. Reduce Transparency, no sampled blur and Minimal keep the 0.97
-milky fallback plate. The card uses 20px
+`appsDrawer` glass (translucent 0.72 light / 0.82 dark alpha over a near-white
+or dark tint, a 14 pt light / 16 pt dark frost, rim and restrained corner lens)
+with a 28 pt radius and a soft floating shadow; the QML fill is transparent on
+that path, so the compositor owns the material once. Reduce Transparency, no
+sampled blur and Minimal keep the shared opaque accessibility plate; the
+legacy rollout's no-blur fallback is 0.92. See
+[ADR 0260](adr/0260-apps-drawer-translucent-glass.md). The card uses 20px
 (`component.appsDrawer.panelPadding`) side padding and 16px
 (`panelPaddingVertical`) top/bottom padding, clamped to the output. The
 search field is 58 pt high with 16 pt text, a 16 pt corner radius and an inner

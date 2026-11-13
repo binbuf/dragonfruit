@@ -369,6 +369,9 @@ pub mod component {
         pub const HIDE_DELAY: f32 = 350.0_f32;
         pub const RADIUS: f32 = 10.0_f32;
         pub const HOVER_RADIUS: f32 = 6.0_f32;
+        pub const HOVER_OPACITY: f32 = 0.08_f32;
+        pub const OPEN_OPACITY: f32 = 0.14_f32;
+        pub const HOVER_DURATION: f32 = 90.0_f32;
         pub const FOREGROUND_ON_LIGHT: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
         pub const FOREGROUND_ON_DARK: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
         pub const FOREGROUND_SECONDARY_ON_LIGHT: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
@@ -770,7 +773,7 @@ pub mod component {
         pub const SCRIM_OPACITY: f32 = 0.26_f32;
         pub const PANEL_OPACITY: f32 = 0.58_f32;
         pub const PANEL_OPACITY_DARK: f32 = 0.68_f32;
-        pub const PANEL_FALLBACK_OPACITY: f32 = 0.97_f32;
+        pub const PANEL_FALLBACK_OPACITY: f32 = 0.92_f32;
         pub const FALLBACK_GLYPH_RATIO: f32 = 0.52_f32;
         pub const FALLBACK_FILL_OPACITY: f32 = 0.12_f32;
         pub const FALLBACK_BORDER_OPACITY: f32 = 0.4_f32;
@@ -1022,13 +1025,13 @@ pub mod glass {
             pub const SLIDER: &str = "lightRelative";
             pub mod light {
                 pub const CONFIDENCE: &str = "adapted";
-                pub const PROVENANCE: &str = "The Apps material fit is OPEN in macos-design-review §4.5; this preset keeps the measured popover glass family's near-white tint, 10 pt frost and rim model, but raises the large 844x577 Spotlight Apps card to the near-opaque 0.97 reading required for a browsing surface. The 14 pt frost, measured rim and restrained corner lens remain. The reference describes a large light glass panel whose gradient/vibrancy was not inverted in that pass.";
+                pub const PROVENANCE: &str = "The Apps material fit is OPEN in macos-design-review §4.5, which describes a large light glass panel. The sampled panel gray (#B3B3B3) over the capture's black backdrop resolves to a roughly 0.72-opaque near-white sheet, so this preset keeps the popover family's near-white tint, measured rim and restrained corner lens with a 14 pt frost instead of the earlier 0.97 near-opaque plate.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.97_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.72_f32;
                     pub const NEUTRAL_TINT: f32 = 0.96_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.97_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.72_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.96_f32;
                 }
                 pub const BLUR: f32 = 14.0_f32;
@@ -1043,13 +1046,13 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "adapted";
-                pub const PROVENANCE: &str = "No dark Apps fit was measured; adapt the measured dark detached-menu tint (0.26) and the same large-card frost/rim/lens at the near-opaque 0.97 reading so 13 pt labels stay legible over a bright wallpaper.";
+                pub const PROVENANCE: &str = "No dark Apps fit was measured; use the light card's transmission with the measured dark detached-menu tint (0.26) at 0.82 alpha, so the glass still reads over a bright wallpaper while 13 pt labels keep contrast.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.97_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.82_f32;
                     pub const NEUTRAL_TINT: f32 = 0.26_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.97_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.82_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.26_f32;
                 }
                 pub const BLUR: f32 = 16.0_f32;

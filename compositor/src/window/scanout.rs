@@ -59,6 +59,7 @@ mod tests {
         BlurPanel {
             key: PanelKey::new("test", 2, 0),
             panel: Rectangle::new((rect.0, rect.1).into(), (rect.2, rect.3).into()),
+            source_panel: None,
             corners: CornerRadii::uniform(10),
             overscan: 0,
             spec: BlurSpec::new(12.0, 10.0),
