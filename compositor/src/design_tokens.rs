@@ -394,10 +394,10 @@ pub mod component {
         pub const ICON_SIZE: f32 = 48.0_f32;
         pub const ICON_SIZE_MIN: f32 = 32.0_f32;
         pub const ICON_SIZE_MAX: f32 = 64.0_f32;
-        pub const PADDING: f32 = 15.0_f32;
-        pub const PADDING_ALONG: f32 = 16.0_f32;
+        pub const PADDING: f32 = 16.0_f32;
+        pub const PADDING_ALONG: f32 = 8.5_f32;
         pub const GAP: f32 = 14.0_f32;
-        pub const RADIUS: f32 = 27.0_f32;
+        pub const RADIUS: f32 = 26.9_f32;
         pub const INDICATOR_SIZE: f32 = 4.0_f32;
         pub const INDICATOR_GAP: f32 = 8.0_f32;
         pub const MAGNIFY_PEAK: f32 = 1.217_f32;
@@ -836,6 +836,7 @@ pub mod glass {
                 pub const CONFIDENCE: &str = "measured";
                 pub const PROVENANCE: &str = "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur sigma 3.86pt first fit";
                 pub const COLOUR_SPACE: &str = "srgb";
+                pub const TONE_WEIGHT: f32 = 1.0_f32;
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.253_f32;
                     pub const NEUTRAL_TINT: f32 = 0.604_f32;
@@ -857,6 +858,7 @@ pub mod glass {
                 pub const CONFIDENCE: &str = "measured";
                 pub const PROVENANCE: &str = "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur and rim reuse the light fit because the dark rim was not separately fitted";
                 pub const COLOUR_SPACE: &str = "srgb";
+                pub const TONE_WEIGHT: f32 = 1.0_f32;
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.149_f32;
                     pub const NEUTRAL_TINT: f32 = 0.207_f32;

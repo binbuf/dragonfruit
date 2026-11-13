@@ -259,7 +259,10 @@ struct DockLayoutSpacing {
     int gap = 0;
     int dividerGap = 0;
     int dividerWidth = 1;
-    int paddingAlong = 0;
+    // The measured Dock end padding is 8.5 pt. It is kept as a real so the
+    // QML plate and the overflow fit agree; the total end-padding contribution
+    // is integral (two ends), so the final length is still a whole pixel.
+    double paddingAlong = 0;
 };
 
 // The pure along-axis layout of a Dock entry list: the region plan plus the

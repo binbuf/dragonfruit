@@ -220,6 +220,13 @@ uniform vec2 panel_uv_offset;
 uniform vec2 panel_uv_scale;
 uniform vec2 uv_per_px;
 uniform float coverage_aa;
+// (height, IOR, shape m, shape p) for the Snell height field.
+uniform vec4 bevel;
+// (tone weight, OKLab L offset, L gain, L power).
+uniform vec4 perceptual;
+// (materialize, squircle power).
+uniform vec2 shape;
+uniform float perceptual_chroma;
 
 #if defined(DEBUG_FLAGS)
 uniform float tint;
@@ -227,6 +234,81 @@ uniform float tint;
 
 float luminance(vec3 c) {
     return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+// Continuous-corner norm. `power = 2` is the circular arc; `power = 4` is the
+// measured squircle. Only the corner region has both components nonzero, so
+// the straight sides are unchanged.
+float squircle_dist(vec2 v, float radius, float power, float inner) {
+    if (power <= 2.0) return length(v) + inner - radius;
+    float f = pow(pow(v.x, power) + pow(v.y, power), 1.0 / power);
+    vec2 g = pow(v, vec2(power - 1.0));
+    float gm = length(g) / max(pow(f, power - 1.0), 1e-6);
+    // The interior has no corner gradient; keep its distance exactly linear.
+    if (f <= 1e-4) gm = 1.0;
+    return (f + inner - radius) / max(gm, 0.35);
+}
+
+vec2 squircle_normal(vec2 v, vec2 q, float power) {
+    float ol = length(v);
+    if (ol <= 0.0)
+        return (q.x > q.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    if (power <= 2.0) return v / ol;
+    vec2 g = pow(v, vec2(power - 1.0));
+    float gl = length(g);
+    return (gl > 0.0) ? g / gl : v / ol;
+}
+
+vec3 srgb_to_linear(vec3 c) {
+    vec3 lo = c / 12.92;
+    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));
+    return mix(lo, hi, step(vec3(0.04045), c));
+}
+
+vec3 linear_to_srgb(vec3 c) {
+    c = max(c, 0.0);
+    vec3 lo = c * 12.92;
+    vec3 hi = 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055;
+    return clamp(mix(lo, hi, step(vec3(0.0031308), c)), 0.0, 1.0);
+}
+
+vec3 linear_to_oklab(vec3 c) {
+    float l = 0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b;
+    float m = 0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b;
+    float s = 0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b;
+    vec3 lms = pow(vec3(l, m, s), vec3(1.0 / 3.0));
+    return vec3(
+        0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z,
+        1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z,
+        0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z);
+}
+
+vec3 oklab_to_linear(vec3 c) {
+    float l_ = c.x + 0.3963377774 * c.y + 0.2158037573 * c.z;
+    float m_ = c.x - 0.1055613458 * c.y - 0.0638541728 * c.z;
+    float s_ = c.x - 0.0894841775 * c.y - 1.2914855480 * c.z;
+    vec3 lms = vec3(l_ * l_ * l_, m_ * m_ * m_, s_ * s_ * s_);
+    return vec3(
+        4.0767416621 * lms.x - 3.3077115913 * lms.y + 0.2309699292 * lms.z,
+        -1.2684380046 * lms.x + 2.6097574011 * lms.y - 0.3413193965 * lms.z,
+        -0.0041960863 * lms.x - 0.7034186147 * lms.y + 1.7076147010 * lms.z);
+}
+
+// The measured Snell displacement at `depth` logical points inside the rim.
+// The height field is monotone, `h(t) = H (1 - (1-t)^m)^p`; the surface slope
+// drives Snell's law, and the horizontal component on the 45-degree diagonal
+// is the fitted -4 / -8.5 / -9.6 pt at 5 / 10 / 15 pt.
+float snell_shift(float depth, float bezel_px, vec4 field) {
+    float t = clamp(depth / max(bezel_px, 1.0), 0.0, 1.0);
+    if (t <= 0.0 || t >= 1.0) return 0.0;
+    float base = 1.0 - pow(1.0 - t, field.z);
+    float h = field.x * pow(base, field.w);
+    float slope = field.x * field.w * pow(base, field.w - 1.0)
+                * field.z * pow(1.0 - t, field.z - 1.0)
+                / max(bezel_px, 1.0);
+    float theta_i = atan(slope);
+    float theta_r = asin(clamp(sin(theta_i) / max(field.y, 1.0), -1.0, 1.0));
+    return h * tan(theta_i - theta_r) / 1.41421356;
 }
 
 void main() {
@@ -239,7 +321,8 @@ void main() {
     vec2 half_size = max(glass_size * 0.5 - vec2(glass_radius), vec2(0.0));
     vec2 q = abs(p) - half_size;
     vec2 outside = max(q, vec2(0.0));
-    float dist = length(outside) + min(max(q.x, q.y), 0.0) - glass_radius;
+    float dist = squircle_dist(outside, glass_radius, shape.y,
+                               min(max(q.x, q.y), 0.0));
     float inside = max(-dist, 0.0);
     // Full-panel measured Dock draws use the SDF as an antialiased coverage
     // mask. Span-clipped roles pass coverage_aa = 0 and keep their integer
@@ -248,29 +331,33 @@ void main() {
 
     // Nearest-edge SDF normal for rim lighting. Refraction has its own smooth
     // direction: the SDF normal jumps across interior medial axes.
+    vec2 rim_normal = squircle_normal(outside, q, shape.y);
     float ol = length(outside);
-    vec2 rim_normal = (ol > 0.0) ? outside / ol
-        : ((q.x > q.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
 
     vec2 uv = v_coords;
     if (flat_band > 0.5) {
-        // Measured magnifying bevel. The field is parameterized by distance
-        // *inside* the rounded rim. `4*nx^2*ny^2` is a smooth corner gain:
-        // zero on a flat top/bottom edge or flat side, one at the 45-degree
-        // diagonal. Unlike the old corner-only gate, a small uniform edge
-        // displacement remains on the flats (the measured ~0.5 pt), so the
-        // lens is continuous around the whole perimeter instead of snapping
-        // off at the corner-to-side transition.
+        // Physical bevel: a continuous height field refracted through Snell's
+        // law. The smooth `4*nx^2*ny^2` corner gain is not a hard gate: it
+        // leaves the measured ~0.5 pt on the flats and reaches the full
+        // measured displacement at the 45-degree corner. `shape.x` is the
+        // materialize axis (1.0 at the measured default).
         if (corner_peak > 0.0 && inside < corner_tail) {
             float corner_gate = 4.0 * rim_normal.x * rim_normal.x
                               * rim_normal.y * rim_normal.y;
-            float t = inside / max(corner_distance, 1.0);
-            float bump = t * t * t * exp(3.0 * (1.0 - t));
-            float fade = 1.0 - smoothstep(corner_tail * 0.75,
-                                          max(corner_tail, 1.0), inside);
-            float flat_edge = 0.5 * max(rim_half_width, 1.0);
-            float lens = flat_edge + (corner_peak - flat_edge) * corner_gate;
-            uv -= rim_normal * (lens * bump * fade) * uv_per_px;
+            if (shape.y > 2.0) {
+                float gain = mix(0.05, 1.0, corner_gate);
+                float shift = snell_shift(inside, corner_tail, bevel);
+                uv -= rim_normal * (shift * gain * shape.x) * uv_per_px;
+            } else {
+                // Other measured flat-band presets keep the fitted bump.
+                float t = inside / max(corner_distance, 1.0);
+                float bump = t * t * t * exp(3.0 * (1.0 - t));
+                float fade = 1.0 - smoothstep(corner_tail * 0.75,
+                                              max(corner_tail, 1.0), inside);
+                float flat_edge = 0.5 * max(rim_half_width, 1.0);
+                float lens = flat_edge + (corner_peak - flat_edge) * corner_gate;
+                uv -= rim_normal * (lens * bump * fade * shape.x) * uv_per_px;
+            }
         }
     } else {
         // Edge lens: falloff is one at the rim and reaches zero at lens_falloff.
@@ -285,10 +372,24 @@ void main() {
 
     if (flat_band > 0.5) {
         // Measured flat band: mix the filtered composite toward the neutral
-        // tint level, then add one uniform specular rim. The rim is the same
-        // on every edge and around every corner: there is no vertical mix, no
-        // darker side and no straight top/bottom lift.
-        color.rgb = mix(color.rgb, tint_color, clamp(flat_alpha, 0.0, 1.0));
+        // tint level. Neutral backgrounds keep this sRGB fit exactly. On a
+        // saturated backdrop the measured OKLab curve is blended in by chroma,
+        // so the plate neither washes toward gray nor moves the neutral fit.
+        vec3 neutral = mix(color.rgb, tint_color, clamp(flat_alpha, 0.0, 1.0));
+        if (perceptual.x > 0.0) {
+            vec3 lab = linear_to_oklab(srgb_to_linear(color.rgb));
+            vec3 toned = lab;
+            toned.x = perceptual.y + perceptual.z * pow(max(lab.x, 0.0),
+                                                        perceptual.w);
+            toned.yz *= perceptual_chroma;
+            vec3 perceptual_rgb = linear_to_srgb(oklab_to_linear(toned));
+            float chroma = length(lab.yz);
+            float saturated = smoothstep(0.02, 0.12, chroma);
+            color.rgb = mix(neutral, perceptual_rgb,
+                            clamp(perceptual.x * saturated, 0.0, 1.0));
+        } else {
+            color.rgb = neutral;
+        }
 
         // The measured LUT is a 1 px specular line plus an exponential tail.
         // The line is centered on the first covered physical pixel (0.5 px
@@ -391,6 +492,8 @@ uniform float corner_tail;
 uniform vec2 panel_uv_offset;
 uniform vec2 panel_uv_scale;
 uniform vec2 uv_per_px;
+uniform vec4 bevel;
+uniform vec2 shape;
 
 #if defined(DEBUG_FLAGS)
 uniform float tint;
@@ -400,18 +503,50 @@ float luminance(vec3 c) {
     return dot(c, vec3(0.299, 0.587, 0.114));
 }
 
+float squircle_dist(vec2 v, float radius, float power, float inner) {
+    if (power <= 2.0) return length(v) + inner - radius;
+    float f = pow(pow(v.x, power) + pow(v.y, power), 1.0 / power);
+    vec2 g = pow(v, vec2(power - 1.0));
+    float gm = length(g) / max(pow(f, power - 1.0), 1e-6);
+    // The interior has no corner gradient; keep its distance exactly linear.
+    if (f <= 1e-4) gm = 1.0;
+    return (f + inner - radius) / max(gm, 0.35);
+}
+
+vec2 squircle_normal(vec2 v, vec2 q, float power) {
+    float ol = length(v);
+    if (ol <= 0.0)
+        return (q.x > q.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    if (power <= 2.0) return v / ol;
+    vec2 g = pow(v, vec2(power - 1.0));
+    float gl = length(g);
+    return (gl > 0.0) ? g / gl : v / ol;
+}
+
+float snell_shift(float depth, float bezel_px, vec4 field) {
+    float t = clamp(depth / max(bezel_px, 1.0), 0.0, 1.0);
+    if (t <= 0.0 || t >= 1.0) return 0.0;
+    float base = 1.0 - pow(1.0 - t, field.z);
+    float h = field.x * pow(base, field.w);
+    float slope = field.x * field.w * pow(base, field.w - 1.0)
+                * field.z * pow(1.0 - t, field.z - 1.0)
+                / max(bezel_px, 1.0);
+    float theta_i = atan(slope);
+    float theta_r = asin(clamp(sin(theta_i) / max(field.y, 1.0), -1.0, 1.0));
+    return h * tan(theta_i - theta_r) / 1.41421356;
+}
+
 void main() {
     vec2 panel_uv = panel_uv_offset + v_coords * panel_uv_scale;
     vec2 p = (panel_uv - 0.5) * glass_size;
     vec2 half_size = max(glass_size * 0.5 - vec2(glass_radius), vec2(0.0));
     vec2 q = abs(p) - half_size;
     vec2 outside = max(q, vec2(0.0));
-    float dist = length(outside) + min(max(q.x, q.y), 0.0) - glass_radius;
+    float dist = squircle_dist(outside, glass_radius, shape.y,
+                               min(max(q.x, q.y), 0.0));
     float inside = max(-dist, 0.0);
 
-    float ol = length(outside);
-    vec2 normal = (ol > 0.0) ? outside / ol
-        : ((q.x > q.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+    vec2 normal = squircle_normal(outside, q, shape.y);
     float corner_gate = 4.0 * normal.x * normal.x
                       * normal.y * normal.y;
 
@@ -419,9 +554,9 @@ void main() {
     // ~0.5 pt and belongs to the blurred body; a wide sharp band there would
     // overwrite the measured flat-band MTF. The corner gate broadens the
     // band only where the reference actually shows the compressed bevel.
-    float bevel = max(corner_distance * 1.6, rim_tail * 3.0);
+    float bevel_band = max(corner_distance * 1.6, rim_tail * 3.0);
     float band = corner_gate
-        * (1.0 - smoothstep(bevel * 0.45, max(bevel, 1.0), inside));
+        * (1.0 - smoothstep(bevel_band * 0.45, max(bevel_band, 1.0), inside));
     // Preserve the body's measured specular line and tail: the sharp overlay
     // starts just inside them rather than covering the rim.
     float rim_guard = smoothstep(rim_tail * 1.1, max(rim_tail * 1.8, 1.0),
@@ -432,17 +567,25 @@ void main() {
         return;
     }
 
-    // Same measured corner profile as the body pass.
+    // Same Snell height field as the body pass, so the sharp and blurred
+    // sources share one displacement and there is no geometric jump at the
+    // bevel-to-body transition.
     vec2 uv = v_coords;
 
     if (corner_peak > 0.0 && inside < corner_tail) {
-        float t = inside / max(corner_distance, 1.0);
-        float bump = t * t * t * exp(3.0 * (1.0 - t));
-        float fade = 1.0 - smoothstep(corner_tail * 0.75,
-                                      max(corner_tail, 1.0), inside);
-        float flat_edge = 0.5 * max(rim_half_width, 1.0);
-        float lens = flat_edge + (corner_peak - flat_edge) * corner_gate;
-        uv -= normal * (lens * bump * fade) * uv_per_px;
+        if (shape.y > 2.0) {
+            float gain = mix(0.05, 1.0, corner_gate);
+            float shift = snell_shift(inside, corner_tail, bevel);
+            uv -= normal * (shift * gain * shape.x) * uv_per_px;
+        } else {
+            float t = inside / max(corner_distance, 1.0);
+            float bump = t * t * t * exp(3.0 * (1.0 - t));
+            float fade = 1.0 - smoothstep(corner_tail * 0.75,
+                                          max(corner_tail, 1.0), inside);
+            float flat_edge = 0.5 * max(rim_half_width, 1.0);
+            float lens = flat_edge + (corner_peak - flat_edge) * corner_gate;
+            uv -= normal * (lens * bump * fade * shape.x) * uv_per_px;
+        }
     }
 
     // A four-tap footprint at the lip hides the aliasing of the sharp scene
@@ -626,6 +769,15 @@ pub const GLASS_UV_PER_PX_UNIFORM: &str = "uv_per_px";
 /// Whether the element draws one full panel rect and uses the SDF as an
 /// antialiased coverage mask (1) or the historical integer spans (0).
 pub const GLASS_COVERAGE_AA_UNIFORM: &str = "coverage_aa";
+/// The Snell height field: `(height, IOR, shape m, shape p)`.
+pub const GLASS_BEVEL_UNIFORM: &str = "bevel";
+/// The measured OKLab tone: `(weight, L offset, L gain, L power)`.
+pub const GLASS_PERCEPTUAL_UNIFORM: &str = "perceptual";
+/// `(materialize, squircle power)`. Power 2 is circular; 4 is the measured
+/// continuous squircle.
+pub const GLASS_SHAPE_UNIFORM: &str = "shape";
+/// The OKLab chroma gain for the measured saturated-background curve.
+pub const GLASS_PERCEPTUAL_CHROMA_UNIFORM: &str = "perceptual_chroma";
 
 /// The lens falloff width as a multiple of the token refraction strength: a
 /// mapping constant, not a radius. The refraction token is the displacement at
@@ -698,7 +850,7 @@ pub fn gaussian_uniform_names() -> [UniformName<'static>; 3] {
 
 /// The additional uniform descriptors [`GLASS_SHADER`] declares, passed to
 /// `GlesRenderer::compile_custom_texture_shader`.
-pub fn glass_uniform_names() -> [UniformName<'static>; 21] {
+pub fn glass_uniform_names() -> [UniformName<'static>; 25] {
     [
         UniformName::new(GLASS_SIZE_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_RADIUS_UNIFORM, UniformType::_1f),
@@ -721,6 +873,10 @@ pub fn glass_uniform_names() -> [UniformName<'static>; 21] {
         UniformName::new(GLASS_PANEL_UV_SCALE_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_UV_PER_PX_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_COVERAGE_AA_UNIFORM, UniformType::_1f),
+        UniformName::new(GLASS_BEVEL_UNIFORM, UniformType::_4f),
+        UniformName::new(GLASS_PERCEPTUAL_UNIFORM, UniformType::_4f),
+        UniformName::new(GLASS_SHAPE_UNIFORM, UniformType::_2f),
+        UniformName::new(GLASS_PERCEPTUAL_CHROMA_UNIFORM, UniformType::_1f),
     ]
 }
 
@@ -900,6 +1056,16 @@ pub struct GlassSpec {
     /// Whether the element draws one full panel rect and uses the SDF as an
     /// antialiased coverage mask. Set for the measured Dock; zero elsewhere.
     pub coverage_aa: f32,
+    /// The Snell height field `(height, IOR, shape m, shape p)`. The measured
+    /// Dock sets this; zero keeps the legacy measured bump for other roles.
+    pub bevel: [f32; 4],
+    /// The measured OKLab tone `(weight, L offset, L gain, L power)`.
+    pub perceptual: [f32; 4],
+    /// `(materialize, squircle power)`. The default is a circular corner with
+    /// a fully materialized lens.
+    pub shape: [f32; 2],
+    /// OKLab chroma gain for the measured saturated-background curve.
+    pub perceptual_chroma: f32,
 }
 
 impl Default for GlassSpec {
@@ -919,6 +1085,10 @@ impl Default for GlassSpec {
             corner_distance: 0.0,
             corner_tail: 0.0,
             coverage_aa: 0.0,
+            bevel: [0.0; 4],
+            perceptual: [0.0; 4],
+            shape: [1.0, 2.0],
+            perceptual_chroma: 1.0,
         }
     }
 }
@@ -942,6 +1112,20 @@ impl GlassSpec {
             corner_distance: optics.corner_lens_distance,
             corner_tail: optics.corner_lens_tail,
             coverage_aa: 1.0,
+            bevel: [
+                crate::window::dock_optics::DOCK_BEVEL_HEIGHT_PT,
+                crate::window::dock_optics::DOCK_BEVEL_IOR,
+                crate::window::dock_optics::DOCK_BEVEL_SHAPE_M,
+                crate::window::dock_optics::DOCK_BEVEL_SHAPE_P,
+            ],
+            perceptual: [
+                optics.tone_weight,
+                crate::window::dock_optics::DOCK_OKLAB_L_OFFSET,
+                crate::window::dock_optics::DOCK_OKLAB_L_GAIN,
+                crate::window::dock_optics::DOCK_OKLAB_L_POWER,
+            ],
+            shape: [1.0, crate::window::dock_optics::DOCK_SQUIRCLE_POWER],
+            perceptual_chroma: crate::window::dock_optics::DOCK_OKLAB_CHROMA_GAIN,
         }
     }
 }
@@ -959,7 +1143,16 @@ impl GlassSpec {
     /// would clamp that read. One extra logical pixel covers the bilinear
     /// footprint of the rim sample.
     pub fn sample_padding_px(&self) -> i32 {
-        (self.lens_width().max(0.0).ceil() as i32).saturating_add(1)
+        // The measured Snell bevel reaches `corner_tail` inside the rim, which
+        // is farther than the legacy refraction band. Pad the sampled region
+        // by the larger reach so the sharp overlay never clamps at its own
+        // influence radius.
+        let reach = self.lens_width().max(if self.flat_band {
+            self.corner_tail
+        } else {
+            0.0
+        });
+        (reach.max(0.0).ceil() as i32).saturating_add(1)
     }
 
     /// The shader uniforms for a panel of `physical` size at output `scale`.
@@ -975,7 +1168,7 @@ impl GlassSpec {
         scale: Scale<f64>,
         panel: Rectangle<i32, Logical>,
         texture_region: Rectangle<i32, Logical>,
-    ) -> [Uniform<'static>; 21] {
+    ) -> [Uniform<'static>; 25] {
         let w = physical.w.max(1) as f32;
         let h = physical.h.max(1) as f32;
         let sx = scale.x.max(f64::EPSILON) as f32;
@@ -1020,6 +1213,26 @@ impl GlassSpec {
             Uniform::new(GLASS_PANEL_UV_SCALE_UNIFORM, (uv_scale_x, uv_scale_y)),
             Uniform::new(GLASS_UV_PER_PX_UNIFORM, (uv_per_px_x, uv_per_px_y)),
             Uniform::new(GLASS_COVERAGE_AA_UNIFORM, self.coverage_aa),
+            Uniform::new(
+                GLASS_BEVEL_UNIFORM,
+                (
+                    self.bevel[0] * sx,
+                    self.bevel[1],
+                    self.bevel[2],
+                    self.bevel[3],
+                ),
+            ),
+            Uniform::new(
+                GLASS_PERCEPTUAL_UNIFORM,
+                (
+                    self.perceptual[0],
+                    self.perceptual[1],
+                    self.perceptual[2],
+                    self.perceptual[3],
+                ),
+            ),
+            Uniform::new(GLASS_SHAPE_UNIFORM, (self.shape[0], self.shape[1])),
+            Uniform::new(GLASS_PERCEPTUAL_CHROMA_UNIFORM, self.perceptual_chroma),
         ]
     }
 }
@@ -1708,8 +1921,12 @@ mod tests {
         // radius is scaled with them so the SDF is device-pixel consistent.
         let panel = Rectangle::new((0, 0).into(), (800, 28).into());
         let uniforms = spec.uniforms(Size::from((1600, 56)), 20, Scale::from(2.0), panel, panel);
-        assert_eq!(uniforms.len(), 21);
+        assert_eq!(uniforms.len(), 25);
         assert_eq!(uniforms[20].value, UniformValue::_1f(0.0));
+        assert_eq!(uniforms[21].value, UniformValue::_4f(0.0, 0.0, 0.0, 0.0));
+        assert_eq!(uniforms[22].value, UniformValue::_4f(0.0, 0.0, 0.0, 0.0));
+        assert_eq!(uniforms[23].value, UniformValue::_2f(1.0, 2.0));
+        assert_eq!(uniforms[24].value, UniformValue::_1f(1.0));
         assert_eq!(
             uniforms[0].value,
             UniformValue::_2f(1600.0, 56.0),
@@ -1778,6 +1995,8 @@ mod tests {
             "panel_uv_offset",
             "panel_uv_scale",
             "uv_per_px",
+            "bevel",
+            "shape",
         ] {
             assert!(
                 BEVEL_SHADER.contains(name),
@@ -1798,6 +2017,24 @@ mod tests {
         assert_eq!(spec.corner_peak, optics.corner_lens_peak);
         assert_eq!(spec.corner_distance, optics.corner_lens_distance);
         assert_eq!(spec.tint_color, [optics.tint; 3]);
+        assert_eq!(
+            spec.bevel,
+            [
+                crate::window::dock_optics::DOCK_BEVEL_HEIGHT_PT,
+                crate::window::dock_optics::DOCK_BEVEL_IOR,
+                crate::window::dock_optics::DOCK_BEVEL_SHAPE_M,
+                crate::window::dock_optics::DOCK_BEVEL_SHAPE_P,
+            ]
+        );
+        assert_eq!(
+            spec.shape,
+            [1.0, crate::window::dock_optics::DOCK_SQUIRCLE_POWER]
+        );
+        assert_eq!(spec.perceptual[0], optics.tone_weight);
+        assert_eq!(
+            spec.perceptual_chroma,
+            crate::window::dock_optics::DOCK_OKLAB_CHROMA_GAIN
+        );
         let panel = Rectangle::new((10, 20).into(), (400, 80).into());
         let uniforms = spec.uniforms(Size::from((800, 160)), 27, Scale::from(2.0), panel, panel);
         // The flat-band switch is set and the corner lens is in physical px.

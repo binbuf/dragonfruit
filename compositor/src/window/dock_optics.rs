@@ -37,6 +37,33 @@ pub const DOCK_CHECKER_PERIODS: [f32; 5] = [2.0, 4.0, 8.0, 16.0, 32.0];
 /// has an RMSE of 0.029; individual points are allowed a little more.
 pub const DOCK_MTF_TOLERANCE: f32 = 0.06;
 
+/// Continuous-corner exponent for the measured Dock. `2` is the historical
+/// circular arc; `4` is the fitted squircle. The Lp corner norm leaves the
+/// straight sides untouched and only rounds the corner with continuous
+/// curvature.
+pub const DOCK_SQUIRCLE_POWER: f32 = 4.0;
+
+/// The fitted bevel height field, in logical points. The reference measures
+/// the *displacement*, not the height; these constants are the analytic height
+/// profile fitted to the measured −4 / −8.5 / −9.6 pt horizontal displacement
+/// at 5 / 10 / 15 pt inside the rim. The profile is monotone and smooth:
+/// `h(t) = H·(1 − (1−t)^m)^p`, with `t = depth / bezel`.
+pub const DOCK_BEVEL_HEIGHT_PT: f32 = 45.0;
+pub const DOCK_BEVEL_IOR: f32 = 1.5;
+pub const DOCK_BEVEL_SHAPE_M: f32 = 4.0;
+pub const DOCK_BEVEL_SHAPE_P: f32 = 1.4;
+/// Fraction of the full bevel displacement retained on a flat edge. The
+/// measured flat top/bottom is ~0.5 pt against a ~9.6 pt corner peak.
+pub const DOCK_BEVEL_FLAT_GAIN: f32 = 0.05;
+
+/// The measured OKLab tone curve for saturated backgrounds. Neutral
+/// backgrounds keep the sRGB flat-band fit; the shader blends these in by
+/// chroma so the measured neutral RMSE is untouched.
+pub const DOCK_OKLAB_L_OFFSET: f32 = 0.2696;
+pub const DOCK_OKLAB_L_GAIN: f32 = 0.6559;
+pub const DOCK_OKLAB_L_POWER: f32 = 1.244;
+pub const DOCK_OKLAB_CHROMA_GAIN: f32 = 1.0916;
+
 /// Shape of the measured rim tail: `exp(-ln2 * (d / width)^power)`. A plain
 /// exponential (power 1) puts the 10 % point at 3.3 pt; the measured profile
 /// reaches it at ~2.5 pt. The exponent is a profile-shape mapping constant, not
@@ -80,6 +107,8 @@ pub struct DockOptics {
     pub corner_lens_distance: f32,
     /// Distance inside the rim by which the corner lens has decayed.
     pub corner_lens_tail: f32,
+    /// Measured OKLab tone weight for saturated backgrounds.
+    pub tone_weight: f32,
 }
 
 impl DockOptics {
@@ -96,6 +125,7 @@ impl DockOptics {
             dock::light::CORNER_LENS_PEAK,
             dock::light::CORNER_LENS_DISTANCE,
             dock::light::CORNER_LENS_TAIL,
+            dock::light::TONE_WEIGHT,
         )
     }
 
@@ -112,6 +142,7 @@ impl DockOptics {
             dock::dark::CORNER_LENS_PEAK,
             dock::dark::CORNER_LENS_DISTANCE,
             dock::dark::CORNER_LENS_TAIL,
+            dock::dark::TONE_WEIGHT,
         )
     }
 
@@ -127,6 +158,7 @@ impl DockOptics {
         corner_lens_peak: f32,
         corner_lens_distance: f32,
         corner_lens_tail: f32,
+        tone_weight: f32,
     ) -> Self {
         Self {
             alpha,
@@ -139,7 +171,34 @@ impl DockOptics {
             corner_lens_peak,
             corner_lens_distance,
             corner_lens_tail,
+            tone_weight,
         }
+    }
+
+    /// The fitted Snell displacement at `depth` logical points inside the rim,
+    /// returned as the horizontal component on the 45-degree corner diagonal.
+    ///
+    /// The height field is `h(t) = H·(1 − (1−t)^m)^p`; the surface slope feeds
+    /// Snell's law (`n = 1.5`), and the horizontal component is `shift / √2`.
+    /// This is the renderer-free model the shader mirrors, so a change to the
+    /// fit fails here before it reaches a capture.
+    pub fn bevel_shift(&self, depth: f32) -> f32 {
+        let bezel = self.corner_lens_tail.max(1.0);
+        let t = (depth / bezel).clamp(0.0, 1.0);
+        if t <= 0.0 || t >= 1.0 {
+            return 0.0;
+        }
+        let base = 1.0 - (1.0 - t).powf(DOCK_BEVEL_SHAPE_M);
+        let height = DOCK_BEVEL_HEIGHT_PT * base.powf(DOCK_BEVEL_SHAPE_P);
+        let slope = DOCK_BEVEL_HEIGHT_PT
+            * DOCK_BEVEL_SHAPE_P
+            * base.powf(DOCK_BEVEL_SHAPE_P - 1.0)
+            * DOCK_BEVEL_SHAPE_M
+            * (1.0 - t).powf(DOCK_BEVEL_SHAPE_M - 1.0)
+            / bezel;
+        let theta_i = slope.atan();
+        let theta_r = (theta_i.sin() / DOCK_BEVEL_IOR).clamp(-1.0, 1.0).asin();
+        height * (theta_i - theta_r).tan() / std::f32::consts::SQRT_2
     }
 
     /// The measured mixture's checker response at `period_pt` logical points.
@@ -242,44 +301,6 @@ impl DockOptics {
         self.edge
     }
 
-    /// The outward corner-lens displacement at `inside_pt` inside the rim. The
-    /// bump peaks at [`Self::corner_lens_distance`] and decays to the tail.
-    /// The scalar is the displacement along the outward SDF normal; a flat
-    /// edge or flat side has a zero gate and therefore no displacement.
-    pub fn corner_displacement(&self, inside_pt: f32) -> f32 {
-        if inside_pt < 0.0 || inside_pt > self.corner_lens_tail.max(0.01) {
-            return 0.0;
-        }
-        let t = inside_pt / self.corner_lens_distance.max(0.01);
-        // t^3 e^{3(1-t)} peaks at t=1 (value 1) and is ~0.034 at t=3.33.
-        let bump = t.powi(3) * (3.0 * (1.0 - t)).exp();
-        // Fade only near the measured tail so the bump still reaches its
-        // nominal peak at `corner_lens_distance`.
-        let tail = self.corner_lens_tail.max(0.01);
-        let fade = 1.0 - smoothstep(tail * 0.75, tail, inside_pt);
-        self.corner_lens_peak * bump * fade
-    }
-
-    /// The corner gate `4 * nx^2 * ny^2` for an outward SDF normal: zero on a
-    /// flat top/bottom edge or a flat side, one at the 45-degree diagonal.
-    pub fn corner_gate(normal_x: f32, normal_y: f32) -> f32 {
-        4.0 * normal_x * normal_x * normal_y * normal_y
-    }
-
-    /// The horizontal component of the corner lens at `inside_pt` on the
-    /// 45-degree corner diagonal, which is the measured probe. At that angle
-    /// the gate is one and `|normal.x|` is `1/sqrt(2)`, so the scalar peak is
-    /// calibrated to the measured horizontal component.
-    pub fn corner_horizontal_component(&self, inside_pt: f32) -> f32 {
-        self.corner_displacement(inside_pt) * std::f32::consts::FRAC_1_SQRT_2
-    }
-
-    /// The flat-edge displacement: the lens field is corner-only, so a point
-    /// more than one tail from every corner sees no bend.
-    pub const fn flat_edge_displacement(&self) -> f32 {
-        0.0
-    }
-
     /// Whether the composite needs the custom five-level chain.
     pub const fn uses_multi_scale(&self) -> bool {
         self.sharp_fraction > 0.0
@@ -364,32 +385,34 @@ mod tests {
     }
 
     #[test]
-    fn the_dock_corner_lens_is_inside_rim_and_gated_by_the_normal() {
+    fn the_bevel_height_field_matches_the_measured_displacement() {
         let optics = DockOptics::light();
-        let peak_distance = optics.corner_lens_distance;
-        let peak = optics.corner_displacement(peak_distance);
-        // The scalar peak is calibrated so the measured horizontal component
-        // at the 45-degree diagonal is 9.6 pt at 15 pt inside the rim.
-        let horizontal = optics.corner_horizontal_component(peak_distance);
-        assert!((horizontal - 9.6).abs() <= 1.0, "horizontal {horizontal}");
-        assert!((peak - 9.6 / std::f32::consts::FRAC_1_SQRT_2).abs() < 0.2);
-        assert!(optics.corner_displacement(0.0).abs() < 0.01);
-        assert!(optics.corner_displacement(50.0).abs() < 0.5);
-        // The gate is exactly zero on a flat top/bottom edge and flat side.
-        assert_eq!(DockOptics::corner_gate(0.0, 1.0), 0.0);
-        assert_eq!(DockOptics::corner_gate(1.0, 0.0), 0.0);
-        assert!(
-            (DockOptics::corner_gate(
-                std::f32::consts::FRAC_1_SQRT_2,
-                std::f32::consts::FRAC_1_SQRT_2
-            ) - 1.0)
-                .abs()
-                < 1e-6
-        );
-        assert_eq!(optics.flat_edge_displacement(), 0.0);
-        // Monotone rise to the peak, then decay.
-        assert!(optics.corner_displacement(7.5) < peak);
-        assert!(optics.corner_displacement(30.0) < peak);
+        // The measured horizontal component on the 45-degree diagonal is
+        // −4 / −8.5 / −9.6 pt at 5 / 10 / 15 pt inside the rim.
+        for (depth, target) in [(5.0, 4.0), (10.0, 8.5), (15.0, 9.6)] {
+            let shift = optics.bevel_shift(depth);
+            assert!(
+                (shift - target).abs() <= 0.7,
+                "bevel shift at {depth} pt is {shift}, expected {target}"
+            );
+        }
+        // The surface starts at zero displacement at the rim and returns to
+        // zero by the measured influence radius.
+        assert!(optics.bevel_shift(0.0).abs() < 1e-6);
+        assert!(optics.bevel_shift(optics.corner_lens_tail).abs() < 1e-6);
+        // A smooth rise and decay: no hard gate at the corner-to-side join.
+        assert!(optics.bevel_shift(2.0) > 0.0);
+        assert!(optics.bevel_shift(30.0) > 0.0);
+    }
+
+    #[test]
+    fn the_dock_tone_weight_is_the_measured_saturated_background_curve() {
+        let light = DockOptics::light();
+        assert!((light.tone_weight - 1.0).abs() < 1e-6);
+        assert!((DOCK_OKLAB_L_OFFSET - 0.2696).abs() < 1e-6);
+        assert!((DOCK_OKLAB_L_GAIN - 0.6559).abs() < 1e-6);
+        assert!((DOCK_OKLAB_L_POWER - 1.244).abs() < 1e-6);
+        assert!((DOCK_OKLAB_CHROMA_GAIN - 1.0916).abs() < 1e-6);
     }
 
     #[test]

@@ -447,6 +447,12 @@ pub struct ResolvedPreset {
     pub corner_lens_distance: f32,
     /// T198 Dock corner-lens decay tail in logical points.
     pub corner_lens_tail: f32,
+    /// Measured OKLab tone weight (the Dock's saturated-background curve).
+    pub tone_weight: f32,
+    /// Clear-lens ↔ frosted-panel axis. 1.0 is the measured default; values
+    /// below 1 frost the plate and weaken the lens, values above 1 clear it
+    /// and strengthen the lens. Derived from the Liquid Glass slider.
+    pub materialize: f32,
     pub foreground: f32,
     pub slider_applied: bool,
     pub confidence: &'static str,
@@ -468,6 +474,7 @@ struct Calibration {
     corner_lens_peak: f32,
     corner_lens_distance: f32,
     corner_lens_tail: f32,
+    tone_weight: f32,
     foreground: f32,
     confidence: &'static str,
 }
@@ -492,6 +499,7 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
                 corner_lens_peak: 0.0,
                 corner_lens_distance: 0.0,
                 corner_lens_tail: 0.0,
+                tone_weight: 0.0,
                 foreground: p::$preset::$scheme::FOREGROUND,
                 confidence: p::$preset::$scheme::CONFIDENCE,
             }
@@ -516,8 +524,12 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
         (Preset::ControlCenterModule, Scheme::Dark) => cal!(control_center_module, dark),
         (Preset::ControlCenterExpanded, Scheme::Light) => cal!(control_center_expanded, light),
         (Preset::ControlCenterExpanded, Scheme::Dark) => cal!(control_center_expanded, dark),
-        (Preset::ControlCenterExpandedOuter, Scheme::Light) => cal!(control_center_expanded_outer, light),
-        (Preset::ControlCenterExpandedOuter, Scheme::Dark) => cal!(control_center_expanded_outer, dark),
+        (Preset::ControlCenterExpandedOuter, Scheme::Light) => {
+            cal!(control_center_expanded_outer, light)
+        }
+        (Preset::ControlCenterExpandedOuter, Scheme::Dark) => {
+            cal!(control_center_expanded_outer, dark)
+        }
         (Preset::NotificationBanner, Scheme::Light) => cal!(notification_banner, light),
         (Preset::NotificationBanner, Scheme::Dark) => cal!(notification_banner, dark),
         (Preset::NotificationStack, Scheme::Light) => cal!(notification_stack, light),
@@ -544,24 +556,14 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
     let lens = match (preset, scheme) {
         (Preset::Dock, Scheme::Light) => Some(lens!(dock, light)),
         (Preset::Dock, Scheme::Dark) => Some(lens!(dock, dark)),
-        (Preset::ControlCenterOuter, Scheme::Light) => {
-            Some(lens!(control_center_outer, light))
-        }
-        (Preset::ControlCenterOuter, Scheme::Dark) => {
-            Some(lens!(control_center_outer, dark))
-        }
-        (Preset::ControlCenterModule, Scheme::Light) => {
-            Some(lens!(control_center_module, light))
-        }
-        (Preset::ControlCenterModule, Scheme::Dark) => {
-            Some(lens!(control_center_module, dark))
-        }
+        (Preset::ControlCenterOuter, Scheme::Light) => Some(lens!(control_center_outer, light)),
+        (Preset::ControlCenterOuter, Scheme::Dark) => Some(lens!(control_center_outer, dark)),
+        (Preset::ControlCenterModule, Scheme::Light) => Some(lens!(control_center_module, light)),
+        (Preset::ControlCenterModule, Scheme::Dark) => Some(lens!(control_center_module, dark)),
         (Preset::ControlCenterExpanded, Scheme::Light) => {
             Some(lens!(control_center_expanded, light))
         }
-        (Preset::ControlCenterExpanded, Scheme::Dark) => {
-            Some(lens!(control_center_expanded, dark))
-        }
+        (Preset::ControlCenterExpanded, Scheme::Dark) => Some(lens!(control_center_expanded, dark)),
         _ => None,
     };
     if let Some((edge_tail, sharp, peak, distance, tail)) = lens {
@@ -570,6 +572,12 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
         calibration.corner_lens_peak = peak;
         calibration.corner_lens_distance = distance;
         calibration.corner_lens_tail = tail;
+    }
+    if preset == Preset::Dock {
+        calibration.tone_weight = match scheme {
+            Scheme::Light => p::dock::light::TONE_WEIGHT,
+            Scheme::Dark => p::dock::dark::TONE_WEIGHT,
+        };
     }
     calibration
 }
@@ -656,7 +664,11 @@ fn interpolate(position: f32) -> (f32, f32) {
         let (left, right) = (pair[0], pair[1]);
         if position <= right.0 {
             let span = right.0 - left.0;
-            let ratio = if span <= 0.0 { 0.0 } else { (position - left.0) / span };
+            let ratio = if span <= 0.0 {
+                0.0
+            } else {
+                (position - left.0) / span
+            };
             return (
                 left.1 + (right.1 - left.1) * ratio,
                 left.2 + (right.2 - left.2) * ratio,
@@ -684,6 +696,8 @@ pub fn safe_solid(scheme: Scheme, reason: &'static str) -> ResolvedPreset {
         corner_lens_peak: 0.0,
         corner_lens_distance: 0.0,
         corner_lens_tail: 0.0,
+        tone_weight: 0.0,
+        materialize: 1.0,
         foreground: 0.0,
         slider_applied: false,
         confidence: "baseline",
@@ -719,11 +733,11 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
     let corner_lens_peak;
     let corner_lens_distance;
     let corner_lens_tail;
+    let tone_weight;
     let mut foreground;
 
     if rollout == Rollout::Legacy {
-        let (opacity, legacy_blur, legacy_tint, _fallback_opacity) =
-            legacy_values(role, scheme);
+        let (opacity, legacy_blur, legacy_tint, _fallback_opacity) = legacy_values(role, scheme);
         alpha = opacity;
         tint = legacy_tint;
         blur = legacy_blur;
@@ -734,6 +748,7 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
         corner_lens_peak = 0.0;
         corner_lens_distance = 0.0;
         corner_lens_tail = 0.0;
+        tone_weight = 0.0;
         foreground = 0.0;
         fallback_reason = "legacy";
     } else {
@@ -756,6 +771,7 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
         corner_lens_peak = calibration.corner_lens_peak;
         corner_lens_distance = calibration.corner_lens_distance;
         corner_lens_tail = calibration.corner_lens_tail;
+        tone_weight = calibration.tone_weight;
         foreground = calibration.foreground;
         confidence = calibration.confidence;
 
@@ -791,7 +807,10 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
     // Increase Contrast is applied after the fill decision so it strengthens
     // the edge/foreground even when the plate is already opaque.
     if accessibility.increase_contrast {
-        edge = sanitize01(edge + glass::accessibility::increase_contrast::EDGE_BOOST, edge);
+        edge = sanitize01(
+            edge + glass::accessibility::increase_contrast::EDGE_BOOST,
+            edge,
+        );
         foreground = sanitize01(
             foreground + glass::accessibility::increase_contrast::FOREGROUND_BOOST,
             foreground,
@@ -865,6 +884,18 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
         }
     };
 
+    // The Liquid Glass axis: the measured default is a clear lens over a
+    // frosted body. Moving toward the clear end strengthens the lens and
+    // reduces the frost; moving toward the frosted end does the reverse. The
+    // Dock's measured alpha/tint stay fixed, so the flat band never moves.
+    let default_position = glass::slider::DEFAULT_POSITION;
+    let position = sanitize01(slider, default_position);
+    let materialize = if accessibility.reduce_transparency {
+        0.0
+    } else {
+        (1.0 + (default_position - position) * 1.2).clamp(0.55, 1.35)
+    };
+
     ResolvedPreset {
         preset,
         scheme,
@@ -880,6 +911,8 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
         corner_lens_peak,
         corner_lens_distance,
         corner_lens_tail,
+        tone_weight,
+        materialize,
         foreground,
         slider_applied,
         confidence,
@@ -929,14 +962,36 @@ mod tests {
     fn expanded_dark_list_is_near_background_independent() {
         let expanded = resolve(input(Preset::ControlCenterExpanded, Scheme::Dark));
         assert!(expanded.alpha >= 0.94);
-        let outputs = [0.0_f32, 0.502, 1.0].map(|background| {
-            background * (1.0 - expanded.alpha) + expanded.tint * expanded.alpha
-        });
+        let outputs = [0.0_f32, 0.502, 1.0]
+            .map(|background| background * (1.0 - expanded.alpha) + expanded.tint * expanded.alpha);
         let spread = outputs.iter().cloned().fold(f32::MIN, f32::max)
             - outputs.iter().cloned().fold(f32::MAX, f32::min);
         assert!(spread < 0.05, "spread {spread}");
         let mean = outputs.iter().sum::<f32>() / outputs.len() as f32;
         assert!((mean - 0.13).abs() < 0.02, "mean {mean}");
+    }
+
+    #[test]
+    fn the_materialize_axis_moves_the_lens_without_moving_the_flat_band() {
+        let default = resolve(input(Preset::Dock, Scheme::Light));
+        let clear = resolve(ResolveInput {
+            slider: 0.0,
+            ..input(Preset::Dock, Scheme::Light)
+        });
+        let frosted = resolve(ResolveInput {
+            slider: 1.0,
+            ..input(Preset::Dock, Scheme::Light)
+        });
+        assert!((default.materialize - 1.0).abs() < 1e-6);
+        assert!(clear.materialize > default.materialize);
+        assert!(frosted.materialize < default.materialize);
+        // The measured alpha/tint are the flat band and must not move.
+        for resolved in [clear, frosted] {
+            assert!((resolved.alpha - default.alpha).abs() < 1e-6);
+            assert!((resolved.tint - default.tint).abs() < 1e-6);
+        }
+        // The Dock carries the measured OKLab tone weight.
+        assert!((default.tone_weight - 1.0).abs() < 1e-6);
     }
 
     #[test]
@@ -953,7 +1008,10 @@ mod tests {
     fn preset_metadata_matches_the_generated_tokens() {
         for preset in Preset::ALL {
             assert_eq!(preset.role().name(), token_role(preset));
-            assert_eq!(preset.follows_slider(), token_slider(preset) == "lightAttached");
+            assert_eq!(
+                preset.follows_slider(),
+                token_slider(preset) == "lightAttached"
+            );
             assert_eq!(
                 preset.follows_slider_relative(),
                 token_slider(preset) == "lightRelative"
@@ -1043,7 +1101,10 @@ mod tests {
                 ..input(preset, Scheme::Dark)
             });
             assert!(!dark_low.slider_applied && !dark_high.slider_applied);
-            assert_eq!((dark_low.alpha, dark_low.tint), (dark_high.alpha, dark_high.tint));
+            assert_eq!(
+                (dark_low.alpha, dark_low.tint),
+                (dark_high.alpha, dark_high.tint)
+            );
         }
     }
 
@@ -1051,7 +1112,10 @@ mod tests {
     fn dark_attached_and_detached_are_distinct() {
         let attached = resolve(input(Preset::MenuAttached, Scheme::Dark));
         let detached = resolve(input(Preset::MenuDetached, Scheme::Dark));
-        assert_ne!((attached.alpha, attached.tint), (detached.alpha, detached.tint));
+        assert_ne!(
+            (attached.alpha, attached.tint),
+            (detached.alpha, detached.tint)
+        );
     }
 
     #[test]
@@ -1092,7 +1156,11 @@ mod tests {
 
     #[test]
     fn veil_is_not_an_unsupported_blur() {
-        for backend in [Backend::GpuSampled, Backend::GpuNoSampledBlur, Backend::Software] {
+        for backend in [
+            Backend::GpuSampled,
+            Backend::GpuNoSampledBlur,
+            Backend::Software,
+        ] {
             let resolved = resolve(ResolveInput {
                 backend,
                 ..input(Preset::MenuBarVeil, Scheme::Light)
@@ -1117,7 +1185,10 @@ mod tests {
             assert!(resolved.alpha >= 0.9);
             assert_eq!(resolved.blur, 0.0);
         }
-        assert_eq!(safe_solid(Scheme::Light, "unknown-preset").render_mode, RenderMode::Solid);
+        assert_eq!(
+            safe_solid(Scheme::Light, "unknown-preset").render_mode,
+            RenderMode::Solid
+        );
     }
 
     #[test]
@@ -1164,7 +1235,10 @@ mod tests {
             reduce_motion: true,
             ..input(Preset::Dock, Scheme::Light)
         });
-        assert_eq!((moving.alpha, moving.render_mode), (still.alpha, still.render_mode));
+        assert_eq!(
+            (moving.alpha, moving.render_mode),
+            (still.alpha, still.render_mode)
+        );
     }
 
     #[test]

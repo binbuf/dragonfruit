@@ -1556,10 +1556,10 @@ Item {
         // indicator lives inside the anchored-edge padding rather than in a band
         // added on top of it.
         function test_plate_thickness_and_indicator_inset_match_the_reference() {
-            compare(Theme.controls.dock.padding, 15);
+            compare(Theme.controls.dock.padding, 16);
             compare(Theme.controls.dock.gap, 14);
             compare(Theme.controls.dock.indicatorGap, 8);
-            compare(Theme.controls.dock.radius, 27);
+            compare(Theme.controls.dock.radius, 26.9);
 
             var dock = make(dockComponent, {
                 width: 1280, height: 240, position: "bottom",
@@ -2361,6 +2361,21 @@ Item {
             return dx * dx + dy * dy <= rad * rad + 0.001;
         }
 
+        // The measured plate corner is a continuous squircle, not a circular
+        // arc. The QML fallback path uses the same exponent as the compositor
+        // SDF, so the rim-pixel containment test follows the superellipse.
+        function insideSquircleRect(px, py, r, R, slop) {
+            var s = slop === undefined ? 0 : slop;
+            if (px < r.x - s || px > r.x + r.w + s
+                    || py < r.y - s || py > r.y + r.h + s)
+                return false;
+            var cx = Math.min(Math.max(px, r.x + R), r.x + r.w - R);
+            var cy = Math.min(Math.max(py, r.y + R), r.y + r.h - R);
+            var dx = Math.abs(px - cx) / (R + s);
+            var dy = Math.abs(py - cy) / (R + s);
+            return Math.pow(dx, 4) + Math.pow(dy, 4) <= 1.0 + 1e-6;
+        }
+
         function test_panel_rect_is_the_integer_edge_the_qml_draws() {
             // The plate the QML draws and the rect declared to the compositor
             // are one integer rounded rect (T-14.7z).
@@ -2455,7 +2470,7 @@ Item {
                         continue;
                     var px = x + 0.5;
                     var py = y + 0.5;
-                    if (!insideRoundedRect(px, py, r, R, 1.0)) {
+                    if (!insideSquircleRect(px, py, r, R, 1.0)) {
                         ++outside;
                         continue;
                     }

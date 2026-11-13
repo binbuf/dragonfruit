@@ -520,8 +520,14 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 );
 
             let base_spec = if dock_fit {
+                // The materialize axis moves blur and lens in opposite
+                // directions: toward the clear end the lens strengthens and
+                // the frost lightens; toward the frosted end the reverse. The
+                // measured default is exactly 1.0, so the flat band and MTF
+                // are unchanged at the reference slider position.
+                let blur = resolved.blur * (2.0 - resolved.materialize).clamp(0.5, 1.5);
                 BlurSpec::for_dock(
-                    resolved.blur,
+                    blur,
                     resolved.sharp_fraction,
                     role.corner_radius(&chrome.namespace),
                 )
@@ -557,6 +563,8 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 glass.rim_half_width = resolved.edge_width;
                 glass.specular = resolved.edge;
                 glass.specular_width = resolved.edge_width;
+                glass.perceptual[0] = resolved.tone_weight;
+                glass.shape[0] = resolved.materialize;
                 material.tier.glass(glass).unwrap_or(glass)
             } else if flat_fit {
                 // T203: every field is the resolver's own-layer value. The
@@ -573,6 +581,8 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 glass.rim_tail = resolved.edge_tail;
                 glass.corner_peak = resolved.corner_lens_peak;
                 glass.corner_distance = resolved.corner_lens_distance;
+                glass.perceptual[0] = resolved.tone_weight;
+                glass.shape[0] = resolved.materialize;
                 glass.corner_tail = resolved.corner_lens_tail;
                 material.tier.glass(glass).unwrap_or(glass)
             } else {

@@ -370,6 +370,8 @@ def validate(data: dict) -> list[str]:
                 _number(entry, "cornerLensPeak", scheme_path, errors, low=0.0, high=64.0)
                 _number(entry, "cornerLensDistance", scheme_path, errors, low=0.1, high=64.0)
                 _number(entry, "cornerLensTail", scheme_path, errors, low=1.0, high=128.0)
+            if name == "dock":
+                _number(entry, "toneWeight", scheme_path, errors, low=0.0, high=1.0)
 
     # The measured File anchors are the light attached-menu calibration. A
     # mismatch here would silently move the slider midpoint off the measured
@@ -496,6 +498,8 @@ def resolve(
             "cornerLensPeak": 0.0,
             "cornerLensDistance": 0.0,
             "cornerLensTail": 0.0,
+            "toneWeight": 0.0,
+            "materialize": 1.0,
             "foreground": 0.0,
             "sliderApplied": False,
             "confidence": "baseline",
@@ -507,6 +511,7 @@ def resolve(
     confidence = "baseline"
     fallback_reason = "none"
     slider_applied = False
+    tone_weight = 0.0
 
     if rollout == "legacy":
         alpha, blur, tint, fallback_alpha = _legacy_values(data, role, scheme)
@@ -518,6 +523,7 @@ def resolve(
         corner_lens_peak = 0.0
         corner_lens_distance = 0.0
         corner_lens_tail = 0.0
+        tone_weight = 0.0
         confidence = "baseline"
         fallback_reason = "legacy"
     else:
@@ -536,6 +542,7 @@ def resolve(
         corner_lens_peak = float(entry.get("cornerLensPeak", 0.0))
         corner_lens_distance = float(entry.get("cornerLensDistance", 0.0))
         corner_lens_tail = float(entry.get("cornerLensTail", 0.0))
+        tone_weight = float(entry.get("toneWeight", 0.0))
         confidence = entry["confidence"]
         fallback_alpha = _opaque_values(data, scheme)[0]
 
@@ -566,6 +573,11 @@ def resolve(
         blur = 0.0
         slider_applied = False
         fallback_reason = "reduce-transparency"
+
+    default_position = float(glass["slider"]["defaultPosition"])
+    position = _clamp01(slider, default_position)
+    materialize = 0.0 if reduce_transparency else min(
+        1.35, max(0.55, 1.0 + (default_position - position) * 1.2))
 
     # Increase Contrast is applied after the fill decision so it strengthens
     # the edge/foreground even when the plate is already opaque.
@@ -644,6 +656,8 @@ def resolve(
         "cornerLensPeak": corner_lens_peak,
         "cornerLensDistance": corner_lens_distance,
         "cornerLensTail": corner_lens_tail,
+        "toneWeight": tone_weight,
+        "materialize": materialize,
         "foreground": foreground,
         "sliderApplied": slider_applied,
         "confidence": confidence,

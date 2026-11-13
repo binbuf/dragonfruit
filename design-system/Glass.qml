@@ -177,6 +177,8 @@ QtObject {
                 cornerLensPeak: 0,
                 cornerLensDistance: 0,
                 cornerLensTail: 0,
+                toneWeight: 0,
+                materialize: 1,
                 foreground: 0,
                 sliderApplied: false,
                 confidence: "baseline",
@@ -199,6 +201,8 @@ QtObject {
         var cornerLensPeak = 0;
         var cornerLensDistance = 0;
         var cornerLensTail = 0;
+        var toneWeight = 0;
+        var materialize = 1;
         var foreground;
 
         if (requestedRollout === "legacy") {
@@ -226,6 +230,7 @@ QtObject {
             cornerLensDistance = entry.cornerLensDistance !== undefined
                 ? entry.cornerLensDistance : 0;
             cornerLensTail = entry.cornerLensTail !== undefined ? entry.cornerLensTail : 0;
+            toneWeight = entry.toneWeight !== undefined ? entry.toneWeight : 0;
             foreground = entry.foreground;
             confidence = entry.confidence;
 
@@ -286,6 +291,16 @@ QtObject {
             foreground = _sanitize01(foreground + contrast.foregroundBoost, foreground);
             edgeWidth = Math.max(0, edgeWidth + contrast.edgeWidthBoost);
         }
+
+        // Clear-lens ↔ frosted-panel axis. The measured default is 1.0; the
+        // flat-band alpha/tint are fixed, so only the lens/frost balance moves.
+        var defaultPosition = Theme.glass.slider.defaultPosition;
+        var glassPosition = _sanitize01(
+            options.slider !== undefined ? options.slider : Theme.glass.slider,
+            defaultPosition);
+        materialize = reduceTransparency ? 0
+            : Math.min(1.35, Math.max(0.55,
+                1 + (defaultPosition - glassPosition) * 1.2));
 
         var renderMode = "sampled-glass";
         if (neutralPlate) {
@@ -366,6 +381,8 @@ QtObject {
             cornerLensPeak: cornerLensPeak,
             cornerLensDistance: cornerLensDistance,
             cornerLensTail: cornerLensTail,
+            toneWeight: toneWeight,
+            materialize: materialize,
             foreground: foreground,
             sliderApplied: sliderApplied,
             wallpaperTint: wallpaperTint,
