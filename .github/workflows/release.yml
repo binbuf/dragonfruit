@@ -90,9 +90,17 @@ jobs:
         if: failure()
         run: |
           if [ -f build-deb.log ]; then
-            tail -n 200 build-deb.log | base64 -w0 | fold -w 60000 | while IFS= read -r line; do
-              echo "::error::LOG:$line"
+            echo "::error::LOG-BEGIN lines=$(wc -l < build-deb.log) bytes=$(wc -c < build-deb.log)"
+            grep -n -A6 -B3 -E 'CMake Error|error\[|error:|FAILED|undefined reference|ninja:' build-deb.log \
+              | tail -n 80 | while IFS= read -r line; do
+                  echo "::error::$line"
+                done
+            echo "::error::LOG-TAIL"
+            tail -n 40 build-deb.log | while IFS= read -r line; do
+              echo "::error::$line"
             done
+          else
+            echo "::error::LOG-MISSING build-deb.log"
           fi
 
       - name: Install smoke test
@@ -197,9 +205,17 @@ jobs:
         if: failure()
         run: |
           if [ -f build-rpm.log ]; then
-            tail -n 200 build-rpm.log | base64 -w0 | fold -w 60000 | while IFS= read -r line; do
-              echo "::error::LOG:$line"
+            echo "::error::LOG-BEGIN lines=$(wc -l < build-rpm.log) bytes=$(wc -c < build-rpm.log)"
+            grep -n -A6 -B3 -E 'CMake Error|error\[|error:|FAILED|undefined reference|ninja:' build-rpm.log \
+              | tail -n 80 | while IFS= read -r line; do
+                  echo "::error::$line"
+                done
+            echo "::error::LOG-TAIL"
+            tail -n 40 build-rpm.log | while IFS= read -r line; do
+              echo "::error::$line"
             done
+          else
+            echo "::error::LOG-MISSING build-rpm.log"
           fi
 
       - name: Install smoke test
@@ -276,9 +292,17 @@ jobs:
         if: failure()
         run: |
           if [ -f build-arch.log ]; then
-            tail -n 200 build-arch.log | base64 -w0 | fold -w 60000 | while IFS= read -r line; do
-              echo "::error::LOG:$line"
+            echo "::error::LOG-BEGIN lines=$(wc -l < build-arch.log) bytes=$(wc -c < build-arch.log)"
+            grep -n -A6 -B3 -E 'CMake Error|error\[|error:|FAILED|undefined reference|ninja:' build-arch.log \
+              | tail -n 80 | while IFS= read -r line; do
+                  echo "::error::$line"
+                done
+            echo "::error::LOG-TAIL"
+            tail -n 40 build-arch.log | while IFS= read -r line; do
+              echo "::error::$line"
             done
+          else
+            echo "::error::LOG-MISSING build-arch.log"
           fi
 
       - name: Install smoke test
