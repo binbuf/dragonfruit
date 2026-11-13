@@ -14,7 +14,7 @@ rust-version.workspace = true
 # parsed; the Settings host and the UI never shell out. The dependency-free
 # contract lives in `dragonfruit-system-adapters`.
 [dependencies]
-dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.3.0" }
 serde_json = "=1.0.151"
 
 [dev-dependencies]

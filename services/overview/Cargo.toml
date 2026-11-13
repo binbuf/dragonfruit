@@ -14,7 +14,7 @@ rust-version.workspace = true
 # dependency-free contract lives in `dragonfruit-system-adapters`, exactly like
 # `dragonfruit-input` and `dragonfruit-storage`.
 [dependencies]
-dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.3.0" }
 
 [lib]
 name = "dragonfruit_overview"

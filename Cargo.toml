@@ -36,7 +36,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/dragonfruit-desktop/dragonfruit"
@@ -83,7 +83,7 @@ image = { version = "=0.25.10", default-features = false, features = [
     "jpeg",
 ] }
 
-df-ipc = { path = "protocols/df-ipc", version = "0.1.0" }
+df-ipc = { path = "protocols/df-ipc", version = "0.3.0" }
 
 [profile.release]
 lto = "thin"
