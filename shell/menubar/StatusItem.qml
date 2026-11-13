@@ -93,9 +93,22 @@ Item {
         width: root.width
         height: Theme.controls.menuBar.height - 2 * Theme.primitive.spacing.xs
         radius: Theme.controls.menuBar.hoverRadius
+        // One neutral foreground wash for hover, shared with the menu titles.
+        // Selection/keyboard focus keep the accent-muted plate.
+        readonly property color hoverFill: Qt.rgba(
+            root.tint.r, root.tint.g, root.tint.b,
+            Theme.controls.menuBar.hoverOpacity)
         color: (root.selected || root.keyboardFocus) ? Theme.color.accentMuted
-                             : (slotHover.hovered ? Theme.color.controlHover : "transparent")
+                             : (slotHover.hovered ? hoverFill : "transparent")
         antialiasing: true
+
+        Behavior on color {
+            enabled: !Theme.reducedMotion
+            ColorAnimation {
+                duration: Theme.controls.menuBar.hoverDuration
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 
     FocusRing {

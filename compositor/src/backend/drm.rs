@@ -1871,7 +1871,7 @@ fn render_surface(
                         0
                     };
                 let Some((texture_panel, scene_src)) =
-                    region.panel_source_padded(panel.panel, source_padding, scale)
+                    region.panel_source_padded(panel.source_panel(), source_padding, scale)
                 else {
                     continue;
                 };

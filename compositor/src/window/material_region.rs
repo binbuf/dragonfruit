@@ -186,7 +186,9 @@ impl MaterialRegion {
 
         let mut union: Option<Rectangle<i32, Logical>> = None;
         for blur_panel in panels {
-            let panel = blur_panel.panel;
+            // The Dock declares a stable full-strip source so its hover growth
+            // does not re-scope the scene texture every frame.
+            let panel = blur_panel.source_panel();
             if panel.size.w <= 0 || panel.size.h <= 0 {
                 continue;
             }
@@ -453,6 +455,7 @@ mod tests {
         BlurPanel {
             key: crate::window::PanelKey::new("test", 2, 0),
             panel: Rectangle::new((rect.0, rect.1).into(), (rect.2, rect.3).into()),
+            source_panel: None,
             corners: CornerRadii::uniform(10),
             overscan: 0,
             spec: BlurSpec::new(radius, 10.0),
@@ -505,6 +508,22 @@ mod tests {
             MaterialRegion::from_panels(&[panel((10, 10, 40, 40), 12.0)], screen, 0.0.into()),
             None
         );
+    }
+
+    #[test]
+    fn a_stable_source_panel_expands_the_region_without_moving_the_visible_panel() {
+        let screen = output(1920, 1200);
+        let mut dock = panel((600, 1000, 400, 80), 12.0);
+        dock.source_panel = Some(Rectangle::new((0, 1000).into(), (1920, 80).into()));
+        let region =
+            MaterialRegion::from_panels(&[dock], screen, 1.0.into()).expect("visible panel");
+        // The Dock source is the whole strip, so the region spans the output
+        // width instead of tracking the 400 px plate.
+        assert_eq!(region.rect.size.w, 1920);
+        assert!(region.rect.size.h >= 80);
+        // The visible panel keeps its own geometry for the glass element.
+        assert_eq!(dock.panel.loc.x, 600);
+        assert_eq!(dock.panel.size.w, 400);
     }
 
     #[test]

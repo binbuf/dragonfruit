@@ -239,14 +239,18 @@ TestCase {
 
     // The Applications drawer is a large light glass card, not a menu. Its
     // preset carries the sampled blur plus the rim/lens the compositor needs
-    // to read as liquid glass; the card QML fill stays transparent.
+    // to read as liquid glass; the card QML fill stays transparent. The card
+    // is translucent rather than the earlier near-opaque plate: the reference
+    // panel gray resolves to roughly 0.72 over the black backdrop.
     function test_apps_drawer_preset_is_large_glass() {
         var light = Glass.resolve("appsDrawer", {
             scheme: "light", rollout: "replacement"
         });
         compare(light.renderMode, "sampled-glass");
-        verify(light.alpha > 0.9 && light.alpha <= 1.0,
+        verify(light.alpha >= 0.65 && light.alpha < 0.9,
                "light drawer alpha " + light.alpha);
+        verify(Math.abs(light.tint - 0.96) < 1e-6,
+               "light drawer tint " + light.tint);
         verify(light.blur >= 10, "light drawer blur " + light.blur);
         verify(light.edge > 0, "light drawer rim " + light.edge);
         verify(light.cornerLensPeak > 0, "light drawer lens " + light.cornerLensPeak);
@@ -254,7 +258,10 @@ TestCase {
             scheme: "dark", rollout: "replacement"
         });
         compare(dark.renderMode, "sampled-glass");
-        verify(dark.alpha > 0.9, "dark drawer alpha " + dark.alpha);
+        verify(dark.alpha >= 0.7 && dark.alpha < 0.9,
+               "dark drawer alpha " + dark.alpha);
+        verify(Math.abs(dark.tint - 0.26) < 1e-6,
+               "dark drawer tint " + dark.tint);
     }
 
     function test_glass_light_slider_anchors() {

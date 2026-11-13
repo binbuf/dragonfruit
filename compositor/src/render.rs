@@ -25,7 +25,7 @@ use smithay::desktop::utils::{
 };
 use smithay::output::Output;
 use smithay::render_elements;
-use smithay::utils::{IsAlive, Logical, Rectangle, Scale};
+use smithay::utils::{IsAlive, Logical, Rectangle, Scale, Size};
 use smithay::wayland::compositor::{with_states, SurfaceAttributes};
 use smithay::wayland::fractional_scale::with_fractional_scale;
 use wayland_server::Resource;
@@ -355,6 +355,12 @@ pub struct BlurPanel {
     pub key: PanelKey,
     /// Visual bounds, output-local logical.
     pub panel: Rectangle<i32, Logical>,
+    /// The stable rectangle the material samples, when it differs from
+    /// `panel`. The Dock plate grows along its long axis on hover; keeping the
+    /// source at the full Dock strip lets the filtered texture survive the
+    /// whole engagement instead of rebuilding for every 1 px of growth.
+    /// `None` means the source is the visible panel.
+    pub source_panel: Option<Rectangle<i32, Logical>>,
     /// Per-corner clipping radii; attached corners stay square.
     pub corners: CornerRadii,
     /// Extra rim/shadow/veil reach beyond `panel` (T197).
@@ -373,6 +379,12 @@ pub struct BlurPanel {
 }
 
 impl BlurPanel {
+    /// The stable rectangle the material samples. Falls back to the visible
+    /// panel for every non-Dock region.
+    pub fn source_panel(&self) -> Rectangle<i32, Logical> {
+        self.source_panel.unwrap_or(self.panel)
+    }
+
     /// The scene reach this region needs beyond its visual bounds, in logical
     /// pixels (T197).
     ///
@@ -387,6 +399,25 @@ impl BlurPanel {
             1
         };
         kernel.max(0).saturating_add(self.overscan.max(0))
+    }
+}
+
+/// The Dock's material source is the whole Dock strip, not the animated plate.
+///
+/// The plate grows along its long axis over the hover engagement, so a
+/// plate-sized source would change every frame and invalidate the blur cache.
+/// The Dock surface is the full output extent on that axis and its cross-axis
+/// thickness is fixed, so expanding the source to the full strip makes the
+/// filtered texture stable for the whole hover. The glass element still uses
+/// the visible plate rect and samples the matching sub-rect of this texture.
+fn stable_dock_source(
+    panel: Rectangle<i32, Logical>,
+    output: Size<i32, Logical>,
+) -> Rectangle<i32, Logical> {
+    if panel.size.w >= panel.size.h {
+        Rectangle::new((0, panel.loc.y).into(), (output.w, panel.size.h).into())
+    } else {
+        Rectangle::new((panel.loc.x, 0).into(), (panel.size.w, output.h).into())
     }
 }
 
@@ -632,6 +663,11 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             panels.push(BlurPanel {
                 key,
                 panel: region.rect,
+                source_panel: if preset == Preset::Dock {
+                    Some(stable_dock_source(region.rect, output_size))
+                } else {
+                    None
+                },
                 corners,
                 overscan: region.overscan,
                 spec,
@@ -1308,4 +1344,25 @@ pub fn post_repaint(
     // This frame was presented (nested `submit`): credit any pending input
     // with its input-to-photon round trip (T-03.1b).
     state.stats.latency.note_present(Instant::now());
+}
+
+#[cfg(test)]
+mod dock_source_tests {
+    use super::*;
+
+    #[test]
+    fn a_horizontal_dock_source_spans_the_whole_strip() {
+        let panel = Rectangle::new((600, 1000).into(), (400, 80).into());
+        let source = stable_dock_source(panel, (1920, 1200).into());
+        assert_eq!(source.loc, (0, 1000).into());
+        assert_eq!(source.size, (1920, 80).into());
+    }
+
+    #[test]
+    fn a_vertical_dock_source_spans_the_whole_strip() {
+        let panel = Rectangle::new((0, 200).into(), (80, 800).into());
+        let source = stable_dock_source(panel, (1920, 1200).into());
+        assert_eq!(source.loc, (0, 0).into());
+        assert_eq!(source.size, (80, 1200).into());
+    }
 }

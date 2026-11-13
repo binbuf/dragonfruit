@@ -3036,12 +3036,13 @@ void ShellController::onTrayMenuTriggered(const QString &service, int id)
 void ShellController::onTrayMenuClosed()
 {
     m_menuOpen = false;
-    // The logical menu is closed immediately: stop intercepting clicks and
-    // drop the decorative material while the visual exit plays.
-    if (m_protocol) {
+    // The logical menu is closed immediately: stop intercepting clicks. The
+    // material regions stay until the visual exit has finished (the QML card
+    // fades for 183 ms); `updatePopupGeometry` clears them at 210 ms. Clearing
+    // them here would turn the tail into a flat tint and read as a material
+    // pop-off.
+    if (m_protocol)
         m_protocol->setPopupInputActive(false);
-        m_protocol->clearPopupPanelRegions();
-    }
     QTimer::singleShot(210, this, [this]() {
         if (!m_menuOpen)
             updatePopupGeometry();
@@ -3057,12 +3058,10 @@ void ShellController::onStatusMenuOpened()
 void ShellController::onStatusMenuClosed()
 {
     m_menuOpen = false;
-    if (m_protocol) {
+    // Keep the material for the measured 183 ms exit tail; only input closes
+    // immediately. `updatePopupGeometry` clears the regions at 210 ms.
+    if (m_protocol)
         m_protocol->setPopupInputActive(false);
-        m_protocol->clearPopupPanelRegions();
-    }
-    // The measured menu exit is 183 ms; keep the overlay mapped for the
-    // visual tail, but the logical interaction and input are already closed.
     QTimer::singleShot(210, this, [this]() {
         if (!m_menuOpen)
             updatePopupGeometry();
@@ -6447,12 +6446,13 @@ void ShellController::onAppMenuOpened(int)
 void ShellController::onAppMenuClosed()
 {
     m_menuOpen = false;
-    if (m_protocol) {
+    // The logical menu and input close now; the material regions stay for the
+    // measured 183 ms visual tail. `updatePopupGeometry` clears them at 210 ms,
+    // so the close fade keeps the frost/rim instead of falling back to a flat
+    // tint.
+    if (m_protocol)
         m_protocol->setPopupInputActive(false);
-        m_protocol->clearPopupPanelRegions();
-    }
-    // The measured menu exit is 183 ms. The logical menu and input close now;
-    // the overlay keeps rendering the visual tail so a reopen/retarget can
+    // The overlay keeps rendering the visual tail so a reopen/retarget can
     // take over before the timer expires.
     QTimer::singleShot(210, this, [this]() {
         if (!m_menuOpen) {

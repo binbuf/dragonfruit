@@ -396,9 +396,27 @@ Item {
         id: barBackground
         anchors.fill: parent
         radius: Theme.controls.focusRing.radius
-        color: root.open ? Theme.color.accent
-                         : (barHover.hovered ? Theme.color.controlHover : "transparent")
+        // A neutral foreground wash, not an opaque themed chip. The reference
+        // bar is a white veil with dark text; the accent belongs to menu-row
+        // selection, not to the open title. Hover and open share one ramp so
+        // opening a menu cannot flash a different colour.
+        readonly property color hoverFill: Qt.rgba(
+            root.foreground.r, root.foreground.g, root.foreground.b,
+            Theme.controls.menuBar.hoverOpacity)
+        readonly property color openFill: Qt.rgba(
+            root.foreground.r, root.foreground.g, root.foreground.b,
+            Theme.controls.menuBar.openOpacity)
+        color: root.open ? openFill
+                         : (barHover.hovered ? hoverFill : "transparent")
         antialiasing: true
+
+        Behavior on color {
+            enabled: !Theme.reducedMotion
+            ColorAnimation {
+                duration: Theme.controls.menuBar.hoverDuration
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 
     DragonfruitLogo {
@@ -406,10 +424,11 @@ Item {
         visible: root.showLogo
         anchors.centerIn: parent
         size: Theme.controls.menuBar.iconSize
-        color: root.open ? Theme.color.accentContent : root.foreground
-        // No halo over the open accent capsule or the hover wash.
-        shadowColor: (root.open || barHover.hovered) ? "transparent"
-                                                     : root.glyphShadowColor
+        color: root.foreground
+        // Keep the wallpaper contrast treatment stable across hover/open; the
+        // neutral wash already supplies the plate. Toggling the shadow was a
+        // visible one-frame flash.
+        shadowColor: root.glyphShadowColor
         shadowOffset: Qt.point(0, Theme.controls.wallpaperText.shadowOffsetY)
     }
 
@@ -418,10 +437,10 @@ Item {
         visible: !root.showLogo
         anchors.centerIn: parent
         text: root.title
-        color: root.open ? Theme.color.accentContent : root.foreground
-        // No halo over the open accent capsule or the hover wash; the plate
-        // already supplies the contrast.
-        shadowEnabled: !root.open && !barHover.hovered
+        color: root.foreground
+        // No shadow discontinuity on hover/open. The veil-aware treatment is
+        // a separate change; the title keeps one constant treatment here.
+        shadowEnabled: true
         shadowColor: root.labelShadowColor
         shadowOpacity: root.labelShadowOpacity
         font.pixelSize: Theme.controls.titlebar.fontSize

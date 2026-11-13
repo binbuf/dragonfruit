@@ -1038,10 +1038,13 @@ mod tests {
     }
 
     #[test]
-    fn apps_drawer_is_a_large_sampled_glass_card() {
+    fn apps_drawer_is_a_translucent_sampled_glass_card() {
         let light = resolve(input(Preset::AppsDrawer, Scheme::Light));
         assert_eq!(light.render_mode, RenderMode::SampledGlass);
-        assert!(light.alpha > 0.9);
+        // The reference panel gray resolves to roughly 0.72 over the black
+        // backdrop; the card must read as glass, not a near-opaque plate.
+        assert!(light.alpha >= 0.65 && light.alpha < 0.9);
+        assert!((light.tint - 0.96).abs() < 1e-6);
         assert!(light.blur >= 10.0);
         assert!(light.edge > 0.0);
         assert!(light.corner_lens_peak > 0.0);
@@ -1049,7 +1052,8 @@ mod tests {
         // menu curve instead of freezing at one fit.
         assert!(light.slider_applied);
         let dark = resolve(input(Preset::AppsDrawer, Scheme::Dark));
-        assert!(dark.alpha > 0.9);
+        assert!(dark.alpha >= 0.7 && dark.alpha < 0.9);
+        assert!((dark.tint - 0.26).abs() < 1e-6);
     }
 
     #[test]
