@@ -129,12 +129,28 @@ jobs:
 
       - name: Source tarball
         run: |
-          mkdir -p dist
-          git archive \
-            --format=tar.gz \
-            --prefix="dragonfruit-${{ steps.version.outputs.value }}/" \
-            -o "dist/dragonfruit-${{ steps.version.outputs.value }}-source.tar.gz" \
-            HEAD
+          set -o pipefail
+          {
+            # Container jobs can see the workspace as a different owner.
+            git config --global --add safe.directory "$GITHUB_WORKSPACE"
+            mkdir -p dist
+            git archive \
+              --format=tar.gz \
+              --prefix="dragonfruit-${{ steps.version.outputs.value }}/" \
+              -o "dist/dragonfruit-${{ steps.version.outputs.value }}-source.tar.gz" \
+              HEAD
+          } 2>&1 | tee source-deb.log
+
+      - name: Source diagnostics
+        if: failure()
+        run: |
+          if [ -f source-deb.log ]; then
+            tail -n 10 source-deb.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          else
+            echo "::error::LOG-MISSING source-deb.log"
+          fi
 
       - name: Refresh checksums
         run: |
