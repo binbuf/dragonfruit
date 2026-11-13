@@ -31,6 +31,25 @@ screenshot.png
 /docs/tasks/
 /docs/ROADMAP.md
 
+# Local working notes: proposals, tracks, research, reviews, and reference
+# distillations stay out of version control; history was scrubbed of these.
+/docs/design/proposals/
+/docs/design/tracks/
+/docs/proposals/
+/docs/Research.md
+/docs/SLICING-REVIEW.md
+/docs/Start.md
+/docs/dock.md
+/docs/dock-learnings.md
+/docs/hyprglass-study.md
+/docs/rendering.md
+/docs/design/advisor-briefing.md
+/docs/design/architecture-audit-native-rendering.md
+/docs/reference/System_Preferences.md
+/docs/reference/desktop-experience-inventory.md
+/docs/reference/macos-ui-inventory.md
+/docs/reference/settings-layout-measurements.md
+
 # symphony harness (local tool, not tracked)
 .symphony/
 .stop
