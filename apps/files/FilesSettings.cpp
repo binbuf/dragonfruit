@@ -5,32 +5,24 @@
 
 #include <QImageReader>
 #include <QString>
+#include <QtMath>
 
 namespace {
 
-// Average sRGB luma of a decoded wallpaper. The image is sampled on a fixed
-// grid so a 6K photo costs the same as a small one; the desktop only needs a
-// polarity decision, not a per-pixel map.
-qreal averageLuminance(const QImage &image)
+// The luma map is sampled on a fixed grid so a 6K photo costs the same as a
+// small one. 64x64 is enough for a per-tile polarity decision and keeps the
+// bilinear sample cheap for every desktop icon.
+constexpr int kLumaGrid = 64;
+
+qreal pixelLuminance(QRgb pixel)
 {
-    if (image.isNull() || image.width() <= 0 || image.height() <= 0)
-        return 0.5;
-    const QImage sample = image.scaled(64, 64, Qt::IgnoreAspectRatio,
-                                       Qt::SmoothTransformation)
-                                  .convertToFormat(QImage::Format_RGB32);
-    quint64 sum = 0;
-    quint64 count = 0;
-    for (int y = 0; y < sample.height(); ++y) {
-        const auto *line = reinterpret_cast<const QRgb *>(sample.constScanLine(y));
-        for (int x = 0; x < sample.width(); ++x) {
-            const QRgb pixel = line[x];
-            sum += 299 * qRed(pixel) + 587 * qGreen(pixel) + 114 * qBlue(pixel);
-            ++count;
-        }
-    }
-    return count > 0 ? static_cast<qreal>(sum) / static_cast<qreal>(count)
-                             / 1000.0 / 255.0
-                     : 0.5;
+    return (299 * qRed(pixel) + 587 * qGreen(pixel) + 114 * qBlue(pixel))
+           / 1000.0 / 255.0;
+}
+
+qreal clamp01(qreal value)
+{
+    return qBound<qreal>(0.0, value, 1.0);
 }
 
 } // namespace
@@ -95,22 +87,100 @@ QString FilesSettings::effectiveWallpaperSource() const
     return map.value(QStringLiteral("wallpaper.providerSource")).toString();
 }
 
-qreal FilesSettings::wallpaperLuminance() const
+void FilesSettings::ensureLumaGrid() const
 {
     const QString source = effectiveWallpaperSource();
-    const QString key = source.isEmpty() ? QStringLiteral("<solid>") : source;
-    if (key == m_wallpaperLumaKey)
-        return m_wallpaperLuma;
-    m_wallpaperLumaKey = key;
-    m_wallpaperLuma = 0.5;
-    if (!source.isEmpty()) {
-        QImageReader reader(source);
-        reader.setAutoTransform(true);
-        const QImage image = reader.read();
-        if (!image.isNull())
-            m_wallpaperLuma = averageLuminance(image);
+    if (source == m_lumaGridKey)
+        return;
+    m_lumaGridKey = source;
+    m_lumaGrid.clear();
+    m_lumaImageAspect = 1.0;
+    if (source.isEmpty())
+        return;
+    QImageReader reader(source);
+    reader.setAutoTransform(true);
+    const QImage image = reader.read();
+    if (image.isNull() || image.width() <= 0 || image.height() <= 0)
+        return;
+    m_lumaImageAspect = static_cast<qreal>(image.width())
+                        / static_cast<qreal>(image.height());
+    const QImage sample = image.scaled(kLumaGrid, kLumaGrid, Qt::IgnoreAspectRatio,
+                                       Qt::SmoothTransformation)
+                                  .convertToFormat(QImage::Format_RGB32);
+    m_lumaGrid.resize(kLumaGrid * kLumaGrid);
+    for (int y = 0; y < kLumaGrid; ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(sample.constScanLine(y));
+        for (int x = 0; x < kLumaGrid; ++x)
+            m_lumaGrid[y * kLumaGrid + x] = pixelLuminance(line[x]);
     }
-    return m_wallpaperLuma;
+}
+
+qreal FilesSettings::wallpaperLuminance() const
+{
+    ensureLumaGrid();
+    if (m_lumaGrid.isEmpty())
+        return 0.5;
+    qreal sum = 0;
+    for (const qreal value : m_lumaGrid)
+        sum += value;
+    return sum / static_cast<qreal>(m_lumaGrid.size());
+}
+
+qreal FilesSettings::wallpaperLuminanceAt(qreal x, qreal y) const
+{
+    ensureLumaGrid();
+    if (m_lumaGrid.isEmpty())
+        return 0.5;
+
+    const qreal nx = clamp01(x);
+    const qreal ny = clamp01(y);
+    const QString fit =
+        m_client->values().value(QStringLiteral("wallpaper.fit")).toString();
+    const qreal outW = m_desktopWidth > 0 ? m_desktopWidth : 16.0;
+    const qreal outH = m_desktopHeight > 0 ? m_desktopHeight : 10.0;
+
+    // Map output-normalized coordinates into image-normalized coordinates.
+    // The image is expressed in "height units": (aspect, 1).
+    qreal ix = nx;
+    qreal iy = ny;
+    if (fit == QLatin1String("fill") || fit == QLatin1String("fit")) {
+        const qreal imageW = m_lumaImageAspect;
+        const qreal scale = fit == QLatin1String("fill")
+                ? qMax(outW / imageW, outH)
+                : qMin(outW / imageW, outH);
+        const qreal dw = imageW * scale;
+        const qreal dh = scale;
+        ix = (nx * outW - (outW - dw) / 2.0) / dw;
+        iy = (ny * outH - (outH - dh) / 2.0) / dh;
+        if (fit == QLatin1String("fit")
+                && (ix < 0.0 || ix > 1.0 || iy < 0.0 || iy > 1.0))
+            return wallpaperLuminance();
+    } else if (fit == QLatin1String("center")) {
+        // The native pixel size is not cached, so a centre crop is ambiguous;
+        // the average is the safe polarity.
+        return wallpaperLuminance();
+    }
+    // "stretch" (and the no-fit fallback) maps one-to-one.
+
+    const qreal gx = clamp01(ix) * (kLumaGrid - 1);
+    const qreal gy = clamp01(iy) * (kLumaGrid - 1);
+    const int x0 = qBound(0, qFloor(gx), kLumaGrid - 1);
+    const int y0 = qBound(0, qFloor(gy), kLumaGrid - 1);
+    const int x1 = qMin(x0 + 1, kLumaGrid - 1);
+    const int y1 = qMin(y0 + 1, kLumaGrid - 1);
+    const qreal fx = gx - x0;
+    const qreal fy = gy - y0;
+    const qreal top = m_lumaGrid[y0 * kLumaGrid + x0] * (1.0 - fx)
+                      + m_lumaGrid[y0 * kLumaGrid + x1] * fx;
+    const qreal bottom = m_lumaGrid[y1 * kLumaGrid + x0] * (1.0 - fx)
+                         + m_lumaGrid[y1 * kLumaGrid + x1] * fx;
+    return top * (1.0 - fy) + bottom * fy;
+}
+
+void FilesSettings::setDesktopSize(qreal width, qreal height)
+{
+    m_desktopWidth = width > 0 ? width : 0;
+    m_desktopHeight = height > 0 ? height : 0;
 }
 
 void FilesSettings::set(const QString &key, const QVariant &value)

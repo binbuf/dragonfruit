@@ -286,6 +286,27 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                             None
                         }
                     };
+                // Compile the measured separable Gaussian once, on the same
+                // renderer. Failure is non-fatal: the Dock falls back to the
+                // sharp panel slice (no frost) rather than a broken blur.
+                let gaussian_program =
+                    match std::borrow::BorrowMut::<GlesRenderer>::borrow_mut(backend.renderer())
+                        .compile_custom_texture_shader(
+                            crate::window::GAUSSIAN_BLUR_SHADER,
+                            &crate::window::gaussian_uniform_names(),
+                        ) {
+                        Ok(program) => {
+                            crate::trace::log("material", "gaussian-program=compiled");
+                            Some(program)
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "dragonfruit-compositor: measured Gaussian shader unavailable \
+                                 ({err}); Dock frost disabled"
+                            );
+                            None
+                        }
+                    };
                 // Compile the liquid-glass compose program once, on the same
                 // renderer (T-20.2). Failure is non-fatal: the panel keeps the
                 // plain blurred compose (no lens/specular/tint).
@@ -303,6 +324,26 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                             eprintln!(
                                 "dragonfruit-compositor: liquid-glass shader unavailable \
                                  ({err}); using plain blurred compose"
+                            );
+                            None
+                        }
+                    };
+                // The sharp-scene bevel pass for the measured Dock. Failure
+                // is non-fatal: the blurred body keeps its own edge treatment.
+                let bevel_program =
+                    match std::borrow::BorrowMut::<GlesRenderer>::borrow_mut(backend.renderer())
+                        .compile_custom_texture_shader(
+                            crate::window::BEVEL_SHADER,
+                            &crate::window::glass_uniform_names(),
+                        ) {
+                        Ok(program) => {
+                            crate::trace::log("material", "bevel-program=compiled");
+                            Some(program)
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "dragonfruit-compositor: Dock bevel shader unavailable \
+                                 ({err}); using the blurred edge only"
                             );
                             None
                         }
@@ -421,7 +462,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 }
                 *shared_init.borrow_mut() = Some(NestedData {
                     blur_program,
+                    gaussian_program,
                     glass_program,
+                    bevel_program,
                     veil_program,
                     shadow,
                     titlebar,
@@ -516,10 +559,16 @@ struct NestedData {
     /// driver refused it; the blur then falls back to a plain bilinear
     /// downsample chain, which still samples the live scene.
     blur_program: Option<GlesTexProgram>,
+    /// The compiled measured separable Gaussian, or `None` when the driver
+    /// refused it; the Dock then keeps the sharp panel slice without frost.
+    gaussian_program: Option<GlesTexProgram>,
     /// The compiled Tahoe liquid-glass compose program (T-20.2), or `None`
     /// when the driver refused it; the panel then keeps the plain blurred
     /// compose with no lens, specular rim, or adaptive tint.
     glass_program: Option<GlesTexProgram>,
+    /// The sharp-scene bevel pass for the measured Dock; `None` keeps the
+    /// blurred body's edge treatment only.
+    bevel_program: Option<GlesTexProgram>,
     /// The compiled menu-bar no-blur veil program (T200), or `None` when the
     /// driver refused it; the sharp veil then falls back to the flat-band
     /// glass compose.
@@ -1083,7 +1132,9 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                         renderer,
                         BlurPrograms {
                             blur: data.blur_program.as_ref(),
+                            gaussian: data.gaussian_program.as_ref(),
                             glass: data.glass_program.as_ref(),
+                            bevel: data.bevel_program.as_ref(),
                             veil: data.veil_program.as_ref(),
                             chain_size,
                         },
@@ -1550,7 +1601,9 @@ where
 /// The compiled programs and chain base for one blur build.
 struct BlurPrograms<'a> {
     blur: Option<&'a GlesTexProgram>,
+    gaussian: Option<&'a GlesTexProgram>,
     glass: Option<&'a GlesTexProgram>,
+    bevel: Option<&'a GlesTexProgram>,
     veil: Option<&'a GlesTexProgram>,
     /// The full output's physical size: the Kawase chain keeps that as its
     /// first destination so the panel's visual blur is unchanged from the
@@ -1603,7 +1656,20 @@ fn build_blur_elements(
     let mut skips = 0u64;
     let mut misses = BlurMissCounts::default();
     for panel in panels {
-        let Some((texture_panel, scene_src)) = scene.region.panel_source(panel.panel, scale) else {
+        // The measured Dock is the only role whose blur texture is padded:
+        // its bevel lens reaches beyond the visible silhouette and its
+        // Gaussian must not clamp at the rim. Other roles keep the historical
+        // panel-sized source so their full-output chain mapping is unchanged.
+        let source_padding = if panel.spec.is_measured() {
+            panel.sample_padding_px()
+        } else {
+            0
+        };
+        let Some((texture_panel, scene_src)) =
+            scene
+                .region
+                .panel_source_padded(panel.panel, source_padding, scale)
+        else {
             continue;
         };
         let slot = targets.panels.slot(&panel.key);
@@ -1682,6 +1748,7 @@ fn build_blur_elements(
             let texture_result = blur_panel_texture(
                 renderer,
                 programs.blur,
+                programs.gaussian,
                 scene.texture,
                 scene_src,
                 texture_panel,
@@ -1698,6 +1765,8 @@ fn build_blur_elements(
         };
         let commit = slot.commit();
         let texture_size = texture.size();
+        // The body keeps the measured rim, flat band and corner lens. The
+        // sharp overlay below only sharpens the refraction inside the rim.
         let element = crate::window::BackdropBlurElement::new(
             texture,
             panel.panel,
@@ -1709,12 +1778,49 @@ fn build_blur_elements(
         .with_commit(commit)
         .with_texture_panel(texture_panel)
         .with_corners(panel.corners);
+        // The measured Dock uses the SDF as an antialiased coverage mask
+        // instead of the integer spans, removing the 1x/1.5x stair-step.
+        let element = if panel.spec.is_measured() && programs.glass.is_some() {
+            element.with_full_panel_draw()
+        } else {
+            element
+        };
         // Add the liquid-glass compose only when the driver compiled it; a
         // refused shader leaves the plain blurred backdrop (T-20.2).
         let element = match programs.glass {
             Some(glass) => element.with_glass(panel.glass, glass.clone()),
             None => element,
         };
+
+        // The measured Dock gets a sharp-scene bevel over the blurred body.
+        // It samples the scene texture directly, so the rim bends real
+        // wallpaper detail instead of the already-frosted body. The element
+        // draws only the bevel band; the body shows through the interior.
+        // The list is front-to-back (Smithay draws it in reverse), so the
+        // bevel must be pushed *before* the body to sit on top of it.
+        let bevel = if panel.spec.is_measured() {
+            programs.bevel.map(|bevel_program| {
+                slot.note_sharp_scene_commit(scene.cache.commit());
+                crate::window::BackdropBlurElement::new(
+                    scene.texture.clone(),
+                    panel.panel,
+                    scene.texture.size(),
+                    panel.corners.max(),
+                    scale,
+                )
+                .with_id(slot.bevel_id().clone())
+                .with_commit(slot.commit())
+                .with_texture_region(scene.region.rect)
+                .with_corners(panel.corners)
+                .with_full_panel_draw()
+                .with_glass(panel.glass, bevel_program.clone())
+            })
+        } else {
+            None
+        };
+        if let Some(bevel) = bevel {
+            elements.push(NestedOutputElements::Blur(bevel));
+        }
         elements.push(NestedOutputElements::Blur(element));
     }
     // The caller trims the panel slots once after every material group, so a
@@ -1738,6 +1844,7 @@ fn build_blur_elements(
 pub(crate) fn blur_panel_texture<R>(
     renderer: &mut R,
     program: Option<&GlesTexProgram>,
+    gaussian: Option<&GlesTexProgram>,
     scene: &GlesTexture,
     scene_src: Rectangle<f64, BufferCoord>,
     texture_panel: Rectangle<i32, smithay::utils::Logical>,
@@ -1754,6 +1861,19 @@ where
 {
     use smithay::backend::renderer::gles::Uniform;
     use smithay::utils::Transform;
+
+    if spec.is_measured() {
+        return gaussian_blur_panel_texture(
+            renderer,
+            gaussian,
+            scene,
+            scene_src,
+            texture_panel,
+            spec,
+            scale,
+            slot,
+        );
+    }
 
     let mut current: GlesTexture = scene.clone();
     let mut allocations = 0u64;
@@ -1829,6 +1949,9 @@ where
     }
 
     let Some(weights) = spec.sharp_weights else {
+        // Drop any textures left by a previous, wider spec so the panel
+        // cache's `last_texture()` is the result of this build.
+        slot.truncate(spec.iterations as usize);
         return Ok((current, allocations));
     };
 
@@ -1901,7 +2024,222 @@ where
             .map_err(|err| format!("blur composite level draw failed: {err:?}"))?;
         painted = total;
     }
+    slot.truncate(composite_index + 1);
     Ok((composite, allocations))
+}
+
+/// The measured Dock blur: one sharp scene composite over a separable
+/// Gaussian. This replaces the old five-level Kawase pyramid (T198 follow-up).
+///
+/// The panel path is small, so both passes run at the panel's physical
+/// resolution. The first pass samples the scene texture directly, which lets
+/// the Gaussian read the material region's padding beyond the visible panel;
+/// the second pass is vertical and returns a panel-sized texture.
+fn gaussian_blur_panel_texture<R>(
+    renderer: &mut R,
+    program: Option<&GlesTexProgram>,
+    scene: &GlesTexture,
+    scene_src: Rectangle<f64, BufferCoord>,
+    texture_panel: Rectangle<i32, smithay::utils::Logical>,
+    spec: &crate::window::BlurSpec,
+    scale: smithay::utils::Scale<f64>,
+    slot: &mut Vec<GlesTexture>,
+) -> Result<(GlesTexture, u64), String>
+where
+    R: TextureRenderer
+        + smithay::backend::renderer::Bind<GlesTexture>
+        + smithay::backend::renderer::Offscreen<GlesTexture>,
+    R::Error: std::fmt::Debug,
+{
+    use smithay::backend::renderer::gles::Uniform;
+
+    let size = BufferSize::<i32, BufferCoord>::from((
+        (texture_panel.size.w.max(1) as f64 * scale.x)
+            .round()
+            .max(1.0) as i32,
+        (texture_panel.size.h.max(1) as f64 * scale.y)
+            .round()
+            .max(1.0) as i32,
+    ));
+    let sigma = spec.sigma.unwrap_or(0.0).max(0.01);
+
+    // If the driver refused the Gaussian program, return the sharp panel
+    // slice. It is still a valid panel texture; it simply has no frost.
+    let Some(program) = program else {
+        let (mut texture, allocations) = ensure_blur_texture(renderer, slot, 0, size)?;
+        draw_blur_texture(
+            renderer,
+            &mut texture,
+            scene,
+            scene_src,
+            size,
+            None,
+            &[],
+            1.0,
+        )?;
+        slot.truncate(1);
+        return Ok((texture, allocations));
+    };
+
+    let (mut horizontal, mut allocations) = ensure_blur_texture(renderer, slot, 0, size)?;
+    let scene_size = scene.size();
+    draw_blur_texture(
+        renderer,
+        &mut horizontal,
+        scene,
+        scene_src,
+        size,
+        Some(program),
+        &[
+            Uniform::new(
+                crate::window::BLUR_TEXEL_UNIFORM,
+                (
+                    1.0f32 / scene_size.w.max(1) as f32,
+                    1.0f32 / scene_size.h.max(1) as f32,
+                ),
+            ),
+            Uniform::new(crate::window::GAUSSIAN_DIR_UNIFORM, (1.0f32, 0.0f32)),
+            Uniform::new(
+                crate::window::GAUSSIAN_SIGMA_UNIFORM,
+                sigma * scale.x as f32,
+            ),
+        ],
+        1.0,
+    )?;
+
+    let (mut vertical, more) = ensure_blur_texture(renderer, slot, 1, size)?;
+    allocations += more;
+    let horizontal_size = horizontal.size();
+    draw_blur_texture(
+        renderer,
+        &mut vertical,
+        &horizontal,
+        Rectangle::from_size(horizontal_size.to_f64()),
+        size,
+        Some(program),
+        &[
+            Uniform::new(
+                crate::window::BLUR_TEXEL_UNIFORM,
+                (
+                    1.0f32 / horizontal_size.w.max(1) as f32,
+                    1.0f32 / horizontal_size.h.max(1) as f32,
+                ),
+            ),
+            Uniform::new(crate::window::GAUSSIAN_DIR_UNIFORM, (0.0f32, 1.0f32)),
+            Uniform::new(
+                crate::window::GAUSSIAN_SIGMA_UNIFORM,
+                sigma * scale.y as f32,
+            ),
+        ],
+        1.0,
+    )?;
+
+    let Some(sharp) = spec.sharp_fraction else {
+        slot.truncate(2);
+        return Ok((vertical, allocations));
+    };
+    let sharp = sharp.clamp(0.0, 1.0);
+    if sharp <= 0.0 {
+        slot.truncate(2);
+        return Ok((vertical, allocations));
+    }
+
+    let (mut composite, more) = ensure_blur_texture(renderer, slot, 2, size)?;
+    allocations += more;
+    // The measured mixture is `sharp * scene + (1 - sharp) * blurred`.
+    // Paint the sharp scene opaque, then the blurred result with alpha
+    // `1 - sharp`; source-over produces exactly that convex mix.
+    draw_blur_texture(
+        renderer,
+        &mut composite,
+        scene,
+        scene_src,
+        size,
+        None,
+        &[],
+        1.0,
+    )?;
+    if sharp < 1.0 {
+        draw_blur_texture(
+            renderer,
+            &mut composite,
+            &vertical,
+            Rectangle::from_size(vertical.size().to_f64()),
+            size,
+            None,
+            &[],
+            1.0 - sharp,
+        )?;
+    }
+    slot.truncate(3);
+    Ok((composite, allocations))
+}
+
+/// Reuse or allocate one panel-sized blur texture in `slot[index]`.
+fn ensure_blur_texture<R>(
+    renderer: &mut R,
+    slot: &mut Vec<GlesTexture>,
+    index: usize,
+    size: BufferSize<i32, BufferCoord>,
+) -> Result<(GlesTexture, u64), String>
+where
+    R: smithay::backend::renderer::Offscreen<GlesTexture>,
+    R::Error: std::fmt::Debug,
+{
+    let mut allocations = 0u64;
+    while slot.len() <= index {
+        slot.push(
+            renderer
+                .create_buffer(Fourcc::Abgr8888, size)
+                .map_err(|err| format!("blur buffer failed: {err}"))?,
+        );
+        allocations += 1;
+    }
+    if slot[index].size() != size {
+        slot[index] = renderer
+            .create_buffer(Fourcc::Abgr8888, size)
+            .map_err(|err| format!("blur buffer failed: {err}"))?;
+        allocations += 1;
+    }
+    Ok((slot[index].clone(), allocations))
+}
+
+/// Draw one source texture slice into a target blur texture.
+fn draw_blur_texture<R>(
+    renderer: &mut R,
+    target_texture: &mut GlesTexture,
+    source: &GlesTexture,
+    source_rect: Rectangle<f64, BufferCoord>,
+    size: BufferSize<i32, BufferCoord>,
+    program: Option<&GlesTexProgram>,
+    uniforms: &[smithay::backend::renderer::gles::Uniform<'_>],
+    alpha: f32,
+) -> Result<(), String>
+where
+    R: TextureRenderer + smithay::backend::renderer::Bind<GlesTexture>,
+    R::Error: std::fmt::Debug,
+{
+    use smithay::utils::Transform;
+
+    let dst = Rectangle::from_size(Size::<i32, Physical>::from((size.w, size.h)));
+    let mut target = renderer
+        .bind(target_texture)
+        .map_err(|err| format!("blur bind failed: {err}"))?;
+    let mut frame = renderer
+        .render(&mut target, dst.size, Transform::Normal)
+        .map_err(|err| format!("blur render failed: {err}"))?;
+    R::draw_texture_from_to(
+        &mut frame,
+        source,
+        source_rect,
+        dst,
+        &[dst],
+        program,
+        uniforms,
+        alpha,
+    )
+    .map_err(|err| format!("blur draw failed: {err:?}"))?;
+    Ok(())
 }
 
 /// Render `elements` (the same list the live frame drew) into an offscreen

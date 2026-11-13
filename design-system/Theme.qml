@@ -166,7 +166,7 @@ QtObject {
                     readonly property real edge: 0.397
                     readonly property real edgeWidth: 1.0
                     readonly property real edgeTail: 6.0
-                    readonly property real sharpFraction: 0.12
+                    readonly property real sharpFraction: 0.192
                     readonly property real cornerLensPeak: 13.6
                     readonly property real cornerLensDistance: 15.0
                     readonly property real cornerLensTail: 50.0
@@ -187,7 +187,7 @@ QtObject {
                     readonly property real edge: 0.397
                     readonly property real edgeWidth: 1.0
                     readonly property real edgeTail: 6.0
-                    readonly property real sharpFraction: 0.12
+                    readonly property real sharpFraction: 0.192
                     readonly property real cornerLensPeak: 13.6
                     readonly property real cornerLensDistance: 15.0
                     readonly property real cornerLensTail: 50.0
@@ -1199,6 +1199,19 @@ QtObject {
             readonly property color foregroundSecondaryOnDark: "#ffffff"
             readonly property real foregroundFlipThresholdLight: 0.78
             readonly property real foregroundFlipThresholdDark: 0.78
+        }
+        readonly property var wallpaperText: QtObject {
+            readonly property color shadowColorOnDark: "#000000"
+            readonly property color shadowColorOnLight: "#ffffff"
+            readonly property int shadowOffsetY: 1
+            readonly property int shadowLayers: 3
+            readonly property real shadowOpacityOnDark: 0.62
+            readonly property real shadowOpacityOnLight: 0.7
+            readonly property real outlineOpacity: 0.38
+            readonly property real increaseContrastShadowOpacity: 0.85
+            readonly property real increaseContrastOutlineOpacity: 0.6
+            readonly property real flipThreshold: 0.8
+            readonly property real flipHysteresis: 0.02
         }
         readonly property var dock: QtObject {
             readonly property int tooltipDwell: 0

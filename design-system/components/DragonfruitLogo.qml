@@ -10,10 +10,35 @@ Item {
 
     property color color: Theme.color.textPrimary
     property real size: Theme.controls.menuBar.iconSize
+    // Optional wallpaper contrast shadow: the same silhouette translated by
+    // `shadowOffset` and painted behind the mark. The menu bar supplies the
+    // opposite-tone pair; other callers leave it transparent.
+    property color shadowColor: "transparent"
+    property point shadowOffset: Qt.point(0, Theme.controls.wallpaperText.shadowOffsetY)
 
     // Preserve the square source view box at any `size`.
     implicitWidth: size
     implicitHeight: size
+
+    Shape {
+        x: root.shadowOffset.x
+        y: root.shadowOffset.y
+        width: 24
+        height: 24
+        visible: root.shadowColor.a > 0
+        scale: root.size / 24
+        transformOrigin: Item.TopLeft
+        antialiasing: true
+        preferredRendererType: Shape.GeometryRenderer
+
+        ShapePath {
+            fillColor: root.shadowColor
+            strokeColor: "transparent"
+            PathSvg {
+                path: "M12 22C6.8 22 3.4 18.5 3.4 14.1C3.4 10.6 5.2 8.5 5 4.4C7.6 5 9.3 6.5 10.1 8.4C10.1 5.6 11 3.1 13.1 1.5C13 4.4 14 6.8 15.7 8.4C17.4 7.2 19.1 6.6 21 6.5C20.3 9.5 20.6 11.8 20.6 14.2C20.6 18.8 17 22 12 22Z"
+            }
+        }
+    }
 
     Shape {
         id: shape

@@ -14,27 +14,28 @@
 
 use crate::design_tokens::glass::presets::dock;
 
-/// The Dock uses five Kawase levels so the broad shoulder is available from
-/// the existing chain. Other roles keep their token-derived iteration count.
-pub const DOCK_BLUR_ITERATIONS: u32 = 5;
+/// The measured sharp-scene fraction of the Dock blur mixture. The reference
+/// fit is `M(f) = T·((1−k)·exp(−2π²σ²f²) + k)` with `k = 0.192`.
+pub const DOCK_SHARP_FRACTION: f32 = 0.192;
 
-/// Composite weights for `[sharp, level1, level2, level3, level4, level5]`.
-///
-/// Fitted to the reference checker AC ratios at 2/4/8/16/32 pt. The weight for
-/// levels 3/4 is zero, so the renderer only draws the sharp scene, the first
-/// two levels and the broad fifth level. All weights are non-negative and sum
-/// to one, so the composite is a convex mix and cannot invent contrast.
-pub const DOCK_SCALE_WEIGHTS: [f32; 6] = [0.12, 0.26, 0.40, 0.0, 0.0, 0.22];
+/// The measured equivalent Gaussian sigma in logical points.
+pub const DOCK_BLUR_SIGMA_PT: f32 = 3.86;
+
+/// The measured low-frequency transmission of the blur mixture. It is slightly
+/// above `1 - alpha` because the sharp path carries its own transmission.
+pub const DOCK_LOW_FREQUENCY_TRANSMISSION: f32 = 0.777;
 
 /// The measured checker AC ratios at 2/4/8/16/32 pt (reference capture pixels
 /// 4/8/16/32/64 at 2x). Used by the fit tests and the capture scorer.
 pub const DOCK_CHECKER_TARGETS: [f32; 5] = [0.161, 0.150, 0.325, 0.670, 0.701];
 
-/// The checker periods corresponding to [`DOCK_CHECKER_TARGETS`], in points.
+/// The checker square periods corresponding to [`DOCK_CHECKER_TARGETS`], in
+/// points. The checker fundamental is twice the square period.
 pub const DOCK_CHECKER_PERIODS: [f32; 5] = [2.0, 4.0, 8.0, 16.0, 32.0];
 
-/// The accepted deviation for every checker period.
-pub const DOCK_MTF_TOLERANCE: f32 = 0.05;
+/// The accepted deviation for every checker period. The reference fit itself
+/// has an RMSE of 0.029; individual points are allowed a little more.
+pub const DOCK_MTF_TOLERANCE: f32 = 0.06;
 
 /// Shape of the measured rim tail: `exp(-ln2 * (d / width)^power)`. A plain
 /// exponential (power 1) puts the 10 % point at 3.3 pt; the measured profile
@@ -141,21 +142,27 @@ impl DockOptics {
         }
     }
 
-    /// The composite's checker response at `period_pt` logical points.
+    /// The measured mixture's checker response at `period_pt` logical points.
     ///
-    /// The model mirrors the renderer's 4-tap Kawase pass (centre 4/8, four
-    /// diagonal taps 1/8) followed by a bilinear upsample. The sharp scene is
-    /// level zero; levels 1..=5 are the successive halvings.
+    /// The reference model is
+    /// `M(f) = T·((1−k)·exp(−2π²σ²f²) + k)`, where `f` is the checker
+    /// fundamental (`1 / (2 · square period)`), `σ` is the equivalent Gaussian,
+    /// `k` is the sharp fraction, and `T` is the low-frequency transmission.
+    /// The renderer implements the same mixture as one Gaussian pass plus a
+    /// sharp-scene composite.
     pub fn checker_mtf(&self, period_pt: f32) -> f32 {
-        let period = period_pt.max(0.01);
-        let mut total = 0.0;
-        for (level, weight) in DOCK_SCALE_WEIGHTS.iter().enumerate() {
-            if *weight == 0.0 {
-                continue;
-            }
-            total += weight * level_mtf(period, level as u32);
-        }
-        total
+        let square = period_pt.max(0.01);
+        let frequency = 1.0 / (2.0 * square);
+        let blurred = (-2.0
+            * std::f32::consts::PI
+            * std::f32::consts::PI
+            * self.blur
+            * self.blur
+            * frequency
+            * frequency)
+            .exp();
+        let sharp = self.sharp_fraction.clamp(0.0, 1.0);
+        DOCK_LOW_FREQUENCY_TRANSMISSION * (sharp + (1.0 - sharp) * blurred)
     }
 
     /// The fitted checker response at every reference period.
@@ -286,24 +293,6 @@ fn smoothstep(edge0: f32, edge1: f32, value: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// The amplitude response of Kawase level `level` at `period` output points.///
-/// Level zero is the sharp scene. Each later level is one 4-tap pass and a
-/// halving; the final bilinear upsample contributes a `sinc^2` shoulder.
-fn level_mtf(period: f32, level: u32) -> f32 {
-    if level == 0 {
-        return 1.0;
-    }
-    let frequency = 1.0 / period.max(0.01);
-    let mut response = 1.0f32;
-    for pass in 0..level {
-        let source_frequency = frequency * (1u32 << pass) as f32;
-        response *= 0.5 + 0.5 * (std::f32::consts::TAU * source_frequency).cos();
-    }
-    let x = std::f32::consts::PI * frequency * (1u32 << level) as f32;
-    let sinc = if x.abs() > 1e-9 { x.sin() / x } else { 1.0 };
-    response * sinc * sinc
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,11 +393,16 @@ mod tests {
     }
 
     #[test]
-    fn the_scale_weights_are_a_convex_composite() {
-        let sum: f32 = DOCK_SCALE_WEIGHTS.iter().sum();
-        assert!((sum - 1.0).abs() < 1e-6);
-        assert!(DOCK_SCALE_WEIGHTS.iter().all(|weight| *weight >= 0.0));
-        assert!((DOCK_SCALE_WEIGHTS[0] - DockOptics::light().sharp_fraction).abs() < 1e-6);
-        assert_eq!(DOCK_BLUR_ITERATIONS, 5);
+    fn the_dock_blur_is_the_measured_sharp_gaussian_mixture() {
+        let light = DockOptics::light();
+        assert!((light.sharp_fraction - DOCK_SHARP_FRACTION).abs() < 1e-6);
+        assert!((light.blur - DOCK_BLUR_SIGMA_PT).abs() < 1e-6);
+        // At very high frequency the Gaussian vanishes and the response is the
+        // sharp floor times the low-frequency transmission.
+        let floor = DOCK_LOW_FREQUENCY_TRANSMISSION * DOCK_SHARP_FRACTION;
+        assert!((light.checker_mtf(0.01) - floor).abs() < 1e-3);
+        // At very low frequency the Gaussian is unity and the response is the
+        // measured transmission.
+        assert!((light.checker_mtf(1024.0) - DOCK_LOW_FREQUENCY_TRANSMISSION).abs() < 1e-3);
     }
 }

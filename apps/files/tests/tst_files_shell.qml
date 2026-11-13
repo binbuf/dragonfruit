@@ -1297,6 +1297,40 @@ Item {
             verify(surface.iconView.tileSelectionColor !== Theme.color.accentMuted);
         }
 
+        function test_desktop_luminance_sampler_maps_the_wallpaper_fit() {
+            var savedSource = Settings.values["wallpaper.source"];
+            var savedFit = Settings.values["wallpaper.fit"];
+            var fixture = Qt.resolvedUrl("../../../tests/glass/fixtures/saturated.png")
+                    .toString().replace("file://", "");
+            Settings.set("wallpaper.source", fixture);
+            Settings.set("wallpaper.fit", "stretch");
+            Settings.setDesktopSize(1920, 1080);
+
+            var left = Settings.wallpaperLuminanceAt(0.3, 0.5);
+            var right = Settings.wallpaperLuminanceAt(0.7, 0.5);
+            verify(left >= 0 && left <= 1);
+            verify(right >= 0 && right <= 1);
+            verify(Math.abs(left - right) > 0.2,
+                   "the sampler follows the wallpaper under the point, not one average");
+
+            Settings.set("wallpaper.source", savedSource || "");
+            Settings.set("wallpaper.fit", savedFit || "fill");
+        }
+
+        function test_desktop_labels_use_the_per_tile_sampler() {
+            var surface = makeDesktop();
+            var tile = surface.iconView.gridView.itemAtIndex(0);
+            verify(tile !== null);
+
+            surface.iconView.luminanceAt = function(nx, ny) { return 0.95; };
+            waitForRendering(surface);
+            compare(tile.labelColor, Theme.controls.menuBar.foregroundOnLight);
+
+            surface.iconView.luminanceAt = function(nx, ny) { return 0.1; };
+            waitForRendering(surface);
+            compare(tile.labelColor, Theme.controls.menuBar.foregroundOnDark);
+        }
+
         function test_desktop_icons_start_below_the_menu_bar_veil() {
             var surface = makeDesktop();
             // The bar's veil is visual-only past the 28 pt strip, but it still

@@ -65,6 +65,14 @@ FocusScope {
     // sampled luminance/polarity pair as the menu bar instead of the scheme's
     // app text colour.
     property real backgroundLuma: Settings.wallpaperLuminance
+    // The luma sampler maps through the output geometry (fit/crop), so the
+    // desktop process reports its size whenever the surface resizes.
+    function syncDesktopSize() {
+        Settings.setDesktopSize(root.width, root.height);
+    }
+    Component.onCompleted: syncDesktopSize()
+    onWidthChanged: syncDesktopSize()
+    onHeightChanged: syncDesktopSize()
 
     // The menu bar's compositor veil is visual-only below its 28 pt strip, but
     // it still paints over the desktop band. Desktop icons must start below
@@ -320,6 +328,15 @@ FocusScope {
         desktopStyle: true
         hoverHighlight: false
         backgroundLuma: root.backgroundLuma
+        // The desktop process knows the output geometry, so the label
+        // polarity can follow the wallpaper under each tile instead of one
+        // whole-image average. The sampler maps the view's normalized point
+        // through the view's offset into the output.
+        luminanceAt: function(nx, ny) {
+            return Settings.wallpaperLuminanceAt(
+                (iconView.x + nx * iconView.width) / Math.max(1, root.width),
+                (iconView.y + ny * iconView.height) / Math.max(1, root.height));
+        }
         onSelected: (nodeId, modifiers) => root.selectNode(nodeId, modifiers)
         onActivated: (uri, isDir) => root.openRequested(uri, isDir)
         onContextRequested: (nodeId, uri, isDir, x, y) => {

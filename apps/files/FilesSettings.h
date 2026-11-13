@@ -12,6 +12,7 @@
 #include <QObject>
 #include <QVariant>
 #include <QVariantMap>
+#include <QVector>
 #include <QtQml/qqmlregistration.h>
 
 class SettingsClient;
@@ -51,6 +52,16 @@ public:
     QString glassRollout() const;
     bool appChromeSupported() const;
     qreal wallpaperLuminance() const;
+    // The wallpaper's local sRGB luma (0..1) at an output-normalized point
+    // (0,0 top-left; 1,1 bottom-right). The desktop labels sample this under
+    // each tile so one bright region does not flip every label on the
+    // wallpaper. Falls back to `wallpaperLuminance` when the source cannot be
+    // decoded or the desktop size is unknown.
+    Q_INVOKABLE qreal wallpaperLuminanceAt(qreal x, qreal y) const;
+    // The desktop process reports its output size so `fit`/`center` map the
+    // wallpaper exactly. The luma grid itself is keyed by the source only, so
+    // a resize does not re-decode the image.
+    Q_INVOKABLE void setDesktopSize(qreal width, qreal height);
 
     // The shared client's write path, exposed only so the headless QML tests
     // can drive an external settings change and prove the app-local bindings
@@ -64,7 +75,12 @@ signals:
 
 private:
     QString effectiveWallpaperSource() const;
+    // Build the 64x64 luma grid for the current source, if it is not cached.
+    void ensureLumaGrid() const;
     SettingsClient *m_client = nullptr;
-    mutable QString m_wallpaperLumaKey;
-    mutable qreal m_wallpaperLuma = 0.5;
+    mutable QString m_lumaGridKey;
+    mutable QVector<qreal> m_lumaGrid;
+    mutable qreal m_lumaImageAspect = 1.0;
+    qreal m_desktopWidth = 0;
+    qreal m_desktopHeight = 0;
 };

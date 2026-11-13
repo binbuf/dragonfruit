@@ -376,6 +376,19 @@ pub mod component {
         pub const FOREGROUND_FLIP_THRESHOLD_LIGHT: f32 = 0.78_f32;
         pub const FOREGROUND_FLIP_THRESHOLD_DARK: f32 = 0.78_f32;
     }
+    pub mod wallpaper_text {
+        pub const SHADOW_COLOR_ON_DARK: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
+        pub const SHADOW_COLOR_ON_LIGHT: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+        pub const SHADOW_OFFSET_Y: f32 = 1.0_f32;
+        pub const SHADOW_LAYERS: f32 = 3.0_f32;
+        pub const SHADOW_OPACITY_ON_DARK: f32 = 0.62_f32;
+        pub const SHADOW_OPACITY_ON_LIGHT: f32 = 0.7_f32;
+        pub const OUTLINE_OPACITY: f32 = 0.38_f32;
+        pub const INCREASE_CONTRAST_SHADOW_OPACITY: f32 = 0.85_f32;
+        pub const INCREASE_CONTRAST_OUTLINE_OPACITY: f32 = 0.6_f32;
+        pub const FLIP_THRESHOLD: f32 = 0.8_f32;
+        pub const FLIP_HYSTERESIS: f32 = 0.02_f32;
+    }
     pub mod dock {
         pub const TOOLTIP_DWELL: f32 = 0.0_f32;
         pub const ICON_SIZE: f32 = 48.0_f32;
@@ -834,7 +847,7 @@ pub mod glass {
                 pub const EDGE: f32 = 0.397_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
                 pub const EDGE_TAIL: f32 = 6.0_f32;
-                pub const SHARP_FRACTION: f32 = 0.12_f32;
+                pub const SHARP_FRACTION: f32 = 0.192_f32;
                 pub const CORNER_LENS_PEAK: f32 = 13.6_f32;
                 pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;
                 pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
@@ -855,7 +868,7 @@ pub mod glass {
                 pub const EDGE: f32 = 0.397_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
                 pub const EDGE_TAIL: f32 = 6.0_f32;
-                pub const SHARP_FRACTION: f32 = 0.12_f32;
+                pub const SHARP_FRACTION: f32 = 0.192_f32;
                 pub const CORNER_LENS_PEAK: f32 = 13.6_f32;
                 pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;
                 pub const CORNER_LENS_TAIL: f32 = 50.0_f32;

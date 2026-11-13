@@ -29,6 +29,12 @@ FocusScope {
     // the menu bar uses. Desktop labels are near-white until this crosses the
     // menu bar's flip threshold, where they become black.
     property real backgroundLuma: 0.5
+    // Optional per-tile sampler: `(x, y) -> luma`, with output-normalized
+    // coordinates. The desktop passes `Settings.wallpaperLuminanceAt` so a
+    // bright region of a wallpaper does not force one polarity on every icon.
+    // Null keeps the whole-view `backgroundLuma` fallback (Files windows and
+    // headless tests).
+    property var luminanceAt: null
     property bool hoverHighlight: true
     // Free placement: the grid remains the base layout, but a tile can be
     // dragged away from its cell. The offset is remembered per URI for the
@@ -57,13 +63,20 @@ FocusScope {
     // on ordinary scenes, black only on very bright wallpaper, with a slight
     // opposite-tone drop shadow so the glyphs stay legible on busy images.
     readonly property bool desktopLabelDark:
-        root.backgroundLuma >= Theme.controls.menuBar.foregroundFlipThresholdLight
+        root.backgroundLuma >= Theme.controls.wallpaperText.flipThreshold
     readonly property color desktopLabelColor:
         root.desktopLabelDark ? Theme.controls.menuBar.foregroundOnLight
                               : Theme.controls.menuBar.foregroundOnDark
     readonly property color desktopLabelShadowColor:
-        root.desktopLabelDark ? Qt.rgba(1, 1, 1, 0.70)
-                              : Qt.rgba(0, 0, 0, 0.70)
+        root.desktopLabelDark
+        ? Qt.rgba(Theme.controls.wallpaperText.shadowColorOnLight.r,
+                  Theme.controls.wallpaperText.shadowColorOnLight.g,
+                  Theme.controls.wallpaperText.shadowColorOnLight.b,
+                  Theme.controls.wallpaperText.shadowOpacityOnLight)
+        : Qt.rgba(Theme.controls.wallpaperText.shadowColorOnDark.r,
+                  Theme.controls.wallpaperText.shadowColorOnDark.g,
+                  Theme.controls.wallpaperText.shadowColorOnDark.b,
+                  Theme.controls.wallpaperText.shadowOpacityOnDark)
     readonly property color tileSelectionColor:
         Qt.rgba(Theme.color.selection.r, Theme.color.selection.g,
                 Theme.color.selection.b, 0.32)
@@ -273,6 +286,39 @@ FocusScope {
 
             readonly property bool isSelected: root.isSelected(tile.nodeId)
             readonly property bool isRenaming: root.renamingId === tile.nodeId
+            // The wallpaper under this tile's label row. The sampler is
+            // optional; without it the whole-view fallback keeps Files
+            // windows and headless tests deterministic.
+            readonly property real labelLuma: {
+                var fallback = root.backgroundLuma;
+                // Reactive dependencies for the map below: the grid scrolls,
+                // the tile reflows, and free placement/drag translates it.
+                var layout = tile.x + tile.y + grid.contentX + grid.contentY
+                             + tile.dragOffsetX + tile.dragOffsetY;
+                var free = tile.freeOffset
+                        ? tile.freeOffset.x + tile.freeOffset.y : 0;
+                if (!root.desktopStyle || !root.luminanceAt)
+                    return fallback;
+                var point = tile.mapToItem(root, tile.width / 2,
+                                           root.tileIconSize
+                                           + Theme.primitive.spacing.lg
+                                           + Theme.primitive.spacing.sm + 8);
+                var nx = root.width > 0 ? point.x / root.width : 0.5;
+                var ny = root.height > 0 ? point.y / root.height : 0.5;
+                return root.luminanceAt(Math.max(0, Math.min(1, nx)),
+                                        Math.max(0, Math.min(1, ny)));
+            }
+            readonly property bool labelDark:
+                tile.labelLuma >= Theme.controls.wallpaperText.flipThreshold
+            readonly property color labelColor:
+                tile.labelDark ? Theme.controls.menuBar.foregroundOnLight
+                               : Theme.controls.menuBar.foregroundOnDark
+            readonly property color labelShadowColor:
+                tile.labelDark ? Theme.controls.wallpaperText.shadowColorOnLight
+                               : Theme.controls.wallpaperText.shadowColorOnDark
+            readonly property real labelShadowOpacity:
+                tile.labelDark ? Theme.controls.wallpaperText.shadowOpacityOnLight
+                               : Theme.controls.wallpaperText.shadowOpacityOnDark
             readonly property var freeOffset: root.freeOffsetFor(tile.uri)
             property real dragOffsetX: 0
             property real dragOffsetY: 0
@@ -345,26 +391,11 @@ FocusScope {
                 color: Theme.color.selection
             }
 
-            // Desktop labels get a slight opposite-tone drop shadow so they
-            // stay legible on photographic wallpaper without a plate.
-            Text {
-                id: labelShadow
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.top: parent.top
-                anchors.topMargin: root.tileIconSize + Theme.primitive.spacing.lg
-                                              + Theme.primitive.spacing.sm + 1
-                width: parent.width - Theme.primitive.spacing.md
-                visible: root.desktopStyle && !tile.isSelected && !tile.isRenaming
-                text: tile.name
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-                color: root.desktopLabelShadowColor
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-
-            Text {
+            // Desktop labels sit directly on the wallpaper. `WallpaperLabel`
+            // adds the soft opposite-tone shadow and the one-pixel edge that
+            // keep a 12 pt name readable on a photographic scene; the shadow
+            // is off when the label sits on the selection pill.
+            WallpaperLabel {
                 id: labelText
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
@@ -377,11 +408,16 @@ FocusScope {
                 wrapMode: Text.Wrap
                 maximumLineCount: 2
                 elide: Text.ElideRight
+                shadowEnabled: root.desktopStyle && !tile.isSelected
+                shadowColor: tile.labelShadowColor
+                shadowOpacity: tile.labelShadowOpacity
                 color: tile.isSelected
                        ? Theme.color.textPrimary
-                       : (root.desktopStyle ? root.desktopLabelColor
+                       : (root.desktopStyle ? tile.labelColor
                                             : Theme.color.textPrimary)
                 font.pixelSize: Theme.primitive.font.sizeSm
+                font.weight: root.desktopStyle ? Theme.primitive.font.weightMedium
+                                               : Theme.primitive.font.weightRegular
             }
 
             // Inline rename (T-10.4c). Return commits, Escape cancels.

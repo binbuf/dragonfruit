@@ -38,6 +38,11 @@ Item {
 
     property string name: "wifi"
     property color color: Theme.color.textPrimary
+    // Optional wallpaper contrast shadow, forwarded to the active TablerIcon.
+    // The menu bar supplies the opposite-tone pair; other callers leave it
+    // transparent.
+    property color shadowColor: "transparent"
+    property point shadowOffset: Qt.point(0, Theme.controls.wallpaperText.shadowOffsetY)
     // Retained for API compatibility with the original geometry (the Focus
     // crescent used it for its bite). Tabler's moon is a self-contained path,
     // so the mark is drawn without a background cut-out.
@@ -118,6 +123,8 @@ Item {
         visible: root.glyphName === "wifi"
         name: "wifi"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -128,6 +135,8 @@ Item {
         visible: root.glyphName === "wifi-off"
         name: "wifi-off"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -138,6 +147,8 @@ Item {
         visible: root.glyphName === "bluetooth"
         name: "bluetooth"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -148,6 +159,8 @@ Item {
         visible: root.glyphName === "volume"
         name: "volume"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -158,6 +171,8 @@ Item {
         visible: root.glyphName === "volume-off"
         name: "volume-off"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -168,6 +183,8 @@ Item {
         visible: root.glyphName === "moon"
         name: "moon"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -178,6 +195,8 @@ Item {
         visible: root.glyphName === "accessible"
         name: "accessible"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -188,6 +207,8 @@ Item {
         visible: root.glyphName === "search"
         name: "search"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -198,6 +219,8 @@ Item {
         visible: root.glyphName === "app-window"
         name: "app-window"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -208,6 +231,8 @@ Item {
         visible: root.glyphName === "bell"
         name: "bell"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -218,6 +243,8 @@ Item {
         visible: root.glyphName === "chevron-down"
         name: "chevron-down"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -228,6 +255,8 @@ Item {
         visible: root.glyphName === "adjustments-horizontal"
         name: "adjustments-horizontal"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -238,6 +267,8 @@ Item {
         visible: root.glyphName === "layout-dashboard"
         name: "layout-dashboard"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -252,6 +283,8 @@ Item {
         visible: root.glyphName === "battery"
         name: "battery"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
@@ -275,6 +308,8 @@ Item {
         visible: root.glyphName === "battery-charging"
         name: "battery-charging"
         color: root.color
+        shadowColor: root.shadowColor
+        shadowOffset: root.shadowOffset
         size: root.size
         strokeWidth: 2.25
         opacity: root.markOpacity
