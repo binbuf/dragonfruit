@@ -690,7 +690,7 @@ when the overlay, pointer, and keyboard focus have all left, so a sweep between
 tiles or a submenu reuses one allocation instead of recreating the render
 target. `popoverHeadroom`/`popoverGutter` remain the QML placement/clamp
 budget, not the scene size; the `DRAGONFRUIT_DOCK_STABLE_POPOVER` diagnostic
-still reserves the full budget for the T238 A/B. `dock.size`/overflow changes
+still reserves the full budget for the `t238-*` A/B diagnostic. `dock.size`/overflow changes
 and the drag-gap close ease with the non-overshooting `motion.dockMagnify`
 token (reduced motion is duration 0); the first configure snaps and
 magnification stays progress-based. The T-14.7c trace lives at
@@ -821,7 +821,8 @@ success state with a check and the removed count, and a failure state with the
 message and a **Try Again** button that reruns the operation without re-opening
 the menu.
 
-The operation belongs to the controller, not to its card (reliability §7). The
+The operation belongs to the controller, not to its card
+([reliability §7](proposals/dock-interaction-and-reliability.md)). The
 card may close when another popup opens; the Trash tile keeps a small busy ring
 and its name/tooltip say "emptying" while the work continues. The Trash menu
 offers **Show Progress** to reopen the card, disables a second **Empty Trash**
@@ -947,10 +948,14 @@ translucent category capsule chips (default `All`), and the measured
 115×92 pt tile grid (77 pt icon, 18 pt label, 115 pt column pitch, 102 pt row
 pitch). The column count is capped at seven (the reference width) and the
 viewport at five rows; it drops to fewer columns on a narrower output and
-scrolls when the corpus is longer. The centered card is a translucent frosted
-plate (0.58 alpha in light and 0.68 in dark on the sampled path, a 0.90 milky
-plate on fallback) with a 28 pt radius, a soft floating shadow, a 1 px top
-specular line and a subtle light falloff, using 20px
+scrolls when the corpus is longer. The column count is independent of the
+filtered result count: a search that narrows the grid must not reflow the card
+horizontally on every keystroke. The centered card is the compositor's sampled
+`appsDrawer` glass (near-opaque 0.97 alpha, a 14 pt light / 16 pt dark frost,
+rim and restrained corner lens) with a 28 pt radius and a soft floating
+shadow; the QML fill is transparent on that path, so the compositor owns the
+material once. Reduce Transparency, no sampled blur and Minimal keep the 0.97
+milky fallback plate. The card uses 20px
 (`component.appsDrawer.panelPadding`) side padding and 16px
 (`panelPaddingVertical`) top/bottom padding, clamped to the output. The
 search field is 58 pt high with 16 pt text, a 16 pt corner radius and an inner
@@ -960,7 +965,10 @@ horizontal padding, and the selected capsule is the light surface plate
 ink pill. The Back/More controls are bare glyphs with a hover/focus capsule.
 Vertical wheel input scrolls the grid from anywhere over the card, including
 the search
-and chip rows; horizontal wheel input scrolls the chips. The list is
+and chip rows; horizontal wheel input scrolls the chips. The offscreen
+render-control window does not deliver wheel events to QML pointer handlers, so
+the shell's axis router calls the drawer's one `scrollByWheelAt` method
+directly; the QML `WheelHandler` remains the QML/test path. The list is
 built by the pure `buildAppsDrawerList` helper (`shell/src/appsdrawer.{h,cpp}`),
 which drops `noDisplay`/non-launchable records, dedupes by desktop id, maps the
 freedesktop `Categories` list to the pill set, sorts by localized name with an
@@ -968,8 +976,10 @@ id tiebreak, and filters by category and query; the overlay narrows the pushed
 list with the same predicates for its live search. Activation launches through
 the Dock's launch path (`buildLaunchCommand` + `appLaunchEnvironment` +
 `set_launch_origin`) and a failed launch raises the shell's existing notice.
-Escape and a click outside dismiss; the reveal fades/scales (instant under
-reduced motion). app-index absence renders `Application index unavailable`, and
+Escape and a click outside dismiss; the content fades (instant under reduced
+motion). The input region is committed with the open, so the first open and a
+reopen receive wheel and click input without a prior pointer motion. See
+[ADR 0259](adr/0259-apps-drawer-scroll-material-and-pacing.md). app-index absence renders `Application index unavailable`, and
 the open drawer refreshes on the service's coalesced `Changed` signal. The
 drawer is centered over the output and dismisses on Escape or any click outside
 its panel (the full-output scrim covers the desktop, the Dock, and the menu

@@ -153,7 +153,7 @@ QtObject {
                 readonly property string slider: "none"
                 readonly property var light: QtObject {
                     readonly property string confidence: "measured"
-                    readonly property string provenance: "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur sigma 3.86pt first fit"
+                    readonly property string provenance: "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; short-end lens displacement 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left end), 50pt influence radius, ~0.5pt on the long flats; blur sigma 3.86pt first fit"
                     readonly property string colourSpace: "srgb"
                     readonly property real toneWeight: 1.0
                     readonly property var calibration: QtObject {
@@ -175,7 +175,7 @@ QtObject {
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "measured"
-                    readonly property string provenance: "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), corner-lens peak is the 45-degree SDF-normal displacement whose horizontal component is 9.6pt at 15pt inside; blur and rim reuse the light fit because the dark rim was not separately fitted"
+                    readonly property string provenance: "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), short-end lens displacement 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left end), 50pt influence radius, ~0.5pt on the long flats; blur and rim reuse the light fit because the dark rim was not separately fitted"
                     readonly property string colourSpace: "srgb"
                     readonly property real toneWeight: 1.0
                     readonly property var calibration: QtObject {
@@ -332,6 +332,53 @@ QtObject {
                     readonly property real blur: 10.0
                     readonly property real edge: 0.0
                     readonly property real edgeWidth: 0.0
+                    readonly property real foreground: 0.0
+                }
+            }
+            readonly property var appsDrawer: QtObject {
+                readonly property string role: "drawer"
+                readonly property string render: "sampled"
+                readonly property string slider: "lightRelative"
+                readonly property var light: QtObject {
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "The Apps material fit is OPEN in macos-design-review §4.5; this preset keeps the measured popover glass family's near-white tint, 10 pt frost and rim model, but raises the large 844x577 Spotlight Apps card to the near-opaque 0.97 reading required for a browsing surface. The 14 pt frost, measured rim and restrained corner lens remain. The reference describes a large light glass panel whose gradient/vibrancy was not inverted in that pass."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.97
+                        readonly property real neutralTint: 0.96
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.97
+                        readonly property real perceptualTint: 0.96
+                    }
+                    readonly property real blur: 14.0
+                    readonly property real edge: 0.22
+                    readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 8.0
+                    readonly property real sharpFraction: 0.12
+                    readonly property real cornerLensPeak: 6.0
+                    readonly property real cornerLensDistance: 20.0
+                    readonly property real cornerLensTail: 50.0
+                    readonly property real foreground: 0.0
+                }
+                readonly property var dark: QtObject {
+                    readonly property string confidence: "adapted"
+                    readonly property string provenance: "No dark Apps fit was measured; adapt the measured dark detached-menu tint (0.26) and the same large-card frost/rim/lens at the near-opaque 0.97 reading so 13 pt labels stay legible over a bright wallpaper."
+                    readonly property string colourSpace: "srgb"
+                    readonly property var calibration: QtObject {
+                        readonly property real neutralAlpha: 0.97
+                        readonly property real neutralTint: 0.26
+                        readonly property real perceptualWeight: 0.0
+                        readonly property real perceptualAlpha: 0.97
+                        readonly property real perceptualTint: 0.26
+                    }
+                    readonly property real blur: 16.0
+                    readonly property real edge: 0.2
+                    readonly property real edgeWidth: 1.0
+                    readonly property real edgeTail: 8.0
+                    readonly property real sharpFraction: 0.12
+                    readonly property real cornerLensPeak: 6.0
+                    readonly property real cornerLensDistance: 20.0
+                    readonly property real cornerLensTail: 50.0
                     readonly property real foreground: 0.0
                 }
             }
@@ -1596,7 +1643,7 @@ QtObject {
             readonly property real scrimOpacity: 0.26
             readonly property real panelOpacity: 0.58
             readonly property real panelOpacityDark: 0.68
-            readonly property real panelFallbackOpacity: 0.9
+            readonly property real panelFallbackOpacity: 0.97
             readonly property real fallbackGlyphRatio: 0.52
             readonly property real fallbackFillOpacity: 0.12
             readonly property real fallbackBorderOpacity: 0.4

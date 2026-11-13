@@ -2375,6 +2375,7 @@ fn material_report(state: &DfState) -> String {
         crate::material_preset::Preset::MenuAttached,
         crate::material_preset::Preset::MenuBarVeil,
         crate::material_preset::Preset::Dock,
+        crate::material_preset::Preset::AppsDrawer,
     ] {
         let resolved = state.resolve_glass_preset(preset);
         out.push_str(&format!(

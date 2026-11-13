@@ -244,6 +244,32 @@ Item {
             verify(narrow.columns >= 1);
         }
 
+        // Filtering narrows the visible set but must not reflow the card: the
+        // reference Spotlight Apps grid keeps its 7-column pitch and stable
+        // window while the user types. A result count smaller than a full row
+        // used to shrink the card horizontally on every keystroke.
+        function test_filtering_keeps_the_measured_grid_width() {
+            var many = [];
+            for (var i = 0; i < 20; ++i)
+                many.push({ desktopId: "w" + i + ".desktop", name: "App " + i,
+                            iconPath: "", categories: [] });
+            var drawer = make({ apps: many, width: 1920 });
+            var panel = findChild(drawer, "appsDrawerPanel");
+            var wideColumns = drawer.columns;
+            var widePanel = panel.width;
+            var wideGrid = drawer.gridWidth;
+
+            drawer.setQueryText("App 19");
+            waitForRendering(stage);
+            verify(drawer.visibleApps.length < wideColumns);
+            compare(drawer.columns, wideColumns,
+                    "filtered grid changed its column count");
+            compare(drawer.gridWidth, wideGrid,
+                    "filtered grid changed its width");
+            compare(panel.width, widePanel,
+                    "filtered card changed its width");
+        }
+
         // The Flow really lays out seven tiles per row at the cap, not just
         // reports seven.
         function test_grid_wraps_at_seven_tiles_per_row() {
@@ -617,17 +643,25 @@ Item {
                     verify(panel !== null);
                     compareColor(panel.color, Material.drawerFill(state.blur, state.tier, state.fallback),
                                  state.label);
-                    verify(panel.color.a >= 0.85 || state.blur,
-                           state.label + " fallback must read as a plate");
-                    if (state.blur && state.tier === 0) {
-                        // The card is a light glass plate in light mode and a
-                        // slightly stronger tint in dark mode, from the two
-                        // per-scheme opacity tokens.
-                        var expected = scheme === 1
-                            ? Theme.controls.appsDrawer.panelOpacityDark
-                            : Theme.controls.appsDrawer.panelOpacity;
-                        fuzzyCompare(panel.color.a, expected, 0.02,
-                                     state.label + " card opacity");
+                    // On the sampled path the compositor owns the glass, so
+                    // the QML card fill is transparent; the fallback paths
+                    // keep a readable plate.
+                    compare(drawer.compositorGlass, state.blur,
+                            state.label + " compositor glass");
+                    var shadow = findChild(drawer, "appsDrawerShadow");
+                    verify(shadow !== null);
+                    compare(shadow.cutout, state.blur,
+                            state.label + " shadow cutout follows the glass path");
+                    if (state.blur) {
+                        compare(panel.color.a, 0,
+                                state.label + " sampled fill must be transparent");
+                        compare(panel.border.width, 0,
+                                state.label + " compositor draws the rim");
+                    } else {
+                        verify(panel.color.a >= 0.85,
+                               state.label + " fallback must read as a plate");
+                        verify(panel.border.width > 0,
+                               state.label + " fallback keeps its hairline");
                     }
                 }
             }

@@ -6822,6 +6822,19 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
         || surface == ShellProtocol::PointerSurface::DockPopup) {
         logical += QPointF(m_dockItemOffsetX, m_dockItemOffsetY);
     }
+    // The drawer's offscreen render-control window delivers pointer presses
+    // but not wheel events to the QML pointer handlers. Drive the one scroll
+    // method directly; the QML handler stays the QML/test path.
+    if (surface == ShellProtocol::PointerSurface::AppsDrawer) {
+        if (m_appsDrawerItem) {
+            QMetaObject::invokeMethod(m_appsDrawerItem, "scrollByWheelAt",
+                                      Q_ARG(QVariant, logical.x()),
+                                      Q_ARG(QVariant, logical.y()),
+                                      Q_ARG(QVariant, pixelY),
+                                      Q_ARG(QVariant, angleY));
+        }
+        return;
+    }
     // T-21.1d: the GPU producer keeps its QQuickWindow in logical units while
     // its FBO is physical; the software producer's window is the physical
     // buffer. Only scale the injected coordinate for the latter.
@@ -6836,9 +6849,6 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
     QCoreApplication::sendEvent(window, &event);
 
     switch (surface) {
-    case ShellProtocol::PointerSurface::AppsDrawer:
-        scheduleAppsDrawerRender();
-        break;
     case ShellProtocol::PointerSurface::Chooser:
         scheduleChooserRender();
         break;
@@ -9451,12 +9461,11 @@ void ShellController::showAppsDrawer()
     m_appsDrawerOpen = true;
     m_appsDrawerPending = true;
     refreshAppsDrawer(true);
-    m_appsDrawerItem->setProperty("active", true);
-    if (m_appsDrawerWidth > 0 && m_appsDrawerHeight > 0)
-        renderAppsDrawer();
-    // Put the caret in the search field before the compositor hands us the
-    // keyboard, not just on the root item: the drawer is a typing surface.
-    QMetaObject::invokeMethod(m_appsDrawerItem, "focusSearch");
+    // Wayland input regions are double-buffered: the region becomes current
+    // with the next surface commit. Set it before the first commit of this
+    // open, otherwise the first frame is committed with the previous (empty
+    // on a reopen) region and wheel/click events keep falling through to the
+    // window below until some later frame happens to commit.
     if (m_protocol) {
         m_protocol->setAppsDrawerInputRegion(m_appsDrawerWidth, m_appsDrawerHeight);
         // The drawer is a full-output modal surface opened by a Dock click;
@@ -9464,6 +9473,11 @@ void ShellController::showAppsDrawer()
         // immediately, not after a second click on the field.
         m_protocol->setAppsDrawerKeyboardGrab(true);
     }
+    // Put the caret in the search field before the compositor hands us the
+    // keyboard, not just on the root item: the drawer is a typing surface.
+    QMetaObject::invokeMethod(m_appsDrawerItem, "focusSearch");
+    if (m_appsDrawerWidth > 0 && m_appsDrawerHeight > 0)
+        renderAppsDrawer();
     // Capture seam: report the Files tile's scene rect so the live check can
     // click a known app instead of guessing; never set in a normal session.
     if (m_appsDrawerFixture) {
@@ -9564,10 +9578,17 @@ void ShellController::refreshAppsDrawer(bool reloadCorpus)
             {QStringLiteral("categories"), row.categories},
         });
     }
-    m_appsDrawerItem->setProperty("apps", list);
-    m_appsDrawerItem->setProperty("available", m_appsDrawerFixture
-                                                    || m_appIndexClient.available());
-    m_appsDrawerItem->setProperty("active", m_appsDrawerOpen);
+    // A new QVariantList resets the QML Repeater even when every row is
+    // identical. Opening the drawer reloads the corpus, so an unconditional
+    // set used to rebuild every tile (and re-request every icon) on each
+    // open. Only publish a genuinely different projection.
+    if (m_appsDrawerItem->property("apps").toList() != list)
+        m_appsDrawerItem->setProperty("apps", list);
+    const bool available = m_appsDrawerFixture || m_appIndexClient.available();
+    if (m_appsDrawerItem->property("available").toBool() != available)
+        m_appsDrawerItem->setProperty("available", available);
+    if (m_appsDrawerItem->property("active").toBool() != m_appsDrawerOpen)
+        m_appsDrawerItem->setProperty("active", m_appsDrawerOpen);
 }
 
 void ShellController::startAppsDrawerFixture()
@@ -9602,8 +9623,13 @@ void ShellController::onAppsDrawerConfigured(int width, int height, quint32)
     m_appsDrawerWidth = width;
     m_appsDrawerHeight = height;
     fprintf(stderr, "dragonfruit-shell: apps-drawer configured %dx%d\n", width, height);
-    if (m_appsDrawerOpen)
+    if (m_appsDrawerOpen) {
+        // If the drawer opened before the first configure, the earlier input
+        // region was empty. Re-apply it before the commit that maps the card.
+        if (m_protocol)
+            m_protocol->setAppsDrawerInputRegion(width, height);
         renderAppsDrawer();
+    }
 }
 
 void ShellController::onAppsDrawerPointerMoved(qreal x, qreal y)
@@ -9612,7 +9638,10 @@ void ShellController::onAppsDrawerPointerMoved(qreal x, qreal y)
         return;
     sendChromePointer(m_appsDrawerWindow, QEvent::MouseMove, QPointF(x, y), Qt::NoButton,
                         m_appsDrawerButtons);
-    scheduleAppsDrawerRender();
+    // The QML scene owns the response: hover/focus changes raise
+    // `sceneChanged`, which the chrome pacer coalesces. Rendering every raw
+    // pointer sample would redraw the full-output drawer scene even when the
+    // pointer is over empty card space and nothing changed.
 }
 
 void ShellController::onAppsDrawerPointerButton(qreal x, qreal y, quint32 button, bool pressed)
@@ -9631,7 +9660,6 @@ void ShellController::onAppsDrawerPointerButton(qreal x, qreal y, quint32 button
     sendChromePointer(m_appsDrawerWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
                         QPointF(x, y), qtButton, m_appsDrawerButtons);
-    scheduleAppsDrawerRender();
 }
 
 void ShellController::onAppsDrawerPointerLeft()
@@ -9640,7 +9668,6 @@ void ShellController::onAppsDrawerPointerLeft()
         return;
     sendChromePointer(m_appsDrawerWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                         m_appsDrawerButtons);
-    scheduleAppsDrawerRender();
 }
 
 void ShellController::onAppsDrawerKeyboardFocused(bool focused)
@@ -9666,7 +9693,6 @@ void ShellController::onAppsDrawerKeyEvent(quint32 key, bool pressed)
     // navigation/dismissal.
     sendChromeKeyEvent(m_appsDrawerWindow, key, pressed,
                        m_protocol ? m_protocol->keyboardModifiers() : 0);
-    scheduleAppsDrawerRender();
 }
 
 void ShellController::onAppsDrawerActivated(const QString &desktopId, qreal x, qreal y, qreal w,

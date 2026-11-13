@@ -105,6 +105,23 @@ fn missing_service_falls_back_to_login() {
 }
 
 #[test]
+fn missing_service_falls_back_even_when_other_denies() {
+    let services = service_dir("fallback-other");
+    // Linux-PAM routes an unknown service to `other`; a stock host installs
+    // that as `pam_deny`. The helper must not mistake that deny for a wrong
+    // password and skip the `login` fallback.
+    std::fs::write(services.path().join("other"), DENY).expect("write other");
+    std::fs::write(services.path().join("login"), PERMIT).expect("write login");
+    let authenticator = PamAuthenticator::new()
+        .with_service("dragonfruit")
+        .with_confdir(services.path());
+    assert_eq!(
+        authenticator.authenticate("alice", "correct horse"),
+        AuthResult::Success
+    );
+}
+
+#[test]
 fn unknown_service_without_a_fallback_reports_error() {
     let services = service_dir("missing");
     let run = run_helper(Some("alice"), "no-such-service", services.path(), "x");

@@ -56,7 +56,7 @@ fn slider_does_not_move_unmeasured_roles() {
                 ..replacement(preset, scheme)
             });
             let direct = preset == Preset::MenuAttached && scheme == Scheme::Light;
-            let relative = matches!(preset, Preset::MenuDetached | Preset::StatusMenu)
+            let relative = matches!(preset, Preset::MenuDetached | Preset::AppsDrawer | Preset::StatusMenu)
                 && scheme == Scheme::Light;
             assert_eq!(
                 low.slider_applied,

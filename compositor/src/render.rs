@@ -408,7 +408,7 @@ pub fn default_preset(namespace: &str, layer: u32) -> Preset {
         "notification" => Preset::NotificationBanner,
         "notification-center" => Preset::NotificationStack,
         "osd" => Preset::Tooltip,
-        "apps-drawer" => Preset::MenuDetached,
+        "apps-drawer" => Preset::AppsDrawer,
         _ if layer >= 3 => Preset::MenuDetached,
         _ => Preset::WindowChrome,
     }
@@ -504,6 +504,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                     Preset::Dock
                         | Preset::MenuAttached
                         | Preset::MenuDetached
+                        | Preset::AppsDrawer
                         | Preset::StatusMenu
                         | Preset::ControlCenterOuter
                         | Preset::ControlCenterModule

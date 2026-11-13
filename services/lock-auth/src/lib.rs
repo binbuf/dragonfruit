@@ -168,6 +168,16 @@ fn run(
     password: &str,
     confdir: Option<&Path>,
 ) -> AuthResult {
+    // A service with no configuration file makes Linux-PAM fall back to
+    // `other`, which is normally `pam_deny`. That looks exactly like a
+    // rejected password, so reporting it as `Denied` would stop
+    // `authenticate` from retrying the `login` fallback: a correct password
+    // would never unlock. Treat a missing service as `Error` (the fail-secure
+    // direction) so the fallback is reached.
+    if !service_configured(service, confdir) {
+        return AuthResult::Error;
+    }
+
     let (Ok(service), Ok(user), Ok(password), Ok(confdir)) = (
         CString::new(service),
         CString::new(user),
@@ -211,6 +221,26 @@ fn run(
     unsafe { (api.end)(handle, auth) };
 
     classify(account)
+}
+
+/// Whether PAM has a configuration file for `service` in the directory it
+/// will search. `confdir` mirrors `pam_start_confdir`: when set it is the only
+/// directory searched; otherwise PAM uses its host configuration directories.
+fn service_configured(service: &str, confdir: Option<&Path>) -> bool {
+    // PAM service names are single path components. Reject anything else so a
+    // crafted `--service` cannot probe outside the configuration directory.
+    if service.is_empty() || service.contains('/') {
+        return false;
+    }
+    let dirs: Vec<PathBuf> = match confdir {
+        Some(dir) => vec![dir.to_path_buf()],
+        None => vec![
+            PathBuf::from("/etc/pam.d"),
+            PathBuf::from("/usr/lib/pam.d"),
+            PathBuf::from("/lib/pam.d"),
+        ],
+    };
+    dirs.iter().any(|dir| dir.join(service).is_file())
 }
 
 fn confdir_cstring(confdir: Option<&Path>) -> std::io::Result<Option<CString>> {

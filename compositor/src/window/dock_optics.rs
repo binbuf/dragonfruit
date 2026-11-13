@@ -45,15 +45,15 @@ pub const DOCK_SQUIRCLE_POWER: f32 = 4.0;
 
 /// The fitted bevel height field, in logical points. The reference measures
 /// the *displacement*, not the height; these constants are the analytic height
-/// profile fitted to the measured −4 / −8.5 / −9.6 pt horizontal displacement
+/// profile fitted to the measured −4 / −8.5 / −9.6 pt short-end displacement
 /// at 5 / 10 / 15 pt inside the rim. The profile is monotone and smooth:
 /// `h(t) = H·(1 − (1−t)^m)^p`, with `t = depth / bezel`.
 pub const DOCK_BEVEL_HEIGHT_PT: f32 = 45.0;
 pub const DOCK_BEVEL_IOR: f32 = 1.5;
 pub const DOCK_BEVEL_SHAPE_M: f32 = 4.0;
 pub const DOCK_BEVEL_SHAPE_P: f32 = 1.4;
-/// Fraction of the full bevel displacement retained on a flat edge. The
-/// measured flat top/bottom is ~0.5 pt against a ~9.6 pt corner peak.
+/// Fraction of the full bevel displacement retained on a long flat edge. The
+/// measured flat top/bottom is ~0.5 pt against a ~9.6 pt short-end peak.
 pub const DOCK_BEVEL_FLAT_GAIN: f32 = 0.05;
 
 /// The measured OKLab tone curve for saturated backgrounds. Neutral
@@ -99,13 +99,15 @@ pub struct DockOptics {
     pub edge_tail: f32,
     /// Sharp scene weight in the filtered composite.
     pub sharp_fraction: f32,
-    /// Corner-lens peak displacement in logical points along the outward SDF
-    /// normal. The measured horizontal component at the 45-degree diagonal is
+    /// Lens peak displacement magnitude in logical points along the outward
+    /// SDF normal. It is fitted to the short-end displacement; applied along a
+    /// 45-degree corner normal, the horizontal component is
     /// `corner_lens_peak / sqrt(2)`.
     pub corner_lens_peak: f32,
     /// Distance inside the rim where the lens peaks, in logical points.
     pub corner_lens_distance: f32,
-    /// Distance inside the rim by which the corner lens has decayed.
+    /// Distance inside the rim by which the lens has decayed. It is also the
+    /// reach of the short-end gain along the long edges.
     pub corner_lens_tail: f32,
     /// Measured OKLab tone weight for saturated backgrounds.
     pub tone_weight: f32,
@@ -176,12 +178,17 @@ impl DockOptics {
     }
 
     /// The fitted Snell displacement at `depth` logical points inside the rim,
-    /// returned as the horizontal component on the 45-degree corner diagonal.
+    /// as the displacement magnitude along the outward SDF normal.
     ///
     /// The height field is `h(t) = H·(1 − (1−t)^m)^p`; the surface slope feeds
-    /// Snell's law (`n = 1.5`), and the horizontal component is `shift / √2`.
-    /// This is the renderer-free model the shader mirrors, so a change to the
-    /// fit fails here before it reaches a capture.
+    /// Snell's law (`n = 1.5`). The measured −4 / −8.5 / −9.6 pt at 5 / 10 /
+    /// 15 pt was tracked on a vertical grid line at the **short end** of the
+    /// Dock, where the normal is horizontal, so the fitted value is the
+    /// short-side displacement. Applied along a 45-degree corner normal, the
+    /// horizontal component is smaller; the flat top/bottom gets the measured
+    /// ~0.5 pt from [`DOCK_BEVEL_FLAT_GAIN`]. This is the renderer-free model
+    /// the shader mirrors, so a change to the fit fails here before it reaches
+    /// a capture.
     pub fn bevel_shift(&self, depth: f32) -> f32 {
         let bezel = self.corner_lens_tail.max(1.0);
         let t = (depth / bezel).clamp(0.0, 1.0);
@@ -199,6 +206,29 @@ impl DockOptics {
         let theta_i = slope.atan();
         let theta_r = (theta_i.sin() / DOCK_BEVEL_IOR).clamp(-1.0, 1.0).asin();
         height * (theta_i - theta_r).tan() / std::f32::consts::SQRT_2
+    }
+
+    /// The measured plate lens is an end lens: strongest across the short
+    /// sides (the left/right ends of a horizontal Dock, the top/bottom ends of
+    /// a vertical one) and fading along the long edges.
+    ///
+    /// `half_size` is the inner-rectangle half extent (`size/2 − radius`) and
+    /// `p` is the point relative to the panel centre, both in logical points.
+    /// Only the long-axis component controls the gain, so the whole short side
+    /// shares one rounded refraction instead of the two 45-degree lobes the
+    /// old `4·nx²·ny²` normal product produced.
+    pub fn bevel_end_gain(&self, half_size: [f32; 2], p: [f32; 2]) -> f32 {
+        let offset = [
+            (half_size[0] - p[0].abs()).max(0.0),
+            (half_size[1] - p[1].abs()).max(0.0),
+        ];
+        let along = if half_size[0] >= half_size[1] {
+            offset[0]
+        } else {
+            offset[1]
+        };
+        let reach = self.corner_lens_tail.max(1.0);
+        DOCK_BEVEL_FLAT_GAIN + (1.0 - DOCK_BEVEL_FLAT_GAIN) * (-along / reach).exp()
     }
 
     /// The measured mixture's checker response at `period_pt` logical points.
@@ -387,8 +417,9 @@ mod tests {
     #[test]
     fn the_bevel_height_field_matches_the_measured_displacement() {
         let optics = DockOptics::light();
-        // The measured horizontal component on the 45-degree diagonal is
-        // −4 / −8.5 / −9.6 pt at 5 / 10 / 15 pt inside the rim.
+        // The measured short-end displacement is −4 / −8.5 / −9.6 pt at
+        // 5 / 10 / 15 pt inside the rim (tracked on a vertical grid line at
+        // the Dock's left end, where the outward normal is horizontal).
         for (depth, target) in [(5.0, 4.0), (10.0, 8.5), (15.0, 9.6)] {
             let shift = optics.bevel_shift(depth);
             assert!(
@@ -403,6 +434,35 @@ mod tests {
         // A smooth rise and decay: no hard gate at the corner-to-side join.
         assert!(optics.bevel_shift(2.0) > 0.0);
         assert!(optics.bevel_shift(30.0) > 0.0);
+    }
+
+    #[test]
+    fn the_bevel_is_a_short_end_lens_not_a_45_degree_corner_gate() {
+        let optics = DockOptics::light();
+        // Standard horizontal Dock: 1163 x 80 pt, 26.9 pt radius.
+        let half = [1163.0 / 2.0 - 26.9, 80.0 / 2.0 - 26.9];
+        // The whole short side (left/right end) keeps the full measured lens,
+        // including its middle. The old gate left this at the flat gain and
+        // put the two maxima on the 45-degree diagonals.
+        for y in [-half[1], 0.0, half[1]] {
+            let gain = optics.bevel_end_gain(half, [-1163.0 / 2.0, y]);
+            assert!((gain - 1.0).abs() < 1e-6, "short end at y={y}: {gain}");
+        }
+        // The long edge middle is the measured ~0.5 pt flat.
+        let gain = optics.bevel_end_gain(half, [0.0, -80.0 / 2.0]);
+        assert!((gain - DOCK_BEVEL_FLAT_GAIN).abs() < 0.01);
+        // The gain decays monotonically along the long edge: no saddle and no
+        // 45-degree lobes between the end and the interior.
+        let mut previous = 1.0;
+        for x in [0.0, 10.0, 25.0, 50.0, 100.0, 200.0] {
+            let gain = optics.bevel_end_gain(half, [half[0] - x, 0.0]);
+            assert!(gain <= previous + 1e-6, "gain rises at {x} pt: {gain}");
+            previous = gain;
+        }
+        // A vertical Dock is the same model on its short top/bottom ends.
+        let tall = [80.0 / 2.0 - 26.9, 1163.0 / 2.0 - 26.9];
+        assert!((optics.bevel_end_gain(tall, [0.0, 1163.0 / 2.0]) - 1.0).abs() < 1e-6);
+        assert!((optics.bevel_end_gain(tall, [0.0, 0.0]) - DOCK_BEVEL_FLAT_GAIN).abs() < 0.01);
     }
 
     #[test]

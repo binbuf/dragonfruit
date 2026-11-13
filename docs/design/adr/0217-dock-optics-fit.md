@@ -56,6 +56,19 @@ over the compositor's glass, so the sampled Dock had duplicate edges.
 - Other roles keep the legacy adaptive tint/specular path; the measured model
   is selected only for the replacement Dock preset.
 
+## Amendment (2026-11-12) — measured Gaussian replaces the five-level composite
+
+The five-level Kawase composite in decision 2 was superseded by the measured
+two-path blur (19.2 % sharp + Gaussian σ 3.86 pt) and padded sample domain in
+[`docs/proposals/dock-plate-liquid-glass.md`](../../proposals/dock-plate-liquid-glass.md)
+(R1). The flat-band fit, the panel-space Dock composite, and the scorer
+separation remain. The replacement also adds the physical bevel/Fresnel rim
+(R2–R3) and the continuous squircle (R4); see the amendment to ADR
+[0255](0255-dock-uniform-perimeter-and-corner-gate.md). A 2026-11-12 follow-up
+corrects the bevel's spatial gain: the measured lens is a short-end lens, not
+a 45-degree corner gate, so the whole left/right end refracts as one rounded
+band and the top/bottom edges stay at the measured ~0.5 pt.
+
 ## References
 
 - `docs/tasks/glass/plan/REFERENCE.md` — Dock plate measurements.

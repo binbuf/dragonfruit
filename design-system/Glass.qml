@@ -48,7 +48,8 @@ QtObject {
     property bool reduceMotion: Theme.reducedMotion
 
     readonly property var presetNames: [
-        "dock", "menuBarVeil", "menuAttached", "menuDetached", "statusMenu",
+        "dock", "menuBarVeil", "menuAttached", "menuDetached", "appsDrawer",
+        "statusMenu",
         "tooltip", "controlCenterOuter", "controlCenterModule",
         "controlCenterExpanded", "controlCenterExpandedOuter", "notificationBanner",
         "notificationStack",
