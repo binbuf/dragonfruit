@@ -298,4 +298,5 @@ attribution, and [docs/licensing.md](docs/licensing.md) for the policy.
 - [Roadmap](docs/ROADMAP.md) — the strict work-unit sequence
 - [v0.2.0 roadmap](docs/v0.2.0/ROADMAP.md) — total-experience task set
 - [IPC versioning policy](docs/ipc-versioning.md)
+- [Version increment and release runbook](docs/version-increment.md) — bump, tag, publish, verify
 - [Testing ladder](docs/testing-ladder.md)

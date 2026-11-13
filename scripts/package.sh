@@ -252,6 +252,7 @@ build_tar() {
     install -m 0755 "$root/packaging/tar/uninstall.sh" "$tmp/$top/uninstall.sh"
     install -m 0644 "$root/packaging/tar/README.md" "$tmp/$top/INSTALL.md"
     tar -C "$tmp" -czf "$OUTPUT/$top.tar.gz" "$top"
+    say "built $top.tar.gz"
     rm -rf "$tmp"
 }
 
@@ -278,13 +279,14 @@ build_deb() {
     recommends="xdg-desktop-portal-gtk, network-manager, bluez, pipewire, wireplumber, upower, udisks2, polkitd, flatpak, cups, sane-utils, colord, fprintd, accountsservice, gnome-online-accounts, orca, speech-dispatcher, ibus, fcitx5"  # df-allow-desktop-name: distro package names
     suggests="gnome-software, plasma-discover, snapd, ufw, firewalld, restic, pika-backup, timeshift, tracker, baloo-kf5, recoll, espeak-ng, localsend"  # df-allow-desktop-name: distro package names
 
+    # Use # as the delimiter: the Depends value itself contains | alternatives.
     sed \
-        -e "s|@VERSION@|$VERSION|g" \
-        -e "s|@ARCH@|$DEB_ARCH|g" \
-        -e "s|@SIZE@|$size|g" \
-        -e "s|@DEPENDS@|$depends|g" \
-        -e "s|@RECOMMENDS@|$recommends|g" \
-        -e "s|@SUGGESTS@|$suggests|g" \
+        -e "s#@VERSION@#$VERSION#g" \
+        -e "s#@ARCH@#$DEB_ARCH#g" \
+        -e "s#@SIZE@#$size#g" \
+        -e "s#@DEPENDS@#$depends#g" \
+        -e "s#@RECOMMENDS@#$recommends#g" \
+        -e "s#@SUGGESTS@#$suggests#g" \
         "$root/packaging/debian/control.in" >"$debroot/DEBIAN/control"
 
     install -m 0755 "$root/packaging/debian/postinst" "$debroot/DEBIAN/postinst"
@@ -296,7 +298,8 @@ build_deb() {
             | xargs -0 md5sum >DEBIAN/md5sums
     )
 
-    dpkg-deb --build --root-owner-group "$debroot" "$OUTPUT/$debname" >/dev/null
+    dpkg-deb --build --root-owner-group "$debroot" "$OUTPUT/$debname"
+    say "built $debname"
     rm -rf "$debroot"
 }
 
@@ -392,6 +395,7 @@ for format in "${format_list[@]}"; do
     esac
 done
 
+say "writing SHA256SUMS"
 (
     cd "$OUTPUT"
     find . -maxdepth 1 -type f \

@@ -144,7 +144,8 @@ if [ "$BUILD" -eq 1 ]; then
     say "building the workspace and Qt side ($PROFILE)"
     cargo build --workspace "${CARGO_FLAGS[@]}"
     cmake -S "$root" -B "$QT_BUILD_DIR" -G Ninja \
-        -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE"
+        -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" \
+        -DDF_BUILD_TESTS=OFF
     cmake --build "$QT_BUILD_DIR"
 fi
 

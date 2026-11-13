@@ -191,4 +191,6 @@ df_qml_lint(app-settings
     SettingsWindow.qml
 )
 
-add_subdirectory(tests)
+if(DF_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

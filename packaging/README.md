@@ -92,6 +92,9 @@ the session entry is missing or an ELF binary has an unresolved shared
 library. That is the dependency check: if the declared Qt floor is wrong for
 the build release, the job fails instead of publishing an unusable asset.
 
+The step-by-step release procedure (changelog, version bump, tag, verification)
+is in [`../docs/version-increment.md`](../docs/version-increment.md).
+
 ## Scope
 
 These are **early-testing binary assets**, not official distro packages:
