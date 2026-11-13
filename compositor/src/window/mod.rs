@@ -126,9 +126,10 @@ pub(crate) use material_cache::{
 };
 #[allow(unused_imports)]
 pub use material_region::{
-    full_output_material_forced, material_disabled, scene_cache_skip_enabled,
-    split_regions_enabled, MaterialGroup, MaterialRegion, ENV_MATERIAL_FULL_OUTPUT,
-    ENV_MATERIAL_OFF, ENV_MATERIAL_REGION_GROUPS, ENV_SCENE_CACHE_SKIP,
+    drm_padded_blur_enabled, full_output_material_forced, material_disabled,
+    scene_cache_skip_enabled, split_regions_enabled, MaterialGroup, MaterialRegion,
+    ENV_DRM_PADDED_BLUR, ENV_MATERIAL_FULL_OUTPUT, ENV_MATERIAL_OFF, ENV_MATERIAL_REGION_GROUPS,
+    ENV_SCENE_CACHE_SKIP,
 };
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 #[allow(unused_imports)]

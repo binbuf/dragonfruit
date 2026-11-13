@@ -52,6 +52,28 @@ pub const ENV_MATERIAL_OFF: &str = "DRAGONFRUIT_MATERIAL_OFF";
 /// validated on native and multi-monitor sessions.
 pub const ENV_SCENE_CACHE_SKIP: &str = "DRAGONFRUIT_SCENE_CACHE_SKIP";
 
+/// Diagnostic rollback for the measured Dock's padded DRM blur source.
+///
+/// The 2026-11-13 refraction study requires the backdrop capture to include
+/// the lens/blur margin. The nested path already exposes that margin; the DRM
+/// path now does too. Set `0`/`false`/`off` to restore the visible-panel
+/// source for a before/after comparison.
+pub const ENV_DRM_PADDED_BLUR: &str = "DRAGONFRUIT_DRM_PADDED_BLUR";
+
+/// Whether the DRM path exposes the measured Dock's blur-source margin.
+pub fn drm_padded_blur_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        !matches!(
+            std::env::var(ENV_DRM_PADDED_BLUR)
+                .ok()
+                .map(|value| value.trim().to_ascii_lowercase())
+                .as_deref(),
+            Some("0" | "false" | "off" | "no" | "disabled")
+        )
+    })
+}
+
 /// Whether the event-driven scene-cache skip is enabled.
 pub fn scene_cache_skip_enabled() -> bool {
     static SKIP: OnceLock<bool> = OnceLock::new();
