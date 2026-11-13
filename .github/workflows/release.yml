@@ -90,13 +90,14 @@ jobs:
         if: failure()
         run: |
           if [ -f build-deb.log ]; then
-            echo "::error::LOG-BEGIN lines=$(wc -l < build-deb.log) bytes=$(wc -c < build-deb.log)"
-            grep -n -A6 -B3 -E 'CMake Error|error\[|error:|FAILED|undefined reference|ninja:' build-deb.log \
-              | tail -n 80 | while IFS= read -r line; do
+            echo "::error::DISK $(df -h /__w | tail -n 1)"
+            echo "::error::MEM $(grep -E 'MemTotal|MemAvailable' /proc/meminfo | tr '\n' ' ')"
+            grep -n -iE 'error|failed|fatal|killed|signal|no space|out of memory|undefined reference|collect2|ninja:' build-deb.log \
+              | tail -n 5 | while IFS= read -r line; do
                   echo "::error::$line"
                 done
-            echo "::error::LOG-TAIL"
-            tail -n 40 build-deb.log | while IFS= read -r line; do
+            echo "::error::TAIL"
+            tail -n 3 build-deb.log | while IFS= read -r line; do
               echo "::error::$line"
             done
           else
@@ -125,9 +126,12 @@ jobs:
         if: failure()
         run: |
           if [ -f smoke-deb.log ]; then
-            tail -n 200 smoke-deb.log | base64 -w0 | fold -w 60000 | while IFS= read -r line; do
-              echo "::error::LOG:$line"
+            echo "::error::DISK $(df -h /__w | tail -n 1)"
+            tail -n 8 smoke-deb.log | while IFS= read -r line; do
+              echo "::error::$line"
             done
+          else
+            echo "::error::LOG-MISSING smoke-deb.log"
           fi
 
       - name: Source tarball
