@@ -38,6 +38,25 @@ Item {
     property real level: 0.8
     property color tint: Theme.color.textPrimary
     property color backgroundColor: Theme.color.chrome
+    // The wallpaper text treatment follows the actual lettering: white text
+    // takes the dark shadow pair, black text the light one.
+    readonly property color labelColor:
+        root.selected ? Theme.color.accent : root.tint
+    readonly property bool lightLettering: {
+        var c = root.labelColor;
+        return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) > 0.5;
+    }
+    readonly property color labelShadowColor:
+        root.lightLettering ? Theme.controls.wallpaperText.shadowColorOnDark
+                            : Theme.controls.wallpaperText.shadowColorOnLight
+    readonly property real labelShadowOpacity:
+        root.lightLettering ? Theme.controls.wallpaperText.shadowOpacityOnDark
+                            : Theme.controls.wallpaperText.shadowOpacityOnLight
+    // The status marks share the label's opposite-tone shadow, slightly
+    // lighter because a stroked glyph covers less area than a glyph fill.
+    readonly property color glyphShadowColor:
+        Qt.rgba(root.labelShadowColor.r, root.labelShadowColor.g,
+                root.labelShadowColor.b, root.labelShadowOpacity * 0.9)
 
     // T231: the clock is a first-class registry item. `StatusItem` owns its
     // slot (hover/focus/tap/accessibility) and embeds the formatting-only
@@ -96,6 +115,9 @@ Item {
             visible: root.icon.length > 0 && root.iconSource.toString().length === 0
             name: root.icon
             color: root.selected ? Theme.color.accent : root.tint
+            shadowColor: (root.selected || root.keyboardFocus)
+                         ? "transparent" : root.glyphShadowColor
+            shadowOffset: Qt.point(0, Theme.controls.wallpaperText.shadowOffsetY)
             backgroundColor: root.backgroundColor
             size: Theme.controls.menuBar.iconSize
             level: root.level
@@ -113,11 +135,14 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
         }
 
-        Text {
+        WallpaperLabel {
             id: labelText
             visible: root.label.length > 0
             text: root.label
-            color: root.selected ? Theme.color.accent : root.tint
+            color: root.labelColor
+            shadowEnabled: !root.selected && !root.keyboardFocus
+            shadowColor: root.labelShadowColor
+            shadowOpacity: root.labelShadowOpacity
             font.pixelSize: Theme.controls.menuBar.fontSize
             anchors.verticalCenter: parent.verticalCenter
         }
@@ -136,6 +161,7 @@ Item {
                 use24Hour: root.use24Hour
                 foreground: root.foreground
                 secondaryForeground: root.secondaryForeground
+                shadowEnabled: !root.selected && !root.keyboardFocus
             }
         }
     }

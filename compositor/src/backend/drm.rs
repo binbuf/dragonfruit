@@ -427,7 +427,13 @@ struct DeviceData {
 #[derive(Default)]
 struct MaterialPrograms {
     blur: Option<GlesTexProgram>,
+    /// The measured separable Gaussian for the Dock; `None` keeps the sharp
+    /// panel slice without frost.
+    gaussian: Option<GlesTexProgram>,
     glass: Option<GlesTexProgram>,
+    /// The sharp-scene bevel pass for the measured Dock; `None` keeps the
+    /// blurred body's edge treatment only.
+    bevel: Option<GlesTexProgram>,
     /// The menu-bar no-blur veil program (T200); a refusal keeps the
     /// flat-band glass fallback.
     veil: Option<GlesTexProgram>,
@@ -1662,6 +1668,12 @@ fn render_surface(
                     &crate::window::blur_uniform_names(),
                 )
                 .ok();
+            let gaussian = gles
+                .compile_custom_texture_shader(
+                    crate::window::GAUSSIAN_BLUR_SHADER,
+                    &crate::window::gaussian_uniform_names(),
+                )
+                .ok();
             let glass = if env_flag_default_true(ENV_DRM_GLASS) {
                 gles.compile_custom_texture_shader(
                     crate::window::GLASS_SHADER,
@@ -1671,6 +1683,12 @@ fn render_surface(
             } else {
                 None
             };
+            let bevel = gles
+                .compile_custom_texture_shader(
+                    crate::window::BEVEL_SHADER,
+                    &crate::window::glass_uniform_names(),
+                )
+                .ok();
             // T200: the veil is a small sharp-sample shader; compile it even
             // when the liquid-glass program is disabled, because the menu bar
             // must not expose an unfiltered scene.
@@ -1711,7 +1729,9 @@ fn render_surface(
             });
             MaterialPrograms {
                 blur,
+                gaussian,
                 glass,
+                bevel,
                 veil,
                 shadow,
                 titlebar,
@@ -1918,6 +1938,7 @@ fn render_surface(
                     let blur_result = crate::backend::nested::blur_panel_texture(
                         &mut renderer,
                         programs.blur.as_ref(),
+                        programs.gaussian.as_ref(),
                         scene_texture,
                         scene_src,
                         texture_panel,
@@ -1954,10 +1975,36 @@ fn render_surface(
                 .with_commit(commit)
                 .with_texture_panel(texture_panel)
                 .with_corners(panel.corners);
+                let element = if panel.spec.is_measured() && programs.glass.is_some() {
+                    element.with_full_panel_draw()
+                } else {
+                    element
+                };
                 let element = match programs.glass.as_ref() {
                     Some(program) => element.with_glass(panel.glass, program.clone()),
                     None => element,
                 };
+                // This list is front-to-back (top first), so the sharp bevel
+                // must precede the blurred body to draw over it.
+                if panel.spec.is_measured() {
+                    if let Some(bevel_program) = programs.bevel.as_ref() {
+                        slot.note_sharp_scene_commit(scene_cache.commit());
+                        let bevel = BackdropBlurElement::new(
+                            (*scene_texture).clone(),
+                            panel.panel,
+                            scene_texture.size(),
+                            panel.corners.max(),
+                            scale,
+                        )
+                        .with_id(slot.bevel_id().clone())
+                        .with_commit(slot.commit())
+                        .with_texture_region(region.rect)
+                        .with_corners(panel.corners)
+                        .with_full_panel_draw()
+                        .with_glass(panel.glass, bevel_program.clone());
+                        custom_elements.push(DrmOutputElements::Blur(bevel));
+                    }
+                }
                 custom_elements.push(DrmOutputElements::Blur(element));
                 blur_drawn += 1;
                 downsample_max = downsample_max.max(panel.spec.downsample());

@@ -47,6 +47,7 @@ Popover
 Tooltip
 ScrollView
 Shadow
+WallpaperLabel
 FocusRing
 Skeleton
 Spinner

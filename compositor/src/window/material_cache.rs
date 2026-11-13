@@ -505,6 +505,10 @@ impl BlurMissCounts {
 #[derive(Debug)]
 pub(crate) struct PanelTextureSlot<T> {
     id: Id,
+    /// Stable id for the sharp-scene bevel element that sits over the body
+    /// for the measured Dock. It must be distinct from `id` so the damage
+    /// tracker treats the two elements independently.
+    bevel_id: Id,
     /// The panel's own commit, advanced only when the cached blur is rebuilt.
     /// A scene change that alters the blurred pixels therefore damages the
     /// panel even when its geometry did not move.
@@ -523,6 +527,7 @@ impl<T> PanelTextureSlot<T> {
     fn new() -> Self {
         Self {
             id: Id::new(),
+            bevel_id: Id::new(),
             commit: CommitCounter::default(),
             textures: Vec::new(),
             blur_key: None,
@@ -535,6 +540,11 @@ impl<T> PanelTextureSlot<T> {
     /// The panel's stable render-element id.
     pub(crate) fn id(&self) -> &Id {
         &self.id
+    }
+
+    /// The stable id for the sharp-scene bevel overlay (measured Dock only).
+    pub(crate) fn bevel_id(&self) -> &Id {
+        &self.bevel_id
     }
 
     /// The panel element's commit, advanced whenever its blur is rebuilt or

@@ -19,6 +19,21 @@ Item {
     // T200: wallpaper-adaptive menu-bar foreground, injected by MenuBar.
     property color foreground: Theme.color.textPrimary
     property color secondaryForeground: Theme.color.textSecondary
+    // The owning slot disables the wallpaper shadow when its accent capsule
+    // already supplies the contrast (selected / keyboard focus).
+    property bool shadowEnabled: true
+    // The wallpaper text treatment follows the actual lettering: white text
+    // takes the dark shadow pair, black text the light one.
+    readonly property bool lightLettering: {
+        var c = root.foreground;
+        return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) > 0.5;
+    }
+    readonly property color labelShadowColor:
+        root.lightLettering ? Theme.controls.wallpaperText.shadowColorOnDark
+                            : Theme.controls.wallpaperText.shadowColorOnLight
+    readonly property real labelShadowOpacity:
+        root.lightLettering ? Theme.controls.wallpaperText.shadowOpacityOnDark
+                            : Theme.controls.wallpaperText.shadowOpacityOnLight
     // T231: the clock is a registry item rendered inside `StatusItem`. The
     // slot owns hover, the focus ring, the tap and the accessibility node, so
     // the embedded clock is presentation only. Standalone uses (the QML
@@ -73,18 +88,26 @@ Item {
         anchors.centerIn: parent
         spacing: Theme.controls.menuBar.clockGap
 
-        Text {
+        WallpaperLabel {
             visible: root.showDate
             text: root.dateText
             color: root.secondaryForeground
+            shadowEnabled: root.shadowEnabled
+            shadowColor: root.labelShadowColor
+            shadowOpacity: root.labelShadowOpacity
             font.pixelSize: Theme.controls.menuBar.fontSize
+            font.features: ({ "tnum": 1 })
             anchors.verticalCenter: parent.verticalCenter
         }
 
-        Text {
+        WallpaperLabel {
             text: root.timeText
             color: root.foreground
+            shadowEnabled: root.shadowEnabled
+            shadowColor: root.labelShadowColor
+            shadowOpacity: root.labelShadowOpacity
             font.pixelSize: Theme.controls.menuBar.fontSize
+            font.features: ({ "tnum": 1 })
             anchors.verticalCenter: parent.verticalCenter
         }
     }

@@ -95,11 +95,13 @@ pub use backdrop::{
 };
 #[allow(unused_imports)]
 pub use blur::{
-    blur_uniform_names, glass_uniform_names, tone_to_rgb, BackdropBlurElement, BlurSpec, GlassSpec,
-    RegionFilter, SceneTextureElement, TextureRenderer, BLUR_RADIUS_UNIFORM, BLUR_SHADER,
-    BLUR_TEXEL_UNIFORM, GLASS_RADIUS_UNIFORM, GLASS_SHADER, GLASS_SIZE_UNIFORM, LENS_BAND_FACTOR,
-    LENS_FALLOFF_UNIFORM, REFRACTION_UNIFORM, SPECULAR_UNIFORM, SPECULAR_WIDTH_UNIFORM,
-    TINT_ADAPT_SCALE, TINT_AMOUNT_UNIFORM, TINT_COLOR_UNIFORM, TINT_SCALE_UNIFORM, VEIL_SHADER,
+    blur_uniform_names, gaussian_uniform_names, glass_uniform_names, tone_to_rgb,
+    BackdropBlurElement, BlurSpec, GlassSpec, RegionFilter, SceneTextureElement, TextureRenderer,
+    BEVEL_SHADER, BLUR_RADIUS_UNIFORM, BLUR_SHADER, BLUR_TEXEL_UNIFORM, GAUSSIAN_BLUR_SHADER,
+    GAUSSIAN_DIR_UNIFORM, GAUSSIAN_SIGMA_UNIFORM, GLASS_RADIUS_UNIFORM, GLASS_SHADER,
+    GLASS_SIZE_UNIFORM, LENS_BAND_FACTOR, LENS_FALLOFF_UNIFORM, REFRACTION_UNIFORM,
+    SPECULAR_UNIFORM, SPECULAR_WIDTH_UNIFORM, TINT_ADAPT_SCALE, TINT_AMOUNT_UNIFORM,
+    TINT_COLOR_UNIFORM, TINT_SCALE_UNIFORM, VEIL_SHADER,
 };
 #[allow(unused_imports)]
 pub use corner::{

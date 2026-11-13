@@ -34,6 +34,7 @@ TestCase {
     }
     Component { id: ssdComponent; SsdTitlebarReference { } }
     Component { id: shadowComponent; Shadow { width: 120; height: 80 } }
+    Component { id: wallpaperLabelComponent; WallpaperLabel { } }
     Component { id: popupComponent; Popup { } }
     Component { id: menuComponent; MenuBarMenu { } }
     Component { id: rectComponent; Rectangle { } }
@@ -839,6 +840,47 @@ TestCase {
         compare(Theme.controls.elevation.med.blur, Theme.primitive.elevation.med);
         compare(Theme.controls.elevation.high.blur, Theme.primitive.elevation.high);
         compare(Theme.controls.elevation.overlay.blur, Theme.primitive.elevation.overlay);
+    }
+
+    // -- Wallpaper text (menu bar / desktop labels) -------------------------
+
+    function test_wallpaper_label_paints_an_opposite_tone_shadow() {
+        // The tokens are the single source for the treatment.
+        compare(Theme.controls.wallpaperText.shadowOffsetY, 1);
+        verify(Theme.controls.wallpaperText.shadowOpacityOnDark >= 0.5);
+        verify(Theme.controls.wallpaperText.shadowOpacityOnLight >= 0.5);
+
+        // White text on a white plate is invisible without the treatment; the
+        // dark shadow and edge are what create the local contrast field.
+        var plate = make(rectComponent, { width: 220, height: 48, color: "#ffffff" });
+        var label = createTemporaryObject(wallpaperLabelComponent, plate, {
+            x: 8,
+            y: 8,
+            text: "Desktop",
+            color: "#ffffff",
+            shadowColor: Theme.controls.wallpaperText.shadowColorOnDark,
+            shadowOpacity: 0.7
+        });
+        label.font.pixelSize = 18;
+        waitForRendering(stage);
+        var image = grabImage(plate);
+        var dark = 0;
+        for (var y = 0; y < image.height; ++y) {
+            for (var x = 0; x < image.width; ++x) {
+                if (image.red(x, y) < 180)
+                    ++dark;
+            }
+        }
+        verify(dark > 0, "the dark shadow must create a pixel darker than the plate");
+
+        // Turning the treatment off leaves white-on-white: no dark pixel.
+        label.shadowEnabled = false;
+        waitForRendering(stage);
+        image = grabImage(plate);
+        for (var y2 = 0; y2 < image.height; ++y2) {
+            for (var x2 = 0; x2 < image.width; ++x2)
+                verify(image.red(x2, y2) >= 240);
+        }
     }
 
     // -- Button (FR-1) ------------------------------------------------------

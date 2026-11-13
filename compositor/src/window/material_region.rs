@@ -352,7 +352,37 @@ impl MaterialRegion {
         panel: Rectangle<i32, Logical>,
         scale: Scale<f64>,
     ) -> Option<(Rectangle<i32, Logical>, Rectangle<f64, Buffer>)> {
-        let visible = panel.intersection(self.rect)?;
+        self.panel_source_padded(panel, 0, scale)
+    }
+
+    /// Like [`Self::panel_source`], but expands the sampled rect by `padding`
+    /// logical pixels before clamping it to the material region.
+    ///
+    /// The measured Dock bevel and Gaussian need scene samples beyond the
+    /// visible panel: the lens reaches outside the silhouette and the blur
+    /// must not clamp at the rim. The region itself is already padded by
+    /// [`crate::render::BlurPanel::sample_padding_px`]; this method exposes
+    /// that margin to the blur pass and to the element's UV mapping.
+    pub fn panel_source_padded(
+        &self,
+        panel: Rectangle<i32, Logical>,
+        padding: i32,
+        scale: Scale<f64>,
+    ) -> Option<(Rectangle<i32, Logical>, Rectangle<f64, Buffer>)> {
+        let padding = padding.max(0);
+        let expanded = Rectangle::new(
+            (
+                panel.loc.x.saturating_sub(padding),
+                panel.loc.y.saturating_sub(padding),
+            )
+                .into(),
+            (
+                panel.size.w.saturating_add(padding.saturating_mul(2)),
+                panel.size.h.saturating_add(padding.saturating_mul(2)),
+            )
+                .into(),
+        );
+        let visible = expanded.intersection(self.rect)?;
         if visible.size.w <= 0 || visible.size.h <= 0 {
             return None;
         }
@@ -676,6 +706,27 @@ mod tests {
             region.panel_source(Rectangle::new((10, 10).into(), (40, 40).into()), 1.5.into()),
             None
         );
+    }
+
+    #[test]
+    fn a_padded_panel_source_expands_then_clamps_to_the_region() {
+        let screen = output(1280, 800);
+        let panel_rect = panel((101, 51, 333, 77), 12.0).panel;
+        let region =
+            MaterialRegion::from_panels(&[panel((101, 51, 333, 77), 12.0)], screen, 1.0.into())
+                .expect("visible panel");
+        // The region is the panel expanded by the panel's own sample padding
+        // (12 px here), so a 5 px request expands inside that margin.
+        let (visible, src) = region
+            .panel_source_padded(panel_rect, 5, 1.0.into())
+            .expect("padded source");
+        assert_eq!(visible, Rectangle::new((96, 46).into(), (343, 87).into()));
+        assert_eq!(src, Rectangle::new((7.0, 7.0).into(), (343.0, 87.0).into()));
+        // A request larger than the region margin clamps to the region.
+        let (visible, _) = region
+            .panel_source_padded(panel_rect, 999, 1.0.into())
+            .expect("clamped source");
+        assert_eq!(visible, region.rect);
     }
 
     #[test]

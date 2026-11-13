@@ -39,6 +39,13 @@ Item {
     // Optional accessible name. Empty means presentational (AT-SPI ignored).
     property string accessibleName: ""
 
+    // Optional wallpaper contrast shadow: the same path translated by
+    // `shadowOffset` and painted behind the glyph. The menu bar uses this so
+    // the status marks survive a busy backdrop; the Dock and app icons leave
+    // it transparent.
+    property color shadowColor: "transparent"
+    property point shadowOffset: Qt.point(0, 0)
+
     implicitWidth: size
     implicitHeight: size
 
@@ -67,6 +74,38 @@ Item {
     Accessible.role: Accessible.Graphic
     Accessible.name: root.accessibleName
     Accessible.ignored: root.accessibleName.length === 0
+
+    Shape {
+        x: root.shadowOffset.x
+        y: root.shadowOffset.y
+        width: root.size
+        height: root.size
+        visible: root.resolved && root.shadowColor.a > 0
+        preferredRendererType: Shape.GeometryRenderer
+        transformOrigin: Item.TopLeft
+        transform: Scale {
+            xScale: root.size / TablerGlyphs.viewBox
+            yScale: root.size / TablerGlyphs.viewBox
+        }
+
+        ShapePath {
+            strokeColor: root.filled ? "transparent" : root.shadowColor
+            strokeWidth: root.filled ? 0 : root.strokeWidth
+            fillColor: root.filled ? root.shadowColor : "transparent"
+            fillRule: ShapePath.WindingFill
+            capStyle: ShapePath.RoundCap
+            joinStyle: ShapePath.RoundJoin
+            PathSvg { path: root.glyphPath }
+        }
+
+        ShapePath {
+            strokeColor: "transparent"
+            strokeWidth: 0
+            fillColor: root.shadowColor
+            fillRule: ShapePath.WindingFill
+            PathSvg { path: root.glyphFillPath }
+        }
+    }
 
     Shape {
         anchors.fill: parent

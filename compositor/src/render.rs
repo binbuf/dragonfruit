@@ -520,7 +520,11 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 );
 
             let base_spec = if dock_fit {
-                BlurSpec::for_dock(resolved.blur, role.corner_radius(&chrome.namespace))
+                BlurSpec::for_dock(
+                    resolved.blur,
+                    resolved.sharp_fraction,
+                    role.corner_radius(&chrome.namespace),
+                )
             } else if client_tinted {
                 BlurSpec::for_frosted(resolved.blur, role.corner_radius(&chrome.namespace))
             } else if flat_fit {

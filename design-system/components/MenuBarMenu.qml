@@ -19,6 +19,25 @@ Item {
     // T200: the menu-bar foreground chosen from the wallpaper behind the bar.
     // The default keeps the scheme colour for standalone/gallery use.
     property color foreground: Theme.color.textPrimary
+    // The wallpaper text treatment follows the actual lettering: white text
+    // takes the dark shadow pair, black text the light one. Computed from the
+    // resolved colour so a gallery/standalone instance with the scheme's
+    // primary text also gets the correct opposite-tone shadow.
+    readonly property bool lightLettering: {
+        var c = root.foreground;
+        return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) > 0.5;
+    }
+    readonly property color labelShadowColor:
+        root.lightLettering ? Theme.controls.wallpaperText.shadowColorOnDark
+                            : Theme.controls.wallpaperText.shadowColorOnLight
+    readonly property real labelShadowOpacity:
+        root.lightLettering ? Theme.controls.wallpaperText.shadowOpacityOnDark
+                            : Theme.controls.wallpaperText.shadowOpacityOnLight
+    // The brand mark shares the label's opposite-tone shadow, slightly
+    // lighter because the silhouette covers less area than a glyph fill.
+    readonly property color glyphShadowColor:
+        Qt.rgba(root.labelShadowColor.r, root.labelShadowColor.g,
+                root.labelShadowColor.b, root.labelShadowOpacity * 0.9)
     property alias popup: popup
     property alias open: popup.open
     property int highlightedIndex: -1
@@ -388,14 +407,23 @@ Item {
         anchors.centerIn: parent
         size: Theme.controls.menuBar.iconSize
         color: root.open ? Theme.color.accentContent : root.foreground
+        // No halo over the open accent capsule or the hover wash.
+        shadowColor: (root.open || barHover.hovered) ? "transparent"
+                                                     : root.glyphShadowColor
+        shadowOffset: Qt.point(0, Theme.controls.wallpaperText.shadowOffsetY)
     }
 
-    Text {
+    WallpaperLabel {
         id: barLabel
         visible: !root.showLogo
         anchors.centerIn: parent
         text: root.title
         color: root.open ? Theme.color.accentContent : root.foreground
+        // No halo over the open accent capsule or the hover wash; the plate
+        // already supplies the contrast.
+        shadowEnabled: !root.open && !barHover.hovered
+        shadowColor: root.labelShadowColor
+        shadowOpacity: root.labelShadowOpacity
         font.pixelSize: Theme.controls.titlebar.fontSize
         font.weight: root.emphasized ? Theme.primitive.font.weightBold
                                      : Theme.primitive.font.weightMedium

@@ -372,6 +372,17 @@ Item {
             compare(bar.foreground.toString(),
                     Theme.controls.menuBar.foregroundOnDark.toString(),
                     "Light appearance still uses white text over black");
+            // The lettering follows the veil-composited backdrop, not the raw
+            // wallpaper: the dark wash keeps white text through the mid band,
+            // and the white lift flips to black at the measured handover.
+            bar.backgroundLuma = 0.6;
+            compare(bar.foreground.toString(),
+                    Theme.controls.menuBar.foregroundOnDark.toString(),
+                    "the dark veil keeps white text over mid-grey");
+            bar.backgroundLuma = 0.78;
+            compare(bar.foreground.toString(),
+                    Theme.controls.menuBar.foregroundOnLight.toString(),
+                    "the white lift flips to black text at the handover");
             bar.backgroundLuma = 1.0;
             compare(bar.foreground.toString(),
                     Theme.controls.menuBar.foregroundOnLight.toString(),

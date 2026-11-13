@@ -800,13 +800,17 @@ The macOS model: **the file manager owns the desktop.**
   surface. Click/Cmd/Shift selection, the `activated` signal, and the band are
   QML-tested.
 - **Desktop labels and free placement.** Desktop labels use the menu bar's
-  wallpaper-polarity pair (`foregroundOnDark`/`foregroundOnLight` and the 0.78
-  flip threshold) rather than the app scheme's text colour: almost white on
-  ordinary wallpaper, black only on an extremely bright scene, plus a 1 px
-  opposite-tone drop shadow. `FilesSettings.wallpaperLuminance` resolves the
-  same effective wallpaper source the shell forwards to the compositor and
-  caches the average luma. Desktop tiles have no hover wash. Selection is a
-  translucent icon square plus a label pill, not a full-cell accent wash.
+  wallpaper-polarity pair (`foregroundOnDark`/`foregroundOnLight` and the
+  `component.wallpaperText.flipThreshold`) rather than the app scheme's text
+  colour: almost white on ordinary wallpaper, black only on an extremely
+  bright scene. `WallpaperLabel` adds a layered opposite-tone shadow plus a
+  1 px edge outline, and the shadow turns off on the selection pill.
+  `FilesSettings.wallpaperLuminanceAt(x, y)` resolves the same effective
+  wallpaper source the shell forwards to the compositor, samples a 64x64 luma
+  grid through the active `wallpaper.fit`, and returns the luma under each
+  tile, so one bright region does not flip every label. The whole-image
+  average remains the fallback. Desktop tiles have no hover wash. Selection is
+  a translucent icon square plus a label pill, not a full-cell accent wash.
   Icons can be dragged freely from their grid slot (semi-transparent while
   moving); the offset is kept per URI for the life of the view (durable
   per-location persistence is a later view-state slice) and `Clean Up` returns

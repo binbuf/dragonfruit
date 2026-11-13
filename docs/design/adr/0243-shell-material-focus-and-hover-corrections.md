@@ -62,5 +62,8 @@ the window suite, QML menu polarity/materials, drawer fallbacks, immediate Dock
 retargeting, and desktop Reduce Transparency. Material model checks retain the
 measured LUTs and menu geometry. Native GPU frame-time and flicker acceptance
 still require a live session; headless tests do not establish smoothness at a
-particular refresh rate. Foreground selection still uses the cached wallpaper
-top band, not a readback of each live window under the bar.
+particular refresh rate. Foreground selection now reads the veil-composited
+bar luminance (with hysteresis) rather than the pre-veil wallpaper band, and
+desktop labels sample the wallpaper per tile. The bar still cannot see a live
+window under it; that needs a compositor-side per-region luma readback, which
+remains OPEN.

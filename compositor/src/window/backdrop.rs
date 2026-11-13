@@ -354,6 +354,7 @@ impl MaterialRole {
             corner_peak: 0.0,
             corner_distance: 0.0,
             corner_tail: 0.0,
+            coverage_aa: 0.0,
         }
     }
 }

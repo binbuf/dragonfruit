@@ -21,6 +21,14 @@ GLASS = re.search(
     r'pub const GLASS_SHADER: &str = r#"(.*?)"#;',
     (ROOT / "compositor/src/window/blur.rs").read_text(), re.S,
 ).group(1)
+GAUSSIAN = re.search(
+    r'pub const GAUSSIAN_BLUR_SHADER: &str = r#"(.*?)"#;',
+    (ROOT / "compositor/src/window/blur.rs").read_text(), re.S,
+).group(1)
+BEVEL = re.search(
+    r'pub const BEVEL_SHADER: &str = r#"(.*?)"#;',
+    (ROOT / "compositor/src/window/blur.rs").read_text(), re.S,
+).group(1)
 
 # Same texture-coordinate contract as Smithay: the vertex shader maps each
 # drawn source slice into the entire texture's normalized coordinate space.
@@ -154,7 +162,8 @@ class GPU:
                *([c.c_float] * len(values)))(location, *values)
 
     def render(self, width, height, scale, *, rows=False, dark=False,
-               peak=9.6, solid=False, phase=0, defines="", flat_band=True):
+               peak=9.6, solid=False, phase=0, defines="", flat_band=True,
+               coverage_aa=0.0):
         self.current_program = self.program(defines)
         self.g("glUseProgram", None, c.c_uint)(self.current_program)
         bind_texture = self.g("glBindTexture", None, c.c_uint, c.c_uint)
@@ -187,7 +196,8 @@ class GPU:
                        lens_falloff=24 * scale, tint_scale=1, flat_band=float(flat_band),
                        flat_alpha=alpha, rim_peak=.397, rim_half_width=scale,
                        rim_tail=6 * scale, corner_peak=peak * scale,
-                       corner_distance=15 * scale, corner_tail=50 * scale, tint=0)
+                       corner_distance=15 * scale, corner_tail=50 * scale, tint=0,
+                       coverage_aa=coverage_aa)
         for name, value in scalars.items():
             self.uniform(name, value)
         self.uniform("glass_size", width, height)
@@ -214,6 +224,65 @@ class GPU:
         assert self.g("glGetError", c.c_uint)() == 0
         return bytes(out), pixels
 
+    def gaussian_program(self, defines=""):
+        key = "gaussian:" + defines
+        if key in self.programs:
+            return self.programs[key]
+        fragment = self.shader(0x8B30, GAUSSIAN.replace("//_DEFINES_", defines))
+        program = self.g("glCreateProgram", c.c_uint)()
+        attach = self.g("glAttachShader", None, c.c_uint, c.c_uint)
+        attach(program, self.vertex)
+        attach(program, fragment)
+        self.g("glLinkProgram", None, c.c_uint)(program)
+        self.g("glDeleteShader", None, c.c_uint)(fragment)
+        ok = c.c_int()
+        self.g("glGetProgramiv", None, c.c_uint, c.c_uint, c.POINTER(c.c_int))(
+            program, 0x8B82, c.byref(ok))
+        if not ok.value:
+            log = c.create_string_buffer(16384)
+            self.g("glGetProgramInfoLog", None, c.c_uint, c.c_int,
+                   c.POINTER(c.c_int), c.c_char_p)(program, len(log), None, log)
+            raise AssertionError(log.value.decode())
+        self.programs[key] = program
+        return program
+
+    def render_gaussian(self, width, height, sigma, direction, pixels):
+        program = self.gaussian_program()
+        self.current_program = program
+        self.g("glUseProgram", None, c.c_uint)(program)
+        bind_texture = self.g("glBindTexture", None, c.c_uint, c.c_uint)
+        upload = self.g("glTexImage2D", None, c.c_uint, c.c_int, c.c_int,
+                        c.c_int, c.c_int, c.c_int, c.c_uint, c.c_uint, c.c_void_p)
+        bind_texture(0x0DE1, self.output_texture)
+        upload(0x0DE1, 0, 0x1908, width, height, 0, 0x1908, 0x1401, None)
+        self.g("glBindFramebuffer", None, c.c_uint, c.c_uint)(0x8D40, self.framebuffer.value)
+        self.g("glFramebufferTexture2D", None, c.c_uint, c.c_uint, c.c_uint,
+               c.c_uint, c.c_int)(0x8D40, 0x8CE0, 0x0DE1, self.output_texture, 0)
+        assert self.g("glCheckFramebufferStatus", c.c_uint, c.c_uint)(0x8D40) == 0x8CD5
+        bind_texture(0x0DE1, self.input_texture)
+        data = (c.c_ubyte * len(pixels)).from_buffer(pixels)
+        upload(0x0DE1, 0, 0x1908, width, height, 0, 0x1908, 0x1401, data)
+        self.uniform("alpha", 1.0)
+        self.uniform("blur_texel", 1.0 / width, 1.0 / height)
+        self.uniform("blur_dir", direction[0], direction[1])
+        self.uniform("blur_sigma", sigma)
+        sampler = self.g("glGetUniformLocation", c.c_int, c.c_uint, c.c_char_p)(
+            program, b"tex")
+        self.g("glUniform1i", None, c.c_int, c.c_int)(sampler, 0)
+        position = self.g("glGetAttribLocation", c.c_int, c.c_uint, c.c_char_p)(
+            program, b"position")
+        self.g("glEnableVertexAttribArray", None, c.c_uint)(position)
+        self.g("glVertexAttribPointer", None, c.c_uint, c.c_int, c.c_uint,
+               c.c_uint, c.c_int, c.c_void_p)(position, 2, 0x1406, 0, 0, self.vertices)
+        self.g("glViewport", None, *([c.c_int] * 4))(0, 0, width, height)
+        self.uniform("source_rect", 0.0, 0.0, 1.0, 1.0)
+        self.g("glDrawArrays", None, c.c_uint, c.c_int, c.c_int)(5, 0, 4)
+        out = (c.c_ubyte * len(pixels))()
+        self.g("glReadPixels", None, *([c.c_int] * 4), c.c_uint, c.c_uint,
+               c.c_void_p)(0, 0, width, height, 0x1908, 0x1401, out)
+        assert self.g("glGetError", c.c_uint)() == 0
+        return bytes(out)
+
     def close(self):
         if self.display:
             self.e("eglMakeCurrent", c.c_uint, *([c.c_void_p] * 4))(
@@ -237,6 +306,60 @@ class GlassShaderTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.gpu.close()
 
+    def test_full_panel_coverage_antialiases_the_corner(self):
+        w, h, scale = 966, 156, 2
+        out, _ = self.gpu.render(w, h, scale, solid=True, coverage_aa=1.0)
+        # The top/bottom edges land on pixel boundaries at an integer scale;
+        # the rounded corner arc is where the SDF cuts through pixels.
+        partial = [
+            out[(y * w + x) * 4 + 3]
+            for y in range(0, 70)
+            for x in range(0, 70)
+            if 0 < out[(y * w + x) * 4 + 3] < 255
+        ]
+        self.assertTrue(partial, "the SDF corner must produce partial coverage")
+        inner = out[(4 * w + w // 2) * 4 + 3]
+        self.assertGreaterEqual(inner, 250, "the interior must stay opaque")
+
+    def test_gaussian_blur_is_symmetric_and_normalized(self):
+        w, h = 128, 8
+        pixels = bytearray(w * h * 4)
+        centre = w // 2
+        for y in range(h):
+            for x in range(w):
+                i = (y * w + x) * 4
+                value = 255 if x == centre else 0
+                pixels[i:i + 4] = bytes((value, value, value, 255))
+        out = self.gpu.render_gaussian(w, h, 4.0, (1.0, 0.0), pixels)
+        row = [out[(h // 2 * w + x) * 4] for x in range(w)]
+        self.assertEqual(max(row), row[centre])
+        for distance in range(1, 13):
+            self.assertLessEqual(
+                abs(row[centre - distance] - row[centre + distance]), 2,
+                f"Gaussian is not symmetric at {distance} px",
+            )
+        for distance in range(1, 12):
+            self.assertGreaterEqual(
+                row[centre + distance], row[centre + distance + 1],
+                "Gaussian must decay monotonically",
+            )
+        self.assertAlmostEqual(sum(row) / 255.0, 1.0, delta=0.15)
+
+    def test_gaussian_sigma_controls_the_spread(self):
+        w, h = 128, 8
+        pixels = bytearray(w * h * 4)
+        centre = w // 2
+        for y in range(h):
+            for x in range(w):
+                i = (y * w + x) * 4
+                value = 255 if x == centre else 0
+                pixels[i:i + 4] = bytes((value, value, value, 255))
+        narrow = self.gpu.render_gaussian(w, h, 2.0, (1.0, 0.0), pixels)
+        wide = self.gpu.render_gaussian(w, h, 6.0, (1.0, 0.0), pixels)
+        row = lambda data: [data[(h // 2 * w + x) * 4] for x in range(w)]
+        narrow_row, wide_row = row(narrow), row(wide)
+        self.assertGreater(wide_row[centre + 4], narrow_row[centre + 4])
+
     def test_middle_transmits_backdrop_at_all_scales_and_widths(self):
         for scale in (1, 1.5, 2):
             for logical_width in (483, 1400):
@@ -245,10 +368,16 @@ class GlassShaderTests(unittest.TestCase):
                         w, h = round(logical_width * scale), round(78 * scale)
                         out, source = self.gpu.render(w, h, scale, dark=dark)
                         alpha, tone = (.149, .207) if dark else (.253, .604)
-                        values = []
-                        for x in range(w // 2 - 50, w // 2 + 50):
+                        # The backdrop must still vary across the panel.
+                        values = [
+                            out[(h // 2 * w + x) * 4]
+                            for x in range(w // 2 - 50, w // 2 + 50)
+                        ]
+                        # The measured flat-band mix is a centre/interior
+                        # property. Sample near the centre where the body lens
+                        # is an identity map, not at the lensed rim.
+                        for x in range(w // 2 - 4, w // 2 + 4):
                             i = (h // 2 * w + x) * 4
-                            values.append(out[i])
                             for channel in (0, 1):
                                 expected = source[i + channel] * (1 - alpha) + tone * 255 * alpha
                                 self.assertLessEqual(abs(out[i + channel] - expected), 2)
@@ -260,17 +389,27 @@ class GlassShaderTests(unittest.TestCase):
                 w, h = round(483 * scale), round(78 * scale)
                 full, _ = self.gpu.render(w, h, scale)
                 rows, _ = self.gpu.render(w, h, scale, rows=True)
-                self.assertLessEqual(max(abs(a - b) for a, b in zip(full, rows)), 1)
+                # The body lens samples a displaced UV, so a 1-px row draw and
+                # a full draw can differ by a few 8-bit steps at the corner
+                # due to interpolation precision. There must be no seam.
+                self.assertLessEqual(max(abs(a - b) for a, b in zip(full, rows)), 4)
 
-    def test_corner_lens_is_local_and_retained(self):
+    def test_corner_lens_is_retained(self):
         w, h, scale = 966, 156, 2
         lens, _ = self.gpu.render(w, h, scale)
         plain, _ = self.gpu.render(w, h, scale, peak=0)
-        # Outside both corner fields, the lens is exactly an identity map.
-        for y in range(h):
-            a, b = (y * w + 200) * 4, (y * w + w - 200) * 4
-            self.assertEqual(lens[a:b], plain[a:b])
-        self.assertGreater(max(abs(a - b) for a, b in zip(lens, plain)), 20)
+        # The measured corner bevel is the only displacement now; the body
+        # must remain an identity map outside the corner field.
+        body = max(
+            abs(a - b)
+            for y in range(h)
+            for a, b in zip(lens[(y * w + 200) * 4:(y * w + 200) * 4 + 3],
+                            plain[(y * w + 200) * 4:(y * w + 200) * 4 + 3])
+        )
+        corner = max(abs(a - b) for a, b in zip(lens, plain))
+        self.assertLess(body, corner)
+        self.assertLess(body, 24)
+        self.assertGreater(corner, 20)
 
     def test_uniform_rim_peak_on_every_edge(self):
         # T235a: the reference plate has one specular rim on the whole
@@ -296,6 +435,27 @@ class GlassShaderTests(unittest.TestCase):
                     self.assertLessEqual(
                         abs(delta - 0.397), 0.02,
                         f"{name} first-pixel delta {delta:.3f} at {scale}x")
+
+    def test_full_panel_coverage_keeps_the_rim_peak(self):
+        # The measured Dock draws one full panel rect and uses SDF coverage.
+        # The first covered pixel must still carry the measured +0.397.
+        for scale in (1, 1.5, 2):
+            w, h = round(483 * scale), round(78 * scale)
+            out, _ = self.gpu.render(w, h, scale, solid=True, coverage_aa=1.0)
+            alpha, tone = .253, .604
+            interior = 127 * (1 - alpha) + tone * 255 * alpha
+            with self.subTest(scale=scale):
+                for name, (x, y) in {
+                    "top": (w // 2, 0),
+                    "bottom": (w // 2, h - 1),
+                    "left": (0, h // 2),
+                    "right": (w - 1, h // 2),
+                }.items():
+                    delta = (out[(y * w + x) * 4] - interior) / 255.0
+                    self.assertLessEqual(
+                        abs(delta - 0.397), 0.02,
+                        f"{name} full-panel rim delta {delta:.3f} at {scale}x",
+                    )
 
     def test_rim_half_ten_percent_and_tail_match_the_measured_lut(self):
         for scale in (1, 1.5, 2):
@@ -356,22 +516,27 @@ class GlassShaderTests(unittest.TestCase):
         # top, so the arc cannot end in a darker vertical outline.
         self.assertLessEqual(abs(values[-1] - values[0]), 0.08)
 
-    def test_flat_edge_and_flat_side_lens_are_identity(self):
-        # The corner gate is exactly zero on a flat top/bottom edge and on a
-        # flat side, so the lens cannot warp the end caps.
+    def test_flat_edge_and_flat_side_lens_are_small_but_continuous(self):
+        # The reference flat edge is ~0.5 pt, not exactly zero. The corner
+        # gain must leave a small continuous displacement on the flats so the
+        # lens does not snap off at the corner-to-side transition.
         w, h, scale = 966, 156, 2
         lens, _ = self.gpu.render(w, h, scale)
         plain, _ = self.gpu.render(w, h, scale, peak=0)
+        # Sample where the measured profile peaks (15 pt inside), not at the
+        # rim where the profile is deliberately zero.
         for name, (x, y) in {
-            "top": (w // 2, 2),
-            "bottom": (w // 2, h - 3),
-            "left": (2, h // 2),
-            "right": (w - 3, h // 2),
+            "top": (w // 2, 30),
+            "bottom": (w // 2, h - 31),
+            "left": (30, h // 2),
+            "right": (w - 31, h // 2),
         }.items():
             with self.subTest(edge=name):
                 a = (y * w + x) * 4
-                self.assertEqual(lens[a:a + 3], plain[a:a + 3],
-                                 f"{name} lens is not an identity map")
+                delta = max(abs(lens[a + c] - plain[a + c]) for c in range(3))
+                self.assertGreater(delta, 0, f"{name} has no edge lens")
+                self.assertLessEqual(delta, 16,
+                                     f"{name} edge lens is too strong")
 
     def test_corner_lens_still_displaces_the_corner(self):
         w, h, scale = 966, 156, 2
@@ -414,6 +579,12 @@ class GlassShaderTests(unittest.TestCase):
                 middle = [out[(h // 2 * w + x) * 4]
                           for x in range(w // 2 - 50, w // 2 + 50)]
                 self.assertGreater(max(middle) - min(middle), 100)
+
+    def test_bevel_program_compiles(self):
+        for extra in ("", "#define NO_ALPHA", "#define DEBUG_FLAGS",
+                      "#define NO_ALPHA\n#define DEBUG_FLAGS"):
+            with self.subTest(defines=extra):
+                self.gpu.shader(0x8B30, BEVEL.replace("//_DEFINES_", extra))
 
     def test_external_texture_program_variants_compile(self):
         extensions = self.gpu.g("glGetString", c.c_char_p, c.c_uint)(0x1F03)

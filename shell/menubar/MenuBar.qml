@@ -523,8 +523,17 @@ Rectangle {
     readonly property string veilScheme:
         backgroundLuma >= Theme.controls.menuBar.foregroundFlipThresholdLight
             ? "light" : "dark"
-    readonly property bool darkForeground:
-        showBackground && !veilActive ? !Theme.dark : veilScheme === "light"
+    // The legacy sampled rail paints a scheme-coloured glass plate, so it
+    // keeps the scheme pair. The no-blur veil and the background-off mode are
+    // wallpaper-driven.
+    readonly property bool wallpaperPolarity:
+        !menuBar.showBackground || menuBar.veilActive
+    // The luminance the lettering actually sits on: the veil-composited
+    // backdrop when the veil runs, otherwise the wallpaper band. Using the
+    // pre-veil wallpaper luma was the old bug: it left white text on the
+    // 0.55–0.78 band's mid-grey composite.
+    readonly property real foregroundLuma:
+        menuBar.veilActive ? menuBar.renderedLuma : menuBar.backgroundLuma
 
     function veilAlphaAt(depth) {
         if (!menuBar.veilActive)
@@ -574,9 +583,24 @@ Rectangle {
         var veilLuma = menuBar.veilResolution.tint;
         return menuBar.backgroundLuma * (1 - alpha) + veilLuma * alpha;
     }
-    readonly property real foregroundFlipThreshold:
-        Theme.dark ? Theme.controls.menuBar.foregroundFlipThresholdDark
-                   : Theme.controls.menuBar.foregroundFlipThresholdLight
+    // Hysteresis keeps a wallpaper that sits on the threshold from flickering
+    // the lettering. The latch is updated by the luminance handler and seeded
+    // on completion, so a test that sets `backgroundLuma` at creation is
+    // correct on the first frame.
+    property bool _darkForegroundLatch: false
+    function updateForegroundLatch() {
+        var threshold = Theme.controls.wallpaperText.flipThreshold;
+        var band = Theme.controls.wallpaperText.flipHysteresis;
+        if (menuBar.foregroundLuma >= threshold + band)
+            menuBar._darkForegroundLatch = true;
+        else if (menuBar.foregroundLuma <= threshold - band)
+            menuBar._darkForegroundLatch = false;
+    }
+    onForegroundLumaChanged: updateForegroundLatch()
+    Component.onCompleted: updateForegroundLatch()
+    readonly property bool darkForeground:
+        menuBar.wallpaperPolarity ? menuBar._darkForegroundLatch
+                                  : !Theme.dark
     readonly property color foreground:
         menuBar.darkForeground ? Theme.controls.menuBar.foregroundOnLight
                                : Theme.controls.menuBar.foregroundOnDark

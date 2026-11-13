@@ -90,6 +90,73 @@ void main() {
 }
 "#;
 
+/// The custom texture shader for the measured Dock blur (T198 follow-up).
+///
+/// The reference Dock is a **19.2 % sharp + 80.8 % Gaussian σ = 3.86 pt**
+/// mixture, not a Kawase pyramid. This program is one separable Gaussian
+/// direction. It samples 25 taps at `blur_sigma / 4` source-texel spacing
+/// (3σ support) and normalises the weights in the shader, so the same program
+/// runs horizontally and vertically with only `blur_dir` changed.
+///
+/// The panel path is small (a Dock is ~1163 × 80 pt), so a full-resolution
+/// separable pass is cheaper than a multi-level pyramid and preserves the
+/// high-frequency detail the bevel lens needs to bend.
+pub const GAUSSIAN_BLUR_SHADER: &str = r#"#version 100
+
+//_DEFINES_
+
+#if defined(EXTERNAL)
+#extension GL_OES_EGL_image_external : require
+#endif
+
+precision highp float;
+#if defined(EXTERNAL)
+uniform samplerExternalOES tex;
+#else
+uniform sampler2D tex;
+#endif
+
+uniform float alpha;
+uniform vec2 blur_texel;
+uniform vec2 blur_dir;
+uniform float blur_sigma;
+varying vec2 v_coords;
+
+#if defined(DEBUG_FLAGS)
+uniform float tint;
+#endif
+
+void main() {
+    // 25 taps over +/- 3 sigma. The weights are evaluated in sigma units, so
+    // the kernel shape is stable at 1x, 1.5x and 2x.
+    float sigma = max(blur_sigma, 0.01);
+    float step_px = sigma * 0.25;
+    vec4 color = vec4(0.0);
+    float total = 0.0;
+    for (int i = -12; i <= 12; ++i) {
+        float x = float(i) * 0.25;
+        float weight = exp(-0.5 * x * x);
+        vec2 offset = blur_dir * blur_texel * (float(i) * step_px);
+        color += texture2D(tex, v_coords + offset) * weight;
+        total += weight;
+    }
+    color = color / max(total, 1e-6);
+
+#if defined(NO_ALPHA)
+    color = vec4(color.rgb, 1.0) * alpha;
+#else
+    color = color * alpha;
+#endif
+
+#if defined(DEBUG_FLAGS)
+    if (tint == 1.0)
+        color = vec4(0.0, 0.2, 0.0, 0.2) + color * 0.8;
+#endif
+
+    gl_FragColor = color;
+}
+"#;
+
 /// The custom texture shader for the Tahoe liquid-glass pass (T-20.2).
 ///
 /// It is compiled once per renderer like [`BLUR_SHADER`] and used on the final
@@ -152,6 +219,7 @@ uniform float corner_tail;
 uniform vec2 panel_uv_offset;
 uniform vec2 panel_uv_scale;
 uniform vec2 uv_per_px;
+uniform float coverage_aa;
 
 #if defined(DEBUG_FLAGS)
 uniform float tint;
@@ -173,6 +241,10 @@ void main() {
     vec2 outside = max(q, vec2(0.0));
     float dist = length(outside) + min(max(q.x, q.y), 0.0) - glass_radius;
     float inside = max(-dist, 0.0);
+    // Full-panel measured Dock draws use the SDF as an antialiased coverage
+    // mask. Span-clipped roles pass coverage_aa = 0 and keep their integer
+    // spans, so this cannot introduce seams in their decomposition.
+    float coverage = mix(1.0, clamp(0.5 - dist, 0.0, 1.0), coverage_aa);
 
     // Nearest-edge SDF normal for rim lighting. Refraction has its own smooth
     // direction: the SDF normal jumps across interior medial axes.
@@ -182,25 +254,23 @@ void main() {
 
     vec2 uv = v_coords;
     if (flat_band > 0.5) {
-        // Corner-only lens (T235a). The field is parameterized by the measured
-        // coordinate: distance *inside* the rounded rim. The outward SDF
-        // normal supplies the direction, and `4*nx^2*ny^2` is the corner gate:
-        // exactly zero on a flat top/bottom edge (normal (0,1)) and on a flat
-        // side (normal (1,0)), one at the 45-degree corner diagonal. That
-        // keeps the flat ends of a short Dock unbent without a hard distance
-        // gate. The displacement is sampled inward (`-normal`) so the backdrop
-        // reads magnified.
+        // Measured magnifying bevel. The field is parameterized by distance
+        // *inside* the rounded rim. `4*nx^2*ny^2` is a smooth corner gain:
+        // zero on a flat top/bottom edge or flat side, one at the 45-degree
+        // diagonal. Unlike the old corner-only gate, a small uniform edge
+        // displacement remains on the flats (the measured ~0.5 pt), so the
+        // lens is continuous around the whole perimeter instead of snapping
+        // off at the corner-to-side transition.
         if (corner_peak > 0.0 && inside < corner_tail) {
             float corner_gate = 4.0 * rim_normal.x * rim_normal.x
                               * rim_normal.y * rim_normal.y;
-            if (corner_gate > 0.0) {
-                float t = inside / max(corner_distance, 1.0);
-                float bump = t * t * t * exp(3.0 * (1.0 - t));
-                float fade = 1.0 - smoothstep(corner_tail * 0.75,
-                                              max(corner_tail, 1.0), inside);
-                uv -= rim_normal * (corner_peak * bump * fade * corner_gate)
-                      * uv_per_px;
-            }
+            float t = inside / max(corner_distance, 1.0);
+            float bump = t * t * t * exp(3.0 * (1.0 - t));
+            float fade = 1.0 - smoothstep(corner_tail * 0.75,
+                                          max(corner_tail, 1.0), inside);
+            float flat_edge = 0.5 * max(rim_half_width, 1.0);
+            float lens = flat_edge + (corner_peak - flat_edge) * corner_gate;
+            uv -= rim_normal * (lens * bump * fade) * uv_per_px;
         }
     } else {
         // Edge lens: falloff is one at the rim and reaches zero at lens_falloff.
@@ -235,7 +305,16 @@ void main() {
         float rim = rim_peak * max(rim_line, rim_core + rim_broad);
         float rim_fade = 1.0 - smoothstep(rim_tail * 0.75,
                                           max(rim_tail, 1.0), inside);
-        color.rgb += vec3(rim * rim_fade);
+        // A glass rim is a reflection, not a fixed stroke. Keep the measured
+        // +0.397 on mid-grey, but attenuate the line where the backdrop is
+        // already bright so it cannot read as a clipped white outline. The
+        // padded Dock texture makes this outward probe valid at the rim.
+        vec2 env_uv = clamp(
+            v_coords + rim_normal * (2.0 * max(rim_half_width, 1.0)) * uv_per_px,
+            0.0, 1.0);
+        float env = luminance(texture2D(tex, env_uv).rgb);
+        float env_gain = 1.0 - 0.30 * smoothstep(0.65, 1.0, env);
+        color.rgb += vec3(rim * rim_fade * env_gain);
     } else {
         // Adaptive tint: 3x3 mean luminance of the blurred backdrop.
         vec3 mean = vec3(0.0);
@@ -258,9 +337,9 @@ void main() {
     }
 
 #if defined(NO_ALPHA)
-    color = vec4(color.rgb, 1.0) * alpha;
+    color = vec4(color.rgb, 1.0) * (alpha * coverage);
 #else
-    color = color * alpha;
+    color = color * (alpha * coverage);
 #endif
 
 #if defined(DEBUG_FLAGS)
@@ -269,6 +348,121 @@ void main() {
 #endif
 
     gl_FragColor = color;
+}
+"#;
+
+/// The sharp-scene bevel pass for the measured Dock (T198 follow-up).
+///
+/// The blurred body already carries the measured flat band, the body lens and
+/// the corner displacement. This pass draws **on top** of it with the live
+/// scene texture, so the bevel bends real wallpaper detail instead of the
+/// already-frosted body. It writes only the bevel band: the interior is
+/// transparent and the body shows through. The body and the bevel evaluate the
+/// same measured lens profile, so the sharp-to-blur transition has no
+/// geometric jump.
+pub const BEVEL_SHADER: &str = r#"#version 100
+
+//_DEFINES_
+
+#if defined(EXTERNAL)
+#extension GL_OES_EGL_image_external : require
+#endif
+
+precision highp float;
+#if defined(EXTERNAL)
+uniform samplerExternalOES tex;
+#else
+uniform sampler2D tex;
+#endif
+
+uniform float alpha;
+varying vec2 v_coords;
+
+uniform vec2 glass_size;
+uniform float glass_radius;
+uniform vec3 tint_color;
+uniform float flat_alpha;
+uniform float rim_peak;
+uniform float rim_half_width;
+uniform float rim_tail;
+uniform float corner_peak;
+uniform float corner_distance;
+uniform float corner_tail;
+uniform vec2 panel_uv_offset;
+uniform vec2 panel_uv_scale;
+uniform vec2 uv_per_px;
+
+#if defined(DEBUG_FLAGS)
+uniform float tint;
+#endif
+
+float luminance(vec3 c) {
+    return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+void main() {
+    vec2 panel_uv = panel_uv_offset + v_coords * panel_uv_scale;
+    vec2 p = (panel_uv - 0.5) * glass_size;
+    vec2 half_size = max(glass_size * 0.5 - vec2(glass_radius), vec2(0.0));
+    vec2 q = abs(p) - half_size;
+    vec2 outside = max(q, vec2(0.0));
+    float dist = length(outside) + min(max(q.x, q.y), 0.0) - glass_radius;
+    float inside = max(-dist, 0.0);
+
+    float ol = length(outside);
+    vec2 normal = (ol > 0.0) ? outside / ol
+        : ((q.x > q.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+    float corner_gate = 4.0 * normal.x * normal.x
+                      * normal.y * normal.y;
+
+    // The sharp overlay is corner-only. The measured flat top/bottom edge is
+    // ~0.5 pt and belongs to the blurred body; a wide sharp band there would
+    // overwrite the measured flat-band MTF. The corner gate broadens the
+    // band only where the reference actually shows the compressed bevel.
+    float bevel = max(corner_distance * 1.6, rim_tail * 3.0);
+    float band = corner_gate
+        * (1.0 - smoothstep(bevel * 0.45, max(bevel, 1.0), inside));
+    // Preserve the body's measured specular line and tail: the sharp overlay
+    // starts just inside them rather than covering the rim.
+    float rim_guard = smoothstep(rim_tail * 1.1, max(rim_tail * 1.8, 1.0),
+                                 inside);
+    float a = band * rim_guard * clamp(0.5 - dist, 0.0, 1.0);
+    if (a <= 0.0) {
+        gl_FragColor = vec4(0.0);
+        return;
+    }
+
+    // Same measured corner profile as the body pass.
+    vec2 uv = v_coords;
+
+    if (corner_peak > 0.0 && inside < corner_tail) {
+        float t = inside / max(corner_distance, 1.0);
+        float bump = t * t * t * exp(3.0 * (1.0 - t));
+        float fade = 1.0 - smoothstep(corner_tail * 0.75,
+                                      max(corner_tail, 1.0), inside);
+        float flat_edge = 0.5 * max(rim_half_width, 1.0);
+        float lens = flat_edge + (corner_peak - flat_edge) * corner_gate;
+        uv -= normal * (lens * bump * fade) * uv_per_px;
+    }
+
+    // A four-tap footprint at the lip hides the aliasing of the sharp scene
+    // while keeping far more detail than the body frost.
+    vec2 tap = uv_per_px * 0.75;
+    vec3 scene = texture2D(tex, uv).rgb * 0.4;
+    scene += texture2D(tex, uv + vec2(tap.x, 0.0)).rgb * 0.15;
+    scene += texture2D(tex, uv - vec2(tap.x, 0.0)).rgb * 0.15;
+    scene += texture2D(tex, uv + vec2(0.0, tap.y)).rgb * 0.15;
+    scene += texture2D(tex, uv - vec2(0.0, tap.y)).rgb * 0.15;
+    scene = mix(scene, tint_color, clamp(flat_alpha * 0.65, 0.0, 1.0));
+
+    // The blurred body owns the measured rim (line + tail). This pass only
+    // sharpens the refraction inside it.
+    gl_FragColor = vec4(scene * a, a) * alpha;
+
+#if defined(DEBUG_FLAGS)
+    if (tint == 1.0)
+        gl_FragColor = vec4(0.0, 0.2, 0.0, 0.2) + gl_FragColor * 0.8;
+#endif
 }
 "#;
 
@@ -429,6 +623,9 @@ pub const GLASS_PANEL_UV_OFFSET_UNIFORM: &str = "panel_uv_offset";
 pub const GLASS_PANEL_UV_SCALE_UNIFORM: &str = "panel_uv_scale";
 /// T198: texture UV per output physical pixel.
 pub const GLASS_UV_PER_PX_UNIFORM: &str = "uv_per_px";
+/// Whether the element draws one full panel rect and uses the SDF as an
+/// antialiased coverage mask (1) or the historical integer spans (0).
+pub const GLASS_COVERAGE_AA_UNIFORM: &str = "coverage_aa";
 
 /// The lens falloff width as a multiple of the token refraction strength: a
 /// mapping constant, not a radius. The refraction token is the displacement at
@@ -455,6 +652,10 @@ pub fn tone_to_rgb(tone: [u8; 4]) -> [f32; 3] {
 pub const BLUR_TEXEL_UNIFORM: &str = "blur_texel";
 /// The additional shader uniform carrying the tap radius in source texels.
 pub const BLUR_RADIUS_UNIFORM: &str = "blur_radius";
+/// The separable Gaussian direction (`(1,0)` horizontal, `(0,1)` vertical).
+pub const GAUSSIAN_DIR_UNIFORM: &str = "blur_dir";
+/// The separable Gaussian sigma in source texels.
+pub const GAUSSIAN_SIGMA_UNIFORM: &str = "blur_sigma";
 
 /// Logical pixels of blur per Kawase iteration. The token blur maps to an
 /// iteration count through this constant (a mapping, not a radius: the radius
@@ -486,9 +687,18 @@ pub fn blur_uniform_names() -> [UniformName<'static>; 2] {
     ]
 }
 
+/// The additional uniform descriptors [`GAUSSIAN_BLUR_SHADER`] declares.
+pub fn gaussian_uniform_names() -> [UniformName<'static>; 3] {
+    [
+        UniformName::new(BLUR_TEXEL_UNIFORM, UniformType::_2f),
+        UniformName::new(GAUSSIAN_DIR_UNIFORM, UniformType::_2f),
+        UniformName::new(GAUSSIAN_SIGMA_UNIFORM, UniformType::_1f),
+    ]
+}
+
 /// The additional uniform descriptors [`GLASS_SHADER`] declares, passed to
 /// `GlesRenderer::compile_custom_texture_shader`.
-pub fn glass_uniform_names() -> [UniformName<'static>; 20] {
+pub fn glass_uniform_names() -> [UniformName<'static>; 21] {
     [
         UniformName::new(GLASS_SIZE_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_RADIUS_UNIFORM, UniformType::_1f),
@@ -510,6 +720,7 @@ pub fn glass_uniform_names() -> [UniformName<'static>; 20] {
         UniformName::new(GLASS_PANEL_UV_OFFSET_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_PANEL_UV_SCALE_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_UV_PER_PX_UNIFORM, UniformType::_2f),
+        UniformName::new(GLASS_COVERAGE_AA_UNIFORM, UniformType::_1f),
     ]
 }
 
@@ -528,6 +739,10 @@ pub struct BlurSpec {
     pub sharp_weights: Option<[f32; 6]>,
     /// Logical sigma for frosted cards, separate from legacy blur radii.
     pub sigma: Option<f32>,
+    /// The measured sharp-scene fraction for the Gaussian mixture. `Some`
+    /// marks the persistent Dock optics: the measured kernel must survive the
+    /// degrade tier rather than being scaled with transient chrome.
+    pub sharp_fraction: Option<f32>,
 }
 
 impl BlurSpec {
@@ -539,6 +754,7 @@ impl BlurSpec {
             corner_radius,
             sharp_weights: None,
             sigma: None,
+            sharp_fraction: None,
         }
     }
 
@@ -553,6 +769,7 @@ impl BlurSpec {
             corner_radius,
             sharp_weights: None,
             sigma: Some(sigma),
+            sharp_fraction: None,
         }
     }
 
@@ -562,21 +779,40 @@ impl BlurSpec {
         })
     }
 
-    /// The T198 Dock fit: five Kawase levels plus the sharp scene composite.
-    pub fn for_dock(radius: f32, corner_radius: f32) -> Self {
+    /// The measured Dock fit: a sharp scene mixed with one Gaussian.
+    ///
+    /// `sigma` is the measured equivalent Gaussian (3.86 pt at the reference
+    /// scale); `sharp_fraction` is the measured 0.192 sharp transmission. The
+    /// five-level Kawase composite is deliberately gone: it fitted the checker
+    /// MTF but produced a broad, low-resolution frost that the lens could not
+    /// bend.
+    pub fn for_dock(sigma: f32, sharp_fraction: f32, corner_radius: f32) -> Self {
+        let sigma = sigma.max(0.1);
         BlurSpec {
-            radius,
-            iterations: crate::window::dock_optics::DOCK_BLUR_ITERATIONS,
+            radius: sigma * 3.0,
+            // The Gaussian path does not downsample; `iterations` stays zero
+            // so stats and padding describe the real pass.
+            iterations: 0,
             corner_radius,
-            sharp_weights: Some(crate::window::dock_optics::DOCK_SCALE_WEIGHTS),
-            sigma: None,
+            sharp_weights: None,
+            sigma: Some(sigma),
+            sharp_fraction: Some(sharp_fraction.clamp(0.0, 1.0)),
         }
     }
 
-    /// Scale the geometry for a degrade tier while preserving the T198
-    /// multi-scale levels (re-deriving iterations from the scaled radius would
-    /// silently drop the measured shoulder).
+    /// Whether this is the persistent measured material whose optics must not
+    /// be scaled away by a degrade tier.
+    pub const fn is_measured(&self) -> bool {
+        self.sharp_fraction.is_some()
+    }
+
+    /// Scale the geometry for a transient degrade tier. A measured Dock spec
+    /// is returned unchanged: the Dock lives at `Reduced` by policy, so
+    /// halving the measured σ would make the production plate under-blurred.
     pub fn scaled(self, scale: f32) -> Self {
+        if self.is_measured() {
+            return self;
+        }
         if let Some(sigma) = self.sigma {
             Self::for_frosted(sigma * scale, self.corner_radius * scale)
         } else if self.sharp_weights.is_some() {
@@ -661,6 +897,9 @@ pub struct GlassSpec {
     pub corner_distance: f32,
     /// T198: corner-lens decay tail in logical pixels.
     pub corner_tail: f32,
+    /// Whether the element draws one full panel rect and uses the SDF as an
+    /// antialiased coverage mask. Set for the measured Dock; zero elsewhere.
+    pub coverage_aa: f32,
 }
 
 impl Default for GlassSpec {
@@ -679,6 +918,7 @@ impl Default for GlassSpec {
             corner_peak: 0.0,
             corner_distance: 0.0,
             corner_tail: 0.0,
+            coverage_aa: 0.0,
         }
     }
 }
@@ -701,6 +941,7 @@ impl GlassSpec {
             corner_peak: optics.corner_lens_peak,
             corner_distance: optics.corner_lens_distance,
             corner_tail: optics.corner_lens_tail,
+            coverage_aa: 1.0,
         }
     }
 }
@@ -734,7 +975,7 @@ impl GlassSpec {
         scale: Scale<f64>,
         panel: Rectangle<i32, Logical>,
         texture_region: Rectangle<i32, Logical>,
-    ) -> [Uniform<'static>; 20] {
+    ) -> [Uniform<'static>; 21] {
         let w = physical.w.max(1) as f32;
         let h = physical.h.max(1) as f32;
         let sx = scale.x.max(f64::EPSILON) as f32;
@@ -778,6 +1019,7 @@ impl GlassSpec {
             Uniform::new(GLASS_PANEL_UV_OFFSET_UNIFORM, (offset_x, offset_y)),
             Uniform::new(GLASS_PANEL_UV_SCALE_UNIFORM, (uv_scale_x, uv_scale_y)),
             Uniform::new(GLASS_UV_PER_PX_UNIFORM, (uv_per_px_x, uv_per_px_y)),
+            Uniform::new(GLASS_COVERAGE_AA_UNIFORM, self.coverage_aa),
         ]
     }
 }
@@ -887,6 +1129,9 @@ pub struct BackdropBlurElement {
     source_size: Size<i32, Buffer>,
     /// The panel's per-corner clipping radii in logical pixels (T197).
     corners: CornerRadii,
+    /// Draw one full panel rect and let the shader's SDF coverage provide the
+    /// antialiased silhouette. `false` keeps the historical integer spans.
+    full_panel: bool,
     scale: Scale<f64>,
     /// The liquid-glass parameters and compiled program (T-20.2), or `None`
     /// for the plain blurred compose (the scene texture, or a driver that
@@ -917,10 +1162,19 @@ impl BackdropBlurElement {
             texture_size,
             source_size: texture_size,
             corners: CornerRadii::uniform(corner_radius),
+            full_panel: false,
             scale,
             glass: None,
             veil: None,
         }
+    }
+
+    /// Draw one full panel rect instead of the integer rounded spans. The
+    /// shader's SDF coverage provides the antialiased silhouette; the measured
+    /// Dock uses this to remove the 1×/1.5× stair-step.
+    pub fn with_full_panel_draw(mut self) -> Self {
+        self.full_panel = true;
+        self
     }
 
     /// Use the stable render-element id of the panel slot (T-21.3).
@@ -1064,7 +1318,12 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
         } else {
             &[]
         };
-        for span in self.spans() {
+        let spans = if self.full_panel {
+            vec![self.panel]
+        } else {
+            self.spans()
+        };
+        for span in spans {
             let Some((visible, src)) =
                 map_span_to_texture(span, self.texture_region, self.source_size)
             else {
@@ -1449,7 +1708,8 @@ mod tests {
         // radius is scaled with them so the SDF is device-pixel consistent.
         let panel = Rectangle::new((0, 0).into(), (800, 28).into());
         let uniforms = spec.uniforms(Size::from((1600, 56)), 20, Scale::from(2.0), panel, panel);
-        assert_eq!(uniforms.len(), 20);
+        assert_eq!(uniforms.len(), 21);
+        assert_eq!(uniforms[20].value, UniformValue::_1f(0.0));
         assert_eq!(
             uniforms[0].value,
             UniformValue::_2f(1600.0, 56.0),
@@ -1472,27 +1732,59 @@ mod tests {
     }
 
     #[test]
-    fn the_dock_blur_spec_keeps_its_measured_multi_scale_levels() {
-        let spec = BlurSpec::for_dock(3.86, 27.0);
-        assert_eq!(
-            spec.iterations,
-            crate::window::dock_optics::DOCK_BLUR_ITERATIONS
-        );
-        assert_eq!(
-            spec.sharp_weights,
-            Some(crate::window::dock_optics::DOCK_SCALE_WEIGHTS)
-        );
-        // A degrade tier scales geometry but must not re-derive the chain and
-        // drop the broad level.
-        let reduced = spec.scaled(0.5);
-        assert_eq!(reduced.iterations, spec.iterations);
-        assert_eq!(reduced.sharp_weights, spec.sharp_weights);
-        assert_eq!(reduced.radius, 1.93);
-        assert_eq!(reduced.corner_radius, 13.5);
+    fn the_dock_blur_spec_is_the_measured_sharp_gaussian() {
+        let spec = BlurSpec::for_dock(3.86, 0.192, 27.0);
+        assert_eq!(spec.sigma, Some(3.86));
+        assert_eq!(spec.sharp_fraction, Some(0.192));
+        assert_eq!(spec.sharp_weights, None);
+        assert_eq!(spec.iterations, 0);
+        assert!(spec.is_measured());
+        // The Dock lives at Reduced; the measured optics must survive the
+        // tier rather than being halved into an under-blurred plate.
+        assert_eq!(spec.scaled(0.5), spec);
         // Every other role keeps the token-derived iteration count.
         let legacy = BlurSpec::new(3.86, 27.0);
         assert_eq!(legacy.sharp_weights, None);
         assert_eq!(legacy.iterations, 1);
+    }
+
+    #[test]
+    fn the_gaussian_shader_has_the_texture_program_contract() {
+        assert!(GAUSSIAN_BLUR_SHADER.contains("//_DEFINES_"));
+        assert!(GAUSSIAN_BLUR_SHADER.contains("uniform sampler2D tex;"));
+        assert!(GAUSSIAN_BLUR_SHADER.contains("uniform float alpha;"));
+        assert!(GAUSSIAN_BLUR_SHADER.contains("varying vec2 v_coords;"));
+        assert!(GAUSSIAN_BLUR_SHADER.contains("blur_dir"));
+        assert!(GAUSSIAN_BLUR_SHADER.contains("blur_sigma"));
+        assert_eq!(gaussian_uniform_names().len(), 3);
+    }
+
+    #[test]
+    fn the_bevel_shader_has_the_texture_program_contract() {
+        assert!(BEVEL_SHADER.contains("//_DEFINES_"));
+        assert!(BEVEL_SHADER.contains("uniform sampler2D tex;"));
+        assert!(BEVEL_SHADER.contains("uniform float alpha;"));
+        assert!(BEVEL_SHADER.contains("varying vec2 v_coords;"));
+        for name in [
+            "glass_size",
+            "glass_radius",
+            "flat_alpha",
+            "rim_peak",
+            "rim_half_width",
+            "rim_tail",
+            "corner_peak",
+            "corner_distance",
+            "corner_tail",
+            "panel_uv_offset",
+            "panel_uv_scale",
+            "uv_per_px",
+        ] {
+            assert!(
+                BEVEL_SHADER.contains(name),
+                "bevel shader is missing {name}"
+            );
+        }
+        assert!(BEVEL_SHADER.contains("gl_FragColor"));
     }
 
     #[test]
