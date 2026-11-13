@@ -1,5 +1,9 @@
 # Agent instructions
 
+## Coding rules
+
+- When writing anything that will be checked into git, do not use anything proprietary, copyrighted, or trademarked such as names, words, phrases, or material.
+
 ## Git staging and commits
 
 Before every `git add` or `git commit`:
