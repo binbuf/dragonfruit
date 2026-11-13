@@ -80,10 +80,20 @@ jobs:
 
       - name: Build DEB + tar
         run: |
+          set -o pipefail
           scripts/package.sh \
             --version "${{ steps.version.outputs.value }}" \
             --output dist \
-            --formats tar,deb
+            --formats tar,deb 2>&1 | tee build-deb.log
+
+      - name: Build diagnostics
+        if: failure()
+        run: |
+          if [ -f build-deb.log ]; then
+            tail -n 60 build-deb.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
+          fi
 
       - name: Install smoke test
         run: |
@@ -165,10 +175,20 @@ jobs:
 
       - name: Build RPM
         run: |
+          set -o pipefail
           scripts/package.sh \
             --version "${{ steps.version.outputs.value }}" \
             --output dist \
-            --formats rpm
+            --formats rpm 2>&1 | tee build-rpm.log
+
+      - name: Build diagnostics
+        if: failure()
+        run: |
+          if [ -f build-rpm.log ]; then
+            tail -n 60 build-rpm.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
+          fi
 
       - name: Install smoke test
         run: |
@@ -234,10 +254,20 @@ jobs:
 
       - name: Build Arch package
         run: |
+          set -o pipefail
           scripts/package.sh \
             --version "${{ steps.version.outputs.value }}" \
             --output dist \
-            --formats arch
+            --formats arch 2>&1 | tee build-arch.log
+
+      - name: Build diagnostics
+        if: failure()
+        run: |
+          if [ -f build-arch.log ]; then
+            tail -n 60 build-arch.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
+          fi
 
       - name: Install smoke test
         run: |
