@@ -1108,7 +1108,14 @@ check-tabler:
 	./scripts/gen-app-icons.py --check
 	./scripts/check-tabler-icons.py
 
-lint: fmt-check clippy qml-test check-tokens check-design-tokens check-naming check-assets check-no-capture-grab check-i18n check-phosphor check-tabler
+# The brand/OS-menu mark registry must match assets/icons/brand/*.svg.
+check-brand:
+	./scripts/gen-brand-glyphs.py --check
+
+brand-glyphs:
+	./scripts/gen-brand-glyphs.py
+
+lint: fmt-check clippy qml-test check-tokens check-design-tokens check-naming check-assets check-no-capture-grab check-i18n check-phosphor check-tabler check-brand
 
 fmt:
 	$(CARGO) fmt --all

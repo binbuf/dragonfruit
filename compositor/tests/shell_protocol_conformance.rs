@@ -1491,9 +1491,10 @@ fn material_role_state_is_per_role_floor_aware_and_change_only() {
         );
     }
 
-    // Forced Minimal: persistent chrome holds the Reduced floor with the
-    // sampled pass still on; transient overlays may reach Minimal. The Dock
-    // and menu bar never swap to the milky fallback for a tier selection.
+    // Forced Minimal: the glass-floor roles (Chrome/Dock/Drawer) hold the
+    // Reduced floor with the sampled pass still on; small transient popups may
+    // reach Minimal. The Dock, menu bar and Applications drawer never swap to
+    // the milky fallback for a tier selection.
     state.output_material_role_states.clear();
     input.send("set degrade-tier minimal");
     wait_for(
@@ -1511,20 +1512,18 @@ fn material_role_state_is_per_role_floor_aware_and_change_only() {
         state.output_material_role_states
     );
     assert_eq!(minimal.len(), 4, "one event per role: {minimal:?}");
-    for role in [0, 1] {
+    for role in [0, 1, 3] {
         assert_eq!(
             minimal.get(&role),
             Some(&(1, 1, 0)),
-            "persistent role {role} must keep the reduced floor with blur on"
+            "glass-floor role {role} must keep the reduced floor with blur on"
         );
     }
-    for role in [2, 3] {
-        assert_eq!(
-            minimal.get(&role),
-            Some(&(2, 0, 0)),
-            "transient role {role} may reach minimal"
-        );
-    }
+    assert_eq!(
+        minimal.get(&2),
+        Some(&(2, 0, 0)),
+        "transient popup may reach minimal"
+    );
 
     // Re-forcing the same tier is not an effective change: no role event.
     state.output_material_role_states.clear();
@@ -1822,15 +1821,15 @@ fn material_role_state_follows_a_refresh_aware_load_sequence() {
     }
 
     // 7. Forced tiers still pin the effective per-role state and respect the
-    // persistent floor; the shell applies these same values. Start each row
-    // from a different tier so the target transition changes all four roles.
+    // glass floor; the shell applies these same values. Start each row from a
+    // different tier so the target transition changes all four roles.
     for (start, tier, expected) in [
         ("full", "reduced", [(1u32, 1u32, 0u32); 4]),
         ("reduced", "full", [(0, 1, 0); 4]),
         (
             "full",
             "minimal",
-            [(1, 1, 0), (1, 1, 0), (2, 0, 0), (2, 0, 0)],
+            [(1, 1, 0), (1, 1, 0), (2, 0, 0), (1, 1, 0)],
         ),
     ] {
         input.send(&format!("set degrade-tier {start}"));

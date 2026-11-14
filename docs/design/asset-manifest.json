@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "status": "normative",
-  "updated": "2026-11-09",
+  "updated": "2026-11-14",
   "policy": "docs/design/interface-naming-and-licensing.md#3-asset-policy",
   "notice": "NOTICE",
   "description": "Provenance and license manifest for every icon, font, sound, cursor, wallpaper, and illustration that ships or is fetched at runtime. A shipped entry must name an existing path, a license, a license text, and a source. Categories with no shipped files stay explicit so the first new asset cannot bypass the gate.",
@@ -103,6 +103,21 @@
       "notice": "NOTICE; assets/icons/whitesur/README.md",
       "install": "share/icons/hicolor/scalable/apps plus the shell qrc payload",
       "notes": "Copied byte-for-byte from assets/icons/whitesur/file-manager.svg by scripts/gen-app-icons.py. Separable GPL-3.0 data asset; see ADR 0251."
+    },
+    {
+      "id": "icon.brand",
+      "category": "icon",
+      "name": "Dragonfruit and Tux OS-menu marks",
+      "status": "shipped",
+      "path": "assets/icons/brand",
+      "include": ["*.svg", "README.md"],
+      "source": "original project artwork",
+      "version": "1",
+      "license": "MIT",
+      "license_file": "LICENSE.md",
+      "notice": "NOTICE",
+      "install": "compiled into the design-system QML module as qrc resources",
+      "notes": "The Dragonfruit brand mark and the alternate Tux menu glyph. Both are mirrored as tintable QML shapes (DragonfruitLogo/TuxLogo) so the menu bar can apply its foreground, wallpaper contrast shadow, and hover/open plate."
     },
     {
       "id": "cursor.capitaine",

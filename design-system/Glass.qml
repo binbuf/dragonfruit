@@ -122,8 +122,12 @@ QtObject {
         return { alpha: entry.alpha, tint: entry.tint };
     }
 
-    function _isPersistent(role) {
-        return role === "chrome" || role === "dock";
+    // Roles that keep the sampled glass floor when the global degrade tier
+    // visits Minimal. The Applications drawer is a large, actively read
+    // launcher, so it joins the persistent chrome rather than dropping to the
+    // opaque accessibility plate.
+    function _keepsGlassFloor(role) {
+        return role === "chrome" || role === "dock" || role === "drawer";
     }
 
     function _backend(options) {
@@ -188,7 +192,7 @@ QtObject {
         }
 
         var role = preset.role;
-        var persistent = _isPersistent(role);
+        var glassFloor = _keepsGlassFloor(role);
         var sliderApplied = false;
         var fallbackReason = "none";
         var confidence = "baseline";
@@ -318,14 +322,14 @@ QtObject {
                 alpha = legacyFallback;
                 blur = 0;
                 fallbackReason = "no-sampled-blur";
-            } else if (tier === "minimal" && !persistent) {
+            } else if (tier === "minimal" && !glassFloor) {
                 renderMode = "solid";
                 alpha = legacyFallback;
                 blur = 0;
                 fallbackReason = "minimal";
             } else {
-                // The persistent floor keeps Chrome/Dock sampled even when
-                // the controller visited Minimal (ADR 0203/0211).
+                // The glass floor keeps Chrome/Dock/Drawer sampled even
+                // when the controller visited Minimal (ADR 0203/0211).
                 fallbackReason = "none";
             }
         } else {
@@ -353,7 +357,7 @@ QtObject {
                 tint = unsupported.tint;
                 blur = 0;
                 fallbackReason = "no-sampled-blur";
-            } else if (tier === "minimal" && !persistent) {
+            } else if (tier === "minimal" && !glassFloor) {
                 var minimalFill = _opaqueValues(scheme);
                 renderMode = "solid";
                 alpha = minimalFill.alpha;

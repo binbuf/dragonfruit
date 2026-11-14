@@ -502,6 +502,8 @@ QtObject {
                          "settingsd", "menu.autoHide", "live-on-defaults", "shipped"),
                 root.row("background", qsTr("Menu Bar"), qsTr("Show menu bar background"), "toggle",
                          "settingsd", "menu.showBackground", "live-on-defaults", "shipped"),
+                root.row("osGlyph", qsTr("Menu Bar"), qsTr("OS menu glyph"), "radio",
+                         "settingsd -> shell", "menu.osGlyph", "live-on-defaults", "shipped"),
                 root.row("recentItems", qsTr("Menu Bar"), qsTr("Recent items"), "stepper",
                          "settingsd", "menu.recentItems", "live-on-defaults", "shipped"),
                 root.row("addControls", qsTr("Menu Bar"), qsTr("Add menu-bar controls..."), "sheet",

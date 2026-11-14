@@ -6,6 +6,11 @@ bool MaterialPolicy::isPersistent(std::uint32_t role)
     return role == Chrome || role == Dock;
 }
 
+bool MaterialPolicy::keepsGlassFloor(std::uint32_t role)
+{
+    return isPersistent(role) || role == Drawer;
+}
+
 void MaterialPolicy::setGlobal(std::uint32_t tier, bool blurActive,
                                std::uint32_t fallback)
 {
@@ -39,11 +44,11 @@ AppliedMaterial MaterialPolicy::applied(std::uint32_t role) const
         material.blurActive = false;
 
     // Defensive floor guard. The compositor is authoritative, but a v3 global
-    // snapshot or a malformed v4 state must never make persistent chrome a
-    // flat Minimal slab while the sampled path is available. A persistent
-    // role below Reduced with no fallback reason becomes the explicit
-    // floor-missed milky fallback instead.
-    if (isPersistent(role) && material.fallback == NoFallback
+    // snapshot or a malformed v4 state must never make a glass-floor role a
+    // flat Minimal slab while the sampled path is available. A floored role
+    // below Reduced with no fallback reason becomes the explicit floor-missed
+    // milky fallback instead.
+    if (keepsGlassFloor(role) && material.fallback == NoFallback
             && material.tier > 1) {
         material.tier = 1;
         material.blurActive = false;

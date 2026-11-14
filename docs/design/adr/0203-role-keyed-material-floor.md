@@ -5,7 +5,9 @@
 accepted; persistent-floor selection amended by
 [ADR 0211](0211-persistent-chrome-stability-and-blur-cache.md). Persistent
 chrome still never selects below `Reduced`, but a global `Minimal` selection
-now keeps `blur_active=1` instead of emitting `floor-missed`.
+now keeps `blur_active=1` instead of emitting `floor-missed`. The Applications
+drawer joins the glass floor without becoming persistent chrome; see
+[ADR 0261](0261-apps-drawer-fixed-glass-floor.md).
 
 ## Context
 

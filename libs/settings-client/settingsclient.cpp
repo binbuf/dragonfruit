@@ -129,7 +129,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 24). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 26). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -196,6 +196,8 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("menu.autoHide"), QStringLiteral("full-screen"));
     values.insert(QStringLiteral("menu.showBackground"), true);
     values.insert(QStringLiteral("menu.recentItems"), qlonglong(10));
+    // Revision 26: the OS menu glyph choice.
+    values.insert(QStringLiteral("menu.osGlyph"), QStringLiteral("dragonfruit"));
     values.insert(QStringLiteral("menu.clock.showDate"), true);
     values.insert(QStringLiteral("menu.clock.showSeconds"), false);
     values.insert(QStringLiteral("menu.control.wifi"), true);
@@ -337,6 +339,7 @@ const char *const kHotCorner[] = { "none", "mission-control", "notification-cent
 const char *const kPreviews[] = { "always", "when-unlocked", "never" };
 const char *const kLoginWindowStyle[] = { "list", "name-and-password" };
 const char *const kMenuAutoHide[] = { "never", "always", "full-screen" };
+const char *const kMenuOsGlyph[] = { "dragonfruit", "tux" };
 const char *const kAlertSound[] = { "Chime", "Marimba", "Pulse", "Woodblock", "Breeze" };
 const char *const kEffectsThrough[] = { "output", "alerts" };
 const char *const kPaperSize[] = { "us-letter", "us-legal", "a3", "a4", "a5" };
@@ -396,6 +399,7 @@ const Constraint kConstraints[] = {
     { "notifications.showPreviews", kPreviews, 3, false, 0, false, 0 },
     { "login.windowStyle", kLoginWindowStyle, 2, false, 0, false, 0 },
     { "menu.autoHide", kMenuAutoHide, 3, false, 0, false, 0 },
+    { "menu.osGlyph", kMenuOsGlyph, 2, false, 0, false, 0 },
     { "menu.recentItems", nullptr, 0, true, 0.0, true, 50.0 },
     { "printers.defaultPaperSize", kPaperSize, 5, false, 0, false, 0 },
     { "network.wifi.askToJoin", kAskToJoin, 4, false, 0, false, 0 },

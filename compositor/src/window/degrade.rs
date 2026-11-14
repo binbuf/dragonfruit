@@ -220,14 +220,17 @@ impl EffectiveMaterial {
 
     /// Resolve the effective material for one [`MaterialRole`] (T-21.2c).
     ///
-    /// * Persistent chrome (`Chrome`/`Dock`) never selects below `Reduced`
-    ///   and, on the sampled path, never turns the sampled pass off because
-    ///   the global controller visited `Minimal`. The Dock and menu bar stay
-    ///   glass at `Reduced` instead of swapping to the milky fallback under a
-    ///   transient load; that swap was the visible native flicker (T-21.5).
+    /// * Glass-floor roles (`Chrome`/`Dock`/`Drawer`) never select below
+    ///   `Reduced` and, on the sampled path, never turn the sampled pass off
+    ///   because the global controller visited `Minimal`. The Dock and menu bar
+    ///   stay glass at `Reduced` instead of swapping to the milky fallback under
+    ///   a transient load; that swap was the visible native flicker (T-21.5).
+    ///   The Applications drawer joins that floor: it is a full-output launcher
+    ///   the user is actively reading, and the opaque Minimal plate made it look
+    ///   like a solid slab rather than the reference's large light glass panel.
     ///   The milky fallback is reserved for a genuinely absent/failed sampled
     ///   pass (`NoSampledBlur`), not for a tier selection.
-    /// * Transient roles (`Popup`/`Drawer`) follow the ladder to `Minimal`.
+    /// * Small transient roles (`Popup`) follow the ladder to `Minimal`.
     /// * The software/headless path always resolves to `Minimal` with the
     ///   [`MaterialFallback::Software`] reason for every role: there is no
     ///   sampled path to floor, and the deterministic milky plate is the
@@ -247,12 +250,12 @@ impl EffectiveMaterial {
             };
         }
 
-        if role.is_persistent() {
-            // Persistent chrome has a hard perceptual floor: it never drops
-            // below Reduced, and it keeps the sampled pass on whenever the
+        if role.keeps_glass_floor() {
+            // Glass-floor roles have a hard perceptual floor: they never drop
+            // below Reduced, and they keep the sampled pass on whenever the
             // backend supports it. A global Minimal selection may still be
-            // reported by `degrade stats`, but it no longer changes the Dock
-            // or menu-bar material identity.
+            // reported by `degrade stats`, but it no longer changes the Dock,
+            // menu-bar or Applications-drawer material identity.
             let tier = if selected == DegradeTier::Minimal {
                 DegradeTier::Reduced
             } else {
@@ -860,18 +863,27 @@ mod tests {
         for role in [MaterialRole::Chrome, MaterialRole::Dock] {
             assert!(role.is_persistent(), "{} must be persistent", role.name());
             assert!(!role.is_transient());
+            assert!(role.keeps_glass_floor());
         }
         for role in [MaterialRole::Popup, MaterialRole::Drawer] {
             assert!(role.is_transient(), "{} must be transient", role.name());
             assert!(!role.is_persistent());
         }
+        // The drawer is transient but keeps the sampled glass floor: it is a
+        // large, actively read launcher, not a small popup.
+        assert!(MaterialRole::Drawer.keeps_glass_floor());
+        assert!(!MaterialRole::Popup.keeps_glass_floor());
         assert_eq!(MaterialRole::from_wire(4), None);
     }
 
     #[test]
-    fn persistent_roles_hold_the_reduced_floor_with_blur_on() {
-        // Full/Reduced pass through unchanged for both persistent roles.
-        for role in [MaterialRole::Chrome, MaterialRole::Dock] {
+    fn glass_floor_roles_hold_the_reduced_floor_with_blur_on() {
+        // Full/Reduced pass through unchanged for every glass-floor role.
+        for role in [
+            MaterialRole::Chrome,
+            MaterialRole::Dock,
+            MaterialRole::Drawer,
+        ] {
             for tier in [DegradeTier::Full, DegradeTier::Reduced] {
                 let material =
                     EffectiveMaterial::resolve_for_role(role, MaterialPath::Gpu, true, tier);
@@ -881,9 +893,9 @@ mod tests {
                 assert_eq!(material.fallback, MaterialFallback::None);
             }
 
-            // A global Minimal selection keeps persistent chrome at the
-            // Reduced floor with the sampled pass still on. It must not swap
-            // the Dock/menu bar to the milky fallback while the user is
+            // A global Minimal selection keeps the floor at Reduced with the
+            // sampled pass still on. It must not swap the Dock, menu bar or
+            // Applications drawer to the milky fallback while the user is
             // interacting; the cost problem belongs to the region/blur path.
             let floored = EffectiveMaterial::resolve_for_role(
                 role,
@@ -899,24 +911,27 @@ mod tests {
     }
 
     #[test]
-    fn transient_roles_may_reach_minimal() {
-        for role in [MaterialRole::Popup, MaterialRole::Drawer] {
-            for tier in DegradeTier::ALL {
-                let material =
-                    EffectiveMaterial::resolve_for_role(role, MaterialPath::Gpu, true, tier);
-                assert_eq!(material.role, role);
-                assert_eq!(material.tier, tier);
-                assert_eq!(material.blur_active, tier.blur_enabled());
-                assert_eq!(material.fallback, MaterialFallback::None);
-            }
+    fn small_transient_roles_may_reach_minimal() {
+        let role = MaterialRole::Popup;
+        for tier in DegradeTier::ALL {
+            let material =
+                EffectiveMaterial::resolve_for_role(role, MaterialPath::Gpu, true, tier);
+            assert_eq!(material.role, role);
+            assert_eq!(material.tier, tier);
+            assert_eq!(material.blur_active, tier.blur_enabled());
+            assert_eq!(material.fallback, MaterialFallback::None);
         }
     }
 
     #[test]
     fn an_absent_sampled_path_reports_its_reason_per_role() {
-        // GPU without the sampled pass: persistent chrome still keeps the
+        // GPU without the sampled pass: glass-floor roles still keep the
         // Reduced floor and the existing no-sampled-blur reason.
-        for role in [MaterialRole::Chrome, MaterialRole::Dock] {
+        for role in [
+            MaterialRole::Chrome,
+            MaterialRole::Dock,
+            MaterialRole::Drawer,
+        ] {
             let material = EffectiveMaterial::resolve_for_role(
                 role,
                 MaterialPath::Gpu,
@@ -937,28 +952,27 @@ mod tests {
             assert!(!floor_missed.blur_active);
             assert_eq!(floor_missed.fallback, MaterialFallback::NoSampledBlur);
         }
-        for role in [MaterialRole::Popup, MaterialRole::Drawer] {
-            let material = EffectiveMaterial::resolve_for_role(
-                role,
-                MaterialPath::Gpu,
-                false,
-                DegradeTier::Full,
-            );
-            assert_eq!(material.tier, DegradeTier::Full);
-            assert!(!material.blur_active);
-            assert_eq!(material.fallback, MaterialFallback::NoSampledBlur);
+        let role = MaterialRole::Popup;
+        let material = EffectiveMaterial::resolve_for_role(
+            role,
+            MaterialPath::Gpu,
+            false,
+            DegradeTier::Full,
+        );
+        assert_eq!(material.tier, DegradeTier::Full);
+        assert!(!material.blur_active);
+        assert_eq!(material.fallback, MaterialFallback::NoSampledBlur);
 
-            // Minimal is an intentional blur-off, not a missing-pass reason.
-            let minimal = EffectiveMaterial::resolve_for_role(
-                role,
-                MaterialPath::Gpu,
-                false,
-                DegradeTier::Minimal,
-            );
-            assert_eq!(minimal.tier, DegradeTier::Minimal);
-            assert!(!minimal.blur_active);
-            assert_eq!(minimal.fallback, MaterialFallback::None);
-        }
+        // Minimal is an intentional blur-off, not a missing-pass reason.
+        let minimal = EffectiveMaterial::resolve_for_role(
+            role,
+            MaterialPath::Gpu,
+            false,
+            DegradeTier::Minimal,
+        );
+        assert_eq!(minimal.tier, DegradeTier::Minimal);
+        assert!(!minimal.blur_active);
+        assert_eq!(minimal.fallback, MaterialFallback::None);
     }
 
     #[test]

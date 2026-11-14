@@ -15,6 +15,8 @@ set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(PhosphorGlyphs.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # The generated Tabler path registry is a singleton too (ADR 0185).
 set_source_files_properties(TablerGlyphs.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# The generated brand/OS-menu path registry is a singleton too.
+set_source_files_properties(BrandGlyphs.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # The popup-family material fill/fallback helper (T-21.2c) is a singleton.
 set_source_files_properties(Material.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # The generated material-preset resolver (T195) is a singleton.
@@ -33,10 +35,13 @@ qt_add_qml_module(dragonfruit-design-system
         WindowStyle.qml
         PhosphorGlyphs.qml
         TablerGlyphs.qml
+        BrandGlyphs.qml
         components/AppWindow.qml
         components/TitleBar.qml
         components/TrafficLights.qml
         components/DragonfruitLogo.qml
+        components/TuxLogo.qml
+        components/SystemMenuGlyph.qml
         components/MenuBarMenu.qml
         components/Toggle.qml
         components/Popup.qml
@@ -137,6 +142,24 @@ qt_add_resources(dragonfruit-design-system "app-icons"
     FILES ${_app_icons}
 )
 
+# The brand/OS-menu marks are exposed unchanged at the stable prefix
+# `qrc:/icons/brand/<name>.svg`. The menu bar renders the same silhouettes as
+# tintable QML shapes (`DragonfruitLogo`/`TuxLogo`) through the generated
+# `BrandGlyphs.qml` registry, so they can follow the wallpaper foreground and
+# carry the contrast shadow. The SVG files are the editable source of truth;
+# run `scripts/gen-brand-glyphs.py` after changing them (`make check-brand`
+# fails if the registry is stale).
+file(GLOB _brand_svgs CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/assets/icons/brand/*.svg")
+if(NOT _brand_svgs)
+    message(FATAL_ERROR "dragonfruit-design-system: assets/icons/brand is empty")
+endif()
+qt_add_resources(dragonfruit-design-system "brand-icons"
+    PREFIX "/icons/brand"
+    BASE "${CMAKE_SOURCE_DIR}/assets/icons/brand"
+    FILES ${_brand_svgs}
+)
+
 df_qml_lint(design-system
     Theme.qml
     Material.qml
@@ -144,10 +167,13 @@ df_qml_lint(design-system
     WindowStyle.qml
     PhosphorGlyphs.qml
     TablerGlyphs.qml
+    BrandGlyphs.qml
     components/AppWindow.qml
     components/TitleBar.qml
     components/TrafficLights.qml
     components/DragonfruitLogo.qml
+    components/TuxLogo.qml
+    components/SystemMenuGlyph.qml
     components/MenuBarMenu.qml
     components/Toggle.qml
     components/Popup.qml

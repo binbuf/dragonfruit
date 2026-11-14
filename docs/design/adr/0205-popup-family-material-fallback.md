@@ -35,7 +35,10 @@ the transient roles were not using the role-keyed state at all.
   dark). Existing token values are unchanged; the fallback fill reuses the
   existing Dock/menu-bar milky neutral, so there is no second hardcoded tone.
 - Transient roles keep the compositor's tier: they may reach `Minimal`; the
-  shell only turns the sampled pass off and selects the milky plate.
+  shell only turns the sampled pass off and selects the milky plate. The
+  Applications drawer is the exception: it is still the transient `Drawer`
+  role, but it keeps the sampled glass floor (ADR
+  [0261](0261-apps-drawer-fixed-glass-floor.md)).
 
 ## Consequences
 

@@ -467,6 +467,7 @@ Owner: `settingsd` → shell/menu bar. Absence: live on defaults; no error.
 |---|---|---|---|---|
 | Automatically hide and show the menu bar | Auto-hide menu bar | Popup | existing: `menu.autoHide` | Always/never/in fullscreen |
 | Show menu bar background | Show menu bar background | Toggle | existing: `menu.showBackground` | Veil on/off; the glass task owns the material |
+| — | OS menu glyph | Radio + preview | `menu.osGlyph` | Dragonfruit or Tux; previewed at real menu-bar size with the bar's shadow |
 | Recent documents, applications, and servers | Recent items | Stepper | existing: `menu.recentItems` | Count 0–50 |
 | Add Controls… | Add menu-bar controls… | Sheet | `settingsd` + registry | Add/remove/reorder |
 | Clock | Clock | Checkbox + options | existing: `menu.clock.showDate`/`showSeconds` | Date/time/seconds; Calendar popover |

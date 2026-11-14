@@ -6,6 +6,13 @@ All notable user-visible changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Applications drawer material.** The drawer no longer follows the menu
+  transparency slider into a near-opaque plate, and it keeps its sampled glass
+  at a global Minimal degrade. The card is fixed at a mostly-opaque glass
+  (0.88 light / 0.90 dark) with a stronger frost, rim and corner lens.
+
 ## [0.3.0] - 2026-11-12
 
 The first tagged Dragonfruit release. This is a complete early-testing desktop:

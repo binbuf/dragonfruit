@@ -30,6 +30,8 @@ Item {
         Component { id: clockComponent; MenuBarClock { } }
         Component { id: glyphComponent; StatusGlyph { } }
         Component { id: logoComponent; DragonfruitLogo { } }
+        Component { id: tuxLogoComponent; TuxLogo { } }
+        Component { id: systemGlyphComponent; SystemMenuGlyph { } }
         Component { id: wifiMenuComponent; WifiMenu { } }
         Component { id: volumeMenuComponent; VolumeMenu { } }
         Component { id: batteryMenuComponent; BatteryMenu { } }
@@ -2579,6 +2581,56 @@ Item {
             verify(imageContainsColor(img, Theme.color.accent),
                    "the dragonfruit mark should follow the design-system color");
             logo.destroy();
+        }
+
+        function test_tux_logo_renders_pixels_and_tints() {
+            var logo = make(tuxLogoComponent, {
+                size: Theme.controls.menuBar.iconSize,
+                color: Theme.color.textPrimary
+            });
+            // The penguin is narrower than the square menu-bar slot but keeps
+            // the slot footprint so the bar layout does not shift.
+            compare(logo.implicitWidth, Theme.controls.menuBar.iconSize);
+            compare(logo.implicitHeight, Theme.controls.menuBar.iconSize);
+            var img = grabImage(logo);
+            verify(imageContainsColor(img, Theme.color.textPrimary),
+                   "the tux mark should render visible pixels");
+
+            logo.color = Theme.color.accent;
+            waitForRendering(stage);
+            img = grabImage(logo);
+            verify(imageContainsColor(img, Theme.color.accent),
+                   "the tux mark should follow the design-system color");
+            logo.destroy();
+        }
+
+        function test_system_menu_glyph_choice_reaches_the_system_menu() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Test",
+                osGlyph: "tux",
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            var system = bar.appMenuAt(0);
+            compare(system.showLogo, true);
+            compare(system.glyph, "tux");
+            verify(system.glyphShadowColor.a > 0,
+                   "the OS menu glyph keeps the menu-bar contrast shadow");
+
+            bar.osGlyph = "dragonfruit";
+            waitForRendering(stage);
+            compare(system.glyph, "dragonfruit");
+
+            // A standalone glyph resolves both shipped marks, and an unknown
+            // value falls back to the Dragonfruit mark.
+            var glyph = make(systemGlyphComponent, { glyph: "tux" });
+            compare(glyph.tux, true);
+            glyph.glyph = "dragonfruit";
+            compare(glyph.tux, false);
+            glyph.glyph = "unknown";
+            compare(glyph.tux, false);
+            glyph.destroy();
         }
 
         // -- Fixed application menu live state (T-14.2a) -------------------

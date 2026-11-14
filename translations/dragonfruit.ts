@@ -4775,6 +4775,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Choose the mark at the far left of the menu bar. Each preview is shown at the menu bar's real size with the same shadow and hover treatment.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Choose what the menu-bar clock shows.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4800,6 +4804,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dragonfruit</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4831,6 +4839,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>OS Menu Glyph</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Quick Settings</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4859,7 +4871,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The Dragonfruit mark.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Linux penguin mark.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The settings daemon is not running, so these preferences apply from the built-in defaults. The menu bar itself is drawn by the shell.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tux</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7404,6 +7428,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Number format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OS menu glyph</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

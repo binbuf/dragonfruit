@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 25;
+pub const SCHEMA_VERSION: u32 = 26;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1527,6 +1527,19 @@ pub const KEYS: &[KeySpec] = &[
         summary: "How many recent documents, applications, and servers to remember.",
     },
     KeySpec {
+        key: "menu.osGlyph",
+        group: KeyGroup::Menu,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("dragonfruit"),
+        allowed: &["dragonfruit", "tux"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar system menu",
+        since: 26,
+        summary: "The OS menu glyph at the far left of the menu bar: the Dragonfruit mark or the Tux mark.",
+    },
+    KeySpec {
         key: "menu.clock.showDate",
         group: KeyGroup::Menu,
         kind: KeyType::Bool,
@@ -2840,6 +2853,27 @@ mod tests {
             spec("menu.control.search").map(|spec| spec.since),
             Some(21)
         );
+    }
+
+    /// The OS-menu glyph choice is a new Menu key in revision 26. The default
+    /// keeps the Dragonfruit mark, and the only alternate is the Tux mark.
+    #[test]
+    fn the_menu_os_glyph_key_is_declared_in_revision_twenty_six() {
+        let spec = spec("menu.osGlyph").expect("menu.osGlyph is declared");
+        assert_eq!(spec.group, KeyGroup::Menu);
+        assert_eq!(spec.kind, KeyType::Text);
+        assert_eq!(spec.default, KeyDefault::Text("dragonfruit".into()));
+        assert_eq!(spec.owner, "apps/settings");
+        assert_eq!(spec.consumer, "shell/MenuBar system menu");
+        assert_eq!(spec.since, 26);
+        assert!(spec.since <= SCHEMA_VERSION);
+        for value in ["dragonfruit", "tux"] {
+            assert!(
+                spec.validate(&Value::Text(value.into())).is_ok(),
+                "{value}"
+            );
+        }
+        assert!(spec.validate(&Value::Text("penguin".into())).is_err());
     }
 
     /// The glass preference and its two accessibility overrides are additive

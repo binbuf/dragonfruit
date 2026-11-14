@@ -394,11 +394,11 @@ set_tests_properties(tst_settings_lock_screen PROPERTIES
 )
 
 # The Menu Bar-pane tests (T-15.9b): the behavior rows (`menu.autoHide`,
-# `menu.showBackground`, `menu.recentItems`), the `Clock Options...` sheet, and
-# the per-control visibility toggles round-trip through settingsd's schema
-# defaults live, and an external change converges into the controls. The menu
-# bar is shell-native, so the pane writes only settingsd keys and no adapter
-# fixture is needed.
+# `menu.showBackground`, `menu.recentItems`), the OS menu glyph choice
+# (`menu.osGlyph`), the `Clock Options...` sheet, and the per-control visibility
+# toggles round-trip through settingsd's schema defaults live, and an external
+# change converges into the controls. The menu bar is shell-native, so the pane
+# writes only settingsd keys and no adapter fixture is needed.
 qt_add_executable(tst_settings_menu_bar
     tst_settings_menu_bar.cpp
 )

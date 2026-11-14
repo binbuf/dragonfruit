@@ -14,11 +14,12 @@ private slots:
     void roleStateWinsOverTheLegacySnapshot();
     void unknownRoleFallsBackToTheLegacySnapshot();
     void persistentRoleNeverSelectsBelowReduced();
+    void drawerKeepsTheGlassFloor();
     void floorMissedUsesTheMilkyFallback();
     void explicitFallbackForcesTheMilkyFallback();
     void softwareKeepsMinimalButMilky();
     void transientRoleMayReachMinimal();
-    void transientRoleUsesTheExplicitFallbackWithoutAFloor();
+    void explicitFallbackWinsForTransientRoles();
     void loadSequenceKeepsTheAppliedProperties();
     void unknownRoleValuesAreIgnored();
 };
@@ -100,13 +101,41 @@ void TestMaterialPolicy::persistentRoleNeverSelectsBelowReduced()
     QCOMPARE(dock.fallback, std::uint32_t(MaterialPolicy::FloorMissed));
 }
 
+void TestMaterialPolicy::drawerKeepsTheGlassFloor()
+{
+    // The Applications drawer is transient, but it is a large launcher: a
+    // malformed Minimal state must not swap its card for the opaque plate.
+    MaterialPolicy policy;
+    policy.setRole(MaterialPolicy::Drawer, 2, true, MaterialPolicy::NoFallback);
+    const AppliedMaterial drawer = policy.applied(MaterialPolicy::Drawer);
+    QCOMPARE(drawer.tier, std::uint32_t(1));
+    QCOMPARE(drawer.blurActive, false);
+    QCOMPARE(drawer.fallback, std::uint32_t(MaterialPolicy::FloorMissed));
+
+    // The normal floored state the compositor sends is Reduced + blur on.
+    policy.setRole(MaterialPolicy::Drawer, 1, true, MaterialPolicy::NoFallback);
+    const AppliedMaterial floored = policy.applied(MaterialPolicy::Drawer);
+    QCOMPARE(floored.tier, std::uint32_t(1));
+    QCOMPARE(floored.blurActive, true);
+    QCOMPARE(floored.fallback, std::uint32_t(0));
+
+    QVERIFY(MaterialPolicy::keepsGlassFloor(MaterialPolicy::Drawer));
+    QVERIFY(MaterialPolicy::keepsGlassFloor(MaterialPolicy::Chrome));
+    QVERIFY(MaterialPolicy::keepsGlassFloor(MaterialPolicy::Dock));
+    QVERIFY(!MaterialPolicy::keepsGlassFloor(MaterialPolicy::Popup));
+    // The drawer is still not persistent chrome.
+    QVERIFY(!MaterialPolicy::isPersistent(MaterialPolicy::Drawer));
+}
+
 void TestMaterialPolicy::floorMissedUsesTheMilkyFallback()
 {
     MaterialPolicy policy;
     policy.setRole(MaterialPolicy::Chrome, 1, false, MaterialPolicy::FloorMissed);
     policy.setRole(MaterialPolicy::Dock, 1, false, MaterialPolicy::FloorMissed);
+    policy.setRole(MaterialPolicy::Drawer, 1, false, MaterialPolicy::FloorMissed);
     for (std::uint32_t role : {std::uint32_t(MaterialPolicy::Chrome),
-                               std::uint32_t(MaterialPolicy::Dock)}) {
+                               std::uint32_t(MaterialPolicy::Dock),
+                               std::uint32_t(MaterialPolicy::Drawer)}) {
         const AppliedMaterial material = policy.applied(role);
         QCOMPARE(material.tier, std::uint32_t(1));
         QCOMPARE(material.blurActive, false);
@@ -129,8 +158,10 @@ void TestMaterialPolicy::softwareKeepsMinimalButMilky()
     MaterialPolicy policy;
     policy.setRole(MaterialPolicy::Chrome, 2, false, MaterialPolicy::Software);
     policy.setRole(MaterialPolicy::Dock, 2, false, MaterialPolicy::Software);
+    policy.setRole(MaterialPolicy::Drawer, 2, false, MaterialPolicy::Software);
     for (std::uint32_t role : {std::uint32_t(MaterialPolicy::Chrome),
-                               std::uint32_t(MaterialPolicy::Dock)}) {
+                               std::uint32_t(MaterialPolicy::Dock),
+                               std::uint32_t(MaterialPolicy::Drawer)}) {
         const AppliedMaterial material = policy.applied(role);
         QCOMPARE(material.tier, std::uint32_t(2));
         QCOMPARE(material.blurActive, false);
@@ -140,22 +171,21 @@ void TestMaterialPolicy::softwareKeepsMinimalButMilky()
 
 void TestMaterialPolicy::transientRoleMayReachMinimal()
 {
+    // Small transient popups still follow the ladder to Minimal; the drawer
+    // is the one transient role with a glass floor.
     MaterialPolicy policy;
     policy.setRole(MaterialPolicy::Popup, 2, false, MaterialPolicy::NoFallback);
-    policy.setRole(MaterialPolicy::Drawer, 2, false, MaterialPolicy::NoFallback);
-    for (std::uint32_t role : {std::uint32_t(MaterialPolicy::Popup),
-                               std::uint32_t(MaterialPolicy::Drawer)}) {
-        const AppliedMaterial material = policy.applied(role);
-        QCOMPARE(material.tier, std::uint32_t(2));
-        QCOMPARE(material.blurActive, false);
-        QCOMPARE(material.fallback, std::uint32_t(0));
-    }
+    const AppliedMaterial material = policy.applied(MaterialPolicy::Popup);
+    QCOMPARE(material.tier, std::uint32_t(2));
+    QCOMPARE(material.blurActive, false);
+    QCOMPARE(material.fallback, std::uint32_t(0));
 }
 
-void TestMaterialPolicy::transientRoleUsesTheExplicitFallbackWithoutAFloor()
+void TestMaterialPolicy::explicitFallbackWinsForTransientRoles()
 {
-    // T-21.2c: a popup/drawer keeps the compositor's transient tier (including
-    // Minimal) but any explicit reason still selects the milky complement.
+    // T-21.2c: a popup keeps the compositor's transient tier (including
+    // Minimal); any explicit reason still selects the milky complement for
+    // both popups and the drawer.
     MaterialPolicy policy;
     policy.setRole(MaterialPolicy::Popup, 2, true, MaterialPolicy::NoSampledBlur);
     policy.setRole(MaterialPolicy::Drawer, 2, false, MaterialPolicy::Software);
@@ -192,12 +222,10 @@ void TestMaterialPolicy::loadSequenceKeepsTheAppliedProperties()
     MaterialPolicy policy;
     for (const Step &step : sequence) {
         for (std::uint32_t role = 0; role < MaterialPolicy::RoleCount; ++role) {
-            const bool persistent = role == MaterialPolicy::Chrome
-                || role == MaterialPolicy::Dock;
-            // At Minimal the compositor sends the persistent floor-missed
-            // state and the transient Minimal state; the shell must not
-            // re-derive either.
-            const Step expected = (step.tier == 1 && !step.blur && persistent)
+            const bool floored = MaterialPolicy::keepsGlassFloor(role);
+            // At Minimal the compositor sends the glass-floor state and the
+            // transient Minimal state; the shell must not re-derive either.
+            const Step expected = (step.tier == 1 && !step.blur && floored)
                 ? step
                 : (step.tier == 1 && !step.blur
                        ? Step{2, false, MaterialPolicy::NoFallback}

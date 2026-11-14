@@ -921,14 +921,15 @@ like Mission Control (T-15.5b) and the Lock Screen (T-15.8b; ADR
   (`apps/settings/MenuBarPane.qml`) writes `menu.autoHide`
   (`never`/`always`/`full-screen`, mirroring `MenuBarAutoHide::id()`),
   `menu.showBackground`, `menu.recentItems` (0–50), `menu.clock.showDate`,
-  `menu.clock.showSeconds`, and the six `menu.control.<id>` toggles whose
-  suffixes are `MenuBarControl::id()` from the T-15.9a adapter. Every row
-  applies live and persists; there is no Apply button.
+  `menu.clock.showSeconds`, `menu.osGlyph` (`dragonfruit`/`tux`; revision 26),
+  and the six `menu.control.<id>` toggles whose suffixes are
+  `MenuBarControl::id()` from the T-15.9a adapter. Every row applies live and
+  persists; there is no Apply button.
 - **The shell applies what has a runtime.** `applyMenuBarPolicy` sets the
-  clock options and the background material on `shell/menubar/MenuBar.qml`
-  live and forwards `menu.autoHide` to the compositor as
-  `df_layer_surface.set_auto_hide`; the compositor owns the per-output reveal
-  (T201). `applyStatusItems` gates each status item on its
+  clock options, the background material, and the OS menu glyph on
+  `shell/menubar/MenuBar.qml` live and forwards `menu.autoHide` to the
+  compositor as `df_layer_surface.set_auto_hide`; the compositor owns the
+  per-output reveal (T201). `applyStatusItems` gates each status item on its
   `menu.control.<id>` key, additive with the adapter's own availability, so a
   control shows only when its daemon is present *and* the user wants it.
 - **The Control Center tile is projected by the shell.** No services-layer

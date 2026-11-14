@@ -29,6 +29,7 @@ Item {
             Settings.set("menu.autoHide", "full-screen");
             Settings.set("menu.showBackground", true);
             Settings.set("menu.recentItems", 10);
+            Settings.set("menu.osGlyph", "dragonfruit");
             Settings.set("menu.clock.showDate", true);
             Settings.set("menu.clock.showSeconds", false);
             Settings.set("menu.control.wifi", true);
@@ -78,9 +79,35 @@ Item {
             compare(pane.recentSelect.currentIndex, 2); // 10
             compare(pane.clockShowDate, true);
             compare(pane.clockShowSeconds, false);
+            compare(pane.osGlyph, "dragonfruit");
+            compare(pane.glyphRepeater.count, 2);
             compare(pane.controlsRepeater.count, 10);
             compare(findChild(pane, "menuBarOverflowDescription") !== null, true,
                     "the pane explains the overflow policy");
+        }
+
+        function test_os_menu_glyph_choice_round_trips() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            var dragonfruit = pane.glyphRepeater.itemAt(0);
+            var tux = pane.glyphRepeater.itemAt(1);
+            verify(dragonfruit && tux, "both glyph choices must render");
+            compare(dragonfruit.selected, true);
+            compare(tux.selected, false);
+            compare(dragonfruit.Accessible.role, Accessible.RadioButton);
+            compare(tux.Accessible.role, Accessible.RadioButton);
+
+            tux.choose();
+            compare(Settings.values["menu.osGlyph"], "tux");
+            compare(pane.osGlyph, "tux");
+            compare(tux.selected, true);
+            compare(dragonfruit.selected, false);
+
+            // An external change converges into the row too.
+            Settings.set("menu.osGlyph", "dragonfruit");
+            compare(dragonfruit.selected, true);
+            compare(tux.selected, false);
         }
 
         function test_behavior_rows_round_trip() {

@@ -10,9 +10,11 @@ Item {
 
     property string title: ""
     property var model: []
-    // The system menu is the brand mark rather than a text title (T-09);
-    // `title` is still used for accessibility.
+    // The system menu is the OS menu glyph rather than a text title (T-09);
+    // `title` is still used for accessibility. `glyph` selects the artwork
+    // ("dragonfruit" or "tux") the user picked in System Settings.
     property bool showLogo: false
+    property string glyph: "dragonfruit"
     // The application menu's title is bold, the app's own top-level menus are
     // not (the macOS convention).
     property bool emphasized: false
@@ -72,7 +74,7 @@ Item {
     // Left/Right at the top level asks the owner to move to a sibling menu.
     signal menuSwitchRequested(int delta)
 
-    implicitWidth: (showLogo ? logo.implicitWidth : barLabel.implicitWidth)
+    implicitWidth: (showLogo ? menuGlyph.implicitWidth : barLabel.implicitWidth)
                    + 2 * Theme.controls.menuBarMenu.barPaddingH
     implicitHeight: Theme.controls.menuBarMenu.barHeight
     activeFocusOnTab: true
@@ -419,10 +421,11 @@ Item {
         }
     }
 
-    DragonfruitLogo {
-        id: logo
+    SystemMenuGlyph {
+        id: menuGlyph
         visible: root.showLogo
         anchors.centerIn: parent
+        glyph: root.glyph
         size: Theme.controls.menuBar.iconSize
         color: root.foreground
         // Keep the wallpaper contrast treatment stable across hover/open; the

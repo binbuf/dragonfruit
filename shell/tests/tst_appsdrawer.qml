@@ -615,9 +615,10 @@ Item {
         }
 
         function test_drawer_role_material_covers_the_applications_drawer() {
-            // T-21.2c: the Applications drawer is the transient Drawer role.
-            // It keeps its scrim and tile grid; the card fill switches to the
-            // milky plate when the sampled pass is absent.
+            // T-21.2c: the Applications drawer is the Drawer role. It keeps
+            // the glass floor at a global Minimal tier, but an explicit
+            // no-sampled-blur/software reason still switches the card fill to
+            // the milky plate.
             var states = [
                 { tier: 0, blur: true, fallback: 0, reason: "none", label: "full" },
                 { tier: 1, blur: true, fallback: 0, reason: "none", label: "reduced" },

@@ -25,6 +25,7 @@ restrictions to track.
 | `assets/fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
 | `assets/icons/tabler/` (line-glyph set and pinned filled marks) | MIT |
 | `assets/icons/phosphor/` (filled Settings-tile glyphs) | MIT |
+| `assets/icons/brand/` (Dragonfruit and Tux OS-menu marks) | MIT (original project assets) |
 | `assets/icons/whitesur/` (colored place/app artwork and the Files app icon) | GPL-3.0-only |
 | `assets/cursors/capitaine-cursors/` (system cursor theme) | LGPL-3.0-or-later |
 | `assets/graphics/wallpapers/Default.jpg` (shipped default wallpaper) | MIT (original project asset) |

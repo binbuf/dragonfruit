@@ -179,6 +179,21 @@ impl MaterialRole {
         !self.is_persistent()
     }
 
+    /// Whether this role keeps the sampled glass floor when the global degrade
+    /// controller visits `Minimal`.
+    ///
+    /// Persistent chrome (menu bar/Dock) always keeps it. The Applications
+    /// drawer also keeps it: it is a full-output launcher the user is actively
+    /// looking at, and swapping its card for the opaque accessibility plate
+    /// made a large glass surface read as a solid slab. Small transient
+    /// overlays (`Popup`) still follow the ladder to `Minimal`.
+    pub const fn keeps_glass_floor(self) -> bool {
+        matches!(
+            self,
+            MaterialRole::Chrome | MaterialRole::Dock | MaterialRole::Drawer
+        )
+    }
+
     /// The panel corner radius for a surface in `namespace` (T-20.3).
     ///
     /// Most roles round from a single component token, but the `Popup` role

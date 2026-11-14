@@ -52,6 +52,8 @@ FocusRing
 Skeleton
 Spinner
 DragonfruitLogo
+TuxLogo
+SystemMenuGlyph
 ```
 
 The inventory is the QML module's actual surface, not a wish list. `MenuRow`
@@ -59,6 +61,13 @@ and `ShortcutHint` are the shared menu anatomy; `Shadow`, `FocusRing`,
 `Skeleton`, and `Spinner` are shared primitives rather than app-local copies;
 `WindowResizeGrips` is the shared resize affordance used by first-party
 windows.
+
+`DragonfruitLogo` and `TuxLogo` are the two OS-menu marks. Their geometry comes
+from `design-system/BrandGlyphs.qml`, generated from
+`assets/icons/brand/*.svg` by `scripts/gen-brand-glyphs.py`; `make check-brand`
+fails if the registry is stale. Both render as tintable `Shape` paths so the
+menu bar can apply its wallpaper foreground, contrast shadow, and hover/open
+plate.
 
 `Tooltip` (T-14.7i) is the passive hover label: pointer-anchored,
 non-focusable, token-driven, and used first by the Dock name labels (ADR
@@ -141,8 +150,8 @@ context menus (`ContextMenu`) — use one row anatomy, implemented once in
   between keys. The bar itself keeps `component.menuBar.*` (28 px high, 8 px
   horizontal padding, 15 px status glyphs, 2 px status gap) and a 24 px title
   slot inside `component.menuBarMenu.barHeight` with 10 px side padding. The
-  system menu is the brand mark, the application menu is bold, and app menus
-  are medium.
+  system menu is the selected OS menu glyph, the application menu is bold, and
+  app menus are medium.
 - **A disabled row carries `disabledReason`.** `MenuRow` exposes it as the
   accessible description, and the bar never publishes an inert row without
   one (T230). `MenuBarMenu` also owns keyboard navigation: arrows move the

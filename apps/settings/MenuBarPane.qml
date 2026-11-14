@@ -57,6 +57,22 @@ Item {
     readonly property bool clockShowSeconds:
         Settings.values["menu.clock.showSeconds"] === true
 
+    // ── The OS menu glyph (revision 26) ─────────────────────────────────
+    readonly property string osGlyph:
+        Settings.values["menu.osGlyph"] !== undefined
+            ? String(Settings.values["menu.osGlyph"]) : "dragonfruit"
+
+    // The two shipped marks. Each preview renders through the same
+    // `SystemMenuGlyph` the shell uses, at the menu bar's real icon size, so
+    // the choice shows the foreground, wallpaper shadow and hover/open plate
+    // exactly as the bar will.
+    readonly property var glyphOptions: [
+        { value: "dragonfruit", label: qsTr("Dragonfruit"),
+          description: qsTr("The Dragonfruit mark.") },
+        { value: "tux", label: qsTr("Tux"),
+          description: qsTr("The Linux penguin mark.") }
+    ]
+
     // The auto-hide popup choices, in the adapter's `ALL` order.
     readonly property var autoHideOptions: [
         { value: "never", label: qsTr("Never") },
@@ -104,6 +120,7 @@ Item {
     property alias clockDialog: clockDialog
     property alias clockDateToggle: clockDateToggle
     property alias clockSecondsToggle: clockSecondsToggle
+    property alias glyphRepeater: glyphRepeater
     property alias controlsRepeater: controlsRepeater
     property alias absenceNote: absenceNote
 
@@ -187,6 +204,40 @@ Item {
                     model: root.recentOptions
                     onActivated: (index) => Settings.set(
                         "menu.recentItems", root.recentOptions[index].value)
+                }
+            }
+        }
+
+        // ── OS Menu Glyph ─────────────────────────────────────────────────
+        SettingsGroup {
+            id: glyphGroup
+            width: parent.width
+            title: qsTr("OS Menu Glyph")
+
+            Text {
+                objectName: "menuBarGlyphDescription"
+                width: parent.width
+                text: qsTr("Choose the mark at the far left of the menu bar. "
+                           + "Each preview is shown at the menu bar's real "
+                           + "size with the same shadow and hover treatment.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                leftPadding: Theme.controls.settingsRow.paddingH
+                rightPadding: Theme.controls.settingsRow.paddingH
+                topPadding: Theme.primitive.spacing.xs
+                bottomPadding: Theme.primitive.spacing.xs
+            }
+
+            Repeater {
+                id: glyphRepeater
+                model: root.glyphOptions
+
+                delegate: GlyphChoiceRow {
+                    required property int index
+
+                    width: parent.width
+                    showSeparator: index < glyphRepeater.count - 1
                 }
             }
         }
@@ -340,5 +391,177 @@ Item {
         target: clockSecondsToggle
         property: "checked"
         value: root.clockShowSeconds
+    }
+
+    // One OS-menu glyph choice: a radio row with a real-size menu-bar preview.
+    // The preview uses the same `SystemMenuGlyph` and wallpaper-contrast shadow
+    // as the bar, so the row is a faithful miniature rather than a generic
+    // icon tile.
+    component GlyphChoiceRow: Item {
+        id: choice
+
+        required property var modelData
+        property bool showSeparator: true
+
+        readonly property bool selected:
+            root.osGlyph === choice.modelData.value
+        readonly property bool lightLettering: {
+            var c = Theme.color.textPrimary;
+            return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) > 0.5;
+        }
+        readonly property color labelShadowColor:
+            choice.lightLettering ? Theme.controls.wallpaperText.shadowColorOnDark
+                                  : Theme.controls.wallpaperText.shadowColorOnLight
+        readonly property real labelShadowOpacity:
+            choice.lightLettering ? Theme.controls.wallpaperText.shadowOpacityOnDark
+                                  : Theme.controls.wallpaperText.shadowOpacityOnLight
+        readonly property color glyphShadowColor:
+            Qt.rgba(choice.labelShadowColor.r, choice.labelShadowColor.g,
+                    choice.labelShadowColor.b, choice.labelShadowOpacity * 0.9)
+
+        function choose() {
+            Settings.set("menu.osGlyph", choice.modelData.value);
+        }
+
+        width: parent ? parent.width : implicitWidth
+        implicitHeight: Theme.controls.settingsRow.height
+        activeFocusOnTab: true
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.controls.settingsGroup.radius
+            color: Qt.rgba(Theme.color.textPrimary.r, Theme.color.textPrimary.g,
+                           Theme.color.textPrimary.b, 0.05)
+            visible: choiceHover.hovered
+            antialiasing: true
+        }
+
+        // Radio indicator, left-aligned like the platform's choice rows.
+        Rectangle {
+            id: radioOuter
+            x: Theme.controls.settingsRow.paddingH
+            anchors.verticalCenter: parent.verticalCenter
+            width: 16
+            height: 16
+            radius: width / 2
+            color: "transparent"
+            border.width: Theme.controls.window.borderWidth
+            border.color: choice.selected ? Theme.color.accent : Theme.color.textTertiary
+            antialiasing: true
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: 8
+                height: 8
+                radius: width / 2
+                color: Theme.color.accent
+                visible: choice.selected
+                antialiasing: true
+            }
+        }
+
+        Column {
+            id: choiceLabelColumn
+            anchors.left: radioOuter.right
+            anchors.leftMargin: Theme.primitive.spacing.md
+            anchors.right: previewPlate.left
+            anchors.rightMargin: Theme.primitive.spacing.md
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Theme.primitive.spacing.xxs
+
+            Text {
+                width: parent.width
+                text: choice.modelData.label
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                elide: Text.ElideRight
+            }
+
+            Text {
+                width: parent.width
+                text: choice.modelData.description
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                elide: Text.ElideRight
+            }
+        }
+
+        // The menu-bar sample. It is exactly `menuBar.height` tall and renders
+        // the glyph at `menuBar.iconSize`, with the same neutral hover wash the
+        // bar paints behind the system menu.
+        Rectangle {
+            id: previewPlate
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.controls.settingsRow.paddingH
+            anchors.verticalCenter: parent.verticalCenter
+            width: 112
+            height: Theme.controls.menuBar.height
+            radius: Theme.controls.menuBar.radius
+            color: Theme.color.chrome
+            border.width: Theme.controls.window.borderWidth
+            border.color: Theme.color.border
+            antialiasing: true
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: Theme.controls.menuBar.iconSize
+                        + 2 * Theme.controls.menuBarMenu.barPaddingH
+                height: Theme.controls.menuBarMenu.barHeight
+                radius: Theme.controls.focusRing.radius
+                color: Qt.rgba(Theme.color.textPrimary.r,
+                               Theme.color.textPrimary.g,
+                               Theme.color.textPrimary.b,
+                               Theme.controls.menuBar.hoverOpacity)
+                visible: choiceHover.hovered || choice.activeFocus
+                antialiasing: true
+            }
+
+            SystemMenuGlyph {
+                anchors.centerIn: parent
+                glyph: choice.modelData.value
+                size: Theme.controls.menuBar.iconSize
+                color: Theme.color.textPrimary
+                shadowColor: choice.glyphShadowColor
+                shadowOffset: Qt.point(0, Theme.controls.wallpaperText.shadowOffsetY)
+            }
+        }
+
+        Rectangle {
+            visible: choice.showSeparator
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.controls.settingsRow.paddingH
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.controls.settingsRow.paddingH
+            anchors.bottom: parent.bottom
+            height: Theme.controls.window.borderWidth
+            color: Theme.color.separator
+        }
+
+        HoverHandler { id: choiceHover }
+
+        TapHandler {
+            onTapped: choice.choose()
+        }
+
+        FocusRing {
+            target: choice
+            shown: choice.activeFocus
+        }
+
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                    || event.key === Qt.Key_Enter) {
+                choice.choose();
+                event.accepted = true;
+            }
+        }
+
+        Accessible.role: Accessible.RadioButton
+        Accessible.name: choice.modelData.label
+        Accessible.description: choice.modelData.description
+        Accessible.checkable: true
+        Accessible.checked: choice.selected
+        Accessible.focusable: true
+        Accessible.onPressAction: choice.choose()
     }
 }

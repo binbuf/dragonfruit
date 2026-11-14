@@ -1277,8 +1277,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_appsDrawerItem->setParentItem(m_appsDrawerWindow->contentItem());
-    // T-21.2c: the drawer is the transient Drawer role; seed it before the
-    // first commit so it never flashes the wrong plate.
+    // T-21.2c: the drawer is the Drawer role, which keeps the sampled glass
+    // floor at a global Minimal tier; seed it before the first commit so it
+    // never flashes the wrong plate.
     setMaterialProperties(m_appsDrawerItem,
                           m_materialPolicy.applied(MaterialPolicy::Drawer));
     connect(appsDrawerObject, SIGNAL(appLaunched(QString,qreal,qreal,qreal,qreal)), this,
@@ -7606,6 +7607,14 @@ void ShellController::applyMenuBarPolicy()
         values.value(QStringLiteral("menu.showBackground"), true).toBool();
     const QString autoHide =
         values.value(QStringLiteral("menu.autoHide"), QStringLiteral("full-screen")).toString();
+    // T-15.9b follow-up: the system menu's glyph. The schema restricts the
+    // value; the fallback keeps a stale/corrupt file on the shipped mark.
+    const QString osGlyph =
+        values.value(QStringLiteral("menu.osGlyph"), QStringLiteral("dragonfruit"))
+            .toString()
+            == QStringLiteral("tux")
+        ? QStringLiteral("tux")
+        : QStringLiteral("dragonfruit");
     // T230: `menu.recentItems` now has a consumer: the system menu's Recent
     // Items submenu. Clamp to the schema's 0..50 range.
     const int recentItems =
@@ -7617,19 +7626,22 @@ void ShellController::applyMenuBarPolicy()
     const bool changed = !m_menuBarPolicySent || showDate != m_menuBarShowDate
         || showSeconds != m_menuBarShowSeconds
         || use24Hour != m_menuBarUse24Hour
-        || showBackground != m_menuBarShowBackground || autoHide != m_menuBarAutoHide;
+        || showBackground != m_menuBarShowBackground || autoHide != m_menuBarAutoHide
+        || osGlyph != m_menuBarOsGlyph;
     if (changed) {
         m_menuBarShowDate = showDate;
         m_menuBarShowSeconds = showSeconds;
         m_menuBarUse24Hour = use24Hour;
         m_menuBarShowBackground = showBackground;
         m_menuBarAutoHide = autoHide;
+        m_menuBarOsGlyph = osGlyph;
         m_menuBarPolicySent = true;
         m_item->setProperty("showDate", showDate);
         m_item->setProperty("showSeconds", showSeconds);
         m_item->setProperty("use24Hour", use24Hour);
         m_item->setProperty("showBackground", showBackground);
         m_item->setProperty("autoHideMode", autoHide);
+        m_item->setProperty("osGlyph", osGlyph);
         // T201: the compositor owns the per-output reveal. Forward the policy
         // through the same Settings refresh path as the rest of the pane.
         if (m_protocol)
@@ -7638,9 +7650,10 @@ void ShellController::applyMenuBarPolicy()
         fprintf(stderr,
                 "dragonfruit-shell: menu bar policy applied "
                 "(globalMenu=%d clockDate=%d clockSeconds=%d clock24h=%d background=%d "
-                "autoHide=%s)\n",
+                "autoHide=%s osGlyph=%s)\n",
                 m_globalMenuEnabled ? 1 : 0, showDate ? 1 : 0, showSeconds ? 1 : 0,
-                use24Hour ? 1 : 0, showBackground ? 1 : 0, qPrintable(autoHide));
+                use24Hour ? 1 : 0, showBackground ? 1 : 0, qPrintable(autoHide),
+                qPrintable(osGlyph));
     }
     // The per-control keys (`menu.control.*`, including T231's clock,
     // notifications and Quick Settings rows) gate the registry live.

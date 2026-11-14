@@ -38,9 +38,13 @@ public:
         FloorMissed = 4,
     };
 
-    // The compositor's persistent/transient split. The shell uses it only for
-    // the defensive floor guard below, never to re-run the ladder.
+    // The compositor's persistent/transient split.
     static bool isPersistent(std::uint32_t role);
+
+    // Roles that keep the sampled glass floor when the compositor reports the
+    // Minimal tier. Persistent chrome and the Applications drawer are floored;
+    // small transient popups are not.
+    static bool keepsGlassFloor(std::uint32_t role);
 
     // The legacy v3 `material_state` event. It is the compatibility path for a
     // compositor without the role event; a role that has received a v4 state

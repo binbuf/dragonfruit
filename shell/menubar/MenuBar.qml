@@ -95,6 +95,10 @@ Rectangle {
     property bool showDate: false
     property bool showSeconds: false
     property bool use24Hour: false
+    // T-15.9b follow-up: the OS menu glyph the user picked in Settings
+    // (`menu.osGlyph`). "dragonfruit" is the brand mark, "tux" the alternate
+    // penguin mark. The system menu's slot stays square for either.
+    property string osGlyph: "dragonfruit"
     // T-15.9b: `menu.showBackground`. When off the bar keeps its items and its
     // reserved zone but draws no chrome material, so the desktop shows through.
     property bool showBackground: true
@@ -1038,6 +1042,7 @@ Rectangle {
                 showFocusRing: false
 
                 showLogo: modelData.kind === "system"
+                glyph: modelData.kind === "system" ? menuBar.osGlyph : "dragonfruit"
                 emphasized: modelData.kind === "app"
                 foreground: menuBar.foreground
                 title: modelData.title !== undefined ? modelData.title : ""

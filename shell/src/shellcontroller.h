@@ -1218,6 +1218,8 @@ private:
     bool m_menuBarUse24Hour = false;
     bool m_menuBarShowBackground = true;
     QString m_menuBarAutoHide;
+    // The selected OS menu glyph (`menu.osGlyph`, "dragonfruit" or "tux").
+    QString m_menuBarOsGlyph = QStringLiteral("dragonfruit");
     bool m_menuBarPolicySent = false;
     // T-09.3: the last wallpaper selection forwarded, so an unchanged settings
     // value does not re-send the protocol requests.

@@ -92,11 +92,16 @@ LEGACY_ROLE_TOKENS = {
 # Roles that keep the persistent material floor (ADR 0203/0211).
 PERSISTENT_ROLES = ("chrome", "dock")
 
+# Roles that keep the sampled glass floor when the global tier reaches
+# Minimal. The Applications drawer joins persistent chrome so its large card
+# never swaps to the opaque accessibility plate (ADR 0261).
+GLASS_FLOOR_ROLES = ("chrome", "dock", "drawer")
+
 # The preset whose optical response follows the measured light File slider
 # anchors directly. The detached/status menu presets follow the same measured
 # curve as a relative adjustment (their default fits are preserved).
 SLIDER_PRESET = "menuAttached"
-RELATIVE_SLIDER_PRESETS = ("menuDetached", "appsDrawer", "statusMenu")
+RELATIVE_SLIDER_PRESETS = ("menuDetached", "statusMenu")
 
 
 class PresetError(ValueError):
@@ -458,7 +463,7 @@ def resolve(
     4. Increase Contrast: adds edge/foreground contrast after the fill decision,
        so it still applies with Reduce Transparency.
     5. Backend/tier: selects ``sampled-glass``, ``no-blur-veil``, ``solid`` or
-       ``software-fallback``. A persistent role keeps its sampled floor while
+       ``software-fallback``. A glass-floor role keeps its sampled floor while
        the GPU path exists.
     """
     if scheme not in SCHEMES:
@@ -508,7 +513,7 @@ def resolve(
         }
 
     role = preset.get("role", "popup")
-    persistent = role in PERSISTENT_ROLES
+    glass_floor = role in GLASS_FLOOR_ROLES
     confidence = "baseline"
     fallback_reason = "none"
     slider_applied = False
@@ -602,14 +607,14 @@ def resolve(
             alpha = fallback_alpha
             blur = 0.0
             fallback_reason = "no-sampled-blur"
-        elif tier == "minimal" and not persistent:
+        elif tier == "minimal" and not glass_floor:
             render_mode = "solid"
             alpha = fallback_alpha
             blur = 0.0
             fallback_reason = "minimal"
         else:
-            # The persistent floor keeps Chrome/Dock sampled even when the
-            # controller visited Minimal (ADR 0203/0211).
+            # The glass floor keeps Chrome/Dock/Drawer sampled even when
+            # the controller visited Minimal (ADR 0203/0211).
             fallback_reason = "none"
     else:
         intended = preset.get("render", "sampled")
@@ -633,7 +638,7 @@ def resolve(
             alpha, tint = _opaque_values(data, scheme)
             blur = 0.0
             fallback_reason = "no-sampled-blur"
-        elif tier == "minimal" and not persistent:
+        elif tier == "minimal" and not glass_floor:
             render_mode = "solid"
             alpha, tint = _opaque_values(data, scheme)
             blur = 0.0
@@ -854,10 +859,13 @@ def self_test() -> list[str]:
               != (toolbar["alpha"], toolbar["tint"]),
               f"Files {scheme} sidebar and toolbar must be independent presets")
 
-    # The persistent Dock floor keeps sampling when the controller visits
-    # Minimal; transient popups may become solid.
-    dock = resolve(data, "dock", scheme="light", rollout="replacement", tier="minimal")
-    check(dock["renderMode"] == "sampled-glass", "the Dock must keep its sampled floor")
+    # The glass-floor roles keep sampling when the controller visits Minimal;
+    # small transient popups may become solid.
+    for floored in ("dock", "appsDrawer"):
+        material = resolve(data, floored, scheme="light", rollout="replacement",
+                           tier="minimal")
+        check(material["renderMode"] == "sampled-glass",
+              f"{floored} must keep its sampled floor")
     popup = resolve(data, "menuDetached", scheme="light", rollout="replacement",
                     tier="minimal")
     check(popup["renderMode"] == "solid", "a transient popup may reach solid")
