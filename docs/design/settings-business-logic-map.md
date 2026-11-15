@@ -7,6 +7,16 @@
 | **Scope** | every macOS System Settings pane, sub-pane, and row that Dragonfruit ships, adapts, delegates, or omits |
 | **Companions** | [22-total-experience.md](22-total-experience.md), [distro-compatibility.md](distro-compatibility.md), [interface-naming-and-licensing.md](interface-naming-and-licensing.md) |
 
+> **2026-11-14 review.** This map remains the executable owner/absence
+> contract. The pane-by-pane target, including the complete macOS Tahoe row
+> inventory, the Linux adaptations, the visual/behaviour contract, and the
+> findings that the first pass did not close, is
+> [24-system-settings.md](24-system-settings.md). A row that this map marks
+> shipped but that the review lists as missing, mislabelled, or
+> consumer-less is not done; the owning task is in the
+> [system-settings roadmap](../tasks/system-settings/plan/ROADMAP.md)
+> T263–T284.
+
 ## 1. Purpose
 
 A settings pane is only real when each visible row changes something a user can

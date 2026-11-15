@@ -8066,7 +8066,7 @@ void ShellController::rebuildDockEntries()
         launcher.insert(QStringLiteral("id"), QStringLiteral("__apps__"));
         launcher.insert(QStringLiteral("appId"), QString());
         launcher.insert(QStringLiteral("desktopId"), QString());
-        launcher.insert(QStringLiteral("name"), tr("Applications"));
+        launcher.insert(QStringLiteral("name"), tr("Apps"));
         launcher.insert(QStringLiteral("icon"), QString());
         launcher.insert(QStringLiteral("iconPath"), QString());
         launcher.insert(QStringLiteral("kind"), QStringLiteral("pinned"));

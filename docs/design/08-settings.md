@@ -56,6 +56,17 @@ Three provider kinds meet inside `settingsd`:
 > executable work is T222–T229 in
 > [v0.2.0/ROADMAP.md](../v0.2.0/ROADMAP.md). This document remains the
 > architecture overview.
+>
+> **2026-11-14 review.** The first pass (T222–T229a) landed breadth, not a
+> top-tier experience. [24-system-settings.md](24-system-settings.md) is the
+> pane-by-pane target: the measured 740×820 window and grouped sidebar, the
+> complete macOS Tahoe row inventory, the Linux adaptations and omissions,
+> the absence/empty-state contract, the findings register, and the T263–T284
+> completion sequence in the dedicated
+> [`system-settings` task set](../tasks/system-settings/plan/ROADMAP.md). Where
+> this document and the review disagree on a user-visible row, the review is
+> the target and the executable map is the runtime contract. Decision:
+> [ADR 0262](adr/0262-system-settings-completion-contract.md).
 
 The pane list mirrors the macOS information architecture (see
 `../reference/System_Preferences.md`), with each pane's routing made

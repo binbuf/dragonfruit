@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Dragonfruit Settings — entry point stub (T-16 builds the real app).
+// System Settings — entry point stub (T-16 builds the real app).
 #include <QDateTime>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>

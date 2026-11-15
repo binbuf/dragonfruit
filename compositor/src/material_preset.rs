@@ -93,6 +93,14 @@ impl Role {
     pub const fn is_persistent(self) -> bool {
         matches!(self, Role::Chrome | Role::Dock)
     }
+
+    /// Roles that keep the sampled glass floor when the global tier reaches
+    /// Minimal. The Applications drawer joins persistent chrome: it is a
+    /// large, actively read launcher, and the opaque Minimal plate made it
+    /// read as a solid slab.
+    pub const fn keeps_glass_floor(self) -> bool {
+        matches!(self, Role::Chrome | Role::Dock | Role::Drawer)
+    }
 }
 
 /// One optical surface preset.
@@ -731,7 +739,7 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
     } = input;
 
     let role = preset.role();
-    let persistent = role.is_persistent();
+    let glass_floor = role.keeps_glass_floor();
     let mut slider_applied = false;
     let mut fallback_reason = "none";
     let mut confidence = "baseline";
@@ -846,15 +854,15 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
             blur = 0.0;
             fallback_reason = "no-sampled-blur";
             RenderMode::Solid
-        } else if tier == Tier::Minimal && !persistent {
+        } else if tier == Tier::Minimal && !glass_floor {
             let (_, fallback_opacity) = legacy_fallback(role, scheme);
             alpha = fallback_opacity;
             blur = 0.0;
             fallback_reason = "minimal";
             RenderMode::Solid
         } else {
-            // The persistent floor keeps Chrome/Dock sampled even when the
-            // controller visited Minimal (ADR 0203/0211).
+            // The glass floor keeps Chrome/Dock/Drawer sampled even when
+            // the controller visited Minimal (ADR 0203/0211).
             fallback_reason = "none";
             RenderMode::SampledGlass
         }
@@ -883,7 +891,7 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
                     blur = 0.0;
                     fallback_reason = "no-sampled-blur";
                     RenderMode::Solid
-                } else if tier == Tier::Minimal && !persistent {
+                } else if tier == Tier::Minimal && !glass_floor {
                     (alpha, tint) = opaque_values(scheme);
                     blur = 0.0;
                     fallback_reason = "minimal";
@@ -1041,19 +1049,31 @@ mod tests {
     fn apps_drawer_is_a_translucent_sampled_glass_card() {
         let light = resolve(input(Preset::AppsDrawer, Scheme::Light));
         assert_eq!(light.render_mode, RenderMode::SampledGlass);
-        // The reference panel gray resolves to roughly 0.72 over the black
-        // backdrop; the card must read as glass, not a near-opaque plate.
-        assert!(light.alpha >= 0.65 && light.alpha < 0.9);
+        // Mostly opaque like the reference panel, with the frost/rim/lens
+        // carrying the glass rather than a clear pane.
+        assert!(light.alpha >= 0.85 && light.alpha < 0.95);
         assert!((light.tint - 0.96).abs() < 1e-6);
-        assert!(light.blur >= 10.0);
-        assert!(light.edge > 0.0);
-        assert!(light.corner_lens_peak > 0.0);
-        // The drawer follows the appearance slider relative to the measured
-        // menu curve instead of freezing at one fit.
-        assert!(light.slider_applied);
+        assert!(light.blur >= 16.0);
+        assert!(light.edge >= 0.25);
+        assert!(light.corner_lens_peak >= 8.0);
+        // The drawer deliberately does not follow the menu opacity slider: a
+        // low slider position used to push the relative fit to a 0.98 slab.
+        assert!(!light.slider_applied);
+        let low = resolve(ResolveInput {
+            slider: 0.0,
+            ..input(Preset::AppsDrawer, Scheme::Light)
+        });
+        assert!((low.alpha - light.alpha).abs() < 1e-6);
         let dark = resolve(input(Preset::AppsDrawer, Scheme::Dark));
-        assert!(dark.alpha >= 0.7 && dark.alpha < 0.9);
+        assert!(dark.alpha >= 0.86 && dark.alpha < 0.96);
         assert!((dark.tint - 0.26).abs() < 1e-6);
+        // A global Minimal tier must not swap the drawer to the opaque plate.
+        let minimal = resolve(ResolveInput {
+            tier: Tier::Minimal,
+            ..input(Preset::AppsDrawer, Scheme::Light)
+        });
+        assert_eq!(minimal.render_mode, RenderMode::SampledGlass);
+        assert!((minimal.alpha - light.alpha).abs() < 1e-6);
     }
 
     #[test]
@@ -1088,7 +1108,7 @@ mod tests {
                 let direct = preset == Preset::MenuAttached && scheme == Scheme::Light;
                 let relative = matches!(
                     preset,
-                    Preset::MenuDetached | Preset::AppsDrawer | Preset::StatusMenu
+                    Preset::MenuDetached | Preset::StatusMenu
                 ) && scheme == Scheme::Light;
                 assert_eq!(
                     low.slider_applied,
@@ -1225,12 +1245,14 @@ mod tests {
     }
 
     #[test]
-    fn persistent_dock_keeps_its_sampled_floor() {
-        let dock = resolve(ResolveInput {
-            tier: Tier::Minimal,
-            ..input(Preset::Dock, Scheme::Light)
-        });
-        assert_eq!(dock.render_mode, RenderMode::SampledGlass);
+    fn glass_floor_roles_keep_their_sampled_floor() {
+        for preset in [Preset::Dock, Preset::AppsDrawer] {
+            let floored = resolve(ResolveInput {
+                tier: Tier::Minimal,
+                ..input(preset, Scheme::Light)
+            });
+            assert_eq!(floored.render_mode, RenderMode::SampledGlass);
+        }
         let popup = resolve(ResolveInput {
             tier: Tier::Minimal,
             ..input(Preset::MenuDetached, Scheme::Light)

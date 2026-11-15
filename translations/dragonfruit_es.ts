@@ -667,18 +667,6 @@
         <translation> — %1 ventanas</translation>
     </message>
     <message>
-        <source> — empty</source>
-        <translation> — vacía</translation>
-    </message>
-    <message>
-        <source> — full</source>
-        <translation> — llena</translation>
-    </message>
-    <message>
-        <source> — unavailable</source>
-        <translation> — no disponible</translation>
-    </message>
-    <message>
         <source>%1 items</source>
         <translation>%1 elementos</translation>
     </message>
@@ -739,7 +727,7 @@
         <translation>9+</translation>
     </message>
     <message>
-        <source>Applications</source>
+        <source>Apps</source>
         <translation>Aplicaciones</translation>
     </message>
     <message>
@@ -1054,8 +1042,8 @@
 <context>
     <name>FilesWindow</name>
     <message>
-        <source>Dragonfruit Files</source>
-        <translation>Archivos de Dragonfruit</translation>
+        <source>Files</source>
+        <translation>Archivos</translation>
     </message>
 </context>
 <context>
@@ -1654,8 +1642,8 @@
         <translation>Buscar</translation>
     </message>
     <message>
-        <source>Settings</source>
-        <translation>Ajustes</translation>
+        <source>System Settings</source>
+        <translation>Ajustes del sistema</translation>
     </message>
     <message>
         <source>The controls for this pane arrive with its own step of the Settings wave.</source>
@@ -1665,8 +1653,8 @@
 <context>
     <name>SettingsWindow</name>
     <message>
-        <source>Settings</source>
-        <translation>Ajustes</translation>
+        <source>System Settings</source>
+        <translation>Ajustes del sistema</translation>
     </message>
 </context>
 <context>
@@ -1897,7 +1885,7 @@
         <translation>Accesibilidad</translation>
     </message>
     <message>
-        <source>Applications</source>
+        <source>Apps</source>
         <translation>Aplicaciones</translation>
     </message>
     <message>

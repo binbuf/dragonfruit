@@ -2835,23 +2835,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source> — empty</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source> — emptying</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source> — full</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source> — quitting</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source> — unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2935,7 +2919,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Applications</source>
+        <source>Apps</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3527,7 +3511,7 @@ Open source system software</source>
 <context>
     <name>FilesWindow</name>
     <message>
-        <source>Dragonfruit Files</source>
+        <source>Files</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8457,7 +8441,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Settings</source>
+        <source>System Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8472,7 +8456,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Settings</source>
+        <source>System Settings</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -10052,7 +10036,7 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Applications</source>
+        <source>Apps</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

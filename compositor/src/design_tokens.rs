@@ -1022,47 +1022,47 @@ pub mod glass {
         pub mod apps_drawer {
             pub const ROLE: &str = "drawer";
             pub const RENDER: &str = "sampled";
-            pub const SLIDER: &str = "lightRelative";
+            pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "adapted";
-                pub const PROVENANCE: &str = "The Apps material fit is OPEN in macos-design-review §4.5, which describes a large light glass panel. The sampled panel gray (#B3B3B3) over the capture's black backdrop resolves to a roughly 0.72-opaque near-white sheet, so this preset keeps the popover family's near-white tint, measured rim and restrained corner lens with a 14 pt frost instead of the earlier 0.97 near-opaque plate.";
+                pub const PROVENANCE: &str = "The Apps material fit is OPEN in macos-design-review §4.5, which describes a large light glass panel. The sampled panel gray (#B3B3B3) over the capture's black backdrop resolves to roughly 0.72 opacity, but this build's menu slider can push a relative preset to a near-opaque 0.98 slab and the shipped card read as a flat plate. The replacement keeps the popover family's near-white tint at a fixed 0.88 alpha: mostly opaque like the reference panel, while the 16 pt frost, stronger measured rim and wider corner lens carry the glass. The drawer does not follow the menu slider's opacity curve; the slider still drives the lens/frost materialize axis. It keeps the Reduced glass floor so a global Minimal degrade never swaps it for the opaque accessibility plate.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.72_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.88_f32;
                     pub const NEUTRAL_TINT: f32 = 0.96_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.72_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.88_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.96_f32;
                 }
-                pub const BLUR: f32 = 14.0_f32;
-                pub const EDGE: f32 = 0.22_f32;
+                pub const BLUR: f32 = 16.0_f32;
+                pub const EDGE: f32 = 0.28_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
                 pub const EDGE_TAIL: f32 = 8.0_f32;
                 pub const SHARP_FRACTION: f32 = 0.12_f32;
-                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
-                pub const CORNER_LENS_DISTANCE: f32 = 20.0_f32;
-                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
+                pub const CORNER_LENS_PEAK: f32 = 9.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 18.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 56.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "adapted";
-                pub const PROVENANCE: &str = "No dark Apps fit was measured; use the light card's transmission with the measured dark detached-menu tint (0.26) at 0.82 alpha, so the glass still reads over a bright wallpaper while 13 pt labels keep contrast.";
+                pub const PROVENANCE: &str = "No dark Apps fit was measured; use the light card's transmission with the measured dark detached-menu tint (0.26) at a fixed 0.90 alpha, so the card stays mostly opaque over a bright wallpaper while 13 pt labels keep contrast and the 18 pt frost still reads as glass. The drawer does not follow the menu slider's opacity curve and keeps the Reduced glass floor at a global Minimal degrade.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
-                    pub const NEUTRAL_ALPHA: f32 = 0.82_f32;
+                    pub const NEUTRAL_ALPHA: f32 = 0.9_f32;
                     pub const NEUTRAL_TINT: f32 = 0.26_f32;
                     pub const PERCEPTUAL_WEIGHT: f32 = 0.0_f32;
-                    pub const PERCEPTUAL_ALPHA: f32 = 0.82_f32;
+                    pub const PERCEPTUAL_ALPHA: f32 = 0.9_f32;
                     pub const PERCEPTUAL_TINT: f32 = 0.26_f32;
                 }
-                pub const BLUR: f32 = 16.0_f32;
-                pub const EDGE: f32 = 0.2_f32;
+                pub const BLUR: f32 = 18.0_f32;
+                pub const EDGE: f32 = 0.26_f32;
                 pub const EDGE_WIDTH: f32 = 1.0_f32;
                 pub const EDGE_TAIL: f32 = 8.0_f32;
                 pub const SHARP_FRACTION: f32 = 0.12_f32;
-                pub const CORNER_LENS_PEAK: f32 = 6.0_f32;
-                pub const CORNER_LENS_DISTANCE: f32 = 20.0_f32;
-                pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
+                pub const CORNER_LENS_PEAK: f32 = 9.0_f32;
+                pub const CORNER_LENS_DISTANCE: f32 = 18.0_f32;
+                pub const CORNER_LENS_TAIL: f32 = 56.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }

@@ -342,12 +342,14 @@ def main() -> int:
         {"DRAGONFRUIT_GLASS_ROLLOUT": "bogus"}) == "replacement",
         "unknown rollout falls back to the default")
 
-    # The Applications drawer is a translucent sampled glass card, not the
-    # earlier near-opaque plate. The light fit follows the reference panel
-    # gray; dark is the same transmission with the measured dark menu tint.
+    # The Applications drawer is a mostly-opaque sampled glass card, not the
+    # earlier near-opaque plate and not a clear pane: the light fit stays near
+    # the reference panel gray, while the frost/rim/lens carry the glass. It
+    # deliberately does not follow the menu slider's opacity curve: at a low
+    # slider position the relative fit pushed the card to a 0.98 slab.
     for scheme, alpha, tint in (
-        ("light", 0.72, 0.96),
-        ("dark", 0.82, 0.26),
+        ("light", 0.88, 0.96),
+        ("dark", 0.90, 0.26),
     ):
         drawer = presets.resolve(data, "appsDrawer", scheme=scheme,
                                  rollout="replacement")
@@ -355,8 +357,21 @@ def main() -> int:
         checks.near(drawer["tint"], tint, f"appsDrawer.{scheme} tint")
         checks.check(drawer["renderMode"] == "sampled-glass",
                      f"appsDrawer.{scheme} keeps sampled glass")
-        checks.check(drawer["alpha"] < 0.9,
+        checks.check(not drawer["sliderApplied"],
+                     f"appsDrawer.{scheme} ignores the menu opacity slider")
+        checks.check(drawer["alpha"] < 0.95,
                      f"appsDrawer.{scheme} stays translucent")
+        checks.check(drawer["blur"] >= 16,
+                     f"appsDrawer.{scheme} keeps a visible frost")
+        checks.check(drawer["edge"] >= 0.25,
+                     f"appsDrawer.{scheme} keeps a visible rim")
+        checks.check(drawer["cornerLensPeak"] >= 8,
+                     f"appsDrawer.{scheme} keeps the corner lens")
+        # The drawer keeps the glass floor at the global Minimal tier.
+        minimal = presets.resolve(data, "appsDrawer", scheme=scheme,
+                                  rollout="replacement", tier="minimal")
+        checks.check(minimal["renderMode"] == "sampled-glass",
+                     f"appsDrawer.{scheme} keeps glass at minimal")
 
     # T205: the banner, stack and lower panel are three measured/adapted
     # materials with independent resolution, not one Popup plate.

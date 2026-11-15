@@ -29,7 +29,7 @@ Window {
     minimumWidth: 720
     minimumHeight: 480
     visible: !startAboutPanel
-    title: qsTr("Settings")
+    title: qsTr("System Settings")
     color: "transparent"
     flags: Qt.Window | Qt.FramelessWindowHint
 

@@ -100,7 +100,7 @@ Item {
         // pinned entry (T-19.2 follow-up): it toggles the drawer and cannot be
         // removed, reordered, or dragged.
         function launcher() {
-            return { id: "__apps__", appId: "", name: "Applications",
+            return { id: "__apps__", appId: "", name: "Apps",
                      kind: "pinned", pinned: true, appsLauncher: true,
                      running: false, desktopId: "", missing: false,
                      windowList: [], windowCount: 0 };
@@ -3920,6 +3920,7 @@ Item {
             appsDrawerSpy.clear();
             // The launcher sits second, immediately after the first pinned tile.
             compare(dock.items[1].appsLauncher, true);
+            compare(dock.itemAt(1).tooltipLabel, "Apps");
             dock.activateEntry(dock.items[1]);
             compare(appsDrawerSpy.count, 1);
             // It never goes through the launch/activation path.
@@ -4300,7 +4301,7 @@ Item {
             compare(trash.busy, true);
             compare(findChild(trash, "trashBusyIndicator").visible, true);
             verify(trash.Accessible.name.indexOf("emptying") >= 0);
-            verify(trash.tooltipLabel.indexOf("emptying") >= 0);
+            compare(trash.tooltipLabel, "Trash");
         }
 
         function test_trash_menu_offers_show_progress_and_disables_empty_while_active() {
@@ -7752,7 +7753,10 @@ Item {
             compare(dock.itemAt(0).tooltipLabel, "Safari — 3 windows");
             // items: app, divider, stack, trash.
             compare(dock.itemAt(2).tooltipLabel, "Downloads — 3 items");
-            compare(dock.itemAt(3).tooltipLabel, "Trash — empty");
+            compare(dock.itemAt(3).tooltipLabel, "Trash");
+            // The Trash label never reflects its contents.
+            dock.trashFull = true;
+            compare(dock.itemAt(3).tooltipLabel, "Trash");
         }
 
         function test_tooltip_folder_name_is_data_not_a_literal() {

@@ -239,29 +239,42 @@ TestCase {
 
     // The Applications drawer is a large light glass card, not a menu. Its
     // preset carries the sampled blur plus the rim/lens the compositor needs
-    // to read as liquid glass; the card QML fill stays transparent. The card
-    // is translucent rather than the earlier near-opaque plate: the reference
-    // panel gray resolves to roughly 0.72 over the black backdrop.
+    // to read as liquid glass; the card QML fill stays transparent. It stays
+    // mostly opaque like the reference panel, with the frost/rim/lens doing
+    // the glass work rather than a clear pane.
     function test_apps_drawer_preset_is_large_glass() {
         var light = Glass.resolve("appsDrawer", {
             scheme: "light", rollout: "replacement"
         });
         compare(light.renderMode, "sampled-glass");
-        verify(light.alpha >= 0.65 && light.alpha < 0.9,
+        verify(light.alpha >= 0.85 && light.alpha < 0.95,
                "light drawer alpha " + light.alpha);
         verify(Math.abs(light.tint - 0.96) < 1e-6,
                "light drawer tint " + light.tint);
-        verify(light.blur >= 10, "light drawer blur " + light.blur);
-        verify(light.edge > 0, "light drawer rim " + light.edge);
-        verify(light.cornerLensPeak > 0, "light drawer lens " + light.cornerLensPeak);
+        verify(light.blur >= 16, "light drawer blur " + light.blur);
+        verify(light.edge >= 0.25, "light drawer rim " + light.edge);
+        verify(light.cornerLensPeak >= 8, "light drawer lens " + light.cornerLensPeak);
         var dark = Glass.resolve("appsDrawer", {
             scheme: "dark", rollout: "replacement"
         });
         compare(dark.renderMode, "sampled-glass");
-        verify(dark.alpha >= 0.7 && dark.alpha < 0.9,
+        verify(dark.alpha >= 0.86 && dark.alpha < 0.96,
                "dark drawer alpha " + dark.alpha);
         verify(Math.abs(dark.tint - 0.26) < 1e-6,
                "dark drawer tint " + dark.tint);
+        // The drawer keeps the glass floor at a global Minimal degrade.
+        var floored = Glass.resolve("appsDrawer", {
+            scheme: "light", rollout: "replacement", tier: "minimal"
+        });
+        compare(floored.renderMode, "sampled-glass");
+        verify(floored.alpha >= 0.85, "minimal drawer keeps its card alpha");
+        // The menu opacity slider must not push the drawer to a slab.
+        var sliderLow = Glass.resolve("appsDrawer", {
+            scheme: "light", rollout: "replacement", slider: 0.0
+        });
+        compare(sliderLow.sliderApplied, false);
+        verify(Math.abs(sliderLow.alpha - light.alpha) < 1e-6,
+               "drawer alpha is fixed against the menu slider");
     }
 
     function test_glass_light_slider_anchors() {
@@ -294,8 +307,7 @@ TestCase {
             var name = Glass.presetNames[i];
             var low = Glass.resolve(name, { scheme: "light", rollout: "replacement", slider: 0 });
             var high = Glass.resolve(name, { scheme: "light", rollout: "replacement", slider: 1 });
-            var relative = name === "menuDetached" || name === "appsDrawer"
-                    || name === "statusMenu";
+            var relative = name === "menuDetached" || name === "statusMenu";
             var expected = name === "menuAttached" || relative;
             compare(low.sliderApplied, expected, name + " slider support");
             if (relative) {

@@ -658,9 +658,10 @@ line and, since T-14.7aa, a pointer tail (`tailVisible`) aimed at the anchor
 centre — above the icon on a bottom Dock and on the interior side on a
 vertical one (ADR [0093](adr/0093-tooltip-joins-the-design-system.md), ADR
 [0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)). The
-label text is the entry `name` plus its state ("3 windows", "Trash — empty",
-"Downloads — 2 items"), computed once in `DockEntry.tooltipLabel` so no QML
-consumer re-derives it and no text returns to the artwork (ADR 0092). The Dock
+label text is the entry `name` plus its state ("3 windows", "Downloads — 2
+items"); the Trash label is just "Trash" regardless of its contents, computed
+once in `DockEntry.tooltipLabel` so no QML consumer re-derives it and no text
+returns to the artwork (ADR 0092). The Dock
 owns the dwell timer and the suppression rules: a click, a drag, an external
 drag, a resize, or any open context menu/chooser/stack hides it, beginning
 keyboard navigation closes an already-visible label, and it is never up at the
@@ -824,7 +825,8 @@ the menu.
 The operation belongs to the controller, not to its card
 ([reliability §7](proposals/dock-interaction-and-reliability.md)). The
 card may close when another popup opens; the Trash tile keeps a small busy ring
-and its name/tooltip say "emptying" while the work continues. The Trash menu
+and its accessible name says "emptying" while the work continues, while its
+tooltip stays just "Trash". The Trash menu
 offers **Show Progress** to reopen the card, disables a second **Empty Trash**
 while the operation is active, and preserves a completed result or a failure's
 retry affordance after the card closes. Every request and its result carry one
@@ -951,13 +953,15 @@ viewport at five rows; it drops to fewer columns on a narrower output and
 scrolls when the corpus is longer. The column count is independent of the
 filtered result count: a search that narrows the grid must not reflow the card
 horizontally on every keystroke. The centered card is the compositor's sampled
-`appsDrawer` glass (translucent 0.72 light / 0.82 dark alpha over a near-white
-or dark tint, a 14 pt light / 16 pt dark frost, rim and restrained corner lens)
-with a 28 pt radius and a soft floating shadow; the QML fill is transparent on
-that path, so the compositor owns the material once. Reduce Transparency, no
-sampled blur and Minimal keep the shared opaque accessibility plate; the
+`appsDrawer` glass (a fixed 0.88 light / 0.90 dark alpha over a near-white or
+dark tint, a 16 pt light / 18 pt dark frost, a 0.28 / 0.26 rim and a
+9/18/56 pt corner lens) with a 28 pt radius and a soft floating shadow; the QML
+fill is transparent on that path, so the compositor owns the material once. The
+drawer deliberately does not follow the menu opacity slider, and it keeps the
+sampled glass floor at a global Minimal degrade. Reduce Transparency, no
+sampled blur and software keep the shared opaque accessibility plate; the
 legacy rollout's no-blur fallback is 0.92. See
-[ADR 0260](adr/0260-apps-drawer-translucent-glass.md). The card uses 20px
+[ADR 0261](adr/0261-apps-drawer-fixed-glass-floor.md). The card uses 20px
 (`component.appsDrawer.panelPadding`) side padding and 16px
 (`panelPaddingVertical`) top/bottom padding, clamped to the output. The
 search field is 58 pt high with 16 pt text, a 16 pt corner radius and an inner

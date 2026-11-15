@@ -351,6 +351,12 @@ Divider
 
 ### 5.9 Settings
 
+- The pane-by-pane target is [24-system-settings.md](24-system-settings.md):
+  the measured 740×820 window, grouped sidebar, complete macOS Tahoe row
+  inventory, Linux adaptations, absence/empty states, and the T263–T284
+  completion sequence in the
+  [`system-settings` task set](../tasks/system-settings/plan/ROADMAP.md). The
+  total-experience contract below is the summary.
 - Every visible row maps to an owner in
   [settings-business-logic-map.md](settings-business-logic-map.md).
 - Controls apply live unless the reference requires an explicit action; a

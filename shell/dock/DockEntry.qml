@@ -226,14 +226,9 @@ Item {
         if (isDivider || isExternal)
             return "";
         if (isLauncher)
-            return name.length > 0 ? name : qsTr("Applications");
-        if (isTrash) {
-            var trashName = name.length > 0 ? name : qsTr("Trash");
-            var trashState = trashUnavailable ? qsTr(" — unavailable")
-                           : busy ? qsTr(" — emptying")
-                           : trashFull ? qsTr(" — full") : qsTr(" — empty");
-            return trashName + trashState;
-        }
+            return name.length > 0 ? name : qsTr("Apps");
+        if (isTrash)
+            return name.length > 0 ? name : qsTr("Trash");
         if (isStack) {
             var stackName = name.length > 0 ? name : qsTr("Downloads");
             var countLabel = stackCount === 1 ? qsTr("1 item")
@@ -305,7 +300,7 @@ Item {
     Accessible.name: isDivider ? qsTr("Dock separator")
                      : isExternal ? (name.length > 0 ? name : qsTr("Drop here"))
                      : isOverflow ? qsTr("%1 more window groups").arg(overflowCount)
-                     : isLauncher ? (name.length > 0 ? name : qsTr("Applications"))
+                     : isLauncher ? (name.length > 0 ? name : qsTr("Apps"))
                      : isTrash ? qsTr("Trash") + stateLabel
                      : isStack ? (name.length > 0 ? name : qsTr("Downloads")) + stateLabel
                      : name + stateLabel

@@ -870,7 +870,7 @@ Go      Back Cmd+[ · Forward Cmd+] · Enclosing Folder Cmd+Up · Recents
         Shift+Cmd+O · Downloads Option+Cmd+L · Desktop Shift+Cmd+D · Go to
         Folder Shift+Cmd+G · Connect to Server Cmd+K (later)
 Window  Minimize Cmd+M · Zoom · Show Tab Bar · Bring All to Front · [tabs]
-Help    Dragonfruit Files Help
+Help    Files Help
 ```
 
 ## Performance budgets

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Dragonfruit Files
+Name=Files
 GenericName=File Manager
 Comment=Browse and organize your files
 Exec=dragonfruit-files %U

@@ -56,7 +56,7 @@
 | Stage Manager | Stage | `stageManager` | Window-management mode |
 | Dock | Dock | `shell/dock` | Generic desktop term; keep |
 | Menu bar | Menu bar | `shell/menubar` | Generic |
-| System Settings | Settings | `apps/settings` | First-party Settings app |
+| System Settings | System Settings | `apps/settings` | Generic system settings name |
 | Control Center | Quick Settings | `shell/control-center` | Generic panel name |
 | Notification Center | Notifications | `shell/notifications` | History + banners |
 | App Switcher | App Switcher | `shell/switcher` | Cmd+Tab equivalent |
@@ -202,8 +202,8 @@ names, and AppStream text. They are also enforced by the naming gate.
 | Desktop names | `dragonfruit` (`XDG_CURRENT_DESKTOP` and `DesktopNames`) |
 | D-Bus namespace | `org.dragonfruit.*` |
 | First-party app ids | `org.dragonfruit.Settings`, `org.dragonfruit.Files` |
-| Settings app name | Dragonfruit Settings |
-| Files app name | Dragonfruit Files |
+| Settings app name | System Settings |
+| Files app name | Files |
 | Wallpaper share path | `share/dragonfruit/wallpapers/` |
 | Cursor theme install path | `share/icons/capitaine-cursors` |
 

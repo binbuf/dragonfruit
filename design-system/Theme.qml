@@ -338,47 +338,47 @@ QtObject {
             readonly property var appsDrawer: QtObject {
                 readonly property string role: "drawer"
                 readonly property string render: "sampled"
-                readonly property string slider: "lightRelative"
+                readonly property string slider: "none"
                 readonly property var light: QtObject {
                     readonly property string confidence: "adapted"
-                    readonly property string provenance: "The Apps material fit is OPEN in macos-design-review §4.5, which describes a large light glass panel. The sampled panel gray (#B3B3B3) over the capture's black backdrop resolves to a roughly 0.72-opaque near-white sheet, so this preset keeps the popover family's near-white tint, measured rim and restrained corner lens with a 14 pt frost instead of the earlier 0.97 near-opaque plate."
+                    readonly property string provenance: "The Apps material fit is OPEN in macos-design-review §4.5, which describes a large light glass panel. The sampled panel gray (#B3B3B3) over the capture's black backdrop resolves to roughly 0.72 opacity, but this build's menu slider can push a relative preset to a near-opaque 0.98 slab and the shipped card read as a flat plate. The replacement keeps the popover family's near-white tint at a fixed 0.88 alpha: mostly opaque like the reference panel, while the 16 pt frost, stronger measured rim and wider corner lens carry the glass. The drawer does not follow the menu slider's opacity curve; the slider still drives the lens/frost materialize axis. It keeps the Reduced glass floor so a global Minimal degrade never swaps it for the opaque accessibility plate."
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
-                        readonly property real neutralAlpha: 0.72
+                        readonly property real neutralAlpha: 0.88
                         readonly property real neutralTint: 0.96
                         readonly property real perceptualWeight: 0.0
-                        readonly property real perceptualAlpha: 0.72
+                        readonly property real perceptualAlpha: 0.88
                         readonly property real perceptualTint: 0.96
                     }
-                    readonly property real blur: 14.0
-                    readonly property real edge: 0.22
+                    readonly property real blur: 16.0
+                    readonly property real edge: 0.28
                     readonly property real edgeWidth: 1.0
                     readonly property real edgeTail: 8.0
                     readonly property real sharpFraction: 0.12
-                    readonly property real cornerLensPeak: 6.0
-                    readonly property real cornerLensDistance: 20.0
-                    readonly property real cornerLensTail: 50.0
+                    readonly property real cornerLensPeak: 9.0
+                    readonly property real cornerLensDistance: 18.0
+                    readonly property real cornerLensTail: 56.0
                     readonly property real foreground: 0.0
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "adapted"
-                    readonly property string provenance: "No dark Apps fit was measured; use the light card's transmission with the measured dark detached-menu tint (0.26) at 0.82 alpha, so the glass still reads over a bright wallpaper while 13 pt labels keep contrast."
+                    readonly property string provenance: "No dark Apps fit was measured; use the light card's transmission with the measured dark detached-menu tint (0.26) at a fixed 0.90 alpha, so the card stays mostly opaque over a bright wallpaper while 13 pt labels keep contrast and the 18 pt frost still reads as glass. The drawer does not follow the menu slider's opacity curve and keeps the Reduced glass floor at a global Minimal degrade."
                     readonly property string colourSpace: "srgb"
                     readonly property var calibration: QtObject {
-                        readonly property real neutralAlpha: 0.82
+                        readonly property real neutralAlpha: 0.9
                         readonly property real neutralTint: 0.26
                         readonly property real perceptualWeight: 0.0
-                        readonly property real perceptualAlpha: 0.82
+                        readonly property real perceptualAlpha: 0.9
                         readonly property real perceptualTint: 0.26
                     }
-                    readonly property real blur: 16.0
-                    readonly property real edge: 0.2
+                    readonly property real blur: 18.0
+                    readonly property real edge: 0.26
                     readonly property real edgeWidth: 1.0
                     readonly property real edgeTail: 8.0
                     readonly property real sharpFraction: 0.12
-                    readonly property real cornerLensPeak: 6.0
-                    readonly property real cornerLensDistance: 20.0
-                    readonly property real cornerLensTail: 50.0
+                    readonly property real cornerLensPeak: 9.0
+                    readonly property real cornerLensDistance: 18.0
+                    readonly property real cornerLensTail: 56.0
                     readonly property real foreground: 0.0
                 }
             }

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "status": "normative",
-  "updated": "2026-11-07",
+  "updated": "2026-11-14",
   "description": "Machine-readable gate vocabulary for the user-facing naming map in interface-naming-and-licensing.md. The human map remains normative; this file lists the Apple terms that must not appear in user-facing strings, desktop entries, or packaging metadata. A line carrying `df-allow-name` is exempt (negative tests and deliberate history).",
   "sources": [
     "QML qsTr() strings and bare user-visible property literals",
@@ -21,7 +21,6 @@
     { "term": "Mission Control", "replacement": "Overview", "pattern": "\\bMission Control\\b" },
     { "term": "Spaces", "replacement": "Workspaces", "pattern": "\\bSpaces\\b", "notes": "Virtual desktops; singular Space is covered by review." },
     { "term": "Stage Manager", "replacement": "Stage", "pattern": "\\bStage Manager\\b" },
-    { "term": "System Settings", "replacement": "Settings", "pattern": "\\bSystem Settings\\b" },
     { "term": "System Preferences", "replacement": "Settings", "pattern": "\\bSystem Preferences\\b" },
     { "term": "Control Center", "replacement": "Quick Settings", "pattern": "\\bControl Center\\b" },
     { "term": "Notification Center", "replacement": "Notifications", "pattern": "\\bNotification Center\\b" },
@@ -85,6 +84,7 @@
     "Workspaces",
     "Search",
     "Files",
+    "System Settings",
     "Applications",
     "Stage",
     "Preview",

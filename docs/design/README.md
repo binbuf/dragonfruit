@@ -25,6 +25,7 @@ numbered records.
 | [12-packaging.md](12-packaging.md) | Fedora/Debian packaging and distribution |
 | [22-total-experience.md](22-total-experience.md) | The whole-desktop target: shell, navigation, Settings, motion, HUDs, ownership |
 | [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md) | Measured window chrome, About, Spotlight Apps, Notification Center, Control Center and Finder anatomy; decision in [ADR 0241](adr/0241-macos-structural-surface-review.md) |
+| [24-system-settings.md](24-system-settings.md) | System Settings target: measured window/IA, every macOS Tahoe pane row, Linux adaptations, absence/empty states, 2026-11-14 findings register, and the T263–T284 task map in the `system-settings` set |
 | [settings-business-logic-map.md](settings-business-logic-map.md) | Every Settings pane/row to its owner and absence path |
 | [distro-compatibility.md](distro-compatibility.md) | Fedora/Ubuntu/Debian/Arch host-service and packaging contract |
 | [distro-adapter-contract.md](distro-adapter-contract.md) | Cross-distro adapter traits, command matrix, dependency sets, mock, and probe (T221) |

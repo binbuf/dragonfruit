@@ -14,7 +14,7 @@ Window {
     minimumWidth: 720
     minimumHeight: 480
     visible: true
-    title: qsTr("Dragonfruit Files")
+    title: qsTr("Files")
     color: "transparent"
     flags: Qt.Window | Qt.FramelessWindowHint
 

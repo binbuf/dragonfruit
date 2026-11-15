@@ -745,7 +745,7 @@ Item {
     AppWindow {
         id: appWindow
         anchors.fill: parent
-        title: qsTr("Settings")
+        title: qsTr("System Settings")
         active: root.windowActive
         // T230b: Settings is a 52 pt unified-toolbar window. The style is
         // declared once here; the titlebar inherits it.
@@ -757,7 +757,7 @@ Item {
         titleBarData: TitleBar {
             id: titleBar
                 title: root.aboutOpen ? qsTr("About")
-                                      : (root.currentPane ? root.currentPane.title : qsTr("Settings"))
+                                      : (root.currentPane ? root.currentPane.title : qsTr("System Settings"))
             active: root.windowActive
             fillColor: Material.appChromeFill("settingsToolbar",
                                               Theme.color.chrome)
@@ -1022,5 +1022,5 @@ Item {
     }
 
     Accessible.role: Accessible.Pane
-    Accessible.name: qsTr("Settings")
+    Accessible.name: qsTr("System Settings")
 }
