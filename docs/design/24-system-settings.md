@@ -239,6 +239,30 @@ Every pane uses the same `SettingsGroup` and `SettingsRow` anatomy:
 - Motion follows the shared reduced-motion path. Hover/press/focus feedback
   is tokenized; no pane invents a duration.
 
+T266 lands the component half of this contract:
+
+- `SettingsRow` sizes its control slot from the child's implicit size, so the
+  `childrenRect` binding loop is gone and a long label keeps a readable
+  column. The row has a visible focus ring; disclosure rows activate from
+  anywhere on the row; the chevron and help control are Tab stops; a stock
+  control takes the row label as its accessible name when the pane sets none.
+- `SettingsGroup` wraps its title, suppresses the final row separator, and
+  owns one bottom gap (the pane's Column spacing, not a second group margin).
+- `Select`/`ContextMenu`, `Popup`, and `Dialog` adopt the window `WindowOverlay`
+  layer instead of a pane-local `popupParent`. A Select is sized to its longest
+  option, flips/clamps inside the window, and scrolls a long list. A Dialog
+  fits the window, traps Tab, scrolls its body, and keeps a visible Close
+  action pinned above the scrolling content.
+- `ScrollView` implements `automatic` (focused/hovered/moving), `when-scrolling`
+  (moving or dragged), and `always` (any overflow) distinctly, exposes its
+  value/orientation, supports both track-click behaviours, and stops its bars
+  short of the window resize corner. The horizontal path is live behind the
+  `horizontalScroll` opt-in.
+- The compositor's live-position ray-test from T263 remains the stationary
+  click fix. T266 adds the row focus path and the shared stationary-click
+  harness (sidebar, row, tile, select, dialog button) plus the
+  scroll-under-pointer regression.
+
 ### 3.3.1 Navigation, history, deep links, and help
 
 T264 makes every navigation path truthful:
@@ -1174,15 +1198,15 @@ from the first live T263 run; they are part of the same release bar.
 | P0-6 | Focus mode rows are inert but styled/announced as radio controls; three duplicate state surfaces | `FocusPane.qml` | T278 |
 | P0-7 | Search is a no-op surface; shortcut is free text; indexing rows name nonexistent keys | `SearchPane.qml`, `schema.rs` | T265, T282 |
 | P0-8 | Notification global preferences are no-ops; per-app sheet is missing half the macOS options | `NotificationsPane.qml`, `schema.rs` | T278 |
-| P0-9 | Select popups and pane dialogs are clipped by the detail `ScrollView`; long lists are unusable | `Select.qml`, `ContextMenu.qml`, `Dialog.qml`, `SettingsShell.qml` | T266 |
-| P0-10 | `SettingsRow` has a binding loop; rows have no focus ring; toggles have no accessible names; long strings overflow | `SettingsRow.qml`, `Toggle.qml`, `Button.qml` | T266, T267 |
+| P0-9 | Select popups and pane dialogs are clipped by the detail `ScrollView`; long lists are unusable | `Select.qml`, `ContextMenu.qml`, `Dialog.qml`, `SettingsShell.qml` | T266 (landed: window overlay layer, flip/clamp/scroll, dialog fit) |
+| P0-10 | `SettingsRow` has a binding loop; rows have no focus ring; toggles have no accessible names; long strings overflow | `SettingsRow.qml`, `Toggle.qml`, `Button.qml` | T266 (landed: implicit-size slot, focus ring, accessible names, elide), T267 |
 | P0-11 | Sidebar cannot scroll to most panes; no groups; opens Appearance instead of General; window is 800×640 | `SettingsShell.qml`, `SettingsWindow.qml`, `Sidebar.qml` | T263 (landed) |
 | P0-12 | Back/forward ignore subpanes; deep links cannot land in General subpanes/dialogs; help anchor is wrong; menu actions are dead | `SettingsShell.qml`, `SettingsWindow.qml`, `SettingsMenu.qml` | T264 (landed) |
 | P0-13 | settingsd accepts NaN/Infinity (persist panic), loses concurrent updates, hides persistence failure, and the client schema mirror drifts | `schema.rs`, `persist.rs`, `dbus.rs`, `settingsclient.cpp` | T282 |
 | P0-14 | Adapter clients show the startup snapshot; no live refresh; ~20 D-Bus calls at startup; slider writes fsync per tick | `*Client.cpp`, `SettingsBridge.cpp` | T268, T282 |
 | P0-15 | Pane tests run at 900/1000 px; many panes have no dark/absence/scale capture; no golden diff; no real-host matrix | `apps/settings/tests/`, `scripts/capture-*settings*` | T283, T284 |
 | P0-16 | Wallpaper picks do not acknowledge the click reliably: a tile can look unselected, the spinner/preview state starts only after the provider round trip, a second pick during a pending apply is ignored, and the selected tile can disagree with the background | `apps/settings/WallpaperPane.qml`, `SettingsBridge.cpp`, `services/wallpaperd` | T278 |
-| P0-17 | A stationary click on a sidebar row or pane control is often dropped; moving the pointer or scrolling first makes it land. The activating press can be consumed by focus or routed through a stale cached pointer location, so the first click looks inert | `apps/settings/SettingsShell.qml`, `design-system/components/Sidebar.qml`, `compositor/src/input.rs` | T263 (live-position ray-test landed), T266 (row focus) |
+| P0-17 | A stationary click on a sidebar row or pane control is often dropped; moving the pointer or scrolling first makes it land. The activating press can be consumed by focus or routed through a stale cached pointer location, so the first click looks inert | `apps/settings/SettingsShell.qml`, `design-system/components/Sidebar.qml`, `compositor/src/input.rs` | T263 (live-position ray-test landed), T266 (row focus + stationary-click harness landed) |
 
 ### P1 — missing major rows or states
 
@@ -1216,13 +1240,13 @@ from the first live T263 run; they are part of the same release bar.
 | P2-1 | Stale header comments claim implemented rows are omitted | T263–T281 |
 | P2-2 | Pane labels drift from the map (`When display is asleep` vs `sleeping`, `Quick Settings` vs `Control Center`) | T266 |
 | P2-3 | Duplicate icons: General/Biometrics, Displays/Screen Saver, Network/Online Accounts | T263 |
-| P2-4 | Final row separators and double group gaps | T266 |
+| P2-4 | Final row separators and double group gaps | T266 (landed) |
 | P2-5 | Dialog titles repeat the first content line; no app icons in notification/focus lists | T266, T278 |
 | P2-6 | “OPEN” and task IDs leak into user-facing descriptions | T266 |
 | P2-7 | Debug view is larger than the minimum window and has no scroll | T264 (landed) |
 | P2-8 | Search field clear button has no accessible name | T267 |
 | P2-9 | About panel’s regulatory overlay is not keyboard-accessible | T269 |
-| P2-10 | Window resize grips cover the scrollbar corners | T266 |
+| P2-10 | Window resize grips cover the scrollbar corners | T266 (landed: corner inset) |
 
 ## 7. Task map
 

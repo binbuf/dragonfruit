@@ -112,6 +112,7 @@ Item {
     property alias detailContent: detailContent
     property alias helpButton: helpButton
     property alias resizeEdges: resizeEdges
+    property alias overlayLayer: windowOverlay
     property alias debugView: debugView
 
     // The app-local theme owner (T-09.2). The shell's `ThemeBinding` lives in
@@ -1437,6 +1438,9 @@ Item {
                     anchors.bottom: parent.bottom
                     scrollbarVisible: true
                     scrollBars: root.scrollBars
+                    // T266: the bottom-right window grip owns the corner; the
+                    // scrollbars stop short of it.
+                    cornerInset: Theme.controls.window.resizeCorner
 
                     Column {
                         id: detailContent
@@ -1499,11 +1503,9 @@ Item {
                                         root.pendingAboutPage = false;
                                     }
                                 }
-                                // Panes with an in-pane popup get the shell
-                                // root as its parent so the detail
-                                // ScrollView's clip cannot cut it off.
-                                if (paneBody.item.popupParent !== undefined)
-                                    paneBody.item.popupParent = root;
+                                // Panes no longer opt into a popup parent: a
+                                // Dialog or Select adopts the window overlay
+                                // layer itself (T266).
                                 root.trace("paneLoaded " + root.currentPaneId);
                                 if (root.pendingPaneId === root.currentPaneId)
                                     Qt.callLater(root.revealPending);
@@ -1562,11 +1564,21 @@ Item {
         anchors.fill: parent
     }
 
+    // T266: the window overlay layer for pane Selects and Dialogs. It covers
+    // the whole window above the resize grips, so a surface inside the detail
+    // ScrollView is never clipped.
+    WindowOverlay {
+        id: windowOverlay
+    }
+
     // The frameless window owns its edge input; the shared grips report the
     // matching `Qt.Edges` and the host forwards them to `startSystemResize`.
+    // The bottom-right corner is reserved for the detail scrollbar (T266).
     WindowResizeGrips {
         id: resizeEdges
         anchors.fill: parent
+        cornerAvoidance: Theme.controls.scrollView.scrollbarWidth
+                         + 2 * Theme.controls.scrollView.scrollbarMargin
         onResizeRequested: (edges) => root.resizeRequested(edges)
     }
 

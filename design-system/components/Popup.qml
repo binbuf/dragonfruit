@@ -11,6 +11,10 @@ Item {
 
     property bool open: false
     property Item anchorItem: null
+    // T266: a popup declared inside a pane adopts the window overlay layer so
+    // the detail ScrollView cannot clip it. The local parent is restored after
+    // the close animation, so the popup still dies with its pane.
+    property Item localParent: null
     property int preferredWidth: Theme.controls.popup.minWidth
     property int horizontalPadding: Theme.controls.popup.padding
     property int verticalPadding: Theme.controls.popup.padding
@@ -62,7 +66,7 @@ Item {
     signal closed()
     signal escapePressed()
 
-    function show() { root.open = true; }
+    function show() { root.adoptOverlay(); root.open = true; }
     function hide(immediate) {
         root.open = false;
         if (immediate === true) {
@@ -71,6 +75,15 @@ Item {
         }
     }
     function toggle() { root.open = !root.open; }
+    function adoptOverlay() {
+        if (!root.anchorItem)
+            return;
+        var layer = OverlayLayer.layerFor(root);
+        if (!layer || root.parent === layer)
+            return;
+        root.localParent = root.parent;
+        root.parent = layer;
+    }
 
     focus: open
     enabled: open
@@ -111,11 +124,16 @@ Item {
     width: Math.max(preferredWidth, contentColumn.implicitWidth + 2 * horizontalPadding)
     height: contentColumn.implicitHeight + 2 * verticalPadding
     // Keep the surface inside the owner's width; a control near the right
-    // edge (the Displays advanced button) must not open half off-screen.
+    // edge (the Displays advanced button) must not open half off-screen. The
+    // vertical position is clamped to the window too (T266).
     x: root.parent
        ? Math.max(0, Math.min(root.parent.width - width, anchorPoint.x))
        : anchorPoint.x
-    y: anchorPoint.y
+    y: root.parent
+       ? (root.localParent !== null
+          ? Math.max(0, Math.min(root.parent.height - height, anchorPoint.y))
+          : anchorPoint.y)
+       : anchorPoint.y
     scale: open ? 1.0 : closeScale
     transformOrigin: Item.TopLeft
     transform: Translate {
@@ -126,10 +144,24 @@ Item {
 
     onOpenChanged: {
         if (open) {
+            restoreTimer.stop();
             root.forceActiveFocus();
             root.opened();
         } else {
+            restoreTimer.restart();
             root.closed();
+        }
+    }
+
+    Timer {
+        id: restoreTimer
+        interval: Theme.motion.popupClose.duration + 60
+        repeat: false
+        onTriggered: {
+            if (!root.open && root.localParent) {
+                root.parent = root.localParent;
+                root.localParent = null;
+            }
         }
     }
 

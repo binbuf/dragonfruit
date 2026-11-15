@@ -55,7 +55,6 @@ Item {
 
     // The shell reparents dialogs to its root so the detail ScrollView's clip
     // cannot cut them off (T227 note).
-    property Item popupParent: null
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -286,7 +285,6 @@ Item {
         id: changePasswordDialog
         objectName: "biometricsChangePasswordDialog"
         title: qsTr("Change Password")
-        parent: root.popupParent ? root.popupParent : root
         dismissible: true
 
         contentData: Column {
@@ -380,7 +378,6 @@ Item {
         id: addFingerDialog
         objectName: "biometricsAddFingerDialog"
         title: qsTr("Add Fingerprint")
-        parent: root.popupParent ? root.popupParent : root
         dismissible: true
 
         contentData: Column {
@@ -425,7 +422,6 @@ Item {
         id: deleteFingerDialog
         objectName: "biometricsDeleteFingerDialog"
         title: qsTr("Delete Fingerprint")
-        parent: root.popupParent ? root.popupParent : root
         dismissible: true
 
         contentData: Text {

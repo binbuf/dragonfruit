@@ -88,7 +88,6 @@ Item {
 
     // The shell reparents dialogs to its root so the detail ScrollView's clip
     // cannot cut them off (T227 note).
-    property Item popupParent: null
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -451,7 +450,6 @@ Item {
         objectName: "privacyPermissionDialog"
         title: root.selectedCategory !== null
             ? String(root.selectedCategory.label) : qsTr("Permissions")
-        parent: root.popupParent ? root.popupParent : root
         dismissible: true
 
         contentData: Column {
@@ -556,7 +554,6 @@ Item {
         id: sourcesDialog
         objectName: "privacySourcesDialog"
         title: qsTr("Software sources")
-        parent: root.popupParent ? root.popupParent : root
         dismissible: true
 
         contentData: Column {
@@ -609,7 +606,6 @@ Item {
         id: extensionsDialog
         objectName: "privacyExtensionsDialog"
         title: qsTr("Extensions")
-        parent: root.popupParent ? root.popupParent : root
         dismissible: true
 
         contentData: Column {
@@ -648,7 +644,6 @@ Item {
         id: advancedDialog
         objectName: "privacyAdvancedDialog"
         title: qsTr("Advanced")
-        parent: root.popupParent ? root.popupParent : root
         dismissible: true
 
         contentData: Column {

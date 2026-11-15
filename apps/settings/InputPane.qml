@@ -150,7 +150,6 @@ Item {
     property string newSource: ""
     property string newReplacementFrom: ""
     property string newReplacementTo: ""
-    property Item popupParent: null
 
     // Test surface (used by tst_settings_input.qml).
     property alias inventoryGroup: inventoryGroup
@@ -1216,7 +1215,6 @@ Item {
         objectName: "inputSourcesDialog"
         title: qsTr("Input Sources")
         dismissible: true
-        parent: root.popupParent ? root.popupParent : root
 
         contentData: Column {
             width: parent.width
@@ -1286,7 +1284,6 @@ Item {
         objectName: "inputReplacementsDialog"
         title: qsTr("Text Replacements")
         dismissible: true
-        parent: root.popupParent ? root.popupParent : root
 
         contentData: Column {
             width: parent.width

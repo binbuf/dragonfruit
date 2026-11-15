@@ -14,22 +14,35 @@ Column {
 
     property string title: ""
     property string sectionId: ""
-    property bool reserveBottomMargin: true
+    // T266: a group in a pane's spaced Column owns one bottom gap (the
+    // Column's spacing). The group's own margin is opt-in for a standalone
+    // card, so the two gaps are never added together.
+    property bool reserveBottomMargin: false
     default property alias contentData: rows.data
     property alias rows: rows
+    property alias titleText: titleText
     property alias highlightRect: highlightRect
     property bool highlighted: false
 
     spacing: 0
 
     Text {
+        id: titleText
         visible: root.title.length > 0
         width: parent.width
+        // T266: the section header aligns with the row labels inside the card
+        // and wraps (or elides) rather than running past the card.
+        leftPadding: Theme.controls.settingsGroup.padding
+                     + Theme.controls.settingsRow.paddingH
+        rightPadding: Theme.controls.settingsGroup.padding
         bottomPadding: Theme.primitive.spacing.sm
         text: root.title
         color: Theme.color.textSecondary
         font.pixelSize: Theme.primitive.font.sizeSm
         font.weight: Theme.primitive.font.weightMedium
+        wrapMode: Text.Wrap
+        maximumLineCount: 2
+        elide: Text.ElideRight
     }
 
     Item {
@@ -69,6 +82,9 @@ Column {
 
         Column {
             id: rows
+            // T266: SettingsRow reads this to suppress the last row's
+            // separator without rewriting any row's declared state.
+            property bool settingsGroupRows: true
             x: Theme.controls.settingsGroup.padding
             y: Theme.controls.settingsGroup.padding
             width: body.width - 2 * Theme.controls.settingsGroup.padding

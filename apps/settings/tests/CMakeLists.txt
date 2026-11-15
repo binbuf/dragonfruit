@@ -813,6 +813,31 @@ set_tests_properties(tst_settings_map PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# T266 shared-component tests: row bounds at 500 px, long localized strings,
+# the group's final separator and single gap, focus rings, disclosure rows,
+# accessible names/ranges, overlay Selects, a 720x480 Dialog, ScrollView modes,
+# and the stationary-click/scroll-under-pointer harness. `DF_SETTINGS_FIXTURE`
+# keeps the shell cases off the host bus.
+qt_add_executable(tst_settings_components
+    tst_settings_components.cpp
+)
+target_link_libraries(tst_settings_components PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_components)
+
+add_test(
+    NAME tst_settings_components
+    COMMAND tst_settings_components
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_components.qml
+)
+set_tests_properties(tst_settings_components PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings search/deep-link/row-anatomy tests (T223): the local index covers
 # panes/sections/rows with synonyms and help text, results rank and deep-link,
 # keyboard navigation and history work, and long strings never clip a control.

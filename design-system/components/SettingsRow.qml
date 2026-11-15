@@ -53,6 +53,20 @@ Item {
     readonly property bool hasTrailing: root.disclosure
                                           || root.trailingAction.length > 0
                                           || root.help.length > 0
+    // T266: the last SettingsRow in a SettingsGroup suppresses its separator.
+    // The row computes this from the group's live children, so adding a row
+    // restores the previous last row's separator without rewriting state.
+    readonly property bool isLastGroupRow: {
+        if (parent === null || parent === undefined
+                || parent.settingsGroupRows !== true)
+            return false;
+        var siblings = parent.children;
+        for (var i = siblings.length - 1; i >= 0; --i) {
+            if (siblings[i].showSeparator !== undefined)
+                return siblings[i] === root;
+        }
+        return false;
+    }
 
     // Test/consumer aliases for the one anatomy.
     property alias labelText: labelText
@@ -64,6 +78,10 @@ Item {
     property alias trailingButton: trailingButton
     property alias helpArea: helpArea
     property alias highlightRect: highlightRect
+    property alias separatorRect: separatorRect
+    property alias focusRing: rowFocusRing
+    property alias disclosureFocusRing: disclosureFocusRing
+    property alias helpFocusRing: helpFocusRing
 
     implicitWidth: 480
     implicitHeight: Math.max(Theme.controls.settingsRow.height,
@@ -114,6 +132,7 @@ Item {
             visible: root.disclosure
             width: Theme.controls.button.iconSize + 2 * Theme.primitive.spacing.xxs
             height: width
+            activeFocusOnTab: true
 
             Icon {
                 anchors.centerIn: parent
@@ -124,6 +143,21 @@ Item {
 
             TapHandler {
                 onTapped: root.disclosureClicked()
+            }
+
+            Keys.onPressed: (event) => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    root.disclosureClicked();
+                    event.accepted = true;
+                }
+            }
+
+            FocusRing {
+                id: disclosureFocusRing
+                target: disclosureArea
+                cornerRadius: Theme.primitive.radius.xs
+                shown: disclosureArea.activeFocus
             }
 
             Accessible.role: Accessible.Button
@@ -138,6 +172,7 @@ Item {
             visible: root.help.length > 0
             width: Theme.controls.button.iconSize + 2 * Theme.primitive.spacing.xxs
             height: width
+            activeFocusOnTab: true
 
             Rectangle {
                 anchors.fill: parent
@@ -166,6 +201,23 @@ Item {
                 }
             }
 
+            Keys.onPressed: (event) => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    root.helpRequested(root.help);
+                    if (root.helpUrl.toString().length > 0)
+                        Qt.openUrlExternally(root.helpUrl);
+                    event.accepted = true;
+                }
+            }
+
+            FocusRing {
+                id: helpFocusRing
+                target: helpArea
+                cornerRadius: width / 2
+                shown: helpArea.activeFocus
+            }
+
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("Help for %1").arg(root.label)
             Accessible.focusable: true
@@ -177,6 +229,12 @@ Item {
         }
     }
 
+    // The control slot is sized from the child's implicit size (T266). The
+    // previous `childrenRect.width/height` read made the slot depend on the
+    // child's laid-out width while the child's width was bound through the
+    // slot: a binding loop that also squeezed long labels to zero. The slot
+    // never takes more than 60% of the row, so a long localized label always
+    // keeps a readable column.
     Item {
         id: controlSlot
         anchors.right: root.hasTrailing ? trailingRow.left : parent.right
@@ -184,8 +242,27 @@ Item {
                 ? Theme.controls.settingsRow.controlGap
                 : Theme.controls.settingsRow.paddingH
         anchors.verticalCenter: parent.verticalCenter
-        width: childrenRect.width
-        height: childrenRect.height
+
+        readonly property Item controlItem: children.length > 0 ? children[0] : null
+        readonly property real naturalWidth: {
+            var item = controlSlot.controlItem;
+            if (item === null)
+                return 0;
+            var implicit = item.implicitWidth;
+            return implicit > 0 ? implicit : item.width;
+        }
+        readonly property real naturalHeight: {
+            var item = controlSlot.controlItem;
+            if (item === null)
+                return 0;
+            var implicit = item.implicitHeight;
+            return implicit > 0 ? implicit : item.height;
+        }
+        width: Math.min(root.width * 0.6, Math.max(0, controlSlot.naturalWidth))
+        height: Math.max(0, controlSlot.naturalHeight)
+
+        onChildrenChanged: root.syncControlLabel()
+        Component.onCompleted: root.syncControlLabel()
     }
 
     Column {
@@ -228,8 +305,24 @@ Item {
         }
     }
 
+    // A disclosure row activates from anywhere on the row, not only the
+    // chevron (T266). The trailing sub-controls keep their own hit target, so
+    // a chevron/help/trailing press is never counted twice.
+    TapHandler {
+        onTapped: (eventPoint) => {
+            if (!root.disclosure)
+                return;
+            if (root.tapInside(disclosureArea, eventPoint.position)
+                    || root.tapInside(helpArea, eventPoint.position)
+                    || root.tapInside(trailingRow, eventPoint.position))
+                return;
+            root.disclosureClicked();
+        }
+    }
+
     Rectangle {
-        visible: root.showSeparator
+        id: separatorRect
+        visible: root.showSeparator && !root.isLastGroupRow
         anchors.left: parent.left
         anchors.leftMargin: Theme.controls.settingsRow.paddingH
         anchors.right: parent.right
@@ -237,6 +330,36 @@ Item {
         anchors.bottom: parent.bottom
         height: Theme.controls.window.borderWidth
         color: Theme.color.separator
+    }
+
+    // Every row is a keyboard stop with a visible focus ring (T266).
+    FocusRing {
+        id: rowFocusRing
+        target: root
+        cornerRadius: Theme.controls.settingsGroup.radius
+        shown: root.activeFocus
+    }
+
+    onLabelChanged: root.syncControlLabel()
+
+    // Give a stock control the row label as its accessible name when the pane
+    // did not set one (T266). Controls opt in with a `rowLabel` property.
+    function syncControlLabel() {
+        var children = controlSlot.children;
+        for (var i = 0; i < children.length; ++i) {
+            var child = children[i];
+            if (child && child.rowLabel !== undefined)
+                child.rowLabel = root.label;
+        }
+    }
+
+    // True when a root-coordinate point falls inside a sub-control.
+    function tapInside(item, point) {
+        if (!item || !item.visible)
+            return false;
+        var local = item.mapFromItem(root, point.x, point.y);
+        return local.x >= 0 && local.y >= 0
+                && local.x <= item.width && local.y <= item.height;
     }
 
     // Move keyboard focus into the row's control when a deep link lands on it.

@@ -46,6 +46,7 @@ Sheet
 Popover
 Tooltip
 ScrollView
+WindowOverlay
 Shadow
 WallpaperLabel
 FocusRing
@@ -61,6 +62,23 @@ and `ShortcutHint` are the shared menu anatomy; `Shadow`, `FocusRing`,
 `Skeleton`, and `Spinner` are shared primitives rather than app-local copies;
 `WindowResizeGrips` is the shared resize affordance used by first-party
 windows.
+
+`WindowOverlay` (T266) is the one window popup/dialog layer. It registers with
+the `OverlayLayer` singleton, covers the window above the resize grips, and is
+adopted by `Select`, `ContextMenu`, `Popup`, and `Dialog` themselves. A pane
+never passes a `popupParent`; a surface inside a clipped `ScrollView` is still
+drawn and hit-tested in window coordinates. The overlay has no pointer
+handlers, so an empty layer never eats a click.
+
+The Settings row/group contract (T266) is part of the component library:
+`SettingsRow` sizes its control slot from the child's implicit size (never
+`childrenRect`), gives every row a `FocusRing`, activates disclosure rows from
+the whole row, and fills a control's accessible name from the row label when
+the pane sets none. `SettingsGroup` wraps its title, suppresses the final row
+separator, and owns exactly one bottom gap. `Button` text elides, `Select` is
+sized to its longest option, and `ScrollView` implements `automatic`,
+`when-scrolling`, and `always` distinctly with a live scrollbar value and
+orientation. The full decision is [ADR 0266](adr/0266-settings-component-contracts.md).
 
 `DragonfruitLogo` and `TuxLogo` are the two OS-menu marks. Their geometry comes
 from `design-system/BrandGlyphs.qml`, generated from

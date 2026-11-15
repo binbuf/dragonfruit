@@ -31,6 +31,13 @@ Item {
     // disappears before the timer fires must not open its replacement.
     property string pendingHoverKey: ""
     property int preferredWidth: Theme.controls.contextMenu.minWidth
+    // T266: when a `Select` (or another owner) sets `anchorItem`, opening the
+    // menu reparents it to the window overlay and places it below the anchor,
+    // flipping above when the lower edge has no room. The owner stays local
+    // for the shell's own menus, which already live on an overlay.
+    property Item anchorItem: null
+    property real anchorOffset: Theme.controls.popup.offset
+    property Item previousFocusItem: null
     // The rectangle, in parent coordinates, this menu family may occupy.
     // Callers that commit a single popover rectangle (the Dock) pass the
     // intersection of the output area and the render budget. When unset the
@@ -247,6 +254,8 @@ Item {
             : Number.MAX_VALUE
 
     function show() {
+        root.adoptOverlay();
+        root.placeAtAnchor();
         root.open = true;
     }
     function hide() {
@@ -257,6 +266,43 @@ Item {
         root.x = x;
         root.y = y;
         root.show();
+    }
+    // Move the menu into the window overlay layer when its owner is anchored.
+    // A pane's Select sits inside a clipped ScrollView; the menu must outlive
+    // that clip. The layer owns the menu until the owner is destroyed.
+    function adoptOverlay() {
+        if (!root.anchorItem)
+            return;
+        var layer = OverlayLayer.layerFor(root);
+        if (!layer)
+            return;
+        if (root.parent !== layer) {
+            var hostWindow = root.Window.window;
+            root.previousFocusItem = hostWindow ? hostWindow.activeFocusItem : null;
+            root.parent = layer;
+        }
+    }
+    // Place the menu below its anchor, clamped to the overlay and flipped above
+    // when the lower half has no room.
+    function placeAtAnchor() {
+        if (!root.anchorItem)
+            return;
+        var layer = OverlayLayer.layerFor(root);
+        if (!layer)
+            return;
+        root.availableRect = { x: 0, y: 0, w: layer.width, h: layer.height };
+        var point = root.anchorItem.mapToItem(layer, 0, root.anchorItem.height);
+        var menuWidth = Math.min(root.desiredWidth, layer.width);
+        var menuHeight = Math.min(root.desiredHeight, layer.height);
+        var x = Math.max(0, Math.min(layer.width - menuWidth, point.x));
+        var below = point.y + root.anchorOffset;
+        var above = point.y - menuHeight - root.anchorOffset;
+        var y = below;
+        if (below + menuHeight > layer.height && above >= 0)
+            y = above;
+        y = Math.max(0, Math.min(layer.height - menuHeight, y));
+        root.x = x;
+        root.y = y;
     }
     function keyAt(list, index) {
         return index >= 0 && index < list.length ? list[index].key : "";
@@ -653,6 +699,10 @@ Item {
     onHeightChanged: root.keepRowVisible(root.highlightedIndex);
     onOpenChanged: {
         if (root.open) {
+            if (root.previousFocusItem === null) {
+                var hostWindow = root.Window.window;
+                root.previousFocusItem = hostWindow ? hostWindow.activeFocusItem : null;
+            }
             root.highlightedIndex = -1;
             root.closeSubmenu();
             root.clearTypeAhead();
@@ -664,6 +714,13 @@ Item {
         } else {
             root.closeSubmenu();
             root.clearTypeAhead();
+            // Only restore the focus the menu borrowed. A menu closed by a
+            // click elsewhere has already lost active focus, so it must not
+            // steal focus back from the new target (T266).
+            if (root.activeFocus && root.previousFocusItem
+                    && root.previousFocusItem.visible)
+                root.previousFocusItem.forceActiveFocus();
+            root.previousFocusItem = null;
             root.closed();
         }
     }

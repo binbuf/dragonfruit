@@ -17,6 +17,11 @@ Item {
 
     property int thickness: Theme.controls.window.resizeBorder
     property int corner: Theme.controls.window.resizeCorner
+    // T266: keep the grips off a scrollbar corner. The bottom and right edge
+    // strips stop short of the reserved square; the window's own ScrollView
+    // reserves the same corner with `cornerInset`, so a scrollbar thumb at the
+    // window edge keeps its pointer target.
+    property real cornerAvoidance: 0
     signal resizeRequested(int edges)
 
     z: 1000
@@ -33,6 +38,7 @@ Item {
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
+        anchors.rightMargin: root.cornerAvoidance
         height: root.thickness
         cursorShape: Qt.SizeVerCursor
         onPressed: root.resizeRequested(Qt.BottomEdge)
@@ -49,6 +55,7 @@ Item {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.cornerAvoidance
         width: root.thickness
         cursorShape: Qt.SizeHorCursor
         onPressed: root.resizeRequested(Qt.RightEdge)

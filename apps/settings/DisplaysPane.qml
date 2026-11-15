@@ -55,7 +55,6 @@ Item {
     property var tileItems: []
     // The shell sets this to its root item so the advanced popup is not
     // clipped by the detail ScrollView. Standalone tests keep the pane.
-    property Item popupParent: null
 
     // Test surface (used by tst_settings_displays.qml).
     property alias displayGroup: displayGroup
@@ -266,7 +265,6 @@ Item {
     // are disabled and carry the reason from the capability table.
     Popup {
         id: advancedPopup
-        parent: root.popupParent ? root.popupParent : root
         anchorItem: advancedButton
         // Open above the button: the advanced row is at the bottom of the
         // pane, so a downward popup would fall past the window edge.

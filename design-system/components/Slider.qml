@@ -26,6 +26,13 @@ Item {
     property string midLabel: ""
     property string maxLabel: ""
     property string accessibleName: ""
+    // T266: the owning `SettingsRow` supplies the name when the pane does not.
+    property string rowLabel: ""
+    // The conventional accessible value properties. Qt's QML `Accessible`
+    // attached object has no value/range slots, but its value interface reads
+    // the item's `value`/`minimumValue`/`maximumValue`/`stepSize` properties.
+    readonly property real minimumValue: root.from
+    readonly property real maximumValue: root.to
     property alias hovered: sliderHover.hovered
 
     signal moved(real value)
@@ -200,7 +207,11 @@ Item {
     }
 
     Accessible.role: Accessible.Slider
-    Accessible.name: root.accessibleName
+    Accessible.name: root.accessibleName.length > 0 ? root.accessibleName : root.rowLabel
+    Accessible.description: qsTr("Value %1, range %2 to %3")
+                            .arg(root.value.toFixed(2))
+                            .arg(root.from.toFixed(2))
+                            .arg(root.to.toFixed(2))
     Accessible.focusable: true
     Accessible.onIncreaseAction: root.nudge(root.stepSize)
     Accessible.onDecreaseAction: root.nudge(-root.stepSize)

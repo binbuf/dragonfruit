@@ -23,6 +23,8 @@ set_source_files_properties(Material.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(Glass.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # The window-chrome style model (T230b) is a singleton.
 set_source_files_properties(WindowStyle.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# The window overlay registry (T266) is a singleton.
+set_source_files_properties(OverlayLayer.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_library(dragonfruit-design-system STATIC)
 qt_add_qml_module(dragonfruit-design-system
@@ -33,6 +35,7 @@ qt_add_qml_module(dragonfruit-design-system
         Material.qml
         Glass.qml
         WindowStyle.qml
+        OverlayLayer.qml
         PhosphorGlyphs.qml
         TablerGlyphs.qml
         BrandGlyphs.qml
@@ -75,6 +78,7 @@ qt_add_qml_module(dragonfruit-design-system
         components/Spinner.qml
         components/ScrollView.qml
         components/WindowResizeGrips.qml
+        components/WindowOverlay.qml
 )
 target_link_libraries(dragonfruit-design-system PUBLIC Qt6::Core Qt6::Gui Qt6::Quick)
 

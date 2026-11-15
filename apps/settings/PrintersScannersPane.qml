@@ -57,7 +57,6 @@ Item {
     property string addUri: ""
     property string addDriver: "everywhere"
     property string optionsPrinterName: ""
-    property Item popupParent: null
 
     // Test surface (used by tst_settings_printers.qml).
     property alias defaultSelect: defaultSelect
@@ -514,7 +513,6 @@ Item {
         title: root.selectedPrinter !== null
             ? String(root.selectedPrinter.displayName) : qsTr("Printer")
         dismissible: true
-        parent: root.popupParent ? root.popupParent : root
 
         contentData: Column {
             width: parent.width
@@ -672,7 +670,6 @@ Item {
         objectName: "addPrinterDialog"
         title: qsTr("Add Printer")
         dismissible: true
-        parent: root.popupParent ? root.popupParent : root
 
         contentData: Column {
             width: parent.width
@@ -796,7 +793,6 @@ Item {
             ? qsTr("Options — %1").arg(root.optionsPrinterName)
             : qsTr("Options & Supplies")
         dismissible: true
-        parent: root.popupParent ? root.popupParent : root
 
         contentData: Column {
             width: parent.width

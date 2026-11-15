@@ -2440,6 +2440,17 @@ Open source system software</source>
     </message>
 </context>
 <context>
+    <name>Dialog</name>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close dialog</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DisplaysPane</name>
     <message>
         <source>180°</source>
@@ -6528,6 +6539,13 @@ Open source system software</source>
     </message>
 </context>
 <context>
+    <name>Select</name>
+    <message>
+        <source>Current value %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SelectionOverlay</name>
     <message>
         <source>Click a window · Esc to cancel</source>
@@ -8720,6 +8738,13 @@ Open source system software</source>
     <name>Sidebar</name>
     <message>
         <source>Sidebar</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Slider</name>
+    <message>
+        <source>Value %1, range %2 to %3</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

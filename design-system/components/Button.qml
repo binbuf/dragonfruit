@@ -14,10 +14,13 @@ Item {
     // Optional screen-reader name when the visible content is a bare glyph
     // (e.g. the Settings back/forward chevrons).
     property string accessibleName: ""
+    // T266: the owning `SettingsRow` supplies the name when the pane does not.
+    property string rowLabel: ""
     // primary | secondary | danger | ghost
     property string variant: "secondary"
     property alias hovered: hoverHandler.hovered
     property alias pressed: tapHandler.pressed
+    property alias contentText: contentText
 
     signal clicked()
 
@@ -42,9 +45,20 @@ Item {
             return Theme.color.textPrimary;
         }
     }
+    readonly property real iconWidth: root.icon.length > 0
+        ? Theme.controls.button.iconSize + Theme.primitive.spacing.sm : 0
+
+    Text {
+        id: contentMeasure
+        visible: false
+        text: root.text
+        font.pixelSize: Theme.controls.button.fontSize
+        font.weight: Theme.controls.button.fontWeight
+    }
 
     implicitWidth: Math.max(Theme.controls.button.height,
-                            content.implicitWidth + 2 * Theme.controls.button.paddingH)
+                            contentMeasure.implicitWidth + root.iconWidth
+                            + 2 * Theme.controls.button.paddingH)
     implicitHeight: Theme.controls.button.height
     activeFocusOnTab: true
     opacity: enabled ? 1.0 : 0.45
@@ -77,6 +91,7 @@ Item {
         spacing: Theme.primitive.spacing.sm
 
         Icon {
+            id: contentIcon
             visible: root.icon.length > 0
             name: root.icon
             size: Theme.controls.button.iconSize
@@ -84,11 +99,18 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
+            id: contentText
             visible: root.text.length > 0
+            // T266: button text elides instead of overflowing its surface.
+            width: Math.min(implicitWidth,
+                            Math.max(0, root.width - 2 * Theme.controls.button.paddingH
+                                        - (contentIcon.visible
+                                           ? contentIcon.width + content.spacing : 0)))
             text: root.text
             color: root.contentColor
             font.pixelSize: Theme.controls.button.fontSize
             font.weight: Theme.controls.button.fontWeight
+            elide: Text.ElideRight
             anchors.verticalCenter: parent.verticalCenter
         }
     }
@@ -116,7 +138,9 @@ Item {
 
     Accessible.role: Accessible.Button
     Accessible.name: root.accessibleName.length > 0 ? root.accessibleName
-                    : (root.text.length > 0 ? root.text : root.icon)
+                    : (root.text.length > 0 ? root.text
+                     : (root.rowLabel.length > 0 ? root.rowLabel : root.icon))
+    Accessible.description: root.rowLabel
     Accessible.focusable: true
     Accessible.onPressAction: root.activate()
 }

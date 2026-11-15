@@ -31,7 +31,6 @@ Item {
     property string selectedPath: ""
     property string selectedMapping: ""
     property bool mappingOpen: false
-    property Item popupParent: null
 
     // Test surface (used by tst_settings_controllers.qml).
     property alias controllerRepeater: controllerRepeater
@@ -211,7 +210,6 @@ Item {
         title: root.selectedName.length > 0
             ? qsTr("Test %1").arg(root.selectedName) : qsTr("Test Controller")
         dismissible: true
-        parent: root.popupParent ? root.popupParent : root
 
         contentData: Column {
             width: parent.width
@@ -260,7 +258,6 @@ Item {
         title: root.selectedName.length > 0
             ? qsTr("Mapping — %1").arg(root.selectedName) : qsTr("Mapping")
         dismissible: true
-        parent: root.popupParent ? root.popupParent : root
 
         contentData: Column {
             width: parent.width

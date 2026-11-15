@@ -95,7 +95,6 @@ Item {
     property alias absenceNote: absenceNote
     property alias authErrorNote: authErrorNote
 
-    property Item popupParent: null
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -500,7 +499,6 @@ Item {
         objectName: "directoryDialog"
         title: qsTr("Directory Account")
         dismissible: true
-        parent: root.popupParent ? root.popupParent : root
 
         contentData: Column {
             width: parent.width

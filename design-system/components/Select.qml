@@ -17,8 +17,13 @@ Item {
     property var model: []
     property int currentIndex: 0
     property string accessibleName: ""
+    // T266: the owning `SettingsRow` supplies the name when the pane does not.
+    property string rowLabel: ""
     property alias hovered: selectHover.hovered
     property alias menu: menu
+    // T266: the select is sized to the longest option, not just the current
+    // one, so opening it never resizes the control under the pointer.
+    property real longestOptionWidth: 0
 
     signal activated(int index)
     signal selected(var value)
@@ -42,17 +47,37 @@ Item {
     readonly property var currentValue: root.currentEntry ? root.currentEntry.value : undefined
 
     implicitWidth: Math.max(Theme.controls.select.minWidth,
-                            valueText.implicitWidth + Theme.controls.select.chevronSize
+                            Math.max(root.longestOptionWidth,
+                                     valueText.implicitWidth)
+                            + Theme.controls.select.chevronSize
                             + Theme.controls.select.chevronGap
                             + 2 * Theme.controls.select.paddingH)
     implicitHeight: Theme.controls.select.height
     activeFocusOnTab: true
     opacity: enabled ? 1.0 : 0.45
 
+    function measureOptions() {
+        var width = 0;
+        for (var i = 0; i < root.entries.length; ++i) {
+            labelMetrics.text = root.entries[i].label;
+            width = Math.max(width, labelMetrics.width);
+        }
+        root.longestOptionWidth = width;
+    }
+
+    onEntriesChanged: root.measureOptions()
+    Component.onCompleted: root.measureOptions()
+    Component.onDestruction: if (menu) menu.destroy()
+
+    TextMetrics {
+        id: labelMetrics
+        font.pixelSize: Theme.controls.button.fontSize
+    }
+
     function openMenu() {
         if (!root.enabled)
             return;
-        menu.showAt(0, root.height + Theme.controls.popup.offset);
+        menu.show();
     }
 
     function closeMenu() {
@@ -105,14 +130,15 @@ Item {
         id: menu
         x: 0
         y: root.height + Theme.controls.popup.offset
+        anchorItem: root
         preferredWidth: root.width
-        accessibleName: root.accessibleName
+        accessibleName: root.accessibleName.length > 0 ? root.accessibleName
+                                                       : root.rowLabel
         model: root.entries.map(function(entry) {
             return { label: entry.label, enabled: entry.enabled,
                      checked: entry.value === root.currentValue, checkable: true };
         })
         onTriggered: (index, item) => root.activateIndex(index)
-        onClosed: if (root.enabled) root.forceActiveFocus()
     }
 
     HoverHandler { id: selectHover }
@@ -145,7 +171,9 @@ Item {
     }
 
     Accessible.role: Accessible.ComboBox
-    Accessible.name: root.accessibleName
+    Accessible.name: root.accessibleName.length > 0 ? root.accessibleName
+                                                     : root.rowLabel
+    Accessible.description: qsTr("Current value %1").arg(root.currentLabel)
     Accessible.focusable: true
     Accessible.onPressAction: root.openMenu()
 }
