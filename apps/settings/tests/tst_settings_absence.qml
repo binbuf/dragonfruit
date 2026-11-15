@@ -374,9 +374,9 @@ Item {
             compare(Settings.wifiAvailable, false);
         }
 
-        // With no bridge host on the private bus, the Storage pane is the
-        // absence state: both groups are hidden and a one-line note explains
-        // the missing daemon. Nothing errors and no write is attempted.
+        // With no bridge host on the private bus, the Storage pane keeps its
+        // structure: the Volumes group stays with an absence note, the df
+        // usage group is independent, and no write is attempted.
         function test_storage_pane_degrades_cleanly_without_the_bridge_host() {
             var shell = make();
             compare(Settings.storageAvailable, false,
@@ -385,7 +385,7 @@ Item {
 
             var pane = showPane(shell, "storage");
             compare(pane.ready, false);
-            compare(pane.volumesGroup.visible, false);
+            compare(pane.volumesGroup.visible, true);
             compare(pane.removableGroup.visible, false);
             compare(pane.absenceNote.visible, true,
                     "the absence note explains the missing bridge host");

@@ -83,13 +83,19 @@ class MockBatteryClient : public BatteryClient
 public:
     explicit MockBatteryClient(QObject *parent = nullptr);
 
-    bool available() const override { return true; }
+    bool available() const override;
     QVariantMap view() const override { return m_view; }
     void refresh() override;
     void setActiveProfile(const QString &profile) override;
+    // Test/capture seam: `present` (a battery with a small history), `empty`
+    // (a present battery the sampler has not charted yet), or `absent` (the
+    // bridge host is not running). The pane's three structural states.
+    void setFixture(const QString &mode);
+    void resetForTest();
 
 private:
     void rebuild();
     QString m_activeProfile = QStringLiteral("balanced");
+    QString m_mode = QStringLiteral("present");
     QVariantMap m_view;
 };

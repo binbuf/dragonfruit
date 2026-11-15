@@ -395,7 +395,7 @@ Item {
             compare(pane.identityReady, false);
             compare(pane.aboutSummary, "Unavailable");
             compare(pane.updateSummary, "Unavailable");
-            compare(pane.storageSummary, "480 GB used");
+            compare(pane.storageSummary, "447 GiB used");
             compare(pane.passwordsSummary, "2 providers");
             verify(pane.aboutRow.visible, "About row stays visible");
             verify(pane.updateRow.visible, "Software Update row stays visible");
@@ -422,7 +422,7 @@ Item {
             compare(pane.loginSummary, "4 items");
             compare(pane.sharingSummary, "2 of 3 on");
             compare(pane.backupSummary, "Timeshift · daily");
-            compare(pane.storageSummary, "480 GB used");
+            compare(pane.storageSummary, "447 GiB used");
             compare(pane.startupSummary, "/dev/nvme0n1 · UEFI");
         }
 

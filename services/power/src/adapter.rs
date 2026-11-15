@@ -2,11 +2,13 @@
 //! The power adapter: one read path over the shared contract.
 
 use std::collections::VecDeque;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use dragonfruit_system_adapters::{
     Adapter, AdapterEvent, AdapterId, AdapterState, ConnectionState, Subscription,
 };
 
+use crate::history::BatteryHistory;
 use crate::model::{PowerChange, PowerProfile, PowerSnapshot};
 use crate::source::{PowerSource, ProfileOutcome};
 
@@ -29,6 +31,7 @@ pub struct PowerAdapter<S> {
     state: AdapterState<PowerSnapshot>,
     previous: Option<PowerSnapshot>,
     changes: VecDeque<PowerChange>,
+    history: BatteryHistory,
     subscription: Subscription,
 }
 
@@ -41,6 +44,7 @@ impl<S: PowerSource> PowerAdapter<S> {
             state: AdapterState::Unavailable,
             previous: None,
             changes: VecDeque::new(),
+            history: BatteryHistory::new(),
             subscription: Subscription::new(),
         }
     }
@@ -61,6 +65,18 @@ impl<S: PowerSource> PowerAdapter<S> {
     /// reports no domain change; each later read reports a [`PowerChange`] per
     /// field that moved.
     pub fn refresh(&mut self) {
+        self.refresh_at(now_seconds());
+    }
+
+    /// Read the daemons once at `now` (epoch seconds).
+    ///
+    /// [`refresh`](Self::refresh) passes the wall clock; tests pass a fixed
+    /// instant so the history sampler is deterministic. A successful read
+    /// records one history point when a battery is present and clears the
+    /// history when the battery disappeared; absence clears it too. A read
+    /// error leaves the collected history in place, so a transient daemon
+    /// failure does not erase the chart.
+    pub fn refresh_at(&mut self, now: u64) {
         match self.source.read() {
             Ok(Some(data)) => {
                 self.subscription.subscribed();
@@ -68,11 +84,18 @@ impl<S: PowerSource> PowerAdapter<S> {
                 if let Some(previous) = &self.previous {
                     self.changes.extend(snapshot.changes(previous));
                 }
+                match snapshot.battery() {
+                    Some(battery) => {
+                        self.history.record(now, battery.percent());
+                    }
+                    None => self.history.clear(),
+                }
                 self.previous = Some(snapshot.clone());
                 self.state = AdapterState::available(snapshot);
                 self.subscription.changed();
             }
             Ok(None) => {
+                self.history.clear();
                 self.state = AdapterState::Unavailable;
                 self.subscription.absent();
             }
@@ -105,6 +128,16 @@ impl<S: PowerSource> PowerAdapter<S> {
         self.state.snapshot()
     }
 
+    /// The battery history collected since this adapter started.
+    pub fn history(&self) -> &BatteryHistory {
+        &self.history
+    }
+
+    /// The history, mutably (for a host-side restore or a test).
+    pub fn history_mut(&mut self) -> &mut BatteryHistory {
+        &mut self.history
+    }
+
     /// The transport this adapter reads.
     pub fn source(&self) -> &S {
         &self.source
@@ -129,6 +162,14 @@ impl<S: PowerSource> PowerAdapter<S> {
     pub fn pending_changes(&self) -> usize {
         self.changes.len()
     }
+}
+
+/// The wall clock in whole seconds since the Unix epoch.
+fn now_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or_default()
 }
 
 impl<S: PowerSource> Adapter for PowerAdapter<S> {
@@ -305,6 +346,47 @@ mod tests {
                 to: Some(PowerProfile::PowerSaver),
             }]
         );
+    }
+
+    #[test]
+    fn each_successful_read_records_one_history_point() {
+        let mut adapter = PowerAdapter::new(MockPower::present(data(55.0)));
+        adapter.refresh_at(1_000);
+        assert_eq!(adapter.history().len(), 1);
+        assert_eq!(adapter.history().window(1_000, 60), vec![(0, 55)]);
+
+        adapter.source_mut().push(data(54.0));
+        adapter.refresh_at(1_060);
+        assert_eq!(
+            adapter.history().window(1_060, 120),
+            vec![(60, 55), (0, 54)]
+        );
+    }
+
+    #[test]
+    fn a_removed_battery_clears_the_history() {
+        let mut adapter = PowerAdapter::new(MockPower::present(data(55.0)));
+        adapter.refresh_at(1_000);
+        assert_eq!(adapter.history().len(), 1);
+
+        adapter.source_mut().push(PowerData::default());
+        adapter.refresh_at(1_060);
+        assert!(adapter.history().is_empty());
+    }
+
+    #[test]
+    fn absence_clears_the_history_and_an_error_keeps_it() {
+        let mut adapter = PowerAdapter::new(MockPower::present(data(55.0)));
+        adapter.refresh_at(1_000);
+
+        adapter.source_mut().kill();
+        adapter.refresh_at(1_060);
+        assert!(adapter.history().is_empty());
+
+        let mut failing = PowerAdapter::new(MockPower::failing("UPower: timeout"));
+        failing.history_mut().record(1_000, 42);
+        failing.refresh_at(1_060);
+        assert_eq!(failing.history().len(), 1);
     }
 
     #[test]

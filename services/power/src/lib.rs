@@ -49,11 +49,15 @@
 //! [07-system-integration.md]: ../../../docs/design/07-system-integration.md
 
 mod adapter;
+mod history;
 mod model;
 mod source;
 mod upower;
 
 pub use adapter::PowerAdapter;
+pub use history::{
+    BatteryHistory, BatterySample, MAX_RANGE_SECS, MAX_SAMPLES, SAMPLE_INTERVAL_SECS,
+};
 pub use model::{
     Battery, BatteryHealth, BatteryLevel, ChargeState, PowerChange, PowerProfile,
     PowerProfilesSnapshot, PowerSnapshot,

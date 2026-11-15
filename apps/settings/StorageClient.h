@@ -79,16 +79,21 @@ class MockStorageClient : public StorageClient
 public:
     explicit MockStorageClient(QObject *parent = nullptr);
 
-    bool available() const override { return true; }
+    bool available() const override;
     QVariantMap view() const override { return m_view; }
     void refresh() override;
     void mount(const QString &volumePath) override;
     void unmount(const QString &volumePath) override;
     void eject(const QString &drivePath) override;
+    // Test/capture seam: `live`, `empty` (UDisks2 present, no mountable
+    // volume), or `absent` (the bridge host is not running).
+    void setFixture(const QString &mode);
+    void resetForTest();
 
 private:
     void rebuild();
     bool m_drivePresent = true;
     bool m_volumeMounted = false;
+    QString m_mode = QStringLiteral("live");
     QVariantMap m_view;
 };

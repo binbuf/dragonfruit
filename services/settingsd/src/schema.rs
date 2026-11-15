@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 29;
+pub const SCHEMA_VERSION: u32 = 30;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -998,6 +998,32 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "apps/settings Battery pane",
         since: 22,
         summary: "Battery usage range: 0 = last 24 hours, 1 = last 10 days.",
+    },
+    KeySpec {
+        key: "power.dimOnBattery",
+        group: KeyGroup::Session,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/display forwarder",
+        since: 30,
+        summary: "Reduce the display brightness while the machine runs on battery.",
+    },
+    KeySpec {
+        key: "power.preventSleep",
+        group: KeyGroup::Session,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "session/idle engine",
+        since: 30,
+        summary: "Keep the session awake by disabling the automatic suspend stage.",
     },
     // ── Session (lock / idle / suspend policy, T-12.5b) ─────────────────
     KeySpec {

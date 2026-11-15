@@ -78,6 +78,8 @@ freezes the v1 key set.
 | `input.dictation` | b | false | | apps/settings | speech-to-text delegate (when installed) | Enable dictation when a speech-to-text service is installed. |
 | `power.showPercentage` | b | false | | apps/settings | shell/MenuBar battery item | Show the battery percentage beside the menu-bar glyph. |
 | `power.historyRange` | x | 0 | 0–1 | apps/settings | apps/settings Battery pane | Battery usage range: 0 = last 24 hours, 1 = last 10 days. |
+| `power.dimOnBattery` | b | false | | apps/settings | shell/display forwarder | Reduce the display brightness while the machine runs on battery. |
+| `power.preventSleep` | b | false | | apps/settings | session/idle engine | Keep the session awake by disabling the automatic suspend stage. |
 | `idle.dim` | x | 150 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the screen dims; 0 disables the stage. |
 | `idle.blank` | x | 300 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the screen blanks; 0 disables the stage. |
 | `idle.lock` | x | 600 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the session locks; 0 disables the stage. |

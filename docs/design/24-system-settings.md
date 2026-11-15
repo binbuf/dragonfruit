@@ -665,6 +665,23 @@ structure and settingsd options; disable host reads.
 | — | Power settings | Rows | `idle.*` | ship; link to Lock Screen |
 | — | Power adapter / charge threshold | Info | UPower | adapt (Linux-only) |
 
+**Landed (T273).** `services/power` owns a bounded battery-history sampler:
+one point per successful read, same-instant reads replace, repeats inside
+60 s are deduplicated, and the ring covers ten days at one point a minute.
+`system-status` publishes it as `history` on the battery view
+(`state`/`count`/`samples` with `secondsAgo` and `percent`), so the Battery
+pane charts real session points. Before two points exist the pane shows an
+explicit empty state with **Refresh history**; it never draws two permanently
+empty frames. Screen-on usage has no session sampler, so it is one row that
+names the missing half. The Options group stays live when UPower is absent:
+`Show battery percentage` is a real menu-bar label consumer,
+`Dim on battery` lowers the forwarded compositor brightness,
+`Prevent sleep` disables the session idle engine's suspend stage, and
+wake-for-network/video optimization are disabled rows naming their host
+owners. A Linux-only Power Adapter group reports the live source and says the
+charge threshold is not reported. GiB labels are consistent with Storage and
+About. `make t273-data-panes-capture` writes live/empty/absence stills.
+
 ### 4.5 Storage — T273 (General → Storage)
 
 Owner: UDisks2 + filesystem usage. Absence: keep the chart and the settings
@@ -679,6 +696,17 @@ rows; disable volume actions.
 | Categories | Categories | Chart/list | UDisks2 + `df` | ship; Apps, Documents, System, Other Users, Free |
 | — | Removable media | List | UDisks2 | ship |
 | — | Snapshots / SMART | Info | btrfs/UDisks2 | adapt where available |
+
+**Landed (T273).** The stacked chart now draws one segment per category plus
+the free remainder, with a legend that names the same categories and Free.
+The summary reads `used of total · free` in GiB, and every volume row carries
+its capacity when the filesystem read can match it by mount point or device.
+Recommendations remain derived from live byte totals, and **Manage storage…**
+is a live delegate to the file manager (formatting/partitioning stay out of
+scope). The Usage, Volumes, and Recommendations groups keep their titles when
+UDisks2 is absent; the chart still comes from `df`, the volume actions are
+disabled with a reason, and the Manage action stays live. No "Delegated" text
+row ships.
 
 ### 4.6 General — T269/T270
 
@@ -1273,6 +1301,23 @@ controls stay live; output rows show `No display`.
 | Refresh rate | Refresh rate | Popup | compositor | ship |
 | Advanced… | Advanced… | Sheet | compositor/colord | ship; HDR, VRR, overscan |
 | — | Per-output configuration | List | compositor | ship (Linux-only) |
+
+**Landed (T273).** The pane lists the real platform outputs
+(`QGuiApplication::screens()`: name, logical size, refresh, primary), so the
+title and preview label are the output's own name, not a hardcoded
+"Built-in Display". The preview is proportional to the selected output's
+aspect ratio. A per-output list appears when more than one output exists, and
+selecting one scopes the preview, refresh value, and arrangement card;
+writes remain the global `display.*` keys the shell forwards to every output
+(per-output override keys are a later backend task). The capability table is
+the single source for every disabled row and gains an `area`: main-pane rows
+(Use as, auto-brightness, adaptive color, refresh, arrangement, Night Light,
+schedule, temperature, color profile, TV mode) and advanced-only rows
+(resolution list, HDR, VRR, overscan). The advanced sheet renders only the
+advanced area, so brightness and rotation are not duplicated. With no output
+the preview and title say `No display`, the absence note explains it, and the
+settingsd controls stay live. Refresh shows the real current rate and disables
+mode switching with its OPEN reason.
 
 ### 4.23 Wallpaper — T278
 

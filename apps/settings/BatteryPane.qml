@@ -22,11 +22,18 @@ import Dragonfruit.Settings
 //   * the `i` detail panels behind `Battery Health` and `Charging` cover
 //     Apple-only hardware health and optimized charging, so we keep the rows
 //     and show UPower's capacity/cycles and the charge estimate instead;
-//   * `Last 24 Hours`/`Last 10 Days`, the battery-level chart, the
-//     `Last charged to 100%` timestamp, `Screen On Usage`, and `Options...`
-//     have no provider in this build — UPower no longer exposes charge
-//     history — so the range switch is live and the history group renders an
-//     honest absent state (provider T-15.x). No dead controls ship;
+//   * `Last charged to 100%` has no UPower provider; the row says so.
+//     The battery-level chart is drawn from the system-status sampler
+//     (`services/power`'s bounded history), not from fabricated data. The
+//     sampler starts when the service starts, so the pane's first state is an
+//     explicit "no samples yet" frame with a refresh path, never two
+//     permanently empty charts;
+//   * `Screen On Usage` has no session sampler in this build. It is one honest
+//     row that names the missing half instead of a second empty chart;
+//   * the macOS `Options...` sheet is an inline group. `Show percentage` is a
+//     real menu-bar consumer, `Dim on battery` is a real shell display
+//     consumer, `Prevent sleep` is a real session idle consumer; wake-for-
+//     network and video optimization name the host/media half that owns them;
 //   * the Apple Account/sidebar row is omitted project-wide.
 Item {
     id: root
@@ -83,6 +90,28 @@ Item {
             ? Number(Settings.values["power.historyRange"]) : 0
     readonly property bool showPercentage:
         Settings.values["power.showPercentage"] === true
+    readonly property bool dimOnBattery:
+        Settings.values["power.dimOnBattery"] === true
+    readonly property bool preventSleep:
+        Settings.values["power.preventSleep"] === true
+    // T273: the real sampler's points, oldest first. Empty until the service
+    // has read the battery at least once; the pane says so rather than drawing
+    // an empty chart frame.
+    readonly property var history:
+        view.history !== undefined ? view.history : ({})
+    readonly property var historySamples:
+        history.samples !== undefined ? history.samples : []
+    readonly property int historyCount:
+        historySamples.length
+    readonly property bool historyHasData:
+        historyCount >= 2
+    readonly property string historyEmptyReason: {
+        if (root.history.state === "empty" || root.historyCount === 0)
+            return qsTr("No battery history has been sampled yet. History "
+                        + "starts when the system status service starts; "
+                        + "refresh to record a reading now.");
+        return qsTr("Collecting history: %1 reading so far.").arg(root.historyCount);
+    }
     readonly property int idleBlank:
         Settings.values["idle.blank"] !== undefined
             ? Number(Settings.values["idle.blank"]) : 300
@@ -96,6 +125,8 @@ Item {
     ]
     readonly property string historyRangeLabel:
         historyRange === 0 ? qsTr("last 24 hours") : qsTr("last 10 days")
+    readonly property int historyRangeSeconds:
+        historyRange === 0 ? 24 * 60 * 60 : 10 * 24 * 60 * 60
 
     // The profile popup model, in the daemon's canonical order.
     readonly property var profileOptions: {
@@ -113,11 +144,22 @@ Item {
     property alias chargingDetail: chargingDetail
     property alias rangeControl: rangeControl
     property alias batteryChart: batteryChart
-    property alias screenChart: screenChart
+    property alias historyEmpty: historyEmpty
+    property alias historyRetryButton: historyRetryButton
+    property alias screenOnRow: screenOnRow
     property alias absenceNote: absenceNote
+    property alias batteryAbsenceNote: batteryAbsenceNote
     property alias profilesAbsenceNote: profilesAbsenceNote
     property alias optionsGroup: optionsGroup
     property alias showPercentageToggle: showPercentageToggle
+    property alias dimOnBatteryToggle: dimOnBatteryToggle
+    property alias preventSleepToggle: preventSleepToggle
+    property alias wakeForNetworkRow: wakeForNetworkRow
+    property alias wakeForNetworkToggle: wakeForNetworkToggle
+    property alias optimizeVideoRow: optimizeVideoRow
+    property alias optimizeVideoToggle: optimizeVideoToggle
+    property alias adapterGroup: adapterGroup
+    property alias adapterStateText: adapterStateText
     property alias powerSettingsGroup: powerSettingsGroup
     property alias openLockScreenButton: openLockScreenButton
 
@@ -212,7 +254,11 @@ Item {
             id: powerGroup
             width: parent.width
             title: qsTr("Power Mode")
-            visible: root.available
+            // Power profiles are independent of UPower: a desktop with no
+            // battery still selects a profile, and a masked profiles daemon
+            // leaves the battery half live. The group keeps its title either
+            // way; the row or the note inside explains the state.
+            visible: true
 
             SettingsRow {
                 width: parent.width
@@ -265,10 +311,31 @@ Item {
             id: batteryGroup
             width: parent.width
             title: qsTr("Battery")
-            visible: root.ready
+            visible: true
+
+            Text {
+                id: batteryAbsenceNote
+                objectName: "batteryAbsenceNote"
+                width: parent.width
+                visible: !root.ready
+                text: root.available
+                    ? qsTr("This system has no battery. Battery health and "
+                           + "charge state appear when a battery is present.")
+                    : qsTr("UPower is not running, so battery health and charge "
+                           + "state are not available. The power options below "
+                           + "stay live.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                leftPadding: Theme.controls.settingsRow.paddingH
+                rightPadding: Theme.controls.settingsRow.paddingH
+                topPadding: Theme.primitive.spacing.xs
+                bottomPadding: Theme.primitive.spacing.sm
+            }
 
             SettingsRow {
                 width: parent.width
+                visible: root.ready
                 label: qsTr("Battery Health")
                 controlData: Row {
                     spacing: Theme.primitive.spacing.sm
@@ -292,7 +359,7 @@ Item {
                 id: healthDetail
                 objectName: "batteryHealthDetail"
                 width: parent.width
-                visible: root.healthInfoOpen
+                visible: root.ready && root.healthInfoOpen
                 text: root.healthDetailText
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
@@ -304,6 +371,7 @@ Item {
 
             SettingsRow {
                 width: parent.width
+                visible: root.ready
                 label: qsTr("Charging")
                 showSeparator: false
                 controlData: Row {
@@ -328,7 +396,7 @@ Item {
                 id: chargingDetail
                 objectName: "batteryChargingDetail"
                 width: parent.width
-                visible: root.chargingInfoOpen
+                visible: root.ready && root.chargingInfoOpen
                 text: root.chargingDetailText
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
@@ -344,10 +412,25 @@ Item {
             id: historyGroup
             width: parent.width
             title: qsTr("Usage History")
-            visible: root.ready
+            visible: true
+
+            Text {
+                width: parent.width
+                visible: !root.ready
+                text: qsTr("Usage history needs a present battery. The sampler "
+                           + "starts when the system status service starts.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                leftPadding: Theme.controls.settingsRow.paddingH
+                rightPadding: Theme.controls.settingsRow.paddingH
+                topPadding: Theme.primitive.spacing.xs
+                bottomPadding: Theme.primitive.spacing.sm
+            }
 
             SegmentedControl {
                 id: rangeControl
+                visible: root.ready
                 width: parent.width - 2 * Theme.controls.settingsRow.paddingH
                 x: Theme.controls.settingsRow.paddingH
                 model: root.historyRangeOptions
@@ -356,8 +439,9 @@ Item {
 
             SettingsRow {
                 width: parent.width
+                visible: root.ready
                 label: qsTr("Last charged to 100%")
-                description: qsTr("Charge history is not provided by this system.")
+                description: qsTr("UPower does not expose a last-charged timestamp.")
                 showSeparator: false
                 controlData: Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -367,37 +451,89 @@ Item {
                 }
             }
 
-            ChartFrame {
+            // The real battery-level chart: a polyline over the sampler's
+            // points. An empty series is an explicit frame with a refresh
+            // action, not a chart with no data.
+            HistoryChart {
                 id: batteryChart
                 width: parent.width
+                visible: root.ready && root.historyHasData
                 title: qsTr("Battery Level")
-                maxLabel: qsTr("100%")
-                midLabel: qsTr("50%")
-                zeroLabel: qsTr("0%")
-                caption: qsTr("No battery history for the %1.").arg(root.historyRangeLabel)
+                samples: root.historySamples
+                rangeSeconds: root.historyRangeSeconds
+                rangeLabel: root.historyRangeLabel
             }
 
-            ChartFrame {
-                id: screenChart
+            Item {
+                id: historyEmpty
+                objectName: "batteryHistoryEmpty"
                 width: parent.width
-                title: qsTr("Screen On Usage")
-                maxLabel: qsTr("60m")
-                midLabel: qsTr("30m")
-                zeroLabel: qsTr("0m")
-                caption: qsTr("No screen-on history for the %1.").arg(root.historyRangeLabel)
+                height: visible ? emptyColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.sm : 0
+                visible: root.ready && !root.historyHasData
+
+                Column {
+                    id: emptyColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Theme.controls.settingsRow.paddingH
+                    anchors.rightMargin: Theme.controls.settingsRow.paddingH
+                    spacing: Theme.primitive.spacing.xs
+
+                    Text {
+                        width: parent.width
+                        text: root.historyEmptyReason
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Button {
+                        id: historyRetryButton
+                        objectName: "batteryHistoryRetry"
+                        text: qsTr("Refresh history")
+                        onClicked: Settings.refreshBattery()
+                    }
+                }
+            }
+
+            // The second macOS chart has no session sampler. One honest row
+            // names that half; a second empty frame would be a dead control.
+            SettingsRow {
+                id: screenOnRow
+                objectName: "batteryScreenOnRow"
+                width: parent.width
+                visible: root.ready
+                label: qsTr("Screen On Usage")
+                settingsId: "screenOn"
+                owner: "session sampler"
+                settingsKey: "power.screenOn"
+                description: qsTr("This session does not report screen-on time.")
+                showSeparator: false
+                controlData: Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Not available")
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
             }
         }
 
-        // ── Battery options (T229) ────────────────────────────────────────
+        // ── Battery options (T229, completed T273) ────────────────────────
         SettingsGroup {
             id: optionsGroup
             width: parent.width
             title: qsTr("Options")
-            visible: root.available
+            // settingsd options stay live when UPower is absent: they are
+            // policy, not host reads.
+            visible: true
 
             SettingsRow {
                 width: parent.width
                 label: qsTr("Show battery percentage")
+                settingsId: "options.showPercentage"
+                owner: "settingsd -> shell/MenuBar"
+                settingsKey: "power.showPercentage"
                 description: qsTr("Draw the percentage beside the menu-bar glyph.")
                 controlData: Toggle {
                     id: showPercentageToggle
@@ -408,8 +544,76 @@ Item {
 
             SettingsRow {
                 width: parent.width
+                label: qsTr("Dim on battery")
+                settingsId: "options.dimOnBattery"
+                owner: "settingsd -> shell/display"
+                settingsKey: "power.dimOnBattery"
+                description: qsTr("Lower the display brightness while the "
+                                  + "machine runs on battery.")
+                controlData: Toggle {
+                    id: dimOnBatteryToggle
+                    text: ""
+                    onToggled: (checked) => Settings.set("power.dimOnBattery", checked)
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Prevent sleep")
+                settingsId: "options.preventSleep"
+                owner: "settingsd -> session/idle"
+                settingsKey: "power.preventSleep"
+                description: qsTr("Disable the automatic suspend stage. Dim, "
+                                  + "blank, and lock still apply.")
+                controlData: Toggle {
+                    id: preventSleepToggle
+                    text: ""
+                    onToggled: (checked) => Settings.set("power.preventSleep", checked)
+                }
+            }
+
+            SettingsRow {
+                id: wakeForNetworkRow
+                width: parent.width
+                label: qsTr("Wake for network access")
+                settingsId: "options.wakeForNetwork"
+                owner: "host firmware"
+                settingsKey: "power.wakeForNetwork"
+                description: qsTr("Wake-on-LAN is a host firmware setting; the "
+                                  + "session bus cannot change it.")
+                showSeparator: true
+                controlData: Toggle {
+                    id: wakeForNetworkToggle
+                    text: ""
+                    checked: false
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: optimizeVideoRow
+                width: parent.width
+                label: qsTr("Optimize video streaming while on battery")
+                settingsId: "options.optimizeVideo"
+                owner: "media pipeline"
+                settingsKey: "power.optimizeVideo"
+                description: qsTr("No media pipeline in this session exposes a "
+                                  + "battery optimization switch.")
+                controlData: Toggle {
+                    id: optimizeVideoToggle
+                    text: ""
+                    checked: false
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
                 label: qsTr("Usage range")
-                description: qsTr("The range the history charts cover.")
+                settingsId: "usage"
+                owner: "settingsd + sampler"
+                settingsKey: "power.historyRange"
+                description: qsTr("The range the history chart covers.")
                 showSeparator: false
                 controlData: Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -421,12 +625,55 @@ Item {
             }
         }
 
+        // ── Power adapter (Linux-only, T273) ──────────────────────────────
+        SettingsGroup {
+            id: adapterGroup
+            width: parent.width
+            title: qsTr("Power Adapter")
+            visible: root.ready
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Power adapter")
+                settingsId: "adapter.state"
+                owner: "UPower"
+                settingsKey: "Battery.State"
+                description: qsTr("The live power source UPower reports.")
+                controlData: Text {
+                    id: adapterStateText
+                    objectName: "batteryAdapterState"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.charging || root.view.plugged === true
+                        ? qsTr("Connected") : qsTr("On battery")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Charge limit")
+                settingsId: "adapter.chargeLimit"
+                owner: "UPower"
+                settingsKey: "Battery.ChargeThreshold"
+                description: qsTr("This battery does not report a charge threshold.")
+                showSeparator: false
+                controlData: Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Not available")
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+        }
+
         // ── Power settings link (T229) ────────────────────────────────────
         SettingsGroup {
             id: powerSettingsGroup
             width: parent.width
             title: qsTr("Power Settings")
-            visible: root.available
+            // The idle policy is settingsd's and applies with no battery.
+            visible: true
 
             SettingsRow {
                 width: parent.width
@@ -487,21 +734,44 @@ Item {
         property: "checked"
         value: root.showPercentage
     }
+    Binding {
+        target: dimOnBatteryToggle
+        property: "checked"
+        value: root.dimOnBattery
+    }
+    Binding {
+        target: preventSleepToggle
+        property: "checked"
+        value: root.preventSleep
+    }
 
-    // A chart frame with the capture's y-axis labels and an honest empty state
-    // (the host exposes no series yet). Original geometry, tokens only.
-    component ChartFrame: Item {
-        id: frame
+    // The battery-level chart: a polyline over the sampler's real points, with
+    // the capture's y-axis labels. The caller only instantiates it when at
+    // least two points exist; the empty state is a separate row with a refresh
+    // action, so this frame never draws a permanently blank chart.
+    component HistoryChart: Item {
+        id: chart
         property string title: ""
-        property string maxLabel: "100%"
-        property string midLabel: "50%"
-        property string zeroLabel: "0%"
-        property string caption: ""
+        property var samples: []
+        property int rangeSeconds: 24 * 60 * 60
+        property string rangeLabel: ""
 
-        implicitHeight: frameColumn.implicitHeight + 2 * Theme.primitive.spacing.sm
+        readonly property bool hasData: chart.samples.length >= 2
+        readonly property int sampleCount: chart.samples.length
+        readonly property string caption: chart.hasData
+            ? qsTr("%1 samples over the %2.").arg(chart.sampleCount)
+                .arg(chart.rangeLabel)
+            : ""
+
+        implicitHeight: chartColumn.implicitHeight
+                         + 2 * Theme.primitive.spacing.sm
+
+        onSamplesChanged: canvas.requestPaint()
+        onRangeSecondsChanged: canvas.requestPaint()
+        Component.onCompleted: canvas.requestPaint()
 
         Column {
-            id: frameColumn
+            id: chartColumn
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.leftMargin: Theme.controls.settingsRow.paddingH
@@ -509,7 +779,7 @@ Item {
             spacing: Theme.primitive.spacing.xxs
 
             Text {
-                text: frame.title
+                text: chart.title
                 color: Theme.color.textPrimary
                 font.pixelSize: Theme.controls.button.fontSize
                 font.weight: Theme.primitive.font.weightMedium
@@ -521,43 +791,105 @@ Item {
                 Column {
                     spacing: 0
                     Text {
-                        text: frame.maxLabel
+                        text: qsTr("100%")
                         color: Theme.color.textTertiary
                         font.pixelSize: Theme.primitive.font.sizeSm
                     }
-                    Item { width: 1; height: Theme.primitive.spacing.md }
+                    Item { width: 1; height: Theme.primitive.spacing.lg }
                     Text {
-                        text: frame.midLabel
+                        text: qsTr("50%")
                         color: Theme.color.textTertiary
                         font.pixelSize: Theme.primitive.font.sizeSm
                     }
-                    Item { width: 1; height: Theme.primitive.spacing.md }
+                    Item { width: 1; height: Theme.primitive.spacing.lg }
                     Text {
-                        text: frame.zeroLabel
+                        text: qsTr("0%")
                         color: Theme.color.textTertiary
                         font.pixelSize: Theme.primitive.font.sizeSm
                     }
                 }
 
-                Rectangle {
-                    width: Math.max(0, frame.width - 2 * Theme.controls.settingsRow.paddingH
+                Canvas {
+                    id: canvas
+                    objectName: "batteryHistoryCanvas"
+                    width: Math.max(0, chart.width - 2 * Theme.controls.settingsRow.paddingH
                                        - 36 - Theme.primitive.spacing.sm)
-                    height: 96
-                    radius: Theme.primitive.radius.sm
-                    color: Theme.color.surfaceSunken
-                    border.width: Theme.controls.window.borderWidth
-                    border.color: Theme.color.separator
+                    height: 112
+                    antialiasing: true
 
-                    Text {
-                        anchors.centerIn: parent
-                        width: parent.width - 2 * Theme.primitive.spacing.md
-                        text: frame.caption
-                        color: Theme.color.textTertiary
-                        font.pixelSize: Theme.primitive.font.sizeSm
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.WordWrap
+                    onWidthChanged: requestPaint()
+
+                    onPaint: {
+                        var ctx = getContext("2d");
+                        var w = width;
+                        var h = height;
+                        if (w <= 0 || h <= 0)
+                            return;
+                        ctx.clearRect(0, 0, w, h);
+                        ctx.fillStyle = Theme.color.surfaceSunken;
+                        ctx.fillRect(0, 0, w, h);
+
+                        // Grid at 0, 50, and 100 percent.
+                        ctx.strokeStyle = Theme.color.separator;
+                        ctx.lineWidth = 1;
+                        for (var grid = 0; grid <= 2; ++grid) {
+                            var gy = Math.round(h * grid / 2) + 0.5;
+                            ctx.beginPath();
+                            ctx.moveTo(0, gy);
+                            ctx.lineTo(w, gy);
+                            ctx.stroke();
+                        }
+
+                        var points = chart.samples;
+                        var range = Math.max(1, chart.rangeSeconds);
+                        var path = [];
+                        for (var i = 0; i < points.length; ++i) {
+                            var age = Number(points[i].secondsAgo || 0);
+                            var percent = Math.max(0, Math.min(100,
+                                Number(points[i].percent || 0)));
+                            var x = w * (1 - Math.min(1, age / range));
+                            var y = h * (1 - percent / 100);
+                            path.push({ x: x, y: y });
+                        }
+                        if (path.length < 2)
+                            return;
+
+                        // A light wash under the line, then the line itself.
+                        ctx.beginPath();
+                        ctx.moveTo(path[0].x, h);
+                        for (var p = 0; p < path.length; ++p)
+                            ctx.lineTo(path[p].x, path[p].y);
+                        ctx.lineTo(path[path.length - 1].x, h);
+                        ctx.closePath();
+                        ctx.fillStyle = Theme.color.accentMuted;
+                        ctx.fill();
+
+                        ctx.beginPath();
+                        ctx.moveTo(path[0].x, path[0].y);
+                        for (var q = 1; q < path.length; ++q)
+                            ctx.lineTo(path[q].x, path[q].y);
+                        ctx.strokeStyle = Theme.color.accent;
+                        ctx.lineWidth = 2;
+                        ctx.lineJoin = "round";
+                        ctx.stroke();
+
+                        // The newest point gets a dot so a short series is
+                        // legible even when the line is nearly flat.
+                        ctx.beginPath();
+                        ctx.arc(path[path.length - 1].x,
+                                path[path.length - 1].y, 3, 0, Math.PI * 2);
+                        ctx.fillStyle = Theme.color.accent;
+                        ctx.fill();
                     }
                 }
+            }
+
+            Text {
+                width: parent.width
+                text: chart.caption
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
             }
 
             Item { width: 1; height: Theme.primitive.spacing.sm }

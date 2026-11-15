@@ -105,6 +105,9 @@ pub const KEY_BLANK: &str = "idle.blank";
 pub const KEY_LOCK: &str = "idle.lock";
 /// The policy key for the suspend delay, in whole seconds.
 pub const KEY_SUSPEND: &str = "idle.suspend";
+/// The Battery pane's "prevent sleep" switch (T273). When true it disables the
+/// automatic suspend stage; it does not touch dim, blank, or lock.
+pub const KEY_PREVENT_SLEEP: &str = "power.preventSleep";
 
 /// The policy key for one stage (empty for [`IdleStage::Active`]).
 pub const fn key_for(stage: IdleStage) -> &'static str {
@@ -232,11 +235,22 @@ impl IdlePolicy {
         V: AsRef<str>,
     {
         let mut policy = IdlePolicy::disabled();
+        let mut prevent_sleep = false;
         for (key, value) in keys {
+            if key.as_ref() == KEY_PREVENT_SLEEP {
+                prevent_sleep = parse_bool(value.as_ref());
+                continue;
+            }
             let Some(stage) = stage_for_key(key.as_ref()) else {
                 continue;
             };
             policy.set_delay(stage, parse_seconds(value.as_ref()));
+        }
+        // "Prevent sleep" is the Battery pane's switch over the same suspend
+        // stage the Lock Screen pane configures. The switch wins regardless of
+        // the key order in the snapshot.
+        if prevent_sleep {
+            policy.set_delay(IdleStage::Suspend, None);
         }
         policy
     }
@@ -257,6 +271,12 @@ fn stage_for_key(key: &str) -> Option<IdleStage> {
         KEY_SUSPEND => Some(IdleStage::Suspend),
         _ => None,
     }
+}
+
+/// Parse a boolean settings value (`true`/`false`, `1`/`0`).
+fn parse_bool(value: &str) -> bool {
+    let value = value.trim();
+    value.eq_ignore_ascii_case("true") || value == "1"
 }
 
 /// Parse a policy value: `0`, a negative number, or `never` disables the
@@ -777,6 +797,27 @@ mod tests {
         assert_eq!(policy.delay(IdleStage::Blank), None);
         assert_eq!(policy.delay(IdleStage::Lock), None);
         assert_eq!(policy.delay(IdleStage::Suspend), Some(seconds(1800)));
+    }
+
+    #[test]
+    fn prevent_sleep_disables_only_the_suspend_stage() {
+        let policy = IdlePolicy::from_keys([
+            ("idle.dim", "60"),
+            ("idle.blank", "300"),
+            ("idle.lock", "600"),
+            ("idle.suspend", "1800"),
+            (KEY_PREVENT_SLEEP, "true"),
+        ]);
+        assert_eq!(policy.delay(IdleStage::Dim), Some(seconds(60)));
+        assert_eq!(policy.delay(IdleStage::Blank), Some(seconds(300)));
+        assert_eq!(policy.delay(IdleStage::Lock), Some(seconds(600)));
+        assert_eq!(policy.delay(IdleStage::Suspend), None);
+
+        let off = IdlePolicy::from_keys([
+            ("idle.suspend", "1800"),
+            (KEY_PREVENT_SLEEP, "false"),
+        ]);
+        assert_eq!(off.delay(IdleStage::Suspend), Some(seconds(1800)));
     }
 
     #[test]

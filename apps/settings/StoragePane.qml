@@ -41,6 +41,25 @@ Item {
         || Math.max(0, root.usageTotal - root.usageUsed))
     readonly property real usageFraction: root.usageTotal > 0
         ? Math.min(1, root.usageUsed / root.usageTotal) : 0
+    // The chart legend: the same categories the bar draws (same alternating
+    // accent shades) plus the free remainder.
+    readonly property var usageLegend: {
+        var out = [];
+        for (var i = 0; i < root.usageCategories.length; ++i) {
+            out.push({
+                id: root.usageCategories[i].id,
+                label: root.usageCategories[i].label,
+                color: i % 2 === 0 ? Theme.color.accent
+                                   : Qt.lighter(Theme.color.accent, 1.25)
+            });
+        }
+        out.push({
+            id: "free",
+            label: qsTr("Free"),
+            color: Theme.color.surfaceSunken
+        });
+        return out;
+    }
     // The recommendations are derived from the live category totals, not a
     // static marketing list. They name the action and the owner.
     readonly property var recommendations: {
@@ -117,6 +136,7 @@ Item {
     property alias manageButton: manageButton
     property alias usageChart: usageChart
     property alias usageChartRepeater: usageChartRepeater
+    property alias usageLegendRepeater: usageLegendRepeater
     property alias usageSummaryText: usageSummaryText
     property alias recommendationsGroup: recommendationsGroup
     property alias recommendationsRepeater: recommendationsRepeater
@@ -144,12 +164,14 @@ Item {
         Settings.ejectStorage(drivePath);
     }
 
+    // Binary units: the host reports bytes, so a 512 GB disk is 477 GiB. The
+    // same formatter label is used by About and Startup Disk (T273).
     function formatBytes(bytes) {
         const value = Number(bytes || 0);
         if (value <= 0)
-            return "0 GB";
+            return "0 GiB";
         const gib = value / (1024 * 1024 * 1024);
-        return (gib >= 10 ? Math.round(gib) : Math.round(gib * 10) / 10) + " GB";
+        return (gib >= 10 ? Math.round(gib) : Math.round(gib * 10) / 10) + " GiB";
     }
 
     // Opening the pane asks the host for a re-read (a no-op when absent).
@@ -168,17 +190,25 @@ Item {
             id: usageGroup
             width: parent.width
             title: qsTr("Usage")
-            visible: root.usageAvailable
+            // The filesystem read is independent of UDisks2; the chart keeps
+            // its group title and explains its own absence rather than
+            // collapsing the pane to one note.
+            visible: true
 
-            // The stacked category chart: one segment per category plus free
-            // space. Widths come from the live byte totals, never a preset.
+            // The stacked chart: one segment per category plus free space.
+            // Widths come from the live byte totals, never a preset; the free
+            // segment is the sunken remainder so total = used + free is
+            // legible in one bar.
             Rectangle {
                 id: usageChart
                 objectName: "storageUsageChart"
+                visible: root.usageAvailable
                 width: parent.width
-                height: 18
+                height: 22
                 radius: 6
-                color: Theme.color.controlFill
+                color: Theme.color.surfaceSunken
+                border.width: Theme.controls.window.borderWidth
+                border.color: Theme.color.separator
                 clip: true
 
                 Row {
@@ -202,9 +232,40 @@ Item {
                 }
             }
 
+            // The chart legend: every category the bar draws plus the free
+            // remainder. A legend row is the category name and its byte size,
+            // so the chart is readable without hovering.
+            Row {
+                width: parent.width
+                visible: root.usageAvailable
+                spacing: Theme.primitive.spacing.md
+
+                Repeater {
+                    id: usageLegendRepeater
+                    model: root.usageLegend
+                    delegate: Row {
+                        required property var modelData
+                        spacing: Theme.primitive.spacing.xs
+                        Rectangle {
+                            width: 8
+                            height: 8
+                            radius: 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: modelData.color
+                        }
+                        Text {
+                            text: modelData.label
+                            color: Theme.color.textSecondary
+                            font.pixelSize: Theme.primitive.font.sizeSm
+                        }
+                    }
+                }
+            }
+
             Text {
                 id: usageSummaryText
                 objectName: "storageUsageSummary"
+                visible: root.usageAvailable
                 width: parent.width
                 text: qsTr("%1 used of %2 · %3 available")
                     .arg(root.formatBytes(root.usageUsed))
@@ -224,13 +285,14 @@ Item {
 
             Repeater {
                 id: usageRepeater
+                visible: root.usageAvailable
                 model: root.usageCategories
                 delegate: SettingsRow {
                     required property var modelData
                     required property int index
                     width: parent.width
                     label: modelData.label
-                    description: qsTr("%1 of %2")
+                    description: qsTr("%1 of %2 used")
                         .arg(root.formatBytes(modelData.bytes))
                         .arg(root.formatBytes(root.usage.usedBytes))
                     showSeparator: index < root.usageCategories.length - 1
@@ -245,10 +307,21 @@ Item {
                                     ? modelData.bytes / root.usage.usedBytes : 0)
                             height: parent.height
                             radius: parent.radius
-                            color: Theme.color.accent
+                            color: index % 2 === 0
+                                ? Theme.color.accent
+                                : Qt.lighter(Theme.color.accent, 1.25)
                         }
                     }
                 }
+            }
+
+            SettingsAbsenceNotice {
+                id: usageAbsenceNote
+                objectName: "storageUsageAbsenceNote"
+                visible: !root.usageAvailable
+                kind: "disabled-with-reason"
+                reason: qsTr("Filesystem usage is unavailable because df did not answer. "
+                             + "Volume rows and the Manage action stay live.")
             }
 
             SettingsRow {
@@ -256,12 +329,19 @@ Item {
                 objectName: "storageManageRow"
                 width: parent.width
                 label: qsTr("Manage storage…")
-                description: qsTr("Opens the Files app; formatting and partitioning are delegated to the disk utility.")
+                settingsId: "manage"
+                owner: "Files / disk utility"
+                settingsKey: "storage.manage"
+                description: qsTr("Opens the Files app at your home folder. "
+                                  + "Formatting and partitioning stay in the "
+                                  + "disk utility.")
                 showSeparator: false
                 controlData: Button {
                     id: manageButton
                     objectName: "storageManageButton"
                     text: qsTr("Open")
+                    enabled: true
+                    accessibleName: qsTr("Open the Files app to manage storage")
                     onClicked: Qt.openUrlExternally("file:///")
                 }
             }
@@ -294,13 +374,28 @@ Item {
             id: volumesGroup
             width: parent.width
             title: qsTr("Volumes")
-            visible: root.ready
+            // Keep the group and its title when UDisks2 is absent; the note
+            // inside names the missing half and the rest of the pane stays.
+            visible: true
+
+            SettingsAbsenceNotice {
+                id: absenceNote
+                objectName: "storageAbsenceNote"
+                visible: !root.ready
+                kind: "disabled-with-reason"
+                reason: root.available
+                    ? qsTr("No mountable volume is present. Removable media "
+                           + "appears here when it is connected.")
+                    : qsTr("UDisks2 is not running, so volume actions are "
+                           + "unavailable. Filesystem usage and the Manage "
+                           + "action stay live.")
+            }
 
             Text {
                 id: noVolumesNote
                 objectName: "storageNoVolumes"
                 width: parent.width
-                visible: root.volumes.length === 0
+                visible: root.ready && root.volumes.length === 0
                 text: qsTr("No mountable volumes.")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
@@ -425,29 +520,5 @@ Item {
             }
         }
 
-        SettingsGroup {
-            width: parent.width
-            visible: !root.usageAvailable && root.ready
-
-            SettingsAbsenceNotice {
-                id: usageAbsenceNote
-                objectName: "storageUsageAbsenceNote"
-                kind: "disabled-with-reason"
-                reason: qsTr("Filesystem usage is unavailable because df did not answer.")
-            }
-        }
-
-        // ── Absence ───────────────────────────────────────────────────────
-        SettingsGroup {
-            width: parent.width
-            visible: !root.ready
-
-            SettingsAbsenceNotice {
-                id: absenceNote
-                objectName: "storageAbsenceNote"
-                kind: "disabled-with-reason"
-                reason: qsTr("No storage devices are available on this system.")
-            }
-        }
     }
 }

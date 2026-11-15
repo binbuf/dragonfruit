@@ -1237,6 +1237,9 @@ private:
     // T-09.5: the last display selection forwarded, so an unchanged settings
     // value does not re-send the protocol requests.
     DisplaySettings m_displaySettings;
+    // The effective level after the Battery pane's dim-on-battery switch, so
+    // a battery/AC transition re-sends the same selection with a new level.
+    double m_displayBrightness = 1.0;
     bool m_displaySent = false;
     // The typed Dock view of the client's keys, refreshed on every change.
     DockConfig m_dockConfig;

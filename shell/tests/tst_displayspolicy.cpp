@@ -78,7 +78,7 @@ void TestDisplaysPolicy::liveFlipChangesTheSettings()
 void TestDisplaysPolicy::advancedRowsOnlyAdvertiseSupportedControls()
 {
     const QList<DisplayAdvancedRow> rows = displayAdvancedRows();
-    QCOMPARE(rows.size(), 8);
+    QCOMPARE(rows.size(), 16);
     QCOMPARE(rows[0].id, QStringLiteral("brightness"));
     QVERIFY(rows[0].supported);
     QCOMPARE(rows[0].control, QStringLiteral("slider"));
@@ -91,14 +91,30 @@ void TestDisplaysPolicy::advancedRowsOnlyAdvertiseSupportedControls()
         if (row.id == QLatin1String("brightness") || row.id == QLatin1String("rotation"))
             continue;
         QVERIFY2(!row.supported, qPrintable(row.id));
-        QCOMPARE(row.control, QStringLiteral("info"));
+        QVERIFY2(!row.control.isEmpty(), qPrintable(row.id));
     }
+
+    // Every row belongs to exactly one surface; the advanced sheet is a
+    // subset, so brightness/rotation cannot be duplicated there.
+    int advanced = 0;
+    for (const DisplayAdvancedRow &row : rows) {
+        QVERIFY2(row.area == QLatin1String("pane")
+                     || row.area == QLatin1String("advanced"),
+                 qPrintable(row.id));
+        if (row.area == QLatin1String("advanced")) {
+            ++advanced;
+            QVERIFY2(row.id != QLatin1String("brightness")
+                         && row.id != QLatin1String("rotation"),
+                     "advanced rows must not duplicate the pane controls");
+        }
+    }
+    QCOMPARE(advanced, 4);
 }
 
 void TestDisplaysPolicy::advancedRowsCarryAnOpenReason()
 {
     const QVariantList rows = displayAdvancedRowsVariant();
-    QCOMPARE(rows.size(), 8);
+    QCOMPARE(rows.size(), 16);
     for (const QVariant &entry : rows) {
         const QVariantMap row = entry.toMap();
         if (row.value(QStringLiteral("supported")).toBool()) {

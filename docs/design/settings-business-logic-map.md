@@ -261,19 +261,21 @@ profile write; read-only level if available.
 | Low Power Mode | Power mode | Popup | `power.profile` | `power-saver`/`balanced`/`performance`; PPD or platform_profile |
 | Battery Health | Battery health | Info | UPower | Capacity/health/cycles; `Unknown` if absent |
 | Charging | Charging | Info | UPower | State/time-to-full |
-| Last 24 Hours / Last 10 Days | Usage range | Segmented | `settingsd` + UPower | Our sampled history; empty state |
-| Last charged to… | Last charged | Info | UPower | Date/time |
-| Battery Level | Battery level | Chart | UPower | History; no fake data |
-| Screen On Usage | Screen-on usage | Chart | `settingsd`/session | Sampled by our service; empty state |
-| Options… | Battery options | Sheet | `settingsd` | Show percentage, menu-bar item, low-battery warning |
+| Last 24 Hours / Last 10 Days | Usage range | Segmented | `settingsd` + sampler | Real session points; explicit empty state with Refresh |
+| Last charged to… | Last charged | Info | UPower | `Not available`; UPower exposes no timestamp |
+| Battery Level | Battery level | Chart | `services/power` sampler | A real polyline over sampled points; no fake data |
+| Screen On Usage | Screen-on usage | Info | session sampler | One row naming the missing session half; no second empty chart |
+| Options… | Battery options | Group | `settingsd` | Show percentage (menu bar), dim on battery (shell display), prevent sleep (session idle); wake-for-network/video disabled with owner |
+| — | Power adapter | Info | UPower | Live source; charge limit says not reported |
 | — | Power settings | Rows | `settingsd` | Sleep/display-off timers link to Lock Screen |
 
-**T229 status.** The Battery pane adds the `Options` group
-(`power.showPercentage`, and the persisted `power.historyRange` behind the
-existing range switch) and a `Power Settings` group that reads `idle.blank`/
-`idle.lock` and navigates to Lock Screen. The two history charts remain honest
-empty states: UPower exposes no charge history on the tested host. The menu
-bar reads `power.showPercentage` for its percentage label.
+**T273 status.** The sampler lives in `services/power` (bounded, one point per
+read, ten days at one minute) and `system-status` publishes it as `history`.
+The pane draws it, or shows an explicit empty state with **Refresh history**
+until two points exist. `power.showPercentage` now changes the menu-bar label,
+`power.dimOnBattery` lowers the forwarded brightness, and
+`power.preventSleep` disables the session idle engine's suspend stage. The
+Options group stays live when UPower is absent.
 
 <a id="pane-general"></a>
 ### 5.5 General
@@ -304,10 +306,12 @@ absence path; the executable rows are in `SettingsMap.qml`.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Categories | Categories | Chart/list | UDisks2 + filesystem usage | `storage.usage` from `df`; system/home/media/other, never double-counting one device |
-| Manage… | Manage storage… | Button | Files/Storage | Delegated; formatting and partitioning stay in the Files app / disk utility |
-| — | Volumes | List | UDisks2 | Mount/unmount; absent UDisks2 hides the rows |
+| Storage bar chart | Storage chart | Chart | UDisks2 + filesystem usage | `storage.usage` from `df`; stacked categories plus the free remainder, legend, total/used/free in GiB |
+| Categories | Categories | List | filesystem usage | Per-category byte totals and a share bar; never double-counting one device |
+| Manage… | Manage storage… | Button | Files/Storage | Live delegate to the file manager; formatting and partitioning stay in the disk utility |
+| — | Volumes | List | UDisks2 | Mount/unmount with capacity; absent UDisks2 keeps the group and its reason |
 | — | Removable media | List | UDisks2 | Eject; absent → note |
+| Recommendations | Recommendations | List | filesystem usage | Derived from live byte totals; empty Trash and review categories |
 
 #### 5.5.4 Login Items & Extensions
 
@@ -659,24 +663,29 @@ controls live on defaults; output rows show `No display`/`Unavailable`.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Built-in display preview | Display preview | Art | compositor | Original illustration |
-| Resolution scaling tiles | Scale/resolution | Segmented | existing: `display.scale` + compositor | 1×/1.5×/2×; per-output |
-| Brightness | Brightness | Slider | existing: `display.brightness` | Per-output; hardware if available |
-| Automatically adjust brightness | Auto-brightness | Toggle | `display.autoBrightness` | Sensor-dependent |
-| True Tone | Adaptive color | Toggle | `display.adaptiveColor` | Only if hardware exposes it |
-| Preset | Color preset | Popup | colord | ICC profiles |
-| Refresh rate | Refresh rate | Popup | compositor | Modes; VRR where exposed |
-| When connected to TV | TV mode | Popup | compositor | Ask/mirror/extend |
-| Night Shift | Night light | Disclosure | `display.nightLight` | Schedule/temperature |
-| Color profile | Color profile | Popup | colord | ICC |
-| Advanced… | Advanced… | Sheet | compositor/colord | HDR, VRR, rotation, overscan |
-| Arrangement | Arrangement | Canvas | compositor | Drag displays; primary |
+| Built-in display preview | Display preview | Art | platform outputs | Real output name and a proportional preview |
+| Display role | Use as | Popup | compositor | Main/extend/mirror; disabled with the one-layout reason |
+| Resolution scaling tiles | Scale/resolution | Segmented | existing: `display.scale` + compositor | 1×/1.5×/2×; global compatibility path |
+| Brightness | Brightness | Slider | existing: `display.brightness` | Live; the compositor owns the applied level |
+| Automatically adjust brightness | Auto-brightness | Toggle | `display.autoBrightness` | Disabled: no ambient-light sensor input |
+| True Tone | Adaptive color | Toggle | `display.adaptiveColor` | Disabled: no white-point sensor |
+| Preset | Color preset | Popup | colord | Disabled: colord not integrated |
+| Refresh rate | Refresh rate | Info + popup | compositor | Real current rate; switching disabled |
+| When connected to TV | TV mode | Popup | compositor | Disabled: no content-type policy |
+| Night Shift | Night light | Disclosure | `display.nightLight` | Toggle/schedule/temperature disabled: no gamma LUT |
+| Color profile | Color profile | Popup | colord | Disabled: colord not integrated |
+| Advanced… | Advanced… | Sheet | compositor/colord | Resolution list, HDR, VRR, overscan only; no duplicate brightness/rotation |
+| Arrangement | Arrangement | Canvas | compositor | Read-only cards of the real outputs; Arrange disabled |
 | Rotation | Rotation | Popup | existing: `display.rotation` | 0/90/180/270 |
+| — | Per-output selector | List | platform outputs | Shown with more than one output; scopes preview/refresh |
 
-**T227 status.** Scale, rotation, and brightness are live. The Advanced sheet
-renders the shared capability table: refresh, arrangement, night light, color
-profile, HDR, and VRR are disabled with the exact missing compositor/colord
-half; the table is asserted by `shell/tests/tst_displayspolicy.cpp`.
+**T273 status.** The pane reads the real platform output list, so the title,
+preview label, aspect ratio, and refresh are the selected output's own. The
+capability table (`libs/settings-client/displaycapabilities.*`) carries an
+`area` and is the one source for every disabled row in both the main groups
+and the advanced sheet; `shell/tests/tst_displayspolicy.cpp` asserts it. The
+sheet no longer duplicates brightness or rotation. Per-output writes remain
+the global `display.*` keys until a later backend task adds the key shape.
 
 <a id="pane-wallpaper"></a>
 ### 5.14 Wallpaper

@@ -34,6 +34,8 @@
 #include <QDir>
 #include <cstdio>
 #include <QFileInfo>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -196,6 +198,33 @@ SettingsBridge::SettingsBridge(QObject *parent)
                 }
                 emit authorizationFinished(requestId, authorized, error);
             });
+
+    // T273: the Displays pane lists the real platform outputs. The fixture
+    // mode is only read when `DF_DISPLAY_FIXTURE` is set, so the live app
+    // always asks the platform.
+    m_displayFixtureMode = QStringLiteral("single");
+    if (qEnvironmentVariableIsSet("DF_DISPLAY_FIXTURE")) {
+        const QString requested = qEnvironmentVariable("DF_DISPLAY_FIXTURE");
+        if (requested == QLatin1String("dual")
+                || requested == QLatin1String("absent"))
+            m_displayFixtureMode = requested;
+    }
+    if (qGuiApp) {
+        connect(qGuiApp, &QGuiApplication::screenAdded, this,
+                [this](QScreen *screen) {
+                    watchDisplayScreen(screen);
+                    ++m_displayOutputsRevision;
+                    emit displayOutputsChanged();
+                });
+        connect(qGuiApp, &QGuiApplication::screenRemoved, this,
+                [this](QScreen *) { ++m_displayOutputsRevision;
+                    emit displayOutputsChanged(); });
+        connect(qGuiApp, &QGuiApplication::primaryScreenChanged, this,
+                [this](QScreen *) { ++m_displayOutputsRevision;
+                    emit displayOutputsChanged(); });
+        for (QScreen *screen : QGuiApplication::screens())
+            watchDisplayScreen(screen);
+    }
 
     // T268: no adapter client is constructed here. Each pane's `refreshX()`
     // creates exactly its own client on first open (see `ensure*`), so a cold
@@ -992,6 +1021,94 @@ QVariantList SettingsBridge::displayAdvancedRows() const
     return displayAdvancedRowsVariant();
 }
 
+void SettingsBridge::watchDisplayScreen(QScreen *screen)
+{
+    if (!screen)
+        return;
+    connect(screen, &QScreen::geometryChanged, this,
+            [this](const QRect &) { ++m_displayOutputsRevision;
+                    emit displayOutputsChanged(); });
+    connect(screen, &QScreen::refreshRateChanged, this,
+            [this](qreal) { ++m_displayOutputsRevision;
+                    emit displayOutputsChanged(); });
+}
+
+QVariantList SettingsBridge::displayOutputs() const
+{
+    // T273: the Displays pane's per-output list is the real platform list, not
+    // a hardcoded "Built-in Display". On a Wayland session Qt's screen name is
+    // the compositor's output name; the model/manufacturer are the fallback.
+    // `DF_DISPLAY_FIXTURE` makes the list deterministic for headless tests and
+    // captures (one output, two outputs, or no output).
+    QVariantList outputs;
+    const bool fixture = qEnvironmentVariableIsSet("DF_DISPLAY_FIXTURE");
+    if (fixture) {
+        if (m_displayFixtureMode == QLatin1String("absent"))
+            return outputs;
+        QVariantMap builtIn;
+        builtIn.insert(QStringLiteral("id"), QStringLiteral("builtin"));
+        builtIn.insert(QStringLiteral("name"), QStringLiteral("Built-in Display"));
+        builtIn.insert(QStringLiteral("width"), 1512);
+        builtIn.insert(QStringLiteral("height"), 982);
+        builtIn.insert(QStringLiteral("refreshRate"), 120.0);
+        builtIn.insert(QStringLiteral("primary"), true);
+        builtIn.insert(QStringLiteral("manufacturer"), QStringLiteral("Dragonfruit"));
+        builtIn.insert(QStringLiteral("model"), QStringLiteral("Built-in HiDPI Display"));
+        outputs.append(builtIn);
+        if (m_displayFixtureMode == QLatin1String("dual")) {
+            QVariantMap studio;
+            studio.insert(QStringLiteral("id"), QStringLiteral("external"));
+            studio.insert(QStringLiteral("name"), QStringLiteral("External Display"));
+            studio.insert(QStringLiteral("width"), 2560);
+            studio.insert(QStringLiteral("height"), 1440);
+            studio.insert(QStringLiteral("refreshRate"), 60.0);
+            studio.insert(QStringLiteral("primary"), false);
+            studio.insert(QStringLiteral("manufacturer"), QStringLiteral("Example"));
+            studio.insert(QStringLiteral("model"), QStringLiteral("Example Panel"));
+            outputs.append(studio);
+        }
+        return outputs;
+    }
+
+    QScreen *primary = QGuiApplication::primaryScreen();
+    const QList<QScreen *> screens = QGuiApplication::screens();
+    for (int index = 0; index < screens.size(); ++index) {
+        QScreen *screen = screens[index];
+        if (!screen)
+            continue;
+        const QRect geometry = screen->geometry();
+        QString name = screen->name().trimmed();
+        if (name.isEmpty())
+            name = screen->model().trimmed();
+        if (name.isEmpty())
+            name = QObject::tr("Display %1").arg(index + 1);
+        QVariantMap entry;
+        entry.insert(QStringLiteral("id"),
+                     screen->name().isEmpty()
+                         ? QStringLiteral("output-%1").arg(index) : screen->name());
+        entry.insert(QStringLiteral("name"), name);
+        entry.insert(QStringLiteral("width"), geometry.width());
+        entry.insert(QStringLiteral("height"), geometry.height());
+        entry.insert(QStringLiteral("refreshRate"), screen->refreshRate());
+        entry.insert(QStringLiteral("primary"), screen == primary);
+        entry.insert(QStringLiteral("manufacturer"), screen->manufacturer());
+        entry.insert(QStringLiteral("model"), screen->model());
+        outputs.append(entry);
+    }
+    return outputs;
+}
+
+void SettingsBridge::setDisplayFixture(const QString &mode)
+{
+    if (!qEnvironmentVariableIsSet("DF_DISPLAY_FIXTURE"))
+        return;
+    m_displayFixtureMode = mode == QLatin1String("dual")
+            || mode == QLatin1String("absent")
+        ? mode : QStringLiteral("single");
+    ++m_displayOutputsRevision;
+                    emit displayOutputsChanged();
+}
+
 void SettingsBridge::failNextWrite(const QString &key, const QString &message)
 {
     if (auto *mock = qobject_cast<MockSettingsClient *>(m_client))
@@ -1403,6 +1520,18 @@ void SettingsBridge::ejectStorage(const QString &drivePath)
         m_storage->eject(drivePath);
 }
 
+void SettingsBridge::setStorageFixture(const QString &mode)
+{
+    if (auto *mock = qobject_cast<MockStorageClient *>(m_storage))
+        mock->setFixture(mode);
+}
+
+void SettingsBridge::resetStorageFixture()
+{
+    if (auto *mock = qobject_cast<MockStorageClient *>(m_storage))
+        mock->resetForTest();
+}
+
 void SettingsBridge::refreshSound()
 {
     if (m_sound)
@@ -1467,6 +1596,18 @@ void SettingsBridge::setPowerProfile(const QString &profile)
 {
     if (m_battery && !profile.isEmpty())
         m_battery->setActiveProfile(profile);
+}
+
+void SettingsBridge::setBatteryFixture(const QString &mode)
+{
+    if (auto *mock = qobject_cast<MockBatteryClient *>(m_battery))
+        mock->setFixture(mode);
+}
+
+void SettingsBridge::resetBatteryFixture()
+{
+    if (auto *mock = qobject_cast<MockBatteryClient *>(m_battery))
+        mock->resetForTest();
 }
 
 void SettingsBridge::refreshNotifications()

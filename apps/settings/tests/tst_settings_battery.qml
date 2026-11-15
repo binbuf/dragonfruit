@@ -12,8 +12,8 @@ import Dragonfruit.Settings
 // absence note.
 Item {
     id: stage
-    width: 900
-    height: 1400
+    width: 740
+    height: 820
 
     TestCase {
         id: testCase
@@ -25,9 +25,13 @@ Item {
         // The fixture client is process-global; reset the active profile before
         // every case so the pane always opens on a known state.
         function init() {
+            Settings.refreshBattery();
+            Settings.setBatteryFixture("present");
             Settings.setPowerProfile("balanced");
             Settings.set("power.showPercentage", false);
             Settings.set("power.historyRange", 0);
+            Settings.set("power.dimOnBattery", false);
+            Settings.set("power.preventSleep", false);
         }
 
         function make() {
@@ -107,17 +111,67 @@ Item {
             compare(pane.chargingDetail.visible, true);
         }
 
-        function test_usage_history_range_switch_rewords_the_empty_state() {
+        function test_usage_history_chart_uses_the_real_sampler() {
             var shell = make();
             var pane = paneOf(shell);
             compare(pane.historyRange, 0);
+            compare(pane.historyCount, 8);
+            verify(pane.historyHasData);
+            verify(pane.batteryChart.visible);
+            compare(pane.historyEmpty.visible, false);
             verify(pane.batteryChart.caption.indexOf("last 24 hours") >= 0);
-            verify(pane.screenChart.caption.indexOf("last 24 hours") >= 0);
 
             pane.rangeControl.activateIndex(1);
             compare(pane.historyRange, 1);
             verify(pane.batteryChart.caption.indexOf("last 10 days") >= 0);
-            verify(pane.screenChart.caption.indexOf("last 10 days") >= 0);
+            verify(pane.screenOnRow.visible);
+            verify(pane.screenOnRow.description.indexOf("does not report") >= 0);
+        }
+
+        function test_an_empty_sampler_is_an_honest_empty_state_with_retry() {
+            Settings.setBatteryFixture("empty");
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.historyCount, 0);
+            compare(pane.historyHasData, false);
+            compare(pane.batteryChart.visible, false);
+            verify(pane.historyEmpty.visible);
+            verify(pane.historyEmpty.height > 0);
+            verify(pane.historyEmptyReason.indexOf("No battery history") >= 0);
+            verify(pane.historyRetryButton.visible);
+            pane.historyRetryButton.clicked();
+            Settings.setBatteryFixture("present");
+            shell.destroy();
+        }
+
+        function test_the_options_and_power_adapter_sections() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.optionsGroup.visible);
+            compare(pane.dimOnBatteryToggle.checked, false);
+            pane.dimOnBatteryToggle.toggle();
+            compare(Settings.values["power.dimOnBattery"], true);
+            compare(pane.preventSleepToggle.checked, false);
+            pane.preventSleepToggle.toggle();
+            compare(Settings.values["power.preventSleep"], true);
+            compare(pane.wakeForNetworkToggle.enabled, false);
+            compare(pane.optimizeVideoToggle.enabled, false);
+            verify(pane.adapterGroup.visible);
+            compare(pane.adapterStateText.text, "On battery");
+        }
+
+        function test_absence_keeps_the_structure_and_options_live() {
+            Settings.setBatteryFixture("absent");
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(Settings.batteryAvailable, false);
+            verify(pane.absenceNote.visible);
+            verify(pane.batteryAbsenceNote.visible);
+            verify(pane.optionsGroup.visible);
+            verify(pane.powerSettingsGroup.visible);
+            compare(pane.batteryChart.visible, false);
+            Settings.setBatteryFixture("present");
+            shell.destroy();
         }
 
         function test_battery_options_and_power_settings_link() {

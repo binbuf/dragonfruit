@@ -350,6 +350,45 @@ fn the_battery_profile_selection_reads_and_writes_through_the_host() {
 }
 
 #[test]
+fn the_battery_history_is_a_real_session_sampler() {
+    let mut host = StatusHost::new(
+        MockNetworkManager::absent(),
+        MockAudio::absent(),
+        MockPower::present(battery_data(64.0, 2)),
+    );
+    host.refresh();
+    let view = host.battery_view();
+    let history = &view["history"];
+    assert_eq!(history["state"], "available");
+    assert_eq!(history["count"], 1);
+    assert_eq!(history["samples"][0]["percent"], 64);
+    assert_eq!(history["samples"][0]["secondsAgo"], 0);
+    assert_eq!(history["rangeSeconds"], 10 * 24 * 60 * 60);
+
+    // A later point (a moved level a minute on) joins the series. The adapter
+    // records the same instant once, so the sampler is driven directly here.
+    let later = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 60;
+    host.battery_mut().history_mut().record(later, 63);
+    let view = host.battery_view();
+    assert_eq!(view["history"]["count"], 2);
+    assert_eq!(view["history"]["samples"][1]["percent"], 63);
+
+    // A machine with no battery reports the sampler empty, not a fake series.
+    let mut empty = StatusHost::new(
+        MockNetworkManager::absent(),
+        MockAudio::absent(),
+        MockPower::present(PowerData::default()),
+    );
+    empty.refresh();
+    assert_eq!(empty.battery_view()["history"]["state"], "empty");
+    assert_eq!(empty.battery_view()["history"]["count"], 0);
+}
+
+#[test]
 fn a_machine_without_a_battery_keeps_the_item_available_but_not_present() {
     let mut host = StatusHost::new(
         MockNetworkManager::absent(),

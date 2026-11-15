@@ -190,6 +190,8 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("input.dictation"), false);
     values.insert(QStringLiteral("power.showPercentage"), false);
     values.insert(QStringLiteral("power.historyRange"), qlonglong(0));
+    values.insert(QStringLiteral("power.dimOnBattery"), false);
+    values.insert(QStringLiteral("power.preventSleep"), false);
     values.insert(QStringLiteral("idle.dim"), qlonglong(150));
     values.insert(QStringLiteral("idle.blank"), qlonglong(300));
     values.insert(QStringLiteral("idle.lock"), qlonglong(600));

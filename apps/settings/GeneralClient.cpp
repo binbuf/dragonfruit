@@ -749,7 +749,7 @@ void MockGeneralClient::rebuild()
     storage.insert(QStringLiteral("totalBytes"), qlonglong(512000000000));
     storage.insert(QStringLiteral("usedBytes"), qlonglong(480000000000));
     storage.insert(QStringLiteral("freeBytes"), qlonglong(32000000000));
-    storage.insert(QStringLiteral("label"), QStringLiteral("480 GB used"));
+    storage.insert(QStringLiteral("label"), QStringLiteral("447 GiB used"));
     QVariantList categories;
     categories.append(QVariantMap{
         {QStringLiteral("id"), QStringLiteral("system")},

@@ -126,8 +126,27 @@ MockBatteryClient::MockBatteryClient(QObject *parent)
     rebuild();
 }
 
+bool MockBatteryClient::available() const
+{
+    return m_mode != QStringLiteral("absent");
+}
+
 void MockBatteryClient::refresh()
 {
+    rebuild();
+}
+
+void MockBatteryClient::setFixture(const QString &mode)
+{
+    m_mode = mode == QStringLiteral("absent") || mode == QStringLiteral("empty")
+        ? mode : QStringLiteral("present");
+    rebuild();
+}
+
+void MockBatteryClient::resetForTest()
+{
+    m_activeProfile = QStringLiteral("balanced");
+    m_mode = QStringLiteral("present");
     rebuild();
 }
 
@@ -142,6 +161,15 @@ void MockBatteryClient::setActiveProfile(const QString &profile)
 
 void MockBatteryClient::rebuild()
 {
+    if (m_mode == QStringLiteral("absent")) {
+        QVariantMap absent;
+        absent.insert(QStringLiteral("kind"), QStringLiteral("battery"));
+        absent.insert(QStringLiteral("state"), QStringLiteral("unavailable"));
+        m_view = absent;
+        emit changed(m_view);
+        return;
+    }
+
     const auto profile = [this](const QString &id, const QString &label,
                                 const QString &glyph) {
         QVariantMap entry;
@@ -185,6 +213,31 @@ void MockBatteryClient::rebuild()
         profile(QStringLiteral("performance"), QStringLiteral("Performance"),
                 QStringLiteral("power-performance")),
     });
+
+    // T273: the sampler's view. `present` carries a short real-looking series
+    // so the pane and the capture exercise the chart; `empty` is the honest
+    // first-run state with no points.
+    QVariantList samples;
+    if (m_mode == QStringLiteral("present")) {
+        const int values[] = { 84, 83, 81, 79, 76, 74, 72, 71 };
+        for (int index = 0; index < 8; ++index) {
+            QVariantMap sample;
+            sample.insert(QStringLiteral("secondsAgo"),
+                          (7 - index) * 3 * 60 * 60);
+            sample.insert(QStringLiteral("percent"), values[index]);
+            samples.append(sample);
+        }
+    }
+    QVariantMap history;
+    history.insert(QStringLiteral("state"),
+                   samples.isEmpty() ? QStringLiteral("empty")
+                                     : QStringLiteral("available"));
+    history.insert(QStringLiteral("count"), samples.size());
+    history.insert(QStringLiteral("samples"), samples);
+    history.insert(QStringLiteral("rangeSeconds"), 10 * 24 * 60 * 60);
+    history.insert(QStringLiteral("sampleIntervalSeconds"), 60);
+    view.insert(QStringLiteral("history"), history);
+
     m_view = view;
     emit changed(m_view);
 }

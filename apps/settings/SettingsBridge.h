@@ -52,6 +52,7 @@ class VpnClient;
 class WifiClient;
 class NetworkClient;
 class QDBusServiceWatcher;
+class QScreen;
 
 class SettingsBridge : public QObject
 {
@@ -456,6 +457,18 @@ public:
     // T227: the Displays advanced capability table. Supported rows write the
     // real `display.*` keys; unsupported rows carry the OPEN reason.
     Q_INVOKABLE QVariantList displayAdvancedRows() const;
+    // T273: the real outputs the Displays pane lists. Live reads
+    // `QGuiApplication::screens()`; `DF_DISPLAY_FIXTURE` selects a
+    // deterministic one/two-output (or absent) list for tests and captures.
+    // Each entry is `{id, name, width, height, refreshRate, primary,
+    // manufacturer, model}`; `width`/`height` are logical pixels.
+    Q_PROPERTY(int displayOutputsRevision READ displayOutputsRevision
+                   NOTIFY displayOutputsChanged)
+    Q_INVOKABLE QVariantList displayOutputs() const;
+    int displayOutputsRevision() const { return m_displayOutputsRevision; }
+    // Test/capture seam (`DF_DISPLAY_FIXTURE` only): `single`, `dual`, or
+    // `absent`. A no-op without the fixture environment.
+    Q_INVOKABLE void setDisplayFixture(const QString &mode);
     // Test/capture seam (`DF_SETTINGS_FIXTURE` only): make the next write of
     // `key` apply optimistically and then fail. A no-op on the live client.
     Q_INVOKABLE void failNextWrite(const QString &key, const QString &message);
@@ -534,6 +547,10 @@ public:
     Q_INVOKABLE void mountStorage(const QString &volumePath);
     Q_INVOKABLE void unmountStorage(const QString &volumePath);
     Q_INVOKABLE void ejectStorage(const QString &drivePath);
+    // T273 test/capture seam (`DF_STORAGE_FIXTURE` only): `live`, `empty`
+    // (UDisks2 present, no mountable volume), or `absent`.
+    Q_INVOKABLE void setStorageFixture(const QString &mode);
+    Q_INVOKABLE void resetStorageFixture();
 
     // T-15.3b: the Sound pane's one seam. `refreshSound` re-reads the bridge
     // host on pane open; the writes each call the audio adapter once and the
@@ -560,6 +577,10 @@ public:
     // is absent.
     Q_INVOKABLE void refreshBattery();
     Q_INVOKABLE void setPowerProfile(const QString &profile);
+    // T273 test/capture seam (`DF_BATTERY_FIXTURE` only): `present`, `empty`,
+    // or `absent`; a no-op on the live client.
+    Q_INVOKABLE void setBatteryFixture(const QString &mode);
+    Q_INVOKABLE void resetBatteryFixture();
 
     // T-15.7b: the Notifications/Focus panes' one seam. `refreshNotifications`
     // re-reads the bridge host on pane open; `setFocusMode` selects the policy
@@ -834,6 +855,8 @@ signals:
     void controllerTestChanged();
     // The battery / power-profiles view or availability changed (T-15.6b).
     void batteryChanged();
+    // The real display-output list changed (T273).
+    void displayOutputsChanged();
     // The Notifications/Focus view or availability changed (T-15.7b).
     void notificationsChanged();
     // The General/About/Updates view or availability changed (T-15.10b).
@@ -870,6 +893,9 @@ signals:
     void adapterClientCountChanged();
 
 private:
+    // T273: follow one platform screen's geometry/refresh changes so the
+    // Displays pane's real-output list stays current.
+    void watchDisplayScreen(QScreen *screen);
     // T268: adapter clients are created on first use (the pane that owns them),
     // not all fifteen in the constructor. Each ensure* wires the client's
     // signals exactly once; absence stays a normal empty view.
@@ -993,6 +1019,9 @@ private:
     // T-15.6b: the battery / power-profiles seam (`DF_BATTERY_FIXTURE` selects
     // the mock).
     BatteryClient *m_battery = nullptr;
+    // T273: the Displays output fixture mode (`DF_DISPLAY_FIXTURE` only).
+    QString m_displayFixtureMode;
+    int m_displayOutputsRevision = 0;
     // T-15.7b: the Notifications/Focus seam (`DF_NOTIFICATIONS_FIXTURE`
     // selects the mock).
     NotificationsClient *m_notifications = nullptr;

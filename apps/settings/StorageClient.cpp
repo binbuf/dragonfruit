@@ -134,8 +134,30 @@ MockStorageClient::MockStorageClient(QObject *parent)
     rebuild();
 }
 
+bool MockStorageClient::available() const
+{
+    return m_mode != QStringLiteral("absent");
+}
+
 void MockStorageClient::refresh()
 {
+    rebuild();
+}
+
+void MockStorageClient::setFixture(const QString &mode)
+{
+    m_mode = mode == QStringLiteral("absent") || mode == QStringLiteral("empty")
+        ? mode : QStringLiteral("live");
+    m_volumeMounted = false;
+    m_drivePresent = m_mode == QStringLiteral("live");
+    rebuild();
+}
+
+void MockStorageClient::resetForTest()
+{
+    m_mode = QStringLiteral("live");
+    m_drivePresent = true;
+    m_volumeMounted = false;
     rebuild();
 }
 
@@ -160,19 +182,34 @@ void MockStorageClient::eject(const QString &)
 
 void MockStorageClient::rebuild()
 {
+    if (m_mode == QStringLiteral("absent")) {
+        QVariantMap absent;
+        absent.insert(QStringLiteral("kind"), QStringLiteral("storage"));
+        absent.insert(QStringLiteral("state"), QStringLiteral("unavailable"));
+        absent.insert(QStringLiteral("present"), false);
+        absent.insert(QStringLiteral("volumes"), QVariantList());
+        absent.insert(QStringLiteral("drives"), QVariantList());
+        absent.insert(QStringLiteral("mountedCount"), 0);
+        m_view = absent;
+        emit changed(m_view);
+        return;
+    }
+    const bool hasDrive = m_mode == QStringLiteral("live") && m_drivePresent;
     QVariantMap view;
     view.insert(QStringLiteral("kind"), QStringLiteral("storage"));
     view.insert(QStringLiteral("state"), QStringLiteral("available"));
-    view.insert(QStringLiteral("present"), m_drivePresent);
+    view.insert(QStringLiteral("present"), m_mode == QStringLiteral("empty")
+                                             ? true : m_drivePresent);
     view.insert(QStringLiteral("glyph"), QStringLiteral("storage"));
     view.insert(QStringLiteral("label"),
-                !m_drivePresent ? QStringLiteral("Storage unavailable")
+                !view.value(QStringLiteral("present")).toBool()
+                    ? QStringLiteral("Storage unavailable")
                 : m_volumeMounted ? QStringLiteral("Storage 1 mounted")
                                   : QStringLiteral("Storage"));
 
     QVariantList drives;
     QVariantList volumes;
-    if (m_drivePresent) {
+    if (hasDrive) {
         QVariantMap drive;
         drive.insert(QStringLiteral("path"),
                      QStringLiteral("/org/freedesktop/UDisks2/drives/usb"));

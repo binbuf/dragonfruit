@@ -2844,12 +2844,22 @@ void ShellController::applyStatusItems()
         batteryGlyph = QStringLiteral("battery");
     if (battery.value(QStringLiteral("charging")).toBool())
         batteryGlyph = QStringLiteral("battery-charging");
-    items << statusItem(QStringLiteral("battery"), batteryGlyph, QString(), tr("Battery"),
+    // T273: `power.showPercentage` is a real menu-bar consumer: the percentage
+    // is drawn beside the glyph only while the battery is present and the
+    // Battery pane's switch is on.
+    const bool showBatteryPercentage =
+        menuControls.value(QStringLiteral("power.showPercentage"), false).toBool();
+    const bool batteryPresent = battery.value(QStringLiteral("present")).toBool();
+    const QString batteryLabel = showBatteryPercentage && batteryPresent
+        ? tr("%1%").arg(battery.value(QStringLiteral("percent")).toInt()) : QString();
+    const QString batteryName = batteryLabel.isEmpty()
+        ? tr("Battery") : tr("Battery %1").arg(batteryLabel);
+    items << statusItem(QStringLiteral("battery"), batteryGlyph, batteryLabel, batteryName,
                         battery.value(QStringLiteral("visible")).toBool()
                             && controlEnabled("battery"),
                         battery.value(QStringLiteral("level")).toReal(),
                         battery.value(QStringLiteral("enabled")).toBool(),
-                        StatusPriority::Battery, tr("Battery"), QStringLiteral("battery"),
+                        StatusPriority::Battery, batteryName, QStringLiteral("battery"),
                         statusState(battery), QStringLiteral("status"),
                         controlEnabled("battery"));
 
@@ -3130,6 +3140,9 @@ void ShellController::onBatteryState(const QByteArray &json)
 {
     if (m_statusModel)
         m_statusModel->applyBatteryJson(json);
+    // T273: the dim-on-battery switch depends on the live power source, so a
+    // battery/AC transition re-evaluates the forwarded brightness.
+    applyDisplayPolicy();
     noteInitialStatusReply(kInitialStatusBattery);
 }
 
@@ -7931,15 +7944,30 @@ void ShellController::applyDisplayPolicy()
     // value (the same rule the wallpaper forwarder follows).
     if (m_settingsClient->isAvailable() && !m_settingsSnapshotReceived)
         return;
-    const DisplaySettings settings = displaySettingsFromValues(m_settingsClient->values());
-    if (m_displaySent && settings == m_displaySettings)
+    const QVariantMap values = m_settingsClient->values();
+    const DisplaySettings settings = displaySettingsFromValues(values);
+    // T273: the Battery pane's "Dim on battery" switch is a real consumer of
+    // the same level the slider writes. The stored `display.brightness` stays
+    // the user's level; the compositor receives the effective level while the
+    // machine is on battery.
+    const bool dimOnBattery =
+        values.value(QStringLiteral("power.dimOnBattery"), false).toBool();
+    const QVariantMap battery = m_statusModel ? m_statusModel->battery() : QVariantMap();
+    const bool onBattery = battery.value(QStringLiteral("onBattery")).toBool()
+        || battery.value(QStringLiteral("chargeState")).toString()
+               == QLatin1String("discharging");
+    const double brightness = dimOnBattery && onBattery
+        ? settings.brightness * 0.7 : settings.brightness;
+    if (m_displaySent && settings == m_displaySettings
+            && qFuzzyCompare(brightness, m_displayBrightness))
         return;
     m_displaySettings = settings;
+    m_displayBrightness = brightness;
     m_displaySent = true;
     m_protocol->setDisplayPolicy(settings.scale, outputTransformFromName(settings.rotation),
-                                 settings.brightness);
+                                 brightness);
     fprintf(stderr, "dragonfruit-shell: display applied (scale=%.3f rotation=%s brightness=%.3f)\n",
-            settings.scale, qPrintable(settings.rotation), settings.brightness);
+            settings.scale, qPrintable(settings.rotation), brightness);
 }
 
 void ShellController::onDockStateChanged(const QVariantList &entries)

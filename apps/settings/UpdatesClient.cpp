@@ -236,7 +236,7 @@ void MockUpdatesClient::rebuild()
     view.insert(QStringLiteral("gpu"), QStringLiteral("Example GPU"));
     view.insert(QStringLiteral("gpuLabel"), QStringLiteral("Example GPU"));
     view.insert(QStringLiteral("diskBytes"), qlonglong(512) * 1024 * 1024 * 1024);
-    view.insert(QStringLiteral("diskLabel"), QStringLiteral("512 GB"));
+    view.insert(QStringLiteral("diskLabel"), QStringLiteral("512 GiB"));
 
     view.insert(QStringLiteral("updatesAvailable"), m_providerAvailable);
     view.insert(QStringLiteral("glyph"), QStringLiteral("software-update"));

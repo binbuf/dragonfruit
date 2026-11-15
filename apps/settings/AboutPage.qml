@@ -90,7 +90,7 @@ Item {
         if (value <= 0)
             return qsTr("Not available");
         const gib = value / (1024 * 1024 * 1024);
-        return (gib >= 10 ? Math.round(gib) : Math.round(gib * 10) / 10) + " GB";
+        return (gib >= 10 ? Math.round(gib) : Math.round(gib * 10) / 10) + " GiB";
     }
 
     function openReport() {

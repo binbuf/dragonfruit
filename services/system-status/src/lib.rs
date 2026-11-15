@@ -44,7 +44,10 @@ use dragonfruit_networkmanager::{
     AddConnectionSpec, AddKind, JoinRequest, JoinResult, NetworkManagerAdapter,
     NetworkManagerSource, WifiAccess,
 };
-use dragonfruit_power::{PowerAdapter, PowerProfile, PowerSource, ProfileOutcome};
+use dragonfruit_power::{
+    BatteryHistory, PowerAdapter, PowerProfile, PowerSource, ProfileOutcome, MAX_RANGE_SECS,
+    SAMPLE_INTERVAL_SECS,
+};
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
@@ -630,6 +633,36 @@ pub fn battery_view<P: PowerSource>(adapter: &PowerAdapter<P>) -> Value {
         "activeProfile": snapshot.active_profile().map(PowerProfile::id),
         "profileLabel": snapshot.profile_label(),
         "profiles": profiles,
+        "history": history_view(adapter.history()),
+    })
+}
+
+/// The Battery pane's usage-history view: the points the sampler recorded
+/// since the service started, oldest first, with their age in seconds.
+///
+/// UPower exposes no charge history, so this is a real session sampler, not a
+/// fabricated series. `state` is `empty` until the first read lands; the pane
+/// renders that as an explicit empty state with a refresh path, never as a
+/// chart frame with no data.
+fn history_view(history: &BatteryHistory) -> Value {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or_default();
+    let samples: Vec<Value> = history
+        .window(now, MAX_RANGE_SECS)
+        .into_iter()
+        .map(|(seconds_ago, percent)| {
+            json!({ "secondsAgo": seconds_ago, "percent": percent })
+        })
+        .collect();
+    json!({
+        "state": if samples.is_empty() { "empty" } else { "available" },
+        "count": samples.len(),
+        "samples": samples,
+        "rangeSeconds": MAX_RANGE_SECS,
+        "sampleIntervalSeconds": SAMPLE_INTERVAL_SECS,
+        "startedAt": history.started_at(),
     })
 }
 

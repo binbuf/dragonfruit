@@ -81,7 +81,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Appearance | `settingsd` (design-system themes, dark/light, accent, highlight, sidebar icon size, wallpaper tint, scroll bars, attached-menu transparency, motion link) ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md)) |
 | Accessibility | live AT-SPI read + `settingsd` (`accessibility.reduceMotion`, `reduceTransparency`, `increaseContrast`) ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0215](adr/0215-glass-live-settings-and-appearance-policy.md)) |
 | Desktop & Dock | `settingsd` → shell + compositor; the Desktop & Stage Manager group writes `desktop.showItems` for the Files desktop, with T242/T245b rows disabled by reason |
-| Displays | Compositor output API — **shipped:** scale, rotation, and brightness; **capability-gated:** refresh, arrangement, night light, color profile, HDR, and VRR are disabled with an OPEN reason until the compositor/colord half exists ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md)) |
+| Displays | Compositor output API + the real platform output list — **shipped:** per-output name/preview/selector, scale, rotation, brightness, and the reported refresh; **capability-gated:** Use as, auto-brightness, adaptive color, refresh switching, arrangement, Night Light (toggle/schedule/temperature), color profile, TV mode, HDR, VRR, and overscan are disabled with an OPEN reason until the compositor/colord/sensor half exists. One table (`displaycapabilities`) drives both the pane and the advanced sheet ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0274](adr/0274-data-panes-sampler-and-capability-rows.md)) |
 | Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures; Screen Saver…/Clock Appearance… deep-link to the Screen Saver pane ([adr/0239](adr/0239-wallpaper-notifications-focus-lock-panes.md)) |
 | Menu Bar | `settingsd` → shell |
 | Search | `settingsd` durable preferences → the T246 search service; the pane ships categories, indexed locations, shortcut, web search, and menu-bar visibility, while indexing status/rebuild are disabled with the service absent |
@@ -366,6 +366,21 @@ remains optional).
   `power.historyRange`) and a Power Settings group that reads `idle.blank`/
   `idle.lock` and navigates to Lock Screen. Storage's usage categories and
   Manage row are now shipped rows in the map.
+
+T273 completes the three data panes. Battery's chart is a real bounded
+session sampler in `services/power` (`system-status` publishes `history`),
+with an explicit empty state and Refresh until two points exist; screen-on
+usage is one honest row instead of a second empty chart. Schema revision 30
+adds `power.dimOnBattery` (shell display brightness) and
+`power.preventSleep` (session idle suspend), while `power.showPercentage`
+now labels the menu-bar battery item. Storage's stacked chart gains the free
+remainder, a legend, and GiB labels; its groups keep their titles and reasons
+when UDisks2 is absent, and Manage storage… is a live delegate. Displays
+reads the real platform output list for the name, proportional preview,
+refresh, and per-output selector; the capability table gains an `area` and is
+the one source for every disabled row, and the advanced sheet no longer
+duplicates brightness or rotation. `make t273-data-panes-capture` writes
+live/empty/absence stills in light and dark.
 
 Schema revision 22 adds `input.secondaryClick`, `input.scrollSpeed`,
 `input.doubleClickSpeed`, `input.haptics`, `input.lookUp`, `input.sources`,

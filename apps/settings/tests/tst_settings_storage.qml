@@ -11,8 +11,8 @@ import Dragonfruit.Settings
 // round-trip, and the absence note.
 Item {
     id: stage
-    width: 900
-    height: 720
+    width: 740
+    height: 820
 
     TestCase {
         id: testCase
@@ -29,6 +29,8 @@ Item {
         // The fixture store is process-global; reset the volume to unmounted
         // before every case so the pane always opens on a known state.
         function init() {
+            Settings.refreshStorage();
+            Settings.setStorageFixture("live");
             Settings.unmountStorage(volumePath);
             Settings.refreshStorage();
         }
@@ -108,6 +110,41 @@ Item {
             verify(pane.recommendationsRepeater.count > 0);
             compare(pane.manageRow.visible, true);
             compare(pane.manageButton.enabled, true);
+            // The stacked chart has one segment per category plus free, and
+            // the legend names the same set.
+            compare(pane.usageChartRepeater.count, 3);
+            compare(pane.usageLegendRepeater.count, 4);
+            verify(pane.usageLegendRepeater.itemAt(3).modelData.label === "Free");
+            verify(pane.usageSummaryText.text.indexOf("GiB") >= 0);
+        }
+
+        function test_empty_storage_keeps_the_chart_and_manage_action() {
+            Settings.setStorageFixture("empty");
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(Settings.storage.present, true);
+            verify(pane.ready);
+            compare(pane.volumes.length, 0);
+            verify(pane.noVolumesNote.visible);
+            verify(pane.usageGroup.visible);
+            verify(pane.usageChart.visible);
+            verify(pane.manageRow.visible);
+            compare(pane.manageButton.enabled, true);
+        }
+
+        function test_udisks_absence_keeps_the_pane_structure() {
+            Settings.setStorageFixture("absent");
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(Settings.storageAvailable, false);
+            compare(pane.ready, false);
+            verify(pane.usageGroup.visible);
+            verify(pane.volumesGroup.visible);
+            verify(pane.absenceNote.visible);
+            verify(pane.usageChart.visible, "df usage stays live without UDisks2");
+            verify(pane.manageRow.visible);
+            compare(pane.manageButton.enabled, true);
+            Settings.setStorageFixture("live");
         }
 
         function test_volume_row_shows_capacity_from_the_usage_read() {
