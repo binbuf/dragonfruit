@@ -905,7 +905,7 @@ QtObject {
                 root.row("auth", qsTr("Fingerprints"), qsTr("Use fingerprint for authentication"), "toggle",
                          "PAM", "biometrics.auth", "read-only", "shipped"),
                 root.row("userSwitching", qsTr("Fingerprints"), qsTr("Fingerprint for user switching"), "toggle",
-                         "PAM/display manager", "biometrics.userSwitching", "hidden"),
+                         "omit", "omit", "omitted", "omitted"),
                 root.row("purchases", qsTr("Fingerprints"), qsTr("Fingerprint purchases"), "omit",
                          "omit", "omit", "omitted", "omitted")
             ],

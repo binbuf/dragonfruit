@@ -182,9 +182,10 @@ it never claims a source that is not installed.
 - Password change through PAM/`passwd` with the distro adapter.
 - Fingerprint enrollment through fprintd.
 - PAM configuration for fingerprint unlock is distro-specific; the adapter
-  detects `pam_fprintd` and enables the toggle only when present.
+  detects `pam_fprintd` and shows it as read-only status, never as a write.
 - Fast user switching is display-manager-specific; support GDM/SDDM/LightDM
-  where the API exists, otherwise hide the row.
+  where the API exists, otherwise hide the row. No display manager exposes a
+  fingerprint-triggered switch, so the biometrics pane omits that row.
 
 ### 6.3 Automatic login
 

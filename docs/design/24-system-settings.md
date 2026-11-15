@@ -111,7 +111,7 @@ inset come from the in-repo structural measurements
 | Sound | yes | Mute zeroes the volume slider; Input tab shows output controls; Balance has no consumer | T280 |
 | Focus | yes | Inert mode rows styled as radio controls; three duplicate state surfaces; no list/add/delete/filters | T278 |
 | Lock Screen | yes | Require-password writes inactivity seconds; custom idle displays “Never”; no battery/AC split | T278 |
-| Biometrics & Password | yes | Password dialog closes before the host result; no enrollment progress; no fast user switching | T279 |
+| Biometrics & Password | yes | Password dialog closes before the host result; no enrollment progress | T279 |
 | Users & Groups | yes | No password path for a new user; no change-password row; group delete has no confirmation | T279 |
 | Online Accounts | code/absence | Pane disappears when GOA is absent; Add has no sign-in step | T279 |
 | Printers & Scanners | yes | Add dialog disconnected from its fields; no remove/test/share; scanners have no action | T280 |
@@ -1045,11 +1045,17 @@ independently.
 |---|---|---|---|---|
 | Change Password | Change password | Button | PAM/accountsservice | ship |
 | Touch ID / Add Fingerprint | Fingerprints | List + add/delete | fprintd | ship |
-| Use Touch ID to unlock | Use fingerprint to unlock | Toggle | PAM + `biometrics.unlock` | ship |
+| Use Touch ID to unlock | Use fingerprint to unlock | Toggle | PAM + `biometrics.unlock` | ship as read-only status |
 | Use Touch ID for purchases | — | Omit | — | omit |
-| Use Touch ID for autofill | Use fingerprint for authentication | Toggle | PAM | adapt |
-| Use Touch ID for fast user switching | Fingerprint for user switching | Toggle | PAM/display manager | adapt |
+| Use Touch ID for autofill | Use fingerprint for authentication | Toggle | PAM | ship as read-only status |
+| Use Touch ID for fast user switching | — | Omit | — | omit |
 | Use Apple Watch | — | Omit | — | omit |
+
+The unlock and authentication rows are disabled PAM status, not writes: the
+settings app does not edit `/etc/pam.d`. Fast user switching, purchase
+authorization, and watch unlock are omitted because no display manager exposes
+a fingerprint-triggered switch and there is no secure element; a toggle for
+them would be a control with no consumer.
 
 ### 4.14 Users & Groups — T279
 

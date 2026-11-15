@@ -851,7 +851,7 @@ Owner: `fprintd` + PAM + distro adapter. Absence: note; no fingerprint write.
 | Use Touch ID to unlock | Use fingerprint to unlock | Toggle | PAM + `settingsd` | Live |
 | Use Touch ID for purchases | — | Omit | — | Apple service |
 | Use Touch ID for autofill | Use fingerprint for authentication | Toggle | PAM | Live |
-| Use Touch ID for fast user switching | Fingerprint for user switching | Toggle | PAM/display manager | If supported |
+| Use Touch ID for fast user switching | — | Omit | — | No display-manager fingerprint switch hook |
 
 **T228 status.** fprintd lists/enrolls/deletes fingerprints over its system-bus
 API; AccountsService `SetPassword` (polkit-authorized) changes the password and
