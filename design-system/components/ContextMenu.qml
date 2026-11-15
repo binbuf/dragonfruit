@@ -669,7 +669,9 @@ Item {
     opacity: root.open ? 1.0 : 0.0
     z: 2000
     focus: root.open
-    activeFocusOnTab: root.open
+    // A menu is a focus scope, not a Tab stop; its owner focuses it and the
+    // arrow/Escape/type-ahead handler owns the keys (T267).
+    activeFocusOnTab: false
 
     onHighlightedIndexChanged: {
         var key = root.keyAt(root.entries, root.highlightedIndex);
@@ -959,6 +961,8 @@ Item {
 
     Accessible.role: Accessible.PopupMenu
     Accessible.name: root.accessibleName
+    Accessible.description: qsTr("Menu with %1 items").arg(root.entries.length)
+    Accessible.focusable: true
 
     component SubmenuPanel: Item {
         id: subPanel

@@ -19,6 +19,11 @@ Item {
     property string title: ""
     property bool active: true
     property bool showTrafficLights: true
+    // T267: true when the host app is right-to-left. The shell's
+    // LayoutMirroring already mirrors the anchors and toolbar rows; this
+    // property is the explicit reading-direction flag for consumers that need
+    // to choose a logical glyph or label.
+    property bool rtl: false
     // An app can set the style explicitly; otherwise a `TitleBar` inside an
     // `AppWindow` inherits the window's named style.
     property string style: {
@@ -47,6 +52,7 @@ Item {
     property alias trailing: trailingRow
     property alias titleRow: titleRow
     property alias toolbarRow: toolbarRow
+    property alias titleText: titleText
 
     signal closeRequested()
     signal minimizeRequested()
@@ -158,6 +164,7 @@ Item {
         + Theme.controls.titlebar.paddingH
 
     Text {
+        id: titleText
         anchors.centerIn: titleRow
         width: Math.max(0, titleRow.width - 2 * root.titleSideReserve)
         text: root.title

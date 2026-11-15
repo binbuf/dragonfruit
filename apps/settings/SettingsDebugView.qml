@@ -84,6 +84,7 @@ Dialog {
                 width: 320
                 model: root.paneChoices
                 accessibleName: qsTr("Pane")
+                Accessible.description: qsTr("Choose the pane whose rows are shown")
                 onSelected: (value) => root.paneId = value
             }
 
@@ -110,6 +111,8 @@ Dialog {
                 color: Theme.color.textPrimary
                 font.pixelSize: Theme.controls.button.fontSize
                 wrapMode: Text.WordWrap
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
             }
             Text {
                 width: parent.width
@@ -121,16 +124,25 @@ Dialog {
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
             }
         }
 
         Rectangle {
+            id: rowListFrame
             width: parent.width
             height: root.listHeight
             radius: Theme.controls.settingsGroup.radius
             color: Theme.color.surfaceMuted
             border.width: Theme.controls.window.borderWidth
             border.color: Theme.color.border
+
+            FocusRing {
+                target: rowListFrame
+                cornerRadius: Theme.controls.settingsGroup.radius
+                shown: rowList.activeFocus
+            }
 
             ListView {
                 id: rowList
@@ -140,6 +152,7 @@ Dialog {
                 model: SettingsMap.rowsFor(root.paneId)
                 spacing: Theme.primitive.spacing.xs
                 boundsBehavior: Flickable.StopAtBounds
+                activeFocusOnTab: true
 
                 delegate: Item {
                     required property var modelData
@@ -176,7 +189,19 @@ Dialog {
                             elide: Text.ElideRight
                         }
                     }
+
+                    Accessible.role: Accessible.ListItem
+                    Accessible.name: modelData.label
+                    Accessible.description: qsTr("Owner %1, key %2, absence %3, %4")
+                        .arg(modelData.owner).arg(modelData.key)
+                        .arg(modelData.absence)
+                        .arg(root.stateLabel(modelData.state))
+                    Accessible.focusable: true
                 }
+
+                Accessible.role: Accessible.List
+                Accessible.name: qsTr("Pane rows")
+                Accessible.description: qsTr("Every row in the selected pane and its owner")
             }
         }
     }

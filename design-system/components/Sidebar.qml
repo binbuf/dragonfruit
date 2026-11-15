@@ -22,6 +22,10 @@ FocusScope {
     // app owner onto these two slots; the row height stays the design token.
     property real iconSize: Theme.controls.sidebar.iconSize
     property real categoryIconSize: Theme.controls.sidebar.categoryIconSize
+    // T267: RTL text alignment. The row geometry mirrors through the shell's
+    // LayoutMirroring; this only fixes the physical text alignment, which Qt
+    // does not mirror automatically.
+    property bool rtl: false
 
     signal activated(int index, var item)
 
@@ -124,7 +128,8 @@ FocusScope {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: Theme.controls.window.borderWidth
-        color: Theme.color.border
+        color: Glass.increaseContrast ? Theme.color.textPrimary
+                                      : Theme.color.border
     }
 
     Flickable {
@@ -152,28 +157,28 @@ FocusScope {
     }
 
     Keys.onPressed: (event) => {
-        switch (event.key) {
-        case Qt.Key_Down:
+        var action = Keymap.actionFor("sidebar", event.key,
+                                      event.modifiers);
+        switch (action) {
+        case "next":
             root.move(1);
             event.accepted = true;
             break;
-        case Qt.Key_Up:
+        case "previous":
             root.move(-1);
             event.accepted = true;
             break;
-        case Qt.Key_Home:
+        case "first":
             root.currentIndex = -1;
             root.move(1);
             event.accepted = true;
             break;
-        case Qt.Key_End:
+        case "last":
             root.currentIndex = root.entries.length;
             root.move(-1);
             event.accepted = true;
             break;
-        case Qt.Key_Return:
-        case Qt.Key_Enter:
-        case Qt.Key_Space:
+        case "activate":
             root.activateIndex(root.currentIndex);
             event.accepted = true;
             break;
@@ -182,6 +187,7 @@ FocusScope {
 
     Accessible.role: Accessible.List
     Accessible.name: qsTr("Sidebar")
+    Accessible.description: qsTr("System Settings panes")
 
     component SidebarRow: Item {
         id: row
@@ -207,6 +213,10 @@ FocusScope {
         readonly property real glyphSlot: row.category !== null || root.hasCategoryItems
                 ? root.categoryIconSize
                 : root.iconSize
+        readonly property string sectionTitle: {
+            var section = root.sections[row.entry.section];
+            return section && section.title ? section.title : "";
+        }
 
         width: parent ? parent.width : 0
         height: isHeader ? headerText.implicitHeight + Theme.controls.sidebar.sectionGap
@@ -214,17 +224,20 @@ FocusScope {
 
         Text {
             id: headerText
+            objectName: "sidebarHeaderText"
             visible: row.isHeader
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.leftMargin: Theme.controls.sidebar.padding
             text: row.entry.label
-            color: Theme.color.textTertiary
+            color: Glass.increaseContrast ? Theme.color.textPrimary
+                                          : Theme.color.textTertiary
             font.pixelSize: Theme.primitive.font.sizeXs
             font.weight: Theme.primitive.font.weightSemibold
             font.capitalization: Font.AllUppercase
             elide: Text.ElideRight
+            horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
         }
 
         // Hover fill (animated). The selection fill is a second, instant
@@ -285,6 +298,7 @@ FocusScope {
 
         Text {
             id: rowLabel
+            objectName: "sidebarRowLabel"
             visible: !row.isHeader
             anchors.left: rowGlyph.visible ? rowGlyph.right : parent.left
             anchors.leftMargin: Theme.controls.sidebar.padding
@@ -295,6 +309,7 @@ FocusScope {
             color: row.selected ? Theme.color.accentContent : Theme.color.textPrimary
             font.pixelSize: Theme.controls.button.fontSize
             elide: Text.ElideRight
+            horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
         }
 
         Rectangle {
@@ -341,6 +356,9 @@ FocusScope {
 
         Accessible.role: row.isHeader ? Accessible.StaticText : Accessible.ListItem
         Accessible.name: row.entry.label
+        Accessible.description: row.isHeader ? ""
+                                : (row.sectionTitle.length > 0
+                                   ? row.sectionTitle : qsTr("Pane"))
         Accessible.selected: !row.isHeader && row.selected
         Accessible.selectable: !row.isHeader
         Accessible.focusable: !row.isHeader

@@ -191,15 +191,12 @@ Item {
             }
         }
 
-        Text {
+        SettingsAbsenceNotice {
             id: absenceNote
             objectName: "onlineAccountsAbsenceNote"
-            width: parent.width
-            visible: !root.ready
-            text: qsTr("Online accounts are not installed.")
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            wrapMode: Text.WordWrap
+            kind: "disabled-with-reason"
+            show: !root.ready
+            reason: qsTr("Online accounts are not installed.")
         }
     }
 

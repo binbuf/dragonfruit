@@ -1279,6 +1279,13 @@ Open source system software</source>
     </message>
 </context>
 <context>
+    <name>ContextMenu</name>
+    <message>
+        <source>Menu with %1 items</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>ControlCenter</name>
     <message>
         <source>%1 %2</source>
@@ -2447,6 +2454,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Close dialog</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dialog</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6582,6 +6593,10 @@ Open source system software</source>
         <source>Open…</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>This setting is unavailable: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SettingsDebugView</name>
@@ -6590,7 +6605,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Choose the pane whose rows are shown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every row in the selected pane and its owner</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6606,11 +6629,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Owner %1, key %2, absence %3, %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Pane</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Pane &amp; row owners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pane rows</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8488,6 +8519,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Ranked settings results grouped by pane</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Search results, %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8547,7 +8582,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Search every System Settings pane and row</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>System Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System Settings sidebar, toolbar, and detail pane</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8590,6 +8633,13 @@ Open source system software</source>
     </message>
     <message>
         <source>Sharing is unavailable because systemd is not reachable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Sheet</name>
+    <message>
+        <source>Sheet</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -8737,7 +8787,15 @@ Open source system software</source>
 <context>
     <name>Sidebar</name>
     <message>
+        <source>Pane</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Sidebar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System Settings panes</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

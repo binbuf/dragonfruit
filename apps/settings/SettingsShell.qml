@@ -35,6 +35,14 @@ Item {
     // Bound to the host Window's focus so the titlebar/controls show the
     // focused state; the app-local chrome material itself is focus-invariant.
     property bool windowActive: true
+    // T267: the layout mirrors when the app locale is right-to-left. The
+    // property is writable so tests and captures can render the RTL variant
+    // without changing the process locale. Qt mirrors anchors and positioners
+    // for every child; components add text-alignment overrides where a
+    // physical alignment is needed.
+    property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.enabled: root.rtl
+    LayoutMirroring.childrenInherit: true
     // Guards the sidebar selection sync so setting `currentIndex`
     // programmatically is not mistaken for a user navigation.
     property bool syncing: false
@@ -97,6 +105,10 @@ Item {
     property alias sidebarPane: sidebarPane
     property alias sidebarToolbar: sidebarToolbar
     property alias sidebarTrafficLights: sidebarTrafficLights
+    // T267: the two columns are exposed so the RTL and scale cases can assert
+    // the mirrored split without walking the visual tree.
+    property alias sidebarColumn: sidebarColumn
+    property alias detailColumn: detailColumn
     // T230b: the unified toolbar is the titlebar row; keep the old alias so
     // existing chrome-material consumers read the same surface.
     property alias toolbar: titleBar
@@ -934,23 +946,32 @@ Item {
 
     onSidebarSectionsChanged: root.syncSelection()
 
+    // T267: the global half of the one keyboard map (Keymap.qml).
+    // The focused control gets first refusal; these commands only run when it
+    // leaves the key unhandled. Tab/Shift+Tab stay Qt's normal traversal.
     Keys.onPressed: (event) => {
-        switch (event.key) {
-        case Qt.Key_Left:
-            if (event.modifiers & Qt.AltModifier) {
-                root.back();
-                event.accepted = true;
-            }
+        var action = Keymap.actionFor("shell", event.key,
+                                      event.modifiers);
+        switch (action) {
+        case "focus-search":
+            root.focusSearch();
+            event.accepted = true;
             break;
-        case Qt.Key_Right:
-            if (event.modifiers & Qt.AltModifier) {
-                root.forward();
-                event.accepted = true;
-            }
+        case "back":
+            root.back();
+            event.accepted = true;
             break;
-        case Qt.Key_F:
-            if (event.modifiers & Qt.ControlModifier) {
+        case "forward":
+            root.forward();
+            event.accepted = true;
+            break;
+        case "dismiss":
+            if (root.searchActive) {
+                root.searchText = "";
                 root.focusSearch();
+                event.accepted = true;
+            } else if (root.subPaneOpen) {
+                root.closeSubPane();
                 event.accepted = true;
             }
             break;
@@ -1288,6 +1309,8 @@ Item {
                         id: searchField
                         width: parent.width
                         placeholderText: qsTr("Search")
+                        rtl: root.rtl
+                        Accessible.description: qsTr("Search every System Settings pane and row")
                         onTextChanged: root.searchText = searchField.text
                         onCleared: root.searchText = ""
                         // T223: Down/Up move into the ranked result list; Return
@@ -1325,6 +1348,9 @@ Item {
                             id: sidebar
                             anchors.fill: parent
                             visible: !root.searchActive
+                            // T267: the sidebar labels right-align in RTL while
+                            // the row geometry mirrors through LayoutMirroring.
+                            rtl: root.rtl
                             // T227: the Appearance pane's sidebar icon size.
                             iconSize: root.sidebarIconPixels
                             categoryIconSize: root.sidebarCategoryIconPixels
@@ -1349,6 +1375,7 @@ Item {
                             id: searchResultsList
                             anchors.fill: parent
                             visible: root.searchActive
+                            rtl: root.rtl
                             results: root.searchResults
                             query: root.searchQuery
                             onActivated: (result) => root.activateSearchResult(result)
@@ -1397,6 +1424,7 @@ Item {
                     height: Theme.controls.settingsWindow.chromeHeight
                     title: root.paneTitle
                     active: root.windowActive
+                    rtl: root.rtl
                     // The traffic lights and sidebar live left of the split;
                     // Back/Forward and the title live here, centred over the
                     // detail pane rather than the whole window.
@@ -1584,4 +1612,5 @@ Item {
 
     Accessible.role: Accessible.Pane
     Accessible.name: qsTr("System Settings")
+    Accessible.description: qsTr("System Settings sidebar, toolbar, and detail pane")
 }

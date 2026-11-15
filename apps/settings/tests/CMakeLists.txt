@@ -838,6 +838,40 @@ set_tests_properties(tst_settings_components PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# T267 accessibility/keyboard/RTL/long-string cases. The runner is shared with
+# the component suite; the QML file is the case set. `DF_SETTINGS_FIXTURE`
+# keeps the shell off the host bus.
+add_test(
+    NAME tst_settings_a11y
+    COMMAND tst_settings_components
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_a11y.qml
+)
+set_tests_properties(tst_settings_a11y PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# T267: the same QML at 1x/1.5x/2x. Each case asserts the device pixel ratio
+# and then lays out 740x820 and 720x480 in logical points.
+foreach(_scale 1x 1_5x 2x)
+    if(_scale STREQUAL "1x")
+        set(_factor 1)
+    elseif(_scale STREQUAL "1_5x")
+        set(_factor 1.5)
+    else()
+        set(_factor 2)
+    endif()
+    add_test(
+        NAME tst_settings_scale_${_scale}
+        COMMAND tst_settings_components
+            -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_scale_${_scale}.qml
+    )
+    set_tests_properties(tst_settings_scale_${_scale} PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_SCALE_FACTOR=${_factor};DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+endforeach()
+
 # Settings search/deep-link/row-anatomy tests (T223): the local index covers
 # panes/sections/rows with synonyms and help text, results rank and deep-link,
 # keyboard navigation and history work, and long strings never clip a control.

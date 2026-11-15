@@ -25,6 +25,8 @@ set_source_files_properties(Glass.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(WindowStyle.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # The window overlay registry (T266) is a singleton.
 set_source_files_properties(OverlayLayer.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# The shared keyboard map (T267) is a singleton.
+set_source_files_properties(Keymap.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_library(dragonfruit-design-system STATIC)
 qt_add_qml_module(dragonfruit-design-system
@@ -36,6 +38,7 @@ qt_add_qml_module(dragonfruit-design-system
         Glass.qml
         WindowStyle.qml
         OverlayLayer.qml
+        Keymap.qml
         PhosphorGlyphs.qml
         TablerGlyphs.qml
         BrandGlyphs.qml
@@ -169,6 +172,7 @@ df_qml_lint(design-system
     Material.qml
     Glass.qml
     WindowStyle.qml
+    Keymap.qml
     PhosphorGlyphs.qml
     TablerGlyphs.qml
     BrandGlyphs.qml

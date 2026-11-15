@@ -493,15 +493,12 @@ Item {
             width: parent.width
             visible: !root.ready
 
-            Text {
+            SettingsAbsenceNotice {
                 id: absenceNote
                 objectName: "printersAbsenceNote"
-                width: parent.width
-                text: qsTr("The printing service is not running, so printers and "
-                           + "scanners are unavailable.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
+                kind: "disabled-with-reason"
+                reason: qsTr("The printing service is not running, so printers and "
+                             + "scanners are unavailable.")
             }
         }
     }

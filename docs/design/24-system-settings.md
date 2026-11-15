@@ -295,6 +295,102 @@ T264 makes every navigation path truthful:
   and row list to the 720×480 frame, scrolls the list, and keeps its pane
   selector in step with the shell.
 
+### 3.3.2 Keyboard and focus contract (T267)
+
+Accessibility is a shell contract, not a per-pane checklist. The map is one
+table in `design-system/Keymap.qml`; components ask it for the action a key
+means in their scope, so documentation and behavior cannot drift.
+
+| Scope | Keys | Action |
+|---|---|---|
+| shell | Ctrl+F | Focus the search field |
+| shell | Alt+Left / Alt+Right | Back / Forward |
+| shell | Escape | Clear search, then close the open sub-pane |
+| sidebar | Up/Down | Previous/next pane (section headers are skipped) |
+| sidebar | Home/End | First/last pane |
+| sidebar | Return/Enter/Space | Open the selected pane |
+| search field | Down/Up | Enter the ranked result list |
+| search field | Escape | Clear, then return to the sidebar |
+| results | Up/Down, Home/End | Move through results |
+| results | Return/Enter | Open the selected result |
+| results | Escape | Clear the search and return to the field |
+| any | Tab / Shift+Tab | Qt's normal focus traversal |
+
+- **No invisible tab stops.** Overlay focus scopes (`Dialog`, `Sheet`,
+  `Popup`, `Popover`, `ContextMenu`) are focus owners, not Tab stops; their
+  content owns the visible rings. The search clear affordance is a real Tab
+  stop with a ring and Return/Space activation, and an absence-only pane's
+  note is a focus stop so the pane is never pointer-only.
+- **Every focusable item shows a ring.** Rows, sidebar rows, search result
+  rows, buttons, switches, sliders, selects, disclosure/help controls, the
+  search clear button, scroll views, and dialog/sheet controls use
+  `FocusRing`. The result list rings its current row while the list owns
+  focus rather than relying on the accent selection fill.
+- **Focus is restored.** Pane and sub-pane changes focus the first keyboard
+  stop in the new body; search activation lands on the row's control;
+  Back/Forward restore the row and focus; closing a `Dialog` or `Sheet`
+  returns focus to the control that opened it. Alt+Left/Right are never
+  consumed by a scroll view as a horizontal nudge.
+- **AT-SPI is named.** The shell, sidebar, search results, rows, controls,
+  popups, dialogs, sheets, debug view, and absence notices expose role,
+  name, description, and current value/range where the control has one. A
+  row's accessible description includes its help and inline validation
+  error. A newly visible validation error or absence note is announced
+  once; a no-match or changed result count is announced once per query.
+- **The debug view is keyboard reachable.** Pane & Row Owners is a Dialog
+  with a named pane selector, a named row list, and one accessible list item
+  per row carrying owner/key/absence/state.
+
+### 3.3.3 Adaptive presentation and scale (T267)
+
+The Settings app mirrors the same `accessibility.*` keys the shell uses; it
+does not invent a second policy. `SettingsShell` binds them to `Theme` and
+`Glass`, so the open window follows a key change without a restart:
+
+- `accessibility.reduceMotion` sets `Theme.reducedMotion`; every motion token
+  duration collapses to 0 while the state change stays legible.
+- `accessibility.reduceTransparency` sets `Glass.reduceTransparency`; the
+  material resolver takes the opaque accessibility plate.
+- `accessibility.increaseContrast` sets `Glass.increaseContrast`; the
+  material resolver boosts edges and the shared Settings components raise
+  secondary/tertiary ink and separators to the primary ink.
+
+RTL and pseudo-locale behavior:
+
+- The shell sets `LayoutMirroring.enabled` from the application layout
+  direction and inherits it to the tree, so the sidebar moves to the right,
+  the detail pane to the left, and row label/control slots swap sides.
+- Text alignment is set explicitly (Qt does not mirror it): sidebar labels,
+  search field text, result labels/subtitles, row labels/descriptions,
+  group titles, and the debug/absence notes right-align in RTL. The
+  disclosure chevron points left. Control order inside a row is not
+  reversed; only the label/control sides are.
+- The long-string sweep covers the sidebar (section and pane labels), the
+  titlebar title, search result labels/subtitles, rows and groups, dialogs,
+  and both About surfaces. Long labels elide, descriptions wrap, and no
+  control is pushed outside its row.
+
+Scale:
+
+- The same QML is tested at 1×, 1.5×, and 2× (`tst_settings_scale_*`) at
+  740×820 and 720×480. The cases assert the device pixel ratio, the
+  sidebar/detail split, the search field and titlebar bounds, every
+  Appearance row's label/control non-overlap, and the scrollbar/resize-corner
+  inset. They are not a screenshot scaled after the fact.
+- The headless capture rail writes baseline, Increase Contrast, Reduce
+  Transparency, Reduce Motion, RTL, and 2× stills under the gitignored
+  `docs/captures/`.
+
+Remaining hard limits are explicit `OPEN` rows:
+
+| Limit | Why it stays open | Owner / rerun |
+|---|---|---|
+| A third-party AT-SPI application that does not expose a control | We cannot synthesize a role/name/value the application never exports; the shell can only name its own surfaces | T252 / a live AT-SPI audit |
+| Offscreen 2× PNG is clipped to logical size by Qt's `grabImage` | The 2× QML case asserts `Screen.devicePixelRatio == 2` and the logical layout; a physical 2× still needs a host Wayland session | T283 / live capture rail |
+| Orca/speech-dispatcher integration | Out of this task's scope; the shell exposes the semantics but does not own speech | T252 |
+| Lock/screen-saver accessibility | Those surfaces keep their own a11y path; Settings does not wrap them | T252 / T278 |
+| A hardware keyboard-layout or screen-reader-specific quirk | The headless tests cover the map and AT-SPI tree, not a specific host input stack | T284 real-host matrix |
+
 ### 3.4 Absence and empty states
 
 A missing provider is a supported state, not an empty page. Every pane keeps
@@ -1199,7 +1295,7 @@ from the first live T263 run; they are part of the same release bar.
 | P0-7 | Search is a no-op surface; shortcut is free text; indexing rows name nonexistent keys | `SearchPane.qml`, `schema.rs` | T265, T282 |
 | P0-8 | Notification global preferences are no-ops; per-app sheet is missing half the macOS options | `NotificationsPane.qml`, `schema.rs` | T278 |
 | P0-9 | Select popups and pane dialogs are clipped by the detail `ScrollView`; long lists are unusable | `Select.qml`, `ContextMenu.qml`, `Dialog.qml`, `SettingsShell.qml` | T266 (landed: window overlay layer, flip/clamp/scroll, dialog fit) |
-| P0-10 | `SettingsRow` has a binding loop; rows have no focus ring; toggles have no accessible names; long strings overflow | `SettingsRow.qml`, `Toggle.qml`, `Button.qml` | T266 (landed: implicit-size slot, focus ring, accessible names, elide), T267 |
+| P0-10 | `SettingsRow` has a binding loop; rows have no focus ring; toggles have no accessible names; long strings overflow | `SettingsRow.qml`, `Toggle.qml`, `Button.qml` | T266 (landed: implicit-size slot, focus ring, accessible names, elide), T267 (landed: one keyboard map, row/description/error announcements, RTL text alignment, 1×/1.5×/2× cases) |
 | P0-11 | Sidebar cannot scroll to most panes; no groups; opens Appearance instead of General; window is 800×640 | `SettingsShell.qml`, `SettingsWindow.qml`, `Sidebar.qml` | T263 (landed) |
 | P0-12 | Back/forward ignore subpanes; deep links cannot land in General subpanes/dialogs; help anchor is wrong; menu actions are dead | `SettingsShell.qml`, `SettingsWindow.qml`, `SettingsMenu.qml` | T264 (landed) |
 | P0-13 | settingsd accepts NaN/Infinity (persist panic), loses concurrent updates, hides persistence failure, and the client schema mirror drifts | `schema.rs`, `persist.rs`, `dbus.rs`, `settingsclient.cpp` | T282 |
@@ -1244,7 +1340,7 @@ from the first live T263 run; they are part of the same release bar.
 | P2-5 | Dialog titles repeat the first content line; no app icons in notification/focus lists | T266, T278 |
 | P2-6 | “OPEN” and task IDs leak into user-facing descriptions | T266 |
 | P2-7 | Debug view is larger than the minimum window and has no scroll | T264 (landed) |
-| P2-8 | Search field clear button has no accessible name | T267 |
+| P2-8 | Search field clear button has no accessible name | T267 (landed: named Tab stop with a ring and Return/Space activation) |
 | P2-9 | About panel’s regulatory overlay is not keyboard-accessible | T269 |
 | P2-10 | Window resize grips cover the scrollbar corners | T266 (landed: corner inset) |
 

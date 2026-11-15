@@ -19,12 +19,15 @@ Item {
     // `live-on-defaults` is normally silent, but a pane that wants to explain
     // "running on defaults" can ask for the note explicitly.
     property bool showWhenLive: false
+    // T267: the owner can gate the note without overriding `visible` (which
+    // would break the note's own live visibility rule).
+    property bool show: true
 
     readonly property bool controlsVisible: SettingsAbsence.controlsVisible(kind)
     readonly property bool controlsEnabled: SettingsAbsence.controlsEnabled(kind)
     readonly property bool writable: SettingsAbsence.writable(kind)
     readonly property bool delegated: SettingsAbsence.delegated(kind)
-    readonly property bool noteVisible: SettingsAbsence.showsNote(kind)
+    readonly property bool noteVisible: root.show && SettingsAbsence.showsNote(kind)
         && reason.length > 0 && (kind !== "live-on-defaults" || showWhenLive)
 
     signal delegateRequested()
@@ -34,6 +37,26 @@ Item {
     implicitHeight: content.implicitHeight
     width: parent ? parent.width : 0
     visible: root.noteVisible
+    // T267: an absence-only pane still needs a keyboard stop and a visible
+    // focus ring, otherwise the whole pane is unreachable without a pointer.
+    activeFocusOnTab: root.noteVisible
+
+    FocusRing {
+        target: root
+        cornerRadius: Theme.primitive.radius.sm
+        shown: root.activeFocus
+    }
+
+    // T267: the absence note is a named static-text/alert region, not an
+    // unlabelled sentence, and a newly visible note is announced once.
+    onNoteVisibleChanged: {
+        if (root.noteVisible)
+            Accessible.announce(root.reason);
+    }
+    onReasonChanged: {
+        if (root.noteVisible)
+            Accessible.announce(root.reason);
+    }
 
     Column {
         id: content
@@ -45,9 +68,12 @@ Item {
             objectName: "settingsAbsenceNoteText"
             width: parent.width
             text: root.reason
-            color: Theme.color.textSecondary
+            color: Glass.increaseContrast ? Theme.color.textPrimary
+                                          : Theme.color.textSecondary
             font.pixelSize: Theme.primitive.font.sizeSm
             wrapMode: Text.WordWrap
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: root.reason
         }
 
         Button {
@@ -58,4 +84,9 @@ Item {
             onClicked: root.delegateRequested()
         }
     }
+
+    Accessible.role: Accessible.Grouping
+    Accessible.name: root.reason
+    Accessible.description: qsTr("This setting is unavailable: %1").arg(root.kind)
+    Accessible.focusable: true
 }

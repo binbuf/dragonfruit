@@ -22,10 +22,15 @@ FocusScope {
     property real fieldRadius: Theme.controls.searchField.radius
     property color fieldFill: Theme.color.controlFill
     property color fieldBorder: root.activeFocus ? Theme.color.focusRing
-                                                 : Theme.color.border
+                                 : (Glass.increaseContrast
+                                    ? Theme.color.textPrimary
+                                    : Theme.color.border)
     property real iconSize: Theme.controls.searchField.iconSize
     property real paddingH: Theme.controls.searchField.paddingH
     property real fontSize: Theme.controls.button.fontSize
+    // T267: RTL text alignment. The shell mirrors the field geometry; the
+    // physical text alignment is set here.
+    property bool rtl: false
     // A soft top sheen for a field that sits on a glass card (the Applications
     // drawer). 0 keeps the flat field used by every other host.
     property real fieldHighlight: 0.0
@@ -113,6 +118,7 @@ FocusScope {
         font.pixelSize: root.fontSize
         clip: true
         selectByMouse: true
+        horizontalAlignment: root.rtl ? TextInput.AlignRight : TextInput.AlignLeft
 
         onAccepted: root.accepted(input.text)
 
@@ -124,6 +130,7 @@ FocusScope {
             font.pixelSize: input.font.pixelSize
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
+            horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
         }
     }
 
@@ -136,6 +143,7 @@ FocusScope {
         anchors.right: parent.right
         anchors.rightMargin: root.paddingH
         anchors.verticalCenter: parent.verticalCenter
+        activeFocusOnTab: true
 
         Icon {
             anchors.centerIn: parent
@@ -148,10 +156,24 @@ FocusScope {
             onTapped: root.clear()
         }
 
+        FocusRing {
+            target: clearArea
+            cornerRadius: Theme.primitive.radius.xs
+            shown: clearArea.activeFocus
+        }
+
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                root.clear();
+                event.accepted = true;
+            }
+        }
+
         Accessible.role: Accessible.Button
         Accessible.name: qsTr("Clear search")
         Accessible.description: qsTr("Clear the search field")
-        Accessible.focusable: false
+        Accessible.focusable: true
         Accessible.onPressAction: root.clear()
     }
 

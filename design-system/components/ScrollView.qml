@@ -253,10 +253,19 @@ FocusScope {
             event.accepted = true;
             break;
         case Qt.Key_Right:
+            // T267: Alt+Left/Right are the app's Back/Forward commands. The
+            // scroll view must leave them to the shell instead of turning
+            // them into a horizontal nudge.
+            if (event.modifiers & (Qt.AltModifier | Qt.ControlModifier
+                                   | Qt.MetaModifier))
+                break;
             root.scrollBy(Theme.primitive.spacing.xxl, 0);
             event.accepted = true;
             break;
         case Qt.Key_Left:
+            if (event.modifiers & (Qt.AltModifier | Qt.ControlModifier
+                                   | Qt.MetaModifier))
+                break;
             root.scrollBy(-Theme.primitive.spacing.xxl, 0);
             event.accepted = true;
             break;

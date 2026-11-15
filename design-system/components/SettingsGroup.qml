@@ -37,12 +37,15 @@ Column {
         rightPadding: Theme.controls.settingsGroup.padding
         bottomPadding: Theme.primitive.spacing.sm
         text: root.title
-        color: Theme.color.textSecondary
+        color: Glass.increaseContrast ? Theme.color.textPrimary
+                                      : Theme.color.textSecondary
         font.pixelSize: Theme.primitive.font.sizeSm
         font.weight: Theme.primitive.font.weightMedium
         wrapMode: Text.Wrap
         maximumLineCount: 2
         elide: Text.ElideRight
+        horizontalAlignment: root.LayoutMirroring.enabled
+                             ? Text.AlignRight : Text.AlignLeft
     }
 
     Item {
@@ -55,7 +58,8 @@ Column {
             radius: Theme.controls.settingsGroup.radius
             color: Theme.color.surfaceElevated
             border.width: Theme.controls.window.borderWidth
-            border.color: Theme.color.border
+            border.color: Glass.increaseContrast ? Theme.color.textPrimary
+                                                 : Theme.color.border
             antialiasing: true
         }
 

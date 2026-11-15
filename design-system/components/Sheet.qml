@@ -19,6 +19,8 @@ FocusScope {
     property bool open: false
     property bool dismissible: true
     property alias card: card
+    // T267: closing a sheet returns focus to the control that opened it.
+    property Item previousFocusItem: null
 
     signal accepted()
     signal rejected()
@@ -32,7 +34,9 @@ FocusScope {
     visible: opacity > 0
     z: 3000
     focus: root.open
-    activeFocusOnTab: root.open
+    // The sheet root is a focus scope, not a Tab stop; the Keys handler traps
+    // Tab inside the card (T267).
+    activeFocusOnTab: false
 
     function show() { root.open = true; }
     function hide() { root.open = false; }
@@ -49,11 +53,54 @@ FocusScope {
 
     onOpenChanged: {
         if (root.open) {
+            if (root.previousFocusItem === null) {
+                var hostWindow = root.Window.window;
+                root.previousFocusItem = hostWindow ? hostWindow.activeFocusItem : null;
+            }
             root.forceActiveFocus();
             root.opened();
         } else {
+            if (root.previousFocusItem !== null && root.previousFocusItem.visible
+                    && root.previousFocusItem.enabled !== false)
+                root.previousFocusItem.forceActiveFocus();
+            root.previousFocusItem = null;
             root.closed();
         }
+    }
+
+    // The same Tab trap as Dialog: a sheet is a modal task and must not leak
+    // focus to the window behind it.
+    function focusableItems() {
+        var out = [];
+        root.collectFocusable(root.card, out);
+        return out;
+    }
+
+    function collectFocusable(item, out) {
+        if (item === null || item === undefined)
+            return;
+        if (item.activeFocusOnTab === true && item.visible && item.enabled !== false)
+            out.push(item);
+        var children = item.children;
+        for (var i = 0; i < children.length; ++i)
+            root.collectFocusable(children[i], out);
+    }
+
+    function cycleFocus(backwards) {
+        var items = root.focusableItems();
+        if (items.length === 0) {
+            root.forceActiveFocus();
+            return;
+        }
+        var hostWindow = root.Window.window;
+        var current = hostWindow ? hostWindow.activeFocusItem : null;
+        var at = items.indexOf(current);
+        var next = 0;
+        if (backwards)
+            next = at <= 0 ? items.length - 1 : at - 1;
+        else
+            next = (at < 0 || at >= items.length - 1) ? 0 : at + 1;
+        items[next].forceActiveFocus();
     }
 
     Rectangle {
@@ -160,7 +207,15 @@ FocusScope {
         root.accept();
         event.accepted = true;
     }
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Tab) {
+            root.cycleFocus((event.modifiers & Qt.ShiftModifier) !== 0);
+            event.accepted = true;
+        }
+    }
 
     Accessible.role: Accessible.Dialog
-    Accessible.name: root.title
+    Accessible.name: root.title.length > 0 ? root.title : qsTr("Sheet")
+    Accessible.description: root.message
+    Accessible.focusable: true
 }

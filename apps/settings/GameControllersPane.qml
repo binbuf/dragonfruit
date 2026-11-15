@@ -84,17 +84,12 @@ Item {
             title: qsTr("Controllers")
             reserveBottomMargin: false
 
-            Text {
+            SettingsAbsenceNotice {
                 id: emptyNote
                 objectName: "controllersEmpty"
-                width: parent.width
-                visible: root.controllers.length === 0
-                text: qsTr("No game controllers are connected.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                leftPadding: Theme.controls.settingsRow.paddingH
-                topPadding: Theme.primitive.spacing.xs
-                bottomPadding: Theme.primitive.spacing.xs
+                kind: "disabled-with-reason"
+                show: root.controllers.length === 0
+                reason: qsTr("No game controllers are connected.")
             }
 
             Repeater {

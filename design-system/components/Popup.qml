@@ -21,6 +21,7 @@ Item {
     property real anchorOffset: Theme.controls.popup.offset
     property int accessibleRole: Accessible.Pane
     property string accessibleName: ""
+    property string accessibleDescription: ""
     // T202: the shared menu-family preset and whether the compositor has a
     // trusted sampled backdrop behind this surface. App-owned surfaces keep
     // `local` and paint the deterministic opaque plate.
@@ -87,7 +88,9 @@ Item {
 
     focus: open
     enabled: open
-    activeFocusOnTab: open
+    // A popup is a focus scope, not a Tab stop. Its owner focuses it; making
+    // it a Tab stop would add an invisible stop with no ring (T267).
+    activeFocusOnTab: false
     visible: opacity > 0
     z: 1000
 
@@ -224,4 +227,6 @@ Item {
 
     Accessible.role: root.accessibleRole
     Accessible.name: root.accessibleName
+    Accessible.description: root.accessibleDescription
+    Accessible.focusable: true
 }

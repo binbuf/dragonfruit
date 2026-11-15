@@ -20,6 +20,9 @@ FocusScope {
     property var results: []
     property int currentIndex: -1
     property string query: ""
+    // T267: RTL text alignment. Geometry mirrors through the shell's
+    // LayoutMirroring; the physical alignment is set here.
+    property bool rtl: false
 
     signal activated(var result)
     signal dismissed()
@@ -43,7 +46,9 @@ FocusScope {
 
     implicitWidth: Theme.controls.sidebar.width
     implicitHeight: 240
-    activeFocusOnTab: true
+    // T267: a no-match list has no row to focus, so it is not a Tab stop.
+    // Down from the search field still forces focus for the announcement.
+    activeFocusOnTab: root.hasResults
 
     function move(delta) {
         if (root.results.length === 0) {
@@ -77,6 +82,10 @@ FocusScope {
                 && root.announcedQuery !== root.query) {
             root.announcedQuery = root.query;
             Accessible.announce(qsTr("No results for %1").arg(root.query));
+        } else if (root.query.trim().length > 0 && root.results.length > 0
+                   && root.announcedQuery !== root.query) {
+            root.announcedQuery = root.query;
+            Accessible.announce(root.resultSummary);
         }
     }
 
@@ -103,9 +112,11 @@ FocusScope {
             leftPadding: Theme.primitive.spacing.sm
             rightPadding: Theme.primitive.spacing.sm
             text: root.resultSummary
-            color: Theme.color.textTertiary
+            color: Glass.increaseContrast ? Theme.color.textPrimary
+                                          : Theme.color.textTertiary
             font.pixelSize: Theme.primitive.font.sizeXs
             elide: Text.ElideRight
+            horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
             Accessible.role: Accessible.StaticText
             Accessible.name: text
         }
@@ -172,10 +183,12 @@ FocusScope {
                         anchors.leftMargin: Theme.primitive.spacing.sm
                         anchors.rightMargin: Theme.primitive.spacing.sm
                         text: resultRow.modelData.groupTitle || ""
-                        color: Theme.color.textTertiary
+                        color: Glass.increaseContrast ? Theme.color.textPrimary
+                                                      : Theme.color.textTertiary
                         font.pixelSize: Theme.primitive.font.sizeXs
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight
+                        horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
                         Accessible.role: Accessible.StaticText
                         Accessible.name: text
                     }
@@ -228,6 +241,7 @@ FocusScope {
 
                             Text {
                                 id: labelText
+                                objectName: "searchResultLabel"
                                 width: parent.width
                                 text: resultRow.modelData.label
                                 color: resultRow.current
@@ -235,24 +249,39 @@ FocusScope {
                                        : Theme.color.textPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 elide: Text.ElideRight
+                                horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
                             }
 
                             Text {
                                 id: subtitleText
+                                objectName: "searchResultSubtitle"
                                 width: parent.width
                                 visible: text.length > 0
                                 text: resultRow.modelData.subtitle
                                 color: resultRow.current
                                        ? Theme.color.accentContent
-                                       : Theme.color.textTertiary
+                                       : (Glass.increaseContrast
+                                          ? Theme.color.textPrimary
+                                          : Theme.color.textTertiary)
                                 opacity: resultRow.current ? 0.85 : 1.0
                                 font.pixelSize: Theme.primitive.font.sizeXs
                                 elide: Text.ElideRight
+                                horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
                             }
                         }
                     }
 
                     HoverHandler { id: rowHover }
+
+                    // T267: the current row owns a visible ring while the
+                    // result list has keyboard focus. The accent fill alone is
+                    // a selection state, not a focus indicator.
+                    FocusRing {
+                        anchors.fill: rowBody
+                        target: rowBody
+                        cornerRadius: Theme.controls.sidebar.rowRadius
+                        shown: root.activeFocus && resultRow.current
+                    }
 
                     TapHandler {
                         onTapped: {
@@ -287,37 +316,39 @@ FocusScope {
         anchors.leftMargin: Theme.primitive.spacing.sm
         anchors.rightMargin: Theme.primitive.spacing.sm
         text: qsTr("No results for \u201c%1\u201d.").arg(root.query)
-        color: Theme.color.textTertiary
+        color: Glass.increaseContrast ? Theme.color.textPrimary
+                                      : Theme.color.textTertiary
         font.pixelSize: Theme.primitive.font.sizeSm
         wrapMode: Text.WordWrap
+        horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
         Accessible.role: Accessible.StaticText
         Accessible.name: text
     }
 
     Keys.onPressed: (event) => {
-        switch (event.key) {
-        case Qt.Key_Down:
+        var action = Keymap.actionFor("list", event.key, event.modifiers);
+        switch (action) {
+        case "next":
             root.move(1);
             event.accepted = true;
             break;
-        case Qt.Key_Up:
+        case "previous":
             root.move(-1);
             event.accepted = true;
             break;
-        case Qt.Key_Home:
+        case "first":
             root.currentIndex = root.results.length > 0 ? 0 : -1;
             event.accepted = true;
             break;
-        case Qt.Key_End:
+        case "last":
             root.currentIndex = root.results.length - 1;
             event.accepted = true;
             break;
-        case Qt.Key_Return:
-        case Qt.Key_Enter:
+        case "activate":
             root.activateCurrent();
             event.accepted = true;
             break;
-        case Qt.Key_Escape:
+        case "dismiss":
             root.dismissed();
             event.accepted = true;
             break;
@@ -328,4 +359,6 @@ FocusScope {
     Accessible.name: root.hasResults
                     ? qsTr("Search results, %1").arg(root.resultSummary)
                     : qsTr("Search results, no matches")
+    Accessible.description: qsTr("Ranked settings results grouped by pane")
+    Accessible.focusable: true
 }

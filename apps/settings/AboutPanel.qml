@@ -29,6 +29,8 @@ Item {
     }
     property string productName: qsTr("Dragonfruit System")
     property bool regulatoryOpen: false
+    property alias heading: heading
+    property alias moreInfoButton: moreInfo
     signal moreInfoRequested()
     signal closeRequested()
     function value(field) {

@@ -136,7 +136,8 @@ Item {
 
             Icon {
                 anchors.centerIn: parent
-                name: "chevron-right"
+                name: root.LayoutMirroring.enabled ? "chevron-left"
+                                                   : "chevron-right"
                 size: Theme.controls.button.iconSize
                 color: Theme.color.textTertiary
             }
@@ -281,15 +282,20 @@ Item {
             color: Theme.color.textPrimary
             font.pixelSize: Theme.controls.button.fontSize
             elide: Text.ElideRight
+            horizontalAlignment: root.LayoutMirroring.enabled
+                                 ? Text.AlignRight : Text.AlignLeft
         }
         Text {
             id: descriptionText
             width: parent.width
             visible: root.description.length > 0
             text: root.description
-            color: Theme.color.textTertiary
+            color: Glass.increaseContrast ? Theme.color.textPrimary
+                                          : Theme.color.textTertiary
             font.pixelSize: Theme.primitive.font.sizeSm
             wrapMode: Text.WordWrap
+            horizontalAlignment: root.LayoutMirroring.enabled
+                                 ? Text.AlignRight : Text.AlignLeft
         }
         Text {
             id: errorTextItem
@@ -300,6 +306,8 @@ Item {
             color: Theme.color.danger
             font.pixelSize: Theme.primitive.font.sizeSm
             wrapMode: Text.WordWrap
+            horizontalAlignment: root.LayoutMirroring.enabled
+                                 ? Text.AlignRight : Text.AlignLeft
             Accessible.role: Accessible.AlertMessage
             Accessible.name: root.errorText
         }
@@ -329,7 +337,8 @@ Item {
         anchors.rightMargin: Theme.controls.settingsRow.paddingH
         anchors.bottom: parent.bottom
         height: Theme.controls.window.borderWidth
-        color: Theme.color.separator
+        color: Glass.increaseContrast ? Theme.color.textPrimary
+                                      : Theme.color.separator
     }
 
     // Every row is a keyboard stop with a visible focus ring (T266).
@@ -404,15 +413,26 @@ Item {
 
     Accessible.role: Accessible.Grouping
     Accessible.name: root.label
-    Accessible.description: root.help.length > 0
-                           ? root.description + (root.description.length > 0 ? " " : "")
-                             + root.help
-                           : root.description
+    Accessible.description: {
+        var text = root.description;
+        if (root.errorText.length > 0)
+            text = (text.length > 0 ? text + " " : "") + root.errorText;
+        if (root.help.length > 0)
+            text = (text.length > 0 ? text + " " : "") + root.help;
+        return text;
+    }
     Accessible.focusable: true
     Accessible.onPressAction: {
         if (root.disclosure)
             root.disclosureClicked();
         else if (root.trailingAction.length > 0)
             root.trailingActionClicked();
+    }
+
+    // T267: a validation failure is announced when it appears, not only
+    // exposed as an alert role that a screen reader may never reach.
+    onErrorTextChanged: {
+        if (root.errorText.length > 0)
+            Accessible.announce(root.errorText);
     }
 }

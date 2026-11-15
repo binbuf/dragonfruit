@@ -638,6 +638,17 @@ rules:
   every compositor-owned global flow is proven keyboard-only in the headless
   conformance suite. The shell's offscreen chrome is not exported to the
   accessibility bus (see [ADR 0154](adr/0154-atspi-and-keyboard-audit-boundary.md)).
+- **One keyboard map.** `Keymap.qml` is the shared table for application,
+  sidebar, list, and search-field scopes (Ctrl+F, Alt+Left/Right, Escape,
+  Up/Down/Home/End, Return/Space, Tab/Shift+Tab). Components ask it for an
+  action instead of re-declaring keys. A focus scope that owns an overlay
+  (Dialog, Sheet, Popup, Popover, ContextMenu) is not itself a Tab stop; the
+  content inside owns the visible focus rings. Closing a dialog or sheet
+  restores the control that opened it.
+- **RTL and scale are component-level.** `LayoutMirroring` mirrors anchors and
+  positioners; components set physical text alignment explicitly because Qt
+  does not mirror it. The 1×/1.5×/2× QML cases assert the device pixel ratio
+  and the logical layout rather than scaling a screenshot.
 - Dark/light and reduced-motion variants are part of the definition of done
   for every component.
 - The glass preset schema and resolution policy are checked by

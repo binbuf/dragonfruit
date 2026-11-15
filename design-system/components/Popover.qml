@@ -49,7 +49,8 @@ Item {
     function toggle() { root.open = !root.open; }
 
     focus: root.open
-    activeFocusOnTab: root.open
+    // A popover is a focus scope, not a Tab stop (T267).
+    activeFocusOnTab: false
     visible: opacity > 0
     z: 1500
     width: Math.max(preferredWidth, contentColumn.implicitWidth + 2 * horizontalPadding)
@@ -129,4 +130,5 @@ Item {
 
     Accessible.role: Accessible.Pane
     Accessible.name: root.accessibleName
+    Accessible.focusable: true
 }

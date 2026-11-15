@@ -21,12 +21,18 @@ FocusScope {
     property alias buttons: buttonRow
     property bool open: false
     property bool dismissible: true
+    // T267: the focus owner that opened the dialog. Closing the dialog hands
+    // focus back to it when it still exists, so a keyboard user never lands
+    // at the top of the window after dismissing a row's dialog.
+    property Item previousFocusItem: null
     // A visible way out of every dialog. A dialog that is not dismissible
     // hides it because closing is not allowed.
     property bool showCloseAction: true
     property alias card: card
     property alias closeAction: closeAction
     property alias scrim: scrim
+    property alias titleText: titleText
+    property alias messageText: messageText
 
     signal accepted()
     signal rejected()
@@ -60,7 +66,10 @@ FocusScope {
     visible: opacity > 0
     z: 3000
     focus: root.open
-    activeFocusOnTab: root.open
+    // The dialog root is a focus scope, not a Tab stop: Tab is trapped by the
+    // Keys handler and cycles the card's real controls. Making the scope a
+    // Tab stop would add an invisible stop with no ring (T267).
+    activeFocusOnTab: false
 
     function show() { root.open = true; }
     function hide() { root.open = false; }
@@ -92,9 +101,17 @@ FocusScope {
     onOpenChanged: {
         if (root.open) {
             root.adoptOverlay();
+            if (root.previousFocusItem === null) {
+                var hostWindow = root.Window.window;
+                root.previousFocusItem = hostWindow ? hostWindow.activeFocusItem : null;
+            }
             root.forceActiveFocus();
             root.opened();
         } else {
+            if (root.previousFocusItem !== null && root.previousFocusItem.visible
+                    && root.previousFocusItem.enabled !== false)
+                root.previousFocusItem.forceActiveFocus();
+            root.previousFocusItem = null;
             root.closed();
         }
     }
@@ -187,7 +204,8 @@ FocusScope {
             radius: Theme.controls.dialog.radius
             color: Theme.color.surfaceElevated
             border.width: Theme.controls.window.borderWidth
-            border.color: Theme.color.border
+            border.color: Glass.increaseContrast ? Theme.color.textPrimary
+                                                 : Theme.color.border
             antialiasing: true
         }
 
@@ -224,7 +242,8 @@ FocusScope {
                     width: parent.width
                     visible: root.message.length > 0
                     text: root.message
-                    color: Theme.color.textSecondary
+                    color: Glass.increaseContrast ? Theme.color.textPrimary
+                                                  : Theme.color.textSecondary
                     font.pixelSize: Theme.controls.button.fontSize
                     wrapMode: Text.WordWrap
                 }
@@ -279,5 +298,7 @@ FocusScope {
     }
 
     Accessible.role: Accessible.Dialog
-    Accessible.name: root.title
+    Accessible.name: root.title.length > 0 ? root.title : qsTr("Dialog")
+    Accessible.description: root.message
+    Accessible.focusable: true
 }
