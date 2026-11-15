@@ -4,9 +4,10 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// Online Accounts absence (T228): GOA is optional. With no bridge host (and
-// therefore no `org.gnome.OnlineAccounts`) the pane is hidden from the sidebar
-// and a deep link is rejected; it is not a dead entry.
+// Online Accounts absence (T228/T263): GOA is optional, but the pane is always
+// present in the sidebar. With no bridge host (and therefore no GOA service)
+// the pane shows its absent-service state; it is not a dead entry and it does
+// not silently disappear. T279 owns the full absent-service surface.
 Item {
     id: stage
     width: 1000
@@ -19,17 +20,15 @@ Item {
 
         Component { id: shellComponent; SettingsShell { } }
 
-        function test_goa_absent_hides_the_pane() {
+        function test_goa_absent_keeps_the_pane_visible() {
             var shell = createTemporaryObject(shellComponent, stage,
                                               { width: stage.width, height: stage.height });
             waitForRendering(stage);
             compare(Settings.onlineAccountsAvailable, false);
-            compare(SettingsPanes.indexOf("online-accounts"), -1);
+            verify(SettingsPanes.indexOf("online-accounts") >= 0);
             var visible = shell.visiblePanes.map(function(pane) { return pane.id; });
-            compare(visible.indexOf("online-accounts"), -1);
-            verify(!shell.deepLink("settings://pane/online-accounts"));
-            // The catalog still knows the pane and its body; only the optional
-            // visibility rule hides it.
+            verify(visible.indexOf("online-accounts") >= 0);
+            verify(shell.deepLink("settings://pane/online-accounts"));
             verify(SettingsPanes.paneById("online-accounts") !== null);
             verify(shell.paneComponent("online-accounts") !== null);
         }

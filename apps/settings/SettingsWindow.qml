@@ -17,30 +17,115 @@ Window {
     property alias aboutPanel: aboutPanel
     property alias settingsShell: shell
 
-    // The macOS reference capture (Desktop & Dock, Accessibility, ...) is
-    // ~620x627 in design-system token units, with the sidebar ~31% of the
-    // width. We keep the reference-matched default size, but unlike macOS
-    // System Settings the window is freely resizable in both axes so it
-    // behaves like the rest of the desktop; the minimum keeps the sidebar and
-    // detail pane usable. See
-    // docs/reference/settings-layout-measurements.md.
-    width: 800
-    height: 640
-    minimumWidth: 720
-    minimumHeight: 480
+    // T263: the measured macOS Tahoe System Settings window. 740x820 pt with
+    // a 52 pt unified toolbar, a 232 pt grouped sidebar, and 508 pt of detail
+    // content. The window is freely resizable; the 720x480 minimum keeps the
+    // sidebar scrollable and the detail card inside the frame.
+    width: Theme.controls.settingsWindow.width
+    height: Theme.controls.settingsWindow.height
+    minimumWidth: Theme.controls.settingsWindow.minWidth
+    minimumHeight: Theme.controls.settingsWindow.minHeight
     visible: !startAboutPanel
-    title: qsTr("System Settings")
+    // The compositor/taskbar name follows the current pane/sub-pane, never a
+    // constant (T263).
+    title: shell.windowTitle
     color: "transparent"
     flags: Qt.Window | Qt.FramelessWindowHint
+
+    // T263: geometry persistence through settingsd. Restoring is deferred
+    // until the first value snapshot; a user resize after that wins over a
+    // later daemon snapshot. Writes are debounced so a drag is one Set.
+    property bool geometryRestored: false
+    property bool geometryTouched: false
+    property bool restoringGeometry: false
+
+    function applyStoredGeometry() {
+        if (!Settings.windowStatePersistence)
+            return;
+        restoringGeometry = true;
+        var storedWidth = Number(Settings.values["settings.window.width"]);
+        var storedHeight = Number(Settings.values["settings.window.height"]);
+        if (isFinite(storedWidth) && storedWidth >= minimumWidth)
+            win.width = Math.round(storedWidth);
+        if (isFinite(storedHeight) && storedHeight >= minimumHeight)
+            win.height = Math.round(storedHeight);
+        if (Settings.values["settings.window.positioned"] === true) {
+            var storedX = Number(Settings.values["settings.window.x"]);
+            var storedY = Number(Settings.values["settings.window.y"]);
+            if (isFinite(storedX))
+                win.x = Math.round(storedX);
+            if (isFinite(storedY))
+                win.y = Math.round(storedY);
+        }
+        restoringGeometry = false;
+        geometryRestored = true;
+    }
+
+    function persistGeometry() {
+        if (!Settings.windowStatePersistence || !win.geometryRestored)
+            return;
+        // Keep the normal (windowed) geometry; a maximized/fullscreen close
+        // must not overwrite the remembered size with the screen size.
+        if (win.visibility !== Window.Windowed)
+            return;
+        Settings.set("settings.window.width", Math.round(win.width));
+        Settings.set("settings.window.height", Math.round(win.height));
+        Settings.set("settings.window.x", Math.round(win.x));
+        Settings.set("settings.window.y", Math.round(win.y));
+        Settings.set("settings.window.positioned", true);
+    }
+
+    Component.onCompleted: applyStoredGeometry()
+
+    Connections {
+        target: Settings
+        function onValuesChanged() {
+            if (!win.geometryTouched)
+                win.applyStoredGeometry();
+        }
+    }
+
+    Timer {
+        id: geometryTimer
+        interval: 250
+        repeat: false
+        onTriggered: win.persistGeometry()
+    }
+
+    onWidthChanged: {
+        if (!win.restoringGeometry) {
+            win.geometryTouched = true;
+            if (win.geometryRestored)
+                geometryTimer.restart();
+        }
+    }
+    onHeightChanged: {
+        if (!win.restoringGeometry) {
+            win.geometryTouched = true;
+            if (win.geometryRestored)
+                geometryTimer.restart();
+        }
+    }
+    onXChanged: {
+        if (!win.restoringGeometry) {
+            win.geometryTouched = true;
+            if (win.geometryRestored)
+                geometryTimer.restart();
+        }
+    }
+    onYChanged: {
+        if (!win.restoringGeometry) {
+            win.geometryTouched = true;
+            if (win.geometryRestored)
+                geometryTimer.restart();
+        }
+    }
+    onClosing: (close) => win.persistGeometry()
 
     SettingsShell {
         id: shell
         anchors.fill: parent
         windowActive: win.active
-        onAboutPageOpened: {
-            win.width = 740;
-            win.height = 820;
-        }
 
         onCloseRequested: win.close()
         onMinimizeRequested: win.showMinimized()

@@ -27,14 +27,14 @@ Item {
             wait(300);
             waitForRendering(stage);
 
-            // The sidebar order is the map's shipped-pane order.
-            compare(shell.visiblePanes.length, 27);
+            // The sidebar order is the map's grouped shipped-pane order.
+            compare(shell.visiblePanes.length, 28);
             compare(shell.visiblePanes[0].id, "wifi");
-            compare(shell.visiblePanes[5].id, "storage");
-            compare(shell.visiblePanes[6].id, "appearance");
+            compare(shell.visiblePanes[3].id, "general");
+            compare(shell.visiblePanes[4].id, "appearance");
 
             // A sample row's owner/absence state is visible in the debug view.
-            compare(shell.debugView.pane.owner, "settingsd + compositor");
+            compare(shell.debugView.pane.owner, "settingsd + host/distro adapters");
             compare(shell.debugView.pane.absence, "live-on-defaults");
             verify(shell.debugView.rowList.count > 0);
 

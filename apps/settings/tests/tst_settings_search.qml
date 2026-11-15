@@ -290,10 +290,15 @@ Item {
         function test_deep_link_rejects_unknown_targets() {
             var shell = make();
             verify(!shell.deepLink("settings://pane/no-such-pane"));
-            verify(!shell.deepLink("settings://pane/online-accounts"));
             verify(!shell.deepLink("settings://pane/appearance/row/no-such-row"));
             verify(!shell.deepLink("https://example.org/pane/appearance"));
-            compare(shell.currentPaneId, "appearance");
+            compare(shell.currentPaneId, "general");
+
+            // Online Accounts is always present now; its deep link is valid
+            // even when the host service is absent (T263/T279).
+            verify(shell.deepLink("settings://pane/online-accounts"));
+            waitForRendering(stage);
+            compare(shell.currentPaneId, "online-accounts");
         }
 
         function test_back_forward_follows_pane_history() {
@@ -384,7 +389,7 @@ Item {
             verify(url.toString().indexOf("file://") === 0);
             verify(url.toString().indexOf("#pane-appearance") >= 0);
             verify(shell.helpButton.enabled);
-            compare(shell.helpButton.Accessible.name, "Help for Appearance");
+            compare(shell.helpButton.Accessible.name, "Help for General");
         }
 
         function test_pane_headers_stay_reference_scoped() {

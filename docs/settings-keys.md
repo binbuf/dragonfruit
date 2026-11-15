@@ -141,6 +141,12 @@ freezes the v1 key set.
 | `backup.backend` | s | `auto` | `auto`/`restic`/`pika`/`timeshift` | apps/settings | apps/settings Backup pane | The backup backend to prefer; auto detects restic, Pika, or Timeshift (T226). |
 | `backup.destination` | s | `` (empty) | | apps/settings | apps/settings Backup pane / backup backend | The destination the selected backup backend writes to (T226). |
 | `backup.schedule` | s | `off` | `off`/`hourly`/`daily`/`weekly`/`monthly` | apps/settings | apps/settings Backup pane / backup backend | How often the selected backup backend runs (T226). |
+| `settings.lastPane` | s | `` (empty) | | apps/settings | apps/settings shell (last pane) | The last visited System Settings pane id; empty opens General (T263). |
+| `settings.window.width` | x | 740 | 720–10000 | apps/settings | apps/settings window | Remembered System Settings window width in points (T263). |
+| `settings.window.height` | x | 820 | 480–10000 | apps/settings | apps/settings window | Remembered System Settings window height in points (T263). |
+| `settings.window.x` | x | 0 | | apps/settings | apps/settings window | Remembered window x position; used only when `settings.window.positioned` is true (T263). |
+| `settings.window.y` | x | 0 | | apps/settings | apps/settings window | Remembered window y position; used only when `settings.window.positioned` is true (T263). |
+| `settings.window.positioned` | b | false | | apps/settings | apps/settings window | Whether the remembered x/y position has been set by the user (T263). |
 | `appearance.highlight` | s | `` (empty) | | apps/settings | shell/design-system Theme, apps/settings Theme | Selection/highlight colour override (`#rrggbb`); empty uses the token selection (T227). |
 | `appearance.sidebarIconSize` | s | `medium` | `small`/`medium`/`large` | apps/settings | apps/settings Sidebar | Sidebar icon size (T227). |
 | `appearance.wallpaperTint` | b | true | | apps/settings | shell/design-system Glass, apps/settings Glass | Let glass surfaces take their tint from the wallpaper; off uses the neutral plate (T227). |
@@ -196,6 +202,7 @@ freezes the v1 key set.
 | Software Update dialog (`apps/settings/GeneralPane.qml`, T226) | `updates.auto`, `updates.autoInstall` — the pane forwards both to the running `dragonfruit-system-status` update provider; both default to false and are never silently enabled. |
 | Language & Region pane (`apps/settings/LanguageRegionPane.qml`, T226) | `locale.calendar`, `locale.temperature`, `locale.measurement`, `locale.dateFormat`, `locale.numberFormat`, `locale.firstDay` — the pane's live preview and the stored format policy; the system locale itself is `localectl`'s. |
 | Backup pane (`apps/settings/BackupPane.qml`, T226) | `backup.auto`, `backup.backend`, `backup.destination`, `backup.schedule` — the durable policy the pane writes; the host adapter detects and runs restic/Pika/Timeshift, and `backup.auto` defaults off. |
+| System Settings shell/window (`apps/settings/SettingsShell.qml`, `SettingsWindow.qml`, T263) | `settings.lastPane`, `settings.window.width`, `settings.window.height`, `settings.window.x`, `settings.window.y`, `settings.window.positioned` — the shell restores/writes the last pane and the host window restores/writes its normal geometry; a deep link wins over the restored pane. |
 
 `dock.minimizeIntoTileIcon` is Dock entry visibility, not a compositor
 key — it is not forwarded over the private protocol. `appearance.accent`

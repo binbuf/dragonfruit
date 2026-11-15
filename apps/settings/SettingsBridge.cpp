@@ -635,6 +635,13 @@ QString SettingsBridge::startDeepLink() const
     return qEnvironmentVariable("DF_SETTINGS_START_DEEP_LINK");
 }
 
+bool SettingsBridge::windowStatePersistence() const
+{
+    if (!qEnvironmentVariableIsSet("DF_SETTINGS_FIXTURE"))
+        return true;
+    return qEnvironmentVariableIsSet("DF_SETTINGS_WINDOW_STATE");
+}
+
 QString SettingsBridge::mapDocPath() const
 {
     const QString override =

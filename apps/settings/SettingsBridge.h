@@ -271,6 +271,12 @@ class SettingsBridge : public QObject
     // T232: a `settings://pane/<id>` link carried on the cold-launch command
     // line. The shell consumes it once after the first pane is mounted.
     Q_PROPERTY(QString startDeepLink READ startDeepLink CONSTANT)
+    // T263: whether the shell restores/persists the last pane and the window
+    // restores/persists its geometry. Production always does. Headless tests
+    // that force `DF_SETTINGS_FIXTURE` keep the old clean-process behavior
+    // unless `DF_SETTINGS_WINDOW_STATE=1` opts in, so the pane suites do not
+    // leak a previous case's pane.
+    Q_PROPERTY(bool windowStatePersistence READ windowStatePersistence CONSTANT)
     // T222: the human business-logic map. `mapDocPath` is the repo-relative
     // path (or `DF_SETTINGS_MAP_DOC`); `mapDocUrl` is a local file URL when the
     // document resolves, so the Help menu/debug view can open it.
@@ -349,6 +355,7 @@ public:
     bool wallpaperChooserAvailable() const;
     QString startPane() const;
     QString startDeepLink() const;
+    bool windowStatePersistence() const;
     QString mapDocPath() const;
     QUrl mapDocUrl() const;
     bool debugView() const;

@@ -47,6 +47,7 @@ FocusScope {
                 out.push({
                     index: index++,
                     type: "item",
+                    id: item.id || "",
                     label: item.label || "",
                     icon: item.icon || "",
                     badge: item.badge || "",
@@ -76,6 +77,13 @@ FocusScope {
     implicitWidth: Theme.controls.sidebar.width
     implicitHeight: 320
     activeFocusOnTab: true
+    // T263: the grouped source list can exceed a short window. The list is a
+    // Flickable; expose its content/viewport so the shell's size cases can
+    // assert the rows scroll instead of overflowing the card.
+    readonly property real contentHeight: list.contentHeight
+    readonly property real viewportHeight: list.height
+    readonly property bool scrollable: list.contentHeight > list.height
+    property alias flickable: list
 
     function move(delta) {
         var count = root.entries.length;
@@ -89,6 +97,13 @@ FocusScope {
                 return;
             }
         }
+    }
+
+    // T263: the rendered row delegate for an entry index. The stationary-click
+    // regression uses it to click a row's own coordinates without a prior
+    // pointer motion.
+    function rowAtIndex(index) {
+        return repeater.itemAt(index);
     }
 
     function activateIndex(index) {
@@ -126,6 +141,7 @@ FocusScope {
             width: list.width
 
             Repeater {
+                id: repeater
                 model: root.entries
                 delegate: SidebarRow {
                     required property var modelData
@@ -261,7 +277,7 @@ FocusScope {
                 id: rowIcon
                 anchors.centerIn: parent
                 visible: row.category === null
-                name: row.entry.icon
+                name: row.category === null ? row.entry.icon : ""
                 size: row.glyphSize
                 color: row.selected ? Theme.color.accentContent : Theme.color.textSecondary
             }

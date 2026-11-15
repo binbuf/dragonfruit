@@ -33,9 +33,11 @@ not become a top-tier experience:
   five sections and dozens of rows; Appearance is missing icon/widget style,
   folder color, and scroll-bar click behavior; General is missing Autofill &
   Passwords and the Transfer or Reset structure.
-- The shell is not the measured System Settings window: it opens at 800×640,
-  uses a 192 pt sidebar, has no sidebar groups, opens Appearance instead of
-  General, and loses focus/scroll/history on pane changes.
+- The shell was not the measured System Settings window: it opened at
+  800×640, used a 192 pt sidebar, had no sidebar groups, opened Appearance
+  instead of General, and lost focus/scroll/history on pane changes. T263
+  lands the measured 740×820 window, the 232 pt grouped sidebar, General as
+  the default, the split unified toolbar, and remembered geometry/last pane.
 - Shared components have defects that affect every pane: a `SettingsRow`
   binding loop, clipped `Select` menus, non-reparented dialogs, missing focus
   rings, incomplete accessibility names, and long-string/layout failures.
@@ -79,8 +81,8 @@ The reference facts used throughout:
 The 740×820 window, 232 pt sidebar, 508 pt content width, and 30 pt content
 inset come from the in-repo structural measurements
 (`macos-design-review/docs/experience_measurements.json`,
-`settings_pane` and `system_settings`). The current code uses 800×640 and a
-192 pt sidebar; T263 corrects it.
+`settings_pane` and `system_settings`). Before T263 the code used 800×640 and a
+192 pt sidebar; T263 corrects it to the measured values.
 
 ### 2.1 Review coverage
 
@@ -101,7 +103,7 @@ inset come from the in-repo structural measurements
 | Desktop & Dock | yes | Missing Desktop & Stage Manager, Widgets, Windows, Mission Control groups | T276 |
 | Overview | yes | Only four rows; no workspace count/per-display/auto-rearrange/group-by-app | T276 |
 | Displays | yes | Blank hardcoded preview; no arrangement/Night Light/color/refresh/HDR/VRR; duplicate advanced controls | T273 |
-| Wallpaper | yes | 160×100 hero; Clock Appearance opens a pane with no clock controls; categories diverge from Tahoe | T278 |
+| Wallpaper | yes | 160×100 hero; Clock Appearance opens a pane with no clock controls; categories diverge from Tahoe; tile clicks are not acknowledged immediately and a second pick during an apply is ignored | T278 |
 | Screen Saver | yes | No gallery; Start After blanks the display; None does not disable the saver | T278 |
 | Notifications | yes | Global preferences are no-ops; per-app sheet missing half the options; duplicated status | T278 |
 | Sound | yes | Mute zeroes the volume slider; Input tab shows output controls; Balance has no consumer | T280 |
@@ -138,9 +140,21 @@ toolbar is split at the sidebar edge:
   scroll edge, not a vertical offset below the toolbar.
 - The window remembers its geometry and last pane. The first launch opens
   General. A deep link may open any other pane.
+- A mapped window is clickable at the pointer's current position without a
+  motion event. The activating press both focuses the window and reaches the
+  row: a stationary click is never a focus-only click.
 - Minimum size is 720×480; at the minimum the sidebar remains scrollable and
   every row stays inside the card. The 740×820 layout is the design target,
   not a hard-coded maximum.
+
+T263 lands this contract. The values are tokens
+(`component.settingsWindow`: 740×820, 720×480 minimum, 52 pt chrome, 232 pt
+sidebar, 508 pt detail, 30 pt inset), not app constants. The window and the
+shell remember `settings.lastPane` plus `settings.window.{width,height,x,y}`
+and `settings.window.positioned`; a deep link wins over the restored pane.
+The split is literal: the sidebar's material covers the full window height
+(including the toolbar strip and traffic lights), while the detail half owns
+Back/Forward and the centred pane title.
 
 ### 3.2 Sidebar information architecture
 
@@ -168,11 +182,22 @@ Decisions:
   “Mission Control”.
 - **VPN is optional.** It appears in Connectivity only when NetworkManager
   reports at least one VPN profile; otherwise the Network → VPN section is
-  the only entry point.
+  the only entry point. T263 lands the gated `vpn` link (it targets Network
+  until T272 adds the real pane) and the `optionalVisible` rule.
 - **Online Accounts is visible even when the host service is absent.** The
   pane shows an explicit “Internet accounts are not installed” state with a
   delegate action. It does not vanish from the sidebar; a familiar macOS
-  entry must not silently disappear.
+  entry must not silently disappear. T263 removes the old optional-hiding
+  rule; T279 owns the absent-service surface.
+- **Activation is motion-independent.** A sidebar row activates on one
+  stationary primary click. Hover decorates the row; it never gates the
+  click. After the list scrolls under a stationary pointer, the next click
+  hits the row now under the pointer, not the row that was there at the last
+  motion. A click that loses the event because the compositor routed it
+  through a stale cached location is a P0 bug, not an acceptable quirk. T263
+  ray-tests the live pointer position before a press (`input.rs`), so a window
+  that mapped or a list that scrolled under a resting pointer cannot swallow
+  the first click.
 - **Omitted panes are not in the sidebar.** Apple Account, iCloud, Screen
   Time, Siri, Wallet, Game Center, Find My, AirDrop/Handoff, Device
   Management, and AppleCare stay omitted with their existing reasons.
@@ -185,6 +210,11 @@ Every pane uses the same `SettingsGroup` and `SettingsRow` anatomy:
   optional trailing action, optional help affordance.
 - A disclosure row opens from a click anywhere on the row, not only the
   chevron. Return/Space on a focused row activates the same action.
+- Activation is position- and motion-independent: press and release at one
+  point activates the row or control on the first click, with no prior
+  hover, motion, or wheel event. The whole row or tile is the hit target,
+  not only its glyph, caption, or chevron. A press that becomes a drag is
+  the only case that cancels the tap.
 - Every row is a keyboard stop with a visible focus ring. Disclosure/help
   sub-controls are reachable by Tab, not only by pointer.
 - Every control exposes an accessible name, current value, and range/allowed
@@ -909,6 +939,23 @@ controls stay live; output rows show `No display`.
 Owner: settingsd + wallpaperd + compositor. Absence: shipped default always
 available; Featured empty, never an error.
 
+Selection is a visible state machine, not a background write:
+
+1. The first press on any part of a tile marks it selected and starts the
+   tile and hero spinner in the same frame, before any provider fetch or
+   settings write. The click is acknowledged locally even when the image is
+   not cached.
+2. The previous wallpaper stays on screen until the new image is decoded and
+   ready. The background swaps once, at that point, not when the click or
+   the settings write happens.
+3. A second tile click supersedes the in-flight pick; clicks are never
+   ignored because an apply is pending. The latest pick is the one that
+   commits.
+4. `wallpaper.source` is written once per committed pick. A provider error,
+   decode failure, or bounded timeout reverts the tile selection and the
+   hero to the previous wallpaper and shows an inline reason. No spinner
+   persists and no selected tile disagrees with the actual background.
+
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Current wallpaper | Current wallpaper | Hero preview | `wallpaper.source` | ship; large preview |
@@ -1066,7 +1113,8 @@ owner and consumer; otherwise it is `stored-only` or omitted.
 
 The 2026-11-14 review found the following. “P0” means the pane is visibly
 broken or a shipped control is not truthful; “P1” means a major macOS row or
-state is missing; “P2” means polish.
+state is missing; “P2” means polish. P0-16 and P0-17 were added the same day
+from the first live T263 run; they are part of the same release bar.
 
 ### P0 — broken or untruthful
 
@@ -1082,11 +1130,13 @@ state is missing; “P2” means polish.
 | P0-8 | Notification global preferences are no-ops; per-app sheet is missing half the macOS options | `NotificationsPane.qml`, `schema.rs` | T278 |
 | P0-9 | Select popups and pane dialogs are clipped by the detail `ScrollView`; long lists are unusable | `Select.qml`, `ContextMenu.qml`, `Dialog.qml`, `SettingsShell.qml` | T266 |
 | P0-10 | `SettingsRow` has a binding loop; rows have no focus ring; toggles have no accessible names; long strings overflow | `SettingsRow.qml`, `Toggle.qml`, `Button.qml` | T266, T267 |
-| P0-11 | Sidebar cannot scroll to most panes; no groups; opens Appearance instead of General; window is 800×640 | `SettingsShell.qml`, `SettingsWindow.qml`, `Sidebar.qml` | T263 |
+| P0-11 | Sidebar cannot scroll to most panes; no groups; opens Appearance instead of General; window is 800×640 | `SettingsShell.qml`, `SettingsWindow.qml`, `Sidebar.qml` | T263 (landed) |
 | P0-12 | Back/forward ignore subpanes; deep links cannot land in General subpanes/dialogs; help anchor is wrong; menu actions are dead | `SettingsShell.qml`, `SettingsWindow.qml`, `SettingsMenu.qml` | T264 |
 | P0-13 | settingsd accepts NaN/Infinity (persist panic), loses concurrent updates, hides persistence failure, and the client schema mirror drifts | `schema.rs`, `persist.rs`, `dbus.rs`, `settingsclient.cpp` | T282 |
 | P0-14 | Adapter clients show the startup snapshot; no live refresh; ~20 D-Bus calls at startup; slider writes fsync per tick | `*Client.cpp`, `SettingsBridge.cpp` | T268, T282 |
 | P0-15 | Pane tests run at 900/1000 px; many panes have no dark/absence/scale capture; no golden diff; no real-host matrix | `apps/settings/tests/`, `scripts/capture-*settings*` | T283, T284 |
+| P0-16 | Wallpaper picks do not acknowledge the click reliably: a tile can look unselected, the spinner/preview state starts only after the provider round trip, a second pick during a pending apply is ignored, and the selected tile can disagree with the background | `apps/settings/WallpaperPane.qml`, `SettingsBridge.cpp`, `services/wallpaperd` | T278 |
+| P0-17 | A stationary click on a sidebar row or pane control is often dropped; moving the pointer or scrolling first makes it land. The activating press can be consumed by focus or routed through a stale cached pointer location, so the first click looks inert | `apps/settings/SettingsShell.qml`, `design-system/components/Sidebar.qml`, `compositor/src/input.rs` | T263 (live-position ray-test landed), T266 (row focus) |
 
 ### P1 — missing major rows or states
 
@@ -1137,10 +1187,10 @@ landed foundation (T222–T229a, T230c) and the rest of the release.
 
 | Task | Scope | Depends on |
 |---|---|---|
-| T263 | Window, sidebar IA, pane chrome, default pane, persistence | — |
+| T263 | Window, sidebar IA, pane chrome, default pane, persistence, stationary-click activation | — |
 | T264 | Navigation, history, deep links, menus, help | T263 |
 | T265 | Search and local discovery | T263, T264 |
-| T266 | Shared components, row anatomy, popups, dialogs, scroll | T263 |
+| T266 | Shared components, row anatomy, popups, dialogs, scroll, pointer-activation contract | T263 |
 | T267 | Accessibility, keyboard, adaptive presentation, scale | T266 |
 | T268 | Startup and interaction performance budget | T263; coordinate with T282 |
 | T269 | General: About, Software Update, Storage, Autofill & Passwords | T263, T264 |
@@ -1152,7 +1202,7 @@ landed foundation (T222–T229a, T230c) and the rest of the release.
 | T275 | Accessibility | T263, T266, T267 |
 | T276 | Desktop & Dock, Overview, Windows | T263, T266 |
 | T277 | Quick Settings and Menu Bar | T263, T266 |
-| T278 | Wallpaper, Screen Saver, Notifications, Focus, Lock Screen | T263, T266 |
+| T278 | Wallpaper (including the visible apply state machine), Screen Saver, Notifications, Focus, Lock Screen | T263, T266 |
 | T279 | Privacy & Security, Biometrics, Users & Groups, Online Accounts | T263, T266 |
 | T280 | Sound, Keyboard, Mouse, Trackpad, Printers, Game Controllers | T263, T266 |
 | T281 | Linux-specific additions | Pane tasks |

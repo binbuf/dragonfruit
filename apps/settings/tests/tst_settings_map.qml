@@ -45,6 +45,7 @@ Item {
                 compare(pane.id, mapped.id, "pane id at index " + i);
                 compare(pane.title, mapped.title, "pane title for " + pane.id);
                 compare(pane.icon, mapped.icon, "pane icon for " + pane.id);
+                compare(pane.group, mapped.group, "group for " + pane.id);
                 compare(pane.shipped, mapped.shipped, "shipped flag for " + pane.id);
                 compare(pane.owner, mapped.owner, "owner for " + pane.id);
                 compare(pane.deepLink, mapped.deepLink, "deep link for " + pane.id);
@@ -154,12 +155,59 @@ Item {
         function test_sidebar_order_matches_the_map() {
             var shell = make();
             var expected = SettingsMap.panes.filter(function(pane) {
-                return pane.shipped
-                    && (pane.optional !== true || Settings.onlineAccountsAvailable);
+                if (pane.hidden === true)
+                    return false;
+                if (pane.linkTo !== undefined)
+                    return SettingsPanes.optionalVisible(pane, Settings.vpn);
+                return pane.shipped;
             }).map(function(pane) { return pane.id; });
             var actual = shell.visiblePanes.map(function(pane) { return pane.id; });
             compare(ids(actual), ids(expected),
-                    "the sidebar must follow the map's shipped pane order");
+                    "the sidebar must follow the map's grouped pane order");
+        }
+
+        // -- T263 grouped IA and aliases --------------------------------------
+
+        function test_every_pane_has_a_group_and_the_groups_are_ordered() {
+            var order = SettingsPanes.groups.map(function(group) {
+                return group.id;
+            }).join(",");
+            compare(order,
+                    "connectivity,general,personalization,desktop,"
+                    + "accounts-devices,input,system");
+            for (var i = 0; i < SettingsMap.panes.length; ++i) {
+                var pane = SettingsMap.panes[i];
+                verify(order.indexOf(pane.group) >= 0,
+                       "pane " + pane.id + " has an unknown group " + pane.group);
+            }
+            // The map order is the grouped order: groups never interleave.
+            var lastGroup = -1;
+            for (var p = 0; p < SettingsMap.panes.length; ++p) {
+                var at = order.indexOf(SettingsMap.panes[p].group);
+                verify(at >= lastGroup,
+                       "pane " + SettingsMap.panes[p].id
+                       + " is out of grouped order");
+                lastGroup = at;
+            }
+        }
+
+        function test_storage_is_a_general_alias_and_vpn_is_optional() {
+            var storage = SettingsMap.panes.filter(function(pane) {
+                return pane.id === "storage";
+            })[0];
+            compare(storage.hidden, true);
+            compare(storage.aliasOf, "general");
+            compare(storage.subPane, "storage");
+            compare(SettingsPanes.resolve("storage").paneId, "general");
+            compare(SettingsPanes.resolve("storage").subPaneId, "storage");
+
+            var vpn = SettingsMap.panes.filter(function(pane) {
+                return pane.id === "vpn";
+            })[0];
+            compare(vpn.shipped, false);
+            compare(vpn.optional, "vpn");
+            compare(vpn.linkTo, "network");
+            compare(SettingsPanes.resolve("vpn").paneId, "network");
         }
 
         // -- The debug view ----------------------------------------------------

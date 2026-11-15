@@ -11,14 +11,27 @@ import Dragonfruit.Settings
 Item {
     id: stage
     width: 1000
-    height: 720
+    height: 1400
 
     TestCase {
         id: testCase
         name: "SettingsShell"
         when: windowShown
 
+        // T263: the shell test opts into window-state persistence so the
+        // restore/write path is real. Reset the remembered pane before each
+        // case so one case's navigation cannot change the next case's default.
+        function init() {
+            Settings.set("settings.lastPane", "");
+            Settings.set("settings.window.width", 740);
+            Settings.set("settings.window.height", 820);
+            Settings.set("settings.window.x", 0);
+            Settings.set("settings.window.y", 0);
+            Settings.set("settings.window.positioned", false);
+        }
+
         Component { id: shellComponent; SettingsShell { } }
+        Component { id: windowComponent; SettingsWindow { } }
 
         SignalSpy { id: closeSpy; signalName: "closeRequested" }
         SignalSpy { id: resizeSpy; signalName: "resizeRequested" }
@@ -32,6 +45,10 @@ Item {
             return obj;
         }
 
+        function makeSized(width, height) {
+            return make({ width: width, height: height });
+        }
+
         function ids(shell) {
             return JSON.stringify(shell.visiblePanes.map(function(pane) {
                 return pane.id;
@@ -43,9 +60,14 @@ Item {
         function test_catalog_is_the_reference_ia() {
             compare(SettingsPanes.catalog[0].id, "wifi");
             compare(SettingsPanes.catalog[SettingsPanes.catalog.length - 1].id,
-                    "game-controllers");
-            // Only panes whose content has landed are advertised (no half panes).
+                    "menu-bar");
+            // Only panes whose content has landed are advertised (no half
+            // panes). Storage is hidden inside General, so 28 rows remain.
             compare(SettingsPanes.shippedPanes.length, 28);
+            compare(SettingsPanes.indexOf("storage"), -1,
+                    "Storage must not have a top-level sidebar row");
+            compare(SettingsPanes.paneById("storage").shipped, true,
+                    "Storage keeps its pane body and deep link");
         }
 
         // -- Category tiles (T-19.1b) -------------------------------------------
@@ -67,10 +89,25 @@ Item {
             verify(checked >= 20,
                    "the shipped categories must be mapped (got " + checked + ")");
 
-            // A pane with no Phosphor mapping keeps the Tabler-backed Icon fallback.
-            compare(SettingsPanes.categoryStyle(SettingsPanes.paneById("trackpad")), null);
+            // A pane whose icon has no mapping would fall back to Icon.qml;
+            // T263 mapped every shipped icon.
+            verify(SettingsPanes.categoryStyle(SettingsPanes.paneById("trackpad")) !== null);
             verify(SettingsPanes.categoryStyle(SettingsPanes.paneById("general")) !== null);
             verify(SettingsPanes.categoryStyle(null) === null);
+
+            // De-duplicated category identities: these pairs no longer share
+            // one icon (T263).
+            var pairs = [["general", "biometrics"], ["displays", "screen-saver"],
+                         ["network", "online-accounts"]];
+            for (var p = 0; p < pairs.length; ++p) {
+                var left = SettingsPanes.paneById(pairs[p][0]);
+                var right = SettingsPanes.paneById(pairs[p][1]);
+                verify(left.icon !== right.icon,
+                       pairs[p][0] + " and " + pairs[p][1]
+                       + " must not share a category icon");
+                verify(SettingsPanes.categoryStyle(left) !== null);
+                verify(SettingsPanes.categoryStyle(right) !== null);
+            }
         }
 
         function test_sidebar_rows_and_header_adopt_the_category_tile() {
@@ -104,6 +141,8 @@ Item {
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("privacy")), true);
 
             var shell = make();
+            shell.selectPane("appearance");
+            waitForRendering(stage);
             verify(!shell.header.visible,
                    "the Appearance pane must not draw a header card");
         }
@@ -111,24 +150,30 @@ Item {
         // -- Shell opens --------------------------------------------------------
 
         function test_shell_opens_with_sidebar_and_search() {
-            var shell = make();
-            compare(shell.currentPaneId, "appearance");
+            var shell = makeSized(740, 820);
+            compare(shell.currentPaneId, "general",
+                    "first launch opens General");
             compare(shell.visiblePanes.length, 28);
             verify(shell.searchField !== null);
             verify(shell.sidebar !== null);
             verify(shell.titleBar !== null);
             compare(shell.titleBar.style, "unified",
                     "Settings must declare the unified window style");
-            compare(shell.titleBar.height, WindowStyle.height("unified"),
-                    "the titlebar height must come from the style table");
-            compare(shell.titleBar.trafficLights.width,
+            compare(shell.titleBar.height,
+                    Theme.controls.settingsWindow.chromeHeight,
+                    "the detail toolbar is the measured 52 pt chrome");
+            compare(shell.sidebarTrafficLights.width,
                     WindowStyle.trafficLightSize * 3
                     + WindowStyle.trafficLightGap() * 2);
-            compare(shell.titleBar.width, shell.width,
-                    "the titlebar must span the window so the whole bar drags");
-            compare(shell.sidebarPane.width, Theme.controls.sidebar.width,
-                    "the sidebar uses the design-system width token");
-            compare(shell.header.pane.id, "appearance");
+            compare(shell.sidebarPane.width,
+                    Theme.controls.settingsWindow.sidebarWidth,
+                    "the grouped sidebar is the measured 232 pt");
+            compare(shell.detailSheet.width,
+                    Theme.controls.settingsWindow.detailWidth,
+                    "740 - 232 = 508 pt of detail content");
+            compare(shell.detailScroll.height, 768,
+                    "820 - 52 = 768 pt content viewport");
+            compare(shell.header.pane.id, "general");
             // At the start of history both history affordances are dimmed.
             verify(!shell.backButton.enabled);
             verify(!shell.forwardButton.enabled);
@@ -153,8 +198,8 @@ Item {
                 compare(shell.appWindow.chromeTransparent, true);
                 fuzzyCompare(shell.sidebarPane.color.a, 0.986, 1e-4);
                 fuzzyCompare(shell.sidebarPane.color.r, 0.857, 1e-4);
-                fuzzyCompare(shell.toolbar.fillColor.a, 0.961, 1e-4);
-                fuzzyCompare(shell.toolbar.fillColor.r, 0.965, 1e-4);
+                fuzzyCompare(shell.detailToolbarSheet.color.a, 0.961, 1e-4);
+                fuzzyCompare(shell.detailToolbarSheet.color.r, 0.965, 1e-4);
                 fuzzyCompare(shell.detailSheet.color.a, 1.0, 1e-6);
                 compare(shell.detailSheet.bottomRightRadius,
                         Theme.controls.window.radius);
@@ -165,8 +210,8 @@ Item {
                 waitForRendering(stage);
                 fuzzyCompare(shell.sidebarPane.color.a, 0.935, 1e-4);
                 fuzzyCompare(shell.sidebarPane.color.r, 0.218, 1e-4);
-                fuzzyCompare(shell.toolbar.fillColor.a, 0.900, 1e-4);
-                fuzzyCompare(shell.toolbar.fillColor.r, 0.247, 1e-4);
+                fuzzyCompare(shell.detailToolbarSheet.color.a, 0.900, 1e-4);
+                fuzzyCompare(shell.detailToolbarSheet.color.r, 0.247, 1e-4);
 
                 // Reduce Transparency takes the shared opaque plate.
                 Settings.set("accessibility.reduceTransparency", true);
@@ -180,8 +225,9 @@ Item {
                 fuzzyCompare(shell.sidebarPane.color.a, 1.0, 1e-6);
                 fuzzyCompare(shell.sidebarPane.color.r,
                              Theme.color.surfaceMuted.r, 1e-6);
-                fuzzyCompare(shell.toolbar.fillColor.a, 1.0, 1e-6);
-                fuzzyCompare(shell.toolbar.fillColor.r, Theme.color.chrome.r, 1e-6);
+                fuzzyCompare(shell.detailToolbarSheet.color.a, 1.0, 1e-6);
+                fuzzyCompare(shell.detailToolbarSheet.color.r,
+                             Theme.color.chrome.r, 1e-6);
 
                 // Focus is a controls/text state, not a material change.
                 shell.windowActive = false;
@@ -217,19 +263,20 @@ Item {
 
             shell.searchText = "";
             compare(ids(shell), JSON.stringify(
-                ["wifi", "bluetooth", "network", "battery", "general", "storage",
-                 "appearance", "accessibility", "control-center", "menu-bar",
-                 "search", "privacy", "desktop-dock", "mission-control",
-                 "displays", "wallpaper", "screen-saver", "notifications",
-                 "sound", "focus", "lock-screen", "biometrics", "users-groups", "printers",
-                 "keyboard", "mouse", "trackpad", "game-controllers"]));
+                ["wifi", "bluetooth", "network", "general", "appearance",
+                 "accessibility", "control-center", "search", "privacy",
+                 "desktop-dock", "mission-control", "displays", "wallpaper",
+                 "screen-saver", "notifications", "sound", "focus",
+                 "lock-screen", "users-groups", "biometrics", "online-accounts",
+                 "game-controllers", "printers", "keyboard", "mouse",
+                 "trackpad", "battery", "menu-bar"]));
         }
 
         function test_search_keeps_the_current_pane() {
             var shell = make();
             shell.searchText = "wall";
-            compare(shell.currentPaneId, "appearance");
-            compare(shell.header.pane.id, "appearance");
+            compare(shell.currentPaneId, "general");
+            compare(shell.header.pane.id, "general");
         }
 
         // -- Keyboard navigation + history -------------------------------------
@@ -238,14 +285,16 @@ Item {
             var shell = make();
             shell.sidebar.forceActiveFocus();
             waitForRendering(stage);
-            // The default pane is Appearance, the seventh shipped row (Wi-Fi,
-            // Bluetooth, Network, Battery, General, and Storage come first in
-            // the map catalog order).
-            compare(shell.sidebar.currentIndex, 6);
+            // The default pane is General. Connectivity's header is index 0,
+            // then Wi-Fi/Bluetooth/Network, then General's header (4) and its
+            // row (5).
+            compare(shell.sidebar.currentIndex, 5);
             keyClick(Qt.Key_Down);
+            // Headers are skipped: the next row is Appearance (Personalization
+            // header at 6, Appearance at 7).
             compare(shell.sidebar.currentIndex, 7);
             keyClick(Qt.Key_Return);
-            compare(shell.currentPaneId, "accessibility");
+            compare(shell.currentPaneId, "appearance");
             verify(shell.canGoBack);
         }
 
@@ -305,7 +354,7 @@ Item {
             compare(shell.searchField.Accessible.searchEdit, true);
             compare(shell.sidebar.Accessible.role, Accessible.List);
             compare(shell.header.Accessible.role, Accessible.Grouping);
-            compare(shell.header.Accessible.name, "Appearance");
+            compare(shell.header.Accessible.name, "General");
             compare(shell.backButton.Accessible.role, Accessible.Button);
             compare(shell.backButton.Accessible.name, "Back");
         }
@@ -317,7 +366,7 @@ Item {
             closeSpy.target = shell;
             closeSpy.clear();
             var s = Theme.controls.trafficLights.buttonSize;
-            var lights = shell.titleBar.trafficLights;
+            var lights = shell.sidebarTrafficLights;
             mouseClick(lights, s / 2, s / 2);
             compare(closeSpy.count, 1);
         }
@@ -357,6 +406,219 @@ Item {
             // A press in the middle of the content is not a resize.
             mouseClick(shell, shell.width / 2, shell.height / 2);
             compare(resizeSpy.count, 5);
+        }
+
+        // -- T263 measured window, grouped sidebar, aliases -------------------
+
+        function sectionIds(shell, index) {
+            return shell.sidebarSections[index].items.map(function(item) {
+                return item.id;
+            }).join(",");
+        }
+
+        function test_grouped_sidebar_has_the_seven_groups() {
+            compare(SettingsPanes.groups.length, 7);
+            compare(SettingsPanes.groups[0].title, "Connectivity");
+            compare(SettingsPanes.groups[1].title, "General");
+            compare(SettingsPanes.groups[2].title, "Personalization");
+            compare(SettingsPanes.groups[3].title, "Desktop");
+            compare(SettingsPanes.groups[4].title, "Accounts & Devices");
+            compare(SettingsPanes.groups[5].title, "Input");
+            compare(SettingsPanes.groups[6].title, "System");
+
+            var shell = make();
+            compare(shell.sidebarSections.length, 7);
+            compare(sectionIds(shell, 0), "wifi,bluetooth,network");
+            compare(sectionIds(shell, 1), "general");
+            compare(sectionIds(shell, 2),
+                    "appearance,accessibility,control-center,search,privacy");
+            compare(sectionIds(shell, 3),
+                    "desktop-dock,mission-control,displays,wallpaper,"
+                    + "screen-saver,notifications,sound,focus,lock-screen");
+            compare(sectionIds(shell, 4),
+                    "users-groups,biometrics,online-accounts,"
+                    + "game-controllers,printers");
+            compare(sectionIds(shell, 5), "keyboard,mouse,trackpad");
+            compare(sectionIds(shell, 6), "battery,menu-bar");
+        }
+
+        function test_measured_sizes_and_no_clipping() {
+            var sizes = [[740, 820], [800, 640], [720, 480]];
+            for (var i = 0; i < sizes.length; ++i) {
+                var width = sizes[i][0];
+                var height = sizes[i][1];
+                var shell = makeSized(width, height);
+
+                compare(shell.sidebarPane.width, 232,
+                        "the sidebar is measured, not the 192 token");
+                compare(shell.detailSheet.width, width - 232);
+                compare(shell.detailContent.x, 30,
+                        "the measured horizontal content inset");
+                compare(shell.detailContent.width, width - 232 - 60);
+                compare(shell.titleBar.width, width - 232);
+                compare(shell.titleBar.height, 52);
+                compare(shell.titleBar.mapToItem(shell, 0, 0).x, 232,
+                        "the detail toolbar starts at the sidebar split");
+                compare(shell.detailScroll.height, height - 52,
+                        "820 - 52 = 768 pt content viewport");
+                verify(shell.header.visible,
+                       "General keeps its reference header at " + width + "x" + height);
+                compare(shell.header.width, shell.detailContent.width);
+
+                // The title is centred over the detail pane, not the window.
+                var titleCenter = shell.titleBar.mapToItem(
+                    shell, shell.titleBar.width / 2, 0).x;
+                verify(titleCenter > width / 2,
+                       "the title must sit over the detail pane at "
+                       + width + "x" + height);
+                compare(shell.titleBar.title, "General");
+
+                // The grouped list scrolls instead of overflowing the card.
+                verify(shell.sidebar.scrollable,
+                       "the sidebar must scroll at " + width + "x" + height);
+                verify(shell.sidebar.flickable.contentWidth
+                       <= shell.sidebar.flickable.width,
+                       "no sidebar row may be wider than the card");
+                shell.destroy();
+            }
+        }
+
+        function test_storage_is_general_storage_and_the_link_still_lands() {
+            var shell = makeSized(740, 820);
+            compare(SettingsPanes.indexOf("storage"), -1,
+                    "Storage has no top-level sidebar row");
+            verify(shell.deepLink("settings://pane/storage"));
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready;
+            });
+            tryVerify(function() {
+                return shell.paneBody.item.subPaneId === "storage";
+            });
+            compare(shell.currentPaneId, "general");
+            compare(shell.paneTitle, "Storage");
+            compare(shell.windowTitle, "Storage");
+            compare(shell.titleBar.title, "Storage");
+            verify(!shell.header.visible,
+                   "a General sub-pane replaces the header with its back chrome");
+
+            // The General row opens the same in-place surface.
+            shell.paneBody.item.closeSubPane();
+            shell.paneBody.item.openSubPane("storage");
+            tryVerify(function() {
+                return shell.paneBody.item.subPaneId === "storage";
+            });
+        }
+
+        function test_online_accounts_is_always_listed() {
+            var shell = make();
+            var ids = shell.visiblePanes.map(function(pane) { return pane.id; });
+            verify(ids.indexOf("online-accounts") >= 0,
+                   "Online Accounts must stay in the sidebar when GOA is absent");
+            compare(SettingsPanes.paneById("online-accounts").optional,
+                    undefined);
+        }
+
+        function test_vpn_is_optional_on_a_profile() {
+            var vpn = SettingsPanes.paneById("vpn");
+            verify(vpn !== null);
+            compare(SettingsPanes.optionalVisible(vpn, { connections: [] }), false);
+            compare(SettingsPanes.optionalVisible(vpn, { connections: [{}] }), true);
+            compare(SettingsPanes.optionalVisible(vpn, {}), false);
+
+            var shell = make();
+            var ids = shell.visiblePanes.map(function(pane) { return pane.id; });
+            compare(ids.indexOf("vpn"), -1,
+                    "VPN is hidden without a NetworkManager profile");
+            verify(SettingsPanes.resolve("vpn").paneId === "network",
+                   "the VPN link targets the Network pane");
+        }
+
+        function test_last_pane_restores_and_a_deep_link_wins() {
+            Settings.set("settings.lastPane", "displays");
+            var shell = makeSized(740, 820);
+            compare(shell.currentPaneId, "displays",
+                    "the last visited pane is restored");
+
+            verify(shell.deepLink("settings://pane/storage"));
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready;
+            });
+            tryVerify(function() {
+                return shell.paneBody.item.subPaneId === "storage";
+            });
+            compare(shell.currentPaneId, "general",
+                    "a deeplink wins over the restored pane");
+            compare(Settings.values["settings.lastPane"], "general",
+                    "the last pane follows navigation");
+        }
+
+        function test_stationary_first_click_selects_each_group() {
+            // A tall shell keeps every group visible, so each first click is
+            // made with no scroll and no prior pointer motion.
+            var shell = makeSized(740, 1400);
+            for (var g = 0; g < shell.sidebarSections.length; ++g) {
+                var id = shell.sidebarSections[g].items[0].id;
+                var index = shell.sidebarIndexOf(id);
+                var row = shell.sidebar.rowAtIndex(index);
+                verify(row !== null, "row for " + id);
+                mouseClick(row, 20, row.height / 2);
+                compare(shell.currentPaneId, id,
+                        "the first stationary click must select " + id);
+            }
+        }
+
+        function test_stationary_click_after_scroll_hits_the_row_under_the_pointer() {
+            var shell = makeSized(720, 480);
+            var id = "menu-bar";
+            var index = shell.sidebarIndexOf(id);
+            var row = shell.sidebar.rowAtIndex(index);
+            verify(row !== null);
+            // Scroll under a stationary pointer, then click the point where the
+            // last row now sits. No motion event precedes the click.
+            shell.sidebar.flickable.contentY =
+                Math.max(0, shell.sidebar.flickable.contentHeight
+                            - shell.sidebar.flickable.height);
+            waitForRendering(stage);
+            var point = row.mapToItem(shell, 20, row.height / 2);
+            mouseClick(shell, point.x, point.y);
+            compare(shell.currentPaneId, id,
+                    "the click must hit the row now under the pointer");
+        }
+
+        function test_every_sidebar_group_switches_at_the_minimum() {
+            var shell = makeSized(720, 480);
+            for (var g = 0; g < shell.sidebarSections.length; ++g) {
+                var section = shell.sidebarSections[g];
+                var id = section.items[0].id;
+                shell.activateSidebarItem(id);
+                tryVerify(function() {
+                    return shell.paneBody.status === Loader.Ready;
+                });
+                waitForRendering(stage);
+                compare(shell.titleBar.title, shell.paneTitle,
+                        "the title follows the pane in group " + section.title);
+                verify(shell.detailContent.width > 0);
+                compare(shell.titleBar.width, 720 - 232);
+                verify(shell.sidebar.scrollable);
+            }
+        }
+
+        function test_window_geometry_restores_and_persists() {
+            Settings.set("settings.window.width", 800);
+            Settings.set("settings.window.height", 640);
+            var win = createTemporaryObject(windowComponent, null, {});
+            verify(win !== null);
+            tryCompare(win, "width", 800);
+            tryCompare(win, "height", 640);
+            compare(win.title, "General");
+
+            win.width = 760;
+            win.height = 600;
+            tryVerify(function() {
+                return Number(Settings.values["settings.window.width"]) === 760
+                    && Number(Settings.values["settings.window.height"]) === 600;
+            });
+            win.close();
         }
     }
 }

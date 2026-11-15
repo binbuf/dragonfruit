@@ -40,6 +40,9 @@ Item {
             var shell = createTemporaryObject(shellComponent, stage,
                                               { width: stage.width, height: stage.height });
             waitForRendering(stage);
+            shell.selectPane("appearance");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
             return shell;
         }
 
@@ -245,6 +248,9 @@ Item {
         function test_controls_fit_the_default_window() {
             var shell = createTemporaryObject(shellComponent, stage,
                                               { width: 640, height: 640 });
+            waitForRendering(stage);
+            shell.selectPane("appearance");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
             waitForRendering(stage);
             var pane = paneOf(shell);
             var rows = [pane.schemeRow, pane.accentRow];

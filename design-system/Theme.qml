@@ -1408,6 +1408,16 @@ QtObject {
             readonly property int buttonSize: 28
             readonly property int radius: 10
         }
+        readonly property var settingsWindow: QtObject {
+            readonly property int width: 740
+            readonly property int height: 820
+            readonly property int minWidth: 720
+            readonly property int minHeight: 480
+            readonly property int chromeHeight: 52
+            readonly property int sidebarWidth: 232
+            readonly property int detailWidth: 508
+            readonly property int contentInset: 30
+        }
         readonly property var files: QtObject {
             readonly property int sidebarWidth: 198
             readonly property int viewGroupWidth: 164

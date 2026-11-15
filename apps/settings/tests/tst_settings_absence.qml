@@ -33,10 +33,11 @@ Item {
         readonly property var shippedPaneIds:
             ["appearance", "desktop-dock", "mission-control", "displays",
              "wallpaper", "screen-saver", "wifi", "bluetooth", "network",
-             "battery", "storage", "general", "sound", "control-center",
+             "battery", "general", "sound", "control-center",
              "search", "keyboard", "mouse", "trackpad", "notifications",
              "focus", "lock-screen", "menu-bar", "biometrics", "users-groups",
-             "printers", "privacy", "accessibility", "game-controllers"]
+             "printers", "privacy", "accessibility", "game-controllers",
+             "online-accounts"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,

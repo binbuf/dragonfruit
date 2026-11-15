@@ -535,6 +535,16 @@ pub mod component {
         pub const BUTTON_SIZE: f32 = 28.0_f32;
         pub const RADIUS: f32 = 10.0_f32;
     }
+    pub mod settings_window {
+        pub const WIDTH: f32 = 740.0_f32;
+        pub const HEIGHT: f32 = 820.0_f32;
+        pub const MIN_WIDTH: f32 = 720.0_f32;
+        pub const MIN_HEIGHT: f32 = 480.0_f32;
+        pub const CHROME_HEIGHT: f32 = 52.0_f32;
+        pub const SIDEBAR_WIDTH: f32 = 232.0_f32;
+        pub const DETAIL_WIDTH: f32 = 508.0_f32;
+        pub const CONTENT_INSET: f32 = 30.0_f32;
+    }
     pub mod files {
         pub const SIDEBAR_WIDTH: f32 = 198.0_f32;
         pub const VIEW_GROUP_WIDTH: f32 = 164.0_f32;

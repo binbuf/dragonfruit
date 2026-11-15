@@ -202,9 +202,10 @@ QtObject {
             var pane = SettingsMap.panes[i];
             if (!pane.shipped)
                 continue;
-            // An optional pane whose host is absent is not in the sidebar, so
-            // it must not be a search result either (T228).
-            if (SettingsPanes.indexOf(pane.id) < 0)
+            // A pane whose host is absent is not in the sidebar, so it must
+            // not be a search result either (T228). T263 resolves aliases, so
+            // General -> Storage rows stay searchable.
+            if (!SettingsPanes.isVisible(pane.id))
                 continue;
             var catalog = SettingsPanes.paneById(pane.id);
             var paneHelp = [pane.owner, pane.absenceNote].join(" ");

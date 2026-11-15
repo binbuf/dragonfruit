@@ -5,7 +5,8 @@ import Dragonfruit.Settings
 
 // The General list opens an in-place canonical About page. Software Update
 // remains a dialog; the other host-backed rows use their own sub-panes.
-// Storage navigates to its existing top-level pane.
+// Storage opens in place too (T263); the old top-level `storage` id and deep
+// link remain aliases.
 Item {
     id: root
 
@@ -66,6 +67,22 @@ Item {
 
     // The in-place sub-pane ("" is the General list).
     property string subPaneId: ""
+    // The title the shell shows in the toolbar/compositor title while a
+    // sub-pane is open (T263). About keeps its dedicated page.
+    readonly property string subPaneTitle: {
+        switch (root.subPaneId) {
+        case "about": return qsTr("About");
+        case "login": return qsTr("Login Items");
+        case "language": return qsTr("Language & Region");
+        case "date-time": return qsTr("Date & Time");
+        case "sharing": return qsTr("Sharing");
+        case "backup": return qsTr("Backup");
+        case "startup": return qsTr("Startup Disk");
+        case "reset": return qsTr("Reset");
+        case "storage": return qsTr("Storage");
+        default: return "";
+        }
+    }
 
     readonly property string updateSummary: {
         if (!root.ready)
@@ -161,6 +178,7 @@ Item {
         case "backup": return backupComponent;
         case "startup": return startupComponent;
         case "reset": return resetComponent;
+        case "storage": return storageComponent;
         default: return null;
         }
     }
@@ -222,7 +240,7 @@ Item {
                     label: qsTr("Storage")
                     description: root.storageSummary
                     disclosure: true
-                    onDisclosureClicked: root.navigateRequested("storage")
+                    onDisclosureClicked: root.openSubPane("storage")
                 }
 
                 SettingsRow {
@@ -340,6 +358,9 @@ Item {
         id: aboutComponent
         AboutPage { onNavigateRequested: (paneId) => root.navigateRequested(paneId) }
     }
+    // T263: Storage is General -> Storage. The existing Storage pane body is
+    // reused in place; the top-level `storage` id and deep link remain aliases.
+    Component { id: storageComponent; StoragePane { } }
     // ── The Software Update dialog ────────────────────────────────────────
     Dialog {
         id: updateDialog

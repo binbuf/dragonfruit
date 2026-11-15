@@ -31,6 +31,9 @@ Item {
     // pane Loader swap and are consumed once the body exists.
     property string pendingPaneId: ""
     property string pendingRowId: ""
+    // The pane whose map owns `pendingRowId`. Storage rows live under the
+    // `storage` map id even though the body is General -> Storage.
+    property string pendingRowPaneId: ""
     property var highlightTarget: null
     // How long the deep-link landing wash stays visible. Tests/captures raise
     // it so a slow software render cannot outrun the evidence.
@@ -40,9 +43,30 @@ Item {
     // to match instead of searching the outgoing pane's rows.
     property string loadedPaneId: ""
     property bool pendingAboutPage: false
+    // T263: a deep link or General sub-pane request that must open after the
+    // pane body exists. `pendingSubPaneId` survives the Loader swap; the
+    // `pendingSection` is a section title to scroll to after the swap (the VPN
+    // link lands on Network -> VPN).
+    property string pendingSubPaneId: ""
+    property string pendingSection: ""
     readonly property bool aboutOpen: root.currentPaneId === "general"
                                       && paneBody.item !== null
                                       && paneBody.item.subPaneId === "about"
+    readonly property string currentSubPaneId:
+        paneBody.item !== null && paneBody.item.subPaneId !== undefined
+            ? String(paneBody.item.subPaneId) : ""
+    readonly property bool subPaneOpen: root.currentSubPaneId.length > 0
+    // The toolbar title and the compositor/taskbar title both follow the
+    // current pane (or its open sub-pane), never a constant.
+    readonly property string paneTitle: {
+        if (root.subPaneOpen && paneBody.item !== null
+                && paneBody.item.subPaneTitle !== undefined
+                && String(paneBody.item.subPaneTitle).length > 0)
+            return String(paneBody.item.subPaneTitle);
+        return root.currentPane ? root.currentPane.title : qsTr("System Settings");
+    }
+    readonly property string windowTitle: root.currentPane
+        ? root.paneTitle : qsTr("System Settings")
 
     readonly property bool searchActive: root.searchText.trim().length > 0
     readonly property var searchResults: SettingsSearch.search(root.searchText)
@@ -51,10 +75,13 @@ Item {
     property alias searchResultsList: searchResultsList
     property alias sidebar: sidebar
     property alias sidebarPane: sidebarPane
+    property alias sidebarToolbar: sidebarToolbar
+    property alias sidebarTrafficLights: sidebarTrafficLights
     // T230b: the unified toolbar is the titlebar row; keep the old alias so
     // existing chrome-material consumers read the same surface.
     property alias toolbar: titleBar
     property alias titleBar: titleBar
+    property alias detailToolbarSheet: detailToolbarSheet
     property alias appWindow: appWindow
     property alias header: header
     property alias backButton: backButton
@@ -122,6 +149,22 @@ Item {
     signal aboutPageOpened()
 
     readonly property var visiblePanes: SettingsPanes.filter(root.searchText)
+    // T263: the same visible list, grouped for the source list. One catalog,
+    // one filter; the sidebar never gets a second pane list. Each item keeps
+    // the pane id so selection and activation do not depend on a flat index.
+    readonly property var sidebarSections: SettingsPanes.grouped(root.visiblePanes).map(function(section) {
+        return {
+            title: section.title,
+            items: section.items.map(function(pane) {
+                return {
+                    id: pane.id,
+                    label: pane.title,
+                    icon: pane.icon,
+                    category: SettingsPanes.categoryStyle(pane)
+                };
+            })
+        };
+    })
     readonly property var currentPane: SettingsPanes.paneById(root.currentPaneId)
     // The app's published native menu model (T-09.6a). The global menu bar
     // consumes this; it is exposed here so the app can present the same model
@@ -131,8 +174,11 @@ Item {
     readonly property bool canGoForward: root.historyIndex >= 0
                                        && root.historyIndex < root.history.length - 1
 
-    implicitWidth: 900
-    implicitHeight: 600
+    // T263: the measured System Settings window. The host Window sets the
+    // real size; these values keep the shell itself at the reference geometry
+    // when a test or capture instantiates it directly.
+    implicitWidth: Theme.controls.settingsWindow.width
+    implicitHeight: Theme.controls.settingsWindow.height
 
     // Temporary pane-switch timing trace: run the app with
     // `DF_SETTINGS_TRACE=1` and correlate these `DFTRACE` lines with the
@@ -142,12 +188,80 @@ Item {
             Settings.traceLog(message);
     }
 
-    function visibleIndexOf(id) {
-        for (var i = 0; i < root.visiblePanes.length; ++i) {
-            if (root.visiblePanes[i].id === id)
-                return i;
+    // The sidebar's current index counts section headers as well as rows.
+    // Computing it from the same grouped sections the Sidebar renders keeps
+    // selection in sync without a second id->index map.
+    function sidebarIndexOf(id) {
+        var index = 0;
+        for (var s = 0; s < root.sidebarSections.length; ++s) {
+            var section = root.sidebarSections[s];
+            if (String(section.title || "").length > 0)
+                index += 1;
+            var items = section.items || [];
+            for (var i = 0; i < items.length; ++i) {
+                if (items[i].id === id)
+                    return index;
+                index += 1;
+            }
         }
         return -1;
+    }
+
+    function sidebarIdAtIndex(index) {
+        if (index < 0)
+            return "";
+        var current = 0;
+        for (var s = 0; s < root.sidebarSections.length; ++s) {
+            var section = root.sidebarSections[s];
+            if (String(section.title || "").length > 0) {
+                if (current === index)
+                    return "";
+                current += 1;
+            }
+            var items = section.items || [];
+            for (var i = 0; i < items.length; ++i) {
+                if (current === index)
+                    return items[i].id;
+                current += 1;
+            }
+        }
+        return "";
+    }
+
+    // Open a resolved catalog target: a pane plus an optional sub-pane or
+    // section anchor. Used by the sidebar links and the deep-link resolver.
+    function openTarget(target) {
+        if (target === null)
+            return;
+        root.searchText = "";
+        if (root.currentPaneId !== target.paneId)
+            root.selectPane(target.paneId);
+        if (target.subPaneId !== undefined && target.subPaneId.length > 0)
+            root.openSubPane(target.subPaneId);
+        if (target.anchor !== undefined && target.anchor.length > 0) {
+            root.pendingPaneId = target.paneId;
+            root.pendingSection = target.anchor;
+        }
+        if (root.currentPaneId === target.paneId)
+            Qt.callLater(root.revealPending);
+    }
+
+    function activateSidebarItem(id) {
+        root.openTarget(SettingsPanes.resolve(id));
+    }
+
+    // Open a General in-place sub-pane now when the body is mounted, or after
+    // the Loader swaps.
+    function openSubPane(id) {
+        if (!id || id.length === 0)
+            return;
+        if (root.currentPaneId === "general" && paneBody.item !== null
+                && paneBody.item.openSubPane !== undefined) {
+            paneBody.item.openSubPane(id);
+            root.pendingSubPaneId = "";
+            return;
+        }
+        root.pendingSubPaneId = id;
     }
 
     // Show a pane, recording the move in history. Selecting the current pane
@@ -157,6 +271,7 @@ Item {
             return;
         root.trace("selectPane " + id);
         root.clearPendingHighlight();
+        root.pendingSubPaneId = "";
         var next = root.history.slice(0, root.historyIndex + 1);
         next.push(id);
         root.history = next;
@@ -193,7 +308,7 @@ Item {
 
     function syncSelection() {
         root.syncing = true;
-        sidebar.currentIndex = root.visibleIndexOf(root.currentPaneId);
+        sidebar.currentIndex = root.sidebarIndexOf(root.currentPaneId);
         root.syncing = false;
     }
 
@@ -225,12 +340,16 @@ Item {
         var link = root.parseDeepLink(url);
         if (link === null)
             return false;
-        var pane = SettingsPanes.paneById(link.paneId);
+        // Storage and VPN are aliases: resolve them to the pane that owns the
+        // body (General -> Storage, Network -> VPN). A hidden/optional alias
+        // is accepted only when its target is visible.
+        var target = SettingsPanes.resolve(link.paneId);
+        if (target === null)
+            return false;
+        var pane = SettingsPanes.paneById(target.paneId);
         if (pane === null || !pane.shipped)
             return false;
-        // An optional pane whose host is absent is not in the sidebar, so a
-        // deep link must not open it (T228).
-        if (SettingsPanes.indexOf(link.paneId) < 0)
+        if (!SettingsPanes.isVisible(link.paneId))
             return false;
         if (link.rowId.length > 0) {
             var row = SettingsMap.rowFor(link.paneId, link.rowId);
@@ -238,11 +357,15 @@ Item {
                 return false;
         }
         root.searchText = "";
-        if (root.currentPaneId !== link.paneId)
-            root.selectPane(link.paneId);
-        root.pendingPaneId = link.paneId;
+        if (root.currentPaneId !== target.paneId)
+            root.selectPane(target.paneId);
+        root.pendingPaneId = target.paneId;
         root.pendingRowId = link.rowId;
-        if (root.currentPaneId === link.paneId)
+        root.pendingRowPaneId = link.paneId;
+        root.pendingSection = target.anchor;
+        if (target.subPaneId.length > 0)
+            root.openSubPane(target.subPaneId);
+        if (root.currentPaneId === target.paneId)
             Qt.callLater(root.revealPending);
         return true;
     }
@@ -257,6 +380,8 @@ Item {
     function clearPendingHighlight() {
         root.pendingPaneId = "";
         root.pendingRowId = "";
+        root.pendingRowPaneId = "";
+        root.pendingSection = "";
         highlightTimer.stop();
         if (root.highlightTarget !== null) {
             root.highlightTarget.highlighted = false;
@@ -341,10 +466,15 @@ Item {
         if (body === null)
             return;
         var row = root.pendingRowId.length > 0
-                ? SettingsMap.rowFor(root.pendingPaneId, root.pendingRowId) : null;
+                ? SettingsMap.rowFor(root.pendingRowPaneId.length > 0
+                                     ? root.pendingRowPaneId : root.pendingPaneId,
+                                     root.pendingRowId)
+                : null;
         var target = row !== null ? root.findRowTarget(body, row) : null;
         if (target === null && row !== null)
             target = root.findSectionTarget(body, row.section);
+        if (target === null && root.pendingSection.length > 0)
+            target = root.findSectionTarget(body, root.pendingSection);
         if (target === null)
             target = body;
         var point = target.mapToItem(detailContent, 0, 0);
@@ -364,6 +494,8 @@ Item {
             target.forceActiveFocus();
         root.pendingPaneId = "";
         root.pendingRowId = "";
+        root.pendingRowPaneId = "";
+        root.pendingSection = "";
     }
 
     Timer {
@@ -452,18 +584,25 @@ Item {
     }
 
     Component.onCompleted: {
-        var first = root.visiblePanes.length > 0 ? root.visiblePanes[0].id : "";
-        // The out-of-box pane stays `appearance` while it ships, so opening
-        // Settings never auto-starts a subsystem side effect (the Bluetooth
-        // pane begins an inquiry while it is open, T-15.1b). Otherwise fall
-        // back to the first shipped pane.
-        if (SettingsPanes.indexOf("appearance") >= 0)
-            first = "appearance";
+        var first = "";
+        // T263: restore the last visited pane on a normal launch. First launch
+        // (no stored preference) opens General. The persistence seam is off
+        // under the headless fixture unless a test opts in, so the existing
+        // pane tests keep a clean process.
+        if (Settings.windowStatePersistence) {
+            var restored = String(Settings.values["settings.lastPane"] || "");
+            if (restored.length > 0 && SettingsPanes.isVisible(restored))
+                first = SettingsPanes.resolve(restored).paneId;
+        }
+        if (first.length === 0 && SettingsPanes.isVisible("general"))
+            first = "general";
+        if (first.length === 0 && root.visiblePanes.length > 0)
+            first = root.visiblePanes[0].id;
         // `DF_SETTINGS_START_PANE` opens a specific shipped pane for captures
         // and scripted checks; an unknown or unshipped id is ignored.
         var requested = Settings.startPane;
-        if (requested.length > 0 && SettingsPanes.indexOf(requested) >= 0)
-            first = requested;
+        if (requested.length > 0 && SettingsPanes.isVisible(requested))
+            first = SettingsPanes.resolve(requested).paneId;
         if (first.length > 0) {
             root.history = [first];
             root.historyIndex = 0;
@@ -471,6 +610,7 @@ Item {
             root.syncSelection();
         }
         // T232: a cold-launch `--deep-link` lands on the requested pane/row.
+        // A deep link wins over the restored pane and the default.
         var deepLink = Settings.startDeepLink;
         if (deepLink.length > 0)
             root.deepLink(deepLink);
@@ -483,6 +623,10 @@ Item {
     onCurrentPaneIdChanged: {
         if (debugView.open && root.currentPaneId.length > 0)
             debugView.paneId = root.currentPaneId;
+        // T263: remember the last visited pane. The compositor/taskbar title
+        // follows the same value through `windowTitle`.
+        if (Settings.windowStatePersistence && root.currentPaneId.length > 0)
+            Settings.set("settings.lastPane", root.currentPaneId);
         if (root.pendingPaneId.length > 0
                 && root.pendingPaneId === root.currentPaneId
                 && root.pendingPaneId === root.loadedPaneId)
@@ -494,6 +638,8 @@ Item {
             searchField.text = root.searchText;
         root.syncSelection();
     }
+
+    onSidebarSectionsChanged: root.syncSelection()
 
     Keys.onPressed: (event) => {
         switch (event.key) {
@@ -745,65 +891,85 @@ Item {
     AppWindow {
         id: appWindow
         anchors.fill: parent
-        title: qsTr("System Settings")
+        title: root.windowTitle
         active: root.windowActive
         // T230b: Settings is a 52 pt unified-toolbar window. The style is
-        // declared once here; the titlebar inherits it.
+        // declared once here; the split toolbars inherit it.
         windowStyle: "unified"
-        // T206: the sidebar/toolbar carry the measured app-local alpha; the
-        // detail sheet below stays opaque.
+        // T206/T263: the sidebar material runs under the titlebar and the
+        // detail sheet below the toolbar stays opaque.
         chromeTransparent: true
-
-        titleBarData: TitleBar {
-            id: titleBar
-                title: root.aboutOpen ? qsTr("About")
-                                      : (root.currentPane ? root.currentPane.title : qsTr("System Settings"))
-            active: root.windowActive
-            fillColor: Material.appChromeFill("settingsToolbar",
-                                              Theme.color.chrome)
-            borderColor: Material.appChromeBorder("settingsToolbar",
-                                                  Theme.color.border)
-            leadingData: Row {
-                spacing: Theme.controls.toolbar.spacing
-                Button {
-                    id: backButton
-                    icon: "chevron-left"
-                    variant: "ghost"
-                    accessibleName: qsTr("Back")
-                    enabled: root.canGoBack
-                    onClicked: root.back()
-                }
-                Button {
-                    id: forwardButton
-                    icon: "chevron-right"
-                    variant: "ghost"
-                    accessibleName: qsTr("Forward")
-                    enabled: root.canGoForward
-                    onClicked: root.forward()
-                }
-            }
-            onCloseRequested: root.closeRequested()
-            onMinimizeRequested: root.minimizeRequested()
-            onZoomRequested: root.zoomRequested()
-            onMoveRequested: (x, y) => root.moveRequested(x, y)
-            onMenuRequested: (x, y) => root.menuRequested(x, y)
-        }
 
         Row {
             anchors.fill: parent
             spacing: 0
 
-            // Sidebar: a muted source list with local pane search on top.
-            ChromeSheet {
-                id: sidebarPane
-                width: Theme.controls.sidebar.width
+            // Sidebar column: full window height, so its material runs under
+            // the unified toolbar (T263). Traffic lights live in this half.
+            Item {
+                id: sidebarColumn
+                width: Theme.controls.settingsWindow.sidebarWidth
                 height: parent.height
-                color: Material.appChromeFill("settingsSidebar",
-                                             Theme.color.surfaceMuted)
-                bottomLeftRadius: Theme.controls.window.radius
+
+                ChromeSheet {
+                    id: sidebarPane
+                    anchors.fill: parent
+                    color: Material.appChromeFill("settingsSidebar",
+                                                 Theme.color.surfaceMuted)
+                    topLeftRadius: Theme.controls.window.radius
+                    bottomLeftRadius: Theme.controls.window.radius
+                }
+
+                Item {
+                    id: sidebarToolbar
+                    width: parent.width
+                    height: Theme.controls.settingsWindow.chromeHeight
+
+                    // The whole strip drags the window, like the reference's
+                    // unified toolbar. The titlebar's own drag area is on the
+                    // detail side.
+                    MouseArea {
+                        id: sidebarDrag
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        hoverEnabled: true
+                        onPressed: (mouse) => {
+                            if (mouse.button === Qt.LeftButton)
+                                root.moveRequested(mouse.x, mouse.y);
+                        }
+                        onDoubleClicked: root.zoomRequested()
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton)
+                                root.menuRequested(mouse.x, mouse.y);
+                        }
+                    }
+
+                    TrafficLights {
+                        id: sidebarTrafficLights
+                        active: root.windowActive
+                        anchors.left: parent.left
+                        anchors.leftMargin: WindowStyle.trafficLightInset(parent.height)
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        onCloseClicked: root.closeRequested()
+                        onMinimizeClicked: root.minimizeRequested()
+                        onZoomClicked: root.zoomRequested()
+                    }
+
+                    Rectangle {
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: Theme.controls.window.borderWidth
+                        color: Theme.color.border
+                    }
+                }
 
                 Column {
-                    anchors.fill: parent
+                    anchors.top: sidebarToolbar.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
                     anchors.margins: Theme.controls.sidebar.padding
                     spacing: Theme.primitive.spacing.md
 
@@ -846,24 +1012,18 @@ Item {
                             categoryIconSize: root.sidebarCategoryIconPixels
                             // The outer ChromeSheet owns the app-local material.
                             fillColor: "transparent"
-                            sections: [{
-                                items: root.visiblePanes.map(function(pane) {
-                                    return {
-                                        label: pane.title,
-                                        icon: pane.icon,
-                                        category: SettingsPanes.categoryStyle(pane)
-                                    };
-                                })
-                            }]
+                            sections: root.sidebarSections
 
                             onActivated: (index, item) => {
-                                if (index >= 0 && index < root.visiblePanes.length)
-                                    root.selectPane(root.visiblePanes[index].id);
+                                if (item && item.id)
+                                    root.activateSidebarItem(item.id);
                             }
                             onCurrentIndexChanged: {
-                                if (!root.syncing && sidebar.currentIndex >= 0
-                                        && sidebar.currentIndex < root.visiblePanes.length)
-                                    root.selectPane(root.visiblePanes[sidebar.currentIndex].id);
+                                if (root.syncing)
+                                    return;
+                                var id = root.sidebarIdAtIndex(sidebar.currentIndex);
+                                if (id.length > 0)
+                                    root.activateSidebarItem(id);
                             }
                         }
 
@@ -883,99 +1043,154 @@ Item {
                 }
             }
 
-            // Detail pane: history chrome, the header card, and the pane body.
-            Rectangle {
-                width: parent.width - sidebarPane.width
+            // Detail column: the 52 pt split toolbar over the opaque sheet.
+            Item {
+                id: detailColumn
+                width: parent.width - sidebarColumn.width
                 height: parent.height
-                color: "transparent"
 
-                // The titlebar is the app-local toolbar (52 pt unified); the
-                // scrolling detail sheet below it is the opaque content
-                // surface and owns the bottom-right window corner.
                 ChromeSheet {
                     id: detailSheet
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
+                    anchors.fill: parent
                     color: Theme.color.surface
+                    topRightRadius: Theme.controls.window.radius
                     bottomRightRadius: Theme.controls.window.radius
                 }
 
-                Column {
-                    anchors.fill: parent
-                    spacing: 0
+                // The detail half of the unified toolbar. The sidebar material
+                // behind its left edge is a separate surface, so the split is
+                // visible at the sidebar width.
+                ChromeSheet {
+                    id: detailToolbarSheet
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: Theme.controls.settingsWindow.chromeHeight
+                    color: Material.appChromeFill("settingsToolbar",
+                                                 Theme.color.chrome)
+                    topRightRadius: Theme.controls.window.radius
+                }
 
-                    ScrollView {
-                        id: detailScroll
-                        width: parent.width
-                        height: parent.height
-                        scrollbarVisible: true
-                        scrollBars: root.scrollBars
+                TitleBar {
+                    id: titleBar
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: Theme.controls.settingsWindow.chromeHeight
+                    title: root.paneTitle
+                    active: root.windowActive
+                    // The traffic lights and sidebar live left of the split;
+                    // Back/Forward and the title live here, centred over the
+                    // detail pane rather than the whole window.
+                    showTrafficLights: false
+                    fillColor: "transparent"
+                    borderColor: Material.appChromeBorder("settingsToolbar",
+                                                         Theme.color.border)
+                    leadingData: Row {
+                        spacing: Theme.controls.toolbar.spacing
+                        Button {
+                            id: backButton
+                            icon: "chevron-left"
+                            variant: "ghost"
+                            accessibleName: qsTr("Back")
+                            enabled: root.canGoBack
+                            onClicked: root.back()
+                        }
+                        Button {
+                            id: forwardButton
+                            icon: "chevron-right"
+                            variant: "ghost"
+                            accessibleName: qsTr("Forward")
+                            enabled: root.canGoForward
+                            onClicked: root.forward()
+                        }
+                    }
+                    onCloseRequested: root.closeRequested()
+                    onMinimizeRequested: root.minimizeRequested()
+                    onZoomRequested: root.zoomRequested()
+                    onMoveRequested: (x, y) => root.moveRequested(x, y)
+                    onMenuRequested: (x, y) => root.menuRequested(x, y)
+                }
 
-                        Column {
-                            id: detailContent
-                            x: Theme.primitive.spacing.xl
-                            width: Math.max(0, detailScroll.width - 2 * Theme.primitive.spacing.xl)
-                            spacing: Theme.primitive.spacing.lg
+                ScrollView {
+                    id: detailScroll
+                    anchors.top: titleBar.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    scrollbarVisible: true
+                    scrollBars: root.scrollBars
 
-                            Item { width: 1; height: Theme.primitive.spacing.sm }
+                    Column {
+                        id: detailContent
+                        x: Theme.controls.settingsWindow.contentInset
+                        width: Math.max(0, detailScroll.width
+                                          - 2 * Theme.controls.settingsWindow.contentInset)
+                        spacing: Theme.primitive.spacing.lg
 
-                            PaneHeader {
-                                id: header
-                                width: parent.width
-                                // Only panes whose macOS capture has a header
-                                // card show one; the settings-list panes open
-                                // at their first group.
-                                visible: !root.aboutOpen && SettingsPanes.hasHeader(root.currentPane)
-                                pane: root.currentPane
+                        PaneHeader {
+                            id: header
+                            width: parent.width
+                            // Only panes whose macOS capture has a header card
+                            // show one; the settings-list panes open at their
+                            // first group. A General sub-pane replaces the
+                            // header with its own back chrome.
+                            visible: !root.subPaneOpen
+                                     && SettingsPanes.hasHeader(root.currentPane)
+                            pane: root.currentPane
+                        }
+
+                        // Panes may ask the shell to open another pane (the
+                        // Appearance pane's Motion link, T227).
+                        Connections {
+                            target: paneBody.item
+                            ignoreUnknownSignals: true
+                            function onNavigationRequested(paneId) {
+                                root.selectPane(paneId);
                             }
+                        }
 
-                            // Panes may ask the shell to open another pane (the
-                            // Appearance pane's Motion link, T227).
-                            Connections {
-                                target: paneBody.item
-                                ignoreUnknownSignals: true
-                                function onNavigationRequested(paneId) {
-                                    root.selectPane(paneId);
+                        Loader {
+                            id: paneBody
+                            width: parent.width
+                            sourceComponent: root.paneComponent(root.currentPaneId)
+                            onLoaded: {
+                                root.loadedPaneId = root.currentPaneId;
+                                // A General sub-pane requested before the
+                                // Loader swapped (Storage deep link).
+                                if (root.pendingSubPaneId.length > 0
+                                        && root.currentPaneId === "general") {
+                                    paneBody.item.openSubPane(root.pendingSubPaneId);
+                                    root.pendingSubPaneId = "";
                                 }
+                                if (root.pendingAboutPage && root.currentPaneId === "general") {
+                                    paneBody.item.openSubPane("about");
+                                    root.pendingAboutPage = false;
+                                }
+                                // Panes with an in-pane popup get the shell
+                                // root as its parent so the detail
+                                // ScrollView's clip cannot cut it off.
+                                if (paneBody.item.popupParent !== undefined)
+                                    paneBody.item.popupParent = root;
+                                root.trace("paneLoaded " + root.currentPaneId);
+                                if (root.pendingPaneId === root.currentPaneId)
+                                    Qt.callLater(root.revealPending);
                             }
+                        }
 
-                            Loader {
-                                id: paneBody
+                        SettingsGroup {
+                            width: parent.width
+                            reserveBottomMargin: false
+                            visible: paneBody.status !== Loader.Ready
+
+                            Text {
                                 width: parent.width
-                                sourceComponent: root.paneComponent(root.currentPaneId)
-                                onLoaded: {
-                                    root.loadedPaneId = root.currentPaneId;
-                                    if (root.pendingAboutPage && root.currentPaneId === "general") {
-                                        paneBody.item.openSubPane("about");
-                                        root.pendingAboutPage = false;
-                                    }
-                                    // Panes with an in-pane popup get the shell
-                                    // root as its parent so the detail
-                                    // ScrollView's clip cannot cut it off.
-                                    if (paneBody.item.popupParent !== undefined)
-                                        paneBody.item.popupParent = root;
-                                    root.trace("paneLoaded " + root.currentPaneId);
-                                    if (root.pendingPaneId === root.currentPaneId)
-                                        Qt.callLater(root.revealPending);
-                                }
-                            }
-
-                            SettingsGroup {
-                                width: parent.width
-                                reserveBottomMargin: false
-                                visible: paneBody.status !== Loader.Ready
-
-                                Text {
-                                    width: parent.width
-                                    text: root.currentPane
-                                          ? qsTr("The controls for this pane arrive with its own step of the Settings wave.")
-                                          : qsTr("Choose a pane from the sidebar.")
-                                    color: Theme.color.textSecondary
-                                    font.pixelSize: Theme.controls.button.fontSize
-                                    wrapMode: Text.WordWrap
-                                }
+                                text: root.currentPane
+                                      ? qsTr("The controls for this pane arrive with its own step of the Settings wave.")
+                                      : qsTr("Choose a pane from the sidebar.")
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                wrapMode: Text.WordWrap
                             }
                         }
                     }

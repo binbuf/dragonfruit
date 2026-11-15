@@ -410,7 +410,15 @@ falls back to the Tabler-backed `Icon.qml` vocabulary. See ADR
 
 The Settings window is a first-party CSD surface: `SettingsWindow.qml` draws
 the design-system `TitleBar` and `SettingsShell` owns the sidebar, toolbar and
-detail sheet. T206 gives the sidebar and toolbar their observed near-opaque
+detail sheet. T263 splits the unified toolbar at the sidebar edge: the
+sidebar's `settingsSidebar` material covers the full window height (traffic
+lights included), while the detail half's `settingsToolbar` carries
+Back/Forward and the pane title, centred over the detail pane. The window
+opens at 740×820 pt with a 232 pt grouped sidebar, 508 pt detail content, and
+a 30 pt horizontal inset; 720×480 is the minimum. The shell restores the last
+pane and the host window restores its normal geometry through
+`settings.lastPane` and `settings.window.*`; a deep link wins over the
+restored pane. T206 gives the sidebar and toolbar their observed near-opaque
 appearance without changing the opaque content sheet:
 
 - Light sidebar `settingsSidebar` 0.986/0.857 and toolbar
@@ -419,8 +427,9 @@ appearance without changing the opaque content sheet:
   an explicit **adapted** baseline; System Settings Dark has no independent
   fit.
 - The window frame/content backing is transparent only behind those two
-  surfaces (`AppWindow.chromeTransparent`); the titlebar keeps its opaque
-  backing and the scrolling detail sheet stays `Theme.color.surface`.
+  surfaces (`AppWindow.chromeTransparent`); the sidebar material runs under
+  the titlebar, the detail toolbar paints its own `settingsToolbar` sheet,
+  and the scrolling detail sheet stays `Theme.color.surface`.
 - `Material.appChromeFill()` resolves the preset through the shared `Glass`
   resolver. Reduce Transparency uses the shared opaque plate; a
   non-composited/unsupported client keeps the existing opaque

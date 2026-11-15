@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 26;
+pub const SCHEMA_VERSION: u32 = 27;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1913,6 +1913,90 @@ pub const KEYS: &[KeySpec] = &[
         since: 20,
         summary: "How often the selected backup backend runs.",
     },
+    // ── System Settings window state (T263) ──────────────────────────────
+    // The shell's remembered last pane and the host window's geometry. A
+    // fresh profile has an empty pane (first launch opens General) and the
+    // measured 740x820 size; `positioned` is false until the user moves the
+    // window, so the compositor's default placement is not overridden by a
+    // meaningless (0,0) position.
+    KeySpec {
+        key: "settings.lastPane",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings shell (last pane)",
+        since: 27,
+        summary: "The last visited System Settings pane id; empty opens General.",
+    },
+    KeySpec {
+        key: "settings.window.width",
+        group: KeyGroup::General,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(740),
+        allowed: &[],
+        min: Some(720.0),
+        max: Some(10000.0),
+        owner: "apps/settings",
+        consumer: "apps/settings window",
+        since: 27,
+        summary: "Remembered System Settings window width in points.",
+    },
+    KeySpec {
+        key: "settings.window.height",
+        group: KeyGroup::General,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(820),
+        allowed: &[],
+        min: Some(480.0),
+        max: Some(10000.0),
+        owner: "apps/settings",
+        consumer: "apps/settings window",
+        since: 27,
+        summary: "Remembered System Settings window height in points.",
+    },
+    KeySpec {
+        key: "settings.window.x",
+        group: KeyGroup::General,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(0),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings window",
+        since: 27,
+        summary: "Remembered System Settings window x position; used only when positioned is true.",
+    },
+    KeySpec {
+        key: "settings.window.y",
+        group: KeyGroup::General,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(0),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings window",
+        since: 27,
+        summary: "Remembered System Settings window y position; used only when positioned is true.",
+    },
+    KeySpec {
+        key: "settings.window.positioned",
+        group: KeyGroup::General,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings window",
+        since: 27,
+        summary: "Whether the remembered x/y position has been set by the user.",
+    },
     // ── Appearance completion (T227) ─────────────────────────────────────
     // The remaining Appearance rows are durable design-system preferences.
     // Highlight is a text colour override (empty = the token selection);
@@ -3206,6 +3290,39 @@ mod tests {
             .unwrap()
             .validate(&Value::Integer(-1))
             .is_err());
+    }
+
+    /// The T263 System Settings window-state keys, additive in revision 27.
+    #[test]
+    fn the_t263_window_state_keys_are_declared_in_revision_twenty_seven() {
+        for (key, kind, default) in [
+            ("settings.lastPane", KeyType::Text, KeyDefault::Text("")),
+            ("settings.window.width", KeyType::Integer, KeyDefault::Integer(740)),
+            ("settings.window.height", KeyType::Integer, KeyDefault::Integer(820)),
+            ("settings.window.x", KeyType::Integer, KeyDefault::Integer(0)),
+            ("settings.window.y", KeyType::Integer, KeyDefault::Integer(0)),
+            ("settings.window.positioned", KeyType::Bool, KeyDefault::Bool(false)),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::General, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.since, 27, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(spec.validate(&spec.default.to_value()).is_ok(), "{key}");
+        }
+        assert!(spec("settings.window.width")
+            .unwrap()
+            .validate(&Value::Integer(719))
+            .is_err());
+        assert!(spec("settings.window.height")
+            .unwrap()
+            .validate(&Value::Integer(479))
+            .is_err());
+        assert!(spec("settings.window.positioned")
+            .unwrap()
+            .validate(&Value::Bool(true))
+            .is_ok());
     }
 
     /// The T227 Appearance/Quick Settings/Search/Screen Saver/Desktop keys,

@@ -129,7 +129,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 26). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 27). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -266,6 +266,13 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("backup.backend"), QStringLiteral("auto"));
     values.insert(QStringLiteral("backup.destination"), QString());
     values.insert(QStringLiteral("backup.schedule"), QStringLiteral("off"));
+ // Revision 27 (T263): System Settings window state.
+ values.insert(QStringLiteral("settings.lastPane"), QString());
+ values.insert(QStringLiteral("settings.window.width"), qlonglong(740));
+ values.insert(QStringLiteral("settings.window.height"), qlonglong(820));
+ values.insert(QStringLiteral("settings.window.x"), qlonglong(0));
+ values.insert(QStringLiteral("settings.window.y"), qlonglong(0));
+ values.insert(QStringLiteral("settings.window.positioned"), false);
     // Revision 21 (T227): Appearance completion, Quick Settings, Search,
     // Screen Saver, and Desktop.
     values.insert(QStringLiteral("appearance.highlight"), QString());
@@ -412,6 +419,10 @@ const Constraint kConstraints[] = {
     { "locale.firstDay", kLocaleFirstDay, 4, false, 0, false, 0 },
     { "backup.backend", kBackupBackend, 4, false, 0, false, 0 },
     { "backup.schedule", kBackupSchedule, 5, false, 0, false, 0 },
+    { "settings.window.width", nullptr, 0, true, 720.0, true, 10000.0 },
+    { "settings.window.height", nullptr, 0, true, 480.0, true, 10000.0 },
+    { "settings.window.x", nullptr, 0, false, 0.0, false, 0.0 },
+    { "settings.window.y", nullptr, 0, false, 0.0, false, 0.0 },
     { "appearance.sidebarIconSize", kSidebarIconSize, 3, false, 0, false, 0 },
     { "appearance.scrollBars", kScrollBars, 3, false, 0, false, 0 },
     { "screenSaver.style", kScreenSaverStyle, 2, false, 0, false, 0 },

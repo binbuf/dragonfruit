@@ -66,7 +66,7 @@ use smithay::desktop::utils::under_from_surface_tree;
 use smithay::desktop::WindowSurfaceType;
 use smithay::input::keyboard::xkb::keysyms;
 use smithay::input::keyboard::FilterResult;
-use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent};
+use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerHandle};
 use smithay::input::touch::{DownEvent, MotionEvent as TouchMotionEvent, UpEvent};
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -196,6 +196,42 @@ pub fn surface_under(
         }
     }
     desktop_under(state, point)
+}
+
+/// Re-resolve pointer focus at the live pointer position before a button
+/// press (T263 P0-17).
+///
+/// A window can map under a stationary pointer, or a list can scroll under
+/// it, without a new motion event. The pointer's focus is then whatever it
+/// was at the last motion (or `None`), so a press routed through that stale
+/// focus only focuses the window and never reaches the row. Ray-test the live
+/// location and send a zero-delta motion when the target differs; the press
+/// then lands on the surface the user is actually pointing at.
+fn sync_pointer_focus_before_button(
+    state: &mut DfState,
+    pointer: &PointerHandle<DfState>,
+    serial: smithay::utils::Serial,
+    time: u32,
+) {
+    let location = pointer.current_location();
+    let target = surface_under(state, location).map(|(surface, origin)| (surface, origin.to_f64()));
+    let same = match (&target, &pointer.current_focus()) {
+        (Some((surface, _)), Some(focus)) => surface == focus,
+        (None, None) => true,
+        _ => false,
+    };
+    if !same {
+        pointer.motion(
+            state,
+            target,
+            &MotionEvent {
+                location,
+                serial,
+                time,
+            },
+        );
+        pointer.frame(state);
+    }
 }
 
 /// Refresh the compositor-owned resize cursor for a pointer position.
@@ -545,6 +581,18 @@ where
                 button: event.button_code(),
                 state: event.state(),
             };
+
+            // T263 P0-17: a stationary press must reach the row under the
+            // pointer. Normal moves update pointer focus; a window that mapped
+            // (or a list that scrolled) under a resting pointer did not, so
+            // ray-test the live position before routing the press.
+            if !pointer.is_grabbed()
+                && !state.app_switcher.is_active()
+                && !state.window_menu_open()
+                && state.overview_input_owner() != InputOwner::Overview
+            {
+                sync_pointer_focus_before_button(state, &pointer, serial, event.time_msec());
+            }
 
             // Click-to-focus: focus never follows motion alone. A chrome
             // surface takes focus on any button press (a right-click context
