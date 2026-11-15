@@ -1531,6 +1531,7 @@ landed foundation (T222–T229a, T230c) and the rest of the release.
 | T270 | General: Date & Time, Language, Login Items, Sharing, Backup, Startup Disk, Transfer or Reset | T269 |
 | T271 | Wi-Fi and Bluetooth | T263, T266 |
 | T272 | Network services, VPN, firewall, connection details | T271 |
+| T272a | Network/VPN capability hardening: native WireGuard, no dead VPN profiles, unprivileged firewall reads, iptables naming | T272 |
 | T273 | Battery, Storage, Displays | T263, T266 |
 | T274 | Appearance | T263, T266 |
 | T275 | Accessibility | T263, T266, T267 |
