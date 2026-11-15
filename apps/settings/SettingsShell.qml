@@ -79,8 +79,17 @@ Item {
     readonly property string windowTitle: root.currentPane
         ? root.paneTitle : qsTr("System Settings")
 
-    readonly property bool searchActive: root.searchText.trim().length > 0
-    readonly property var searchResults: SettingsSearch.search(root.searchText)
+    // T265: the field's text is immediate, but the index scan is debounced so
+    // typing never re-runs the search or rebuilds the sidebar model on every
+    // keystroke. Clearing the field is immediate so the sidebar returns at once.
+    property string searchQuery: ""
+    // Pane ids whose "Show all" row was activated; reset by every new query.
+    property var searchExpandedGroups: []
+    readonly property bool searchActive: root.searchQuery.trim().length > 0
+    readonly property var searchResults: SettingsSearch.search(
+        root.searchQuery, { expanded: root.searchExpandedGroups })
+    readonly property int searchResultCount:
+        SettingsSearch.resultCount(root.searchResults)
 
     property alias searchField: searchField
     property alias searchResultsList: searchResultsList
@@ -159,7 +168,7 @@ Item {
     signal resizeRequested(int edges)
     signal aboutPageOpened()
 
-    readonly property var visiblePanes: SettingsPanes.filter(root.searchText)
+    readonly property var visiblePanes: SettingsPanes.filter(root.searchQuery)
     // T263: the same visible list, grouped for the source list. One catalog,
     // one filter; the sidebar never gets a second pane list. Each item keeps
     // the pane id so selection and activation do not depend on a flat index.
@@ -487,6 +496,23 @@ Item {
         searchField.forceActiveFocus();
     }
 
+    // Apply the field's current text without waiting for the debounce. Used by
+    // the Escape path and by tests/captures that drive the field directly.
+    function commitSearch() {
+        searchDebounce.stop();
+        root.searchQuery = root.searchText;
+    }
+
+    // A "Show all" row expands its pane group in place; the query and the
+    // field text stay untouched.
+    function expandSearchGroup(paneId) {
+        if (paneId === undefined || paneId === null || paneId.length === 0)
+            return;
+        if (root.searchExpandedGroups.indexOf(paneId) >= 0)
+            return;
+        root.searchExpandedGroups = root.searchExpandedGroups.concat([paneId]);
+    }
+
     // T264: one live Help action. The fragment is `#pane-<id>` (the anchor the
     // business-logic map publishes), never a bare pane id. The bottom-right
     // `?` and Help -> Settings Help both call `openHelp`.
@@ -579,6 +605,17 @@ Item {
     function activateSearchResult(result) {
         if (result === null || result === undefined)
             return;
+        if (result.kind === "showAll") {
+            var at = searchResultsList.currentIndex;
+            root.expandSearchGroup(result.paneId);
+            // The first formerly-hidden row now sits where the row was.
+            Qt.callLater(function() {
+                if (root.searchResults.length > 0)
+                    searchResultsList.currentIndex = Math.min(
+                        at, root.searchResults.length - 1);
+            });
+            return;
+        }
         root.searchText = "";
         root.deepLink(result.deepLink);
     }
@@ -732,6 +769,15 @@ Item {
         }
     }
 
+    // T265: one debounce for the index scan and the sidebar filter. The field
+    // itself stays immediate; only the derived models wait.
+    Timer {
+        id: searchDebounce
+        interval: 120
+        repeat: false
+        onTriggered: root.searchQuery = root.searchText
+    }
+
     // T222: open the pane/row owner debug view for the current pane (or an
     // explicit pane id). The Help menu and `DF_SETTINGS_DEBUG=1` call this.
     function showDebugView(paneId) {
@@ -874,6 +920,14 @@ Item {
     onSearchTextChanged: {
         if (searchField.text !== root.searchText)
             searchField.text = root.searchText;
+        root.searchExpandedGroups = [];
+        if (root.searchText.trim().length === 0) {
+            // Empty query restores the sidebar immediately; no debounce.
+            searchDebounce.stop();
+            root.searchQuery = "";
+        } else {
+            searchDebounce.restart();
+        }
         root.syncSelection();
     }
 
@@ -1238,7 +1292,12 @@ Item {
                         // T223: Down/Up move into the ranked result list; Return
                         // opens the highlighted result; Escape clears and then
                         // returns focus to the sidebar.
-                        onAccepted: searchResultsList.activateCurrent()
+                        onAccepted: {
+                            // Return within the debounce window still opens the
+                            // top result instead of doing nothing.
+                            root.commitSearch();
+                            searchResultsList.activateCurrent();
+                        }
                         onEscapePressed: {
                             if (root.searchText.length > 0)
                                 root.searchText = "";
@@ -1246,10 +1305,12 @@ Item {
                                 sidebar.forceActiveFocus();
                         }
                         Keys.onDownPressed: (event) => {
+                            root.commitSearch();
                             searchResultsList.focusList();
                             event.accepted = true;
                         }
                         Keys.onUpPressed: (event) => {
+                            root.commitSearch();
                             searchResultsList.focusList();
                             event.accepted = true;
                         }
@@ -1288,7 +1349,7 @@ Item {
                             anchors.fill: parent
                             visible: root.searchActive
                             results: root.searchResults
-                            query: root.searchText
+                            query: root.searchQuery
                             onActivated: (result) => root.activateSearchResult(result)
                             onDismissed: {
                                 root.searchText = "";

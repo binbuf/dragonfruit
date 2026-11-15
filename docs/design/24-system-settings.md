@@ -307,22 +307,34 @@ Search is the fastest path to a setting and must never lie:
 - Index every shipped pane title, id, section, row label, synonym, help text,
   owner, key, and absence kind. Index pane ids and colloquial names:
   `wifi`, `wi-fi`, `control center`, `mission control`, `time machine`,
-  `touch id`, `internet accounts`, `autofill`.
-- Rank exact label, label prefix, word start, substring, synonyms, section,
-  pane title, then help text. A pane whose own name matches sorts first.
+  `touch id`, `internet accounts`, `autofill`. The renamed panes keep their
+  reference names as aliases (`control center` → Quick Settings, `mission
+  control` → Overview, `internet accounts` → Online Accounts).
+- Normalize hyphens and whitespace to one form *and* keep a hyphenless form,
+  so `wi-fi`, `wifi`, and `Wi Fi` are the same query. The normalized and
+  compact fields are precomputed in the index, not per keystroke.
+- Rank exact label, label prefix, word start, substring, synonyms, pane
+  description/section, pane title, then help text. A pane whose own name
+  matches sorts first. Owner/key/absence/control terms are a separate,
+  lower band: they stay searchable but never outrank a user-word match.
 - Group results by pane with a per-pane cap and a “Show all” path. Show the
-  pane icon and the section name. Do not flood the list with every row of a
-  matching pane.
+  pane header and the section name. Do not flood the list with every row of a
+  matching pane; a capped group ends with a `Show all` row that expands in
+  place. The list carries a result count.
 - A result must be a live target. Do not index a `planned` or `omitted` row.
   A row inside a General sub-pane, a dialog, or a sheet is indexed only if
   the deep-link resolver can open that surface and land on the row.
-- Use a truthful subtitle: the pane description or the row description, not
-  the pane's absence note when the pane is available.
+- Use a truthful subtitle: the pane description (or its sidebar group) or the
+  row's section, never the pane's absence note when the pane is available.
 - Keyboard: Down from the search field enters the list; Up/Down/Home/End/
   Return/Escape work; Escape returns focus to the field and then the
   sidebar; the empty state is announced.
 - Search is synchronous and local. Precompute the normalized index once;
   debounce keystrokes; do not rebuild the sidebar model on every character.
+  A non-empty query replaces the sidebar list; an empty query restores it.
+- AT-SPI: the results are one list whose items name their pane and section;
+  the search clear affordance has its own accessible name.
+
 
 ### 3.6 Performance and live state
 
@@ -1192,7 +1204,7 @@ from the first live T263 run; they are part of the same release bar.
 | P1-14 | Online Accounts disappears entirely when GOA is absent; Add has no sign-in step | `SettingsPanes.qml`, `OnlineAccountsPane.qml` | T279 |
 | P1-15 | Quick Settings is a 37-row flat list with Up/Down buttons; unavailable modules are offered; Edit Controls is a no-op; empty list restores defaults | `QuickSettingsPane.qml` | T277 |
 | P1-16 | Menu Bar has no third-party section, Add Controls, Reset, or per-control options | `MenuBarPane.qml` | T277 |
-| P1-17 | Search results are a flat ungrouped list; “wifi”, “control center”, “mission control” return no results | `SettingsSearch.qml`, `SettingsSearchResults.qml` | T265 |
+| P1-17 | Search results are a flat ungrouped list; “wifi”, “control center”, “mission control” return no results | `SettingsSearch.qml`, `SettingsSearchResults.qml` | T265 (landed) |
 | P1-18 | General is missing Autofill & Passwords and the Transfer or Reset structure; sub-panes hide settingsd rows with their host adapter | `GeneralPane.qml`, `DateTimePane.qml`, `LanguageRegionPane.qml` | T269, T270 |
 | P1-19 | Focus has no focus list/Add/Delete/Filters; profile/mode/rows duplicate the same state | `FocusPane.qml` | T278 |
 | P1-20 | Keyboard brightness/navigation/dictation/replacements are presented as live with no consumer | `InputPane.qml`, `schema.rs` | T280, T282 |

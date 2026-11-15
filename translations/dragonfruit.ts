@@ -24,6 +24,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Device name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Display Settings…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -69,6 +73,10 @@
     </message>
     <message>
         <source>Model: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More Info…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6357,6 +6365,14 @@ Open source system software</source>
 <context>
     <name>SearchField</name>
     <message>
+        <source>Clear search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear the search field</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Search</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6644,6 +6660,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Adaptive color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add VPN configuration...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8003,6 +8023,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>VPN is unavailable because NetworkManager is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Variable refresh rate</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8118,7 +8142,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Appearance</source>
+        <source>Back</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8142,14 +8166,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Desktop &amp; Dock</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Displays</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Edit</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8159,6 +8175,10 @@ Open source system software</source>
     </message>
     <message>
         <source>File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forward</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8214,15 +8234,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The business-logic map is not installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Undo</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>View</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Wallpaper</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8238,6 +8258,10 @@ Open source system software</source>
     <name>SettingsPanes</name>
     <message>
         <source>Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accounts &amp; Devices</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8257,11 +8281,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Connectivity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Control which apps can access your data, location, camera, and microphone, and manage safety protections.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Customize when and how notifications appear, if they play a sound, and which apps can send them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8282,6 +8314,10 @@ Open source system software</source>
     </message>
     <message>
         <source>General</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8321,6 +8357,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Personalization</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Personalize your system in ways that work best for you with accessibility features for vision, hearing, motor, speech, and cognition.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8353,11 +8393,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Trackpad</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Users &amp; Groups</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8383,12 +8431,36 @@ Open source system software</source>
 <context>
     <name>SettingsSearch</name>
     <message>
-        <source>%1 › %2</source>
+        <source>%1 results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show all %1 results in %2</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>SettingsSearchResults</name>
+    <message>
+        <source>%1 in %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 results in %2 sections</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 result</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No results for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>No results for “%1”.</source>
         <translation type="unfinished"></translation>
@@ -8398,7 +8470,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Search results</source>
+        <source>Search results, %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search results, no matches</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8406,16 +8482,24 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Section in %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Setting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show all</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show every result in %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>SettingsShell</name>
-    <message>
-        <source>About</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message>
         <source>Back</source>
         <translation type="unfinished"></translation>
@@ -8437,11 +8521,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open this pane in the business-logic map.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Search</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>System Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The business-logic map is not installed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8453,10 +8545,6 @@ Open source system software</source>
     <name>SettingsWindow</name>
     <message>
         <source>About This System</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>System Settings</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

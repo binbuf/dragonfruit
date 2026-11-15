@@ -340,23 +340,42 @@ projection and admin-group helper. See ADR
 
 `apps/settings/SettingsSearch.qml` is the one local Settings index. It is built
 once from the executable map and the pane catalog: every shipped pane title,
-every map section, and every shipped row, plus synonyms and help text (the row's
-owner, key/API, absence kind, and the pane's absence note). Unshipped panes and
-`planned`/`omitted` rows are not indexed, so search can never advertise a
-half-pane. Search is a pure synchronous scan — no bus, daemon, or separate
+pane id, every map section, and every shipped row, plus synonyms and help text
+(the row's owner, key/API, absence kind, and the pane's absence note). Unshipped
+panes and `planned`/`omitted` rows are not indexed, so search can never advertise
+a half-pane. Search is a pure synchronous scan — no bus, daemon, or separate
 search service.
 
+Every index field is normalized once (lowercase, accent-folded, punctuation
+collapsed) and also kept in a hyphenless form, so `wi-fi`, `wifi`, and `Wi Fi`
+all match. Pane ids are aliases (`control-center` finds Quick Settings,
+`mission-control` finds Overview) and the reference names live in the synonym
+table (`time machine`, `touch id`, `internet accounts`, `autofill`, `spotlight`).
+
 Ranking is field-weighted: exact label, label prefix, word start, substring,
-then synonyms, section, pane title, and help text. A pane whose own name matches
-sorts first, so `display` opens Displays before an Accessibility row called
-Display, and `battery` opens Battery before the menu-bar Battery checkbox.
-Technical key/control terms are weighted below the user's words.
+then synonyms, pane description/section, pane title, and help text. A pane whose
+own name matches sorts first, so `display` opens Displays before an Accessibility
+row called Display, and `battery` opens Battery before the menu-bar Battery
+checkbox. Owner/key/absence/control terms are a separate lower band: an owner
+query still finds its pane, but a technical-only match never outranks a
+user-word match. A pane synonym belongs to the pane entry, not to every row in
+the pane, so `time machine` reaches the Backup rows instead of flooding General.
 
 The result list (`SettingsSearchResults.qml`) replaces the sidebar pane list
-while the search field has text. It shows pane, section, and row results, is a
-real AT-SPI list, and supports Up/Down/Home/End/Return/Escape; Down from the
-search field hands focus to the list. An empty query restores the sidebar and a
-no-match query shows an explicit "No results" state.
+while the search field has text. Results are grouped by pane, capped at four
+entries per pane, and a capped group ends with a `Show all` row that expands in
+place; the top line carries the result count. The list is a real AT-SPI list
+whose items name their pane and section, supports Up/Down/Home/End/Return/
+Escape, and Down from the search field hands focus to the list. An empty query
+restores the sidebar, a no-match query shows and announces an explicit
+"No results" state, and Escape returns focus to the field and then the sidebar.
+The search clear affordance carries its own accessible name.
+
+The field is immediate but the index scan and sidebar filter are debounced by
+120 ms, so typing never re-runs the search or rebuilds the sidebar model on every
+character; clearing is immediate. The grouped model, cap, and `Show all` path are
+part of `SettingsSearch`, not a second view. See ADR
+[0265](adr/0265-settings-grouped-search-and-local-discovery.md).
 
 A result carries a `settings://pane/<id>` or
 `settings://pane/<id>/row/<rowId>` deep link. The shell accepts a row link only
@@ -393,8 +412,10 @@ card; settings-list panes stay headerless. See ADR
 [0232](adr/0232-settings-search-and-deep-links.md) and
 [0264](adr/0264-settings-navigation-history-deep-links-help.md). The
 deterministic visual checks are `make t223-settings-search-capture`
-(`docs/captures/t223-settings-{search,deep-link,long-strings}.png`) and
-`make t264-settings-navigation-capture`
+(`docs/captures/t223-settings-{search,deep-link,long-strings}.png`),
+`make t265-settings-search-capture`
+(`docs/captures/t265-settings-search-{grouped,no-match,long-string,keyboard,compact}.png`),
+and `make t264-settings-navigation-capture`
 (`docs/captures/t264-settings-{general,about,back,deep-link}-{light,dark}.png`).
 
 ## Category icons (T-19.1b)

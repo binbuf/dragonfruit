@@ -250,18 +250,23 @@ Item {
         function test_search_filters_panes() {
             var shell = make();
             shell.searchText = "wall";
+            shell.commitSearch();
             compare(ids(shell), JSON.stringify(["wallpaper"]));
 
             shell.searchText = "dock";
+            shell.commitSearch();
             compare(ids(shell), JSON.stringify(["desktop-dock"]));
 
             shell.searchText = "DISPLAY";
+            shell.commitSearch();
             compare(ids(shell), JSON.stringify(["displays"]));
 
             shell.searchText = "no-such-pane";
+            shell.commitSearch();
             compare(ids(shell), JSON.stringify([]));
 
             shell.searchText = "";
+            shell.commitSearch();
             compare(ids(shell), JSON.stringify(
                 ["wifi", "bluetooth", "network", "general", "appearance",
                  "accessibility", "control-center", "search", "privacy",

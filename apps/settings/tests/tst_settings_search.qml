@@ -62,6 +62,28 @@ Item {
             return shell;
         }
 
+        // Drive the field without waiting for the 120 ms debounce. The debounce
+        // itself is covered by `test_keyboard_only_search_and_activate`.
+        function runSearch(shell, text) {
+            shell.searchText = text;
+            shell.commitSearch();
+            waitForRendering(stage);
+        }
+
+        function childByName(item, name) {
+            if (item === null || item === undefined)
+                return null;
+            if (item.objectName === name)
+                return item;
+            var children = item.children || [];
+            for (var i = 0; i < children.length; ++i) {
+                var found = childByName(children[i], name);
+                if (found !== null)
+                    return found;
+            }
+            return null;
+        }
+
         function rowOf(shell, paneId, rowId) {
             shell.selectPane(paneId);
             waitForRendering(stage);
@@ -173,17 +195,250 @@ Item {
             }
             verify(foundAbsence, "the absence help text must be searchable");
 
+            // Pane-level absence kinds are indexed too (rows carry their own).
+            var delegated = SettingsSearch.search("delegated");
+            var foundDelegated = false;
+            for (var d = 0; d < delegated.length; ++d) {
+                if (delegated[d].paneId === "online-accounts")
+                    foundDelegated = true;
+            }
+            verify(foundDelegated, "a pane absence kind must be searchable");
+
             // Accent/diacritic folding keeps a localized query useful.
             compare(SettingsSearch.normalize("Wi-Fi"), "wi fi");
             compare(SettingsSearch.normalize("  Größe  "), "große");
+        }
+
+        // -- T265: local discovery 2.0 ----------------------------------------
+
+        function test_colloquial_names_find_live_targets() {
+            var cases = [
+                { query: "wifi", pane: "wifi" },
+                { query: "wi-fi", pane: "wifi" },
+                { query: "Wi Fi", pane: "wifi" },
+                { query: "control center", pane: "control-center" },
+                { query: "mission control", pane: "mission-control" },
+                { query: "time machine", pane: "general", row: "backup." },
+                { query: "touch id", pane: "biometrics" },
+                { query: "internet accounts", pane: "online-accounts" },
+                { query: "autofill", pane: "general" }
+            ];
+            for (var i = 0; i < cases.length; ++i) {
+                var test = cases[i];
+                var results = SettingsSearch.search(test.query);
+                verify(results.length > 0,
+                       "query '" + test.query + "' must return a result");
+                var matched = false;
+                var rowMatched = test.row === undefined;
+                for (var r = 0; r < results.length; ++r) {
+                    var result = results[r];
+                    if (result.kind === "showAll")
+                        continue;
+                    verify(String(result.deepLink).indexOf("settings://pane/") === 0,
+                           "'" + test.query + "' must never return a dead result");
+                    if (result.paneId === test.pane)
+                        matched = true;
+                    if (test.row !== undefined && result.kind === "row"
+                            && result.paneId === test.pane
+                            && result.targetRow.indexOf(test.row) === 0)
+                        rowMatched = true;
+                }
+                verify(matched, "query '" + test.query + "' must reach "
+                       + test.pane);
+                verify(rowMatched, "query '" + test.query + "' must reach row "
+                       + test.row);
+            }
+
+            // A pane id is an alias too: the renamed panes keep their macOS
+            // names as search words.
+            compare(SettingsSearch.firstOfKind("control center", "pane").paneId,
+                    "control-center");
+            compare(SettingsSearch.firstOfKind("mission control", "pane").paneId,
+                    "mission-control");
+        }
+
+        function test_pane_subtitle_is_truthful_not_an_absence_note() {
+            var wifi = SettingsSearch.firstOfKind("wifi", "pane");
+            verify(wifi !== null);
+            verify(wifi.subtitle.length > 0);
+            verify(wifi.subtitle.indexOf("unavailable") < 0,
+                   "an available pane must not use its absence note as subtitle");
+            var mapPane = SettingsMap.panes.filter(function(pane) {
+                return pane.id === "wifi";
+            })[0];
+            verify(wifi.subtitle !== mapPane.absenceNote);
+
+            var row = SettingsSearch.firstOfKind("show previews", "row");
+            verify(row !== null);
+            compare(row.subtitle, "Notifications");
+            verify(row.subtitle.indexOf("unavailable") < 0);
+        }
+
+        function test_technical_terms_stay_out_of_the_primary_rank() {
+            // An owner query still finds the pane, but only in the lower band.
+            var bluez = SettingsSearch.search("bluez");
+            verify(bluez.length > 0);
+            for (var i = 0; i < bluez.length; ++i) {
+                if (bluez[i].kind !== "showAll")
+                    verify(bluez[i].technicalOnly,
+                           "an owner-only match must be technical-only");
+            }
+            // A user word always sorts above the technical band.
+            var wifi = SettingsSearch.search("wifi");
+            verify(wifi.length > 0);
+            verify(wifi[0].primaryMatch,
+                   "the Wi-Fi pane must be a primary match");
+            var network = SettingsSearch.search("network");
+            verify(network[0].primaryMatch,
+                   "a user-word match must outrank owner/key help text");
+        }
+
+        function test_results_are_grouped_capped_and_show_all() {
+            var capped = SettingsSearch.search("network");
+            verify(SettingsSearch.groupCount(capped) > 1,
+                   "results must be grouped by pane");
+            var networkRows = capped.filter(function(result) {
+                return result.paneId === "network" && result.kind !== "showAll";
+            });
+            compare(networkRows.length, SettingsSearch.paneLimit);
+            var showAll = capped.filter(function(result) {
+                return result.paneId === "network" && result.kind === "showAll";
+            });
+            compare(showAll.length, 1);
+            verify(showAll[0].hiddenCount > 0);
+            verify(showAll[0].label.indexOf("Show all") === 0);
+            // Every group's first row carries the pane header marker.
+            var groups = 0;
+            for (var g = 0; g < capped.length; ++g) {
+                if (capped[g].groupStart === true)
+                    groups += 1;
+            }
+            compare(groups, SettingsSearch.groupCount(capped));
+
+            // "Show all" expands in place and keeps the query.
+            var expanded = SettingsSearch.search("network",
+                                                 { expanded: ["network"] });
+            var expandedRows = expanded.filter(function(result) {
+                return result.paneId === "network" && result.kind !== "showAll";
+            });
+            verify(expandedRows.length > SettingsSearch.paneLimit);
+            var stillCapped = expanded.filter(function(result) {
+                return result.paneId === "network" && result.kind === "showAll";
+            });
+            compare(stillCapped.length, 0);
+
+            // An expanded group is never dropped by the global list limit.
+            var limited = SettingsSearch.search("network",
+                                                { limit: 5,
+                                                  expanded: ["wifi"] });
+            var wifiGroup = limited.filter(function(result) {
+                return result.paneId === "wifi";
+            });
+            verify(wifiGroup.length > 0,
+                   "an expanded group must survive the global list limit");
+        }
+
+        function test_no_match_and_long_localized_query() {
+            compare(SettingsSearch.search("zzzz-no-result").length, 0);
+            var longQuery = "Barrierefreiheit und Bedienungshilfen für Menschen "
+                    + "mit besonderen Anforderungen an die Darstellung";
+            var longResults = SettingsSearch.search(longQuery);
+            verify(longResults.length >= 0, "a long localized query must not throw");
+            verify(SettingsSearch.search("Größe").length >= 0);
+            compare(SettingsSearch.compact("Wi-Fi"), "wifi");
+            compare(SettingsSearch.compact("Wi Fi"), "wifi");
+            compare(SettingsSearch.compact("wifi"), "wifi");
+        }
+
+        function test_show_all_expands_the_group_in_place() {
+            var shell = make();
+            runSearch(shell, "network");
+            var showIndex = -1;
+            for (var i = 0; i < shell.searchResults.length; ++i) {
+                if (shell.searchResults[i].kind === "showAll"
+                        && shell.searchResults[i].paneId === "network")
+                    showIndex = i;
+            }
+            verify(showIndex >= 0);
+            var before = shell.searchResults.length;
+            shell.searchResultsList.currentIndex = showIndex;
+            shell.searchResultsList.activateCurrent();
+            tryVerify(function() {
+                for (var r = 0; r < shell.searchResults.length; ++r) {
+                    if (shell.searchResults[r].kind === "showAll"
+                            && shell.searchResults[r].paneId === "network")
+                        return false;
+                }
+                return true;
+            });
+            compare(shell.searchText, "network",
+                    "Show all must keep the query and the field text");
+            verify(shell.searchResults.length >= before);
+            verify(shell.searchResultsList.visible);
+        }
+
+        function test_keyboard_focus_moves_to_the_activated_row() {
+            var shell = make();
+            runSearch(shell, "show previews");
+            shell.searchResultsList.forceActiveFocus();
+            shell.searchResultsList.currentIndex = 0;
+            keyClick(Qt.Key_Return);
+            tryVerify(function() { return shell.highlightTarget !== null; });
+            compare(shell.currentPaneId, "notifications");
+            verify(!shell.searchField.activeFocus,
+                   "activation must not leave focus in the search field");
+            verify(!shell.searchResultsList.activeFocus,
+                   "activation must leave the result list");
+            compare(shell.highlightTarget.settingsId, "previews");
+        }
+
+        function test_grouped_results_fit_740x820_and_720x480() {
+            var sizes = [[740, 820], [720, 480]];
+            for (var s = 0; s < sizes.length; ++s) {
+                var shell = make({ width: sizes[s][0], height: sizes[s][1] });
+                runSearch(shell, "network");
+                verify(shell.searchResultsList.visible);
+                verify(shell.searchResultsList.countText.visible);
+                verify(shell.searchResultsList.countText.width
+                       <= shell.sidebar.width);
+                verify(shell.searchResultsList.width <= shell.sidebar.width);
+                verify(shell.searchResultsList.listView.height > 0,
+                       "the grouped list must keep a visible body at "
+                       + sizes[s][0] + "x" + sizes[s][1]);
+                compare(shell.searchResultsList.Accessible.role, Accessible.List);
+                shell.destroy();
+                wait(50);
+            }
+        }
+
+        function test_result_list_names_pane_and_section() {
+            var shell = make();
+            runSearch(shell, "show previews");
+            var item = shell.searchResultsList.listView.itemAtIndex(0);
+            verify(item !== null);
+            compare(item.Accessible.role, Accessible.ListItem);
+            compare(item.Accessible.name, "Show previews");
+            verify(item.Accessible.description.indexOf("Notifications") >= 0,
+                   "the item must name its pane (got "
+                   + item.Accessible.description + ")");
+            verify(shell.searchResultsList.Accessible.name.indexOf("results")
+                   >= 0);
+        }
+
+        function test_search_clear_button_has_an_accessible_name() {
+            var shell = make();
+            var clear = childByName(shell.searchField, "searchClearButton");
+            verify(clear !== null, "the field must expose its clear affordance");
+            compare(clear.Accessible.role, Accessible.Button);
+            compare(clear.Accessible.name, "Clear search");
+            verify(clear.Accessible.description.length > 0);
         }
 
         // -- Search UI + keyboard ----------------------------------------------
 
         function test_search_results_activate_a_deep_link() {
             var shell = make();
-            shell.searchText = "show previews";
-            waitForRendering(stage);
+            runSearch(shell, "show previews");
             verify(shell.searchActive);
             verify(shell.searchResultsList.visible);
             verify(shell.searchResults.length > 0);
@@ -207,6 +462,9 @@ Item {
             keyClick(Qt.Key_Z);
             keyClick(Qt.Key_E);
             tryCompare(shell, "searchText", "size");
+            // T265: the index scan is debounced, so the list settles a beat
+            // after the last keystroke.
+            tryVerify(function() { return shell.searchResults.length > 0; });
             keyClick(Qt.Key_Down);
             waitForRendering(stage);
             verify(shell.searchResultsList.activeFocus,
@@ -219,12 +477,24 @@ Item {
             compare(shell.highlightTarget.label, "Size");
         }
 
-        function test_result_list_scrolls_with_keyboard() {
+        function test_down_enters_the_list_within_the_debounce_window() {
             var shell = make();
-            shell.searchText = "e";
+            shell.searchField.forceActiveFocus();
             waitForRendering(stage);
+            // Set the field text without committing: Down must apply the
+            // pending query and enter the list in one key press.
+            shell.searchText = "wifi";
+            keyClick(Qt.Key_Down);
+            waitForRendering(stage);
+            verify(shell.searchResultsList.activeFocus);
+            compare(shell.searchResultsList.currentIndex, 0);
+            verify(shell.searchResults.length > 0);
+        }
+
+        function test_result_list_scrolls_with_keyboard() {            var shell = make();
+            runSearch(shell, "e");
             verify(shell.searchResults.length > 25,
-                   "the query must produce enough results to scroll");
+                   "the grouped query must produce enough results to scroll");
             shell.searchResultsList.forceActiveFocus();
             for (var i = 0; i < 25; ++i)
                 keyClick(Qt.Key_Down);
@@ -236,12 +506,16 @@ Item {
 
         function test_empty_state_and_escape() {
             var shell = make();
-            shell.searchText = "zzzz-no-result";
-            waitForRendering(stage);
+            runSearch(shell, "zzzz-no-result");
             verify(shell.searchResultsList.visible);
             compare(shell.searchResults.length, 0);
             verify(shell.searchResultsList.emptyText.visible);
             compare(shell.searchResultsList.emptyText.text,
+                    "No results for \u201czzzz-no-result\u201d.");
+            // The no-match state is announced, not only painted.
+            compare(shell.searchResultsList.emptyText.Accessible.role,
+                    Accessible.StaticText);
+            compare(shell.searchResultsList.emptyText.Accessible.name,
                     "No results for \u201czzzz-no-result\u201d.");
 
             shell.searchResultsList.forceActiveFocus();
@@ -250,6 +524,11 @@ Item {
             compare(shell.searchText, "");
             verify(!shell.searchResultsList.visible);
             verify(shell.sidebar.visible);
+            verify(shell.searchField.activeFocus,
+                   "Escape from the list returns focus to the field");
+            keyClick(Qt.Key_Escape);
+            verify(shell.sidebar.activeFocus,
+                   "a second Escape returns focus to the sidebar");
         }
 
         // -- Deep links --------------------------------------------------------

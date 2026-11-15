@@ -78,6 +78,7 @@ Item {
 
             // 1. Ranked search results.
             shell.searchText = "previews";
+            shell.commitSearch();
             waitForRendering(stage);
             verify(shell.searchActive);
             verify(shell.searchResults.length > 0);

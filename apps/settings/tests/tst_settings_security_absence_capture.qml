@@ -50,6 +50,7 @@ Item {
             // returns no pane.
             showPane(shell, "appearance");
             shell.searchText = "online accounts";
+            shell.commitSearch();
             waitForRendering(stage);
             compare(shell.visiblePanes.length, 0);
             grabImage(shell).save("docs/captures/t228-online-accounts-absence.png");

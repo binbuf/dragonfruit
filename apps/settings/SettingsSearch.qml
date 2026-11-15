@@ -1,54 +1,66 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
 
-// The local Settings search index (T223).
+// The local Settings search index (T223, rebuilt for T265).
 //
-// One in-memory index built from the executable map (`SettingsMap.qml`) and the
-// pane catalog (`SettingsPanes.qml`). It contains pane titles, every map
-// section, and every shipped row, plus synonyms and the row's owner/key/absence
-// help text. Search is a pure, synchronous function over that array: no bus, no
-// daemon, no per-keystroke I/O.
+// One in-memory index built once from the executable map (`SettingsMap.qml`)
+// and the pane catalog (`SettingsPanes.qml`). It contains pane titles, pane
+// ids, every map section, and every shipped row, plus synonyms and the row's
+// owner/key/absence help text. Search is a pure, synchronous function over that
+// array: no bus, no daemon, no per-keystroke I/O.
 //
 // A result is only returned when it can deep-link: pane results use
 // `settings://pane/<id>`, section results point at their first row, and row
 // results use `settings://pane/<id>/row/<rowId>`. Unshipped panes/rows are not
-// indexed at all (the no-half-panes rule).
+// indexed at all (the no-half-panes rule); a row whose surface the resolver
+// cannot open is omitted (`SettingsMap.isRowLandable`).
 //
 // Ranking is field-weighted: exact label > label prefix > label word start >
-// label substring, then synonyms, section, pane title, and finally help text.
-// Pane results win ties over sections, and sections over rows, so a query like
-// "wallpaper" opens the pane rather than a row inside it.
+// label substring, then synonyms, pane description/section, and finally the
+// technical help text (owner, key, absence kind). Technical-only matches are
+// always sorted below any user-word match, so an owner query still works but
+// never outranks a setting's own name.
+//
+// Results are grouped by pane. Each pane group shows at most `paneLimit`
+// entries; a group with more matches ends with a `showAll` row that expands
+// it. `search()` returns that flat, grouped model (pane entries first, group
+// headers marked by `groupStart`).
 pragma Singleton
 
 QtObject {
     id: root
 
-    readonly property int resultLimit: 40
+    // The most result rows shown at once (groups are never cut in half).
+    readonly property int resultLimit: 60
+    // How many entries one pane group shows before its "Show all" row.
+    readonly property int paneLimit: 4
 
     // Pane-level synonyms. These are the user's words, not a second catalog:
-    // the pane title/id remain the only labels shown in the UI.
+    // the pane title/id remain the only labels shown in the UI. Lowercase
+    // aliases are matched, never rendered.
     readonly property var paneSynonyms: ({
-        "wifi": ["wireless", "wlan", "internet", "network"],
+        "wifi": ["wifi", "wi fi", "wireless", "wlan", "internet", "network"],
         "bluetooth": ["wireless devices", "pair", "devices"],
         "network": ["vpn", "firewall", "ethernet", "internet", "connections"],
         "battery": ["power", "energy", "charge", "low power mode"],
         "general": ["about", "software update", "storage", "language", "region",
                     "date", "time", "sharing", "backup", "reset", "startup disk",
-                    "passwords", "login items"],
+                    "passwords", "login items", "autofill", "auto fill",
+                    "time machine"],
         "storage": ["disk", "drive", "volume", "space", "disk usage"],
         "appearance": ["theme", "dark mode", "light mode", "accent", "colors",
                        "style", "transparency"],
         "accessibility": ["a11y", "screen reader", "contrast", "motion", "vision",
                           "hearing", "motor"],
-        "control-center": ["quick settings", "tiles", "modules"],
+        "control-center": ["control center", "quick settings", "tiles", "modules"],
         "menu-bar": ["status items", "clock", "menu extras", "menu bar items"],
-        "search": ["index", "indexing", "web search", "shortcut"],
+        "search": ["spotlight", "index", "indexing", "web search", "shortcut"],
         "privacy": ["security", "permissions", "camera", "microphone", "location",
                     "files", "screen recording"],
         "desktop-dock": ["dock", "desktop", "stage", "hot corners", "windows",
                          "widgets"],
-        "mission-control": ["overview", "workspaces", "spaces", "hot corners",
-                            "gestures"],
+        "mission-control": ["mission control", "overview", "workspaces", "spaces",
+                            "hot corners", "gestures"],
         "displays": ["monitor", "screen", "resolution", "scale", "rotation",
                      "brightness", "night light", "refresh rate", "color"],
         "wallpaper": ["background", "desktop picture", "photo", "image",
@@ -60,9 +72,11 @@ QtObject {
                   "alert sound"],
         "focus": ["do not disturb", "dnd", "notifications", "modes"],
         "lock-screen": ["lock", "password", "login", "sleep", "screen saver"],
-        "biometrics": ["fingerprint", "password", "authentication"],
+        "biometrics": ["touch id", "touchid", "fingerprint", "biometric",
+                       "password", "authentication"],
         "users-groups": ["users", "accounts", "groups", "login", "administrator"],
-        "online-accounts": ["accounts", "sync", "cloud"],
+        "online-accounts": ["internet accounts", "internet account", "accounts",
+                            "sync", "cloud", "email"],
         "printers": ["printing", "scanner", "cups", "paper"],
         "keyboard": ["keys", "shortcuts", "repeat", "backlight", "dictation",
                      "input sources"],
@@ -104,6 +118,9 @@ QtObject {
         "general/updates.install": ["install updates", "software update"],
         "general/language.region": ["language", "region", "locale"],
         "general/time.zone": ["time zone", "clock"],
+        "general/backup.auto": ["time machine", "back up automatically"],
+        "general/backup.now": ["time machine", "back up now"],
+        "general/backup.restore": ["time machine", "restore backup"],
         "privacy/location": ["location services", "geolocation"],
         "privacy/camera": ["webcam", "camera access"],
         "privacy/microphone": ["mic", "microphone access"],
@@ -124,8 +141,9 @@ QtObject {
         "wallpaper/showAll": ["all workspaces", "show on all"]
     })
 
-    // Built from the map/catalog and rebuilt when the optional Online Accounts
-    // pane appears or disappears (T228); everything else is static.
+    // Built once from the map/catalog; rebuilt only when the optional Online
+    // Accounts pane appears or disappears (T228). Every normalized/compact
+    // field is precomputed here, so a keystroke never re-normalizes the index.
     property var entries: []
 
     Component.onCompleted: root.entries = root.buildIndex()
@@ -153,16 +171,25 @@ QtObject {
         });
     }
 
+    // The pane id is a searchable alias too: `control-center` finds Quick
+    // Settings and `mission-control` finds Overview, the two renamed panes.
+    function idTerms(paneId) {
+        var words = String(paneId).split(/[-_]+/).filter(function(word) {
+            return word.length > 0;
+        });
+        return [words.join(" "), String(paneId)];
+    }
+
     function rowSynonymsFor(paneId, rowId) {
         var list = root.rowSynonyms[paneId + "/" + rowId];
         return list !== undefined ? list : [];
     }
 
+    // Rows carry only their own synonyms. A pane synonym is the pane entry's
+    // alias: it must not make every row in the pane a match, or "time machine"
+    // would flood the General group with 48 rows and hide the Backup rows.
     function synonymsFor(pane, row) {
         var out = [];
-        var paneList = root.paneSynonyms[pane.id] || [];
-        for (var p = 0; p < paneList.length; ++p)
-            out.push(paneList[p]);
         var rowList = root.rowSynonymsFor(pane.id, row.id);
         for (var r = 0; r < rowList.length; ++r)
             out.push(rowList[r]);
@@ -196,78 +223,6 @@ QtObject {
         return parts.join(" ");
     }
 
-    function buildIndex() {
-        var out = [];
-        for (var i = 0; i < SettingsMap.panes.length; ++i) {
-            var pane = SettingsMap.panes[i];
-            if (!pane.shipped)
-                continue;
-            // A pane whose host is absent is not in the sidebar, so it must
-            // not be a search result either (T228). T263 resolves aliases, so
-            // General -> Storage rows stay searchable.
-            if (!SettingsPanes.isVisible(pane.id))
-                continue;
-            var catalog = SettingsPanes.paneById(pane.id);
-            var paneHelp = [pane.owner, pane.absenceNote].join(" ");
-            var paneSynonyms = root.paneSynonyms[pane.id] || [];
-            out.push({
-                kind: "pane",
-                paneId: pane.id,
-                paneTitle: pane.title,
-                label: pane.title,
-                section: "",
-                targetRow: "",
-                deepLink: pane.deepLink,
-                icon: pane.icon,
-                subtitle: catalog && catalog.description.length > 0
-                          ? catalog.description : pane.absenceNote,
-                synonyms: paneSynonyms,
-                help: paneHelp
-            });
-
-            var rows = SettingsMap.visibleRowsFor(pane.id).filter(function(entry) {
-                // A row the resolver cannot land (a closed surface it cannot
-                // open) is not a search result either.
-                return SettingsMap.isRowLandable(pane.id, entry.id);
-            });
-            var seenSections = {};
-            for (var r = 0; r < rows.length; ++r) {
-                var row = rows[r];
-                if (seenSections[row.section] !== true) {
-                    seenSections[row.section] = true;
-                    out.push({
-                        kind: "section",
-                        paneId: pane.id,
-                        paneTitle: pane.title,
-                        label: row.section,
-                        section: row.section,
-                        targetRow: row.id,
-                        deepLink: SettingsMap.rowDeepLink(pane.id, row.id),
-                        icon: pane.icon,
-                        subtitle: pane.title,
-                        synonyms: paneSynonyms,
-                        help: paneHelp + " " + row.section
-                    });
-                }
-                out.push({
-                    kind: "row",
-                    paneId: pane.id,
-                    paneTitle: pane.title,
-                    label: row.label,
-                    section: row.section,
-                    targetRow: row.id,
-                    deepLink: SettingsMap.rowDeepLink(pane.id, row.id),
-                    icon: pane.icon,
-                    subtitle: qsTr("%1 \u203a %2").arg(pane.title).arg(row.section),
-                    synonyms: root.synonymsFor(pane, row),
-                    terms: root.termsFor(row),
-                    help: root.helpFor(pane, row)
-                });
-            }
-        }
-        return out;
-    }
-
     // Lowercase, strip combining accents, and collapse punctuation/whitespace
     // to one token separator. Keeps non-Latin letters so a localized query can
     // still match a localized label.
@@ -285,8 +240,140 @@ QtObject {
                     .trim();
     }
 
-    function fieldScore(text, query, tokens) {
-        var value = root.normalize(text);
+    // The hyphenless form, so `wi-fi`, `wifi`, and `Wi Fi` are the same word.
+    function compact(text) {
+        return root.normalize(text).replace(/\s+/g, "");
+    }
+
+    function compactTokens(tokens) {
+        var out = [];
+        for (var i = 0; i < tokens.length; ++i) {
+            var token = root.compact(tokens[i]);
+            if (token.length > 0)
+                out.push(token);
+        }
+        return out;
+    }
+
+    // Precompute every field search reads. `entry` is a plain object; the
+    // normalized copies live next to the display text and are never shown.
+    function prepare(entry) {
+        entry.nLabel = root.normalize(entry.label);
+        entry.cLabel = root.compact(entry.label);
+        entry.nSubtitle = root.normalize(entry.subtitle);
+        entry.cSubtitle = root.compact(entry.subtitle);
+        entry.nSection = root.normalize(entry.section);
+        entry.cSection = root.compact(entry.section);
+        entry.nPane = root.normalize(entry.paneTitle);
+        entry.cPane = root.compact(entry.paneTitle);
+        entry.nHelp = root.normalize(entry.help);
+        entry.cHelp = root.compact(entry.help);
+        entry.nSynonyms = [];
+        entry.cSynonyms = [];
+        for (var i = 0; i < (entry.synonyms || []).length; ++i) {
+            entry.nSynonyms.push(root.normalize(entry.synonyms[i]));
+            entry.cSynonyms.push(root.compact(entry.synonyms[i]));
+        }
+        entry.nTerms = [];
+        entry.cTerms = [];
+        for (var t = 0; t < (entry.terms || []).length; ++t) {
+            entry.nTerms.push(root.normalize(entry.terms[t]));
+            entry.cTerms.push(root.compact(entry.terms[t]));
+        }
+        return entry;
+    }
+
+    function buildIndex() {
+        var out = [];
+        for (var i = 0; i < SettingsMap.panes.length; ++i) {
+            var pane = SettingsMap.panes[i];
+            if (!pane.shipped)
+                continue;
+            // A pane whose host is absent is not in the sidebar, so it must
+            // not be a search result either (T228). T263 resolves aliases, so
+            // General -> Storage rows stay searchable.
+            if (!SettingsPanes.isVisible(pane.id))
+                continue;
+            var catalog = SettingsPanes.paneById(pane.id);
+            var description = catalog && catalog.description.length > 0
+                    ? String(catalog.description) : "";
+            // T265: a truthful subtitle is the pane description (or its
+            // sidebar group); the absence note is help text only, never the
+            // subtitle of an available pane.
+            var paneSubtitle = description.length > 0
+                    ? description : SettingsPanes.groupTitle(pane.group);
+            var paneHelp = [pane.owner,
+                            String(pane.absence || "").replace(/-/g, " "),
+                            pane.absenceNote].join(" ");
+            var paneSynonyms = root.paneSynonyms[pane.id] || [];
+            paneSynonyms = paneSynonyms.concat(root.idTerms(pane.id));
+            out.push(root.prepare({
+                kind: "pane",
+                paneId: pane.id,
+                paneTitle: pane.title,
+                label: pane.title,
+                section: "",
+                targetRow: "",
+                deepLink: pane.deepLink,
+                icon: pane.icon,
+                subtitle: paneSubtitle,
+                synonyms: paneSynonyms,
+                terms: [],
+                help: paneHelp
+            }));
+
+            var rows = SettingsMap.visibleRowsFor(pane.id).filter(function(entry) {
+                // A row the resolver cannot land (a closed surface it cannot
+                // open) is not a search result either.
+                return SettingsMap.isRowLandable(pane.id, entry.id);
+            });
+            var seenSections = {};
+            for (var r = 0; r < rows.length; ++r) {
+                var row = rows[r];
+                if (seenSections[row.section] !== true) {
+                    seenSections[row.section] = true;
+                    out.push(root.prepare({
+                        kind: "section",
+                        paneId: pane.id,
+                        paneTitle: pane.title,
+                        label: row.section,
+                        section: row.section,
+                        targetRow: row.id,
+                        deepLink: SettingsMap.rowDeepLink(pane.id, row.id),
+                        icon: pane.icon,
+                        subtitle: paneSubtitle,
+                        synonyms: [],
+                        terms: [],
+                        help: paneHelp + " " + row.section
+                    }));
+                }
+                out.push(root.prepare({
+                    kind: "row",
+                    paneId: pane.id,
+                    paneTitle: pane.title,
+                    label: row.label,
+                    section: row.section,
+                    targetRow: row.id,
+                    deepLink: SettingsMap.rowDeepLink(pane.id, row.id),
+                    icon: pane.icon,
+                    // The pane is the group header, so the row's own section is
+                    // the truthful second line. Rows carry no separate
+                    // description in the map.
+                    subtitle: row.section,
+                    synonyms: root.synonymsFor(pane, row),
+                    terms: root.termsFor(row),
+                    help: root.helpFor(pane, row)
+                }));
+            }
+        }
+        return out;
+    }
+
+    // Score one precomputed field against the normalized query. `compact`
+    // catches the hyphen/space variants (`wifi` == `Wi-Fi`); tokens keep a
+    // multi-word query matching in any order.
+    function scoreField(value, compactValue, query, queryCompact, tokens,
+                        queryCompactTokens) {
         if (value.length === 0)
             return 0;
         var score = 0;
@@ -298,6 +385,16 @@ QtObject {
             score = 60;
         else if (value.indexOf(query) >= 0)
             score = 40;
+        // Short compact queries ("e", "a") would match almost every field; only
+        // apply the hyphenless comparison once it is a meaningful word.
+        if (queryCompact.length >= 3 && compactValue.length > 0) {
+            if (compactValue === queryCompact)
+                score = Math.max(score, 95);
+            else if (compactValue.indexOf(queryCompact) === 0)
+                score = Math.max(score, 78);
+            else if (compactValue.indexOf(queryCompact) >= 0)
+                score = Math.max(score, 38);
+        }
         var hits = 0;
         for (var i = 0; i < tokens.length; ++i) {
             if (value.indexOf(tokens[i]) >= 0)
@@ -305,42 +402,82 @@ QtObject {
         }
         if (tokens.length > 0 && hits === tokens.length)
             score = Math.max(score, 30 + hits * 5);
+        var compactHits = 0;
+        for (var c = 0; c < queryCompactTokens.length; ++c) {
+            if (compactValue.indexOf(queryCompactTokens[c]) >= 0)
+                compactHits += 1;
+        }
+        if (queryCompactTokens.length > 0 && compactHits === queryCompactTokens.length)
+            score = Math.max(score, 28 + compactHits * 5);
         return score;
     }
 
-    function scoreEntry(entry, query, tokens) {
-        var label = root.fieldScore(entry.label, query, tokens);
-        var synonym = 0;
-        var synonyms = entry.synonyms || [];
-        for (var i = 0; i < synonyms.length; ++i)
-            synonym = Math.max(synonym, root.fieldScore(synonyms[i], query, tokens));
+    function bestField(values, compactValues, query, queryCompact, tokens,
+                       queryCompactTokens) {
+        var best = 0;
+        for (var i = 0; i < values.length; ++i) {
+            best = Math.max(best, root.scoreField(values[i], compactValues[i],
+                                                  query, queryCompact, tokens,
+                                                  queryCompactTokens));
+        }
+        return best;
+    }
+
+    function scoreEntry(entry, query, queryCompact, tokens, queryCompactTokens) {
+        var label = root.scoreField(entry.nLabel, entry.cLabel, query,
+                                    queryCompact, tokens, queryCompactTokens);
+        var synonym = root.bestField(entry.nSynonyms, entry.cSynonyms, query,
+                                     queryCompact, tokens, queryCompactTokens);
         // A pane/section entry's label is already the pane/section name; only
-        // row entries need the contextual section/pane/subtitle fields, or the
-        // same word would count three times and outrank an exact pane title.
-        var rowEntry = entry.kind === "row";
-        var section = rowEntry ? root.fieldScore(entry.section, query, tokens) : 0;
-        var pane = rowEntry ? root.fieldScore(entry.paneTitle, query, tokens) : 0;
-        var help = root.fieldScore(entry.help, query, tokens);
-        var subtitle = rowEntry ? root.fieldScore(entry.subtitle, query, tokens) : 0;
-        var terms = 0;
-        var termList = entry.terms || [];
-        for (var t = 0; t < termList.length; ++t)
-            terms = Math.max(terms, root.fieldScore(termList[t], query, tokens));
-        var score = label * 10 + synonym * 7 + section * 4 + pane * 3
-                    + help * 1.5 + subtitle * 2 + terms * 2;
+        // row entries need the contextual section/pane fields, or the same
+        // word would count three times and outrank an exact pane title.
+        var rowEntry = entry.kind === "row" || entry.kind === "section";
+        var section = rowEntry
+                ? root.scoreField(entry.nSection, entry.cSection, query,
+                                  queryCompact, tokens, queryCompactTokens) : 0;
+        var pane = rowEntry
+                ? root.scoreField(entry.nPane, entry.cPane, query, queryCompact,
+                                  tokens, queryCompactTokens) : 0;
+        // T265: the pane description (and the row/section subtitle) is a real
+        // search field, not decoration.
+        var subtitle = root.scoreField(entry.nSubtitle, entry.cSubtitle, query,
+                                       queryCompact, tokens, queryCompactTokens);
+        var help = root.scoreField(entry.nHelp, entry.cHelp, query, queryCompact,
+                                   tokens, queryCompactTokens);
+        var terms = root.bestField(entry.nTerms, entry.cTerms, query,
+                                   queryCompact, tokens, queryCompactTokens);
+
+        var primary = label * 10 + synonym * 7 + section * 4 + pane * 3
+                + subtitle * 2;
+        // Technical-only terms (owner/key/absence/control) stay searchable but
+        // are a separate, lower band. They never outrank a user-word match.
+        var technical = help * 1 + terms * 0.5;
+        var score = primary + technical;
+        if (score <= 0)
+            return { score: 0, primary: false };
         if (label === 100)
             score += 500;
         else if (label === 80)
             score += 150;
-        if (score <= 0)
-            return 0;
         if (entry.kind === "pane")
             score += 30;
         else if (entry.kind === "section")
             score += 20;
         else
             score += 10;
-        return score;
+        return { score: score, primary: primary > 0 };
+    }
+
+    function isPaneNameMatch(entry, query, queryCompact) {
+        if (entry.kind !== "pane")
+            return false;
+        if (entry.nLabel === query || entry.nLabel.indexOf(query) === 0)
+            return true;
+        if (queryCompact.length >= 3 && entry.cLabel.length > 0) {
+            return entry.cLabel === queryCompact
+                    || entry.cLabel.indexOf(queryCompact) === 0;
+        }
+        return false;
     }
 
     function copyEntry(entry, score) {
@@ -351,55 +488,164 @@ QtObject {
         return result;
     }
 
-    function isPaneNameMatch(entry, query) {
-        if (entry.kind !== "pane")
-            return false;
-        var label = root.normalize(entry.label);
-        return label === query || label.indexOf(query) === 0;
+    // Result count excluding the "Show all" affordances.
+    function resultCount(results) {
+        var count = 0;
+        for (var i = 0; i < (results || []).length; ++i) {
+            if (results[i].kind !== "showAll")
+                count += 1;
+        }
+        return count;
     }
 
-    // The one search entry point. `query` is a user string; `limit` is an
-    // optional cap (defaults to `resultLimit`). Returns a new array sorted by
-    // descending score.
-    function search(query, limit) {
+    function groupCount(results) {
+        var count = 0;
+        for (var i = 0; i < (results || []).length; ++i) {
+            if (results[i].groupStart === true)
+                count += 1;
+        }
+        return count;
+    }
+
+    function compareWithinGroup(a, b, query, queryCompact) {
+        // A pane whose own name matches sorts first inside its group, then any
+        // user-word match, then technical-only matches, then score.
+        var aPane = root.isPaneNameMatch(a.entry, query, queryCompact) ? 1 : 0;
+        var bPane = root.isPaneNameMatch(b.entry, query, queryCompact) ? 1 : 0;
+        if (aPane !== bPane)
+            return bPane - aPane;
+        if (a.primary !== b.primary)
+            return a.primary ? -1 : 1;
+        if (b.score !== a.score)
+            return b.score - a.score;
+        var order = { pane: 0, section: 1, row: 2 };
+        if (order[a.entry.kind] !== order[b.entry.kind])
+            return order[a.entry.kind] - order[b.entry.kind];
+        return String(a.entry.label).localeCompare(String(b.entry.label));
+    }
+
+    // The one search entry point. `query` is a user string; `options` may carry
+    // `expanded` (pane ids whose "Show all" was activated), `perPane`, and
+    // `limit`. Returns a flat, pane-grouped array sorted by descending score;
+    // the first entry of each group carries `groupStart`, and a capped group
+    // ends with a `showAll` entry.
+    function search(query, options) {
         var normalized = root.normalize(query);
         if (normalized.length === 0)
             return [];
+        var queryCompact = root.compact(normalized);
         var tokens = normalized.split(" ").filter(function(token) {
             return token.length > 0;
         });
-        var scored = [];
+        var compactTokenList = root.compactTokens(tokens);
+        var opts = options || {};
+        var expanded = opts.expanded || [];
+        var perPane = opts.perPane !== undefined ? Math.max(1, opts.perPane)
+                                                 : root.paneLimit;
+        var limit = opts.limit !== undefined ? Math.max(1, opts.limit)
+                                             : root.resultLimit;
+
+        var buckets = {};
+        var order = [];
         for (var i = 0; i < root.entries.length; ++i) {
             var entry = root.entries[i];
-            var score = root.scoreEntry(entry, normalized, tokens);
-            if (score > 0)
-                scored.push({ entry: entry, score: score });
+            var scored = root.scoreEntry(entry, normalized, queryCompact, tokens,
+                                         compactTokenList);
+            if (scored.score <= 0)
+                continue;
+            var bucket = buckets[entry.paneId];
+            if (bucket === undefined) {
+                bucket = {
+                    paneId: entry.paneId,
+                    paneTitle: entry.paneTitle,
+                    icon: entry.icon,
+                    entries: [],
+                    best: 0,
+                    bestPrimary: false,
+                    paneNameMatch: false
+                };
+                buckets[entry.paneId] = bucket;
+                order.push(bucket);
+            }
+            bucket.entries.push({
+                entry: entry,
+                score: scored.score,
+                primary: scored.primary
+            });
+            bucket.best = Math.max(bucket.best, scored.score);
+            bucket.bestPrimary = bucket.bestPrimary || scored.primary;
+            if (root.isPaneNameMatch(entry, normalized, queryCompact))
+                bucket.paneNameMatch = true;
         }
-        scored.sort(function(a, b) {
-            // A pane whose own name matches the query is the strongest result:
-            // "display" opens Displays before a row that happens to be called
-            // Display, and "battery" opens Battery before the menu-bar row.
-            var aPane = root.isPaneNameMatch(a.entry, normalized) ? 1 : 0;
-            var bPane = root.isPaneNameMatch(b.entry, normalized) ? 1 : 0;
-            if (aPane !== bPane)
-                return bPane - aPane;
-            if (b.score !== a.score)
-                return b.score - a.score;
-            var order = { pane: 0, section: 1, row: 2 };
-            if (order[a.entry.kind] !== order[b.entry.kind])
-                return order[a.entry.kind] - order[b.entry.kind];
-            return String(a.entry.label).localeCompare(String(b.entry.label));
+
+        order.sort(function(a, b) {
+            if (a.paneNameMatch !== b.paneNameMatch)
+                return a.paneNameMatch ? -1 : 1;
+            if (a.bestPrimary !== b.bestPrimary)
+                return a.bestPrimary ? -1 : 1;
+            if (b.best !== a.best)
+                return b.best - a.best;
+            return String(a.paneTitle).localeCompare(String(b.paneTitle));
         });
-        var count = limit !== undefined ? Math.max(0, limit) : root.resultLimit;
+
         var out = [];
-        for (var s = 0; s < scored.length && s < count; ++s)
-            out.push(root.copyEntry(scored[s].entry, scored[s].score));
+        for (var g = 0; g < order.length; ++g) {
+            var group = order[g];
+            group.entries.sort(function(a, b) {
+                return root.compareWithinGroup(a, b, normalized, queryCompact);
+            });
+            var total = group.entries.length;
+            var isExpanded = expanded.indexOf(group.paneId) >= 0;
+            var take = isExpanded ? total : Math.min(total, perPane);
+            var items = [];
+            for (var e = 0; e < take; ++e) {
+                var copy = root.copyEntry(group.entries[e].entry,
+                                          group.entries[e].score);
+                copy.primaryMatch = group.entries[e].primary;
+                copy.technicalOnly = !group.entries[e].primary;
+                copy.groupStart = e === 0;
+                copy.groupTitle = group.paneTitle;
+                copy.groupTotal = total;
+                items.push(copy);
+            }
+            if (!isExpanded && total > perPane) {
+                var hidden = total - perPane;
+                items.push({
+                    kind: "showAll",
+                    paneId: group.paneId,
+                    paneTitle: group.paneTitle,
+                    label: qsTr("Show all %1 results in %2")
+                            .arg(hidden).arg(group.paneTitle),
+                    section: "",
+                    targetRow: "",
+                    deepLink: "",
+                    icon: group.icon,
+                    subtitle: qsTr("%1 results").arg(total),
+                    synonyms: [],
+                    terms: [],
+                    help: "",
+                    hiddenCount: hidden,
+                    groupStart: false,
+                    groupTitle: group.paneTitle,
+                    groupTotal: total,
+                    score: 0
+                });
+            }
+            // Never cut a pane group in half: stop before a capped group that
+            // would exceed the list limit. An expanded group is always kept
+            // (it is the group the user just asked to see).
+            if (!isExpanded && out.length > 0
+                    && out.length + items.length > limit)
+                break;
+            for (var p = 0; p < items.length; ++p)
+                out.push(items[p]);
+        }
         return out;
     }
 
     // Convenience for the debug view/tests: the first result of each kind.
-    function firstOfKind(query, kind) {
-        var results = root.search(query);
+    function firstOfKind(query, kind, options) {
+        var results = root.search(query, options);
         for (var i = 0; i < results.length; ++i) {
             if (results[i].kind === kind)
                 return results[i];

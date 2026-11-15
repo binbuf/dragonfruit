@@ -129,6 +129,7 @@ FocusScope {
 
     Item {
         id: clearArea
+        objectName: "searchClearButton"
         visible: input.text.length > 0
         width: root.iconSize
         height: width
@@ -146,6 +147,12 @@ FocusScope {
         TapHandler {
             onTapped: root.clear()
         }
+
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("Clear search")
+        Accessible.description: qsTr("Clear the search field")
+        Accessible.focusable: false
+        Accessible.onPressAction: root.clear()
     }
 
     HoverHandler { id: fieldHover }
