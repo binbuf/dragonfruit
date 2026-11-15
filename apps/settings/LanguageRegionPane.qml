@@ -128,6 +128,7 @@ Item {
 
             SettingsRow {
                 width: parent.width
+                settingsId: "language.languages"
                 label: qsTr("Language")
                 description: qsTr("Some apps may need to be restarted.")
                 showSeparator: false
@@ -152,6 +153,7 @@ Item {
 
             SettingsRow {
                 width: parent.width
+                settingsId: "language.region"
                 label: qsTr("Region")
                 description: qsTr("The locale's region and formatting.")
                 controlData: Text {

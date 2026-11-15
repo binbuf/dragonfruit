@@ -141,8 +141,12 @@ Settings debug view reads it directly; T223's search index reads the same rows.
   `settings://pane/<id>` or `settings://pane/<id>/row/<rowId>`; the shell
   resolves a row by `SettingsRow.settingsId` first and label/synonym second,
   then scrolls/highlights it. A row that is custom pane chrome lands on its
-  section group instead. Each pane heading below carries an
-  `<a id="pane-<id>">` anchor for the bottom-right `?` help control.
+  section group instead. A General row whose surface is closed opens the
+  in-place sub-pane first (`SettingsMap.subPaneForRow`); a Software Update row
+  opens its dialog. A row the resolver cannot open is refused and is not
+  indexed (`SettingsMap.isRowLandable`). Each pane heading below carries an
+  `<a id="pane-<id>">` anchor for the bottom-right `?` help control and the
+  Help menu.
 
 | Executable omitted id | Reference pane | Why |
 |---|---|---|

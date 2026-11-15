@@ -153,6 +153,9 @@ Item {
 
     signal navigateRequested(string paneId)
     signal aboutPageOpened()
+    // Emitted when an in-place sub-pane body exists, so a deep link that was
+    // waiting for it can finish landing.
+    signal subPaneLoaded(string subPaneId)
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -166,6 +169,24 @@ Item {
 
     function closeSubPane() {
         root.subPaneId = "";
+    }
+
+    // Open the surface that renders a map row before the shell scrolls to it:
+    // the in-place sub-pane, or the Software Update dialog. Returns whether a
+    // surface was opened; the shell treats false as an unlandable row.
+    function openRowSurface(rowId) {
+        var subPane = SettingsMap.subPaneForRow("general", rowId);
+        if (subPane.length > 0) {
+            root.openSubPane(subPane);
+            return true;
+        }
+        var row = SettingsMap.rowFor("general", rowId);
+        if (row !== null && String(row.id).indexOf("updates.") === 0) {
+            root.closeSubPane();
+            updateDialog.show();
+            return true;
+        }
+        return false;
     }
 
     function subPaneComponent(id) {
@@ -350,6 +371,7 @@ Item {
                 id: subPaneLoader
                 width: parent.width
                 sourceComponent: root.subPaneComponent(root.subPaneId)
+                onLoaded: root.subPaneLoaded(root.subPaneId)
             }
         }
     }

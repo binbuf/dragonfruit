@@ -19,10 +19,23 @@ Dialog {
     // pane. The shell keeps this in step with the selected pane while open.
     property string paneId: ""
 
+    // T264: the view has to fit the 720x480 minimum window. The content width
+    // follows the window, and the row list shortens instead of pushing the
+    // dialog card past the frame; the list itself scrolls.
+    readonly property real contentWidth: Math.max(
+        260, Math.min(680, root.width - 2 * root.padding - 8))
+    readonly property real listHeight: Math.max(
+        120, Math.min(320, root.height - 340))
+
     readonly property var pane: SettingsMap.pane(root.paneId)
     readonly property var paneChoices: SettingsMap.panes.map(function(entry) {
         return { label: entry.title, value: entry.id };
     })
+
+    // The selector follows the shell when it changes pane while the view is
+    // open (Help -> Pane & Row Owners… stays truthful).
+    onPaneIdChanged: paneSelect.currentIndex =
+        Math.max(0, SettingsMap.paneIndex(root.paneId))
 
     property alias paneSelect: paneSelect
     property alias mapButton: mapButton
@@ -59,7 +72,7 @@ Dialog {
     }
 
     contentData: Column {
-        width: 680
+        width: root.contentWidth
         spacing: Theme.primitive.spacing.md
 
         Row {
@@ -113,7 +126,7 @@ Dialog {
 
         Rectangle {
             width: parent.width
-            height: 320
+            height: root.listHeight
             radius: Theme.controls.settingsGroup.radius
             color: Theme.color.surfaceMuted
             border.width: Theme.controls.window.borderWidth

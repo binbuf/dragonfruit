@@ -37,7 +37,9 @@ not become a top-tier experience:
   800×640, used a 192 pt sidebar, had no sidebar groups, opened Appearance
   instead of General, and lost focus/scroll/history on pane changes. T263
   lands the measured 740×820 window, the 232 pt grouped sidebar, General as
-  the default, the split unified toolbar, and remembered geometry/last pane.
+  the default, the split unified toolbar, and remembered geometry/last pane;
+  T264 makes history sub-pane/row-aware, restores focus and scroll, and makes
+  deep links, Help, and the menus real.
 - Shared components have defects that affect every pane: a `SettingsRow`
   binding loop, clipped `Select` menus, non-reparented dialogs, missing focus
   rings, incomplete accessibility names, and long-string/layout failures.
@@ -236,6 +238,38 @@ Every pane uses the same `SettingsGroup` and `SettingsRow` anatomy:
   scroll and clamp to the available rect.
 - Motion follows the shared reduced-motion path. Hover/press/focus feedback
   is tokenized; no pane invents a duration.
+
+### 3.3.1 Navigation, history, deep links, and help
+
+T264 makes every navigation path truthful:
+
+- **History is a navigation state, not a pane id.** Each entry is
+  `{ paneId, subPaneId, rowId }`. In General → About, Back closes About and
+  returns to the General list before a second Back leaves General; Forward
+  restores the sub-pane and the row. Clicking the already-selected General
+  sidebar row closes its sub-pane.
+- **A pane change starts at the top and restores focus.** The detail view
+  resets `contentY` and focus moves to the first keyboard stop in the new
+  body (or the pane title). Focus is moved off the outgoing body before the
+  `Loader` destroys it.
+- **Deep links land on a surface or are refused.** A General row resolves to
+  its in-place sub-pane (`about`, `date-time`, `language`, `login`, `sharing`,
+  `backup`, `startup`, `reset`); a Software Update row opens the dialog. A row
+  the resolver cannot open is not accepted, not indexed, and not guessed. A
+  rendered row with a stable `settingsId` is never matched by label.
+- **One Help action.** The bottom-right `?` and Help → Settings Help open
+  `Settings.helpUrl("pane-<id>")`, i.e. the map's `#pane-<id>` anchor. Without
+  the document the control disables and carries the reason.
+- **The View menu is generated from the catalog.** View → Settings Pane lists
+  every `SettingsPanes.shippedPanes` entry in sidebar order, checks the current
+  pane, and marks Back/Forward from the shell history. Every published action
+  dispatches; `activate()` returns false for an unknown action.
+- **About hands geometry back.** The About utility panel and the in-window
+  About page restore the user's pre-About window geometry when they close, so
+  a resized window is never left at the 740×820 design default.
+- **The debug view fits the minimum window.** Pane & Row Owners sizes its card
+  and row list to the 720×480 frame, scrolls the list, and keeps its pane
+  selector in step with the shell.
 
 ### 3.4 Absence and empty states
 
@@ -1131,7 +1165,7 @@ from the first live T263 run; they are part of the same release bar.
 | P0-9 | Select popups and pane dialogs are clipped by the detail `ScrollView`; long lists are unusable | `Select.qml`, `ContextMenu.qml`, `Dialog.qml`, `SettingsShell.qml` | T266 |
 | P0-10 | `SettingsRow` has a binding loop; rows have no focus ring; toggles have no accessible names; long strings overflow | `SettingsRow.qml`, `Toggle.qml`, `Button.qml` | T266, T267 |
 | P0-11 | Sidebar cannot scroll to most panes; no groups; opens Appearance instead of General; window is 800×640 | `SettingsShell.qml`, `SettingsWindow.qml`, `Sidebar.qml` | T263 (landed) |
-| P0-12 | Back/forward ignore subpanes; deep links cannot land in General subpanes/dialogs; help anchor is wrong; menu actions are dead | `SettingsShell.qml`, `SettingsWindow.qml`, `SettingsMenu.qml` | T264 |
+| P0-12 | Back/forward ignore subpanes; deep links cannot land in General subpanes/dialogs; help anchor is wrong; menu actions are dead | `SettingsShell.qml`, `SettingsWindow.qml`, `SettingsMenu.qml` | T264 (landed) |
 | P0-13 | settingsd accepts NaN/Infinity (persist panic), loses concurrent updates, hides persistence failure, and the client schema mirror drifts | `schema.rs`, `persist.rs`, `dbus.rs`, `settingsclient.cpp` | T282 |
 | P0-14 | Adapter clients show the startup snapshot; no live refresh; ~20 D-Bus calls at startup; slider writes fsync per tick | `*Client.cpp`, `SettingsBridge.cpp` | T268, T282 |
 | P0-15 | Pane tests run at 900/1000 px; many panes have no dark/absence/scale capture; no golden diff; no real-host matrix | `apps/settings/tests/`, `scripts/capture-*settings*` | T283, T284 |
@@ -1173,7 +1207,7 @@ from the first live T263 run; they are part of the same release bar.
 | P2-4 | Final row separators and double group gaps | T266 |
 | P2-5 | Dialog titles repeat the first content line; no app icons in notification/focus lists | T266, T278 |
 | P2-6 | “OPEN” and task IDs leak into user-facing descriptions | T266 |
-| P2-7 | Debug view is larger than the minimum window and has no scroll | T264 |
+| P2-7 | Debug view is larger than the minimum window and has no scroll | T264 (landed) |
 | P2-8 | Search field clear button has no accessible name | T267 |
 | P2-9 | About panel’s regulatory overlay is not keyboard-accessible | T269 |
 | P2-10 | Window resize grips cover the scrollbar corners | T266 |

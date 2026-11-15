@@ -19,8 +19,19 @@ Item {
 
     property string searchText: ""
     property string currentPaneId: ""
+    // T264: history is a list of `{ paneId, subPaneId, rowId }` entries, so
+    // Back closes a General sub-pane before it changes pane and Forward
+    // restores the sub-pane (and the row that was landed on).
     property var history: []
     property int historyIndex: -1
+    // The row a deep link (or a history replay) landed on; part of the
+    // current history entry.
+    property string currentRowId: ""
+    // Guards the history recorder while Back/Forward apply an entry.
+    property bool restoringHistory: false
+    // The entry currently being applied. It survives the Loader swap so the
+    // sub-pane opens only after the pane body exists.
+    property var historyApplyEntry: null
     // Bound to the host Window's focus so the titlebar/controls show the
     // focused state; the app-local chrome material itself is focus-invariant.
     property bool windowActive: true
@@ -173,6 +184,15 @@ Item {
     readonly property bool canGoBack: root.historyIndex > 0
     readonly property bool canGoForward: root.historyIndex >= 0
                                        && root.historyIndex < root.history.length - 1
+    // T264: the business-logic map is the one Help document. The bottom-right
+    // `?` and the Help menu call the same live action; without the document
+    // the action disables and explains why.
+    readonly property bool helpAvailable: Settings.mapDocUrl.toString().length > 0
+    readonly property string helpUnavailableReason:
+        qsTr("The business-logic map is not installed.")
+    // The last fragment opened, so a scripted check can assert the exact
+    // anchor the control used.
+    property string lastHelpUrl: ""
 
     // T263: the measured System Settings window. The host Window sets the
     // real size; these values keep the shell itself at the reference geometry
@@ -228,16 +248,85 @@ Item {
         return "";
     }
 
+    // ── History (T264) ─────────────────────────────────────────────────────
+    // One entry is a full navigation state, not a bare pane id: Back in
+    // General -> About closes About before it leaves General, and Forward
+    // restores the sub-pane and the row that was landed on.
+    function entryFor(paneId, subPaneId, rowId) {
+        return { paneId: paneId || "",
+                 subPaneId: subPaneId || "",
+                 rowId: rowId || "" };
+    }
+
+    function currentEntry() {
+        return root.entryFor(root.currentPaneId, root.currentSubPaneId,
+                             root.currentRowId);
+    }
+
+    function sameEntry(a, b) {
+        return a !== null && a !== undefined && b !== null && b !== undefined
+                && a.paneId === b.paneId
+                && (a.subPaneId || "") === (b.subPaneId || "")
+                && (a.rowId || "") === (b.rowId || "");
+    }
+
+    function recordEntry(entry) {
+        if (root.restoringHistory || root.historyApplyEntry !== null)
+            return;
+        if (root.historyIndex >= 0 && root.historyIndex < root.history.length
+                && root.sameEntry(root.history[root.historyIndex], entry))
+            return;
+        var next = root.history.slice(0, root.historyIndex + 1);
+        next.push(entry);
+        root.history = next;
+        root.historyIndex = next.length - 1;
+    }
+
+    // Record the live pane/sub-pane state. Sub-pane changes call this; a pane
+    // swap records its own entry explicitly because the Loader may still hold
+    // the outgoing body for one frame.
+    function recordHistory() {
+        if (root.restoringHistory || root.historyApplyEntry !== null)
+            return;
+        if (root.currentPaneId.length === 0
+                || root.loadedPaneId !== root.currentPaneId
+                || paneBody.item === null)
+            return;
+        root.recordEntry(root.currentEntry());
+    }
+
+    // A deep link's row lands after the pane/sub-pane exists; update the
+    // entry that navigation already recorded instead of pushing a new one.
+    function updateCurrentEntry() {
+        if (root.restoringHistory || root.historyApplyEntry !== null)
+            return;
+        if (root.historyIndex < 0 || root.historyIndex >= root.history.length)
+            return;
+        var entry = root.currentEntry();
+        if (root.sameEntry(root.history[root.historyIndex], entry))
+            return;
+        var next = root.history.slice();
+        next[root.historyIndex] = entry;
+        root.history = next;
+    }
+
     // Open a resolved catalog target: a pane plus an optional sub-pane or
     // section anchor. Used by the sidebar links and the deep-link resolver.
     function openTarget(target) {
         if (target === null)
             return;
         root.searchText = "";
-        if (root.currentPaneId !== target.paneId)
+        var samePane = root.currentPaneId === target.paneId;
+        if (!samePane)
             root.selectPane(target.paneId);
-        if (target.subPaneId !== undefined && target.subPaneId.length > 0)
+        var wantsSubPane = target.subPaneId !== undefined
+                && target.subPaneId.length > 0;
+        if (wantsSubPane)
             root.openSubPane(target.subPaneId);
+        // Clicking the already-selected General row closes its sub-pane, the
+        // reference behaviour for an in-place surface.
+        else if (samePane && root.subPaneOpen)
+            root.closeSubPane();
         if (target.anchor !== undefined && target.anchor.length > 0) {
             root.pendingPaneId = target.paneId;
             root.pendingSection = target.anchor;
@@ -264,6 +353,12 @@ Item {
         root.pendingSubPaneId = id;
     }
 
+    function closeSubPane() {
+        if (root.currentPaneId === "general" && paneBody.item !== null
+                && paneBody.item.closeSubPane !== undefined)
+            paneBody.item.closeSubPane();
+    }
+
     // Show a pane, recording the move in history. Selecting the current pane
     // is a no-op so arrow-key echo does not grow the stack.
     function selectPane(id) {
@@ -272,12 +367,14 @@ Item {
         root.trace("selectPane " + id);
         root.clearPendingHighlight();
         root.pendingSubPaneId = "";
-        var next = root.history.slice(0, root.historyIndex + 1);
-        next.push(id);
-        root.history = next;
-        root.historyIndex = next.length - 1;
+        root.currentRowId = "";
+        // Move focus off the outgoing body before the Loader destroys it; a
+        // control that is about to be destroyed must never keep focus.
+        root.forceActiveFocus();
         root.currentPaneId = id;
         root.syncSelection();
+        root.recordEntry(root.entryFor(id, "", ""));
+        Qt.callLater(root.focusAfterNavigation);
     }
 
     function openAboutPage() {
@@ -288,22 +385,96 @@ Item {
             root.pendingAboutPage = false;
         }
     }
+
+    // Apply one history entry. The sub-pane opens/closes only after the pane
+    // body exists, so the entry survives the Loader swap.
+    function applyHistoryEntry(entry) {
+        if (entry === null || entry === undefined)
+            return;
+        root.clearPendingHighlight();
+        root.historyApplyEntry = entry;
+        root.currentRowId = entry.rowId || "";
+        root.pendingPaneId = entry.paneId;
+        root.pendingRowId = entry.rowId || "";
+        root.pendingRowPaneId = entry.paneId;
+        root.pendingSection = "";
+        if (root.currentPaneId !== entry.paneId) {
+            root.restoringHistory = true;
+            root.forceActiveFocus();
+            root.currentPaneId = entry.paneId;
+            root.syncSelection();
+            root.restoringHistory = false;
+        }
+        root.finishHistoryEntry();
+    }
+
+    function finishHistoryEntry() {
+        var entry = root.historyApplyEntry;
+        if (entry === null || entry === undefined)
+            return;
+        if (root.loadedPaneId !== entry.paneId)
+            return;
+        root.historyApplyEntry = null;
+        root.restoringHistory = true;
+        if (paneBody.item !== null) {
+            if ((entry.subPaneId || "").length > 0) {
+                if (paneBody.item.openSubPane !== undefined)
+                    paneBody.item.openSubPane(entry.subPaneId);
+            } else if (paneBody.item.closeSubPane !== undefined) {
+                paneBody.item.closeSubPane();
+            }
+        }
+        root.restoringHistory = false;
+        root.detailScroll.flickable.contentY = 0;
+        if ((entry.rowId || "").length > 0) {
+            root.pendingPaneId = entry.paneId;
+            root.pendingRowId = entry.rowId;
+            root.pendingRowPaneId = entry.paneId;
+            Qt.callLater(root.revealPending);
+        } else {
+            Qt.callLater(root.focusAfterNavigation);
+        }
+    }
+
     function back() {
         if (!root.canGoBack)
             return;
-        root.clearPendingHighlight();
         root.historyIndex -= 1;
-        root.currentPaneId = root.history[root.historyIndex];
-        root.syncSelection();
+        root.applyHistoryEntry(root.history[root.historyIndex]);
     }
 
     function forward() {
         if (!root.canGoForward)
             return;
-        root.clearPendingHighlight();
         root.historyIndex += 1;
-        root.currentPaneId = root.history[root.historyIndex];
-        root.syncSelection();
+        root.applyHistoryEntry(root.history[root.historyIndex]);
+    }
+
+    // The first keyboard stop in a pane body (a row, control, or the sub-pane
+    // back button). Focus never stays on a control the Loader destroyed.
+    function firstFocusable(item) {
+        if (item === null || item === undefined || item.visible === false)
+            return null;
+        if (item.activeFocusOnTab === true && item.enabled !== false)
+            return item;
+        var children = item.children;
+        for (var i = 0; i < children.length; ++i) {
+            var found = root.firstFocusable(children[i]);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
+    function focusAfterNavigation() {
+        root.detailScroll.flickable.contentY = 0;
+        var target = root.firstFocusable(paneBody.item);
+        if (target === null && header.visible)
+            target = root.firstFocusable(header);
+        if (target === null)
+            target = root.titleBar;
+        if (target !== null && target.forceActiveFocus !== undefined)
+            target.forceActiveFocus();
     }
 
     function syncSelection() {
@@ -314,6 +485,27 @@ Item {
 
     function focusSearch() {
         searchField.forceActiveFocus();
+    }
+
+    // T264: one live Help action. The fragment is `#pane-<id>` (the anchor the
+    // business-logic map publishes), never a bare pane id. The bottom-right
+    // `?` and Help -> Settings Help both call `openHelp`.
+    function paneHelpUrl(paneId) {
+        if (!root.helpAvailable)
+            return "";
+        var id = String(paneId || root.currentPaneId);
+        if (id.length === 0)
+            return "";
+        return Settings.helpUrl("pane-" + id).toString();
+    }
+
+    function openHelp(paneId) {
+        var url = root.paneHelpUrl(paneId);
+        if (url.length === 0)
+            return false;
+        root.lastHelpUrl = url;
+        Qt.openUrlExternally(url);
+        return true;
     }
 
     // T223: parse `settings://pane/<id>` and
@@ -351,20 +543,34 @@ Item {
             return false;
         if (!SettingsPanes.isVisible(link.paneId))
             return false;
+        var row = null;
+        var surface = "";
         if (link.rowId.length > 0) {
-            var row = SettingsMap.rowFor(link.paneId, link.rowId);
+            row = SettingsMap.rowFor(link.paneId, link.rowId);
             if (row === null || row.state !== "shipped")
+                return false;
+            surface = SettingsMap.rowSurface(link.paneId, link.rowId);
+            // A row in a closed surface is only accepted when the shell can
+            // open that surface; otherwise it is not landable.
+            if (surface.length === 0)
                 return false;
         }
         root.searchText = "";
         if (root.currentPaneId !== target.paneId)
             root.selectPane(target.paneId);
+        // A row in an in-place General sub-pane opens that sub-pane first.
+        var subPaneId = target.subPaneId;
+        if (subPaneId.length === 0 && row !== null)
+            subPaneId = SettingsMap.subPaneForRow(link.paneId, link.rowId);
+        if (subPaneId.length === 0 && surface === "dialog" && root.subPaneOpen)
+            root.closeSubPane();
         root.pendingPaneId = target.paneId;
         root.pendingRowId = link.rowId;
         root.pendingRowPaneId = link.paneId;
         root.pendingSection = target.anchor;
-        if (target.subPaneId.length > 0)
-            root.openSubPane(target.subPaneId);
+        root.currentRowId = "";
+        if (subPaneId.length > 0)
+            root.openSubPane(subPaneId);
         if (root.currentPaneId === target.paneId)
             Qt.callLater(root.revealPending);
         return true;
@@ -390,16 +596,18 @@ Item {
     }
 
     // Walk the loaded pane body for the map row's rendered SettingsRow. The
-    // `settingsId` is the stable match; the label/synonym match lets rows that
-    // predate the T223 wiring (or a reference label with different wording)
-    // still land on the right control.
+    // `settingsId` is the stable match. The label/synonym fallback is only for
+    // rows that predate the map wiring: a row that carries a stable id is
+    // never guessed by a bidirectional substring match.
     function findRowTarget(item, row) {
         if (item === null || item === undefined || item.visible === false)
             return null;
         if (row !== null && item.settingsId !== undefined
                 && item.settingsId === row.id)
             return item;
-        if (row !== null && item.label !== undefined
+        var hasStableId = item.settingsId !== undefined
+                && String(item.settingsId).length > 0;
+        if (row !== null && !hasStableId && item.label !== undefined
                 && item.showSeparator !== undefined
                 && root.rowLabelMatches(item.label, row))
             return item;
@@ -456,7 +664,9 @@ Item {
 
     // Scroll the detail view to the pending row/section and hold the accent
     // wash long enough to be visible. Called from Loader.onLoaded and from the
-    // same-pane deep-link path.
+    // same-pane deep-link path. A row in a closed surface (the Software Update
+    // dialog) opens that surface first; a row the resolver cannot land is
+    // never deep-linked (see `SettingsMap.isRowLandable`).
     function revealPending() {
         if (root.pendingPaneId.length === 0
                 || root.pendingPaneId !== root.currentPaneId
@@ -465,11 +675,19 @@ Item {
         var body = paneBody.item;
         if (body === null)
             return;
+        var rowPaneId = root.pendingRowPaneId.length > 0
+                ? root.pendingRowPaneId : root.pendingPaneId;
         var row = root.pendingRowId.length > 0
-                ? SettingsMap.rowFor(root.pendingRowPaneId.length > 0
-                                     ? root.pendingRowPaneId : root.pendingPaneId,
-                                     root.pendingRowId)
-                : null;
+                ? SettingsMap.rowFor(rowPaneId, root.pendingRowId) : null;
+        var surface = row !== null
+                ? SettingsMap.rowSurface(rowPaneId, row.id) : "";
+        // A row in an in-place sub-pane can only be found once that sub-pane
+        // body exists; `subPaneLoaded` re-enters this function.
+        if (surface === "subpane" && body.subPaneLoader !== undefined
+                && body.subPaneLoader.status !== Loader.Ready)
+            return;
+        if (surface === "dialog" && body.openRowSurface !== undefined)
+            body.openRowSurface(row.id);
         var target = row !== null ? root.findRowTarget(body, row) : null;
         if (target === null && row !== null)
             target = root.findSectionTarget(body, row.section);
@@ -477,10 +695,12 @@ Item {
             target = root.findSectionTarget(body, root.pendingSection);
         if (target === null)
             target = body;
-        var point = target.mapToItem(detailContent, 0, 0);
-        detailScroll.flickable.contentY = Math.max(
-            0, Math.min(detailScroll.maxY,
-                        point.y - Theme.primitive.spacing.lg));
+        if (surface !== "dialog") {
+            var point = target.mapToItem(detailContent, 0, 0);
+            detailScroll.flickable.contentY = Math.max(
+                0, Math.min(detailScroll.maxY,
+                            point.y - Theme.primitive.spacing.lg));
+        }
         if (target.highlighted !== undefined) {
             if (root.highlightTarget !== null && root.highlightTarget !== target)
                 root.highlightTarget.highlighted = false;
@@ -492,10 +712,12 @@ Item {
             target.focusFirstControl();
         else if (target.forceActiveFocus !== undefined)
             target.forceActiveFocus();
+        root.currentRowId = root.pendingRowId;
         root.pendingPaneId = "";
         root.pendingRowId = "";
         root.pendingRowPaneId = "";
         root.pendingSection = "";
+        root.updateCurrentEntry();
     }
 
     Timer {
@@ -604,7 +826,7 @@ Item {
         if (requested.length > 0 && SettingsPanes.isVisible(requested))
             first = SettingsPanes.resolve(requested).paneId;
         if (first.length > 0) {
-            root.history = [first];
+            root.history = [root.entryFor(first, "", "")];
             root.historyIndex = 0;
             root.currentPaneId = first;
             root.syncSelection();
@@ -627,10 +849,26 @@ Item {
         // follows the same value through `windowTitle`.
         if (Settings.windowStatePersistence && root.currentPaneId.length > 0)
             Settings.set("settings.lastPane", root.currentPaneId);
+        // T264: a pane change always starts at the top of the detail view.
+        if (detailScroll !== null && detailScroll.flickable !== null)
+            detailScroll.flickable.contentY = 0;
         if (root.pendingPaneId.length > 0
                 && root.pendingPaneId === root.currentPaneId
                 && root.pendingPaneId === root.loadedPaneId)
             Qt.callLater(root.revealPending);
+    }
+
+    // A General sub-pane open/close is a navigation step of its own: Back
+    // closes it before leaving the pane, Forward restores it.
+    onCurrentSubPaneIdChanged: {
+        if (root.restoringHistory || root.historyApplyEntry !== null)
+            return;
+        if (paneBody.item === null
+                || root.loadedPaneId !== root.currentPaneId)
+            return;
+        root.currentRowId = "";
+        root.detailScroll.flickable.contentY = 0;
+        root.recordHistory();
     }
 
     onSearchTextChanged: {
@@ -662,6 +900,24 @@ Item {
             }
             break;
         }
+    }
+
+    // T264: the View menu's Settings Pane submenu and its Back/Forward rows
+    // read the live navigation state. One model, no second menu list.
+    Binding {
+        target: SettingsMenu
+        property: "currentPaneId"
+        value: root.currentPaneId
+    }
+    Binding {
+        target: SettingsMenu
+        property: "canGoBack"
+        value: root.canGoBack
+    }
+    Binding {
+        target: SettingsMenu
+        property: "canGoForward"
+        value: root.canGoForward
     }
 
     Binding {
@@ -1148,6 +1404,12 @@ Item {
                             function onNavigationRequested(paneId) {
                                 root.selectPane(paneId);
                             }
+                            function onSubPaneLoaded(subPaneId) {
+                                // A deep link that needed a closed sub-pane
+                                // waits for this before it scrolls.
+                                if (root.pendingPaneId.length > 0)
+                                    Qt.callLater(root.revealPending);
+                            }
                         }
 
                         Loader {
@@ -1156,16 +1418,25 @@ Item {
                             sourceComponent: root.paneComponent(root.currentPaneId)
                             onLoaded: {
                                 root.loadedPaneId = root.currentPaneId;
-                                // A General sub-pane requested before the
-                                // Loader swapped (Storage deep link).
-                                if (root.pendingSubPaneId.length > 0
-                                        && root.currentPaneId === "general") {
-                                    paneBody.item.openSubPane(root.pendingSubPaneId);
-                                    root.pendingSubPaneId = "";
-                                }
-                                if (root.pendingAboutPage && root.currentPaneId === "general") {
-                                    paneBody.item.openSubPane("about");
-                                    root.pendingAboutPage = false;
+                                if (root.historyApplyEntry !== null
+                                        && root.historyApplyEntry.paneId
+                                           === root.currentPaneId) {
+                                    // Back/Forward restores the sub-pane (and
+                                    // row) only after the body exists.
+                                    root.finishHistoryEntry();
+                                } else {
+                                    // A General sub-pane requested before the
+                                    // Loader swapped (Storage deep link).
+                                    if (root.pendingSubPaneId.length > 0
+                                            && root.currentPaneId === "general") {
+                                        paneBody.item.openSubPane(root.pendingSubPaneId);
+                                        root.pendingSubPaneId = "";
+                                    }
+                                    if (root.pendingAboutPage
+                                            && root.currentPaneId === "general") {
+                                        paneBody.item.openSubPane("about");
+                                        root.pendingAboutPage = false;
+                                    }
                                 }
                                 // Panes with an in-pane popup get the shell
                                 // root as its parent so the detail
@@ -1213,9 +1484,11 @@ Item {
                     accessibleName: root.currentPane
                                     ? qsTr("Help for %1").arg(root.currentPane.title)
                                     : qsTr("Help")
-                    enabled: Settings.mapDocUrl.toString().length > 0
-                    onClicked: Qt.openUrlExternally(
-                                   Settings.helpUrl(root.currentPaneId))
+                    Accessible.description: root.helpAvailable
+                                            ? qsTr("Open this pane in the business-logic map.")
+                                            : root.helpUnavailableReason
+                    enabled: root.helpAvailable
+                    onClicked: root.openHelp(root.currentPaneId)
                 }
             }
         }

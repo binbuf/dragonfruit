@@ -29,6 +29,17 @@ QtObject {
 
     readonly property string appName: qsTr("Settings")
 
+    // Live navigation state, bound by `SettingsShell`. The View menu's
+    // Back/Forward rows and the checked pane row read these; the model stays
+    // one JSON-serializable object, not a second menu list.
+    property string currentPaneId: ""
+    property bool canGoBack: false
+    property bool canGoForward: false
+    // The Help rows disable with a reason when the map document is absent.
+    readonly property bool helpAvailable: Settings.mapDocUrl.toString().length > 0
+    readonly property string helpUnavailableReason:
+        qsTr("The business-logic map is not installed.")
+
     // The fixed application menu (About/Settings/Hide/Hide Others/Show All/
     // Quit). The shell own this menu until T-14.2a takes it over, but the app
     // publishes the same items so `publishedModel` is the complete menu.
@@ -42,6 +53,17 @@ QtObject {
         { type: "separator" },
         { label: qsTr("Quit %1").arg(root.appName), shortcut: "Super+Q", action: "quit" }
     ]
+
+    // The View -> Settings Pane submenu is generated from the one catalog:
+    // every shipped pane, in sidebar order, with the current pane checked.
+    readonly property var paneItems: SettingsPanes.shippedPanes.map(function(pane) {
+        return {
+            label: pane.title,
+            action: "pane." + pane.id,
+            checked: pane.id === root.currentPaneId,
+            checkable: true
+        };
+    })
 
     // The app's own top-level menus, left to right after the fixed two.
     readonly property var menus: [
@@ -66,15 +88,16 @@ QtObject {
         {
             title: qsTr("View"),
             items: [
+                { label: qsTr("Back"), shortcut: "Alt+Left", action: "back",
+                  enabled: root.canGoBack },
+                { label: qsTr("Forward"), shortcut: "Alt+Right", action: "forward",
+                  enabled: root.canGoForward },
+                { type: "separator" },
                 { label: qsTr("Enter Full Screen"), shortcut: "Ctrl+Super+F",
                   action: "fullscreen" },
                 { type: "separator" },
-                { label: qsTr("Settings Pane"), type: "submenu", submenu: [
-                    { label: qsTr("Appearance"), action: "pane.appearance" },
-                    { label: qsTr("Desktop & Dock"), action: "pane.desktop-dock" },
-                    { label: qsTr("Displays"), action: "pane.displays" },
-                    { label: qsTr("Wallpaper"), action: "pane.wallpaper" }
-                ] }
+                { label: qsTr("Settings Pane"), type: "submenu",
+                  submenu: root.paneItems }
             ]
         },
         {
@@ -89,10 +112,12 @@ QtObject {
         {
             title: qsTr("Help"),
             items: [
-                { label: qsTr("%1 Help").arg(root.appName), action: "help" },
+                { label: qsTr("%1 Help").arg(root.appName), action: "help",
+                  enabled: root.helpAvailable },
                 { type: "separator" },
                 { label: qsTr("Pane & Row Owners…"), action: "help.debug" },
-                { label: qsTr("Business-Logic Map"), action: "help.map" }
+                { label: qsTr("Business-Logic Map"), action: "help.map",
+                  enabled: root.helpAvailable }
             ]
         }
     ]
@@ -110,11 +135,16 @@ QtObject {
     // T230: publish the native model to the menu-broker under the canonical
     // desktop id the shell resolves focus to. `MenuPublisher` is a context
     // property in the app executable; the QML test has no broker and skips it.
-    Component.onCompleted: {
+    function publish() {
         if (typeof MenuPublisher !== "undefined")
             MenuPublisher.publish("org.dragonfruit.Settings.desktop",
                                   JSON.stringify(root.publishedModel));
     }
+
+    Component.onCompleted: root.publish()
+    // The View submenu's checked pane and Back/Forward rows are live state;
+    // republish when they change so the global menu bar stays truthful.
+    onMenusChanged: root.publish()
     Component.onDestruction: {
         if (typeof MenuPublisher !== "undefined")
             MenuPublisher.withdraw("org.dragonfruit.Settings.desktop");
@@ -125,10 +155,34 @@ QtObject {
     // app once it owns dispatch (T-14.2b).
     signal activated(string action, var item)
 
+    readonly property var editActions: [
+        "edit.undo", "edit.redo", "edit.cut", "edit.copy", "edit.paste",
+        "edit.select-all"
+    ]
+    readonly property var windowActions: [
+        "about", "settings", "hide", "hide-others", "show-all", "quit",
+        "close", "minimize", "zoom", "fullscreen", "back", "forward",
+        "bring-all-to-front", "help", "help.debug", "help.map"
+    ]
+
+    // Whether a published action names something the app can dispatch. An
+    // unknown action is rejected by `activate()` instead of being broadcast.
+    function isKnownAction(action) {
+        if (!action || action.length === 0)
+            return false;
+        if (root.windowActions.indexOf(action) >= 0)
+            return true;
+        if (root.editActions.indexOf(action) >= 0)
+            return true;
+        if (action.indexOf("pane.") === 0)
+            return SettingsPanes.indexOf(action.substring(5)) >= 0;
+        return false;
+    }
+
     // Dispatch one row. Returns whether the action was handled locally; the
     // broker treats an unhandled action as inert rather than guessing.
     function activate(action, item) {
-        if (!action || action.length === 0)
+        if (!root.isKnownAction(action))
             return false;
         root.activated(action, item !== undefined ? item : ({}));
         return true;

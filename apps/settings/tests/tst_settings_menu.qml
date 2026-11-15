@@ -22,6 +22,14 @@ Item {
         name: "SettingsMenu"
         when: windowShown
 
+        // T264: the View menu reads live navigation state from the singleton;
+        // reset it so one case cannot leak a checked pane or an enabled Back.
+        function init() {
+            SettingsMenu.currentPaneId = "";
+            SettingsMenu.canGoBack = false;
+            SettingsMenu.canGoForward = false;
+        }
+
         Component { id: barComponent; MenuBar { } }
         Component { id: menuComponent; MenuBarMenu { } }
 
@@ -68,13 +76,20 @@ Item {
             compare(menus[1].items[2].type, "separator");
             compare(SettingsMenu.actionFor(1, 6), "edit.select-all");
 
-            // View carries a nested Settings Pane submenu.
+            // View carries Back/Forward state and a nested Settings Pane
+            // submenu generated from the one catalog.
             var view = menus[2].items;
-            compare(view[1].type, "separator");
-            compare(view[2].type, "submenu");
-            compare(view[2].submenu.length, 4);
-            compare(view[2].submenu[0].action, "pane.appearance");
-            compare(view[2].submenu[3].action, "pane.wallpaper");
+            compare(view[0].action, "back");
+            compare(view[0].enabled, false);
+            compare(view[1].action, "forward");
+            compare(view[1].enabled, false);
+            compare(view[2].type, "separator");
+            compare(view[3].action, "fullscreen");
+            compare(view[4].type, "separator");
+            compare(view[5].type, "submenu");
+            compare(view[5].submenu.length, 28);
+            compare(view[5].submenu[0].action, "pane.wifi");
+            compare(view[5].submenu[27].action, "pane.menu-bar");
 
             // Help links the executable map's debug view and the document.
             var help = menus[4].items;
@@ -98,7 +113,9 @@ Item {
 
         function test_action_for_follows_the_triggered_contract() {
             compare(SettingsMenu.actionFor(0, 0), "close");
-            compare(SettingsMenu.actionFor(2, 0), "fullscreen");
+            compare(SettingsMenu.actionFor(2, 0), "back");
+            compare(SettingsMenu.actionFor(2, 1), "forward");
+            compare(SettingsMenu.actionFor(2, 3), "fullscreen");
             compare(SettingsMenu.actionFor(9, 0), "");
             compare(SettingsMenu.actionFor(0, 9), "");
         }
@@ -177,12 +194,67 @@ Item {
                 title: SettingsMenu.menus[2].title,
                 model: SettingsMenu.menus[2].items
             });
-            compare(view.menuModel.length, 3);
-            compare(view.menuModel[2].type, "submenu");
-            compare(view.menuModel[2].hasSubmenu, true);
-            compare(view.entries[2].submenu.length, 4);
+            compare(view.menuModel.length, 6);
+            compare(view.menuModel[5].type, "submenu");
+            compare(view.menuModel[5].hasSubmenu, true);
+            compare(view.entries[5].submenu.length, 28);
             // JSON-serializable with no QML objects.
             verify(JSON.stringify(view.menuModel).length > 0);
+        }
+        // -- T264: generated View menu and dispatch --------------------------
+
+        function test_view_lists_every_shipped_pane_and_checks_the_current() {
+            var view = SettingsMenu.menus[2].items;
+            var submenu = view[5].submenu;
+            compare(submenu.length, SettingsPanes.shippedPanes.length);
+            compare(submenu.length, 28);
+            for (var i = 0; i < submenu.length; ++i) {
+                compare(submenu[i].label, SettingsPanes.shippedPanes[i].title);
+                compare(submenu[i].action,
+                        "pane." + SettingsPanes.shippedPanes[i].id);
+                compare(submenu[i].checked, false);
+            }
+
+            SettingsMenu.currentPaneId = "wallpaper";
+            waitForRendering(stage);
+            var live = SettingsMenu.menus[2].items[5].submenu;
+            var checked = 0;
+            for (var c = 0; c < live.length; ++c) {
+                if (live[c].checked) {
+                    checked += 1;
+                    compare(live[c].action, "pane.wallpaper");
+                }
+            }
+            compare(checked, 1, "exactly the current pane is checked");
+        }
+
+        function test_view_marks_the_back_forward_state() {
+            var view = SettingsMenu.menus[2].items;
+            compare(view[0].enabled, false);
+            compare(view[1].enabled, false);
+            SettingsMenu.canGoBack = true;
+            SettingsMenu.canGoForward = true;
+            waitForRendering(stage);
+            view = SettingsMenu.menus[2].items;
+            compare(view[0].enabled, true);
+            compare(view[1].enabled, true);
+        }
+
+        function test_unknown_action_is_rejected() {
+            activatedSpy.target = SettingsMenu;
+            activatedSpy.clear();
+            compare(SettingsMenu.activate("no-such-action"), false);
+            compare(SettingsMenu.activate("pane.no-such-pane"), false);
+            compare(SettingsMenu.activate("edit.no-such-verb"), false);
+            compare(SettingsMenu.activate(""), false);
+            compare(activatedSpy.count, 0,
+                    "an unknown action must not be broadcast");
+
+            // Every published action is known, including the generated pane
+            // rows.
+            compare(SettingsMenu.activate("about"), true);
+            compare(SettingsMenu.activate("pane.wallpaper"), true);
+            compare(activatedSpy.count, 2);
         }
     }
 }

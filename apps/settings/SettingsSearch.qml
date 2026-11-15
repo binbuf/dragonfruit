@@ -225,7 +225,11 @@ QtObject {
                 help: paneHelp
             });
 
-            var rows = SettingsMap.visibleRowsFor(pane.id);
+            var rows = SettingsMap.visibleRowsFor(pane.id).filter(function(entry) {
+                // A row the resolver cannot land (a closed surface it cannot
+                // open) is not a search result either.
+                return SettingsMap.isRowLandable(pane.id, entry.id);
+            });
             var seenSections = {};
             for (var r = 0; r < rows.length; ++r) {
                 var row = rows[r];

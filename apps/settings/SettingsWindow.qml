@@ -16,6 +16,15 @@ Window {
     property alias aboutWindow: aboutWindow
     property alias aboutPanel: aboutPanel
     property alias settingsShell: shell
+    // T264: the About utility panel is a second window of the same app. It
+    // opens over the main window from the app menu; the cold-launch
+    // `--about-system` path sets `startAboutPanel` instead.
+    property bool aboutPanelOpen: false
+    // The geometry the user had before an About surface (the panel or the
+    // in-window About page) opened. Restored when About closes, so a
+    // user-resized window is never left at the 740x820 default.
+    property var preAboutGeometry: null
+    property bool aboutGeometryHeld: false
 
     // T263: the measured macOS Tahoe System Settings window. 740x820 pt with
     // a 52 pt unified toolbar, a 232 pt grouped sidebar, and 508 pt of detail
@@ -75,7 +84,179 @@ Window {
         Settings.set("settings.window.positioned", true);
     }
 
+    // T264: About geometry hand-off. The About panel and the in-window About
+    // page both open over the user's window; closing them restores the size
+    // the user had, never the 740x820 design default.
+    function holdAboutGeometry() {
+        if (win.aboutGeometryHeld)
+            return;
+        win.preAboutGeometry = { width: win.width, height: win.height,
+                                 x: win.x, y: win.y };
+        win.aboutGeometryHeld = true;
+    }
+
+    function releaseAboutGeometry() {
+        if (!win.aboutGeometryHeld)
+            return;
+        win.aboutGeometryHeld = false;
+        var saved = win.preAboutGeometry;
+        win.preAboutGeometry = null;
+        if (saved === null || saved === undefined
+                || win.visibility !== Window.Windowed)
+            return;
+        win.restoringGeometry = true;
+        win.width = saved.width;
+        win.height = saved.height;
+        win.x = saved.x;
+        win.y = saved.y;
+        win.restoringGeometry = false;
+    }
+
+    function maybeReleaseAboutGeometry() {
+        if (!win.aboutPanelOpen && !win.settingsShell.aboutOpen)
+            win.releaseAboutGeometry();
+    }
+
+    function showAboutPanel() {
+        win.holdAboutGeometry();
+        win.aboutPanelOpen = true;
+        win.raise();
+        win.requestActivate();
+    }
+
+    function closeAboutPanel() {
+        win.aboutPanelOpen = false;
+        win.maybeReleaseAboutGeometry();
+    }
+
+    // The focused editable control, unwrapped from a FocusScope host such as
+    // SearchField. Edit menu verbs apply to it.
+    function editTarget() {
+        var item = win.activeFocusItem;
+        if (item !== null && item !== undefined) {
+            // A FocusScope host (SearchField) exposes its editable input.
+            var inner = item["input"];
+            if (inner !== undefined && inner !== null && inner !== item)
+                item = inner;
+        }
+        return item;
+    }
+
+    function applyEdit(action) {
+        var item = win.editTarget();
+        if (item === null || item === undefined)
+            return false;
+        switch (action) {
+        case "edit.undo":
+            if (item.undo !== undefined) { item.undo(); return true; }
+            break;
+        case "edit.redo":
+            if (item.redo !== undefined) { item.redo(); return true; }
+            break;
+        case "edit.cut":
+            if (item.cut !== undefined) { item.cut(); return true; }
+            break;
+        case "edit.copy":
+            if (item.copy !== undefined) { item.copy(); return true; }
+            break;
+        case "edit.paste":
+            if (item.paste !== undefined) { item.paste(); return true; }
+            break;
+        case "edit.select-all":
+            if (item.selectAll !== undefined) { item.selectAll(); return true; }
+            break;
+        }
+        return false;
+    }
+
+    // Dispatch every action the published model can carry. Returns whether
+    // the app performed it; an unknown action never reaches this point
+    // (`SettingsMenu.activate` rejects it).
+    function dispatchMenuAction(action) {
+        switch (action) {
+        case "about":
+            win.showAboutPanel();
+            return true;
+        case "settings":
+        case "show-all":
+            win.show();
+            win.raise();
+            win.requestActivate();
+            return true;
+        case "hide":
+            win.hide();
+            return true;
+        case "hide-others":
+            // The About panel is this app's only other window.
+            win.closeAboutPanel();
+            return true;
+        case "quit":
+            win.close();
+            win.aboutWindow.close();
+            Qt.quit();
+            return true;
+        case "close":
+            win.close();
+            return true;
+        case "minimize":
+            win.showMinimized();
+            return true;
+        case "zoom":
+            win.visibility === Window.Maximized
+                    ? win.showNormal() : win.showMaximized();
+            return true;
+        case "fullscreen":
+            win.visibility === Window.FullScreen
+                    ? win.showNormal() : win.showFullScreen();
+            return true;
+        case "back":
+            win.settingsShell.back();
+            return true;
+        case "forward":
+            win.settingsShell.forward();
+            return true;
+        case "bring-all-to-front":
+            win.show();
+            win.raise();
+            win.requestActivate();
+            return true;
+        case "help":
+            return win.settingsShell.openHelp(win.settingsShell.currentPaneId);
+        case "help.debug":
+            win.settingsShell.showDebugView();
+            return true;
+        case "help.map":
+            if (Settings.mapDocUrl.toString().length === 0)
+                return false;
+            Qt.openUrlExternally(Settings.mapDocUrl);
+            return true;
+        default:
+            if (action.indexOf("pane.") === 0) {
+                win.settingsShell.activateSidebarItem(action.substring(5));
+                return true;
+            }
+            if (action.indexOf("edit.") === 0)
+                return win.applyEdit(action);
+            return false;
+        }
+    }
+
     Component.onCompleted: applyStoredGeometry()
+
+    onAboutPanelOpenChanged: {
+        if (!win.aboutPanelOpen)
+            win.maybeReleaseAboutGeometry();
+    }
+
+    Connections {
+        target: shell
+        function onAboutOpenChanged() {
+            if (shell.aboutOpen)
+                win.holdAboutGeometry();
+            else
+                win.maybeReleaseAboutGeometry();
+        }
+    }
 
     Connections {
         target: Settings
@@ -147,16 +328,24 @@ Window {
         maximumWidth: 280
         minimumHeight: 503
         maximumHeight: 503
-        visible: win.startAboutPanel
+        // The app menu shows this panel over the main window; the cold-launch
+        // `--about-system` path keeps the main window hidden.
+        visible: win.startAboutPanel || win.aboutPanelOpen
         title: qsTr("About This System")
         color: "transparent"
         flags: Qt.Tool | Qt.FramelessWindowHint
+        onClosing: win.closeAboutPanel()
         AboutPanel {
             id: aboutPanel
             anchors.fill: parent
             onCloseRequested: aboutWindow.close()
             onMoreInfoRequested: {
                 aboutWindow.close();
+                win.closeAboutPanel();
+                // The main window was hidden for the panel; restore the
+                // remembered geometry before it maps.
+                if (!win.geometryRestored)
+                    win.applyStoredGeometry();
                 win.show();
                 shell.openAboutPage();
                 win.raise();
@@ -181,38 +370,13 @@ Window {
     // The published menu model's actions (T-09.6a). The menu bar is in the
     // shell process, so this is the app-side end of the dispatch seam: when
     // the broker routes an activated action back (T-14.2b), the app performs
-    // the window-level verbs and the pane jumps. The `edit.*` verbs are the
-    // standard text-editing actions applied to the focused text input.
+    // the window-level verbs, the pane jumps, and the edit verbs. T264 makes
+    // every published action real; `SettingsMenu.activate` rejects an unknown
+    // action before it reaches this handler.
     Connections {
         target: SettingsMenu
         function onActivated(action, item) {
-            switch (action) {
-            case "close":
-                win.close();
-                break;
-            case "minimize":
-                win.showMinimized();
-                break;
-            case "zoom":
-                win.visibility === Window.Maximized
-                        ? win.showNormal() : win.showMaximized();
-                break;
-            case "fullscreen":
-                win.visibility === Window.FullScreen
-                        ? win.showNormal() : win.showFullScreen();
-                break;
-            case "help":
-            case "help.debug":
-                shell.showDebugView();
-                break;
-            case "help.map":
-                Qt.openUrlExternally(Settings.mapDocUrl);
-                break;
-            default:
-                if (action.indexOf("pane.") === 0)
-                    shell.selectPane(action.substring(5));
-                break;
-            }
+            win.dispatchMenuAction(action);
         }
     }
 }

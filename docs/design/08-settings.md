@@ -365,24 +365,37 @@ rendered `SettingsRow` by `settingsId` first and label/synonym second. It
 scrolls the detail view to the row, paints an accent wash, and moves keyboard
 focus into the row's control. A row that is custom pane chrome rather than a
 `SettingsRow` lands on its `SettingsGroup` section, and a section-less pane
-lands at its top; a result is never a dead link. Back/forward remain pane
-history, not row history.
+lands at its top; a result is never a dead link. Back/forward are full
+navigation history, not bare pane ids: an entry is
+`{ paneId, subPaneId, rowId }`, so Back closes a General sub-pane before it
+changes pane and Forward restores the sub-pane and row. A General row whose
+surface is closed (About, Date & Time, Language & Region, Login Items, Sharing,
+Backup, Startup Disk, Reset, Storage) opens that sub-pane first; a Software
+Update row opens its dialog. A row the resolver cannot open is refused and is
+not indexed (`SettingsMap.isRowLandable`). See ADR
+[0264](adr/0264-settings-navigation-history-deep-links-help.md).
 
 `SettingsRow` owns the one row anatomy: label, description, control, disclosure
 chevron, trailing action, and help affordance. `settingsId`, `owner`, and
 `settingsKey` link a rendered row back to the map, and `highlighted` is the
-deep-link landing state. Long labels elide and long descriptions wrap; the
-control slot stays inside the row. `SettingsGroup` carries `sectionId` for
-section-level landings.
+deep-link landing state. A row that carries a stable `settingsId` is matched
+only by that id; the label/synonym fallback is reserved for rows that predate
+the map wiring. Long labels elide and long descriptions wrap; the control slot
+stays inside the row. `SettingsGroup` carries `sectionId` for section-level
+landings.
 
-The bottom-right `?` help control opens
-`Settings.helpUrl(paneId)` — the business-logic map with a `#pane-<id>` anchor
-— and disables when the document is not installed, rather than opening a dead
-link. The four reference header panes (General, Accessibility, Notifications,
-Privacy & Security) keep their header card; settings-list panes stay headerless.
-See ADR [0232](adr/0232-settings-search-and-deep-links.md). The deterministic
-visual check is `make t223-settings-search-capture`
-(`docs/captures/t223-settings-{search,deep-link,long-strings}.png`).
+The bottom-right `?` help control and Help → Settings Help call one live
+action: `Settings.helpUrl("pane-<id>")`, the business-logic map with the
+`#pane-<id>` anchor. Without the document the control disables and carries the
+reason, rather than opening a dead link. The four reference header panes
+(General, Accessibility, Notifications, Privacy & Security) keep their header
+card; settings-list panes stay headerless. See ADR
+[0232](adr/0232-settings-search-and-deep-links.md) and
+[0264](adr/0264-settings-navigation-history-deep-links-help.md). The
+deterministic visual checks are `make t223-settings-search-capture`
+(`docs/captures/t223-settings-{search,deep-link,long-strings}.png`) and
+`make t264-settings-navigation-capture`
+(`docs/captures/t264-settings-{general,about,back,deep-link}-{light,dark}.png`).
 
 ## Category icons (T-19.1b)
 

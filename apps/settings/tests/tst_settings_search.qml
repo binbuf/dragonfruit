@@ -301,6 +301,77 @@ Item {
             compare(shell.currentPaneId, "online-accounts");
         }
 
+        // -- T264: deep links into General sub-panes --------------------------
+
+        function test_deep_link_opens_the_general_subpane_and_lands_on_the_row() {
+            var shell = make();
+            verify(shell.deepLink(
+                "settings://pane/general/row/language.region"));
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready;
+            });
+            tryVerify(function() {
+                return shell.paneBody.item.subPaneId === "language";
+            });
+            tryVerify(function() { return shell.highlightTarget !== null; });
+            compare(shell.currentPaneId, "general");
+            compare(shell.paneTitle, "Language & Region");
+            compare(shell.highlightTarget.settingsId, "language.region");
+            compare(shell.highlightTarget.label, "Region");
+            compare(shell.highlightTarget.highlighted, true);
+
+            verify(shell.deepLink(
+                "settings://pane/general/row/about.deviceName"));
+            tryVerify(function() {
+                return shell.paneBody.item.subPaneId === "about";
+            });
+            tryVerify(function() {
+                return shell.highlightTarget !== null
+                    && shell.highlightTarget.settingsId === "about.deviceName";
+            });
+            compare(shell.highlightTarget.settingsId, "about.deviceName");
+            compare(shell.highlightTarget.highlighted, true);
+            compare(shell.paneTitle, "About");
+        }
+
+        function test_deep_link_to_a_dialog_row_opens_the_dialog() {
+            var shell = make();
+            verify(shell.deepLink("settings://pane/general/row/updates.auto"));
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready;
+            });
+            tryVerify(function() {
+                return shell.paneBody.item.updateDialog.open;
+            });
+            compare(shell.currentPaneId, "general");
+        }
+
+        function test_every_general_subpane_has_a_resolvable_row() {
+            var cases = [
+                { link: "about.deviceName", sub: "about" },
+                { link: "time.zone", sub: "date-time" },
+                { link: "language.region", sub: "language" },
+                { link: "login.start", sub: "login" },
+                { link: "sharing.file", sub: "sharing" },
+                { link: "backup.auto", sub: "backup" },
+                { link: "reset.startupDisk", sub: "startup" },
+                { link: "reset.reset", sub: "reset" }
+            ];
+            var shell = make();
+            for (var i = 0; i < cases.length; ++i) {
+                compare(SettingsMap.subPaneForRow("general", cases[i].link),
+                        cases[i].sub);
+                verify(SettingsMap.isRowLandable("general", cases[i].link),
+                       cases[i].link + " must be landable");
+                verify(shell.deepLink(
+                    "settings://pane/general/row/" + cases[i].link),
+                    cases[i].link + " must be accepted");
+                tryVerify(function() {
+                    return shell.paneBody.item.subPaneId === cases[i].sub;
+                });
+            }
+        }
+
         function test_back_forward_follows_pane_history() {
             var shell = make();
             verify(shell.deepLink("settings://pane/appearance/row/scheme"));
@@ -315,6 +386,26 @@ Item {
             shell.forward();
             compare(shell.currentPaneId, "notifications");
             verify(!shell.canGoForward);
+        }
+
+        function test_back_forward_restores_a_deep_link_row() {
+            var shell = make();
+            verify(shell.deepLink(
+                "settings://pane/general/row/language.region"));
+            tryVerify(function() {
+                return shell.currentSubPaneId === "language"
+                    && shell.highlightTarget !== null
+                    && shell.highlightTarget.settingsId === "language.region";
+            });
+            shell.back();
+            tryVerify(function() { return shell.currentSubPaneId === ""; });
+            compare(shell.currentPaneId, "general");
+            shell.forward();
+            tryVerify(function() { return shell.currentSubPaneId === "language"; });
+            tryVerify(function() {
+                return shell.highlightTarget !== null
+                    && shell.highlightTarget.settingsId === "language.region";
+            });
         }
 
         // -- Row anatomy and long strings --------------------------------------
@@ -390,6 +481,23 @@ Item {
             verify(url.toString().indexOf("#pane-appearance") >= 0);
             verify(shell.helpButton.enabled);
             compare(shell.helpButton.Accessible.name, "Help for General");
+            verify(shell.helpButton.Accessible.description.length > 0,
+                   "the help control explains itself when enabled");
+
+            // The live control and the Help menu share one action, and the
+            // fragment is the map's `#pane-<id>` anchor.
+            shell.selectPane("appearance");
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready;
+            });
+            verify(shell.paneHelpUrl("appearance")
+                   .indexOf("#pane-appearance") >= 0);
+            mouseClick(shell.helpButton,
+                       shell.helpButton.width / 2,
+                       shell.helpButton.height / 2);
+            verify(shell.lastHelpUrl.indexOf("#pane-appearance") >= 0,
+                   "the button must open the pane anchor (got "
+                   + shell.lastHelpUrl + ")");
         }
 
         function test_pane_headers_stay_reference_scoped() {

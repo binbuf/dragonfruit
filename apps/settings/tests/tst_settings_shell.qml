@@ -620,5 +620,141 @@ Item {
             });
             win.close();
         }
+
+        // -- T264: sub-pane history, focus/scroll, About geometry, debug view --
+
+        function ready(shell) {
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+        }
+
+        function test_history_includes_general_subpanes() {
+            var shell = make();
+            ready(shell);
+            shell.openSubPane("about");
+            tryVerify(function() { return shell.currentSubPaneId === "about"; });
+            verify(shell.canGoBack, "opening About is a history step");
+
+            // Back closes the sub-pane before it changes pane.
+            shell.back();
+            tryVerify(function() { return shell.currentSubPaneId === ""; });
+            compare(shell.currentPaneId, "general");
+            verify(shell.canGoForward);
+
+            // Forward restores it.
+            shell.forward();
+            tryVerify(function() { return shell.currentSubPaneId === "about"; });
+            compare(shell.currentPaneId, "general");
+        }
+
+        function test_back_forward_restore_a_subpane_across_panes() {
+            var shell = make();
+            ready(shell);
+            shell.selectPane("displays");
+            ready(shell);
+            shell.selectPane("general");
+            ready(shell);
+            shell.openSubPane("language");
+            tryVerify(function() { return shell.currentSubPaneId === "language"; });
+            shell.selectPane("displays");
+            ready(shell);
+            compare(shell.currentPaneId, "displays");
+
+            shell.back();
+            compare(shell.currentPaneId, "general");
+            tryVerify(function() { return shell.currentSubPaneId === "language"; });
+
+            shell.back();
+            compare(shell.currentPaneId, "general");
+            tryVerify(function() { return shell.currentSubPaneId === ""; });
+
+            shell.forward();
+            tryVerify(function() { return shell.currentSubPaneId === "language"; });
+        }
+
+        function test_reselecting_the_general_row_closes_its_subpane() {
+            var shell = make();
+            ready(shell);
+            shell.openSubPane("about");
+            tryVerify(function() { return shell.currentSubPaneId === "about"; });
+            shell.activateSidebarItem("general");
+            tryVerify(function() { return shell.currentSubPaneId === ""; });
+            compare(shell.currentPaneId, "general");
+        }
+
+        function test_pane_change_resets_scroll_and_focus() {
+            var shell = makeSized(740, 820);
+            ready(shell);
+            shell.selectPane("desktop-dock");
+            ready(shell);
+            shell.detailScroll.flickable.contentY = 80;
+            shell.selectPane("displays");
+            ready(shell);
+            compare(shell.detailScroll.flickable.contentY, 0,
+                    "a pane change starts at the top of the detail view");
+            var target = shell.firstFocusable(shell.paneBody.item);
+            verify(target !== null, "the new pane must expose a keyboard stop");
+            tryVerify(function() { return target.activeFocus; });
+        }
+
+        function test_debug_view_fits_the_minimum_window_and_follows_the_pane() {
+            var shell = makeSized(720, 480);
+            ready(shell);
+            shell.showDebugView("general");
+            tryVerify(function() { return shell.debugView.open; });
+            waitForRendering(stage);
+            verify(shell.debugView.card.width <= 720,
+                   "the debug card must fit 720 pt (got "
+                   + shell.debugView.card.width + ")");
+            verify(shell.debugView.card.height <= 480,
+                   "the debug card must fit 480 pt (got "
+                   + shell.debugView.card.height + ")");
+            verify(shell.debugView.rowList.height > 0);
+            verify(shell.debugView.rowList.contentHeight
+                   > shell.debugView.rowList.height,
+                   "the row list must scroll at the minimum window");
+
+            shell.selectPane("displays");
+            tryVerify(function() { return shell.debugView.paneId === "displays"; });
+            compare(shell.debugView.paneSelect.currentIndex,
+                    SettingsMap.paneIndex("displays"),
+                    "the selector follows the shell's pane");
+        }
+
+        function test_about_page_restores_the_pre_about_geometry() {
+            var win = createTemporaryObject(windowComponent, null, {});
+            verify(win !== null);
+            win.width = 900;
+            win.height = 700;
+            tryCompare(win, "width", 900);
+            win.settingsShell.openAboutPage();
+            tryVerify(function() { return win.settingsShell.aboutOpen; });
+
+            // The About surface claims the frame; closing it must hand the
+            // user's geometry back, not the 740x820 design default.
+            win.width = 760;
+            win.height = 640;
+            win.settingsShell.closeSubPane();
+            tryVerify(function() { return !win.settingsShell.aboutOpen; });
+            tryCompare(win, "width", 900);
+            tryCompare(win, "height", 700);
+            win.close();
+        }
+
+        function test_about_panel_restores_the_pre_about_geometry() {
+            var win = createTemporaryObject(windowComponent, null, {});
+            verify(win !== null);
+            win.width = 900;
+            win.height = 700;
+            tryCompare(win, "width", 900);
+            win.showAboutPanel();
+            tryVerify(function() { return win.aboutWindow.visible; });
+            win.width = 760;
+            win.height = 640;
+            win.aboutWindow.close();
+            tryVerify(function() { return !win.aboutWindow.visible; });
+            tryCompare(win, "width", 900);
+            tryCompare(win, "height", 700);
+            win.close();
+        }
     }
 }

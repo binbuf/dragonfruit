@@ -1021,6 +1021,60 @@ QtObject {
         return "settings://pane/" + paneId + "/row/" + rowId;
     }
 
+    // The General group is one pane with in-place sub-panes. A row's surface is
+    // the sub-pane that owns it, a dialog that has to be opened first, or the
+    // pane itself. Prefixes are stable map ids, so this table survives a
+    // localized section title.
+    readonly property var generalRowSubPanes: ({
+        "about": "about",
+        "storage": "storage",
+        "login": "login",
+        "language": "language",
+        "time": "date-time",
+        "sharing": "sharing",
+        "backup": "backup"
+    })
+
+    // The sub-pane id that renders a row, or "" when the row is not inside an
+    // in-place General sub-pane.
+    function subPaneForRow(paneId, rowId) {
+        if (paneId !== "general" || !rowId)
+            return "";
+        var row = root.rowFor(paneId, rowId);
+        if (row === null)
+            return "";
+        if (row.id === "reset.startupDisk")
+            return "startup";
+        if (row.id === "reset.reset")
+            return "reset";
+        var dot = String(row.id).indexOf(".");
+        if (dot <= 0)
+            return "";
+        var mapped = root.generalRowSubPanes[String(row.id).substring(0, dot)];
+        return mapped !== undefined ? mapped : "";
+    }
+
+    // Where a row lives: "subpane", "dialog", or "pane". "" means the row
+    // cannot be landed and must not be indexed or deep-linked.
+    function rowSurface(paneId, rowId) {
+        var row = root.rowFor(paneId, rowId);
+        if (row === null)
+            return "";
+        if (root.subPaneForRow(paneId, rowId).length > 0)
+            return "subpane";
+        if (paneId === "general" && String(row.id).indexOf("updates.") === 0)
+            return "dialog";
+        return "pane";
+    }
+
+    // A result is only indexed/accepted when its row is shipped and the shell
+    // can open the surface that renders it.
+    function isRowLandable(paneId, rowId) {
+        var row = root.rowFor(paneId, rowId);
+        return row !== null && row.state === "shipped"
+                && root.rowSurface(paneId, rowId).length > 0;
+    }
+
     // A row is valid when it names an owner and an absence path. An omitted
     // row is valid only with the explicit `omitted` state/absence pair.
     function validateRow(entry) {

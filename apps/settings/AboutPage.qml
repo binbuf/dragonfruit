@@ -36,14 +36,22 @@ Item {
                 width: parent.width - 148
                 spacing: 7
                 Text {
+                    id: deviceNameText
                     objectName: "aboutPageName"
+                    // The map row `about.deviceName` lands on this rendered
+                    // field; the label is the row label, not the value.
+                    property string settingsId: "about.deviceName"
+                    property string label: qsTr("Device name")
+                    property bool highlighted: false
                     width: parent.width
                     text: root.value("deviceName")
-                    color: Theme.color.textPrimary
+                    color: deviceNameText.highlighted ? Theme.color.accent
+                                                      : Theme.color.textPrimary
                     font.pixelSize: 24; font.weight: Font.DemiBold
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
+                    function focusFirstControl() { forceActiveFocus(); }
                 }
                 Text {
                     objectName: "aboutPageProduct"
@@ -79,7 +87,13 @@ Item {
             wrapMode: Text.WordWrap
         }
         Text { text: qsTr("Version and compatibility details depend on the installed distribution."); color: Theme.color.textSecondary; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
-        Button { text: qsTr("Details…"); onClicked: root.showDetails = !root.showDetails }
+        Button {
+            id: detailsButton
+            property string settingsId: "about.moreInfo"
+            property string label: qsTr("More Info…")
+            text: qsTr("Details…")
+            onClicked: root.showDetails = !root.showDetails
+        }
         Column {
             visible: root.showDetails
             width: parent.width; spacing: 6

@@ -24,6 +24,7 @@ Item {
         Component { id: panelComponent; AboutPanel { } }
         Component { id: pageComponent; AboutPage { } }
         Component { id: windowComponent; SettingsWindow { startAboutPanel: true } }
+        Component { id: mainWindowComponent; SettingsWindow { } }
 
         // The updates fixture is process-global; reset it before every case so
         // the pane always opens with one security update on offer.
@@ -155,6 +156,61 @@ Item {
             compare(window.width, 740);
             compare(window.height, 820);
             tryVerify(function() { return window.settingsShell.aboutOpen; });
+        }
+
+        // -- T264: every published menu action dispatches --------------------
+
+        function test_menu_actions_dispatch_to_the_window() {
+            var win = createTemporaryObject(mainWindowComponent, null);
+            verify(win !== null);
+            tryVerify(function() {
+                return win.settingsShell.paneBody.status === Loader.Ready;
+            });
+
+            // About opens the utility panel over the main window.
+            compare(SettingsMenu.activate("about"), true);
+            tryVerify(function() { return win.aboutWindow.visible; });
+            win.aboutWindow.close();
+            tryVerify(function() { return !win.aboutWindow.visible; });
+
+            // Settings… raises the main window.
+            compare(SettingsMenu.activate("settings"), true);
+
+            // Edit verbs apply to the focused editable control.
+            win.settingsShell.focusSearch();
+            waitForRendering(stage);
+            win.settingsShell.searchField.input.text = "abc";
+            win.settingsShell.searchField.input.select(0, 0);
+            compare(SettingsMenu.activate("edit.select-all"), true);
+            tryVerify(function() {
+                return win.settingsShell.searchField.input.selectedText === "abc";
+            });
+            compare(SettingsMenu.activate("edit.copy"), true);
+            compare(SettingsMenu.activate("edit.undo"), true);
+
+            // The generated View pane submenu switches panes.
+            compare(SettingsMenu.activate("pane.wallpaper"), true);
+            tryVerify(function() {
+                return win.settingsShell.currentPaneId === "wallpaper";
+            });
+            compare(SettingsMenu.activate("back"), true);
+            tryVerify(function() {
+                return win.settingsShell.currentPaneId === "general";
+            });
+            compare(SettingsMenu.activate("forward"), true);
+            tryVerify(function() {
+                return win.settingsShell.currentPaneId === "wallpaper";
+            });
+
+            // Window and Help verbs.
+            compare(SettingsMenu.activate("bring-all-to-front"), true);
+            compare(SettingsMenu.activate("help"), true);
+            verify(win.settingsShell.lastHelpUrl.indexOf("#pane-wallpaper") >= 0,
+                   "Help must open the current pane anchor");
+            compare(SettingsMenu.activate("help.debug"), true);
+            verify(win.settingsShell.debugView.open);
+            compare(SettingsMenu.activate("help.map"), true);
+            win.close();
         }
 
         function test_material_accessibility_and_dark() {
