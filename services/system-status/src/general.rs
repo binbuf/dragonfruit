@@ -70,6 +70,26 @@ impl<S: GeneralSource> GeneralHost<S> {
         general_report(self.adapter.set_autostart_enabled(id, enabled))
     }
 
+    /// Add an installed application to Open at Login. One explicit write.
+    pub fn add_autostart(&mut self, app_id: &str) -> Value {
+        general_report(self.adapter.add_autostart(app_id))
+    }
+
+    /// Remove one login item. One explicit write.
+    pub fn remove_autostart(&mut self, id: &str) -> Value {
+        general_report(self.adapter.remove_autostart(id))
+    }
+
+    /// Set the computer's local hostname. One explicit write.
+    pub fn set_hostname(&mut self, hostname: &str) -> Value {
+        general_report(self.adapter.set_hostname(hostname))
+    }
+
+    /// Restart the computer. One explicit write.
+    pub fn restart_system(&mut self) -> Value {
+        general_report(self.adapter.restart_system())
+    }
+
     /// Enable or disable one systemd user unit. One explicit write.
     pub fn set_user_unit_enabled(&mut self, unit: &str, enabled: bool) -> Value {
         general_report(self.adapter.set_user_unit_enabled(unit, enabled))
@@ -221,6 +241,31 @@ fn login_view(snapshot: &GeneralSnapshot) -> Value {
                 "enabled": item.enabled,
                 "system": item.system,
                 "canToggle": item.can_toggle,
+                "broken": item.broken,
+                "brokenReason": item.broken_reason,
+            })
+        })
+        .collect();
+    let available_apps: Vec<Value> = login
+        .available_apps
+        .iter()
+        .map(|app| {
+            json!({
+                "id": app.id,
+                "name": app.name,
+                "command": app.command,
+            })
+        })
+        .collect();
+    let extensions: Vec<Value> = login
+        .extensions
+        .iter()
+        .map(|extension| {
+            json!({
+                "id": extension.id,
+                "name": extension.name,
+                "category": extension.category,
+                "detail": extension.detail,
             })
         })
         .collect();
@@ -242,6 +287,8 @@ fn login_view(snapshot: &GeneralSnapshot) -> Value {
         "state": "available",
         "autostart": autostart,
         "userUnits": user_units,
+        "availableApps": available_apps,
+        "extensions": extensions,
         "extensionsAvailable": login.extensions_available,
         "extensionsNote": login.extensions_note,
         "count": count,
@@ -261,6 +308,16 @@ fn sharing_view(snapshot: &GeneralSnapshot) -> Value {
         .iter()
         .filter(|service| service.installed)
         .map(|service| {
+            let details: Vec<Value> = service
+                .details
+                .iter()
+                .map(|detail| {
+                    json!({
+                        "label": detail.label,
+                        "value": detail.value,
+                    })
+                })
+                .collect();
             json!({
                 "id": service.id,
                 "name": service.name,
@@ -271,6 +328,7 @@ fn sharing_view(snapshot: &GeneralSnapshot) -> Value {
                 "active": service.active,
                 "canToggle": service.can_toggle,
                 "needsAuth": service.needs_auth,
+                "details": details,
             })
         })
         .collect();
@@ -280,6 +338,9 @@ fn sharing_view(snapshot: &GeneralSnapshot) -> Value {
         .count();
     json!({
         "state": "available",
+        "hostname": sharing.hostname,
+        "hostnameEditable": sharing.hostname_editable,
+        "hostnameReason": sharing.hostname_reason,
         "services": services,
         "installedCount": services.len(),
         "activeCount": active,
@@ -383,6 +444,20 @@ fn startup_view(snapshot: &GeneralSnapshot) -> Value {
             "error": snapshot.error("startup"),
         });
     };
+    let disks: Vec<Value> = startup
+        .disks
+        .iter()
+        .map(|disk| {
+            json!({
+                "device": disk.device,
+                "label": disk.label,
+                "model": disk.model,
+                "sizeBytes": disk.size_bytes,
+                "boot": disk.boot,
+                "mounted": disk.mounted,
+            })
+        })
+        .collect();
     json!({
         "state": "available",
         "device": startup.device,
@@ -393,6 +468,7 @@ fn startup_view(snapshot: &GeneralSnapshot) -> Value {
         "bootMode": startup.boot_mode,
         "secureBoot": startup.secure_boot,
         "label": startup.label,
+        "disks": disks,
     })
 }
 
@@ -492,10 +568,17 @@ mod tests {
             view["login"]["autostart"][0]["id"],
             "org.dragonfruit.Backup"
         );
+        assert_eq!(view["login"]["autostart"][1]["broken"], true);
+        assert_eq!(view["login"]["availableApps"].as_array().unwrap().len(), 2);
+        assert_eq!(view["login"]["extensions"].as_array().unwrap().len(), 1);
         assert_eq!(view["sharing"]["installedCount"], 3);
+        assert_eq!(view["sharing"]["hostname"], "dragon");
+        assert_eq!(view["sharing"]["services"][1]["details"].as_array().unwrap().len(), 2);
         assert_eq!(view["backup"]["backend"], "timeshift");
         assert_eq!(view["storage"]["categories"].as_array().unwrap().len(), 3);
         assert_eq!(view["startup"]["bootMode"], "UEFI");
+        assert_eq!(view["startup"]["disks"].as_array().unwrap().len(), 2);
+        assert_eq!(view["startup"]["disks"][0]["boot"], true);
         assert_eq!(view["passwords"]["state"], "available");
         assert_eq!(view["passwords"]["providers"].as_array().unwrap().len(), 3);
         assert_eq!(view["passwords"]["keyringLabel"], "Locked");
@@ -529,7 +612,11 @@ mod tests {
         );
         assert_eq!(host.run_backup("/mnt/backup")["outcome"], "applied");
         assert_eq!(host.open_restore()["outcome"], "applied");
-        assert_eq!(host.adapter().source().writes(), 6);
+        assert_eq!(host.add_autostart("org.example.Notes")["outcome"], "applied");
+        assert_eq!(host.remove_autostart("org.example.Agent")["outcome"], "applied");
+        assert_eq!(host.set_hostname("dragonfruit")["outcome"], "applied");
+        assert_eq!(host.restart_system()["outcome"], "applied");
+        assert_eq!(host.adapter().source().writes(), 10);
     }
 
     #[test]

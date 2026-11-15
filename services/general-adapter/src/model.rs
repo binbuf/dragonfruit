@@ -62,6 +62,38 @@ pub struct LoginItem {
     pub system: bool,
     /// The entry can be toggled.
     pub can_toggle: bool,
+    /// The entry's executable is missing, so it cannot start.
+    pub broken: bool,
+    /// Why the entry is broken, when it is.
+    pub broken_reason: String,
+}
+
+/// One installed application the Add Login Item picker can offer.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LoginApp {
+    /// The desktop-file stem (`org.example.Agent`).
+    pub id: String,
+    /// The display name.
+    pub name: String,
+    /// The command the generated autostart entry runs.
+    pub command: String,
+}
+
+/// One extension provider the Extensions group lists.
+///
+/// Dragonfruit does not own an extension store. The host inventories the
+/// portal backend services that are actually on the session bus, so the group
+/// is grouped by the surface each backend serves instead of inventing rows.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ExtensionEntry {
+    /// The backend's stable id (`org.freedesktop.impl.portal.Screenshot`).
+    pub id: String,
+    /// The short display name (`Screenshot`).
+    pub name: String,
+    /// The category the entry is grouped under (`Portal backends`).
+    pub category: String,
+    /// The one-line detail.
+    pub detail: String,
 }
 
 /// One systemd user unit the Login Items pane lists.
@@ -86,10 +118,23 @@ pub struct LoginData {
     pub autostart: Vec<LoginItem>,
     /// The systemd user units the user can enable.
     pub user_units: Vec<UserUnit>,
+    /// Installed applications the Add Login Item picker offers.
+    pub available_apps: Vec<LoginApp>,
+    /// The extension providers the Extensions group lists.
+    pub extensions: Vec<ExtensionEntry>,
     /// Extensions are a delegated portal surface; `false` shows the note.
     pub extensions_available: bool,
     /// The extension hand-off note.
     pub extensions_note: String,
+}
+
+/// One read-only detail a sharing service reports in its Options sheet.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ServiceDetail {
+    /// The row label (`Port`).
+    pub label: String,
+    /// The value the host reported (`22`).
+    pub value: String,
 }
 
 /// One sharing service the host exposes.
@@ -114,6 +159,8 @@ pub struct SharingService {
     pub can_toggle: bool,
     /// The write needs administrator authentication.
     pub needs_auth: bool,
+    /// The read-only options the service reports.
+    pub details: Vec<ServiceDetail>,
 }
 
 /// The Sharing data.
@@ -121,6 +168,12 @@ pub struct SharingService {
 pub struct SharingData {
     /// Only the installed services; an absent service is not a row.
     pub services: Vec<SharingService>,
+    /// The computer's local hostname (`dragon`).
+    pub hostname: String,
+    /// The hostname can be written (`hostnamectl` is present).
+    pub hostname_editable: bool,
+    /// Why the hostname is read-only, when it is.
+    pub hostname_reason: String,
 }
 
 /// One detected backup backend.
@@ -210,6 +263,23 @@ pub struct StorageUsageData {
     pub free_bytes: u64,
 }
 
+/// One disk the Startup Disk list reports.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DiskEntry {
+    /// The whole-disk device (`/dev/nvme0n1`).
+    pub device: String,
+    /// The filesystem or model label (`fedora`, `Samsung SSD`).
+    pub label: String,
+    /// The disk model, when the host reports one.
+    pub model: String,
+    /// The disk size in bytes.
+    pub size_bytes: u64,
+    /// The disk holds the running root filesystem.
+    pub boot: bool,
+    /// The disk has a mounted filesystem.
+    pub mounted: bool,
+}
+
 /// The read-only Startup Disk rows.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StartupDiskData {
@@ -229,6 +299,8 @@ pub struct StartupDiskData {
     pub secure_boot: String,
     /// The filesystem label, when one is set.
     pub label: String,
+    /// Every disk the host reports, the boot disk first.
+    pub disks: Vec<DiskEntry>,
 }
 
 /// One detected password provider.

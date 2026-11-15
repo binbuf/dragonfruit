@@ -71,61 +71,84 @@ bool DbusGeneralClient::available() const
 
 void DbusGeneralClient::refresh()
 {
-    call(QStringLiteral("State"), {});
+    call(QStringLiteral("State"), {}, QString(), true);
 }
 
 void DbusGeneralClient::setNtp(bool enabled)
 {
-    call(QStringLiteral("SetNtp"), {enabled});
+    call(QStringLiteral("SetNtp"), {enabled}, QStringLiteral("ntp"));
 }
 
 void DbusGeneralClient::setTimezone(const QString &timezone)
 {
-    call(QStringLiteral("SetTimezone"), {timezone});
+    call(QStringLiteral("SetTimezone"), {timezone}, QStringLiteral("timezone"));
 }
 
 void DbusGeneralClient::setTime(const QString &value)
 {
-    call(QStringLiteral("SetTime"), {value});
+    call(QStringLiteral("SetTime"), {value}, QStringLiteral("time"));
 }
 
 void DbusGeneralClient::setLocale(const QString &locale)
 {
-    call(QStringLiteral("SetLocale"), {locale});
+    call(QStringLiteral("SetLocale"), {locale}, QStringLiteral("locale"));
 }
 
 void DbusGeneralClient::setAutostartEnabled(const QString &id, bool enabled)
 {
-    call(QStringLiteral("SetAutostartEnabled"), {id, enabled});
+    call(QStringLiteral("SetAutostartEnabled"), {id, enabled}, QStringLiteral("login"));
 }
 
 void DbusGeneralClient::setUserUnitEnabled(const QString &unit, bool enabled)
 {
-    call(QStringLiteral("SetUserUnitEnabled"), {unit, enabled});
+    call(QStringLiteral("SetUserUnitEnabled"), {unit, enabled}, QStringLiteral("login"));
 }
 
 void DbusGeneralClient::setSharingEnabled(const QString &id, bool enabled)
 {
-    call(QStringLiteral("SetSharingEnabled"), {id, enabled});
+    call(QStringLiteral("SetSharingEnabled"), {id, enabled}, QStringLiteral("sharing"));
 }
 
 void DbusGeneralClient::runBackup(const QString &destination)
 {
-    call(QStringLiteral("RunBackup"), {destination});
+    call(QStringLiteral("RunBackup"), {destination}, QStringLiteral("backup"));
 }
 
 void DbusGeneralClient::openRestore()
 {
-    call(QStringLiteral("OpenRestore"), {});
+    call(QStringLiteral("OpenRestore"), {}, QStringLiteral("backup"));
 }
 
 void DbusGeneralClient::openPasswordManager(const QString &id)
 {
     if (!id.isEmpty())
-        call(QStringLiteral("OpenPasswordManager"), {id});
+        call(QStringLiteral("OpenPasswordManager"), {id}, QStringLiteral("passwords"));
 }
 
-void DbusGeneralClient::call(const QString &method, const QVariantList &arguments)
+void DbusGeneralClient::addAutostart(const QString &appId)
+{
+    if (!appId.trimmed().isEmpty())
+        call(QStringLiteral("AddAutostart"), {appId.trimmed()}, QStringLiteral("login"));
+}
+
+void DbusGeneralClient::removeAutostart(const QString &id)
+{
+    if (!id.trimmed().isEmpty())
+        call(QStringLiteral("RemoveAutostart"), {id.trimmed()}, QStringLiteral("login"));
+}
+
+void DbusGeneralClient::setHostname(const QString &hostname)
+{
+    call(QStringLiteral("SetHostname"), {hostname.trimmed()}, QStringLiteral("hostname"));
+}
+
+void DbusGeneralClient::restartSystem()
+{
+    call(QStringLiteral("RestartSystem"), {}, QStringLiteral("restart"));
+}
+
+void DbusGeneralClient::call(const QString &method, const QVariantList &arguments,
+                             const QString &operation, bool isState)
 {
     auto *iface = new QDBusInterface(m_service, m_path, m_interface,
                                      QDBusConnection::sessionBus(), this);
@@ -137,22 +160,30 @@ void DbusGeneralClient::call(const QString &method, const QVariantList &argument
         }
         return;
     }
-    const bool isState = method == QStringLiteral("State");
     auto *watcher = new QDBusPendingCallWatcher(
         iface->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, isState, iface, watcher]() {
+            [this, isState, operation, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;
                 iface->deleteLater();
                 watcher->deleteLater();
                 if (!reply.isValid())
                     return;
-                if (isState)
+                if (isState) {
                     applyReply(reply.value().toUtf8());
-                else
-                    // The write reply is the outcome report; the new state is
-                    // the host's re-read, never invented here.
-                    refresh();
+                    return;
+                }
+                // The write reply is the outcome report (`applied`, `absent`,
+                // `denied`, or `failed` with a message). The new state is the
+                // host's re-read, never invented here.
+                const QJsonDocument report =
+                    QJsonDocument::fromJson(reply.value().toUtf8());
+                if (report.isObject()) {
+                    const QJsonObject object = report.object();
+                    emit writeFinished(operation, object.value(QStringLiteral("outcome")).toString(),
+                                       object.value(QStringLiteral("message")).toString());
+                }
+                refresh();
             });
 }
 
@@ -186,6 +217,8 @@ void MockGeneralClient::refresh()
 
 void MockGeneralClient::setNtp(bool enabled)
 {
+    if (failWrite(QStringLiteral("ntp")))
+        return;
     applyToMap(QStringLiteral("time"), QString(), QStringLiteral("ntpEnabled"), enabled);
     QVariantMap time = subMap(m_view, QStringLiteral("time"));
     time.insert(QStringLiteral("label"),
@@ -193,11 +226,14 @@ void MockGeneralClient::setNtp(bool enabled)
                     time.value(QStringLiteral("timezone")).toString(),
                     enabled ? QStringLiteral("Automatic") : QStringLiteral("Manual")));
     m_view.insert(QStringLiteral("time"), time);
+    emit writeFinished(QStringLiteral("ntp"), QStringLiteral("applied"), QString());
     emit changed(m_view);
 }
 
 void MockGeneralClient::setTimezone(const QString &timezone)
 {
+    if (failWrite(QStringLiteral("timezone")))
+        return;
     applyToMap(QStringLiteral("time"), QString(), QStringLiteral("timezone"), timezone);
     QVariantMap time = subMap(m_view, QStringLiteral("time"));
     time.insert(QStringLiteral("label"),
@@ -207,11 +243,14 @@ void MockGeneralClient::setTimezone(const QString &timezone)
                         ? QStringLiteral("Automatic")
                         : QStringLiteral("Manual")));
     m_view.insert(QStringLiteral("time"), time);
+    emit writeFinished(QStringLiteral("timezone"), QStringLiteral("applied"), QString());
     emit changed(m_view);
 }
 
 void MockGeneralClient::setTime(const QString &value)
 {
+    if (failWrite(QStringLiteral("time")))
+        return;
     m_lastTime = value;
     const QDateTime parsed = QDateTime::fromString(value, QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     if (parsed.isValid()) {
@@ -219,22 +258,28 @@ void MockGeneralClient::setTime(const QString &value)
         time.insert(QStringLiteral("localTimeMs"), parsed.toMSecsSinceEpoch());
         m_view.insert(QStringLiteral("time"), time);
     }
+    emit writeFinished(QStringLiteral("time"), QStringLiteral("applied"), QString());
     emit changed(m_view);
 }
 
 void MockGeneralClient::setLocale(const QString &locale)
 {
+    if (failWrite(QStringLiteral("locale")))
+        return;
     applyToMap(QStringLiteral("locale"), QString(), QStringLiteral("locale"), locale);
     applyToMap(QStringLiteral("locale"), QString(), QStringLiteral("formatsLocale"), locale);
     QVariantMap map = subMap(m_view, QStringLiteral("locale"));
     map.insert(QStringLiteral("language"), locale.section(QLatin1Char('_'), 0, 0));
     map.insert(QStringLiteral("label"), locale);
     m_view.insert(QStringLiteral("locale"), map);
+    emit writeFinished(QStringLiteral("locale"), QStringLiteral("applied"), QString());
     emit changed(m_view);
 }
 
 void MockGeneralClient::setAutostartEnabled(const QString &id, bool enabled)
 {
+    if (failWrite(QStringLiteral("login")))
+        return;
     QVariantMap login = subMap(m_view, QStringLiteral("login"));
     QVariantList items = login.value(QStringLiteral("autostart")).toList();
     for (QVariant &entry : items) {
@@ -246,11 +291,14 @@ void MockGeneralClient::setAutostartEnabled(const QString &id, bool enabled)
     }
     login.insert(QStringLiteral("autostart"), items);
     m_view.insert(QStringLiteral("login"), login);
+    emit writeFinished(QStringLiteral("login"), QStringLiteral("applied"), QString());
     emit changed(m_view);
 }
 
 void MockGeneralClient::setUserUnitEnabled(const QString &unit, bool enabled)
 {
+    if (failWrite(QStringLiteral("login")))
+        return;
     QVariantMap login = subMap(m_view, QStringLiteral("login"));
     QVariantList units = login.value(QStringLiteral("userUnits")).toList();
     for (QVariant &entry : units) {
@@ -263,11 +311,14 @@ void MockGeneralClient::setUserUnitEnabled(const QString &unit, bool enabled)
     }
     login.insert(QStringLiteral("userUnits"), units);
     m_view.insert(QStringLiteral("login"), login);
+    emit writeFinished(QStringLiteral("login"), QStringLiteral("applied"), QString());
     emit changed(m_view);
 }
 
 void MockGeneralClient::setSharingEnabled(const QString &id, bool enabled)
 {
+    if (failWrite(QStringLiteral("sharing")))
+        return;
     QVariantMap sharing = subMap(m_view, QStringLiteral("sharing"));
     QVariantList services = sharing.value(QStringLiteral("services")).toList();
     int active = 0;
@@ -288,25 +339,32 @@ void MockGeneralClient::setSharingEnabled(const QString &id, bool enabled)
                        .arg(active)
                        .arg(services.size()));
     m_view.insert(QStringLiteral("sharing"), sharing);
+    emit writeFinished(QStringLiteral("sharing"), QStringLiteral("applied"), QString());
     emit changed(m_view);
 }
 
 void MockGeneralClient::runBackup(const QString &destination)
 {
+    if (failWrite(QStringLiteral("backup")))
+        return;
     m_lastDestination = destination;
     QVariantMap backup = subMap(m_view, QStringLiteral("backup"));
     backup.insert(QStringLiteral("message"), QStringLiteral("Backup started"));
     backup.insert(QStringLiteral("running"), false);
     m_view.insert(QStringLiteral("backup"), backup);
+    emit writeFinished(QStringLiteral("backup"), QStringLiteral("applied"), QString());
     emit changed(m_view);
 }
 
 void MockGeneralClient::openRestore()
 {
+    if (failWrite(QStringLiteral("backup")))
+        return;
     ++m_restores;
     QVariantMap backup = subMap(m_view, QStringLiteral("backup"));
     backup.insert(QStringLiteral("message"), QStringLiteral("Restore opened"));
     m_view.insert(QStringLiteral("backup"), backup);
+    emit writeFinished(QStringLiteral("backup"), QStringLiteral("applied"), QString());
     emit changed(m_view);
 }
 
@@ -314,6 +372,137 @@ void MockGeneralClient::openPasswordManager(const QString &id)
 {
     ++m_passwordOpens;
     m_lastPasswordManager = id;
+}
+
+void MockGeneralClient::addAutostart(const QString &appId)
+{
+    if (failWrite(QStringLiteral("login")))
+        return;
+    QVariantMap login = subMap(m_view, QStringLiteral("login"));
+    QVariantList apps = login.value(QStringLiteral("availableApps")).toList();
+    QVariantList autostart = login.value(QStringLiteral("autostart")).toList();
+    QVariantMap chosen;
+    for (int i = 0; i < apps.size(); ++i) {
+        const QVariantMap app = apps.at(i).toMap();
+        if (app.value(QStringLiteral("id")).toString() == appId) {
+            chosen = app;
+            apps.removeAt(i);
+            break;
+        }
+    }
+    if (chosen.isEmpty()) {
+        emit writeFinished(QStringLiteral("login"), QStringLiteral("failed"),
+                           QStringLiteral("The application is no longer installed."));
+        return;
+    }
+    autostart.append(QVariantMap{
+        {QStringLiteral("id"), chosen.value(QStringLiteral("id"))},
+        {QStringLiteral("name"), chosen.value(QStringLiteral("name"))},
+        {QStringLiteral("command"), chosen.value(QStringLiteral("command"))},
+        {QStringLiteral("source"), QStringLiteral("user")},
+        {QStringLiteral("path"), QStringLiteral("/home/user/.config/autostart/%1.desktop")
+                                     .arg(appId)},
+        {QStringLiteral("enabled"), true},
+        {QStringLiteral("system"), false},
+        {QStringLiteral("canToggle"), true},
+        {QStringLiteral("broken"), false},
+        {QStringLiteral("brokenReason"), QString()},
+    });
+    login.insert(QStringLiteral("autostart"), autostart);
+    login.insert(QStringLiteral("availableApps"), apps);
+    login.insert(QStringLiteral("count"),
+                 autostart.size() + login.value(QStringLiteral("userUnits")).toList().size());
+    login.insert(QStringLiteral("label"),
+                 QStringLiteral("%1 items")
+                     .arg(autostart.size()
+                          + login.value(QStringLiteral("userUnits")).toList().size()));
+    m_view.insert(QStringLiteral("login"), login);
+    emit changed(m_view);
+    emit writeFinished(QStringLiteral("login"), QStringLiteral("applied"), QString());
+}
+
+void MockGeneralClient::removeAutostart(const QString &id)
+{
+    if (failWrite(QStringLiteral("login")))
+        return;
+    QVariantMap login = subMap(m_view, QStringLiteral("login"));
+    QVariantList autostart = login.value(QStringLiteral("autostart")).toList();
+    for (int i = 0; i < autostart.size(); ++i) {
+        if (autostart.at(i).toMap().value(QStringLiteral("id")).toString() == id) {
+            autostart.removeAt(i);
+            break;
+        }
+    }
+    login.insert(QStringLiteral("autostart"), autostart);
+    const int count = autostart.size()
+        + login.value(QStringLiteral("userUnits")).toList().size();
+    login.insert(QStringLiteral("count"), count);
+    login.insert(QStringLiteral("label"),
+                 count == 0 ? QStringLiteral("No login items")
+                            : QStringLiteral("%1 items").arg(count));
+    m_view.insert(QStringLiteral("login"), login);
+    emit changed(m_view);
+    emit writeFinished(QStringLiteral("login"), QStringLiteral("applied"), QString());
+}
+
+void MockGeneralClient::setHostname(const QString &hostname)
+{
+    if (failWrite(QStringLiteral("hostname")))
+        return;
+    const QString value = hostname.trimmed();
+    QString error;
+    if (value.isEmpty())
+        error = QStringLiteral("The hostname cannot be empty.");
+    else if (value.size() > 63)
+        error = QStringLiteral("The hostname cannot be longer than 63 characters.");
+    else if (value.startsWith(QLatin1Char('-')) || value.endsWith(QLatin1Char('-')))
+        error = QStringLiteral("The hostname cannot start or end with a hyphen.");
+    else {
+        for (const QChar character : value) {
+            const bool asciiAlphanumeric =
+                (character >= QLatin1Char('a') && character <= QLatin1Char('z'))
+                || (character >= QLatin1Char('A') && character <= QLatin1Char('Z'))
+                || (character >= QLatin1Char('0') && character <= QLatin1Char('9'));
+            if (!asciiAlphanumeric && character != QLatin1Char('-')) {
+                error = QStringLiteral("The hostname can only contain letters, digits, and hyphens.");
+                break;
+            }
+        }
+    }
+    if (!error.isEmpty()) {
+        emit writeFinished(QStringLiteral("hostname"), QStringLiteral("failed"), error);
+        return;
+    }
+    QVariantMap sharing = subMap(m_view, QStringLiteral("sharing"));
+    sharing.insert(QStringLiteral("hostname"), value);
+    m_view.insert(QStringLiteral("sharing"), sharing);
+    emit changed(m_view);
+    emit writeFinished(QStringLiteral("hostname"), QStringLiteral("applied"), QString());
+}
+
+void MockGeneralClient::restartSystem()
+{
+    if (failWrite(QStringLiteral("restart")))
+        return;
+    ++m_restarts;
+    emit writeFinished(QStringLiteral("restart"), QStringLiteral("applied"), QString());
+}
+
+bool MockGeneralClient::failWrite(const QString &operation)
+{
+    if (m_failOperation.isEmpty() || m_failOperation != operation)
+        return false;
+    m_failOperation.clear();
+    const QString message = m_failMessage;
+    m_failMessage.clear();
+    emit writeFinished(operation, QStringLiteral("denied"), message);
+    return true;
+}
+
+void MockGeneralClient::failNextWrite(const QString &operation, const QString &message)
+{
+    m_failOperation = operation;
+    m_failMessage = message;
 }
 
 void MockGeneralClient::resetForTest()
@@ -401,6 +590,8 @@ void MockGeneralClient::rebuild()
         {QStringLiteral("enabled"), true},
         {QStringLiteral("system"), false},
         {QStringLiteral("canToggle"), true},
+        {QStringLiteral("broken"), false},
+        {QStringLiteral("brokenReason"), QString()},
     });
     autostart.append(QVariantMap{
         {QStringLiteral("id"), QStringLiteral("org.example.Agent")},
@@ -411,6 +602,9 @@ void MockGeneralClient::rebuild()
         {QStringLiteral("enabled"), false},
         {QStringLiteral("system"), true},
         {QStringLiteral("canToggle"), true},
+        {QStringLiteral("broken"), true},
+        {QStringLiteral("brokenReason"),
+         QStringLiteral("The command /usr/bin/example-agent is missing.")},
     });
     login.insert(QStringLiteral("autostart"), autostart);
     QVariantList units;
@@ -429,10 +623,34 @@ void MockGeneralClient::rebuild()
         {QStringLiteral("canToggle"), true},
     });
     login.insert(QStringLiteral("userUnits"), units);
+    login.insert(QStringLiteral("availableApps"), QVariantList{
+        QVariantMap{
+            {QStringLiteral("id"), QStringLiteral("org.example.Notes")},
+            {QStringLiteral("name"), QStringLiteral("Example Notes")},
+            {QStringLiteral("command"), QStringLiteral("/usr/bin/example-notes")},
+        },
+        QVariantMap{
+            {QStringLiteral("id"), QStringLiteral("org.example.Broken")},
+            {QStringLiteral("name"), QStringLiteral("Example Broken Agent")},
+            {QStringLiteral("command"), QStringLiteral("/usr/bin/example-missing")},
+        },
+    });
+    login.insert(QStringLiteral("extensions"), QVariantList{
+        QVariantMap{
+            {QStringLiteral("id"), QStringLiteral("org.freedesktop.impl.portal.Screenshot")},
+            {QStringLiteral("name"), QStringLiteral("Screenshot")},
+            {QStringLiteral("category"), QStringLiteral("Portal backends")},
+            {QStringLiteral("detail"),
+             QStringLiteral("A desktop portal backend installed on this system.")},
+        },
+    });
     view.insert(QStringLiteral("login"), login);
 
     QVariantMap sharing;
     sharing.insert(QStringLiteral("state"), QStringLiteral("available"));
+    sharing.insert(QStringLiteral("hostname"), QStringLiteral("dragon"));
+    sharing.insert(QStringLiteral("hostnameEditable"), true);
+    sharing.insert(QStringLiteral("hostnameReason"), QString());
     sharing.insert(QStringLiteral("installedCount"), 3);
     sharing.insert(QStringLiteral("activeCount"), 2);
     sharing.insert(QStringLiteral("label"), QStringLiteral("2 of 3 on"));
@@ -447,6 +665,12 @@ void MockGeneralClient::rebuild()
         {QStringLiteral("active"), false},
         {QStringLiteral("canToggle"), true},
         {QStringLiteral("needsAuth"), true},
+        {QStringLiteral("details"), QVariantList{
+             QVariantMap{{QStringLiteral("label"), QStringLiteral("Unit")},
+                         {QStringLiteral("value"), QStringLiteral("smb.service")}},
+             QVariantMap{{QStringLiteral("label"), QStringLiteral("Shares")},
+                         {QStringLiteral("value"), QStringLiteral("2")}},
+         }},
     });
     services.append(QVariantMap{
         {QStringLiteral("id"), QStringLiteral("remoteLogin")},
@@ -458,6 +682,12 @@ void MockGeneralClient::rebuild()
         {QStringLiteral("active"), true},
         {QStringLiteral("canToggle"), true},
         {QStringLiteral("needsAuth"), true},
+        {QStringLiteral("details"), QVariantList{
+             QVariantMap{{QStringLiteral("label"), QStringLiteral("Unit")},
+                         {QStringLiteral("value"), QStringLiteral("sshd.service")}},
+             QVariantMap{{QStringLiteral("label"), QStringLiteral("Port")},
+                         {QStringLiteral("value"), QStringLiteral("22")}},
+         }},
     });
     services.append(QVariantMap{
         {QStringLiteral("id"), QStringLiteral("printer")},
@@ -469,6 +699,10 @@ void MockGeneralClient::rebuild()
         {QStringLiteral("active"), true},
         {QStringLiteral("canToggle"), true},
         {QStringLiteral("needsAuth"), true},
+        {QStringLiteral("details"), QVariantList{
+             QVariantMap{{QStringLiteral("label"), QStringLiteral("Queues")},
+                         {QStringLiteral("value"), QStringLiteral("1")}},
+         }},
     });
     sharing.insert(QStringLiteral("services"), services);
     view.insert(QStringLiteral("sharing"), sharing);
@@ -559,6 +793,24 @@ void MockGeneralClient::rebuild()
     startup.insert(QStringLiteral("bootMode"), QStringLiteral("UEFI"));
     startup.insert(QStringLiteral("secureBoot"), QStringLiteral("On"));
     startup.insert(QStringLiteral("label"), QStringLiteral("fedora"));
+    startup.insert(QStringLiteral("disks"), QVariantList{
+        QVariantMap{
+            {QStringLiteral("device"), QStringLiteral("/dev/nvme0n1")},
+            {QStringLiteral("label"), QStringLiteral("fedora")},
+            {QStringLiteral("model"), QStringLiteral("Example NVMe SSD")},
+            {QStringLiteral("sizeBytes"), qlonglong(512000000000)},
+            {QStringLiteral("boot"), true},
+            {QStringLiteral("mounted"), true},
+        },
+        QVariantMap{
+            {QStringLiteral("device"), QStringLiteral("/dev/sdb")},
+            {QStringLiteral("label"), QStringLiteral("Backup")},
+            {QStringLiteral("model"), QStringLiteral("Example USB Disk")},
+            {QStringLiteral("sizeBytes"), qlonglong(1000000000000)},
+            {QStringLiteral("boot"), false},
+            {QStringLiteral("mounted"), false},
+        },
+    });
     view.insert(QStringLiteral("startup"), startup);
 
     // T269: the Autofill & Passwords provider inventory. The Settings app

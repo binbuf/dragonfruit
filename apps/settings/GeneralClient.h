@@ -37,6 +37,13 @@ public:
     virtual void setTime(const QString &value) = 0;
     virtual void setLocale(const QString &locale) = 0;
     virtual void setAutostartEnabled(const QString &id, bool enabled) = 0;
+    // T270: add an installed application to Open at Login, remove one login
+    // item, rename the computer, and restart the host. Each is one explicit
+    // host request with a reported outcome.
+    virtual void addAutostart(const QString &appId) = 0;
+    virtual void removeAutostart(const QString &id) = 0;
+    virtual void setHostname(const QString &hostname) = 0;
+    virtual void restartSystem() = 0;
     virtual void setUserUnitEnabled(const QString &unit, bool enabled) = 0;
     virtual void setSharingEnabled(const QString &id, bool enabled) = 0;
     virtual void runBackup(const QString &destination) = 0;
@@ -51,6 +58,11 @@ public:
 signals:
     void changed(const QVariantMap &view);
     void availableChanged(bool available);
+    // T270: the outcome of one host write (`applied`, `absent`, `denied`, or
+    // `failed`) and the operation that produced it (`ntp`, `timezone`, `time`,
+    // `locale`, `login`, `sharing`, `hostname`, `backup`, `restart`).
+    void writeFinished(const QString &operation, const QString &outcome,
+                       const QString &message);
 };
 
 // The live client over the user session bus.
@@ -70,6 +82,10 @@ public:
     void setTime(const QString &value) override;
     void setLocale(const QString &locale) override;
     void setAutostartEnabled(const QString &id, bool enabled) override;
+    void addAutostart(const QString &appId) override;
+    void removeAutostart(const QString &id) override;
+    void setHostname(const QString &hostname) override;
+    void restartSystem() override;
     void setUserUnitEnabled(const QString &unit, bool enabled) override;
     void setSharingEnabled(const QString &id, bool enabled) override;
     void runBackup(const QString &destination) override;
@@ -77,7 +93,8 @@ public:
     void openPasswordManager(const QString &id) override;
 
 private:
-    void call(const QString &method, const QVariantList &arguments);
+    void call(const QString &method, const QVariantList &arguments,
+              const QString &operation = QString(), bool isState = false);
     void applyReply(const QByteArray &json);
     QString m_service;
     QString m_path;
@@ -105,6 +122,10 @@ public:
     void setTime(const QString &value) override;
     void setLocale(const QString &locale) override;
     void setAutostartEnabled(const QString &id, bool enabled) override;
+    void addAutostart(const QString &appId) override;
+    void removeAutostart(const QString &id) override;
+    void setHostname(const QString &hostname) override;
+    void restartSystem() override;
     void setUserUnitEnabled(const QString &unit, bool enabled) override;
     void setSharingEnabled(const QString &id, bool enabled) override;
     void runBackup(const QString &destination) override;
@@ -113,9 +134,12 @@ public:
     void resetForTest() override;
     // Test/capture seam: pretend the bridge host is absent/returned.
     void setAbsentFixture(bool absent);
+    // T270: make the next write of one operation fail with `message`.
+    void failNextWrite(const QString &operation, const QString &message);
 
 private:
     void rebuild();
+    bool failWrite(const QString &operation);
     void applyToMap(const QString &section, const QString &id, const QString &key,
                     const QVariant &value);
     QVariantMap m_view;
@@ -123,6 +147,9 @@ private:
     QString m_lastDestination;
     QString m_lastPasswordManager;
     int m_restores = 0;
+    int m_restarts = 0;
     int m_passwordOpens = 0;
+    QString m_failOperation;
+    QString m_failMessage;
     bool m_absent = false;
 };

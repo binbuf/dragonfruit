@@ -569,6 +569,26 @@ impl GeneralInterface {
             .to_string()
     }
 
+    /// Add an installed application to Open at Login. Returns the JSON report.
+    fn add_autostart(&self, app_id: &str) -> String {
+        lock_general(&self.host).add_autostart(app_id).to_string()
+    }
+
+    /// Remove one login item. Returns the JSON report.
+    fn remove_autostart(&self, id: &str) -> String {
+        lock_general(&self.host).remove_autostart(id).to_string()
+    }
+
+    /// Set the computer's local hostname. Returns the JSON report.
+    fn set_hostname(&self, hostname: &str) -> String {
+        lock_general(&self.host).set_hostname(hostname).to_string()
+    }
+
+    /// Restart the computer. Returns the JSON report.
+    fn restart_system(&self) -> String {
+        lock_general(&self.host).restart_system().to_string()
+    }
+
     /// Enable or disable one systemd user unit. Returns the JSON report.
     fn set_user_unit_enabled(&self, unit: &str, enabled: bool) -> String {
         lock_general(&self.host)

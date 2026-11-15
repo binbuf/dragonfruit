@@ -450,7 +450,7 @@ Item {
             sub.ntpToggle.toggle();
             tryVerify(function() { return Settings.general.time.ntpEnabled === false; });
 
-            sub.timezoneSelect.activateIndex(2);
+            sub.timezonePicker.activateIndex(2);
             tryVerify(function() {
                 return Settings.general.time.timezone === "Europe/Berlin";
             });
@@ -461,11 +461,97 @@ Item {
             verify(sub.previewText.text.indexOf(":") >= 0);
 
             sub.manualField.text = "2026-11-07 12:00:00";
+            compare(sub.manualError, "");
+            compare(sub.setTimeButton.enabled, true);
             sub.setTimeButton.clicked();
             tryVerify(function() {
                 return Settings.general.time.localTimeMs
                     === new Date(2026, 10, 7, 12, 0, 0).getTime();
             });
+            compare(Settings.generalWriteOperation, "time");
+            compare(Settings.generalWriteState, "applied");
+        }
+
+        function test_date_time_time_zone_is_searchable() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "date-time");
+            compare(sub.timezonePicker.visibleCount, 3);
+            sub.timezonePicker.openPicker();
+            tryVerify(function() { return sub.timezonePicker.popup.open; });
+            sub.timezonePicker.field.text = "berlin";
+            compare(sub.timezonePicker.visibleCount, 1);
+            compare(sub.timezonePicker.filteredEntries[0].value, "Europe/Berlin");
+            sub.timezonePicker.activateHighlighted();
+            tryVerify(function() {
+                return Settings.general.time.timezone === "Europe/Berlin";
+            });
+            compare(sub.timezonePicker.popup.open, false);
+
+            // A query with no match is an honest empty state, not a hidden
+            // list with a stale highlight.
+            sub.timezonePicker.openPicker();
+            tryVerify(function() { return sub.timezonePicker.popup.open; });
+            sub.timezonePicker.field.text = "nowhere";
+            compare(sub.timezonePicker.visibleCount, 0);
+            compare(sub.timezonePicker.highlighted, -1);
+            sub.timezonePicker.closePicker();
+        }
+
+        function test_date_time_validates_the_manual_field() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "date-time");
+            sub.ntpToggle.toggle();
+            tryVerify(function() { return Settings.general.time.ntpEnabled === false; });
+
+            sub.manualField.text = "2026-13-01 00:00:00";
+            verify(sub.manualError.length > 0);
+            compare(sub.setTimeButton.enabled, false);
+
+            sub.manualField.text = "07/11/2026 12:00";
+            verify(sub.manualError.indexOf("YYYY-MM-DD") >= 0);
+            compare(sub.setTimeButton.enabled, false);
+
+            sub.manualField.text = "2026-02-30 12:00:00";
+            verify(sub.manualError.length > 0);
+
+            sub.manualField.text = "2026-11-07 12:00:00";
+            compare(sub.manualError, "");
+            compare(sub.setTimeButton.enabled, true);
+        }
+
+        function test_date_time_reports_a_denied_host_write() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "date-time");
+            sub.ntpToggle.toggle();
+            tryVerify(function() { return Settings.general.time.ntpEnabled === false; });
+            sub.manualField.text = "2026-11-07 12:00:00";
+
+            Settings.failNextGeneralWrite("time", "not authorized");
+            sub.setTimeButton.clicked();
+            tryVerify(function() { return Settings.generalWriteState === "denied"; });
+            verify(sub.timeError.indexOf("not authorized") >= 0);
+            compare(sub.setTimeButton.enabled, true);
+        }
+
+        function test_date_time_keeps_the_clock_rows_without_timedatectl() {
+            Settings.set("clock.use24Hour", false);
+            Settings.setGeneralAvailableFixture(false);
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "date-time");
+            compare(sub.available, false);
+            compare(sub.absenceNote.visible, true);
+            compare(sub.hostGroup.visible, true);
+            compare(sub.clockGroup.visible, true);
+            compare(sub.ntpToggle.enabled, false);
+            compare(sub.timezonePicker.enabled, false);
+            compare(sub.autoZoneToggle.enabled, false);
+            compare(sub.hour24Toggle.enabled, true);
+            sub.hour24Toggle.toggle();
+            compare(Settings.values["clock.use24Hour"], true);
         }
 
         function test_date_time_degrades_without_its_owner() {
@@ -479,13 +565,26 @@ Item {
         // -- Language & Region ---------------------------------------------
 
         function test_language_applies_locale_and_format_keys() {
+            Settings.setList("locale.languages", []);
             var shell = make();
             var pane = paneOf(shell);
             var sub = openSubPane(pane, "language");
             compare(sub.available, true);
+            // The preferred order is seeded from the host locale but is not
+            // written merely by opening the pane.
+            compare(Settings.values["locale.languages"].length, 0);
+            compare(sub.effectiveLanguages.length, 1);
 
-            sub.languageSelect.activateIndex(1);
+            sub.addLanguagePicker.activateIndex(0);
+            tryVerify(function() {
+                return Settings.values["locale.languages"].length === 2;
+            });
+            compare(Settings.values["locale.languages"][1], "de_DE.UTF-8");
+
+            // Moving the new language to the front is the host locale write.
+            sub.moveLanguage(1, -1);
             tryVerify(function() { return Settings.general.locale.locale === "de_DE.UTF-8"; });
+            compare(Settings.values["locale.languages"][0], "de_DE.UTF-8");
 
             sub.calendarSelect.activateIndex(1);
             compare(Settings.values["locale.calendar"], "iso");
@@ -502,6 +601,69 @@ Item {
             verify(sub.previewText.text.indexOf("68 °F") >= 0);
         }
 
+        function test_language_region_and_preview_follow_the_selected_locale() {
+            Settings.setList("locale.languages", []);
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "language");
+            compare(sub.regionPicker.visibleCount, 3);
+            sub.regionPicker.activateIndex(1);
+            tryVerify(function() { return Settings.general.locale.locale === "de_DE.UTF-8"; });
+            compare(sub.primaryLocale, "de_DE.UTF-8");
+
+            // The preview formats through the selected locale, and the three
+            // date lengths are visibly distinct.
+            compare(sub.previewDateFor("medium"), "7. November 2026");
+            compare(sub.previewDateFor("long"), "Samstag, 7. November 2026");
+            verify(sub.previewDateFor("short") !== sub.previewDateFor("medium"));
+
+            sub.dateFormatSelect.activateIndex(0); // short
+            verify(sub.previewText.text.indexOf("07.11.26") >= 0);
+            sub.dateFormatSelect.activateIndex(2); // long
+            verify(sub.previewText.text.indexOf("Samstag") >= 0);
+
+            sub.numberFormatSelect.activateIndex(2); // decimal comma
+            verify(sub.previewText.text.indexOf("1.234,5") >= 0);
+            sub.numberFormatSelect.activateIndex(1); // decimal point
+            verify(sub.previewText.text.indexOf("1,234.5") >= 0);
+            sub.numberFormatSelect.activateIndex(0); // locale
+            verify(sub.previewText.text.indexOf("1.234,5") >= 0);
+        }
+
+        function test_language_remove_and_empty_preferred_list() {
+            Settings.setList("locale.languages", []);
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "language");
+            sub.addLanguagePicker.activateIndex(0);
+            tryVerify(function() { return Settings.values["locale.languages"].length === 2; });
+            sub.removeLanguage(0);
+            tryVerify(function() { return Settings.values["locale.languages"].length === 1; });
+            sub.removeLanguage(0);
+            tryVerify(function() { return Settings.values["locale.languages"].length === 0; });
+            // With an empty preference the pane falls back to the host locale
+            // instead of showing an empty Language group.
+            compare(sub.effectiveLanguages.length, 1);
+        }
+
+        function test_language_keeps_the_format_rows_without_localectl() {
+            Settings.setGeneralAvailableFixture(false);
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "language");
+            compare(sub.available, false);
+            compare(sub.absenceNote.visible, true);
+            compare(sub.languageGroup.visible, true);
+            compare(sub.regionGroup.visible, true);
+            compare(sub.previewGroup.visible, true);
+            compare(sub.addLanguagePicker.enabled, false);
+            compare(sub.regionPicker.enabled, false);
+            compare(sub.calendarSelect.enabled, true);
+            sub.calendarSelect.activateIndex(1);
+            compare(Settings.values["locale.calendar"], "iso");
+            verify(sub.previewText.text.length > 0);
+        }
+
         // -- Login Items ---------------------------------------------------
 
         function test_login_items_toggle_autostart_and_user_units() {
@@ -513,15 +675,54 @@ Item {
             compare(sub.userUnitRepeater.count, 2);
 
             var item = sub.autostartRepeater.itemAt(1);
-            item.control.children[0].toggle();
+            findChild(item, "loginToggle1").toggle();
             tryVerify(function() {
                 return Settings.general.login.autostart[1].enabled === true;
             });
             var unit = sub.userUnitRepeater.itemAt(1);
-            unit.control.children[0].toggle();
+            findChild(unit, "backgroundToggle1").toggle();
             tryVerify(function() {
                 return Settings.general.login.userUnits[1].enabled === "enabled";
             });
+        }
+
+        function test_login_items_add_remove_and_broken_warning() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "login");
+            compare(sub.autostartRepeater.count, 2);
+            compare(sub.brokenRow.visible, true);
+            verify(sub.brokenRow.description.indexOf("Example Agent") >= 0);
+
+            // Add an installed application: one host write, one new row.
+            compare(sub.addPicker.visibleCount, 2);
+            sub.addPicker.activateIndex(0);
+            tryVerify(function() {
+                return Settings.general.login.autostart.length === 3;
+            });
+            compare(Settings.generalWriteOperation, "login");
+            compare(Settings.generalWriteState, "applied");
+            compare(sub.autostartRepeater.count, 3);
+
+            // Remove the added item again.
+            findChild(sub.autostartRepeater.itemAt(2), "loginRemove2").clicked();
+            tryVerify(function() {
+                return Settings.general.login.autostart.length === 2;
+            });
+            compare(sub.autostartRepeater.count, 2);
+        }
+
+        function test_login_items_keep_every_group_when_the_adapter_is_absent() {
+            Settings.setGeneralAvailableFixture(false);
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "login");
+            compare(sub.available, false);
+            compare(sub.absenceNote.visible, true);
+            compare(sub.startGroup.visible, true);
+            compare(sub.backgroundGroup.visible, true);
+            compare(sub.extensionsGroup.visible, true);
+            compare(sub.addPicker.enabled, false);
         }
 
         // -- Sharing -------------------------------------------------------
@@ -533,13 +734,58 @@ Item {
             compare(sub.available, true);
             compare(sub.servicesRepeater.count, 3);
             compare(sub.servicesRepeater.itemAt(1).modelData.id, "remoteLogin");
-            var toggle = sub.servicesRepeater.itemAt(1).control.children[0];
+            var row = sub.servicesRepeater.itemAt(1);
+            // The row description is the service description only: state is the
+            // toggle and authentication is the Options sheet, never a suffix.
+            compare(row.description, "Allow remote login with SSH.");
+            verify(row.description.indexOf("Requires authentication") < 0);
+            var toggle = findChild(row, "sharingToggle1");
             compare(toggle.checked, true);
             toggle.toggle();
             tryVerify(function() {
                 return Settings.general.sharing.services[1].active === false;
             });
             compare(Settings.general.sharing.activeCount, 1);
+        }
+
+        function test_sharing_hostname_edit_and_per_service_options() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "sharing");
+            compare(sub.hostnameField.text, "dragon");
+
+            sub.hostnameField.text = "dragon-two";
+            sub.hostnameButton.clicked();
+            tryVerify(function() {
+                return Settings.general.sharing.hostname === "dragon-two";
+            });
+            compare(Settings.generalWriteOperation, "hostname");
+            compare(Settings.generalWriteState, "applied");
+
+            // An invalid hostname is refused before the host is asked.
+            sub.hostnameField.text = "not a hostname";
+            sub.hostnameButton.clicked();
+            verify(sub.hostnameError.length > 0);
+            compare(Settings.general.sharing.hostname, "dragon-two");
+
+            // Each service owns a read-only Options sheet with its real
+            // details; the authentication note lives there.
+            var row = sub.servicesRepeater.itemAt(1);
+            findChild(row, "sharingOptions1").clicked();
+            compare(sub.optionsDialog.open, true);
+            verify(sub.optionsService.details.length >= 2);
+            sub.optionsDialog.accept();
+        }
+
+        function test_sharing_keeps_the_service_list_without_systemd() {
+            Settings.setGeneralAvailableFixture(false);
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "sharing");
+            compare(sub.available, false);
+            compare(sub.servicesGroup.visible, true);
+            compare(sub.absenceNote.visible, true);
+            compare(sub.hostnameButton.enabled, false);
         }
 
         // -- Backup --------------------------------------------------------
@@ -562,17 +808,93 @@ Item {
             tryVerify(function() { return Settings.general.backup.message === "Restore opened"; });
         }
 
+        function test_backup_validates_the_destination_and_disables_policy_without_a_backend() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "backup");
+            compare(sub.available, true);
+
+            sub.destinationField.text = "relative/path";
+            verify(sub.destinationError.length > 0);
+            compare(sub.destinationSave.enabled, false);
+
+            sub.destinationField.text = "/mnt/backup";
+            compare(sub.destinationError, "");
+            compare(sub.destinationSave.enabled, true);
+            sub.destinationSave.clicked();
+            compare(Settings.values["backup.destination"], "/mnt/backup");
+
+            sub.destinationField.text = "sftp://host/repo";
+            compare(sub.destinationError, "");
+
+            // With the host absent the policy rows stay live but the schedule
+            // and automatic toggle name the missing backend and disable.
+            Settings.setGeneralAvailableFixture(false);
+            tryVerify(function() { return sub.available === false; });
+            compare(sub.absenceNote.visible, true);
+            compare(sub.policyGroup.visible, true);
+            compare(sub.scheduleSelect.enabled, false);
+            compare(sub.autoToggle.enabled, false);
+            compare(sub.destinationSave.enabled, true);
+            verify(sub.absenceNote.text.indexOf("system status") >= 0);
+            verify(sub.absenceNote.text.indexOf("backend is installed") < 0);
+        }
+
+        function test_backup_reports_a_denied_run() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "backup");
+            Settings.failNextGeneralWrite("backup", "not authorized");
+            sub.runButton.clicked();
+            tryVerify(function() { return Settings.generalWriteState === "denied"; });
+            verify(sub.writeError.indexOf("not authorized") >= 0);
+        }
+
         // -- Startup Disk --------------------------------------------------
 
-        function test_startup_disk_is_read_only() {
+        function test_startup_disk_lists_disks_and_uses_gib() {
             var shell = make();
             var pane = paneOf(shell);
             var sub = openSubPane(pane, "startup");
             compare(sub.available, true);
-            compare(findChild(sub, "startupDiskRow").control.children[0].text,
-                    "/dev/nvme0n1");
+            // One Startup disk row; the device is in its description, not a
+            // duplicate Device row.
+            compare(findChild(sub, "startupDiskRow").control.children[0].text, "fedora");
+            verify(findChild(sub, "startupDiskRow").description.indexOf("/dev/nvme0n1") >= 0);
             compare(findChild(sub, "startupBootModeRow").control.children[0].text, "UEFI");
             compare(findChild(sub, "startupSecureBootRow").control.children[0].text, "On");
+            verify(sub.readOnlyNote.visible);
+
+            compare(sub.diskRepeater.count, 2);
+            compare(sub.diskRepeater.itemAt(0).modelData.device, "/dev/nvme0n1");
+            compare(sub.diskRepeater.itemAt(0).control.children[0].text, "Startup disk");
+            compare(sub.diskRepeater.itemAt(1).control.children[0].text, "Not mounted");
+            verify(sub.diskRepeater.itemAt(0).description.indexOf("GiB") >= 0);
+            verify(sub.diskRepeater.itemAt(0).description.indexOf(" GB") < 0);
+            compare(sub.sizeLabel(512000000000), "477 GiB");
+        }
+
+        function test_startup_disk_restart_needs_confirmation() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "startup");
+            compare(sub.restartDialog.open, false);
+            sub.restartButton.clicked();
+            compare(sub.restartDialog.open, true);
+            sub.restartConfirm.clicked();
+            compare(sub.restartDialog.open, false);
+            compare(Settings.generalWriteOperation, "restart");
+            compare(Settings.generalWriteState, "applied");
+        }
+
+        function test_startup_disk_keeps_the_read_only_structure_when_absent() {
+            Settings.setGeneralAvailableFixture(false);
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "startup");
+            compare(sub.available, false);
+            compare(sub.diskListGroup.visible, true);
+            compare(sub.absenceNote.visible, true);
             verify(sub.readOnlyNote.visible);
         }
 
@@ -586,11 +908,31 @@ Item {
             var sub = openSubPane(pane, "reset");
             sub.resetButton.clicked();
             compare(sub.confirmDialog.open, true);
+            compare(sub.confirmButton.enabled, false);
+            sub.confirmField.text = "RESET";
+            compare(sub.confirmButton.enabled, true);
             sub.confirmButton.clicked();
             tryVerify(function() {
                 return Settings.values["dock.size"] === Settings.schemaFor("dock.size").default;
             });
             compare(sub.doneText.visible, true);
+        }
+
+        function test_reset_page_has_the_transfer_structure_and_linux_reason() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "reset");
+            compare(sub.transferGroup.visible, true);
+            compare(sub.resetGroup.visible, true);
+            compare(sub.eraseNote.visible, true);
+            verify(sub.eraseNote.text.indexOf("reinstall") >= 0);
+            compare(findChild(sub, "resetTransferButton").enabled, false);
+            compare(sub.resetButton.variant, "danger");
+            // Escape/cancel leaves the settings untouched.
+            Settings.set("dock.size", 0.9);
+            sub.resetButton.clicked();
+            sub.confirmDialog.reject();
+            compare(Settings.values["dock.size"], 0.9);
         }
 
         // -- Absence -------------------------------------------------------
@@ -610,6 +952,28 @@ Item {
             verify(backup);
             compare(backup.available, false);
             compare(backup.absenceNote.visible, true);
+        }
+
+        function test_every_general_sub_pane_fits_the_740x820_window() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            waitForRendering(stage);
+            shell.selectPane("general");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            var pane = paneOf(shell);
+            var ids = ["about", "software-update", "passwords", "date-time",
+                       "language", "login", "sharing", "backup", "startup",
+                       "reset", "storage"];
+            for (var i = 0; i < ids.length; ++i) {
+                var sub = openSubPane(pane, ids[i]);
+                verify(sub, "the " + ids[i] + " sub-pane must load");
+                compare(sub.width, pane.width);
+                verify(sub.implicitHeight > 0,
+                       ids[i] + " must have a measured height");
+                verify(shell.detailScroll.height > 0);
+                pane.closeSubPane();
+                waitForRendering(stage);
+            }
         }
 
         function test_storage_pane_reads_the_usage_categories() {

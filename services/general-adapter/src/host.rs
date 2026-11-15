@@ -21,9 +21,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use dragonfruit_system_adapters::AdapterError;
 
 use crate::model::{
-    BackupBackend, BackupData, GeneralSnapshot, LocaleData, LoginData, LoginItem, PasswordData,
-    PasswordProvider, SharingData, SharingService, StartupDiskData, StorageCategory,
-    StorageUsageData, TimeData, UserUnit, VolumeUsage,
+    BackupBackend, BackupData, DiskEntry, ExtensionEntry, GeneralSnapshot, LocaleData, LoginApp,
+    LoginData, LoginItem, PasswordData, PasswordProvider, ServiceDetail, SharingData,
+    SharingService, StartupDiskData, StorageCategory, StorageUsageData, TimeData, UserUnit,
+    VolumeUsage,
 };
 use crate::source::{GeneralOutcome, GeneralSource};
 
@@ -162,6 +163,11 @@ impl HostGeneral {
 
     fn read_login(&self) -> Result<LoginData, String> {
         let mut autostart = read_autostart(&self.config_home(), Path::new("/etc/xdg/autostart"));
+        for item in &mut autostart {
+            let (broken, reason) = broken_login_item(&item.command);
+            item.broken = broken;
+            item.broken_reason = reason;
+        }
         let mut errors = Vec::new();
         let user_units = match read_user_units(&self.home) {
             Ok(units) => units,
@@ -174,9 +180,13 @@ impl HostGeneral {
             return Err(errors.join("; "));
         }
         autostart.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+        let available_apps = read_login_apps(&self.config_home(), &autostart);
+        let extensions = read_portal_extensions();
         Ok(LoginData {
             autostart,
             user_units,
+            available_apps,
+            extensions,
             extensions_available: false,
             extensions_note: "Extensions are managed by the desktop portal and installed apps."
                 .to_owned(),
@@ -186,6 +196,13 @@ impl HostGeneral {
     fn read_sharing(&self) -> Result<SharingData, String> {
         let mut services = Vec::new();
         let mut saw_systemctl = false;
+        let hostname = read_hostname();
+        let hostname_editable = program_path("hostnamectl").is_some();
+        let hostname_reason = if hostname_editable {
+            String::new()
+        } else {
+            "The hostname is read-only because hostnamectl is not installed.".to_owned()
+        };
         for candidate in SHARING_CANDIDATES {
             let mut unit = String::new();
             for name in candidate.units {
@@ -220,6 +237,7 @@ impl HostGeneral {
                     active: false,
                     can_toggle: false,
                     needs_auth: true,
+                    details: sharing_details(candidate.id, "", &hostname),
                 });
                 continue;
             }
@@ -246,12 +264,18 @@ impl HostGeneral {
                     "static" | "masked" | "generated" | "transient" | "indirect"
                 ),
                 needs_auth: true,
+                details: sharing_details(candidate.id, &unit, &hostname),
             });
         }
         if services.is_empty() && !saw_systemctl {
             return Err("systemctl is not available".to_owned());
         }
-        Ok(SharingData { services })
+        Ok(SharingData {
+            services,
+            hostname,
+            hostname_editable,
+            hostname_reason,
+        })
     }
 
     fn read_backup(&self) -> Result<BackupData, String> {
@@ -362,6 +386,29 @@ impl HostGeneral {
             "BIOS".to_owned()
         };
         disk.secure_boot = read_secure_boot();
+        if let Ok(output) = run(
+            "lsblk",
+            &[
+                "-J",
+                "-b",
+                "-o",
+                "NAME,SIZE,TYPE,MODEL,LABEL,MOUNTPOINT",
+            ],
+        ) {
+            if output.success() {
+                disk.disks = parse_lsblk_disks(&output.stdout, &disk.disk);
+            }
+        }
+        if disk.disks.is_empty() {
+            disk.disks.push(DiskEntry {
+                device: disk.disk.clone(),
+                label: disk.label.clone(),
+                model: String::new(),
+                size_bytes: disk.total_bytes,
+                boot: true,
+                mounted: true,
+            });
+        }
         Ok(disk)
     }
 
@@ -517,6 +564,24 @@ impl GeneralSource for HostGeneral {
         }
     }
 
+    fn add_autostart(&mut self, app_id: &str) -> GeneralOutcome {
+        match add_autostart(&self.config_home(), app_id) {
+            Ok(()) => GeneralOutcome::Applied,
+            Err(error) => GeneralOutcome::Failed(AdapterError::new(error)),
+        }
+    }
+
+    fn remove_autostart(&mut self, id: &str) -> GeneralOutcome {
+        match remove_autostart(
+            &self.config_home(),
+            Path::new("/etc/xdg/autostart"),
+            id,
+        ) {
+            Ok(()) => GeneralOutcome::Applied,
+            Err(error) => GeneralOutcome::Failed(AdapterError::new(error)),
+        }
+    }
+
     fn set_user_unit_enabled(&mut self, unit: &str, enabled: bool) -> GeneralOutcome {
         self.write(
             "systemctl",
@@ -549,8 +614,25 @@ impl GeneralSource for HostGeneral {
         )
     }
 
-    fn run_backup(&mut self, destination: &str) -> GeneralOutcome {
-        let backup = match self.read_backup() {
+    fn set_hostname(&mut self, hostname: &str) -> GeneralOutcome {
+        let hostname = hostname.trim();
+        if let Err(error) = validate_hostname(hostname) {
+            return GeneralOutcome::Failed(AdapterError::new(error));
+        }
+        if program_path("hostnamectl").is_none() {
+            return GeneralOutcome::Absent;
+        }
+        self.write("hostnamectl", &["set-hostname", hostname])
+    }
+
+    fn restart_system(&mut self) -> GeneralOutcome {
+        if program_path("systemctl").is_none() {
+            return GeneralOutcome::Absent;
+        }
+        self.write("systemctl", &["reboot"])
+    }
+
+    fn run_backup(&mut self, destination: &str) -> GeneralOutcome {        let backup = match self.read_backup() {
             Ok(backup) => backup,
             Err(error) => return GeneralOutcome::Failed(AdapterError::new(error)),
         };
@@ -761,6 +843,8 @@ fn desktop_item(path: &Path, system: bool) -> Option<LoginItem> {
         enabled,
         system,
         can_toggle: true,
+        broken: false,
+        broken_reason: String::new(),
     })
 }
 
@@ -1325,6 +1409,393 @@ const SHARING_CANDIDATES: &[SharingCandidate] = &[
     },
 ];
 
+/// The reason an autostart entry cannot run, or `(false, "")`.
+///
+/// A command is executable when its first token is an absolute/relative path
+/// that exists or a bare program on `PATH`. A desktop file may also use the
+/// `sh -c` form; the first token is still the interpreter, so the entry is
+/// only broken when the interpreter itself is missing.
+pub fn broken_login_item(command: &str) -> (bool, String) {
+    let program = command.split_whitespace().next().unwrap_or("");
+    if program.is_empty() {
+        return (true, "The entry has no command.".to_owned());
+    }
+    if program.contains('/') {
+        let path = Path::new(program);
+        if path.is_file() {
+            return (false, String::new());
+        }
+        return (
+            true,
+            format!("The command {program} is missing."),
+        );
+    }
+    if program_path(program).is_some() {
+        (false, String::new())
+    } else {
+        (
+            true,
+            format!("The command {program} is not installed."),
+        )
+    }
+}
+
+/// The installed applications that are not already login items.
+///
+/// The picker offers the same `.desktop` applications the session already
+/// knows; it never invents a name. System and user application directories are
+/// read in the same precedence order the desktop uses.
+pub fn read_login_apps(config_home: &Path, autostart: &[LoginItem]) -> Vec<LoginApp> {
+    let mut dirs = vec![
+        PathBuf::from("/usr/share/applications"),
+        PathBuf::from("/usr/local/share/applications"),
+        config_home.join("../local/share/applications"),
+    ];
+    if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
+        dirs.push(PathBuf::from(data_home).join("applications"));
+    }
+    let existing: BTreeSet<&str> = autostart.iter().map(|item| item.id.as_str()).collect();
+    let mut by_id: BTreeMap<String, LoginApp> = BTreeMap::new();
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("desktop") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let map = parse_desktop(&text);
+            if map.get("Type").map(String::as_str) != Some("Application") {
+                continue;
+            }
+            if map.get("NoDisplay").map(String::as_str) == Some("true") {
+                continue;
+            }
+            if map.get("Hidden").map(String::as_str) == Some("true") {
+                continue;
+            }
+            let Some(id) = path.file_stem().map(|stem| stem.to_string_lossy().into_owned())
+            else {
+                continue;
+            };
+            if existing.contains(id.as_str()) || by_id.contains_key(&id) {
+                continue;
+            }
+            let Some(command) = map.get("Exec").filter(|exec| !exec.trim().is_empty())
+            else {
+                continue;
+            };
+            by_id.insert(
+                id.clone(),
+                LoginApp {
+                    id,
+                    name: map.get("Name").cloned().unwrap_or_default(),
+                    command: command.clone(),
+                },
+            );
+        }
+    }
+    let mut apps: Vec<LoginApp> = by_id.into_values().collect();
+    apps.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    apps
+}
+
+/// The portal backend services the Extensions group lists, grouped by the
+/// surface each one serves. Only services actually on the session bus are
+/// returned; an absent portal is an empty list with the pane's note.
+pub fn read_portal_extensions() -> Vec<ExtensionEntry> {
+    let output = match run("busctl", &["--user", "--no-pager", "list", "--no-legend"]) {
+        Ok(output) if output.success() => output,
+        _ => return Vec::new(),
+    };
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for line in output.stdout.lines() {
+        let Some(name) = line.split_whitespace().next() else {
+            continue;
+        };
+        let Some(suffix) = name.strip_prefix("org.freedesktop.impl.portal.") else {
+            continue;
+        };
+        if suffix.is_empty() || suffix.contains('.') {
+            continue;
+        }
+        if !seen.insert(name.to_owned()) {
+            continue;
+        }
+        out.push(ExtensionEntry {
+            id: name.to_owned(),
+            name: suffix.to_owned(),
+            category: "Portal backends".to_owned(),
+            detail: "A desktop portal backend installed on this system.".to_owned(),
+        });
+    }
+    out.sort_by(|left, right| left.name.cmp(&right.name));
+    out
+}
+
+/// The computer's local hostname. `hostnamectl` is authoritative; the kernel
+/// name and `/etc/hostname` are honest fallbacks on a host without it.
+pub fn read_hostname() -> String {
+    if let Ok(output) = run("hostnamectl", &["hostname"]) {
+        if output.success() {
+            let value = output.stdout.trim();
+            if !value.is_empty() {
+                return value.to_owned();
+            }
+        }
+    }
+    if let Ok(output) = run("hostname", &[]) {
+        if output.success() {
+            let value = output.stdout.trim();
+            if !value.is_empty() {
+                return value.to_owned();
+            }
+        }
+    }
+    std::fs::read_to_string("/etc/hostname")
+        .map(|text| text.trim().to_owned())
+        .unwrap_or_default()
+}
+
+/// The read-only options a sharing service reports.
+pub fn sharing_details(id: &str, unit: &str, hostname: &str) -> Vec<ServiceDetail> {
+    let mut details = Vec::new();
+    if !unit.is_empty() {
+        details.push(ServiceDetail {
+            label: "Unit".to_owned(),
+            value: unit.to_owned(),
+        });
+    }
+    if !hostname.is_empty() {
+        details.push(ServiceDetail {
+            label: "Address".to_owned(),
+            value: hostname.to_owned(),
+        });
+    }
+    match id {
+        "remoteLogin" => details.push(ServiceDetail {
+            label: "Port".to_owned(),
+            value: read_sshd_port(),
+        }),
+        "file" => details.push(ServiceDetail {
+            label: "Shares".to_owned(),
+            value: read_samba_share_count().to_string(),
+        }),
+        "printer" => details.push(ServiceDetail {
+            label: "Queues".to_owned(),
+            value: read_cups_queue_count().to_string(),
+        }),
+        "screen" => details.push(ServiceDetail {
+            label: "Port".to_owned(),
+            value: "5900".to_owned(),
+        }),
+        _ => {}
+    }
+    details
+}
+
+fn read_sshd_port() -> String {
+    let Ok(text) = std::fs::read_to_string("/etc/ssh/sshd_config") else {
+        return "22".to_owned();
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('#') || line.is_empty() {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("Port ") {
+            let value = value.trim();
+            if !value.is_empty() {
+                return value.to_owned();
+            }
+        }
+    }
+    "22".to_owned()
+}
+
+fn read_samba_share_count() -> usize {
+    let Ok(text) = std::fs::read_to_string("/etc/samba/smb.conf") else {
+        return 0;
+    };
+    text.lines()
+        .filter(|line| {
+            let line = line.trim();
+            line.starts_with('[')
+                && !line.starts_with("[global]")
+                && !line.starts_with("[homes]")
+                && !line.starts_with("[printers]")
+                && !line.starts_with("[print$]")
+        })
+        .count()
+}
+
+fn read_cups_queue_count() -> usize {
+    let Ok(output) = run("lpstat", &["-a"]) else {
+        return 0;
+    };
+    output
+        .stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count()
+}
+
+/// Parse `lsblk -J -b -o NAME,SIZE,TYPE,MODEL,LABEL,MOUNTPOINT` into the
+/// Startup Disk list, boot disk first.
+pub fn parse_lsblk_disks(text: &str, boot_disk: &str) -> Vec<DiskEntry> {
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Vec::new();
+    };
+    let Some(devices) = json.get("blockdevices").and_then(|value| value.as_array()) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for device in devices {
+        if device.get("type").and_then(|value| value.as_str()) != Some("disk") {
+            continue;
+        }
+        let Some(name) = device.get("name").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        let device_path = format!("/dev/{name}");
+        let size_bytes = device
+            .get("size")
+            .and_then(|value| value.as_u64())
+            .or_else(|| {
+                device
+                    .get("size")
+                    .and_then(|value| value.as_str())
+                    .and_then(|value| value.parse::<u64>().ok())
+            })
+            .unwrap_or(0);
+        let model = device
+            .get("model")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_owned();
+        let label = device
+            .get("label")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_owned();
+        let mut mounted = device
+            .get("mountpoint")
+            .and_then(|value| value.as_str())
+            .map(|value| !value.is_empty())
+            .unwrap_or(false);
+        if let Some(children) = device.get("children").and_then(|value| value.as_array()) {
+            mounted = mounted
+                || children.iter().any(|child| {
+                    child
+                        .get("mountpoint")
+                        .and_then(|value| value.as_str())
+                        .map(|value| !value.is_empty())
+                        .unwrap_or(false)
+                });
+        }
+        out.push(DiskEntry {
+            boot: device_path == boot_disk,
+            device: device_path,
+            label: if label.is_empty() { model.clone() } else { label },
+            model,
+            size_bytes,
+            mounted,
+        });
+    }
+    out.sort_by(|left, right| right.boot.cmp(&left.boot));
+    out
+}
+
+/// Write the user autostart entry that opens an installed application.
+pub fn add_autostart(config_home: &Path, app_id: &str) -> Result<(), String> {
+    if app_id.trim().is_empty() || app_id.contains('/') {
+        return Err("choose an application first".to_owned());
+    }
+    let mut dirs = vec![
+        PathBuf::from("/usr/share/applications"),
+        PathBuf::from("/usr/local/share/applications"),
+    ];
+    if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
+        dirs.push(PathBuf::from(data_home).join("applications"));
+    }
+    let path = dirs
+        .iter()
+        .map(|dir| dir.join(format!("{app_id}.desktop")))
+        .find(|path| path.is_file())
+        .ok_or_else(|| format!("application {app_id} is not installed"))?;
+    let text = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    let map = parse_desktop(&text);
+    let Some(command) = map.get("Exec").filter(|exec| !exec.trim().is_empty()) else {
+        return Err(format!("application {app_id} has no command"));
+    };
+    let name = map.get("Name").cloned().unwrap_or_else(|| app_id.to_owned());
+    let user_dir = config_home.join("autostart");
+    std::fs::create_dir_all(&user_dir).map_err(|error| error.to_string())?;
+    let entry = format!(
+        "[Desktop Entry]\nType=Application\nName={name}\nExec={command}\n\
+         X-GNOME-Autostart-enabled=true\n" // df-allow-desktop-name: desktop-file key
+    );
+    std::fs::write(user_dir.join(format!("{app_id}.desktop")), entry)
+        .map_err(|error| error.to_string())
+}
+
+/// Remove a login item. A user entry is deleted; a system entry gets a user
+/// override with `Hidden=true`, which is how XDG autostart removes an entry the
+/// user does not own.
+pub fn remove_autostart(
+    config_home: &Path,
+    system_dir: &Path,
+    id: &str,
+) -> Result<(), String> {
+    if id.trim().is_empty() || id.contains('/') {
+        return Err("no login item selected".to_owned());
+    }
+    let user_dir = config_home.join("autostart");
+    let user_path = user_dir.join(format!("{id}.desktop"));
+    let system_path = system_dir.join(format!("{id}.desktop"));
+    if system_path.is_file() {
+        std::fs::create_dir_all(&user_dir).map_err(|error| error.to_string())?;
+        let text = std::fs::read_to_string(&user_path).unwrap_or_else(|_| {
+            std::fs::read_to_string(&system_path).unwrap_or_default()
+        });
+        let updated = set_desktop_key(&text, "Hidden", "true");
+        return std::fs::write(user_path, updated).map_err(|error| error.to_string());
+    }
+    if user_path.is_file() {
+        return std::fs::remove_file(user_path).map_err(|error| error.to_string());
+    }
+    Err(format!("login item {id} is gone"))
+}
+
+/// A hostname is a single DNS label: 1-63 characters, letters/digits/hyphens,
+/// and it cannot start or end with a hyphen.
+pub fn validate_hostname(hostname: &str) -> Result<(), String> {
+    let hostname = hostname.trim();
+    if hostname.is_empty() {
+        return Err("The hostname cannot be empty.".to_owned());
+    }
+    if hostname.len() > 63 {
+        return Err("The hostname cannot be longer than 63 characters.".to_owned());
+    }
+    if hostname.starts_with('-') || hostname.ends_with('-') {
+        return Err("The hostname cannot start or end with a hyphen.".to_owned());
+    }
+    if !hostname
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '-')
+    {
+        return Err("The hostname can only contain letters, digits, and hyphens.".to_owned());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1415,8 +1886,69 @@ mod tests {
     }
 
     #[test]
-    fn unit_description_parses() {
-        assert_eq!(
+    fn startup_disk_lists_lsblk_disks_boot_first() {
+        let disks = parse_lsblk_disks(
+            r#"{"blockdevices":[
+                {"name":"sdb","size":"1000000000000","type":"disk","model":"USB Disk","label":"Backup","mountpoint":null},
+                {"name":"nvme0n1","size":"512000000000","type":"disk","model":"Example NVMe","label":null,
+                 "children":[{"name":"nvme0n1p3","mountpoint":"/"}]}
+            ]}"#,
+            "/dev/nvme0n1",
+        );
+        assert_eq!(disks.len(), 2);
+        assert_eq!(disks[0].device, "/dev/nvme0n1");
+        assert!(disks[0].boot);
+        assert!(disks[0].mounted);
+        assert_eq!(disks[0].size_bytes, 512_000_000_000);
+        assert_eq!(disks[1].device, "/dev/sdb");
+        assert!(!disks[1].boot);
+    }
+
+    #[test]
+    fn a_hostname_is_one_dns_label() {
+        assert!(validate_hostname("dragon").is_ok());
+        assert!(validate_hostname("dragon-fruit-2").is_ok());
+        assert!(validate_hostname("").is_err());
+        assert!(validate_hostname("-dragon").is_err());
+        assert!(validate_hostname("dragon-").is_err());
+        assert!(validate_hostname("dra gon").is_err());
+        assert!(validate_hostname("dragon.example").is_err());
+    }
+
+    #[test]
+    fn a_missing_command_marks_a_login_item_broken() {
+        let (broken, reason) = broken_login_item("/definitely/not/a/program --start");
+        assert!(broken);
+        assert!(reason.contains("missing"));
+        let (broken, reason) = broken_login_item("");
+        assert!(broken);
+        assert!(reason.contains("no command"));
+    }
+
+    #[test]
+    fn a_user_login_item_is_removed() {
+        let root = std::env::temp_dir().join(format!(
+            "df-general-t270-{}",
+            std::process::id()
+        ));
+        let config = root.join("config");
+        let system = root.join("system-autostart");
+        std::fs::create_dir_all(&system).unwrap();
+        let config_home = config.clone();
+        let user_dir = config_home.join("autostart");
+        std::fs::create_dir_all(&user_dir).unwrap();
+        std::fs::write(
+            user_dir.join("org.example.Old.desktop"),
+            "[Desktop Entry]\nType=Application\nName=Old\nExec=/usr/bin/old\n",
+        )
+        .unwrap();
+        remove_autostart(&config_home, &system, "org.example.Old").unwrap();
+        assert!(!user_dir.join("org.example.Old.desktop").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unit_description_parses() {        assert_eq!(
             parse_unit_description("[Unit]\nDescription=Backup user files\n[Service]\n"),
             "Backup user files"
         );

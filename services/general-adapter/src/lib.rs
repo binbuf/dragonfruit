@@ -30,11 +30,14 @@ mod source;
 
 pub use adapter::GeneralAdapter;
 pub use host::{
-    parse_df_usage, parse_localectl, parse_startup, parse_timedatectl, parse_unit_description,
-    read_autostart, set_desktop_key, HostGeneral,
+    add_autostart, broken_login_item, parse_df_usage, parse_localectl, parse_lsblk_disks,
+    parse_startup, parse_timedatectl, parse_unit_description, read_autostart, read_hostname,
+    read_login_apps, read_portal_extensions, remove_autostart, set_desktop_key, sharing_details,
+    validate_hostname, HostGeneral,
 };
 pub use model::{
-    BackupBackend, BackupData, GeneralSnapshot, LocaleData, LoginData, LoginItem, SharingData,
+    BackupBackend, BackupData, DiskEntry, ExtensionEntry, GeneralSnapshot, LocaleData, LoginApp,
+    LoginData, LoginItem, PasswordData, PasswordProvider, ServiceDetail, SharingData,
     SharingService, StartupDiskData, StorageCategory, StorageUsageData, TimeData, UserUnit,
     VolumeUsage,
 };

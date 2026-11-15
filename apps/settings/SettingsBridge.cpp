@@ -383,6 +383,15 @@ GeneralClient *SettingsBridge::ensureGeneral()
             [this](const QVariantMap &) { emit generalChanged(); });
     connect(m_general, &GeneralClient::availableChanged, this,
             [this](bool) { emit generalChanged(); });
+    connect(m_general, &GeneralClient::writeFinished, this,
+            [this](const QString &operation, const QString &outcome,
+                   const QString &message) {
+                m_generalWriteOperation = operation;
+                m_generalWriteState = outcome.isEmpty()
+                    ? QStringLiteral("applied") : outcome;
+                m_generalWriteError = message;
+                emit generalWriteChanged();
+            });
     if (qobject_cast<MockGeneralClient *>(m_general))
         m_general->refresh();
     noteAdapterCreated();
@@ -1501,56 +1510,101 @@ void SettingsBridge::refreshGeneral()
         ensureGeneral();
 }
 
+void SettingsBridge::beginGeneralWrite(const QString &operation)
+{
+    m_generalWriteOperation = operation;
+    m_generalWriteState = QStringLiteral("busy");
+    m_generalWriteError.clear();
+    emit generalWriteChanged();
+}
+
 void SettingsBridge::setNtp(bool enabled)
 {
+    beginGeneralWrite(QStringLiteral("ntp"));
     if (m_general)
         m_general->setNtp(enabled);
 }
 
 void SettingsBridge::setTimezone(const QString &timezone)
 {
+    beginGeneralWrite(QStringLiteral("timezone"));
     if (m_general)
         m_general->setTimezone(timezone);
 }
 
 void SettingsBridge::setTime(const QString &value)
 {
+    beginGeneralWrite(QStringLiteral("time"));
     if (m_general)
         m_general->setTime(value);
 }
 
 void SettingsBridge::setLocale(const QString &locale)
 {
+    beginGeneralWrite(QStringLiteral("locale"));
     if (m_general)
         m_general->setLocale(locale);
 }
 
 void SettingsBridge::setAutostartEnabled(const QString &id, bool enabled)
 {
+    beginGeneralWrite(QStringLiteral("login"));
     if (m_general)
         m_general->setAutostartEnabled(id, enabled);
 }
 
+void SettingsBridge::addAutostart(const QString &appId)
+{
+    beginGeneralWrite(QStringLiteral("login"));
+    if (m_general)
+        m_general->addAutostart(appId);
+}
+
+void SettingsBridge::removeAutostart(const QString &id)
+{
+    beginGeneralWrite(QStringLiteral("login"));
+    if (m_general)
+        m_general->removeAutostart(id);
+}
+
+void SettingsBridge::setHostname(const QString &hostname)
+{
+    beginGeneralWrite(QStringLiteral("hostname"));
+    if (m_general)
+        m_general->setHostname(hostname);
+}
+
+void SettingsBridge::restartSystem()
+{
+    beginGeneralWrite(QStringLiteral("restart"));
+    if (m_general)
+        m_general->restartSystem();
+}
+
 void SettingsBridge::setUserUnitEnabled(const QString &unit, bool enabled)
 {
+    beginGeneralWrite(QStringLiteral("login"));
     if (m_general)
         m_general->setUserUnitEnabled(unit, enabled);
 }
 
 void SettingsBridge::setSharingEnabled(const QString &id, bool enabled)
 {
+    beginGeneralWrite(QStringLiteral("sharing"));
     if (m_general)
         m_general->setSharingEnabled(id, enabled);
 }
 
 void SettingsBridge::runBackup(const QString &destination)
 {
+    beginGeneralWrite(QStringLiteral("backup"));
     if (m_general)
         m_general->runBackup(destination);
 }
 
 void SettingsBridge::openBackupRestore()
 {
+    beginGeneralWrite(QStringLiteral("backup"));
     if (m_general)
         m_general->openRestore();
 }
@@ -1569,8 +1623,19 @@ void SettingsBridge::applyUpdatePolicy(bool autoCheck, bool autoInstall)
 
 void SettingsBridge::resetGeneralFixture()
 {
+    m_generalWriteOperation.clear();
+    m_generalWriteState = QStringLiteral("idle");
+    m_generalWriteError.clear();
+    emit generalWriteChanged();
     if (m_general)
         m_general->resetForTest();
+}
+
+void SettingsBridge::failNextGeneralWrite(const QString &operation,
+                                          const QString &message)
+{
+    if (auto *mock = qobject_cast<MockGeneralClient *>(m_general))
+        mock->failNextWrite(operation, message);
 }
 
 void SettingsBridge::setGeneralAvailableFixture(bool available)
@@ -2369,6 +2434,7 @@ void SettingsBridge::chooseWallpaperPhoto()
     if (!bus.isConnected() || !m_chooserAvailable)
         return;
 
+    m_chooserPurpose = QStringLiteral("wallpaper");
     QDBusMessage message = QDBusMessage::createMethodCall(
         QStringLiteral("org.freedesktop.portal.Desktop"),
         QStringLiteral("/org/freedesktop/portal/desktop"),
@@ -2410,6 +2476,48 @@ void SettingsBridge::onPortalResponse(uint response, const QVariantMap &results)
     if (list.isEmpty())
         return;
     const QString path = localPathFromUri(list.constFirst());
-    if (!path.isEmpty())
+    if (path.isEmpty())
+        return;
+    if (m_chooserPurpose == QStringLiteral("backup"))
+        emit backupDestinationChosen(path);
+    else
         emit wallpaperPhotoChosen(path);
+    m_chooserPurpose.clear();
+}
+
+void SettingsBridge::chooseBackupDestination()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected() || !m_chooserAvailable)
+        return;
+
+    m_chooserPurpose = QStringLiteral("backup");
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.portal.Desktop"),
+        QStringLiteral("/org/freedesktop/portal/desktop"),
+        QStringLiteral("org.freedesktop.portal.FileChooser"),
+        QStringLiteral("OpenFile"));
+    QVariantMap options;
+    options.insert(QStringLiteral("multiple"), false);
+    options.insert(QStringLiteral("directory"), true);
+    options.insert(QStringLiteral("handle_token"), QStringLiteral("dragonfruit_backup"));
+    message << QString() << options;
+
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this](QDBusPendingCallWatcher *call) {
+                call->deleteLater();
+                if (call->isError())
+                    return;
+                const QDBusMessage reply = call->reply();
+                if (reply.arguments().isEmpty())
+                    return;
+                m_requestPath =
+                    reply.arguments().constFirst().value<QDBusObjectPath>().path();
+                QDBusConnection::sessionBus().connect(
+                    QStringLiteral("org.freedesktop.portal.Desktop"), m_requestPath,
+                    QStringLiteral("org.freedesktop.portal.Request"),
+                    QStringLiteral("Response"), this,
+                    SLOT(onPortalResponse(uint, QVariantMap)));
+            });
 }

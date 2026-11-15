@@ -94,7 +94,7 @@ inset come from the in-repo structural measurements
 | Bluetooth | yes | Info button connects instead of showing info; no Forget; discovery does not start on power-on | T271 |
 | Network | yes | No status dots or per-service details; firewall disabled by NM; VPN group disappears | T272 |
 | Battery | yes | Two permanently empty charts; options incomplete; show-percentage has no consumer | T273 |
-| General | yes | Whole list hides when one adapter is absent; About/Software Update/Storage/Reset vanish | T269, T270 (T269 landed) |
+| General | yes | Whole list hides when one adapter is absent; About/Software Update/Storage/Reset vanish | T269, T270 (landed) |
 | Storage | yes | Dead Manage row; no chart/total/free; volumes have no capacity | T273 |
 | Appearance | yes | Missing icon/widget style, folder color, scroll-bar click; transparency slider active under override; seven one-row cards | T274 |
 | Accessibility | yes | Three settingsd rows against a five-section macOS IA; map claims rows that do not exist | T275 |
@@ -739,6 +739,53 @@ storage in Settings.
 | Transfer or Reset | Transfer or reset | Disclosure | settingsd + delegates | adapt |
 | Erase All Content | — | Omit | — | omit: not a Linux concept |
 | Migration Assistant | — | Delegate | distro tool | adapt where available |
+
+**Landed (T270).** The seven remaining General sub-panes now match the row
+inventory and keep their structure when their host half is absent:
+
+- **Date & Time** replaces the raw IANA `Select` with a searchable
+  `SearchablePicker` (a design-system component shared with Language & Region).
+  The manual field is prefilled from the host clock, validates
+  `YYYY-MM-DD HH:MM:SS` including a calendar round-trip, and disables while NTP
+  is on. Every host write reports `busy`/`applied`/`denied`/`failed` through
+  `Settings.generalWriteState`; a denial keeps its reason under the row. “Set
+  time zone automatically” is a real inert row with its reason: no location
+  service is installed. The clock-format rows and the live preview stay live
+  when `timedatectl` is absent.
+- **Language & Region** replaces the locale `Select` with an ordered preferred
+  language list (add/remove/reorder), a searchable Region picker, and a preview
+  that formats through the selected locale. Medium strips the long form's
+  weekday so medium and long are distinct; the number preview distinguishes
+  locale, decimal point, and decimal comma. The order is the `locale.languages`
+  settingsd key (schema revision 29); its first entry is the locale the host is
+  asked to apply, and opening the pane never writes the key. The format rows
+  and preview stay live when `localectl` is absent.
+- **Login Items & Extensions** uses the macOS labels, adds an installed-app
+  picker (`Add Login Item…`) and a per-row Remove, warns about entries whose
+  command is missing, and groups the Extensions section by the portal backend
+  that serves it. All three groups stay visible with their own absence note.
+- **Sharing** adds the Local hostname row with Edit and inline validation, a
+  per-service Options sheet with the unit/address/port/shares/queues the host
+  reports, and removes the duplicated `· On/Off` and `· Requires
+  authentication` suffixes from the row description. The Services group keeps
+  its title and absence note when systemd is absent.
+- **Backup** adds a destination picker (the portal FileChooser in directory
+  mode), an absolute-path/URL validator that gates Save, and disables Schedule
+  and Back up automatically when no backend is installed. The absent note now
+  names the missing host, not a missing backend; the policy rows stay live.
+- **Startup Disk** lists every disk (`lsblk -J`) with the boot disk first,
+  labels sizes in GiB instead of mislabelled GB, folds the duplicate Device row
+  into the Startup disk description, and adds a Restart action behind a
+  confirmation dialog. Changing the startup disk remains read-only.
+- **Transfer or Reset** adds the Transfer section (two disabled delegate rows
+  with their Linux reason), the destructive Reset with a typed `RESET`
+  confirmation, and the Erase All Content section as a read-only Linux reason
+  instead of a fake erase.
+
+The row map gains `login.add`, `time.autoZone`, `sharing.hostname`,
+`backup.backend`, `startup.disks`, `startup.restart`, and the omitted
+`reset.erase`. `make t270-general-system-capture` writes every sub-pane plus
+the host-absent state in light/dark; the live Wayland walk is T284's.
 
 ### 4.7 Appearance — T274
 

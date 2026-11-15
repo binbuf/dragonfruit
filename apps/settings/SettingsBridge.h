@@ -180,6 +180,16 @@ class SettingsBridge : public QObject
     Q_PROPERTY(QVariantMap general READ general NOTIFY generalChanged)
     // Whether the General bridge host is on the session bus.
     Q_PROPERTY(bool generalAvailable READ generalAvailable NOTIFY generalChanged)
+    // T270: the last General host write's operation, state (`idle`, `busy`,
+    // `applied`, `absent`, `denied`, `failed`), and message. A pane that owns
+    // a host write shows the busy/auth/error result next to its control instead
+    // of leaving the control in the state the user attempted.
+    Q_PROPERTY(QString generalWriteOperation READ generalWriteOperation NOTIFY
+                   generalWriteChanged)
+    Q_PROPERTY(QString generalWriteState READ generalWriteState NOTIFY
+                   generalWriteChanged)
+    Q_PROPERTY(QString generalWriteError READ generalWriteError NOTIFY
+                   generalWriteChanged)
     // The Users and Groups view from the bridge host (T-15.11b):
     // `{ state, glyph, label, present, humanCount, adminCount, lockedCount,
     // groupsAvailable, groupCount, automaticLogin, automaticLoginUser,
@@ -337,6 +347,9 @@ public:
     bool updatesAvailable() const;
     QVariantMap general() const;
     bool generalAvailable() const;
+    QString generalWriteOperation() const { return m_generalWriteOperation; }
+    QString generalWriteState() const { return m_generalWriteState; }
+    QString generalWriteError() const { return m_generalWriteError; }
     QVariantMap accounts() const;
     bool accountsAvailable() const;
     QVariantMap printers() const;
@@ -433,6 +446,10 @@ public:
     // image is announced through `wallpaperPhotoChosen`; a cancelled or
     // unavailable chooser emits nothing (the pane stays on the current image).
     Q_INVOKABLE void chooseWallpaperPhoto();
+    // T270: choose a backup destination folder. The chosen local path is
+    // announced through `backupDestinationChosen`; a cancelled or unavailable
+    // chooser emits nothing and the field keeps its current value.
+    Q_INVOKABLE void chooseBackupDestination();
 
     // T-18.1b: ask the wallpaper provider for an eager catalogue load (the
     // Wallpapers pane calls this on open). A no-op when the provider is absent;
@@ -537,6 +554,10 @@ public:
     Q_INVOKABLE void setTime(const QString &value);
     Q_INVOKABLE void setLocale(const QString &locale);
     Q_INVOKABLE void setAutostartEnabled(const QString &id, bool enabled);
+    Q_INVOKABLE void addAutostart(const QString &appId);
+    Q_INVOKABLE void removeAutostart(const QString &id);
+    Q_INVOKABLE void setHostname(const QString &hostname);
+    Q_INVOKABLE void restartSystem();
     Q_INVOKABLE void setUserUnitEnabled(const QString &unit, bool enabled);
     Q_INVOKABLE void setSharingEnabled(const QString &id, bool enabled);
     Q_INVOKABLE void runBackup(const QString &destination);
@@ -552,6 +573,10 @@ public:
     // Test seam (`DF_GENERAL_FIXTURE` only): pretend the bridge host is
     // absent/returned while a pane is open.
     Q_INVOKABLE void setGeneralAvailableFixture(bool available);
+    // Test seam (`DF_GENERAL_FIXTURE` only): make the next host write of one
+    // operation fail with `message`, so the pane's error path is testable.
+    Q_INVOKABLE void failNextGeneralWrite(const QString &operation,
+                                          const QString &message);
 
     // T-15.11b: the Users & Groups pane's one seam. `refreshAccounts` re-reads
     // the bridge host on pane open; each write calls the host stack adapter
@@ -716,6 +741,10 @@ signals:
     // changes; listen to this only when a key's identity matters.
     void changed(const QString &key, const QVariant &value);
     void wallpaperChooserAvailableChanged();
+    // T270: the chosen backup destination's local path.
+    void backupDestinationChosen(const QString &path);
+    // T270: the last General host write's operation/state/message changed.
+    void generalWriteChanged();
     // The chosen photo's local path, ready for `wallpaper.source`.
     void wallpaperPhotoChosen(const QString &path);
     // Any provider property (catalogue, status, defaults) changed. Panes bind
@@ -818,6 +847,7 @@ private slots:
                                      const QStringList &invalidated);
 
 private:
+    void beginGeneralWrite(const QString &operation);
     SettingsClient *m_client = nullptr;
     // T268: per-key reactive maps. `values` replaces the full-map property;
     // the write-state maps replace the full-map error/state copies.
@@ -831,6 +861,12 @@ private:
     QVariantList m_presets;
     bool m_chooserAvailable = false;
     QString m_requestPath;
+    // T270: which file chooser opened (`wallpaper` or `backup`), so the one
+    // portal response handler routes the chosen path to the right signal.
+    QString m_chooserPurpose;
+    QString m_generalWriteOperation;
+    QString m_generalWriteState = QStringLiteral("idle");
+    QString m_generalWriteError;
     // T-18.1b: the provider catalogue and its resolved defaults. `m_providerBuiltin`
     // is the provider's own `BuiltinDefaultSource`; the property falls back to
     // the shared shipped-asset resolver so it is non-empty even when absent.

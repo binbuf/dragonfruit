@@ -294,16 +294,17 @@ absence path; the executable rows are in `SettingsMap.qml`.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Open at Login | Start at login | List + toggle | XDG autostart + `settingsd` | `~/.config/autostart`, `/etc/xdg/autostart`; a system entry is disabled with a user override, never edited in place |
-| Allow in Background | Background services | List + toggle | systemd user units | `systemctl --user enable/disable`; static/masked units are read-only |
-| Extensions | Extensions | List | portal extensions | Delegated hand-off note; no fake rows |
+| Open at Login | Open at login | List + toggle + remove | XDG autostart + `settingsd` | `~/.config/autostart`, `/etc/xdg/autostart`; a system entry is disabled with a user override, never edited in place; a missing command is a broken-item warning (T270) |
+| — | Add login item… | Picker | XDG autostart adapter | Installed `.desktop` applications not already at login; writes the user autostart entry (T270) |
+| Allow in Background | Allow in background | List + toggle | systemd user units | `systemctl --user enable/disable`; static/masked units are read-only |
+| Extensions | Extensions | Grouped list | portal backends | Grouped by the backend that serves the surface; delegated, no fake toggles (T270) |
 
 #### 5.5.5 Language & Region
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Preferred languages | Languages | List + add | `localectl`/locale adapter | `localectl set-locale LANG=…`; a session restart may be required |
-| Region | Region | Info | locale adapter | The formatting locale `localectl` reports |
+| Preferred languages | Languages | Ordered list + add/remove | `locale.languages` → `localectl` | The first entry is applied with `localectl set-locale LANG=…`; the order is a durable settingsd key; a session restart may be required (T270) |
+| Region | Region | Searchable picker | locale adapter | Choosing a region sets the locale the desktop formats with (T270) |
 | Calendar | Calendar | Popup | `settingsd` | `locale.calendar`; Gregorian/ISO/Buddhist/Japanese |
 | Temperature | Temperature | Popup | `settingsd` | `locale.temperature`; °C/°F |
 | Measurement system | Measurement | Popup | `settingsd` | `locale.measurement`; metric/imperial |
@@ -315,9 +316,10 @@ absence path; the executable rows are in `SettingsMap.qml`.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Set date and time automatically | Set automatically | Toggle | `timedatectl`/chrony adapter | `timedatectl set-ntp`; absent `timedatectl` shows the absence note |
-| Time zone | Time zone | Popup/map | `timedatectl` | `timedatectl set-timezone` from `list-timezones` |
-| Date and time | Date and time | Fields | `timedatectl` | Manual set requires auth; disabled while NTP is on |
+| Set date and time automatically | Set automatically | Toggle | `timedatectl`/chrony adapter | `timedatectl set-ntp`; absent `timedatectl` shows the absence note and keeps the clock rows live |
+| Time zone | Time zone | Searchable picker | `timedatectl` | `timedatectl set-timezone` from `list-timezones`; searchable by substring (T270) |
+| Set time zone automatically | Set time zone automatically | Toggle | location service adapter | Inert with its reason: no location service is installed (T270) |
+| Date and time | Date and time | Fields | `timedatectl` | Prefilled, validated `YYYY-MM-DD HH:MM:SS`; requires auth; disabled while NTP is on; busy/denied/error is shown (T270) |
 | 24-hour time | 24-hour time | Toggle | `settingsd` | `clock.use24Hour`; the menu-bar clock consumes it |
 | Show seconds | Show seconds | Toggle | `settingsd` | `menu.clock.showSeconds` |
 | Show date | Show date | Toggle | `settingsd` | `menu.clock.showDate` |
@@ -327,32 +329,42 @@ absence path; the executable rows are in `SettingsMap.qml`.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| File Sharing | File sharing | Toggle | Samba/NFS adapter | `smb.service`/`smbd.service`; installed services only |
-| Screen Sharing | Screen sharing | Toggle | portal ScreenCast/RDP | `gnome-remote-desktop.service`/`wayvnc.service`; hidden when neither is installed |
-| Media Sharing | Media sharing | Toggle | DLNA adapter | `rygel.service`/`minidlna.service`; hidden when absent |
-| Printer Sharing | Printer sharing | Toggle | CUPS | `cups.service`; hidden when absent |
-| Remote Login | Remote login | Toggle | OpenSSH adapter | `sshd.service`; admin auth |
-| Remote Management | Remote management | Toggle | distro adapter | `cockpit.socket`; hidden when absent |
+| — | Local hostname | Text + Edit | hostname adapter | `hostnamectl set-hostname`; inline DNS-label validation; the reason names a missing `hostnamectl` (T270) |
+| File Sharing | File sharing | Toggle + Options | Samba/NFS adapter | `smb.service`/`smbd.service`; installed services only; the Options sheet reports the unit and share count |
+| Screen Sharing | Screen sharing | Toggle + Options | portal ScreenCast/RDP | `gnome-remote-desktop.service`/`wayvnc.service`; installed services only |
+| Media Sharing | Media sharing | Toggle + Options | DLNA adapter | `rygel.service`/`minidlna.service`; installed services only |
+| Printer Sharing | Printer sharing | Toggle + Options | CUPS | `cups.service`; the Options sheet reports the queue count |
+| Remote Login | Remote login | Toggle + Options | OpenSSH adapter | `sshd.service`; admin auth; the Options sheet reports the configured port |
+| Remote Management | Remote management | Toggle + Options | distro adapter | `cockpit.socket`; installed services only |
 | Internet Sharing | Internet sharing | Toggle | NetworkManager | Hidden unless a shared connection exists |
+
+The row description carries the service description only; on/off is the
+toggle and authentication is the Options sheet, never a duplicated suffix
+(T270). The Services group keeps its title and absence note when systemd is
+absent.
 
 #### 5.5.8 Backup (Time Machine)
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Back Up Automatically | Back up automatically | Toggle | `settingsd` → backup backend | `backup.auto`; off by default |
+| Back Up Automatically | Back up automatically | Toggle | `settingsd` → backup backend | `backup.auto`; off by default; disabled when no backend is installed (T270) |
 | — | Backup backend | Popup | backup adapter | restic/Pika/Timeshift detection; automatic selects the installed one |
-| Select Disk… | Destination | Text | `settingsd` → backup backend | `backup.destination`; the backend's detected destination is shown as the hint |
-| Options… | Schedule | Popup | `settingsd` → backup backend | `backup.schedule`; off/hourly/daily/weekly/monthly |
+| Select Disk… | Destination | Text + picker | `settingsd` → backup backend | `backup.destination`; a portal folder picker and an absolute-path/URL validator gate Save; the backend's detected destination is the hint (T270) |
+| Options… | Schedule | Popup | `settingsd` → backup backend | `backup.schedule`; off/hourly/daily/weekly/monthly; disabled when no backend is installed (T270) |
 | Back Up Now | Back up now | Button | backup adapter | One explicit run; disabled when the backend cannot run non-interactively |
 | — | Restore… | Button | backup adapter | Delegated restore entry (Timeshift GUI/Pika); absent backend disables it |
+
+The absent note names the missing system status host, not a missing backend;
+the policy rows stay live (T270).
 
 #### 5.5.9 Startup Disk / Reset
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Startup Disk | Startup disk | Info | UDisks2/bootloader adapter | Read-only first pass; boot device, filesystem, size, firmware mode, Secure Boot; no bootloader rewrite |
-| Transfer or Reset | Reset | Button | `settingsd` | `org.dragonfruit.Settings1.Reset`; resets Dragonfruit settings only, never personal files or host configuration |
-| Erase All Content… | — | Omit | — | Not a Linux concept |
+| Startup Disk | Startup disk | Info + list + Restart | UDisks2/bootloader adapter | Read-only; the boot disk first, every disk with its size in GiB; Restart is one confirmed logind request; no bootloader rewrite (T270) |
+| Transfer or Reset | Transfer | Delegates | distro tools | No migration assistant ships; the two rows are disabled with their reason (T270) |
+| Transfer or Reset | Reset | Destructive button | `settingsd` | `org.dragonfruit.Settings1.Reset`; typed `RESET` confirmation; resets Dragonfruit settings only, never personal files or host configuration (T270) |
+| Erase All Content… | Erase All Content and Settings | Info | — | Omitted with a Linux reason: erasing every file and account is an operating-system reinstall (T270) |
 | Device Management | — | Omit | — | MDM is Apple-specific |
 
 #### 5.5.10 AutoFill & Passwords

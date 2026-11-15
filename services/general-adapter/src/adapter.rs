@@ -90,6 +90,26 @@ impl<S: GeneralSource> GeneralAdapter<S> {
         self.source.set_autostart_enabled(id, enabled)
     }
 
+    /// Add an installed application to Open at Login.
+    pub fn add_autostart(&mut self, app_id: &str) -> GeneralOutcome {
+        self.source.add_autostart(app_id)
+    }
+
+    /// Remove one login item.
+    pub fn remove_autostart(&mut self, id: &str) -> GeneralOutcome {
+        self.source.remove_autostart(id)
+    }
+
+    /// Set the computer's local hostname.
+    pub fn set_hostname(&mut self, hostname: &str) -> GeneralOutcome {
+        self.source.set_hostname(hostname)
+    }
+
+    /// Restart the computer.
+    pub fn restart_system(&mut self) -> GeneralOutcome {
+        self.source.restart_system()
+    }
+
     /// Enable or disable one systemd user unit.
     pub fn set_user_unit_enabled(&mut self, unit: &str, enabled: bool) -> GeneralOutcome {
         self.source.set_user_unit_enabled(unit, enabled)
@@ -190,6 +210,10 @@ mod tests {
         assert!(adapter.set_sharing_enabled("file", false).is_applied());
         assert!(adapter.run_backup("/mnt/backup").is_applied());
         assert!(adapter.open_restore().is_applied());
-        assert_eq!(adapter.source().writes(), 8);
+        assert!(adapter.add_autostart("org.example.Notes").is_applied());
+        assert!(adapter.remove_autostart("org.example.Agent").is_applied());
+        assert!(adapter.set_hostname("dragonfruit").is_applied());
+        assert!(adapter.restart_system().is_applied());
+        assert_eq!(adapter.source().writes(), 12);
     }
 }

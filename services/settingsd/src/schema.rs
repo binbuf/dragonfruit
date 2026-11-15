@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 28;
+pub const SCHEMA_VERSION: u32 = 29;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1873,6 +1873,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "apps/settings (calendar preview)",
         since: 20,
         summary: "The first day of the week the desktop calendar uses.",
+    },
+    KeySpec {
+        key: "locale.languages",
+        group: KeyGroup::General,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (preferred-language order and preview)",
+        since: 29,
+        summary: "The ordered preferred languages the Language & Region pane keeps; the first entry is the system locale the host is asked to apply.",
     },
     KeySpec {
         key: "backup.auto",

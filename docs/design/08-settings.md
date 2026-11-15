@@ -185,6 +185,32 @@ own application. Settings never opens a secret item, reads a credential, or
 stores one. An absent provider keeps the pane structured with an explanatory
 note (ADR [0269](adr/0269-general-list-independence-and-password-providers.md)).
 
+T270 completes the remaining General sub-panes (ADR
+[0270](adr/0270-general-system-panes.md)):
+
+- **Date & Time** uses the shared searchable picker for the time zone, prefills
+  and validates the manual field, and surfaces the host write's
+  busy/denied/error result. The clock-format rows stay live without
+  `timedatectl`; "Set time zone automatically" is inert with its location-
+  service reason.
+- **Language & Region** keeps an ordered preferred-language list in
+  `locale.languages` (schema revision 29), adds a searchable Region picker, and
+  formats the preview through the selected locale. Medium and long differ, and
+  the number preview distinguishes locale/decimal/comma. The format rows and
+  preview stay live without `localectl`.
+- **Login Items & Extensions** adds an installed-app picker, per-row Remove,
+  a broken-command warning, and extensions grouped by portal backend. Every
+  group keeps its note when the adapter is gone.
+- **Sharing** adds Local hostname with Edit and validation, per-service Options
+  sheets, and drops the duplicated on/off and authentication suffixes.
+- **Backup** adds the destination picker and validator, disables the schedule
+  and automatic rows without a backend, and names the missing host in the
+  absence note.
+- **Startup Disk** lists disks, uses GiB, folds the duplicate device row, and
+  adds Restart behind a confirmation.
+- **Transfer or Reset** adds Transfer delegates, a typed-`RESET` destructive
+  confirmation, and the Erase section as a Linux reason.
+
 ## The T227 panes (Appearance, Quick Settings, Search, Screen Saver, Desktop & Stage, Displays advanced)
 
 T227 completes the shell-owned settings panes. The new sidebar panes are

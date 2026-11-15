@@ -131,7 +131,7 @@ namespace {
 
 QVariantMap buildSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 27). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 29). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -265,6 +265,7 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("locale.dateFormat"), QStringLiteral("medium"));
     values.insert(QStringLiteral("locale.numberFormat"), QStringLiteral("locale"));
     values.insert(QStringLiteral("locale.firstDay"), QStringLiteral("locale"));
+    values.insert(QStringLiteral("locale.languages"), QStringList());
     values.insert(QStringLiteral("backup.auto"), false);
     values.insert(QStringLiteral("backup.backend"), QStringLiteral("auto"));
     values.insert(QStringLiteral("backup.destination"), QString());

@@ -68,6 +68,7 @@ qt_add_qml_module(dragonfruit-design-system
         components/SegmentedControl.qml
         components/Slider.qml
         components/Select.qml
+        components/SearchablePicker.qml
         components/ContextMenu.qml
         components/MenuRow.qml
         components/ShortcutHint.qml

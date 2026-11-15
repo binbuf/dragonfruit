@@ -27,6 +27,13 @@ Item {
         when: windowShown
 
         Component { id: shellComponent; SettingsShell { } }
+        Component { id: dateTimeComponent; DateTimePane { } }
+        Component { id: languageComponent; LanguageRegionPane { } }
+        Component { id: loginComponent; LoginItemsPane { } }
+        Component { id: sharingComponent; SharingPane { } }
+        Component { id: backupComponent; BackupPane { } }
+        Component { id: startupComponent; StartupDiskPane { } }
+        Component { id: resetComponent; ResetPane { } }
 
         // Every shipped Wave-1 pane, with the exact control surface the
         // matrix asserts stays live while its provider is absent.
@@ -134,6 +141,74 @@ Item {
                     verify(pane.absenceNote !== null,
                            "shipped pane " + id + " must own its absenceNote");
             }
+        }
+
+        // -- Each General sub-pane keeps its structure ------------------------
+
+        // One absent General host must not collapse a sub-pane to a single
+        // note: the settingsd half stays live and every group title survives.
+        function test_general_sub_panes_keep_their_structure_without_the_bridge_host() {
+            compare(Settings.generalAvailable, false,
+                    "no bridge host is the absent state under test");
+            var dateTime = createTemporaryObject(dateTimeComponent, stage);
+            verify(dateTime);
+            compare(dateTime.available, false);
+            compare(dateTime.hostGroup.visible, true);
+            compare(dateTime.clockGroup.visible, true);
+            compare(dateTime.absenceNote.visible, true);
+            dateTime.hour24Toggle.toggle();
+            compare(Settings.values["clock.use24Hour"], true);
+
+            var language = createTemporaryObject(languageComponent, stage);
+            verify(language);
+            compare(language.available, false);
+            compare(language.languageGroup.visible, true);
+            compare(language.regionGroup.visible, true);
+            compare(language.previewGroup.visible, true);
+            compare(language.absenceNote.visible, true);
+            compare(language.addLanguagePicker.enabled, false);
+            language.calendarSelect.activateIndex(1);
+            compare(Settings.values["locale.calendar"], "iso");
+            verify(language.previewText.text.length > 0);
+
+            var login = createTemporaryObject(loginComponent, stage);
+            verify(login);
+            compare(login.available, false);
+            compare(login.startGroup.visible, true);
+            compare(login.backgroundGroup.visible, true);
+            compare(login.extensionsGroup.visible, true);
+            compare(login.absenceNote.visible, true);
+            compare(login.addPicker.enabled, false);
+
+            var sharing = createTemporaryObject(sharingComponent, stage);
+            verify(sharing);
+            compare(sharing.available, false);
+            compare(sharing.servicesGroup.visible, true);
+            compare(sharing.absenceNote.visible, true);
+            compare(sharing.hostnameButton.enabled, false);
+
+            var backup = createTemporaryObject(backupComponent, stage);
+            verify(backup);
+            compare(backup.available, false);
+            compare(backup.policyGroup.visible, true);
+            compare(backup.absenceNote.visible, true);
+            compare(backup.scheduleSelect.enabled, false);
+            compare(backup.autoToggle.enabled, false);
+
+            var startup = createTemporaryObject(startupComponent, stage);
+            verify(startup);
+            compare(startup.available, false);
+            compare(startup.diskListGroup.visible, true);
+            compare(startup.absenceNote.visible, true);
+            verify(startup.readOnlyNote.visible);
+            compare(startup.restartButton.enabled, false);
+
+            var reset = createTemporaryObject(resetComponent, stage);
+            verify(reset);
+            compare(reset.transferGroup.visible, true);
+            compare(reset.resetGroup.visible, true);
+            compare(reset.eraseNote.visible, true);
+            compare(reset.resetButton.enabled, true);
         }
 
         // -- Each pane degrades cleanly ----------------------------------------

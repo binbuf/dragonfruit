@@ -77,6 +77,26 @@ pub trait GeneralSource {
         GeneralOutcome::Absent
     }
 
+    /// Add one installed application to Open at Login.
+    fn add_autostart(&mut self, _app_id: &str) -> GeneralOutcome {
+        GeneralOutcome::Absent
+    }
+
+    /// Remove one login item.
+    fn remove_autostart(&mut self, _id: &str) -> GeneralOutcome {
+        GeneralOutcome::Absent
+    }
+
+    /// Set the computer's local hostname.
+    fn set_hostname(&mut self, _hostname: &str) -> GeneralOutcome {
+        GeneralOutcome::Absent
+    }
+
+    /// Restart the computer.
+    fn restart_system(&mut self) -> GeneralOutcome {
+        GeneralOutcome::Absent
+    }
+
     /// Enable or disable one systemd user unit.
     fn set_user_unit_enabled(&mut self, _unit: &str, _enabled: bool) -> GeneralOutcome {
         GeneralOutcome::Absent
@@ -117,6 +137,10 @@ pub struct MockGeneral {
     last_time: String,
     last_locale: String,
     last_autostart: Option<(String, bool)>,
+    last_added_app: String,
+    last_removed_login: String,
+    last_hostname: String,
+    restarts: u32,
     last_user_unit: Option<(String, bool)>,
     last_sharing: Option<(String, bool)>,
     last_backup_destination: String,
@@ -139,6 +163,10 @@ impl MockGeneral {
             last_time: String::new(),
             last_locale: String::new(),
             last_autostart: None,
+            last_added_app: String::new(),
+            last_removed_login: String::new(),
+            last_hostname: String::new(),
+            restarts: 0,
             last_user_unit: None,
             last_sharing: None,
             last_backup_destination: String::new(),
@@ -161,6 +189,10 @@ impl MockGeneral {
             last_time: String::new(),
             last_locale: String::new(),
             last_autostart: None,
+            last_added_app: String::new(),
+            last_removed_login: String::new(),
+            last_hostname: String::new(),
+            restarts: 0,
             last_user_unit: None,
             last_sharing: None,
             last_backup_destination: String::new(),
@@ -190,6 +222,10 @@ impl MockGeneral {
             last_time: String::new(),
             last_locale: String::new(),
             last_autostart: None,
+            last_added_app: String::new(),
+            last_removed_login: String::new(),
+            last_hostname: String::new(),
+            restarts: 0,
             last_user_unit: None,
             last_sharing: None,
             last_backup_destination: String::new(),
@@ -251,6 +287,26 @@ impl MockGeneral {
         self.last_autostart
             .as_ref()
             .map(|(id, enabled)| (id.as_str(), *enabled))
+    }
+
+    /// The last application added to Open at Login.
+    pub fn last_added_app(&self) -> &str {
+        &self.last_added_app
+    }
+
+    /// The last login item removed.
+    pub fn last_removed_login(&self) -> &str {
+        &self.last_removed_login
+    }
+
+    /// The last hostname write.
+    pub fn last_hostname(&self) -> &str {
+        &self.last_hostname
+    }
+
+    /// How many restart requests were made.
+    pub fn restarts(&self) -> u32 {
+        self.restarts
     }
 
     /// The last user-unit toggle.
@@ -374,8 +430,74 @@ impl GeneralSource for MockGeneral {
         outcome
     }
 
-    fn set_user_unit_enabled(&mut self, unit: &str, enabled: bool) -> GeneralOutcome {
+    fn add_autostart(&mut self, app_id: &str) -> GeneralOutcome {
         let outcome = self.outcome();
+        if outcome.is_applied() {
+            self.writes += 1;
+            self.last_added_app = app_id.to_owned();
+            if let Some(login) = self.data.as_mut().and_then(|data| data.login.as_mut()) {
+                if let Some(app) = login
+                    .available_apps
+                    .iter()
+                    .find(|app| app.id == app_id)
+                    .cloned()
+                {
+                    login.autostart.push(crate::model::LoginItem {
+                        id: app.id,
+                        name: app.name,
+                        command: app.command,
+                        source: "user".to_owned(),
+                        path: format!("/home/user/.config/autostart/{app_id}.desktop"),
+                        enabled: true,
+                        system: false,
+                        can_toggle: true,
+                        broken: false,
+                        broken_reason: String::new(),
+                    });
+                    login.available_apps.retain(|app| app.id != app_id);
+                }
+            }
+        }
+        outcome
+    }
+
+    fn remove_autostart(&mut self, id: &str) -> GeneralOutcome {
+        let outcome = self.outcome();
+        if outcome.is_applied() {
+            self.writes += 1;
+            self.last_removed_login = id.to_owned();
+            if let Some(login) = self.data.as_mut().and_then(|data| data.login.as_mut()) {
+                login.autostart.retain(|item| item.id != id);
+            }
+        }
+        outcome
+    }
+
+    fn set_hostname(&mut self, hostname: &str) -> GeneralOutcome {
+        if let Err(error) = crate::host::validate_hostname(hostname) {
+            return GeneralOutcome::Failed(AdapterError::new(error));
+        }
+        let outcome = self.outcome();
+        if outcome.is_applied() {
+            self.writes += 1;
+            self.last_hostname = hostname.trim().to_owned();
+            if let Some(sharing) = self.data.as_mut().and_then(|data| data.sharing.as_mut()) {
+                sharing.hostname = hostname.trim().to_owned();
+            }
+        }
+        outcome
+    }
+
+    fn restart_system(&mut self) -> GeneralOutcome {
+        let outcome = self.outcome();
+        if outcome.is_applied() {
+            self.writes += 1;
+            self.restarts += 1;
+        }
+        outcome
+    }
+
+    fn set_user_unit_enabled(&mut self, unit: &str, enabled: bool) -> GeneralOutcome {        let outcome = self.outcome();
         if outcome.is_applied() {
             self.writes += 1;
             self.last_user_unit = Some((unit.to_owned(), enabled));
@@ -472,6 +594,8 @@ pub fn fixture() -> GeneralSnapshot {
                     enabled: true,
                     system: false,
                     can_toggle: true,
+                    broken: false,
+                    broken_reason: String::new(),
                 },
                 crate::model::LoginItem {
                     id: "org.example.Agent".to_owned(),
@@ -482,6 +606,8 @@ pub fn fixture() -> GeneralSnapshot {
                     enabled: false,
                     system: true,
                     can_toggle: true,
+                    broken: true,
+                    broken_reason: "The command /usr/bin/example-agent is missing.".to_owned(),
                 },
             ],
             user_units: vec![
@@ -500,11 +626,32 @@ pub fn fixture() -> GeneralSnapshot {
                     can_toggle: true,
                 },
             ],
+            available_apps: vec![
+                crate::model::LoginApp {
+                    id: "org.example.Notes".to_owned(),
+                    name: "Example Notes".to_owned(),
+                    command: "/usr/bin/example-notes".to_owned(),
+                },
+                crate::model::LoginApp {
+                    id: "org.example.Broken".to_owned(),
+                    name: "Example Broken Agent".to_owned(),
+                    command: "/usr/bin/example-missing".to_owned(),
+                },
+            ],
+            extensions: vec![crate::model::ExtensionEntry {
+                id: "org.freedesktop.impl.portal.Screenshot".to_owned(),
+                name: "Screenshot".to_owned(),
+                category: "Portal backends".to_owned(),
+                detail: "A desktop portal backend installed on this system.".to_owned(),
+            }],
             extensions_available: false,
             extensions_note: "Extensions are managed by the desktop portal and installed apps."
                 .to_owned(),
         }),
         sharing: Some(SharingData {
+            hostname: "dragon".to_owned(),
+            hostname_editable: true,
+            hostname_reason: String::new(),
             services: vec![
                 crate::model::SharingService {
                     id: "file".to_owned(),
@@ -516,6 +663,16 @@ pub fn fixture() -> GeneralSnapshot {
                     active: false,
                     can_toggle: true,
                     needs_auth: true,
+                    details: vec![
+                        crate::model::ServiceDetail {
+                            label: "Unit".to_owned(),
+                            value: "smb.service".to_owned(),
+                        },
+                        crate::model::ServiceDetail {
+                            label: "Shares".to_owned(),
+                            value: "2".to_owned(),
+                        },
+                    ],
                 },
                 crate::model::SharingService {
                     id: "remoteLogin".to_owned(),
@@ -527,6 +684,16 @@ pub fn fixture() -> GeneralSnapshot {
                     active: true,
                     can_toggle: true,
                     needs_auth: true,
+                    details: vec![
+                        crate::model::ServiceDetail {
+                            label: "Unit".to_owned(),
+                            value: "sshd.service".to_owned(),
+                        },
+                        crate::model::ServiceDetail {
+                            label: "Port".to_owned(),
+                            value: "22".to_owned(),
+                        },
+                    ],
                 },
                 crate::model::SharingService {
                     id: "printer".to_owned(),
@@ -538,6 +705,10 @@ pub fn fixture() -> GeneralSnapshot {
                     active: true,
                     can_toggle: true,
                     needs_auth: true,
+                    details: vec![crate::model::ServiceDetail {
+                        label: "Queues".to_owned(),
+                        value: "1".to_owned(),
+                    }],
                 },
             ],
         }),
@@ -618,6 +789,24 @@ pub fn fixture() -> GeneralSnapshot {
             boot_mode: "UEFI".to_owned(),
             secure_boot: "On".to_owned(),
             label: "fedora".to_owned(),
+            disks: vec![
+                crate::model::DiskEntry {
+                    device: "/dev/nvme0n1".to_owned(),
+                    label: "fedora".to_owned(),
+                    model: "Example NVMe SSD".to_owned(),
+                    size_bytes: 512_000_000_000,
+                    boot: true,
+                    mounted: true,
+                },
+                crate::model::DiskEntry {
+                    device: "/dev/sdb".to_owned(),
+                    label: "Backup".to_owned(),
+                    model: "Example USB Disk".to_owned(),
+                    size_bytes: 1_000_000_000_000,
+                    boot: false,
+                    mounted: false,
+                },
+            ],
         }),
         passwords: Some(PasswordData {
             providers: vec![
@@ -703,7 +892,15 @@ mod tests {
         assert!(mock.run_backup("/mnt/backup").is_applied());
         assert!(mock.open_restore().is_applied());
         assert_eq!(mock.restores(), 1);
-        assert_eq!(mock.writes(), 8);
+        assert!(mock.add_autostart("org.example.Notes").is_applied());
+        assert_eq!(mock.last_added_app(), "org.example.Notes");
+        assert!(mock.remove_autostart("org.example.Agent").is_applied());
+        assert_eq!(mock.last_removed_login(), "org.example.Agent");
+        assert!(mock.set_hostname("dragonfruit").is_applied());
+        assert_eq!(mock.last_hostname(), "dragonfruit");
+        assert!(mock.restart_system().is_applied());
+        assert_eq!(mock.restarts(), 1);
+        assert_eq!(mock.writes(), 12);
     }
 
     #[test]
