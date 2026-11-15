@@ -35,6 +35,10 @@ pub struct VpnData {
 }
 
 /// One installed NetworkManager VPN plugin.
+///
+/// Only real plugin packages appear here. Native WireGuard is a NetworkManager
+/// connection type, not a VPN plugin, and is carried separately by
+/// [`VpnCapabilities::wireguard_native`].
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct VpnPluginData {
     /// The NetworkManager service type
@@ -42,10 +46,68 @@ pub struct VpnPluginData {
     pub service_type: String,
     /// The human label (`OpenVPN`).
     pub label: String,
-    /// Whether NetworkManager carries the plugin without a separate package
-    /// (WireGuard).
+    /// Retained for the wire shape. No installed plugin is built in now that
+    /// WireGuard is no longer treated as one.
     #[serde(default)]
     pub builtin: bool,
+}
+
+/// What the host can offer on the VPN Add path.
+///
+/// `plugins` are installed plugin packages, `wireguard_native` says whether
+/// NetworkManager can carry a native `wireguard` connection, and `editor` is
+/// the installed connection editor (if any) that can finish a plugin profile's
+/// credentials. The three are independent: a host with no plugin can still
+/// create a native WireGuard profile.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct VpnCapabilities {
+    /// The installed VPN plugins.
+    pub plugins: Vec<VpnPluginData>,
+    /// Whether NetworkManager supports the native `wireguard` connection type.
+    pub wireguard_native: bool,
+    /// The installed editor command (`nm-connection-editor`), when present.
+    pub editor: Option<String>,
+}
+
+impl VpnCapabilities {
+    /// Whether the Add path can offer anything at all.
+    pub fn can_add(&self) -> bool {
+        !self.plugins.is_empty() || self.wireguard_native
+    }
+}
+
+/// The fields the native WireGuard form collects.
+///
+/// A native profile is complete when it carries the private key, the local
+/// address, and one peer (public key and endpoint); without the peer the
+/// profile cannot connect and must be finished in the editor instead.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WireGuardSpec {
+    /// `connection.id`.
+    pub name: String,
+    /// `wireguard.private-key`.
+    pub private_key: String,
+    /// The local address in CIDR form (`10.7.0.2/32`).
+    pub address: String,
+    /// The peer's public key.
+    pub peer_public_key: String,
+    /// The peer endpoint (`vpn.example:51820`).
+    pub endpoint: String,
+    /// Optional DNS servers.
+    pub dns: Vec<String>,
+    /// Optional MTU.
+    pub mtu: Option<u32>,
+}
+
+impl WireGuardSpec {
+    /// Whether the spec carries everything a profile needs to connect.
+    pub fn is_complete(&self) -> bool {
+        !self.name.trim().is_empty()
+            && !self.private_key.trim().is_empty()
+            && !self.address.trim().is_empty()
+            && !self.peer_public_key.trim().is_empty()
+            && !self.endpoint.trim().is_empty()
+    }
 }
 
 /// One configured VPN connection (`org.freedesktop.NetworkManager.Settings.
@@ -67,6 +129,10 @@ pub struct VpnConnectionData {
     /// `connection.autoconnect`.
     #[serde(default)]
     pub autoconnect: bool,
+    /// Whether the profile still needs credentials or a peer before it can
+    /// connect. A profile created by the pane's Add path starts here.
+    #[serde(default)]
+    pub needs_setup: bool,
 }
 
 /// One live active connection (`org.freedesktop.NetworkManager.Connection.
@@ -151,8 +217,22 @@ pub trait VpnSource {
     fn deactivate(&mut self, request: &VpnRequest) -> VpnOutcome;
 
     /// Add a saved VPN connection for `plugin` with `name` and an optional
-    /// gateway. One explicit write.
+    /// gateway. One explicit write. The profile is created incomplete; the
+    /// caller finishes it in the installed editor.
     fn add(&mut self, _plugin: &str, _name: &str, _gateway: Option<&str>) -> VpnOutcome {
+        VpnOutcome::Unsupported
+    }
+
+    /// Add a complete native WireGuard connection. One explicit write. The
+    /// spec carries the private key, address and one peer, so the resulting
+    /// profile is connectable without a plugin or editor.
+    fn add_wireguard(&mut self, _spec: &WireGuardSpec) -> VpnOutcome {
+        VpnOutcome::Unsupported
+    }
+
+    /// Open the installed connection editor for `uuid` so the user can finish
+    /// an incomplete profile. One explicit write.
+    fn edit(&mut self, _uuid: &str) -> VpnOutcome {
         VpnOutcome::Unsupported
     }
 
@@ -167,6 +247,25 @@ pub trait VpnSource {
     /// store; the default is empty (a fixture that does not model plugins).
     fn plugins(&self) -> Vec<VpnPluginData> {
         Vec::new()
+    }
+
+    /// Whether NetworkManager can carry a native `wireguard` connection.
+    fn wireguard_native(&self) -> bool {
+        false
+    }
+
+    /// The installed connection editor command, when present.
+    fn editor(&self) -> Option<String> {
+        None
+    }
+
+    /// One read of the three Add-path capabilities.
+    fn capabilities(&self) -> VpnCapabilities {
+        VpnCapabilities {
+            plugins: self.plugins(),
+            wireguard_native: self.wireguard_native(),
+            editor: self.editor(),
+        }
     }
 }
 
@@ -198,7 +297,11 @@ pub struct MockVpn {
     reads: u32,
     activations: u32,
     deactivations: u32,
+    edits: u32,
+    wireguard_adds: u32,
     plugins: Vec<VpnPluginData>,
+    wireguard_native: bool,
+    editor: Option<String>,
 }
 
 impl MockVpn {
@@ -212,7 +315,11 @@ impl MockVpn {
             reads: 0,
             activations: 0,
             deactivations: 0,
+            edits: 0,
+            wireguard_adds: 0,
             plugins: Vec::new(),
+            wireguard_native: false,
+            editor: None,
         }
     }
 
@@ -226,7 +333,11 @@ impl MockVpn {
             reads: 0,
             activations: 0,
             deactivations: 0,
+            edits: 0,
+            wireguard_adds: 0,
             plugins: Vec::new(),
+            wireguard_native: false,
+            editor: None,
         }
     }
 
@@ -247,8 +358,24 @@ impl MockVpn {
             reads: 0,
             activations: 0,
             deactivations: 0,
+            edits: 0,
+            wireguard_adds: 0,
             plugins: Vec::new(),
+            wireguard_native: false,
+            editor: None,
         }
+    }
+
+    /// Model a host with native WireGuard support.
+    pub fn with_wireguard_native(mut self, available: bool) -> Self {
+        self.wireguard_native = available;
+        self
+    }
+
+    /// Model a host with (or without) the connection editor installed.
+    pub fn with_editor(mut self, editor: Option<&str>) -> Self {
+        self.editor = editor.map(str::to_owned);
+        self
     }
 
     /// Make every write come back as a polkit denial with `note`.
@@ -303,6 +430,16 @@ impl MockVpn {
     /// How many disconnect requests the source has served.
     pub fn deactivations(&self) -> u32 {
         self.deactivations
+    }
+
+    /// How many editor hand-offs the source has served.
+    pub fn edits(&self) -> u32 {
+        self.edits
+    }
+
+    /// How many native WireGuard adds the source has served.
+    pub fn wireguard_adds(&self) -> u32 {
+        self.wireguard_adds
     }
 
     /// The active connection for `uuid`, if the simulated store has one.
@@ -406,14 +543,62 @@ impl VpnSource for MockVpn {
             path: format!("/org/freedesktop/NetworkManager/Settings/{uuid}"),
             id: name.to_owned(),
             uuid,
-            kind: if plugin.ends_with(".wireguard") {
-                "wireguard".to_owned()
-            } else {
-                "vpn".to_owned()
-            },
+            kind: "vpn".to_owned(),
             service_type: Some(plugin.to_owned()),
             autoconnect: true,
+            // A plugin profile created without its credentials cannot connect
+            // until the editor has finished it.
+            needs_setup: true,
         });
+        VpnOutcome::Accepted
+    }
+
+    fn add_wireguard(&mut self, spec: &WireGuardSpec) -> VpnOutcome {
+        let outcome = self.write_outcome();
+        if outcome != VpnOutcome::Accepted {
+            return outcome;
+        }
+        if !spec.is_complete() {
+            return VpnOutcome::Failed(AdapterError::new(
+                "NetworkManager: a WireGuard profile needs a private key, an address, and one peer",
+            ));
+        }
+        self.wireguard_adds += 1;
+        let uuid = format!("mock-wireguard-{}", self.data.connections.len() + 1);
+        self.data.connections.push(VpnConnectionData {
+            path: format!("/org/freedesktop/NetworkManager/Settings/{uuid}"),
+            id: spec.name.clone(),
+            uuid,
+            kind: "wireguard".to_owned(),
+            service_type: None,
+            autoconnect: true,
+            needs_setup: false,
+        });
+        VpnOutcome::Accepted
+    }
+
+    fn edit(&mut self, uuid: &str) -> VpnOutcome {
+        let outcome = self.write_outcome();
+        if outcome != VpnOutcome::Accepted {
+            return outcome;
+        }
+        if self.editor.is_none() {
+            return VpnOutcome::Unsupported;
+        }
+        let Some(connection) = self
+            .data
+            .connections
+            .iter_mut()
+            .find(|connection| connection.uuid == uuid)
+        else {
+            return VpnOutcome::Failed(AdapterError::new(format!(
+                "NetworkManager: unknown VPN connection '{uuid}'"
+            )));
+        };
+        self.edits += 1;
+        // The editor collects the credentials; the profile is complete when
+        // the next read arrives.
+        connection.needs_setup = false;
         VpnOutcome::Accepted
     }
 
@@ -439,6 +624,14 @@ impl VpnSource for MockVpn {
     fn plugins(&self) -> Vec<VpnPluginData> {
         self.plugins.clone()
     }
+
+    fn wireguard_native(&self) -> bool {
+        self.wireguard_native
+    }
+
+    fn editor(&self) -> Option<String> {
+        self.editor.clone()
+    }
 }
 
 #[cfg(test)]
@@ -453,6 +646,7 @@ mod tests {
             kind: "vpn".to_owned(),
             service_type: Some("org.freedesktop.NetworkManager.openvpn".to_owned()),
             autoconnect: false,
+            needs_setup: false,
         }
     }
 
@@ -562,5 +756,102 @@ mod tests {
         let mut mock = MockVpn::absent();
         assert_eq!(mock.activate(&VpnRequest::new("aaa")), VpnOutcome::Absent);
         assert_eq!(mock.deactivate(&VpnRequest::new("aaa")), VpnOutcome::Absent);
+    }
+
+    fn plugin(service: &str, label: &str) -> VpnPluginData {
+        VpnPluginData {
+            service_type: service.to_owned(),
+            label: label.to_owned(),
+            builtin: false,
+        }
+    }
+
+    #[test]
+    fn capabilities_carry_plugins_wireguard_and_the_editor_separately() {
+        let mock = MockVpn::present_with_plugins(
+            data(),
+            vec![plugin("org.freedesktop.NetworkManager.openvpn", "OpenVPN")],
+        )
+        .with_wireguard_native(true)
+        .with_editor(Some("nm-connection-editor"));
+        let capabilities = mock.capabilities();
+        assert_eq!(capabilities.plugins.len(), 1);
+        assert!(capabilities.wireguard_native);
+        assert_eq!(capabilities.editor.as_deref(), Some("nm-connection-editor"));
+        assert!(capabilities.can_add());
+    }
+
+    #[test]
+    fn a_plugin_add_creates_an_incomplete_profile() {
+        let mut mock = MockVpn::present_with_plugins(
+            data(),
+            vec![plugin("org.freedesktop.NetworkManager.openvpn", "OpenVPN")],
+        )
+        .with_editor(Some("nm-connection-editor"));
+        assert_eq!(
+            mock.add("org.freedesktop.NetworkManager.openvpn", "Lab", None),
+            VpnOutcome::Accepted
+        );
+        let reread = mock.read().unwrap().unwrap();
+        let added = reread
+            .connections
+            .iter()
+            .find(|connection| connection.id == "Lab")
+            .expect("the added connection");
+        assert_eq!(added.kind, "vpn");
+        assert!(added.needs_setup);
+    }
+
+    #[test]
+    fn completing_setup_marks_the_profile_ready() {
+        let mut mock = MockVpn::present(data()).with_editor(Some("nm-connection-editor"));
+        assert_eq!(mock.edit("aaa"), VpnOutcome::Accepted);
+        assert_eq!(mock.edits(), 1);
+        let reread = mock.read().unwrap().unwrap();
+        assert!(!reread.connections[0].needs_setup);
+    }
+
+    #[test]
+    fn editing_without_an_editor_is_unsupported() {
+        let mut mock = MockVpn::present(data());
+        assert_eq!(mock.edit("aaa"), VpnOutcome::Unsupported);
+        assert_eq!(mock.edits(), 0);
+    }
+
+    #[test]
+    fn a_complete_native_wireguard_add_is_accepted() {
+        let mut mock = MockVpn::present(data()).with_wireguard_native(true);
+        let spec = WireGuardSpec {
+            name: "Home WG".to_owned(),
+            private_key: "private".to_owned(),
+            address: "10.7.0.2/32".to_owned(),
+            peer_public_key: "public".to_owned(),
+            endpoint: "vpn.example:51820".to_owned(),
+            dns: vec!["1.1.1.1".to_owned()],
+            mtu: Some(1420),
+        };
+        assert_eq!(mock.add_wireguard(&spec), VpnOutcome::Accepted);
+        assert_eq!(mock.wireguard_adds(), 1);
+        let reread = mock.read().unwrap().unwrap();
+        let added = reread
+            .connections
+            .iter()
+            .find(|connection| connection.id == "Home WG")
+            .expect("the added connection");
+        assert_eq!(added.kind, "wireguard");
+        assert_eq!(added.service_type, None);
+        assert!(!added.needs_setup);
+    }
+
+    #[test]
+    fn an_incomplete_native_wireguard_add_is_refused() {
+        let mut mock = MockVpn::present(data()).with_wireguard_native(true);
+        let spec = WireGuardSpec {
+            name: "Home WG".to_owned(),
+            private_key: "private".to_owned(),
+            ..WireGuardSpec::default()
+        };
+        assert!(matches!(mock.add_wireguard(&spec), VpnOutcome::Failed(_)));
+        assert_eq!(mock.wireguard_adds(), 0);
     }
 }

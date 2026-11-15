@@ -252,10 +252,25 @@ Backends:
   - Debian: nftables/ufw;
   - Arch: nftables/iptables.
   The adapter exposes a common `FirewallStatus`/`set_enabled`/`open_port` API.
-- If no supported firewall is present, the pane shows `No firewall detected`
-  and does not offer a fake toggle.
-- VPN: NetworkManager VPN plugins; the UI lists installed plugins and hides
-  unavailable providers.
+- Firewall reads are unprivileged where the host exposes them: ufw's on/off
+  state comes from `systemctl show -p ActiveState --value ufw` and
+  `/etc/ufw/ufw.conf` when `ufw status` is refused; nftables reads a readable
+  `/etc/nftables.conf` when `nft list ruleset` is refused. The rules row names
+  the host tool (`sudo ufw status verbose`, `sudo nft list ruleset`,
+  `sudo iptables -S`) instead of showing a generic Unavailable.
+- If no supported firewall manager is present, the pane shows `No firewall
+  detected` and does not offer a fake toggle. An iptables-only host is not
+  "no firewall": it reports "iptables rules present; no supported manager"
+  (or that the rules cannot be read unprivileged) and stays read-only.
+- Firewall writes keep the explicit `pkexec` path; each write may prompt, and
+  a refusal is a reported denial, never a fake success. A persistent helper is
+  a separate decision.
+- VPN: NetworkManager VPN plugins; the UI lists only installed plugins and
+  hides unavailable providers. Native WireGuard is NetworkManager's own
+  `wireguard` connection type, never a VPN plugin. A plugin profile is only
+  offered when `nm-connection-editor` is installed to finish its credentials;
+  an incomplete profile is labelled "Needs setup" and cannot be presented as
+  ready to connect.
 
 ## 10. Power, audio, Bluetooth, printing, storage
 

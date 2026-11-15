@@ -253,21 +253,53 @@ Item {
             compare(pane.vpnPlugins.length, 2);
             pane.addVpnRow.trailingButton.clicked();
             tryVerify(function() { return pane.addVpnDialog.open === true; });
-            findChild(pane, "networkAddVpnName").text = "Lab VPN";
-            findChild(pane, "networkAddVpnConfirm").clicked();
+            findChild(pane, "vpnAddName").text = "Lab VPN";
+            findChild(pane, "vpnAddConfirm").clicked();
             tryVerify(function() { return Settings.vpn.connections.length === 3; });
+            var added = Settings.vpn.connections.filter(function(entry) {
+                return entry.id === "Lab VPN";
+            })[0];
+            compare(added.needsSetup, true);
         }
 
-        function test_no_vpn_plugin_is_an_honest_absence() {
+        function test_no_vpn_plugin_keeps_native_wireguard_and_no_add_is_honest() {
             var shell = make();
             var pane = paneOf(shell);
             Settings.setVpnFixture("no-plugin");
             tryVerify(function() { return Settings.vpn.plugins.length === 0; });
             compare(pane.vpnPlugins.length, 0);
-            compare(pane.addVpnRow.trailingAction, "");
+            // Native WireGuard is a separate capability from a VPN plugin.
+            compare(Settings.vpn.wireguardNative, true);
+            compare(pane.vpnCanAdd, true);
+            compare(pane.addVpnRow.trailingAction, "Add\u2026");
             compare(pane.vpnGroup.visible, true);
+
+            Settings.setVpnFixture("no-add");
+            tryVerify(function() { return Settings.vpn.wireguardNative === false; });
+            compare(pane.vpnCanAdd, false);
+            compare(pane.addVpnRow.trailingAction, "");
+            verify(pane.addVpnRow.description.indexOf("No NetworkManager VPN plugin") >= 0);
             Settings.setVpnFixture("live");
             tryVerify(function() { return Settings.vpn.plugins.length === 2; });
+        }
+
+        function test_an_incomplete_vpn_row_is_not_presented_as_ready() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setVpnFixture("incomplete");
+            tryVerify(function() {
+                return Settings.vpn.connections[0].needsSetup === true;
+            });
+            var row = pane.connectionRepeater.itemAt(0);
+            compare(findChild(row, "networkVpnToggle").visible, false);
+            verify(findChild(row, "networkVpnCompleteSetup") !== null);
+            findChild(row, "networkVpnCompleteSetup").clicked();
+            tryVerify(function() {
+                return Settings.vpn.connections[0].needsSetup === false;
+            });
+            var fresh = pane.connectionRepeater.itemAt(0);
+            compare(findChild(fresh, "networkVpnToggle").visible, true);
+            compare(findChild(fresh, "networkVpnToggle").enabled, true);
         }
 
         function test_firewall_absence_and_unavailable_are_distinct() {
@@ -286,6 +318,54 @@ Item {
 
             Settings.setNetworkFixture("live");
             tryVerify(function() { return pane.ready === true; });
+        }
+
+        // T272a: a normal user on Ubuntu can read ufw's on/off state and toggle
+        // it, but the rule table needs the host's own tool.
+        function test_ufw_as_a_normal_user_reads_status_and_names_the_rules_tool() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setNetworkFixture("ufw");
+            tryVerify(function() { return Settings.network.firewall.backend === "ufw"; });
+            compare(pane.firewallDetected, true);
+            compare(pane.firewallStatusKnown, true);
+            compare(pane.firewallEnabled, true);
+            compare(pane.firewallToggle.enabled, true);
+            compare(pane.firewallRulesPresent, false);
+            compare(pane.firewallManageWith, "ufw");
+            verify(pane.firewallNote.indexOf("sudo ufw status verbose") >= 0);
+            // The rule sheet controls cannot complete, so they are disabled.
+            pane.firewallOptionsRow.trailingButton.clicked();
+            tryVerify(function() { return pane.firewallDialog.open === true; });
+            compare(findChild(pane, "networkFirewallOpenPort").enabled, false);
+            pane.firewallDialog.hide();
+        }
+
+        // T272a: iptables-only is named, never "No firewall detected".
+        function test_iptables_only_is_named_and_read_only() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setNetworkFixture("iptables");
+            tryVerify(function() { return Settings.network.firewall.backend === "iptables"; });
+            compare(pane.firewallDetected, true);
+            compare(pane.firewallStatusKnown, false);
+            compare(pane.firewallBackendLabel, "iptables");
+            compare(pane.firewallToggle.enabled, false);
+            compare(pane.firewallRulesPresent, true);
+            compare(pane.firewallManageWith, "iptables");
+            verify(pane.firewallNote.indexOf("iptables rules present") >= 0);
+        }
+
+        // T272a: the only "No firewall detected" state is a host with no
+        // manager at all.
+        function test_no_manager_is_the_only_no_firewall_state() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setNetworkFixture("no-firewall");
+            tryVerify(function() { return Settings.network.firewall.detected === false; });
+            compare(pane.firewallDetected, false);
+            compare(pane.firewallBackendLabel, "No firewall detected");
+            compare(pane.firewallToggle.enabled, false);
         }
 
         // T272: a missing NetworkManager leaves the firewall usable; the pane

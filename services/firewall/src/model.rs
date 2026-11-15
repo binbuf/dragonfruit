@@ -24,6 +24,8 @@ pub struct FirewallSnapshot {
     pub open_ports: Vec<Port>,
     /// The open service rules.
     pub open_services: Vec<String>,
+    /// Whether rule content is present/readable even without a toggle.
+    pub rules_present: bool,
     /// Why the status is unavailable, or a manager note.
     pub note: Option<String>,
 }
@@ -38,6 +40,7 @@ impl FirewallSnapshot {
             default_zone: data.default_zone.clone(),
             open_ports: data.open_ports.clone(),
             open_services: data.open_services.clone(),
+            rules_present: data.rules_present,
             note: data.note.clone(),
         }
     }
@@ -82,6 +85,7 @@ mod tests {
             default_zone: None,
             open_ports: vec![Port::new(22, Protocol::Tcp)],
             open_services: vec!["ssh".to_owned()],
+            rules_present: true,
             note: None,
         }
     }
@@ -95,6 +99,7 @@ mod tests {
         assert_eq!(snapshot.label(), "On");
         assert_eq!(snapshot.port_count(), 1);
         assert_eq!(snapshot.service_count(), 1);
+        assert!(snapshot.rules_present);
     }
 
     #[test]

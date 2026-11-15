@@ -75,7 +75,7 @@ pub use source::{
     NetworkManagerSource, ServiceData, WifiDeviceData, WriteOutcome,
 };
 pub use vpn::{
-    ActiveVpnData, MockVpn, VpnAccess, VpnAdapter, VpnConnection, VpnConnectionData, VpnData,
-    VpnKind, VpnOutcome, VpnPlugin, VpnPluginData, VpnRequest, VpnResult, VpnSnapshot, VpnSource,
-    VpnState,
+    ActiveVpnData, MockVpn, VpnAccess, VpnAdapter, VpnCapabilities, VpnConnection,
+    VpnConnectionData, VpnData, VpnKind, VpnOutcome, VpnPlugin, VpnPluginData, VpnRequest,
+    VpnResult, VpnSnapshot, VpnSource, VpnState, WireGuardSpec,
 };

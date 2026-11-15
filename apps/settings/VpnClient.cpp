@@ -86,6 +86,22 @@ void DbusVpnClient::addVpn(const QString &plugin, const QString &name,
     call(QStringLiteral("Add"), {plugin, name, gateway}, QStringLiteral("add"));
 }
 
+void DbusVpnClient::addWireguard(const QString &name, const QString &privateKey,
+                                 const QString &address,
+                                 const QString &peerPublicKey,
+                                 const QString &endpoint, const QString &dns,
+                                 int mtu)
+{
+    call(QStringLiteral("AddWireguard"),
+         {name, privateKey, address, peerPublicKey, endpoint, dns, mtu},
+         QStringLiteral("add-wireguard"));
+}
+
+void DbusVpnClient::editVpn(const QString &uuid)
+{
+    call(QStringLiteral("Edit"), {uuid}, QStringLiteral("edit"));
+}
+
 void DbusVpnClient::setAutoconnect(const QString &uuid, bool enabled)
 {
     call(QStringLiteral("SetAutoconnect"), {uuid, enabled},
@@ -167,22 +183,38 @@ MockVpnClient::MockVpnClient(QObject *parent)
     : VpnClient(parent)
 {
     resetForTest();
+    const QString mode = qEnvironmentVariable("DF_VPN_FIXTURE");
+    if (!mode.isEmpty() && mode != QLatin1String("1")
+        && mode != QLatin1String("live"))
+        setFixture(mode);
 }
 
 void MockVpnClient::setFixture(const QString &mode)
 {
     resetForTest();
-    if (mode == QLatin1String("no-plugin")) {
+    if (mode == QLatin1String("no-plugin") || mode == QLatin1String("no-add"))
         m_plugins.clear();
-        rebuild();
-    } else if (mode == QLatin1String("empty")) {
+    if (mode == QLatin1String("no-editor") || mode == QLatin1String("no-add")
+        || mode == QLatin1String("no-editor-no-wireguard")) {
+        m_editorAvailable = false;
+        m_editor.clear();
+    }
+    if (mode == QLatin1String("no-wireguard") || mode == QLatin1String("no-add")
+        || mode == QLatin1String("no-editor-no-wireguard"))
+        m_wireguardNative = false;
+    if (mode == QLatin1String("empty"))
         m_connections.clear();
-        rebuild();
-    } else if (mode == QLatin1String("read-only")) {
+    if (mode == QLatin1String("incomplete")) {
+        for (Connection &connection : m_connections) {
+            connection.needsSetup = true;
+            connection.connected = false;
+        }
+    }
+    if (mode == QLatin1String("read-only")) {
         m_readOnly = true;
         m_readOnlyNote = QLatin1String("polkit denied VPN changes");
-        rebuild();
     }
+    rebuild();
 }
 
 void MockVpnClient::resetForTest()
@@ -191,24 +223,22 @@ void MockVpnClient::resetForTest()
     m_failMessage.clear();
     m_readOnly = false;
     m_readOnlyNote.clear();
+    m_wireguardNative = true;
+    m_editorAvailable = true;
+    m_editor = QStringLiteral("nm-connection-editor");
     m_connections = {
         { QStringLiteral("Work VPN"), QStringLiteral("11111111-1111-1111-1111-111111111111"),
-          QStringLiteral("openvpn"), QStringLiteral("OpenVPN"), true, true },
+          QStringLiteral("openvpn"), QStringLiteral("OpenVPN"), true, true, false },
         { QStringLiteral("Home"), QStringLiteral("22222222-2222-2222-2222-222222222222"),
-          QStringLiteral("wireguard"), QStringLiteral("WireGuard"), false, false },
+          QStringLiteral("wireguard"), QStringLiteral("WireGuard"), false, false, false },
     };
-    // `DF_VPN_FIXTURE=no-plugin` models a host with no VPN plugin installed:
-    // the saved connections still read, but the Add sheet has nothing to
-    // offer. The default fixture has OpenVPN and WireGuard.
-    if (qEnvironmentVariable("DF_VPN_FIXTURE") == QLatin1String("no-plugin"))
-        m_plugins.clear();
-    else
-        m_plugins = {
-            { QStringLiteral("org.freedesktop.NetworkManager.openvpn"),
-              QStringLiteral("OpenVPN"), false },
-            { QStringLiteral("org.freedesktop.NetworkManager.wireguard"),
-              QStringLiteral("WireGuard"), true },
-        };
+    // Two installed plugins; native WireGuard is a capability, not a plugin.
+    m_plugins = {
+        { QStringLiteral("org.freedesktop.NetworkManager.openvpn"),
+          QStringLiteral("OpenVPN") },
+        { QStringLiteral("org.freedesktop.NetworkManager.openconnect"),
+          QStringLiteral("OpenConnect") },
+    };
     rebuild();
 }
 
@@ -244,22 +274,60 @@ void MockVpnClient::addVpn(const QString &plugin, const QString &name,
         return;
     if (plugin.isEmpty() || name.isEmpty())
         return;
-    const QString kind = plugin.endsWith(QLatin1String("wireguard"))
-        ? QStringLiteral("wireguard") : QStringLiteral("vpn");
     const QString kindLabel = plugin.endsWith(QLatin1String("openvpn"))
         ? QStringLiteral("OpenVPN")
-        : (plugin.endsWith(QLatin1String("wireguard"))
-               ? QStringLiteral("WireGuard") : QStringLiteral("VPN"));
+        : (plugin.endsWith(QLatin1String("openconnect"))
+               ? QStringLiteral("OpenConnect") : QStringLiteral("VPN"));
+    // A plugin profile is created without credentials and stays incomplete
+    // until the editor finishes it. Native WireGuard never comes through here.
     m_connections.append({
         name,
         QStringLiteral("mock-vpn-%1").arg(m_connections.size() + 1),
-        kind,
+        QStringLiteral("vpn"),
         kindLabel,
         false,
+        true,
         true,
     });
     rebuild();
     finishWrite(QStringLiteral("add"), QStringLiteral("applied"));
+}
+
+void MockVpnClient::addWireguard(const QString &name, const QString &privateKey,
+                                 const QString &address,
+                                 const QString &peerPublicKey,
+                                 const QString &endpoint, const QString &, int)
+{
+    if (failWrite(QStringLiteral("add-wireguard")))
+        return;
+    if (name.isEmpty() || privateKey.isEmpty() || address.isEmpty()
+        || peerPublicKey.isEmpty() || endpoint.isEmpty())
+        return;
+    m_connections.append({
+        name,
+        QStringLiteral("mock-wireguard-%1").arg(m_connections.size() + 1),
+        QStringLiteral("wireguard"),
+        QStringLiteral("WireGuard"),
+        false,
+        true,
+        false,
+    });
+    rebuild();
+    finishWrite(QStringLiteral("add-wireguard"), QStringLiteral("applied"));
+}
+
+void MockVpnClient::editVpn(const QString &uuid)
+{
+    if (failWrite(QStringLiteral("edit")))
+        return;
+    for (Connection &connection : m_connections) {
+        if (connection.uuid == uuid) {
+            connection.needsSetup = false;
+            rebuild();
+            finishWrite(QStringLiteral("edit"), QStringLiteral("applied"));
+            return;
+        }
+    }
 }
 
 void MockVpnClient::setAutoconnect(const QString &uuid, bool enabled)
@@ -288,6 +356,12 @@ void MockVpnClient::connectVpn(const QString &uuid)
     for (Connection &connection : m_connections) {
         if (connection.uuid != uuid)
             continue;
+        // An incomplete profile cannot be presented as ready to connect.
+        if (connection.needsSetup) {
+            finishWrite(QStringLiteral("connect"), QStringLiteral("failed"),
+                        QStringLiteral("Complete the VPN setup first."));
+            return;
+        }
         // Only one tunnel is up in the fixture: connecting one disconnects the
         // other, the way a single active VPN reads on a workstation.
         for (Connection &other : m_connections)
@@ -328,20 +402,26 @@ void MockVpnClient::rebuild()
         }
         const QString state = connection.connected ? QStringLiteral("connected")
                                                    : QStringLiteral("disconnected");
+        const QString stateLabel = connection.needsSetup
+            ? QStringLiteral("Needs setup")
+            : (connection.connected ? QStringLiteral("Connected")
+                                    : QStringLiteral("Disconnected"));
+        const QString label = connection.needsSetup
+            ? connection.kindLabel + QStringLiteral(" \u00b7 Needs setup")
+            : connection.kindLabel + QStringLiteral(" \u00b7 ")
+                  + (connection.connected ? QStringLiteral("Connected")
+                                          : QStringLiteral("Disconnected"));
         QJsonObject entry;
         entry.insert(QStringLiteral("id"), connection.id);
         entry.insert(QStringLiteral("uuid"), connection.uuid);
         entry.insert(QStringLiteral("kind"), connection.kind);
         entry.insert(QStringLiteral("kindLabel"), connection.kindLabel);
         entry.insert(QStringLiteral("state"), state);
-        entry.insert(QStringLiteral("stateLabel"), connection.connected
-                       ? QStringLiteral("Connected") : QStringLiteral("Disconnected"));
+        entry.insert(QStringLiteral("stateLabel"), stateLabel);
         entry.insert(QStringLiteral("connected"), connection.connected);
         entry.insert(QStringLiteral("autoconnect"), connection.autoconnect);
-        entry.insert(QStringLiteral("label"),
-                     connection.kindLabel + QStringLiteral(" \u00b7 ")
-                         + (connection.connected ? QStringLiteral("Connected")
-                                                 : QStringLiteral("Disconnected")));
+        entry.insert(QStringLiteral("needsSetup"), connection.needsSetup);
+        entry.insert(QStringLiteral("label"), label);
         connections.append(entry);
     }
 
@@ -377,12 +457,21 @@ void MockVpnClient::rebuild()
         entry.insert(QStringLiteral("id"), plugin.serviceType);
         entry.insert(QStringLiteral("serviceType"), plugin.serviceType);
         entry.insert(QStringLiteral("label"), plugin.label);
-        entry.insert(QStringLiteral("builtin"), plugin.builtin);
+        entry.insert(QStringLiteral("builtin"), false);
         plugins.append(entry);
     }
     view.insert(QStringLiteral("plugins"), plugins);
     view.insert(QStringLiteral("pluginCount"), plugins.size());
     view.insert(QStringLiteral("pluginsPresent"), !plugins.isEmpty());
+    view.insert(QStringLiteral("wireguardNative"), m_wireguardNative);
+    view.insert(QStringLiteral("editorAvailable"), m_editorAvailable);
+    view.insert(QStringLiteral("editor"), m_editor);
+    const bool canAdd = !plugins.isEmpty() || m_wireguardNative;
+    view.insert(QStringLiteral("canAdd"), canAdd);
+    view.insert(QStringLiteral("addReason"), canAdd
+                    ? QString()
+                    : QStringLiteral("No NetworkManager VPN plugin is installed and "
+                                     "native WireGuard is not available."));
 
     m_view = view;
     emit changed(m_view);

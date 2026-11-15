@@ -14,6 +14,21 @@ use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
 const KIND_FIREWALL: &str = "firewall";
+/// Every write may prompt; the pane says so once instead of implying a silent
+/// privileged daemon.
+const AUTH_NOTE: &str = "Each change may ask for administrator authentication.";
+
+/// The host tool that owns a backend's rules, for the read-only delegate note.
+fn manage_with(backend: dragonfruit_distro_adapters::FirewallBackend) -> &'static str {
+    use dragonfruit_distro_adapters::FirewallBackend;
+    match backend {
+        FirewallBackend::Firewalld => "firewall-cmd",
+        FirewallBackend::Ufw => "ufw",
+        FirewallBackend::Nftables => "nft",
+        FirewallBackend::Iptables => "iptables",
+        FirewallBackend::None => "",
+    }
+}
 
 /// The bridge host for the firewall adapter.
 #[derive(Debug, Clone, PartialEq)]
@@ -110,6 +125,9 @@ pub fn firewall_view<S: FirewallSource>(adapter: &FirewallAdapter<S>) -> Value {
             "services": [],
             "defaultZone": "",
             "note": "",
+            "rulesPresent": false,
+            "manageWith": "",
+            "authNote": AUTH_NOTE,
             "readOnly": read_only,
             "readOnlyNote": read_only_note,
         });
@@ -134,6 +152,9 @@ pub fn firewall_view<S: FirewallSource>(adapter: &FirewallAdapter<S>) -> Value {
             "services": [],
             "note": error.message(),
             "error": error.message(),
+            "rulesPresent": false,
+            "manageWith": "",
+            "authNote": AUTH_NOTE,
             "readOnly": read_only,
             "readOnlyNote": read_only_note,
         });
@@ -168,6 +189,9 @@ pub fn firewall_view<S: FirewallSource>(adapter: &FirewallAdapter<S>) -> Value {
         "ports": ports,
         "services": snapshot.open_services,
         "note": snapshot.note.clone().unwrap_or_default(),
+        "rulesPresent": snapshot.rules_present,
+        "manageWith": manage_with(snapshot.backend),
+        "authNote": AUTH_NOTE,
         "readOnly": read_only,
         "readOnlyNote": read_only_note,
     })
@@ -202,6 +226,9 @@ pub fn firewall_snapshot_view(snapshot: &dragonfruit_firewall::FirewallSnapshot)
         "ports": ports,
         "services": snapshot.open_services,
         "note": snapshot.note.clone().unwrap_or_default(),
+        "rulesPresent": snapshot.rules_present,
+        "manageWith": manage_with(snapshot.backend),
+        "authNote": AUTH_NOTE,
         "readOnly": false,
         "readOnlyNote": "",
     })
@@ -310,5 +337,54 @@ mod tests {
         let view = host.view();
         assert_eq!(view["readOnly"], true);
         assert_eq!(view["readOnlyNote"], "not authorized");
+    }
+
+    #[test]
+    fn a_normal_user_ufw_read_keeps_the_toggle_and_names_the_tool() {
+        let mut host = FirewallHost::new(MockFirewall::ufw_read_only_rules());
+        host.refresh();
+        let view = host.view();
+        assert_eq!(view["state"], "available");
+        assert_eq!(view["backend"], "ufw");
+        assert_eq!(view["statusKnown"], true);
+        assert_eq!(view["enabled"], true);
+        assert_eq!(view["manageWith"], "ufw");
+        assert_eq!(view["rulesPresent"], false);
+        assert!(view["note"]
+            .as_str()
+            .unwrap()
+            .contains("sudo ufw status verbose"));
+        assert!(view["authNote"].as_str().unwrap().contains("administrator"));
+    }
+
+    #[test]
+    fn iptables_only_is_detected_and_named_never_absent() {
+        let mut host = FirewallHost::new(MockFirewall::iptables_only());
+        host.refresh();
+        let view = host.view();
+        assert_eq!(view["detected"], true);
+        assert_eq!(view["state"], "unavailable");
+        assert_eq!(view["backend"], "iptables");
+        assert_eq!(view["backendLabel"], "iptables");
+        assert_eq!(view["statusKnown"], false);
+        assert_eq!(view["enabled"], Value::Null);
+        assert_eq!(view["rulesPresent"], true);
+        assert_eq!(view["manageWith"], "iptables");
+        assert!(view["note"]
+            .as_str()
+            .unwrap()
+            .contains("iptables rules present"));
+        assert_eq!(host.set_enabled(true)["outcome"], "unsupported");
+    }
+
+    #[test]
+    fn nftables_rules_are_reported_without_a_fake_toggle() {
+        let mut host = FirewallHost::new(MockFirewall::nftables_unavailable());
+        host.refresh();
+        let view = host.view();
+        assert_eq!(view["detected"], true);
+        assert_eq!(view["rulesPresent"], true);
+        assert_eq!(view["manageWith"], "nft");
+        assert_eq!(view["enabled"], Value::Null);
     }
 }

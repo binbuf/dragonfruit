@@ -102,6 +102,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         WifiPane.qml
         NetworkPane.qml
         VpnPane.qml
+        VpnAddDialog.qml
         SettingsDebugView.qml
         SettingsSearchResults.qml
         SettingsShell.qml
@@ -191,6 +192,7 @@ df_qml_lint(app-settings
     WifiPane.qml
     NetworkPane.qml
     VpnPane.qml
+    VpnAddDialog.qml
     SettingsDebugView.qml
     SettingsSearchResults.qml
     SettingsShell.qml

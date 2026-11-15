@@ -15,6 +15,7 @@ fn connection(id: &str, uuid: &str, kind: &str, service: Option<&str>) -> VpnCon
         kind: kind.to_owned(),
         service_type: service.map(str::to_owned),
         autoconnect: false,
+        needs_setup: false,
     }
 }
 

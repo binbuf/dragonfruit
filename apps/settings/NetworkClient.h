@@ -147,6 +147,7 @@ public:
 
 private:
     void rebuild();
+    void applyFixture(const QString &mode);
     bool failWrite(const QString &operation);
     void finishWrite(const QString &operation, const QString &outcome,
                      const QString &message = QString());
@@ -177,7 +178,9 @@ private:
     bool m_firewallDetected = true;
     bool m_firewallStatusKnown = true;
     bool m_firewallEnabled = false;
+    bool m_firewallRulesPresent = true;
     QString m_firewallBackend = QStringLiteral("firewalld");
+    QString m_firewallManageWith = QStringLiteral("firewall-cmd");
     QString m_firewallNote;
     QVariantList m_ports;
     QStringList m_servicesList;

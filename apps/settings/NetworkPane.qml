@@ -34,6 +34,12 @@ Item {
         ? root.vpnView.connections : []
     readonly property var vpnPlugins: root.vpnView.plugins !== undefined
         ? root.vpnView.plugins : []
+    readonly property bool vpnWireguardNative: root.vpnView.wireguardNative === true
+    readonly property bool vpnEditorAvailable: root.vpnView.editorAvailable === true
+    readonly property string vpnEditorName: String(root.vpnView.editor || "")
+    readonly property bool vpnCanAdd: root.vpnWireguardNative
+        || (root.vpnPlugins.length > 0 && root.vpnEditorAvailable)
+    readonly property string vpnAddReason: String(root.vpnView.addReason || "")
     readonly property int connectionCount: root.vpnConnections.length
 
     // T272: the two halves degrade independently. A read-only NetworkManager
@@ -51,6 +57,11 @@ Item {
     readonly property bool firewallEnabled: root.firewall.enabled === true
     readonly property bool firewallWritable: root.firewallDetected
         && root.firewallStatusKnown && !root.firewallReadOnly
+    readonly property string firewallBackendLabel: String(root.firewall.backendLabel || "")
+    readonly property string firewallNote: String(root.firewall.note || "")
+    readonly property bool firewallRulesPresent: root.firewall.rulesPresent === true
+    readonly property string firewallManageWith: String(root.firewall.manageWith || "")
+    readonly property string firewallAuthNote: String(root.firewall.authNote || "")
 
     // Other services: everything except Wi-Fi (its own disclosure) and VPN (its
     // own group), matching the reference's Other Services list.
@@ -281,7 +292,6 @@ Item {
     function openAddService() {
         addServiceName.text = "";
         addServiceInterface.text = "";
-        addServiceGateway.text = "";
         addServiceResult.text = "";
         addServiceDialog.show();
     }
@@ -293,35 +303,39 @@ Item {
             addServiceResult.text = qsTr("A service name is required.");
             return;
         }
-        if (kind === "vpn" && addServicePlugin.currentValue === undefined) {
-            addServiceResult.text = qsTr("Choose a VPN plugin.");
-            return;
-        }
         if ((kind === "bridge" || kind === "bond" || kind === "vlan")
                 && addServiceInterface.text.trim().length === 0) {
             addServiceResult.text = qsTr("An interface name is required.");
             return;
         }
-        Settings.addNetworkService(name, kind,
-                                   addServicePlugin.currentValue || "",
-                                   addServiceGateway.text,
-                                   addServiceInterface.text);
+        // VPN is not an Add Service kind: a VPN profile must be finishable, so
+        // it is created from the VPN group's Add row instead.
+        Settings.addNetworkService(name, kind, "", "", addServiceInterface.text);
         addServiceResult.text = qsTr("Adding “%1”…").arg(name);
     }
 
     function addVpn() {
-        var name = addVpnName.text.trim();
-        if (name.length === 0) {
-            addVpnResult.text = qsTr("A VPN name is required.");
+        addVpnDialog.prepare();
+    }
+
+    function submitAddVpn(kind, plugin, values) {
+        if (kind === "wireguard") {
+            Settings.addVpnWireguard(String(values.name),
+                                     String(values.privateKey),
+                                     String(values.address),
+                                     String(values.peerPublicKey),
+                                     String(values.endpoint),
+                                     String(values.dns), Number(values.mtu || 0));
+            addVpnDialog.resultText = qsTr("Adding “%1”…").arg(String(values.name));
             return;
         }
-        if (addVpnPlugin.currentValue === undefined) {
-            addVpnResult.text = qsTr("Choose a VPN plugin.");
-            return;
-        }
-        Settings.addVpn(String(addVpnPlugin.currentValue), name,
-                        addVpnGateway.text);
-        addVpnResult.text = qsTr("Adding “%1”…").arg(name);
+        Settings.addVpn(String(plugin), String(values.name),
+                        String(values.gateway || ""));
+        addVpnDialog.resultText = qsTr("Adding “%1”…").arg(String(values.name));
+    }
+
+    function completeVpnSetup(uuid) {
+        Settings.editVpn(String(uuid));
     }
 
     function addPort() {
@@ -356,12 +370,22 @@ Item {
         }
         function onVpnWriteChanged() {
             var state = String(Settings.vpnWriteState || "");
+            var operation = String(Settings.vpnWriteOperation || "");
             if (state === "applied" || state === "failed"
                     || state === "denied" || state === "absent") {
-                if (String(Settings.vpnWriteOperation || "") === "add") {
-                    addVpnResult.text = state === "applied"
-                        ? qsTr("VPN added.")
+                if (operation === "add") {
+                    addVpnDialog.resultText = state === "applied"
+                        ? qsTr("VPN added. Finish it in the connection editor; "
+                               + "it stays “Needs setup” until then.")
                         : String(Settings.vpnWriteError || qsTr("The VPN was not added."));
+                } else if (operation === "add-wireguard") {
+                    addVpnDialog.resultText = state === "applied"
+                        ? qsTr("WireGuard VPN added.")
+                        : String(Settings.vpnWriteError || qsTr("The VPN was not added."));
+                } else if (operation === "edit") {
+                    addVpnDialog.resultText = state === "applied"
+                        ? qsTr("Setup opened.")
+                        : String(Settings.vpnWriteError || qsTr("The editor did not open."));
                 }
             }
         }
@@ -411,7 +435,7 @@ Item {
                 description: {
                     if (!root.firewallDetected)
                         return qsTr("No firewall detected");
-                    var backend = String(root.firewall.backendLabel || "");
+                    var backend = root.firewallBackendLabel;
                     if (!root.firewallStatusKnown)
                         return qsTr("%1 · Unavailable").arg(backend);
                     return qsTr("%1 · %2").arg(backend)
@@ -444,7 +468,10 @@ Item {
                 label: qsTr("Firewall Options…")
                 description: {
                     if (!root.firewallStatusKnown)
-                        return String(root.firewall.note || qsTr("Status unavailable"));
+                        return root.firewallNote.length > 0
+                            ? root.firewallNote : qsTr("Status unavailable");
+                    if (!root.firewallRulesPresent && root.firewallNote.length > 0)
+                        return root.firewallNote;
                     var zone = String(root.firewall.defaultZone || "");
                     return zone.length > 0
                         ? qsTr("%1 zone · %2 open ports, %3 services")
@@ -533,7 +560,9 @@ Item {
                 width: parent.width
                 label: qsTr("Add Service…")
                 description: root.ready
-                    ? qsTr("Create an Ethernet, Wi-Fi, VPN, bridge, bond, or VLAN service.")
+                    ? qsTr("Create an Ethernet, Wi-Fi, bridge, bond, or VLAN "
+                           + "service. Add a VPN from the VPN section so it can "
+                           + "be completed.")
                     : qsTr("NetworkManager is not running.")
                 settingsId: "addService"
                 owner: "NetworkManager"
@@ -584,6 +613,7 @@ Item {
                             text: ""
                             accessibleName: qsTr("Connect %1")
                                 .arg(connectionRow.modelData.id)
+                            visible: connectionRow.modelData.needsSetup !== true
                             enabled: root.vpnReady && !root.vpnReadOnly
                             onToggled: (checked) =>
                                 root.setConnected(connectionRow.modelData.uuid, checked)
@@ -594,8 +624,19 @@ Item {
                                 value: root.isConnected(connectionRow.modelData.uuid)
                             }
                         }
+                        Button {
+                            objectName: "networkVpnCompleteSetup"
+                            text: qsTr("Complete Setup…")
+                            variant: "ghost"
+                            visible: connectionRow.modelData.needsSetup === true
+                                     && root.vpnEditorAvailable
+                            enabled: root.vpnReady && !root.vpnReadOnly
+                            onClicked: root.completeVpnSetup(
+                                String(connectionRow.modelData.uuid))
+                        }
                         Text {
                             text: qsTr("Auto")
+                            visible: connectionRow.modelData.needsSetup !== true
                             color: Theme.color.textTertiary
                             font.pixelSize: Theme.primitive.font.sizeSm
                             anchors.verticalCenter: parent.verticalCenter
@@ -606,6 +647,7 @@ Item {
                             text: ""
                             accessibleName: qsTr("Auto-connect %1")
                                 .arg(connectionRow.modelData.id)
+                            visible: connectionRow.modelData.needsSetup !== true
                             enabled: root.vpnReady && !root.vpnReadOnly
                             onToggled: (checked) => Settings.setVpnAutoconnect(
                                 String(connectionRow.modelData.uuid), checked)
@@ -645,22 +687,36 @@ Item {
                 id: addVpnRow
                 width: parent.width
                 label: qsTr("Add VPN…")
-                description: root.vpnPlugins.length > 0
-                    ? qsTr("%1 plugin(s) installed").arg(root.vpnPlugins.length)
-                    : qsTr("No NetworkManager VPN plugin is installed.")
+                description: {
+                    if (!root.vpnCanAdd) {
+                        if (root.vpnPlugins.length > 0 && !root.vpnEditorAvailable)
+                            return qsTr("Install %1 to finish plugin profiles.")
+                                .arg(root.vpnEditorName.length > 0
+                                     ? root.vpnEditorName : "nm-connection-editor");
+                        return root.vpnAddReason.length > 0
+                            ? root.vpnAddReason
+                            : qsTr("No VPN plugin is installed and native "
+                                   + "WireGuard is not available.");
+                    }
+                    if (root.vpnPlugins.length > 0 && !root.vpnEditorAvailable)
+                        return qsTr("Install %1 to finish plugin profiles, or "
+                                    + "add a native WireGuard profile.")
+                            .arg(root.vpnEditorName.length > 0
+                                 ? root.vpnEditorName : "nm-connection-editor");
+                    var parts = [];
+                    if (root.vpnWireguardNative)
+                        parts.push(qsTr("WireGuard (native)"));
+                    if (root.vpnPlugins.length > 0)
+                        parts.push(qsTr("%1 plugin(s)").arg(root.vpnPlugins.length));
+                    return parts.join(qsTr(" · "));
+                }
                 settingsId: "vpn"
                 owner: "NetworkManager"
                 settingsKey: "Settings.Connection"
                 showSeparator: false
-                trailingAction: root.vpnPlugins.length > 0 ? qsTr("Add…") : ""
-                enabled: root.vpnReady && !root.vpnReadOnly
-                         && root.vpnPlugins.length > 0
-                onTrailingActionClicked: {
-                    addVpnName.text = "";
-                    addVpnGateway.text = "";
-                    addVpnResult.text = "";
-                    addVpnDialog.show();
-                }
+                trailingAction: root.vpnCanAdd ? qsTr("Add…") : ""
+                enabled: root.vpnReady && !root.vpnReadOnly && root.vpnCanAdd
+                onTrailingActionClicked: root.addVpn()
             }
         }
 
@@ -818,8 +874,8 @@ Item {
 
             Text {
                 width: parent.width
-                visible: !root.firewallStatusKnown
-                text: String(root.firewall.note || qsTr("This firewall cannot report status."))
+                visible: root.firewallNote.length > 0
+                text: root.firewallNote
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
@@ -827,7 +883,16 @@ Item {
 
             Text {
                 width: parent.width
-                visible: root.firewallStatusKnown
+                visible: root.firewallAuthNote.length > 0 && root.firewallWritable
+                text: root.firewallAuthNote
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                visible: root.firewallStatusKnown && root.firewallRulesPresent
                 text: qsTr("Open ports")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
@@ -857,7 +922,7 @@ Item {
                             id: closePort
                             text: qsTr("Close")
                             variant: "ghost"
-                            enabled: root.firewallWritable
+                            enabled: root.firewallWritable && root.firewallRulesPresent
                             onClicked: Settings.closeFirewallPort(
                                 Number(modelData.port), String(modelData.protocol))
                         }
@@ -876,18 +941,18 @@ Item {
                         verticalAlignment: TextInput.AlignVCenter
                         color: Theme.color.textPrimary
                         font.pixelSize: Theme.primitive.font.sizeSm
-                        enabled: root.firewallWritable
+                        enabled: root.firewallWritable && root.firewallRulesPresent
                     }
                     Select {
                         id: addPortProtocol
                         objectName: "networkFirewallProtocol"
                         model: [ "tcp", "udp" ]
-                        enabled: root.firewallWritable
+                        enabled: root.firewallWritable && root.firewallRulesPresent
                     }
                     Button {
                         objectName: "networkFirewallOpenPort"
                         text: qsTr("Open Port")
-                        enabled: root.firewallWritable
+                        enabled: root.firewallWritable && root.firewallRulesPresent
                         onClicked: root.addPort()
                     }
                 }
@@ -895,7 +960,7 @@ Item {
 
             Text {
                 width: parent.width
-                visible: root.firewallStatusKnown
+                visible: root.firewallStatusKnown && root.firewallRulesPresent
                 text: qsTr("Open services")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
@@ -926,7 +991,7 @@ Item {
                             id: closeService
                             text: qsTr("Close")
                             variant: "ghost"
-                            enabled: root.firewallWritable
+                            enabled: root.firewallWritable && root.firewallRulesPresent
                             onClicked: Settings.closeFirewallService(String(modelData))
                         }
                     }
@@ -944,12 +1009,12 @@ Item {
                         verticalAlignment: TextInput.AlignVCenter
                         color: Theme.color.textPrimary
                         font.pixelSize: Theme.primitive.font.sizeSm
-                        enabled: root.firewallWritable
+                        enabled: root.firewallWritable && root.firewallRulesPresent
                     }
                     Button {
                         objectName: "networkFirewallOpenService"
                         text: qsTr("Open Service")
-                        enabled: root.firewallWritable
+                        enabled: root.firewallWritable && root.firewallRulesPresent
                         onClicked: root.addFirewallService()
                     }
                 }
@@ -1005,7 +1070,6 @@ Item {
                 model: [
                     { label: qsTr("Ethernet"), value: "ethernet" },
                     { label: qsTr("Wi-Fi"), value: "wifi" },
-                    { label: qsTr("VPN"), value: "vpn" },
                     { label: qsTr("Bridge"), value: "bridge" },
                     { label: qsTr("Bond"), value: "bond" },
                     { label: qsTr("VLAN"), value: "vlan" }
@@ -1041,32 +1105,6 @@ Item {
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
             }
-            Select {
-                id: addServicePlugin
-                objectName: "networkAddServicePlugin"
-                visible: addServiceKind.currentValue === "vpn"
-                model: root.vpnPlugins.map(function(plugin) {
-                    return { label: String(plugin.label), value: String(plugin.serviceType) };
-                })
-            }
-            Text {
-                width: parent.width
-                visible: addServiceKind.currentValue === "vpn"
-                text: qsTr("Gateway")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-            TextInput {
-                id: addServiceGateway
-                objectName: "networkAddServiceGateway"
-                visible: addServiceKind.currentValue === "vpn"
-                width: parent.width
-                height: Theme.controls.button.height
-                verticalAlignment: TextInput.AlignVCenter
-                color: Theme.color.textPrimary
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-
             Text {
                 id: addServiceResult
                 objectName: "networkAddServiceResult"
@@ -1094,83 +1132,16 @@ Item {
     }
 
     // ── Add VPN ───────────────────────────────────────────────────────────
-    Dialog {
+    VpnAddDialog {
         id: addVpnDialog
         objectName: "networkAddVpnDialog"
-        title: qsTr("Add VPN")
-        width: root.width
-        height: root.height
-
-        contentData: Column {
-            width: parent.width
-            spacing: Theme.primitive.spacing.sm
-
-            Text {
-                width: parent.width
-                text: qsTr("VPN plugin")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-            Select {
-                id: addVpnPlugin
-                objectName: "networkAddVpnPlugin"
-                model: root.vpnPlugins.map(function(plugin) {
-                    return { label: String(plugin.label), value: String(plugin.serviceType) };
-                })
-            }
-            Text {
-                width: parent.width
-                text: qsTr("Name")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-            TextInput {
-                id: addVpnName
-                objectName: "networkAddVpnName"
-                width: parent.width
-                height: Theme.controls.button.height
-                verticalAlignment: TextInput.AlignVCenter
-                color: Theme.color.textPrimary
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-            Text {
-                width: parent.width
-                text: qsTr("Gateway")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-            TextInput {
-                id: addVpnGateway
-                objectName: "networkAddVpnGateway"
-                width: parent.width
-                height: Theme.controls.button.height
-                verticalAlignment: TextInput.AlignVCenter
-                color: Theme.color.textPrimary
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-            Text {
-                id: addVpnResult
-                objectName: "networkAddVpnResult"
-                width: parent.width
-                text: qsTr("Credentials are edited in the full connection editor.")
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
-        }
-
-        buttonsData: Row {
-            spacing: Theme.primitive.spacing.sm
-            Button {
-                text: qsTr("Cancel")
-                onClicked: addVpnDialog.hide()
-            }
-            Button {
-                objectName: "networkAddVpnConfirm"
-                text: qsTr("Add")
-                variant: "primary"
-                onClicked: root.addVpn()
-            }
-        }
+        width: root.Window.window ? root.Window.window.width : root.width
+        height: root.Window.window ? root.Window.window.height : root.height
+        plugins: root.vpnPlugins
+        wireguardNative: root.vpnWireguardNative
+        editorAvailable: root.vpnEditorAvailable
+        editorName: root.vpnEditorName
+        onSubmitted: (kind, plugin, values) =>
+            root.submitAddVpn(kind, plugin, values)
     }
 }

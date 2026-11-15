@@ -7,7 +7,9 @@
 //! connections first. Nothing here reimplements a VPN stack; the raw strings
 //! and numbers come straight from the daemon ([`crate::VpnData`]).
 
-use crate::vpn::source::{ActiveVpnData, VpnConnectionData, VpnData, VpnPluginData};
+use crate::vpn::source::{
+    ActiveVpnData, VpnCapabilities, VpnConnectionData, VpnData, VpnPluginData,
+};
 
 /// The kind of VPN tunnel a connection is, decoded from its NetworkManager
 /// `connection.type` and `vpn.service-type`.
@@ -185,6 +187,9 @@ pub struct VpnConnection {
     pub state: VpnState,
     /// Whether NetworkManager is configured to bring it up on its own.
     pub autoconnect: bool,
+    /// Whether the profile still needs credentials or a peer. It cannot be
+    /// connected (and must not be presented as ready) until it is complete.
+    pub needs_setup: bool,
 }
 
 impl VpnConnection {
@@ -193,8 +198,12 @@ impl VpnConnection {
         self.state.is_connected()
     }
 
-    /// A short secondary label, e.g. `OpenVPN · Connected`.
+    /// A short secondary label, e.g. `OpenVPN · Connected` or
+    /// `OpenVPN · Needs setup`.
     pub fn label(&self) -> String {
+        if self.needs_setup {
+            return format!("{} · Needs setup", self.kind.label());
+        }
         format!("{} · {}", self.kind.label(), self.state.label())
     }
 }
@@ -218,13 +227,18 @@ impl VpnPlugin {
 }
 
 /// The VPN snapshot a pane or tile renders: every configured VPN connection
-/// with its live state, plus the installed plugins.
+/// with its live state, plus the installed plugins and the Add-path
+/// capabilities.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct VpnSnapshot {
     /// One entry per configured VPN, connected first then by name.
     pub connections: Vec<VpnConnection>,
-    /// Every installed VPN plugin, by label.
+    /// Every installed VPN plugin, by label. Native WireGuard is not here.
     pub plugins: Vec<VpnPlugin>,
+    /// Whether NetworkManager supports the native `wireguard` type.
+    pub wireguard_native: bool,
+    /// The installed connection editor command, when present.
+    pub editor: Option<String>,
 }
 
 impl VpnSnapshot {
@@ -235,12 +249,12 @@ impl VpnSnapshot {
     /// no match means disconnected. The list is ordered connected-first, then
     /// by name, then UUID for determinism.
     pub fn from_data(data: &VpnData) -> Self {
-        Self::from_data_with_plugins(data, &[])
+        Self::from_data_with_capabilities(data, &VpnCapabilities::default())
     }
 
-    /// Build the snapshot from one raw read plus the host's installed plugin
-    /// list (a separate read outside NetworkManager's settings store).
-    pub fn from_data_with_plugins(data: &VpnData, plugin_data: &[VpnPluginData]) -> Self {
+    /// Build the snapshot from one raw read plus the host's Add-path
+    /// capabilities (installed plugins, native WireGuard, editor).
+    pub fn from_data_with_capabilities(data: &VpnData, capabilities: &VpnCapabilities) -> Self {
         let mut connections: Vec<VpnConnection> = data
             .connections
             .iter()
@@ -253,6 +267,7 @@ impl VpnSnapshot {
                 ),
                 state: active_state(&data.active, connection),
                 autoconnect: connection.autoconnect,
+                needs_setup: connection.needs_setup,
             })
             .collect();
 
@@ -265,7 +280,8 @@ impl VpnSnapshot {
                 .then_with(|| left.uuid.cmp(&right.uuid))
         });
 
-        let mut plugins: Vec<VpnPlugin> = plugin_data.iter().map(plugin_from_data).collect();
+        let mut plugins: Vec<VpnPlugin> =
+            capabilities.plugins.iter().map(plugin_from_data).collect();
         plugins.sort_by(|left, right| {
             left.label
                 .cmp(&right.label)
@@ -275,14 +291,38 @@ impl VpnSnapshot {
         VpnSnapshot {
             connections,
             plugins,
+            wireguard_native: capabilities.wireguard_native,
+            editor: capabilities.editor.clone(),
         }
     }
 
-    /// Whether at least one VPN plugin is installed. A host with no plugin can
-    /// still list saved connections (WireGuard is built in), but the Add
-    /// sheet has nothing to offer.
+    /// Build the snapshot from one raw read plus the host's installed plugin
+    /// list. Kept for callers that only model plugins.
+    pub fn from_data_with_plugins(data: &VpnData, plugin_data: &[VpnPluginData]) -> Self {
+        Self::from_data_with_capabilities(
+            data,
+            &VpnCapabilities {
+                plugins: plugin_data.to_vec(),
+                ..VpnCapabilities::default()
+            },
+        )
+    }
+
+    /// Whether at least one real VPN plugin is installed. A host with no
+    /// plugin can still create a native WireGuard profile, so this is not the
+    /// same question as [`can_add`](Self::can_add).
     pub fn plugins_present(&self) -> bool {
         !self.plugins.is_empty()
+    }
+
+    /// Whether the Add path has anything to offer.
+    pub fn can_add(&self) -> bool {
+        self.plugins_present() || self.wireguard_native
+    }
+
+    /// Whether the installed connection editor can finish a plugin profile.
+    pub fn editor_available(&self) -> bool {
+        self.editor.is_some()
     }
 
     /// The number of installed plugins.
@@ -389,6 +429,7 @@ mod tests {
             kind: kind.to_owned(),
             service_type: service.map(str::to_owned),
             autoconnect: false,
+            needs_setup: false,
         }
     }
 
@@ -534,22 +575,66 @@ mod tests {
             &VpnData::default(),
             &[
                 VpnPluginData {
-                    service_type: "org.freedesktop.NetworkManager.wireguard".to_owned(),
-                    label: "WireGuard".to_owned(),
-                    builtin: true,
-                },
-                VpnPluginData {
                     service_type: "org.freedesktop.NetworkManager.openvpn".to_owned(),
                     label: "OpenVPN".to_owned(),
+                    builtin: false,
+                },
+                VpnPluginData {
+                    service_type: "org.freedesktop.NetworkManager.openconnect".to_owned(),
+                    label: "OpenConnect".to_owned(),
                     builtin: false,
                 },
             ],
         );
         assert!(snapshot.plugins_present());
         assert_eq!(snapshot.plugin_count(), 2);
-        assert_eq!(snapshot.plugins[0].label, "OpenVPN");
-        assert_eq!(snapshot.plugins[1].label, "WireGuard");
-        assert!(snapshot.plugins[1].builtin);
+        assert_eq!(snapshot.plugins[0].label, "OpenConnect");
+        assert_eq!(snapshot.plugins[1].label, "OpenVPN");
+        assert!(!snapshot.wireguard_native);
+    }
+
+    #[test]
+    fn wireguard_native_and_the_editor_are_capabilities_not_plugins() {
+        let snapshot = VpnSnapshot::from_data_with_capabilities(
+            &VpnData::default(),
+            &VpnCapabilities {
+                plugins: Vec::new(),
+                wireguard_native: true,
+                editor: Some("nm-connection-editor".to_owned()),
+            },
+        );
+        assert!(!snapshot.plugins_present());
+        assert!(snapshot.wireguard_native);
+        assert!(snapshot.editor_available());
+        assert!(snapshot.can_add());
+        assert_eq!(snapshot.editor.as_deref(), Some("nm-connection-editor"));
+    }
+
+    #[test]
+    fn a_host_with_nothing_to_add_says_so() {
+        let snapshot = VpnSnapshot::from_data_with_capabilities(
+            &VpnData::default(),
+            &VpnCapabilities::default(),
+        );
+        assert!(!snapshot.can_add());
+        assert!(!snapshot.editor_available());
+    }
+
+    #[test]
+    fn an_incomplete_profile_is_labelled_needs_setup() {
+        let mut work = connection(
+            "Work",
+            "aaa",
+            "vpn",
+            Some("org.freedesktop.NetworkManager.openvpn"),
+        );
+        work.needs_setup = true;
+        let snapshot = VpnSnapshot::from_data(&VpnData {
+            connections: vec![work],
+            active: Vec::new(),
+        });
+        assert!(snapshot.connections[0].needs_setup);
+        assert_eq!(snapshot.connections[0].label(), "OpenVPN · Needs setup");
     }
 
     #[test]

@@ -1104,9 +1104,42 @@ impl VpnInterface {
         lock_vpn(&self.host).deactivate(uuid).to_string()
     }
 
-    /// Add a saved VPN connection for `plugin`. Returns the JSON report.
+    /// Add a saved VPN connection for `plugin`. Returns the JSON report. The
+    /// profile is created incomplete and handed to the installed editor.
     fn add(&self, plugin: &str, name: &str, gateway: &str) -> String {
         lock_vpn(&self.host).add(plugin, name, gateway).to_string()
+    }
+
+    /// Add a complete native WireGuard connection. `dns` is a comma-separated
+    /// list; `mtu` is `0` for the default. Returns the JSON report.
+    #[allow(clippy::too_many_arguments)]
+    fn add_wireguard(
+        &self,
+        name: &str,
+        private_key: &str,
+        address: &str,
+        peer_public_key: &str,
+        endpoint: &str,
+        dns: &str,
+        mtu: u32,
+    ) -> String {
+        lock_vpn(&self.host)
+            .add_wireguard(
+                name,
+                private_key,
+                address,
+                peer_public_key,
+                endpoint,
+                dns,
+                mtu,
+            )
+            .to_string()
+    }
+
+    /// Open the installed connection editor for an incomplete profile.
+    /// Returns the JSON report.
+    fn edit(&self, uuid: &str) -> String {
+        lock_vpn(&self.host).edit(uuid).to_string()
     }
 
     /// Change whether the saved VPN comes up automatically. Returns the JSON

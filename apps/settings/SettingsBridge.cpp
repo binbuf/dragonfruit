@@ -2058,6 +2058,29 @@ void SettingsBridge::addVpn(const QString &plugin, const QString &name,
     }
 }
 
+void SettingsBridge::addVpnWireguard(const QString &name,
+                                     const QString &privateKey,
+                                     const QString &address,
+                                     const QString &peerPublicKey,
+                                     const QString &endpoint,
+                                     const QString &dns, int mtu)
+{
+    if (m_vpn && !name.isEmpty() && !privateKey.isEmpty() && !address.isEmpty()
+        && !peerPublicKey.isEmpty() && !endpoint.isEmpty()) {
+        beginVpnWrite(QStringLiteral("add-wireguard"));
+        m_vpn->addWireguard(name, privateKey, address, peerPublicKey, endpoint,
+                            dns, mtu);
+    }
+}
+
+void SettingsBridge::editVpn(const QString &uuid)
+{
+    if (m_vpn && !uuid.isEmpty()) {
+        beginVpnWrite(QStringLiteral("edit"));
+        m_vpn->editVpn(uuid);
+    }
+}
+
 void SettingsBridge::setVpnAutoconnect(const QString &uuid, bool enabled)
 {
     if (m_vpn && !uuid.isEmpty()) {

@@ -224,17 +224,7 @@ MockNetworkClient::MockNetworkClient(QObject *parent)
         return;
     }
     resetForTest();
-    if (fixture == QLatin1String("nm-absent"))
-        m_networkPresent = false;
-    if (fixture == QLatin1String("nftables")) {
-        m_firewallBackend = QStringLiteral("nftables");
-        m_firewallStatusKnown = false;
-        m_firewallEnabled = false;
-        m_firewallNote = QStringLiteral(
-            "nftables has no service status; enable/disable is managed by the host.");
-        m_ports.clear();
-        m_servicesList.clear();
-    }
+    applyFixture(fixture);
     rebuild();
 }
 
@@ -249,19 +239,62 @@ void MockNetworkClient::setFixture(const QString &mode)
     }
     m_available = true;
     resetForTest();
+    applyFixture(mode);
+    rebuild();
+    emit availableChanged(true);
+}
+
+// One fixture switch for the constructor and `setFixture`. The firewall modes
+// model the capability surface, not a second manager: `ufw` is readable as a
+// normal user but its rules are not, `nftables` has no toggle, `iptables` is
+// named and read-only, and `no-firewall` is the only "no manager" state.
+void MockNetworkClient::applyFixture(const QString &mode)
+{
     if (mode == QLatin1String("nm-absent"))
         m_networkPresent = false;
     if (mode == QLatin1String("nftables")) {
         m_firewallBackend = QStringLiteral("nftables");
         m_firewallStatusKnown = false;
         m_firewallEnabled = false;
+        m_firewallRulesPresent = true;
+        m_firewallManageWith = QStringLiteral("nft");
         m_firewallNote = QStringLiteral(
-            "nftables has no service status; enable/disable is managed by the host.");
+            "nftables rules are present; manage them with `sudo nft list ruleset`.");
+        m_ports.clear();
+        m_servicesList.clear();
+    } else if (mode == QLatin1String("ufw")) {
+        m_firewallBackend = QStringLiteral("ufw");
+        m_firewallStatusKnown = true;
+        m_firewallEnabled = true;
+        m_firewallRulesPresent = false;
+        m_firewallManageWith = QStringLiteral("ufw");
+        m_firewallNote = QStringLiteral(
+            "ufw rules need administrator rights; manage them with "
+            "`sudo ufw status verbose`.");
+        m_ports.clear();
+        m_servicesList.clear();
+    } else if (mode == QLatin1String("iptables")) {
+        m_firewallBackend = QStringLiteral("iptables");
+        m_firewallStatusKnown = false;
+        m_firewallEnabled = false;
+        m_firewallRulesPresent = true;
+        m_firewallManageWith = QStringLiteral("iptables");
+        m_firewallNote = QStringLiteral(
+            "iptables rules present; no supported manager. Inspect with "
+            "`sudo iptables -S`.");
+        m_ports.clear();
+        m_servicesList.clear();
+    } else if (mode == QLatin1String("no-firewall")) {
+        m_firewallDetected = false;
+        m_firewallStatusKnown = false;
+        m_firewallEnabled = false;
+        m_firewallRulesPresent = false;
+        m_firewallBackend = QStringLiteral("none");
+        m_firewallManageWith.clear();
+        m_firewallNote.clear();
         m_ports.clear();
         m_servicesList.clear();
     }
-    rebuild();
-    emit availableChanged(true);
 }
 
 void MockNetworkClient::resetForTest()
@@ -271,7 +304,9 @@ void MockNetworkClient::resetForTest()
     m_firewallDetected = true;
     m_firewallStatusKnown = true;
     m_firewallEnabled = false;
+    m_firewallRulesPresent = true;
     m_firewallBackend = QStringLiteral("firewalld");
+    m_firewallManageWith = QStringLiteral("firewall-cmd");
     m_firewallNote.clear();
     m_failOperation.clear();
     m_failMessage.clear();
@@ -463,7 +498,7 @@ void MockNetworkClient::openPort(int port, const QString &protocol)
 {
     if (failWrite(QStringLiteral("port")))
         return;
-    if (!m_firewallStatusKnown)
+    if (!m_firewallStatusKnown || !m_firewallRulesPresent)
         return;
     const QString id = QStringLiteral("%1/%2").arg(port).arg(protocol);
     for (const QVariant &entry : m_ports) {
@@ -484,7 +519,7 @@ void MockNetworkClient::closePort(int port, const QString &protocol)
 {
     if (failWrite(QStringLiteral("port")))
         return;
-    if (!m_firewallStatusKnown)
+    if (!m_firewallStatusKnown || !m_firewallRulesPresent)
         return;
     const QString id = QStringLiteral("%1/%2").arg(port).arg(protocol);
     for (int i = 0; i < m_ports.size(); ++i) {
@@ -501,7 +536,7 @@ void MockNetworkClient::openService(const QString &service)
 {
     if (failWrite(QStringLiteral("service")))
         return;
-    if (!m_firewallStatusKnown)
+    if (!m_firewallStatusKnown || !m_firewallRulesPresent)
         return;
     if (!m_servicesList.contains(service))
         m_servicesList.append(service);
@@ -513,7 +548,7 @@ void MockNetworkClient::closeService(const QString &service)
 {
     if (failWrite(QStringLiteral("service")))
         return;
-    if (!m_firewallStatusKnown)
+    if (!m_firewallStatusKnown || !m_firewallRulesPresent)
         return;
     m_servicesList.removeAll(service);
     rebuild();
@@ -624,7 +659,11 @@ void MockNetworkClient::rebuild()
                         ? QStringLiteral("nftables")
                         : (m_firewallBackend == QLatin1String("ufw")
                                ? QStringLiteral("ufw")
-                               : QStringLiteral("firewalld")));
+                               : (m_firewallBackend == QLatin1String("iptables")
+                                      ? QStringLiteral("iptables")
+                                      : (m_firewallBackend == QLatin1String("none")
+                                             ? QStringLiteral("No firewall detected")
+                                             : QStringLiteral("firewalld")))));
     firewall.insert(QStringLiteral("statusKnown"), m_firewallStatusKnown);
     firewall.insert(QStringLiteral("enabled"),
                     m_firewallStatusKnown ? QVariant(m_firewallEnabled) : QVariant());
@@ -639,6 +678,11 @@ void MockNetworkClient::rebuild()
     firewall.insert(QStringLiteral("services"), m_servicesList);
     firewall.insert(QStringLiteral("serviceCount"), m_servicesList.size());
     firewall.insert(QStringLiteral("note"), m_firewallNote);
+    firewall.insert(QStringLiteral("rulesPresent"), m_firewallRulesPresent);
+    firewall.insert(QStringLiteral("manageWith"), m_firewallManageWith);
+    firewall.insert(QStringLiteral("authNote"),
+                    QStringLiteral("Each change may ask for administrator "
+                                   "authentication."));
     firewall.insert(QStringLiteral("readOnly"), false);
     firewall.insert(QStringLiteral("readOnlyNote"), QString());
     view.insert(QStringLiteral("firewall"), firewall);

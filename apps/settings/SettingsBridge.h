@@ -725,6 +725,13 @@ public:
     Q_INVOKABLE void disconnectVpn(const QString &uuid);
     Q_INVOKABLE void addVpn(const QString &plugin, const QString &name,
                             const QString &gateway);
+    Q_INVOKABLE void addVpnWireguard(const QString &name,
+                                     const QString &privateKey,
+                                     const QString &address,
+                                     const QString &peerPublicKey,
+                                     const QString &endpoint,
+                                     const QString &dns, int mtu);
+    Q_INVOKABLE void editVpn(const QString &uuid);
     Q_INVOKABLE void setVpnAutoconnect(const QString &uuid, bool enabled);
     // Test seam (`DF_VPN_FIXTURE` only): restore the in-process fixture. A
     // no-op on the live client.

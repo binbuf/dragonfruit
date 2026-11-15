@@ -54,6 +54,6 @@ pub(crate) mod source;
 pub use adapter::{VpnAccess, VpnAdapter, VpnResult};
 pub use model::{VpnConnection, VpnKind, VpnPlugin, VpnSnapshot, VpnState};
 pub use source::{
-    ActiveVpnData, MockVpn, VpnConnectionData, VpnData, VpnOutcome, VpnPluginData, VpnRequest,
-    VpnSource,
+    ActiveVpnData, MockVpn, VpnCapabilities, VpnConnectionData, VpnData, VpnOutcome, VpnPluginData,
+    VpnRequest, VpnSource, WireGuardSpec,
 };

@@ -5339,11 +5339,15 @@ Open source system software</source>
 <context>
     <name>NetworkPane</name>
     <message>
+        <source> · </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 open ports, %2 services</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 plugin(s) installed</source>
+        <source>%1 plugin(s)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5367,10 +5371,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>A VPN name is required.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>A service name is required.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5384,10 +5384,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Add Service…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Add VPN</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5443,11 +5439,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Choose a VPN plugin.</source>
+        <source>Close</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Close</source>
+        <source>Complete Setup…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5471,11 +5467,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Create an Ethernet, Wi-Fi, VPN, bridge, bond, or VLAN service.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Credentials are edited in the full connection editor.</source>
+        <source>Create an Ethernet, Wi-Fi, bridge, bond, or VLAN service. Add a VPN from the VPN section so it can be completed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5523,10 +5515,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Gateway</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Hardware Address</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5536,6 +5524,14 @@ Open source system software</source>
     </message>
     <message>
         <source>IPv6</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install %1 to finish plugin profiles, or add a native WireGuard profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install %1 to finish plugin profiles.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5583,11 +5579,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No NetworkManager VPN plugin is installed.</source>
+        <source>No VPN connection is configured.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No VPN connection is configured.</source>
+        <source>No VPN plugin is installed and native WireGuard is not available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5675,6 +5671,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Setup opened.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Status</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5691,6 +5691,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The editor did not open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The last network change did not apply.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5700,10 +5704,6 @@ Open source system software</source>
     </message>
     <message>
         <source>The service was not added.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>This firewall cannot report status.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5727,7 +5727,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>VPN added.</source>
+        <source>VPN added. Finish it in the connection editor; it stays “Needs setup” until then.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5740,6 +5740,14 @@ Open source system software</source>
     </message>
     <message>
         <source>Wi-Fi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WireGuard (native)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WireGuard VPN added.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10394,13 +10402,13 @@ Provider: %2</source>
     </message>
 </context>
 <context>
-    <name>VpnPane</name>
+    <name>VpnAddDialog</name>
     <message>
-        <source>%1 plugin(s) installed</source>
+        <source>A VPN name is required.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>A VPN name is required.</source>
+        <source>A private key, address, peer public key, and endpoint are required.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10409,6 +10417,85 @@ Provider: %2</source>
     </message>
     <message>
         <source>Add VPN Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Address (CIDR, e.g. 10.7.0.2/32)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a VPN plugin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Creates a native NetworkManager WireGuard profile. No VPN plugin is used.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DNS (optional, comma-separated)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Endpoint (host:port)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gateway</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MTU (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Peer public key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Private key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The MTU must be a positive number.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The connection editor is not installed, so a plugin profile cannot be finished.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The profile opens in %1 to finish setup; it stays “Needs setup” until then.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The profile opens in the connection editor to finish setup; it stays “Needs setup” until then.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WireGuard (built in)</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>VpnPane</name>
+    <message>
+        <source> · </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 plugin(s)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10440,15 +10527,11 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Choose a VPN plugin.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Complete Setup…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10464,23 +10547,23 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Gateway</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Info…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Name</source>
+        <source>Install %1 to finish plugin profiles, or add a native WireGuard profile.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No NetworkManager VPN plugin is installed.</source>
+        <source>Install %1 to finish plugin profiles.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No VPN connection is configured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No VPN plugin is installed and native WireGuard is not available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10493,6 +10576,10 @@ Provider: %2</source>
     </message>
     <message>
         <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Setup opened.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10509,6 +10596,10 @@ Provider: %2</source>
     </message>
     <message>
         <source>The VPN was not added.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The editor did not open.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10532,7 +10623,7 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>VPN added.</source>
+        <source>VPN added. Finish it in the connection editor; it stays “Needs setup” until then.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10544,11 +10635,15 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>VPN plugin</source>
+        <source>VPN — %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>VPN — %1</source>
+        <source>WireGuard (native)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WireGuard VPN added.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

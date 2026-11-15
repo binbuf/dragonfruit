@@ -216,14 +216,14 @@ Owner: NetworkManager + firewall adapter. Absence: per-service rows show
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Wi-Fi | Wi-Fi | Disclosure | NM | Connected/off; opens Wi-Fi pane |
-| Firewall | Firewall | Toggle + Options | firewall adapter | On/off/options; `firewalld`/`ufw`/`nftables` backend; independent of NM |
+| Firewall | Firewall | Toggle + Options | firewall adapter | On/off/options where the backend reports status; `firewalld`/`ufw` unprivileged, `nftables`/`iptables` read-only/delegate; independent of NM |
 | Other Services | Other services | List + status dot | NM devices | Ethernet, bridge, bond, VLAN; green/yellow/red/gray dot |
-| VPN | VPN | Disclosure / optional top-level pane | NM VPN | Add/configure/connect; top-level pane when a profile exists |
+| VPN | VPN | Disclosure / optional top-level pane | NM VPN | Native WireGuard is a connection type; plugin Add only with the editor; incomplete profiles say Needs setup; top-level pane when a profile exists |
 | … | Service actions | Menu | NM | Connect/Disconnect, service order, make inactive, delete, add |
 | Advanced… | Details… | Sheet | NM | TCP/IP, subnet, router, DNS, search domains, IPv6, proxy, hardware, metered, MAC randomization, 802.1X |
 | Locations | Profiles | Popup | NM | Saved connection profiles; adapt macOS Locations |
 | — | Firewall options | Sheet | firewall adapter | Open ports, services, zones/rules, backend |
-| — | Add service… | Sheet | NM | Ethernet, Wi-Fi, VPN, bridge, bond, VLAN with validation |
+| — | Add service… | Sheet | NM | Ethernet, Wi-Fi, bridge, bond, VLAN with validation; VPN is added from the VPN section |
 
 **T225 status.** The Wi-Fi and Network panes are shipped. Wi-Fi writes the
 radio, joins (visible/hidden), forgets, autoconnects, scans, disconnects, and
@@ -240,7 +240,15 @@ is Unavailable, never a fake Off, and the firewall stays usable when NM is
 absent or the VPN adapter is read-only. The optional top-level VPN pane appears
 only when a profile exists; Network → VPN remains otherwise. Every Network/VPN
 write reports applied/denied/failed/absent. `Profiles` remains planned (a future
-location/profile editor).
+location/profile editor). **T272a status.** Native WireGuard is created as a
+`wireguard` connection (private key, address, one peer, optional DNS/MTU) and is
+never a VPN plugin. A plugin Add requires `nm-connection-editor`; the created
+profile stays `Needs setup` and cannot connect until the editor completes it.
+Firewall reads are unprivileged where the host exposes them: ufw falls back to
+`systemctl show` + `/etc/ufw/ufw.conf`, nftables to `/etc/nftables.conf`, and
+iptables is named read-only/delegate with `sudo iptables -S`. Only a host with
+no manager says `No firewall detected`. Writes keep `pkexec` and report a
+denial.
 
 <a id="pane-battery"></a>
 ### 5.4 Battery

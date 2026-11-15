@@ -27,6 +27,7 @@ use crate::source::{
 };
 use crate::vpn::source::{
     ActiveVpnData, VpnConnectionData, VpnData, VpnOutcome, VpnPluginData, VpnRequest, VpnSource,
+    WireGuardSpec,
 };
 
 /// The well-known name `NetworkManager` owns.
@@ -537,10 +538,7 @@ fn ip4_details_of(connection: &Connection, path: &str) -> Option<Ip4Details> {
             Some((address, prefix))
         })
         .map_or((None, None), |(address, prefix)| (Some(address), prefix));
-    let gateway = proxy
-        .gateway()
-        .ok()
-        .filter(|gateway| !gateway.is_empty());
+    let gateway = proxy.gateway().ok().filter(|gateway| !gateway.is_empty());
     Some(Ip4Details {
         address,
         prefix,
@@ -1050,8 +1048,55 @@ impl VpnSource for DbusVpn {
             Err(error) => return vpn_failed(error),
         };
         match proxy.add_connection(settings) {
+            Ok(path) => {
+                // The profile has no credentials yet. Hand it to the installed
+                // editor so it can be finished; the row stays "Needs setup"
+                // until the daemon's next read says otherwise.
+                if let Some(uuid) = uuid_for_path(&connection, path.as_str()) {
+                    let _ = launch_editor(&uuid);
+                }
+                VpnOutcome::Accepted
+            }
+            Err(error) => classify_vpn_error(error),
+        }
+    }
+
+    fn add_wireguard(&mut self, spec: &WireGuardSpec) -> VpnOutcome {
+        let connection = match daemon_connection() {
+            Ok(connection) => connection,
+            Err(outcome) => return outcome,
+        };
+        if !spec.is_complete() {
+            return VpnOutcome::Failed(AdapterError::new(
+                "NetworkManager: a WireGuard profile needs a private key, an address, and one peer",
+            ));
+        }
+        let settings = wireguard_settings(spec);
+        let proxy = match NmSettingsProxyBlocking::new(&connection) {
+            Ok(proxy) => proxy,
+            Err(error) => return vpn_failed(error),
+        };
+        match proxy.add_connection(settings) {
             Ok(_) => VpnOutcome::Accepted,
             Err(error) => classify_vpn_error(error),
+        }
+    }
+
+    fn edit(&mut self, uuid: &str) -> VpnOutcome {
+        let connection = match daemon_connection() {
+            Ok(connection) => connection,
+            Err(outcome) => return outcome,
+        };
+        // Resolve first so an unknown UUID is a real failure, not a silent
+        // editor launch.
+        if let Err(outcome) = resolve_connection(&connection, uuid) {
+            return outcome;
+        }
+        match launch_editor(uuid) {
+            Ok(()) => VpnOutcome::Accepted,
+            Err(error) => VpnOutcome::Failed(AdapterError::new(format!(
+                "NetworkManager: could not open the connection editor: {error}"
+            ))),
         }
     }
 
@@ -1090,14 +1135,139 @@ impl VpnSource for DbusVpn {
     fn plugins(&self) -> Vec<VpnPluginData> {
         discover_vpn_plugins()
     }
+
+    fn wireguard_native(&self) -> bool {
+        wireguard_native_available()
+    }
+
+    fn editor(&self) -> Option<String> {
+        editor_command()
+    }
+}
+
+/// Whether this host can carry a native WireGuard connection.
+///
+/// NetworkManager's `wireguard` type needs the kernel WireGuard implementation;
+/// the userspace daemon is irrelevant because NM programs the link itself. A
+/// kernel built without the module (or one where it cannot be loaded) honestly
+/// has no native WireGuard.
+fn wireguard_native_available() -> bool {
+    if std::path::Path::new("/sys/module/wireguard").exists() {
+        return true;
+    }
+    std::fs::read_to_string("/proc/modules")
+        .map(|modules| {
+            modules
+                .lines()
+                .any(|line| line.split_whitespace().next() == Some("wireguard"))
+        })
+        .unwrap_or(false)
+}
+
+/// The installed connection editor, if any. `nm-connection-editor` is the only
+/// GUI editor that can finish an arbitrary plugin profile without a terminal.
+fn editor_command() -> Option<String> {
+    const NAME: &str = "nm-connection-editor";
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|directory| directory.join(NAME))
+        .find(|candidate| candidate.is_file())
+        .map(|_| NAME.to_owned())
+}
+
+/// Launch `nm-connection-editor --edit <uuid>` detached from the bridge host.
+fn launch_editor(uuid: &str) -> std::io::Result<()> {
+    let editor = editor_command().unwrap_or_else(|| "nm-connection-editor".to_owned());
+    std::process::Command::new(editor)
+        .arg("--edit")
+        .arg(uuid)
+        .spawn()
+        .map(|_| ())
+}
+
+/// Resolve a freshly added settings path to its UUID.
+fn uuid_for_path(connection: &Connection, path: &str) -> Option<String> {
+    let map = get_connection_settings(connection, path).ok()?;
+    map.get("connection")
+        .and_then(|connection| connection.get("uuid"))
+        .and_then(value_string)
+}
+
+/// The `a{sa{sv}}` settings map for a complete native WireGuard profile.
+///
+/// The private key is stored with `private-key-flags = 0` so NetworkManager
+/// keeps it in its root-owned keyfile; the peer carries the public key and
+/// endpoint the form collected.
+pub fn wireguard_settings(
+    spec: &WireGuardSpec,
+) -> HashMap<String, HashMap<String, Value<'static>>> {
+    let mut connection: HashMap<String, Value<'static>> = HashMap::new();
+    connection.insert("id".to_owned(), Value::from(spec.name.clone()));
+    connection.insert("type".to_owned(), Value::from("wireguard"));
+    connection.insert("autoconnect".to_owned(), Value::from(true));
+
+    let mut wireguard: HashMap<String, Value<'static>> = HashMap::new();
+    wireguard.insert(
+        "private-key".to_owned(),
+        Value::from(spec.private_key.clone()),
+    );
+    wireguard.insert("private-key-flags".to_owned(), Value::from(0u32));
+    if let Some(mtu) = spec.mtu {
+        wireguard.insert("mtu".to_owned(), Value::from(mtu));
+    }
+    let mut peer: HashMap<String, Value<'static>> = HashMap::new();
+    peer.insert(
+        "public-key".to_owned(),
+        Value::from(spec.peer_public_key.clone()),
+    );
+    peer.insert("endpoint".to_owned(), Value::from(spec.endpoint.clone()));
+    peer.insert(
+        "allowed-ips".to_owned(),
+        Value::from(vec!["0.0.0.0/0".to_owned()]),
+    );
+    wireguard.insert("peers".to_owned(), Value::from(vec![peer]));
+
+    let mut ipv4: HashMap<String, Value<'static>> = HashMap::new();
+    ipv4.insert("method".to_owned(), Value::from("manual"));
+    if let Some((address, prefix)) = split_cidr(&spec.address) {
+        let mut entry: HashMap<String, Value<'static>> = HashMap::new();
+        entry.insert("address".to_owned(), Value::from(address));
+        entry.insert("prefix".to_owned(), Value::from(prefix));
+        ipv4.insert("address-data".to_owned(), Value::from(vec![entry]));
+    }
+    if !spec.dns.is_empty() {
+        ipv4.insert("dns-data".to_owned(), Value::from(spec.dns.clone()));
+        ipv4.insert("ignore-auto-dns".to_owned(), Value::from(true));
+    }
+
+    let mut ipv6: HashMap<String, Value<'static>> = HashMap::new();
+    ipv6.insert("method".to_owned(), Value::from("auto"));
+
+    let mut settings: HashMap<String, HashMap<String, Value<'static>>> = HashMap::new();
+    settings.insert("connection".to_owned(), connection);
+    settings.insert("wireguard".to_owned(), wireguard);
+    settings.insert("ipv4".to_owned(), ipv4);
+    settings.insert("ipv6".to_owned(), ipv6);
+    settings
+}
+
+/// Split `10.7.0.2/32` into its address and prefix.
+pub fn split_cidr(address: &str) -> Option<(String, u32)> {
+    let (address, prefix) = address.split_once('/')?;
+    let prefix = prefix.parse::<u32>().ok()?;
+    if address.is_empty() || prefix > 128 {
+        return None;
+    }
+    Some((address.to_owned(), prefix))
 }
 
 /// Discover the installed NetworkManager VPN plugins.
 ///
 /// NetworkManager ships each plugin as `libnm-vpn-plugin-<name>.so` under one
-/// of its plugin directories; WireGuard is built into NetworkManager and has
-/// no separate file. The scan is best-effort: a host with no readable plugin
-/// directory still lists WireGuard, and the Add sheet offers what exists.
+/// of its plugin directories. Native WireGuard is built into NetworkManager as
+/// its own connection type and has no plugin file, so it is never listed here.
+/// The scan is best-effort: a host with no readable plugin directory lists no
+/// plugin, and the pane shows the install/delegate reason.
 fn discover_vpn_plugins() -> Vec<VpnPluginData> {
     const DIRECTORIES: [&str; 5] = [
         "/usr/lib/NetworkManager",
@@ -1106,11 +1276,7 @@ fn discover_vpn_plugins() -> Vec<VpnPluginData> {
         "/usr/lib/aarch64-linux-gnu/NetworkManager",
         "/usr/local/lib/NetworkManager",
     ];
-    let mut plugins = vec![VpnPluginData {
-        service_type: "org.freedesktop.NetworkManager.wireguard".to_owned(),
-        label: "WireGuard".to_owned(),
-        builtin: true,
-    }];
+    let mut plugins = Vec::new();
     for directory in DIRECTORIES {
         let Ok(entries) = std::fs::read_dir(directory) else {
             continue;
@@ -1138,6 +1304,10 @@ fn discover_vpn_plugins() -> Vec<VpnPluginData> {
 }
 
 /// Add one plugin file's service type, if it matches NM's plugin naming.
+///
+/// A `wireguard` file is ignored: native WireGuard is a connection type, and a
+/// `vpn`/`org.freedesktop.NetworkManager.wireguard` profile is exactly the dead
+/// profile this task removes.
 fn add_plugin_file(plugins: &mut Vec<VpnPluginData>, path: &std::path::Path) {
     let Some(file) = path.file_name().and_then(|name| name.to_str()) else {
         return;
@@ -1148,6 +1318,9 @@ fn add_plugin_file(plugins: &mut Vec<VpnPluginData>, path: &std::path::Path) {
     else {
         return;
     };
+    if name == "wireguard" {
+        return;
+    }
     let service_type = format!("org.freedesktop.NetworkManager.{name}");
     if plugins
         .iter()
@@ -1265,10 +1438,49 @@ pub fn vpn_connection_from_settings(
         path: path.to_owned(),
         id,
         uuid,
-        kind,
+        kind: kind.clone(),
         service_type,
         autoconnect,
+        needs_setup: vpn_needs_setup(&kind, settings),
     })
+}
+
+/// Whether a VPN settings map still lacks what it needs to connect.
+///
+/// A plugin profile created by the pane's Add path carries only the remote and
+/// must be finished in the editor; a profile that already has a credential
+/// field (username, certificate, key, PSK, or a static key) is complete. A
+/// native WireGuard profile needs at least one peer; the private key is a
+/// secret and is not returned by `GetSettings`, so the peer list is the
+/// observable half.
+pub fn vpn_needs_setup(
+    kind: &str,
+    settings: &HashMap<String, HashMap<String, OwnedValue>>,
+) -> bool {
+    if kind == "wireguard" {
+        let Some(wireguard) = settings.get("wireguard") else {
+            return true;
+        };
+        let Some(peers) = wireguard.get("peers") else {
+            return true;
+        };
+        return Vec::<HashMap<String, OwnedValue>>::try_from(peers.clone())
+            .map(|peers| peers.is_empty())
+            .unwrap_or(true);
+    }
+    let Some(vpn) = settings.get("vpn") else {
+        return true;
+    };
+    const CREDENTIAL_KEYS: [&str; 7] = [
+        "username",
+        "cert",
+        "key",
+        "ca",
+        "psk",
+        "static-key",
+        "connection-type",
+    ];
+    !CREDENTIAL_KEYS.iter().any(|key| vpn.contains_key(*key))
 }
 
 /// A string out of one settings value.
@@ -1614,5 +1826,108 @@ mod tests {
             classify_vpn_error(error),
             VpnOutcome::Failed(AdapterError::new("NetworkManager: unknown connection"))
         );
+    }
+
+    #[test]
+    fn a_vpn_profile_without_credentials_needs_setup() {
+        let settings = settings_map(
+            "vpn",
+            "Work VPN",
+            "11112222",
+            Some("org.freedesktop.NetworkManager.openvpn"),
+        );
+        assert!(vpn_needs_setup("vpn", &settings));
+        let connection =
+            vpn_connection_from_settings("/org/freedesktop/NetworkManager/Settings/1", &settings)
+                .expect("a vpn connection");
+        assert!(connection.needs_setup);
+    }
+
+    #[test]
+    fn a_vpn_profile_with_a_credential_field_is_complete() {
+        let mut settings = settings_map(
+            "vpn",
+            "Work VPN",
+            "11112222",
+            Some("org.freedesktop.NetworkManager.openvpn"),
+        );
+        settings
+            .get_mut("vpn")
+            .expect("vpn table")
+            .insert("username".to_owned(), owned(Value::from("alice")));
+        assert!(!vpn_needs_setup("vpn", &settings));
+    }
+
+    #[test]
+    fn a_wireguard_profile_needs_a_peer() {
+        let settings = settings_map("wireguard", "Home", "3333", None);
+        assert!(vpn_needs_setup("wireguard", &settings));
+
+        let mut complete = settings.clone();
+        let mut peer: HashMap<String, OwnedValue> = HashMap::new();
+        peer.insert("public-key".to_owned(), owned(Value::from("peer-key")));
+        peer.insert(
+            "endpoint".to_owned(),
+            owned(Value::from("vpn.example:51820")),
+        );
+        let mut wireguard: HashMap<String, OwnedValue> = HashMap::new();
+        wireguard.insert("peers".to_owned(), owned(Value::from(vec![peer])));
+        complete.insert("wireguard".to_owned(), wireguard);
+        assert!(!vpn_needs_setup("wireguard", &complete));
+    }
+
+    #[test]
+    fn a_native_wireguard_profile_is_typed_wireguard_not_vpn() {
+        let spec = WireGuardSpec {
+            name: "Home WG".to_owned(),
+            private_key: "private".to_owned(),
+            address: "10.7.0.2/32".to_owned(),
+            peer_public_key: "public".to_owned(),
+            endpoint: "vpn.example:51820".to_owned(),
+            dns: vec!["1.1.1.1".to_owned()],
+            mtu: Some(1420),
+        };
+        let settings = wireguard_settings(&spec);
+        assert_eq!(settings["connection"]["type"], Value::from("wireguard"));
+        assert!(!settings.contains_key("vpn"));
+        assert_eq!(settings["wireguard"]["private-key"], Value::from("private"));
+        assert_eq!(settings["wireguard"]["mtu"], Value::from(1420u32));
+        assert_eq!(settings["ipv4"]["method"], Value::from("manual"));
+        assert_eq!(
+            settings["ipv4"]["dns-data"],
+            Value::from(vec!["1.1.1.1".to_owned()])
+        );
+        let peers = settings["wireguard"]["peers"].clone();
+        let peers: Vec<HashMap<String, Value<'static>>> = Vec::try_from(peers).expect("peer list");
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0]["public-key"], Value::from("public"));
+        assert_eq!(peers[0]["endpoint"], Value::from("vpn.example:51820"));
+    }
+
+    #[test]
+    fn cidr_split_is_total() {
+        assert_eq!(split_cidr("10.7.0.2/32"), Some(("10.7.0.2".to_owned(), 32)));
+        assert_eq!(split_cidr("10.7.0.2"), None);
+        assert_eq!(split_cidr("10.7.0.2/129"), None);
+        assert_eq!(split_cidr("/24"), None);
+    }
+
+    #[test]
+    fn a_wireguard_plugin_file_is_not_a_vpn_plugin() {
+        let mut plugins = Vec::new();
+        add_plugin_file(
+            &mut plugins,
+            std::path::Path::new("/usr/lib/NetworkManager/libnm-vpn-plugin-wireguard.so"),
+        );
+        add_plugin_file(
+            &mut plugins,
+            std::path::Path::new("/usr/lib/NetworkManager/libnm-vpn-plugin-openvpn.so"),
+        );
+        assert_eq!(plugins.len(), 1);
+        assert_eq!(
+            plugins[0].service_type,
+            "org.freedesktop.NetworkManager.openvpn"
+        );
+        assert!(!plugins[0].builtin);
     }
 }

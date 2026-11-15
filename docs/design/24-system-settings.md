@@ -564,14 +564,14 @@ Owner: NetworkManager + firewall adapter. Absence: per-service rows show
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Services | Services | List + status dot | NM `Devices`/`ActiveConnection` | ship; green/yellow/red/gray dot |
-| VPN | VPN | Disclosure / top-level optional | NM VPN | ship; the optional top-level pane appears when a profile exists, Network → VPN otherwise |
-| Firewall | Firewall | Toggle + Options | firewall adapter | ship; firewalld/ufw, nftables unavailable; independent of NM |
+| VPN | VPN | Disclosure / top-level optional | NM VPN | ship; native WireGuard is a connection type, plugin Add only when the editor can finish it; the optional top-level pane appears when a profile exists |
+| Firewall | Firewall | Toggle + Options | firewall adapter | ship; firewalld/ufw status unprivileged where the host exposes it, nftables/iptables read-only/delegate; independent of NM |
 | Other Services | Other services | List | NM devices | ship |
 | Options (⋯) | Service actions | Menu | NM | ship; activate/deactivate, priority, make inactive, delete, add |
 | Advanced… | Details… | Sheet | NM | ship; TCP/IP, DNS, search domains, proxies, hardware, IPv6, metered, MAC randomization, 802.1X |
 | Locations | Profiles | Popup/sheet | NM `Settings.Connection` | adapt |
 | — | Firewall options | Sheet | firewall adapter | ship; open ports, services, zones/rules, backend |
-| — | Add service… | Sheet | NM `AddConnection` | ship; Ethernet, Wi-Fi, VPN, bridge, bond, VLAN |
+| — | Add service… | Sheet | NM `AddConnection` | ship; Ethernet, Wi-Fi, bridge, bond, VLAN (VPN is added from the VPN section so it can be finished) |
 
 **Landed (T272).** The Network pane is the Tahoe service list:
 
@@ -597,18 +597,55 @@ Owner: NetworkManager + firewall adapter. Absence: per-service rows show
   disconnects, toggles auto-connect, shows an Info sheet, and adds a
   WireGuard/OpenVPN profile. When no profile exists the pane leaves the
   sidebar and Network → VPN remains the entry point.
-- **Add Service** offers Ethernet, Wi-Fi, VPN, bridge, bond, and VLAN with
+- **Add Service** offers Ethernet, Wi-Fi, bridge, bond, and VLAN with
   labelled fields and inline validation; a failed add reports its reason and
-  creates no row. Every Network/VPN write reports `applied`, `denied`,
-  `failed`, or `absent`; a failed write leaves the view untouched and shows
-  the reason.
+  creates no row. VPN is added from the VPN section so it can be completed.
+  Every Network/VPN write reports `applied`, `denied`, `failed`, or `absent`;
+  a failed write leaves the view untouched and shows the reason.
 - The sections stay visible when NetworkManager, VPN, or the firewall is
   absent. Only the affected controls disable, each with a reason.
 
+**Landed (T272a).** The three writes that cross a distro boundary are honest:
+
+- **Native WireGuard.** Plugin discovery lists only installed
+  `libnm-vpn-plugin-*.so` packages; `org.freedesktop.NetworkManager.wireguard`
+  is never a plugin and no `vpn`/WireGuard service-type profile is written.
+  The Add form's WireGuard entry creates a native `wireguard` connection from
+  the private key, local address, and one peer (public key + endpoint), with
+  optional DNS/MTU. The result is connectable immediately.
+- **No dead plugin profiles.** A plugin entry is offered only when the plugin
+  is installed and `nm-connection-editor` exists. Add creates the profile and
+  hands it to the editor; the row reads "Needs setup", its connect/auto
+  controls are disabled, and "Complete Setup…" reopens the editor. A host with
+  no plugin, no native WireGuard, and no editor shows the install/delegate
+  reason and no Add control.
+- **Firewall reads without passwordless sudo.** ufw falls back to
+  `systemctl show -p ActiveState --value ufw` and `/etc/ufw/ufw.conf` when
+  `ufw status` is refused, so the On/Off toggle works for a normal user and
+  the rules row names `sudo ufw status verbose`. nftables reads
+  `/etc/nftables.conf` when `nft list ruleset` is refused and stays
+  read-only/delegate. An iptables-only host reports "iptables rules present;
+  no supported manager" (or that the rules cannot be read unprivileged) with
+  `sudo iptables -S`; only a host with no manager says "No firewall detected".
+- **Write auth is explicit.** Firewall writes keep the `pkexec` fallback and
+  the denial/failure outcomes; the options sheet says each change may prompt.
+  A persistent polkit helper is a separate decision.
+
+**OPEN (T272a).** The live host walk is still human evidence, not a backend
+gap: add and complete an OpenVPN profile on a host with the plugin, create and
+connect a native WireGuard profile on a host with the kernel module, and open
+Network as a normal user on Ubuntu and an nftables host. Rerun the headless
+evidence with `make t272a-network-capability-capture`; on the host inspect with
+`nmcli connection show`, `ufw status verbose`, `nft list ruleset`, and
+`iptables -S`. No backend is left `OPEN`: ufw/nftables/iptables rules that need
+privilege are delegated with their exact command by design.
+
 Tests: `tst_settings_network`, `tst_settings_vpn`, `tst_settings_absence`;
 `make t272-network-capture` writes the services/details/firewall/VPN/
-add-service/absence stills in light/dark. The live Wayland walk (details,
-reorder, firewall with NM stopped, add a VPN, stop each adapter) is T284's.
+add-service/absence stills in light/dark, and
+`make t272a-network-capability-capture` writes the firewall backend and VPN
+capability states. The live Wayland walk (details, reorder, firewall with NM
+stopped, add a VPN, stop each adapter) is T284's.
 
 
 ### 4.4 Battery — T273

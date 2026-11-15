@@ -41,11 +41,19 @@ public:
     // `uuid`. The host re-reads and pushes the new view.
     virtual void connectVpn(const QString &uuid) = 0;
     virtual void disconnectVpn(const QString &uuid) = 0;
-    // Add a saved VPN for `plugin` (a NetworkManager service type). The pane's
-    // MVP Add sheet supplies a name and an optional gateway; credentials are
-    // edited in the full connection editor, which is out of this task's scope.
+    // Add a saved VPN for `plugin` (a NetworkManager service type). The pane
+    // supplies a name and an optional gateway; the profile is created
+    // incomplete and handed to the installed editor.
     virtual void addVpn(const QString &plugin, const QString &name,
                         const QString &gateway) = 0;
+    // Add a complete native WireGuard profile (NetworkManager's `wireguard`
+    // type, never a `vpn`/WireGuard service type).
+    virtual void addWireguard(const QString &name, const QString &privateKey,
+                              const QString &address, const QString &peerPublicKey,
+                              const QString &endpoint, const QString &dns,
+                              int mtu) = 0;
+    // Open the installed editor for an incomplete profile.
+    virtual void editVpn(const QString &uuid) = 0;
     // Change whether the saved VPN comes up automatically.
     virtual void setAutoconnect(const QString &uuid, bool enabled) = 0;
     // Test seam: restore the fixture's initial state. A no-op on the live
@@ -87,6 +95,11 @@ public:
     void disconnectVpn(const QString &uuid) override;
     void addVpn(const QString &plugin, const QString &name,
                 const QString &gateway) override;
+    void addWireguard(const QString &name, const QString &privateKey,
+                      const QString &address, const QString &peerPublicKey,
+                      const QString &endpoint, const QString &dns,
+                      int mtu) override;
+    void editVpn(const QString &uuid) override;
     void setAutoconnect(const QString &uuid, bool enabled) override;
 
 private:
@@ -119,6 +132,11 @@ public:
     void disconnectVpn(const QString &uuid) override;
     void addVpn(const QString &plugin, const QString &name,
                 const QString &gateway) override;
+    void addWireguard(const QString &name, const QString &privateKey,
+                      const QString &address, const QString &peerPublicKey,
+                      const QString &endpoint, const QString &dns,
+                      int mtu) override;
+    void editVpn(const QString &uuid) override;
     void setAutoconnect(const QString &uuid, bool enabled) override;
     void resetForTest() override;
     void setFixture(const QString &mode) override;
@@ -136,14 +154,17 @@ private:
         QString kindLabel;
         bool connected = false;
         bool autoconnect = false;
+        bool needsSetup = false;
     };
     struct Plugin {
         QString serviceType;
         QString label;
-        bool builtin = false;
     };
     QVector<Connection> m_connections;
     QVector<Plugin> m_plugins;
+    bool m_wireguardNative = true;
+    bool m_editorAvailable = true;
+    QString m_editor = QStringLiteral("nm-connection-editor");
     bool m_readOnly = false;
     QString m_readOnlyNote;
     QString m_failOperation;

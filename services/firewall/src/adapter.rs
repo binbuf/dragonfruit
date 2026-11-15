@@ -270,10 +270,7 @@ mod tests {
             adapter.close_port(Port::new(22, Protocol::Tcp)),
             FirewallResult::Applied
         );
-        assert_eq!(
-            adapter.open_service("mdns"),
-            FirewallResult::Applied
-        );
+        assert_eq!(adapter.open_service("mdns"), FirewallResult::Applied);
 
         adapter.source_mut().deny_writes("not authorized");
         assert_eq!(
@@ -308,9 +305,6 @@ mod tests {
         assert_eq!(snapshot.backend, FirewallBackend::Nftables);
         assert!(!snapshot.status_known);
         assert_eq!(snapshot.label(), "Unavailable");
-        assert_eq!(
-            adapter.set_enabled(true),
-            FirewallResult::Unsupported
-        );
+        assert_eq!(adapter.set_enabled(true), FirewallResult::Unsupported);
     }
 }

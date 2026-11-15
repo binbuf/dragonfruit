@@ -19,6 +19,9 @@ pub struct FirewallData {
     pub open_ports: Vec<Port>,
     /// The open service rules.
     pub open_services: Vec<String>,
+    /// Whether the host exposes rule content (from a readable config or a
+    /// successful unprivileged listing) even when the manager has no toggle.
+    pub rules_present: bool,
     /// Why the status is unavailable, or a manager note.
     pub note: Option<String>,
 }
@@ -108,6 +111,7 @@ impl MockFirewall {
                     Port::new(443, dragonfruit_distro_adapters::Protocol::Tcp),
                 ],
                 open_services: vec!["ssh".to_owned(), "https".to_owned()],
+                rules_present: true,
                 note: None,
             },
             failure: None,
@@ -126,9 +130,59 @@ impl MockFirewall {
         mock.data.default_zone = None;
         mock.data.open_ports.clear();
         mock.data.open_services.clear();
-        mock.data.note =
-            Some("nftables has no service status; enable/disable is managed by the host.".to_owned());
+        mock.data.rules_present = true;
+        mock.data.note = Some(
+            "nftables rules are present; manage them with `sudo nft list ruleset`.".to_owned(),
+        );
         mock
+    }
+
+    /// A normal user on Ubuntu: ufw's on/off state is readable from the unit
+    /// and `/etc/ufw/ufw.conf`, but the rule table needs administrator rights.
+    pub fn ufw_read_only_rules() -> Self {
+        let mut mock = MockFirewall::present();
+        mock.data.backend = FirewallBackend::Ufw;
+        mock.data.enabled = true;
+        mock.data.status_known = true;
+        mock.data.default_zone = None;
+        mock.data.open_ports.clear();
+        mock.data.open_services.clear();
+        mock.data.rules_present = false;
+        mock.data.note = Some(
+            "ufw rules need administrator rights; manage them with `sudo ufw status verbose`."
+                .to_owned(),
+        );
+        mock
+    }
+
+    /// A host where only iptables is present. It has no supported manager and
+    /// no toggle; the pane must name it instead of saying "No firewall".
+    pub fn iptables_only() -> Self {
+        MockFirewall::present_with_data(FirewallData {
+            backend: FirewallBackend::Iptables,
+            enabled: false,
+            status_known: false,
+            default_zone: None,
+            open_ports: Vec::new(),
+            open_services: Vec::new(),
+            rules_present: true,
+            note: Some(
+                "iptables rules present; no supported manager. Inspect with `sudo iptables -S`."
+                    .to_owned(),
+            ),
+        })
+    }
+
+    /// A present manager that serves `data` and mutates on writes.
+    pub fn present_with_data(data: FirewallData) -> Self {
+        MockFirewall {
+            present: true,
+            data,
+            failure: None,
+            deny: None,
+            reads: 0,
+            writes: 0,
+        }
     }
 
     /// A present manager that fails every read.
@@ -180,9 +234,7 @@ impl MockFirewall {
         if !self.data.status_known {
             return Some(FirewallWriteOutcome::Unsupported);
         }
-        self.deny
-            .clone()
-            .map(FirewallWriteOutcome::Denied)
+        self.deny.clone().map(FirewallWriteOutcome::Denied)
     }
 }
 
@@ -260,18 +312,12 @@ mod tests {
         let read = mock.read().unwrap().unwrap();
         assert_eq!(read.backend, FirewallBackend::Firewalld);
         assert_eq!(read.open_ports.len(), 2);
-        assert_eq!(
-            mock.set_enabled(false),
-            FirewallWriteOutcome::Applied
-        );
+        assert_eq!(mock.set_enabled(false), FirewallWriteOutcome::Applied);
         assert_eq!(
             mock.open_port(Port::new(8080, dragonfruit_distro_adapters::Protocol::Tcp)),
             FirewallWriteOutcome::Applied
         );
-        assert_eq!(
-            mock.close_service("https"),
-            FirewallWriteOutcome::Applied
-        );
+        assert_eq!(mock.close_service("https"), FirewallWriteOutcome::Applied);
         assert!(!mock.data().enabled);
         assert_eq!(mock.data().open_ports.len(), 3);
         assert_eq!(mock.data().open_services, vec!["ssh"]);
@@ -292,10 +338,29 @@ mod tests {
     #[test]
     fn an_unavailable_status_refuses_writes() {
         let mut mock = MockFirewall::nftables_unavailable();
-        assert_eq!(
-            mock.set_enabled(true),
-            FirewallWriteOutcome::Unsupported
-        );
+        assert_eq!(mock.set_enabled(true), FirewallWriteOutcome::Unsupported);
         assert!(!mock.data().enabled);
+    }
+
+    #[test]
+    fn a_normal_user_ufw_read_keeps_the_toggle_and_names_the_rules_command() {
+        let mut mock = MockFirewall::ufw_read_only_rules();
+        let read = mock.read().unwrap().unwrap();
+        assert_eq!(read.backend, FirewallBackend::Ufw);
+        assert!(read.enabled);
+        assert!(read.status_known);
+        assert!(!read.rules_present);
+        assert!(read.note.unwrap().contains("sudo ufw status verbose"));
+    }
+
+    #[test]
+    fn iptables_only_is_present_and_named_not_absent() {
+        let mut mock = MockFirewall::iptables_only();
+        let read = mock.read().unwrap().unwrap();
+        assert_eq!(read.backend, FirewallBackend::Iptables);
+        assert!(!read.status_known);
+        assert!(read.rules_present);
+        assert!(read.note.unwrap().contains("iptables rules present"));
+        assert_eq!(mock.set_enabled(true), FirewallWriteOutcome::Unsupported);
     }
 }

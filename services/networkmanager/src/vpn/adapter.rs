@@ -7,7 +7,7 @@ use dragonfruit_system_adapters::{
 };
 
 use crate::vpn::model::VpnSnapshot;
-use crate::vpn::source::{VpnOutcome, VpnRequest, VpnSource};
+use crate::vpn::source::{VpnOutcome, VpnRequest, VpnSource, WireGuardSpec};
 
 /// How much of the VPN adapter the session may use.
 ///
@@ -114,9 +114,11 @@ impl<S: VpnSource> VpnAdapter<S> {
         match self.source.read() {
             Ok(Some(data)) => {
                 self.subscription.subscribed();
-                let plugins = self.source.plugins();
-                self.state =
-                    AdapterState::available(VpnSnapshot::from_data_with_plugins(&data, &plugins));
+                let capabilities = self.source.capabilities();
+                self.state = AdapterState::available(VpnSnapshot::from_data_with_capabilities(
+                    &data,
+                    &capabilities,
+                ));
                 self.subscription.changed();
             }
             Ok(None) => {
@@ -158,9 +160,21 @@ impl<S: VpnSource> VpnAdapter<S> {
     }
 
     /// Add a saved VPN connection for `plugin` (a service type) with `name`
-    /// and an optional gateway. One explicit write.
+    /// and an optional gateway. One explicit write. The profile is created
+    /// incomplete; the source hands it to the installed editor.
     pub fn add(&mut self, plugin: &str, name: &str, gateway: Option<&str>) -> VpnResult {
         self.write_other(|source| source.add(plugin, name, gateway))
+    }
+
+    /// Add a complete native WireGuard connection. One explicit write.
+    pub fn add_wireguard(&mut self, spec: &WireGuardSpec) -> VpnResult {
+        self.write_other(|source| source.add_wireguard(spec))
+    }
+
+    /// Open the installed editor for an incomplete profile. One explicit
+    /// write; the profile stays incomplete until the editor's next read.
+    pub fn edit(&mut self, uuid: &str) -> VpnResult {
+        self.write_other(|source| source.edit(uuid))
     }
 
     /// Change whether the saved VPN comes up automatically. One explicit
@@ -301,6 +315,7 @@ mod tests {
             kind: "vpn".to_owned(),
             service_type: Some("org.freedesktop.NetworkManager.openvpn".to_owned()),
             autoconnect: false,
+            needs_setup: false,
         }
     }
 
@@ -490,5 +505,73 @@ mod tests {
         assert_eq!(adapter.connect("aaa"), VpnResult::Absent);
         assert!(adapter.state().is_unavailable());
         assert!(!adapter.state().slot(AdapterId::VPN).visible);
+    }
+
+    #[test]
+    fn capabilities_reach_the_snapshot_and_a_wireguard_add_is_complete() {
+        let mut adapter = VpnAdapter::new(
+            MockVpn::present(data())
+                .with_wireguard_native(true)
+                .with_editor(Some("nm-connection-editor")),
+        );
+        adapter.refresh();
+        let snapshot = adapter.snapshot().unwrap();
+        assert!(snapshot.wireguard_native);
+        assert!(snapshot.editor_available());
+
+        let spec = WireGuardSpec {
+            name: "Home WG".to_owned(),
+            private_key: "private".to_owned(),
+            address: "10.7.0.2/32".to_owned(),
+            peer_public_key: "public".to_owned(),
+            endpoint: "vpn.example:51820".to_owned(),
+            dns: Vec::new(),
+            mtu: None,
+        };
+        assert_eq!(adapter.add_wireguard(&spec), VpnResult::Accepted);
+        adapter.refresh();
+        let added = adapter
+            .snapshot()
+            .unwrap()
+            .connections
+            .iter()
+            .find(|connection| connection.id == "Home WG")
+            .expect("the added connection");
+        assert_eq!(added.kind, crate::vpn::model::VpnKind::WireGuard);
+        assert!(!added.needs_setup);
+        assert_eq!(adapter.source().wireguard_adds(), 1);
+    }
+
+    #[test]
+    fn a_plugin_add_stays_incomplete_until_the_editor_completes_it() {
+        let mut adapter =
+            VpnAdapter::new(MockVpn::present(data()).with_editor(Some("nm-connection-editor")));
+        adapter.refresh();
+        assert_eq!(
+            adapter.add("org.freedesktop.NetworkManager.openvpn", "Lab", None),
+            VpnResult::Accepted
+        );
+        adapter.refresh();
+        let added = adapter
+            .snapshot()
+            .unwrap()
+            .connections
+            .iter()
+            .find(|connection| connection.id == "Lab")
+            .expect("the added connection");
+        assert!(added.needs_setup);
+
+        let uuid = added.uuid.clone();
+        assert_eq!(adapter.edit(&uuid), VpnResult::Accepted);
+        adapter.refresh();
+        let completed = adapter
+            .snapshot()
+            .unwrap()
+            .connections
+            .iter()
+            .find(|connection| connection.uuid == uuid)
+            .expect("the completed connection");
+        assert!(!completed.needs_setup);
+        assert_eq!(adapter.source().edits(), 1);
     }
 }
