@@ -192,11 +192,35 @@ void MockUpdatesClient::resetForTest()
 {
     m_phase = QStringLiteral("available");
     m_updateCount = 1;
+    m_absent = false;
+    m_providerAvailable = true;
+    rebuild();
+}
+
+void MockUpdatesClient::setAbsentFixture(bool absent)
+{
+    if (m_absent == absent)
+        return;
+    m_absent = absent;
+    emit availableChanged(!m_absent);
+    emit changed(view());
+}
+
+void MockUpdatesClient::setProviderAvailableFixture(bool available)
+{
+    if (m_providerAvailable == available)
+        return;
+    m_providerAvailable = available;
     rebuild();
 }
 
 void MockUpdatesClient::rebuild()
 {
+    if (m_absent) {
+        m_view.clear();
+        emit changed(m_view);
+        return;
+    }
     QVariantMap view;
     view.insert(QStringLiteral("kind"), QStringLiteral("updates"));
     view.insert(QStringLiteral("state"), QStringLiteral("available"));
@@ -214,7 +238,7 @@ void MockUpdatesClient::rebuild()
     view.insert(QStringLiteral("diskBytes"), qlonglong(512) * 1024 * 1024 * 1024);
     view.insert(QStringLiteral("diskLabel"), QStringLiteral("512 GB"));
 
-    view.insert(QStringLiteral("updatesAvailable"), true);
+    view.insert(QStringLiteral("updatesAvailable"), m_providerAvailable);
     view.insert(QStringLiteral("glyph"), QStringLiteral("software-update"));
     view.insert(QStringLiteral("phase"), m_phase);
     view.insert(QStringLiteral("busy"), false);
@@ -223,15 +247,17 @@ void MockUpdatesClient::rebuild()
     view.insert(QStringLiteral("updateCount"), m_updateCount);
     view.insert(QStringLiteral("securityCount"),
                 m_phase == QStringLiteral("available") ? 1 : 0);
-    view.insert(QStringLiteral("lastCheckedMs"), 1000);
+    view.insert(QStringLiteral("lastCheckedMs"), qlonglong(1763000000000));
     view.insert(QStringLiteral("label"),
-                m_phase == QStringLiteral("reboot-required")
+                !m_providerAvailable
+                    ? QStringLiteral("No update provider")
+                : m_phase == QStringLiteral("reboot-required")
                     ? QStringLiteral("Restart Required")
                 : m_updateCount > 0 ? QStringLiteral("1 Update Available")
                                     : QStringLiteral("Up to Date"));
 
     QVariantList updates;
-    if (m_updateCount > 0) {
+    if (m_updateCount > 0 && m_providerAvailable) {
         QVariantMap update;
         update.insert(QStringLiteral("id"), QStringLiteral("glibc"));
         update.insert(QStringLiteral("name"), QStringLiteral("glibc"));

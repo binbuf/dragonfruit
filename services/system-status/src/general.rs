@@ -90,6 +90,12 @@ impl<S: GeneralSource> GeneralHost<S> {
         general_report(self.adapter.open_restore())
     }
 
+    /// Open an installed password provider's application. One explicit write;
+    /// Settings never reads or stores a secret.
+    pub fn open_password_manager(&mut self, id: &str) -> Value {
+        general_report(self.adapter.open_password_manager(id))
+    }
+
     /// The adapter, read-only, for tests.
     pub fn adapter(&self) -> &GeneralAdapter<S> {
         &self.adapter
@@ -138,6 +144,7 @@ pub fn general_snapshot_view(snapshot: &GeneralSnapshot) -> Value {
         "backup": backup_view(snapshot),
         "storage": storage_view(snapshot),
         "startup": startup_view(snapshot),
+        "passwords": passwords_view(snapshot),
         "errors": errors,
     })
 }
@@ -389,6 +396,53 @@ fn startup_view(snapshot: &GeneralSnapshot) -> Value {
     })
 }
 
+fn passwords_view(snapshot: &GeneralSnapshot) -> Value {
+    let Some(passwords) = &snapshot.passwords else {
+        return json!({
+            "state": sub_state(false, snapshot.error("passwords")),
+            "error": snapshot.error("passwords"),
+        });
+    };
+    let providers: Vec<Value> = passwords
+        .providers
+        .iter()
+        .map(|provider| {
+            json!({
+                "id": provider.id,
+                "label": provider.label,
+                "installed": provider.installed,
+                "active": provider.active,
+                "command": provider.command,
+                "description": provider.description,
+            })
+        })
+        .collect();
+    let installed = providers
+        .iter()
+        .filter(|provider| provider["installed"] == true)
+        .count();
+    let label = if installed == 0 {
+        "No password provider".to_owned()
+    } else if passwords.secret_service_available {
+        format!(
+            "{installed} provider{}",
+            if installed == 1 { "" } else { "s" }
+        )
+    } else {
+        "Secret Service not running".to_owned()
+    };
+    json!({
+        "state": "available",
+        "providers": providers,
+        "installedCount": installed,
+        "secretServiceAvailable": passwords.secret_service_available,
+        "keyringLocked": passwords.keyring_lock,
+        "keyringLabel": passwords.keyring_label,
+        "message": passwords.message,
+        "label": label,
+    })
+}
+
 /// A short binary size label for the General row descriptions.
 pub fn bytes_label(bytes: u64) -> String {
     const GIB: u64 = 1024 * 1024 * 1024;
@@ -442,6 +496,9 @@ mod tests {
         assert_eq!(view["backup"]["backend"], "timeshift");
         assert_eq!(view["storage"]["categories"].as_array().unwrap().len(), 3);
         assert_eq!(view["startup"]["bootMode"], "UEFI");
+        assert_eq!(view["passwords"]["state"], "available");
+        assert_eq!(view["passwords"]["providers"].as_array().unwrap().len(), 3);
+        assert_eq!(view["passwords"]["keyringLabel"], "Locked");
     }
 
     #[test]

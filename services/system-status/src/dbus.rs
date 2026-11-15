@@ -592,6 +592,14 @@ impl GeneralInterface {
     fn open_restore(&self) -> String {
         lock_general(&self.host).open_restore().to_string()
     }
+
+    /// Open an installed password provider's application. Returns the JSON
+    /// report. Settings never reads or stores a credential.
+    fn open_password_manager(&self, id: &str) -> String {
+        lock_general(&self.host)
+            .open_password_manager(id)
+            .to_string()
+    }
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Accounts")]

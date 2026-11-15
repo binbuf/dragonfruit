@@ -41,6 +41,9 @@ public:
     virtual void setSharingEnabled(const QString &id, bool enabled) = 0;
     virtual void runBackup(const QString &destination) = 0;
     virtual void openRestore() = 0;
+    // T269: open an installed password provider's application. Settings never
+    // reads or stores a secret; this is a delegate request only.
+    virtual void openPasswordManager(const QString &id) = 0;
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client.
     virtual void resetForTest() {}
@@ -71,6 +74,7 @@ public:
     void setSharingEnabled(const QString &id, bool enabled) override;
     void runBackup(const QString &destination) override;
     void openRestore() override;
+    void openPasswordManager(const QString &id) override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
@@ -105,6 +109,7 @@ public:
     void setSharingEnabled(const QString &id, bool enabled) override;
     void runBackup(const QString &destination) override;
     void openRestore() override;
+    void openPasswordManager(const QString &id) override;
     void resetForTest() override;
     // Test/capture seam: pretend the bridge host is absent/returned.
     void setAbsentFixture(bool absent);
@@ -116,6 +121,8 @@ private:
     QVariantMap m_view;
     QString m_lastTime;
     QString m_lastDestination;
+    QString m_lastPasswordManager;
     int m_restores = 0;
+    int m_passwordOpens = 0;
     bool m_absent = false;
 };

@@ -21,9 +21,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use dragonfruit_system_adapters::AdapterError;
 
 use crate::model::{
-    BackupBackend, BackupData, GeneralSnapshot, LocaleData, LoginData, LoginItem, SharingData,
-    SharingService, StartupDiskData, StorageCategory, StorageUsageData, TimeData, UserUnit,
-    VolumeUsage,
+    BackupBackend, BackupData, GeneralSnapshot, LocaleData, LoginData, LoginItem, PasswordData,
+    PasswordProvider, SharingData, SharingService, StartupDiskData, StorageCategory,
+    StorageUsageData, TimeData, UserUnit, VolumeUsage,
 };
 use crate::source::{GeneralOutcome, GeneralSource};
 
@@ -365,6 +365,72 @@ impl HostGeneral {
         Ok(disk)
     }
 
+    // The Autofill & Passwords inventory. It reads the Secret Service name
+    // owner and the installed manager executables; it never opens a secret
+    // item, reads a secret value, or stores one. A host with no provider is a
+    // valid answer with an explanatory message.
+    fn read_passwords(&self) -> Result<PasswordData, String> {
+        let owner = secret_service_owner();
+        let secret_service_available = owner.is_some();
+        let mut providers = Vec::new();
+        for candidate in PASSWORD_CANDIDATES {
+            let mut command = String::new();
+            for name in candidate.commands {
+                if program_path(name).is_some() {
+                    command = (*name).to_owned();
+                    break;
+                }
+            }
+            let installed = !command.is_empty();
+            let active = secret_service_available
+                && owner
+                    .as_deref()
+                    .map(|process| candidate.matches_process(process))
+                    .unwrap_or(false);
+            let launch = if program_path(candidate.launch).is_some() {
+                candidate.launch.to_owned()
+            } else {
+                String::new()
+            };
+            providers.push(PasswordProvider {
+                id: candidate.id.to_owned(),
+                label: candidate.label.to_owned(),
+                installed,
+                active,
+                command,
+                launch,
+                description: candidate.description.to_owned(),
+            });
+        }
+        let keyring_lock = if secret_service_available {
+            read_keyring_lock()
+        } else {
+            None
+        };
+        let keyring_label = match keyring_lock {
+            Some(true) => "Locked",
+            Some(false) => "Unlocked",
+            None => "Not reported",
+        }
+        .to_owned();
+        let message = if !providers.iter().any(|provider| provider.installed) {
+            "No password provider is installed. Autofill is unavailable until one is installed."
+                .to_owned()
+        } else if !secret_service_available {
+            "The Secret Service is not running, so the installed providers cannot share saved credentials."
+                .to_owned()
+        } else {
+            String::new()
+        };
+        Ok(PasswordData {
+            providers,
+            secret_service_available,
+            keyring_lock,
+            keyring_label,
+            message,
+        })
+    }
+
     fn write(&self, program: &str, args: &[&str]) -> GeneralOutcome {
         match run(program, args) {
             Ok(output) if output.success() => GeneralOutcome::Applied,
@@ -402,6 +468,7 @@ impl GeneralSource for HostGeneral {
         read_part!("backup", read_backup, backup);
         read_part!("storage", read_storage, storage);
         read_part!("startup", read_startup, startup);
+        read_part!("passwords", read_passwords, passwords);
         if !snapshot.has_data() && errors.is_empty() {
             return Ok(None);
         }
@@ -529,6 +596,19 @@ impl GeneralSource for HostGeneral {
             return spawn("pika-backup", &[]);
         }
         GeneralOutcome::Absent
+    }
+
+    fn open_password_manager(&mut self, id: &str) -> GeneralOutcome {
+        let Some(candidate) = PASSWORD_CANDIDATES
+            .iter()
+            .find(|candidate| candidate.id == id)
+        else {
+            return GeneralOutcome::Absent;
+        };
+        if program_path(candidate.launch).is_none() {
+            return GeneralOutcome::Absent;
+        }
+        spawn(candidate.launch, &[])
     }
 }
 
@@ -1046,6 +1126,152 @@ fn read_timeshift_config() -> (String, String, String) {
     (destination, schedule.to_owned(), last_run)
 }
 
+struct PasswordCandidate {
+    id: &'static str,
+    label: &'static str,
+    commands: &'static [&'static str],
+    process_prefixes: &'static [&'static str],
+    launch: &'static str,
+    description: &'static str,
+}
+
+impl PasswordCandidate {
+    fn matches_process(&self, process: &str) -> bool {
+        let process = process.to_ascii_lowercase();
+        self.process_prefixes
+            .iter()
+            .any(|prefix| process.starts_with(prefix))
+    }
+}
+
+// The password managers the host can inventory. Detection is executable
+// presence only; the pane never guesses that a manager has credentials.
+const PASSWORD_CANDIDATES: &[PasswordCandidate] = &[
+    PasswordCandidate {
+        id: "keyring",
+        label: "Desktop Keyring",
+        commands: &["gnome-keyring-daemon"], // df-allow-desktop-name: executable detection
+        process_prefixes: &["gnome-keyring"], // df-allow-desktop-name: process detection
+        launch: "seahorse",
+        description: "The desktop keyring and Secret Service provider.",
+    },
+    PasswordCandidate {
+        id: "kwallet",
+        label: "KWallet",
+        commands: &["kwalletd6", "kwalletd5"],
+        process_prefixes: &["kwalletd"],
+        launch: "kwalletmanager5",
+        description: "The desktop wallet and Secret Service provider.",
+    },
+    PasswordCandidate {
+        id: "keepassxc",
+        label: "KeePassXC",
+        commands: &["keepassxc"],
+        process_prefixes: &["keepassxc"],
+        launch: "keepassxc",
+        description: "A local password database with browser integration.",
+    },
+    PasswordCandidate {
+        id: "bitwarden",
+        label: "Bitwarden",
+        commands: &["bitwarden"],
+        process_prefixes: &["bitwarden"],
+        launch: "bitwarden",
+        description: "A hosted password manager with a desktop client.",
+    },
+];
+
+/// The Secret Service name owner's process name, when the session bus
+/// publishes it.
+pub fn secret_service_owner() -> Option<String> {
+    let output = run("busctl", &["--user", "--no-pager", "list", "--no-legend"]).ok()?;
+    if !output.success() {
+        return None;
+    }
+    parse_secret_service_owner(&output.stdout)
+}
+
+/// Parse `busctl --user list` output for the Secret Service owner.
+pub fn parse_secret_service_owner(text: &str) -> Option<String> {
+    for line in text.lines() {
+        let mut fields = line.split_whitespace();
+        if fields.next() != Some("org.freedesktop.secrets") {
+            continue;
+        }
+        // NAME PID PROCESS USER CONNECTION UNIT ACTIVE
+        let _pid = fields.next();
+        return fields.next().map(str::to_owned);
+    }
+    None
+}
+
+/// Read the Secret Service collections' lock state. `Some(true)` means every
+/// collection is locked, `Some(false)` means at least one is unlocked, and
+/// `None` means the service did not answer.
+fn read_keyring_lock() -> Option<bool> {
+    let collections = run(
+        "gdbus",
+        &[
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.secrets",
+            "--object-path",
+            "/org/freedesktop/secrets",
+            "--method",
+            "org.freedesktop.DBus.Properties.Get",
+            "org.freedesktop.Secret.Service",
+            "Collections",
+        ],
+    )
+    .ok()?;
+    if !collections.success() {
+        return None;
+    }
+    let paths = collection_paths(&collections.stdout);
+    if paths.is_empty() {
+        return None;
+    }
+    let mut saw_answer = false;
+    for path in paths {
+        let locked = run(
+            "gdbus",
+            &[
+                "call",
+                "--session",
+                "--dest",
+                "org.freedesktop.secrets",
+                "--object-path",
+                &path,
+                "--method",
+                "org.freedesktop.DBus.Properties.Get",
+                "org.freedesktop.Secret.Collection",
+                "Locked",
+            ],
+        );
+        let Ok(locked) = locked else { continue };
+        if !locked.success() {
+            continue;
+        }
+        saw_answer = true;
+        if locked.stdout.contains("<false>") {
+            return Some(false);
+        }
+    }
+    saw_answer.then_some(true)
+}
+
+/// The collection object paths in a `gdbus` `Collections` reply.
+pub fn collection_paths(text: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    for part in text.split('\'') {
+        if part.starts_with("/org/freedesktop/secrets/collection/") {
+            paths.push(part.to_owned());
+        }
+    }
+    paths
+}
+
 struct SharingCandidate {
     id: &'static str,
     name: &'static str,
@@ -1194,6 +1420,40 @@ mod tests {
             parse_unit_description("[Unit]\nDescription=Backup user files\n[Service]\n"),
             "Backup user files"
         );
+    }
+
+    #[test]
+    fn the_secret_service_owner_is_read_from_busctl() {
+        let owner = parse_secret_service_owner(
+            "NAME PID PROCESS USER CONNECTION UNIT ACTIVE\n\
+             org.freedesktop.secrets 421 keyring-d user :1.5 - active\n\
+             org.example.Other 7 other user :1.9 - active\n",
+        );
+        assert_eq!(owner.as_deref(), Some("keyring-d"));
+        assert_eq!(parse_secret_service_owner("NAME PID PROCESS\n"), None);
+    }
+
+    #[test]
+    fn collection_paths_are_extracted_from_the_gdbus_reply() {
+        let paths = collection_paths(
+            "(<[objectpath '/org/freedesktop/secrets/collection/login', \
+             objectpath '/org/freedesktop/secrets/collection/session']>,)",
+        );
+        assert_eq!(
+            paths,
+            vec![
+                "/org/freedesktop/secrets/collection/login".to_owned(),
+                "/org/freedesktop/secrets/collection/session".to_owned()
+            ]
+        );
+        assert!(collection_paths("(<>,)").is_empty());
+    }
+
+    #[test]
+    fn a_password_candidate_matches_its_process_prefix() {
+        let keepass = &PASSWORD_CANDIDATES[2];
+        assert!(keepass.matches_process("keepassxc"));
+        assert!(!keepass.matches_process("keyring-d"));
     }
 
     #[test]

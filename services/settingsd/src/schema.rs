@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 27;
+pub const SCHEMA_VERSION: u32 = 28;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1782,6 +1782,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "dragonfruit-system-status update provider",
         since: 20,
         summary: "Install the updates a check finds automatically; never enabled by default.",
+    },
+    KeySpec {
+        key: "defaults.passwordManager",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Autofill & Passwords provider selection",
+        since: 28,
+        summary: "The installed password manager Autofill delegates to; empty follows the active provider. No credential or secret is stored.",
     },
     KeySpec {
         key: "locale.calendar",

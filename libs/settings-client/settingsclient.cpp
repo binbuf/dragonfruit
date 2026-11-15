@@ -258,6 +258,7 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("clock.use24Hour"), false);
     values.insert(QStringLiteral("updates.auto"), false);
     values.insert(QStringLiteral("updates.autoInstall"), false);
+    values.insert(QStringLiteral("defaults.passwordManager"), QString());
     values.insert(QStringLiteral("locale.calendar"), QStringLiteral("gregorian"));
     values.insert(QStringLiteral("locale.temperature"), QStringLiteral("celsius"));
     values.insert(QStringLiteral("locale.measurement"), QStringLiteral("metric"));

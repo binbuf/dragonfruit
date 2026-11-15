@@ -35,6 +35,59 @@ Item {
         ? usage.categories : []
     readonly property bool usageAvailable: Settings.generalAvailable
         && usage.state === "available"
+    readonly property real usageTotal: Number(root.usage.totalBytes || 0)
+    readonly property real usageUsed: Number(root.usage.usedBytes || 0)
+    readonly property real usageFree: Number(root.usage.freeBytes
+        || Math.max(0, root.usageTotal - root.usageUsed))
+    readonly property real usageFraction: root.usageTotal > 0
+        ? Math.min(1, root.usageUsed / root.usageTotal) : 0
+    // The recommendations are derived from the live category totals, not a
+    // static marketing list. They name the action and the owner.
+    readonly property var recommendations: {
+        var out = [];
+        if (root.usageAvailable && root.usageTotal > 0
+                && root.usageFree / root.usageTotal < 0.1) {
+            out.push({
+                id: "low-space",
+                label: qsTr("Free up space"),
+                description: qsTr("Less than 10% of the volume is free.")
+            });
+        }
+        for (var i = 0; i < root.usageCategories.length; ++i) {
+            var category = root.usageCategories[i];
+            if (Number(category.bytes) >= 10 * 1024 * 1024 * 1024) {
+                out.push({
+                    id: "review-" + category.id,
+                    label: qsTr("Review %1").arg(category.label),
+                    description: qsTr("%1 is using %2. Open the Files app to review it.")
+                        .arg(category.label).arg(root.formatBytes(category.bytes))
+                });
+            }
+        }
+        out.push({
+            id: "trash",
+            label: qsTr("Empty the Trash"),
+            description: qsTr("Deleted files stay on the volume until the Trash is emptied.")
+        });
+        return out;
+    }
+
+    // The capacity of the volume a row names, from the General usage read.
+    function volumeCapacity(volume) {
+        if (root.usage.volumes === undefined)
+            return "";
+        for (var i = 0; i < root.usage.volumes.length; ++i) {
+            var candidate = root.usage.volumes[i];
+            if (volume.mountPoint !== undefined && volume.mountPoint !== null
+                    && String(candidate.mountPoint) === String(volume.mountPoint))
+                return root.formatBytes(candidate.totalBytes) + " · "
+                    + root.formatBytes(candidate.availableBytes) + " " + qsTr("free");
+            if (volume.device !== undefined && String(candidate.device) === String(volume.device))
+                return root.formatBytes(candidate.totalBytes) + " · "
+                    + root.formatBytes(candidate.availableBytes) + " " + qsTr("free");
+        }
+        return "";
+    }
 
     // The second hide rule (ADR 0119): UDisks2 absent (not available) or a
     // running daemon with no mountable volume (`present: false`).
@@ -61,6 +114,12 @@ Item {
     property alias usageRepeater: usageRepeater
     property alias usageAbsenceNote: usageAbsenceNote
     property alias manageRow: manageRow
+    property alias manageButton: manageButton
+    property alias usageChart: usageChart
+    property alias usageChartRepeater: usageChartRepeater
+    property alias usageSummaryText: usageSummaryText
+    property alias recommendationsGroup: recommendationsGroup
+    property alias recommendationsRepeater: recommendationsRepeater
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -111,6 +170,50 @@ Item {
             title: qsTr("Usage")
             visible: root.usageAvailable
 
+            // The stacked category chart: one segment per category plus free
+            // space. Widths come from the live byte totals, never a preset.
+            Rectangle {
+                id: usageChart
+                objectName: "storageUsageChart"
+                width: parent.width
+                height: 18
+                radius: 6
+                color: Theme.color.controlFill
+                clip: true
+
+                Row {
+                    anchors.fill: parent
+                    Repeater {
+                        id: usageChartRepeater
+                        model: root.usageCategories
+                        delegate: Rectangle {
+                            required property var modelData
+                            required property int index
+                            width: root.usageTotal > 0
+                                ? usageChart.width * Math.min(1,
+                                    Number(modelData.bytes) / root.usageTotal)
+                                : 0
+                            height: usageChart.height
+                            color: index % 2 === 0
+                                ? Theme.color.accent
+                                : Qt.lighter(Theme.color.accent, 1.25)
+                        }
+                    }
+                }
+            }
+
+            Text {
+                id: usageSummaryText
+                objectName: "storageUsageSummary"
+                width: parent.width
+                text: qsTr("%1 used of %2 · %3 available")
+                    .arg(root.formatBytes(root.usageUsed))
+                    .arg(root.formatBytes(root.usageTotal))
+                    .arg(root.formatBytes(root.usageFree))
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
             Text {
                 width: parent.width
                 visible: root.usageCategories.length === 0
@@ -153,12 +256,35 @@ Item {
                 objectName: "storageManageRow"
                 width: parent.width
                 label: qsTr("Manage storage…")
-                description: qsTr("Formatting and partitioning are delegated to the Files app and the disk utility.")
+                description: qsTr("Opens the Files app; formatting and partitioning are delegated to the disk utility.")
                 showSeparator: false
-                controlData: Text {
-                    text: qsTr("Delegated")
-                    color: Theme.color.textTertiary
-                    font.pixelSize: Theme.controls.button.fontSize
+                controlData: Button {
+                    id: manageButton
+                    objectName: "storageManageButton"
+                    text: qsTr("Open")
+                    onClicked: Qt.openUrlExternally("file:///")
+                }
+            }
+        }
+
+        // ── Recommendations ───────────────────────────────────────────────
+        SettingsGroup {
+            id: recommendationsGroup
+            objectName: "storageRecommendations"
+            width: parent.width
+            title: qsTr("Recommendations")
+            visible: root.usageAvailable && root.recommendations.length > 0
+
+            Repeater {
+                id: recommendationsRepeater
+                model: root.recommendations
+                delegate: SettingsRow {
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    showSeparator: index < root.recommendations.length - 1
+                    label: modelData.label
+                    description: modelData.description
                 }
             }
         }
@@ -210,10 +336,15 @@ Item {
                         Text {
                             objectName: "storageVolumeDetail"
                             width: parent.width
-                            text: volumeRow.modelData.mounted
-                                ? volumeRow.modelData.mountPoint
-                                : (volumeRow.modelData.filesystem + " "
-                                   + qsTr("(not mounted)"))
+                            text: {
+                                var base = volumeRow.modelData.mounted
+                                    ? volumeRow.modelData.mountPoint
+                                    : (volumeRow.modelData.filesystem + " "
+                                       + qsTr("(not mounted)"));
+                                var capacity = root.volumeCapacity(volumeRow.modelData);
+                                return capacity.length > 0
+                                    ? base + " · " + capacity : base;
+                            }
                             color: Theme.color.textSecondary
                             font.pixelSize: Theme.primitive.font.sizeSm
                             elide: Text.ElideRight

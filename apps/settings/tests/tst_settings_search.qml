@@ -613,28 +613,32 @@ Item {
             compare(shell.paneTitle, "About");
         }
 
-        function test_deep_link_to_a_dialog_row_opens_the_dialog() {
+        function test_deep_link_to_an_update_row_opens_the_subpane() {
             var shell = make();
             verify(shell.deepLink("settings://pane/general/row/updates.auto"));
             tryVerify(function() {
                 return shell.paneBody.status === Loader.Ready;
             });
             tryVerify(function() {
-                return shell.paneBody.item.updateDialog.open;
+                return shell.paneBody.item.subPaneId === "software-update";
             });
             compare(shell.currentPaneId, "general");
+            compare(shell.paneTitle, "Software Update");
         }
 
         function test_every_general_subpane_has_a_resolvable_row() {
             var cases = [
                 { link: "about.deviceName", sub: "about" },
+                { link: "updates.auto", sub: "software-update" },
+                { link: "passwords.source", sub: "passwords" },
                 { link: "time.zone", sub: "date-time" },
                 { link: "language.region", sub: "language" },
                 { link: "login.start", sub: "login" },
                 { link: "sharing.file", sub: "sharing" },
                 { link: "backup.auto", sub: "backup" },
                 { link: "reset.startupDisk", sub: "startup" },
-                { link: "reset.reset", sub: "reset" }
+                { link: "reset.reset", sub: "reset" },
+                { link: "reset.transfer", sub: "reset" }
             ];
             var shell = make();
             for (var i = 0; i < cases.length; ++i) {

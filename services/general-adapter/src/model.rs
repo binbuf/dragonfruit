@@ -231,6 +231,40 @@ pub struct StartupDiskData {
     pub label: String,
 }
 
+/// One detected password provider.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PasswordProvider {
+    /// The stable provider id (`keyring`, `kwallet`, `keepassxc`, `bitwarden`).
+    pub id: String,
+    /// The display label.
+    pub label: String,
+    /// The provider's daemon or application is installed.
+    pub installed: bool,
+    /// The provider currently owns the Secret Service name.
+    pub active: bool,
+    /// The executable the detection found.
+    pub command: String,
+    /// The provider's own application, when it ships one.
+    pub launch: String,
+    /// The one-line provider description.
+    pub description: String,
+}
+
+/// The Autofill & Passwords inventory.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PasswordData {
+    /// Every provider the host knows about, installed or not.
+    pub providers: Vec<PasswordProvider>,
+    /// `org.freedesktop.secrets` owns its session-bus name.
+    pub secret_service_available: bool,
+    /// The keyring lock state, when the Secret Service reports it.
+    pub keyring_lock: Option<bool>,
+    /// A human label for the keyring state.
+    pub keyring_label: String,
+    /// The provider inventory's absence note.
+    pub message: String,
+}
+
 /// One read of every General sub-pane.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GeneralSnapshot {
@@ -248,8 +282,10 @@ pub struct GeneralSnapshot {
     pub storage: Option<StorageUsageData>,
     /// Startup Disk, when `findmnt` answers.
     pub startup: Option<StartupDiskData>,
+    /// Autofill & Passwords, when the host publishes a provider inventory.
+    pub passwords: Option<PasswordData>,
     /// Per-sub-pane read errors, keyed by `time`, `locale`, `login`,
-    /// `sharing`, `backup`, `storage`, or `startup`.
+    /// `sharing`, `backup`, `storage`, `startup`, or `passwords`.
     pub errors: BTreeMap<String, String>,
 }
 
@@ -263,6 +299,7 @@ impl GeneralSnapshot {
             || self.backup.is_some()
             || self.storage.is_some()
             || self.startup.is_some()
+            || self.passwords.is_some()
     }
 
     /// The read error for one sub-pane, when it failed.

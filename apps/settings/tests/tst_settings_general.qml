@@ -32,6 +32,9 @@ Item {
             Settings.resetUpdatesFixture();
             Settings.resetGeneralFixture();
             Settings.setGeneralAvailableFixture(true);
+            Settings.setUpdatesAbsentFixture(false);
+            Settings.setUpdatesProviderFixture(true);
+            Settings.set("defaults.passwordManager", "");
         }
 
         function make() {
@@ -64,11 +67,13 @@ Item {
             var shell = make();
             compare(shell.currentPaneId, "general");
             var pane = paneOf(shell);
-            compare(pane.ready, true);
+            compare(pane.identityReady, true);
             verify(pane.aboutRow.visible, "the About row is visible");
             verify(pane.updateRow.visible, "the Software Update row is visible");
             compare(pane.updateRow.description, "1 Update Available");
             compare(pane.updateSummary, "1 Update Available");
+            verify(pane.passwordsRow.visible, "the Autofill & Passwords row is visible");
+            compare(pane.passwordsSummary, "2 providers");
         }
 
         function test_about_page_shows_the_host_identity() {
@@ -82,11 +87,56 @@ Item {
             compare(findChild(page, "aboutPageHero").width, 128);
             compare(findChild(page, "aboutPageHero").height, 128);
             compare(findChild(page, "aboutPageName").text, "Dragonfruit Book");
+            compare(findChild(page, "aboutPageModel").text, "Model: Not available");
+            compare(findChild(page, "aboutPageProcessor").text, "Processor: Example CPU");
+            compare(findChild(page, "aboutPageMemory").text, "Memory: 16 GB");
+            compare(findChild(page, "aboutPageGraphics").text, "Graphics: Example GPU");
             compare(findChild(page, "aboutPageOs").text, "Dragonfruit Linux 44");
+            compare(findChild(page, "aboutPageKernel").text,
+                    "Kernel: 6.12.0 · Architecture: x86_64");
             compare(findChild(page, "aboutPageSerial").text, "Serial number: SERIAL-1");
-            compare(findChild(page, "aboutPageStorage").text, "Total: 512 GB");
+            verify(findChild(page, "aboutPageDisplay").text.length > 0);
+            compare(findChild(page, "aboutPageVolume").text, "Volume: /");
+            verify(findChild(page, "aboutPageStorage").text.indexOf("used") >= 0);
             pane.closeSubPane();
             compare(pane.subPaneId, "");
+        }
+
+        function test_about_system_report_is_a_real_sheet() {
+            var shell = make();
+            shell.openAboutPage();
+            var pane = paneOf(shell);
+            tryVerify(function() { return pane.subPaneLoader.item !== null; });
+            var page = pane.subPaneLoader.item;
+            compare(page.reportOpen, false);
+            findChild(page, "aboutPageSystemReport").clicked();
+            compare(page.reportOpen, true);
+            compare(page.reportDialog.open, true);
+            compare(findChild(page, "aboutReportHostName").control.children[0].text, "dragon");
+            compare(findChild(page, "aboutReportProcessor").control.children[0].text, "Example CPU");
+            compare(findChild(page, "aboutReportGraphics").control.children[0].text, "Example GPU");
+            compare(findChild(page, "aboutReportKernel").control.children[0].text, "6.12.0");
+            compare(findChild(page, "aboutReportArchitecture").control.children[0].text, "x86_64");
+            verify(findChild(page, "aboutReportDisplay").control.children[0].text.length > 0);
+            verify(findChild(page, "aboutReportStorage").control.children[0].text.length > 0);
+            page.reportDialog.accept();
+            compare(page.reportOpen, false);
+        }
+
+        function test_about_never_leaves_the_window_at_the_design_default() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 900, height: 700 });
+            waitForRendering(stage);
+            shell.selectPane("general");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            shell.openAboutPage();
+            tryVerify(function() { return shell.aboutOpen; });
+            compare(shell.width, 900);
+            compare(shell.height, 700);
+            shell.paneBody.item.closeSubPane();
+            tryVerify(function() { return !shell.aboutOpen; });
+            compare(shell.width, 900);
+            compare(shell.height, 700);
         }
 
         function test_compact_panel_geometry_rows_and_absence() {
@@ -127,9 +177,9 @@ Item {
             compare(findChild(page, "aboutPageName").elide, Text.ElideRight);
             compare(findChild(page, "aboutPageProduct").elide, Text.ElideRight);
             compare(findChild(page, "aboutPageSerial").text, "Serial number: Not available");
-            page.showDetails = true;
-            waitForRendering(stage);
-            compare(findChild(page, "aboutPageModel").text, "Model: Not available");
+            page.openReport();
+            compare(findChild(page, "aboutReportModel").control.children[0].text,
+                    "Not available");
         }
 
         function test_full_page_window_geometry() {
@@ -141,6 +191,26 @@ Item {
             compare(shell.appWindow.chromeHeight, 52);
             compare(shell.detailScroll.height, 768);
             compare(shell.aboutOpen, true);
+        }
+
+        function test_general_and_about_fit_the_minimum_window() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 720, height: 480 });
+            waitForRendering(stage);
+            shell.selectPane("general");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            var pane = paneOf(shell);
+            compare(pane.aboutRow.visible, true);
+            compare(pane.passwordsRow.visible, true);
+            compare(pane.resetRow.visible, true);
+            verify(shell.detailScroll.height > 0,
+                   "the General list has a visible detail viewport");
+            shell.openAboutPage();
+            tryVerify(function() { return shell.aboutOpen; });
+            var page = pane.subPaneLoader.item;
+            verify(page !== null);
+            compare(page.width, pane.width);
+            verify(page.implicitHeight > 0);
         }
 
         function test_utility_window_more_info_transition() {
@@ -232,31 +302,47 @@ Item {
             Settings.set("accessibility.increaseContrast", false);
         }
 
-        function test_update_dialog_check_install_restart_round_trip() {
+        function test_update_subpane_check_install_restart_round_trip() {
             var shell = make();
             var pane = paneOf(shell);
-            pane.updateDialog.show();
-            compare(pane.updateDialog.open, true);
-            compare(pane.updateStatusText.text, "1 Update Available");
-            compare(pane.updatesRepeater.count, 1);
-            compare(pane.checkButton.enabled, true);
-            compare(pane.installButton.enabled, true);
+            var sub = openSubPane(pane, "software-update");
+            compare(sub.statusText.text, "1 Update Available");
+            compare(sub.updatesRepeater.count, 1);
+            compare(sub.checkButton.enabled, true);
+            compare(sub.installButton.enabled, true);
 
             // Check keeps the offered update (the fixture has one).
-            pane.checkButton.clicked();
-            tryVerify(function() { return pane.updateStatusText.text === "1 Update Available"; });
+            sub.checkButton.clicked();
+            tryVerify(function() { return sub.statusText.text === "1 Update Available"; });
 
             // Install clears the list and requires a restart.
-            pane.installButton.clicked();
+            sub.installButton.clicked();
             tryVerify(function() { return pane.rebootRequired === true; });
-            compare(pane.updateStatusText.text, "Restart Required");
-            compare(pane.restartButton.visible, true);
-            compare(pane.installButton.enabled, false);
+            compare(sub.statusText.text, "Restart Required");
+            compare(sub.restartButton.visible, true);
+            compare(sub.installButton.enabled, false);
 
             // Restart finishes the flow.
-            pane.restartButton.clicked();
-            tryVerify(function() { return pane.updateStatusText.text === "Up to Date"; });
+            sub.restartButton.clicked();
+            tryVerify(function() { return sub.statusText.text === "Up to Date"; });
             compare(pane.rebootRequired, false);
+        }
+
+        function test_update_subpane_reports_a_missing_provider_honestly() {
+            Settings.setUpdatesProviderFixture(false);
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.updateSummary, "No update provider");
+            // The About row stays live because the host identity is present.
+            compare(pane.aboutSummary, "Dragonfruit Book");
+            compare(pane.aboutRow.visible, true);
+            var sub = openSubPane(pane, "software-update");
+            compare(sub.providerAvailable, false);
+            compare(sub.statusText.text, "No update provider");
+            compare(sub.noProviderNote.visible, true);
+            compare(sub.checkButton.enabled, false);
+            compare(sub.installButton.enabled, false);
+            Settings.setUpdatesProviderFixture(true);
         }
 
         function test_update_state_converges_into_the_pane_row() {
@@ -271,14 +357,49 @@ Item {
             tryVerify(function() { return pane.updateSummary === "Up to Date"; });
         }
 
-        function test_absence_note_replaces_the_rows_without_a_host() {
-            // The absence case itself lives in tst_settings_absence.qml (no
-            // fixture, no bus); this asserts the gate is wired so a non-ready
-            // view never shows the rows.
+        function test_absence_keeps_the_rows_visible_with_per_row_summaries() {
+            Settings.setUpdatesAbsentFixture(true);
+            Settings.setGeneralAvailableFixture(false);
             var shell = make();
             var pane = paneOf(shell);
-            compare(pane.ready, true);
-            compare(pane.absenceNote.visible, false);
+            compare(pane.identityReady, false);
+            compare(pane.aboutRow.visible, true);
+            compare(pane.updateRow.visible, true);
+            compare(pane.storageRow.visible, true);
+            compare(pane.passwordsRow.visible, true);
+            compare(pane.aboutSummary, "Unavailable");
+            compare(pane.updateSummary, "Unavailable");
+            compare(pane.storageSummary, "Unavailable");
+            compare(pane.passwordsSummary, "Unavailable");
+            compare(pane.listColumn.visible, true);
+            Settings.setUpdatesAbsentFixture(false);
+        }
+
+        function test_partial_absence_updates_only_keeps_every_row() {
+            Settings.setGeneralAvailableFixture(false);
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.identityReady, true);
+            compare(pane.aboutSummary, "Dragonfruit Book");
+            compare(pane.updateSummary, "1 Update Available");
+            compare(pane.storageSummary, "Unavailable");
+            compare(pane.passwordsSummary, "Unavailable");
+            verify(pane.storageRow.visible, "Storage row stays visible");
+            verify(pane.passwordsRow.visible, "Autofill row stays visible");
+        }
+
+        function test_partial_absence_general_only_keeps_every_row() {
+            Settings.setUpdatesAbsentFixture(true);
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.identityReady, false);
+            compare(pane.aboutSummary, "Unavailable");
+            compare(pane.updateSummary, "Unavailable");
+            compare(pane.storageSummary, "480 GB used");
+            compare(pane.passwordsSummary, "2 providers");
+            verify(pane.aboutRow.visible, "About row stays visible");
+            verify(pane.updateRow.visible, "Software Update row stays visible");
+            Settings.setUpdatesAbsentFixture(false);
         }
         Component { id: dateTimeComponent; DateTimePane { } }
         Component { id: sharingComponent; SharingPane { } }
@@ -312,9 +433,10 @@ Item {
             findChild(panel, "aboutPanelMoreInfo").clicked();
             tryVerify(function() { return paneOf(shell).subPaneId === "about"; });
             compare(shell.currentPaneId, "general");
-            compare(paneOf(shell).subPaneLoader.item.showDetails, false);
-            paneOf(shell).subPaneLoader.item.showDetails = true;
-            verify(paneOf(shell).subPaneLoader.item.showDetails);
+            var page = paneOf(shell).subPaneLoader.item;
+            compare(page.reportOpen, false);
+            page.openReport();
+            compare(page.reportOpen, true);
         }
 
         // -- Date & Time ---------------------------------------------------
@@ -478,7 +600,8 @@ Item {
             var shell = make();
             var pane = paneOf(shell);
             compare(pane.generalAvailable, false);
-            compare(pane.loginRow.visible, false);
+            compare(pane.loginRow.visible, true);
+            compare(pane.loginSummary, "Unavailable");
             var sharing = createTemporaryObject(sharingComponent, stage);
             verify(sharing);
             compare(sharing.available, false);
@@ -498,6 +621,45 @@ Item {
             compare(pane.usageGroup.visible, true);
             compare(pane.usageRepeater.count, 3);
             compare(pane.manageRow.visible, true);
+            compare(pane.usageChart.visible, true);
+            compare(pane.usageChartRepeater.count, 3);
+            verify(pane.usageSummaryText.text.indexOf("used of") >= 0);
+            compare(pane.recommendationsRepeater.count > 0, true);
+            compare(pane.manageButton.enabled, true);
+        }
+
+        // -- Autofill & Passwords ------------------------------------------
+
+        function test_passwords_lists_providers_and_delegates() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "passwords");
+            compare(sub.available, true);
+            compare(sub.providersRepeater.count, 3);
+            compare(sub.keyringRow.visible, true);
+            compare(findChild(sub, "passwordsKeyringStatus").text, "Locked");
+            compare(sub.delegateProvider.id, "keyring");
+            compare(sub.canDelegate, true);
+
+            // The autofill source is a durable settingsd selection, not a
+            // secret. Selecting KeePassXC changes the delegate.
+            sub.sourceSelect.activateIndex(2);
+            compare(Settings.values["defaults.passwordManager"], "keepassxc");
+            compare(sub.delegateProvider.id, "keepassxc");
+
+            // The delegate is one host request; Settings stores no secret.
+            sub.delegateButton.clicked();
+            compare(sub.secretNote.visible, true);
+        }
+
+        function test_passwords_pane_degrades_without_the_general_host() {
+            Settings.setGeneralAvailableFixture(false);
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "passwords");
+            compare(sub.available, false);
+            compare(sub.absenceNote.visible, true);
+            compare(sub.delegateButton.enabled, false);
         }
     }
 }

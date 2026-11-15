@@ -3,49 +3,35 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The General list opens an in-place canonical About page. Software Update
-// remains a dialog; the other host-backed rows use their own sub-panes.
-// Storage opens in place too (T263); the old top-level `storage` id and deep
-// link remain aliases.
+// General (T269).
+//
+// The list is the macOS General page. It never collapses because one adapter
+// is absent: every row stays visible and each row's summary reports its own
+// half. About/Software Update read the host identity and the distribution
+// update provider separately, so About stays live when the provider is gone.
+// Every row opens an in-place sub-pane; Software Update is no longer a dialog.
+// Storage keeps the top-level `storage` id and deep link as aliases.
 Item {
     id: root
 
     // The bridge host's General/About/Updates view (empty when absent).
     readonly property var view: Settings.updates
-    readonly property bool available: Settings.updatesAvailable
-    readonly property bool ready: root.available && root.view.state === "available"
+    readonly property bool identityAvailable: Settings.updatesAvailable
+    readonly property bool identityReady: root.identityAvailable
+        && root.view.state === "available"
     readonly property string deviceName: root.view.deviceName !== undefined
         ? String(root.view.deviceName) : ""
-    readonly property string processor: root.view.processor !== undefined
-        ? String(root.view.processor) : ""
-    readonly property string memoryLabel: root.view.memoryLabel !== undefined
-        ? String(root.view.memoryLabel) : ""
-    readonly property string osLabel: root.view.osLabel !== undefined
-        ? String(root.view.osLabel) : ""
-    readonly property string kernel: root.view.kernel !== undefined
-        ? String(root.view.kernel) : ""
-    readonly property bool hasSerial: root.view.hasSerial === true
-    readonly property string serial: root.view.serial !== undefined
-        ? String(root.view.serial) : ""
-    readonly property string gpuLabel: root.view.gpuLabel !== undefined
-        ? String(root.view.gpuLabel) : ""
-    readonly property string diskLabel: root.view.diskLabel !== undefined
-        ? String(root.view.diskLabel) : ""
 
-    // The distribution update provider, when the host runs one.
-    readonly property bool providerAvailable: root.view.updatesAvailable === true
-    readonly property var updates: root.view.updates !== undefined
-        ? root.view.updates : []
+    // The distribution update provider, when the host runs one. The host
+    // identity and the provider are separate halves of the same view.
+    readonly property bool providerAvailable: root.identityReady
+        && root.view.updatesAvailable === true
     readonly property bool busy: root.view.busy === true
     readonly property bool rebootRequired: root.view.rebootRequired === true
     readonly property int updateCount: root.view.updateCount !== undefined
         ? root.view.updateCount : 0
-    readonly property int securityCount: root.view.securityCount !== undefined
-        ? root.view.securityCount : 0
     readonly property string updateLabel: root.view.label !== undefined
         ? String(root.view.label) : ""
-    readonly property string updateMessage: root.view.message !== undefined
-        && root.view.message !== null ? String(root.view.message) : ""
 
     // The General sub-panes view (T226). Each sub-view carries its own state.
     readonly property var general: Settings.general
@@ -64,28 +50,32 @@ Item {
         ? root.general.storage : ({})
     readonly property var startupView: root.general.startup !== undefined
         ? root.general.startup : ({})
+    readonly property var passwordsView: root.general.passwords !== undefined
+        ? root.general.passwords : ({})
 
     // The in-place sub-pane ("" is the General list).
     property string subPaneId: ""
-    // The title the shell shows in the toolbar/compositor title while a
-    // sub-pane is open (T263). About keeps its dedicated page.
     readonly property string subPaneTitle: {
         switch (root.subPaneId) {
         case "about": return qsTr("About");
-        case "login": return qsTr("Login Items");
+        case "software-update": return qsTr("Software Update");
+        case "passwords": return qsTr("Autofill & Passwords");
+        case "login": return qsTr("Login Items & Extensions");
         case "language": return qsTr("Language & Region");
         case "date-time": return qsTr("Date & Time");
         case "sharing": return qsTr("Sharing");
         case "backup": return qsTr("Backup");
         case "startup": return qsTr("Startup Disk");
-        case "reset": return qsTr("Reset");
+        case "reset": return qsTr("Transfer or Reset");
         case "storage": return qsTr("Storage");
         default: return "";
         }
     }
 
+    readonly property string aboutSummary: root.identityReady
+        ? root.deviceName : qsTr("Unavailable")
     readonly property string updateSummary: {
-        if (!root.ready)
+        if (!root.identityReady)
             return qsTr("Unavailable");
         if (!root.providerAvailable)
             return qsTr("No update provider");
@@ -102,7 +92,7 @@ Item {
         : qsTr("Unavailable")
     readonly property string loginSummary: root.generalAvailable
         && root.loginView.state === "available"
-        ? String(root.loginView.label || qsTr("Login Items"))
+        ? String(root.loginView.label || qsTr("Login Items & Extensions"))
         : qsTr("Unavailable")
     readonly property string sharingSummary: root.generalAvailable
         && root.sharingView.state === "available"
@@ -116,6 +106,10 @@ Item {
         && root.storageView.state === "available"
         ? String(root.storageView.label || qsTr("Storage"))
         : qsTr("Unavailable")
+    readonly property string passwordsSummary: root.generalAvailable
+        && root.passwordsView.state === "available"
+        ? String(root.passwordsView.label || qsTr("Autofill & Passwords"))
+        : qsTr("Unavailable")
     readonly property string startupSummary: {
         if (!root.generalAvailable || root.startupView.state !== "available")
             return qsTr("Unavailable");
@@ -125,20 +119,12 @@ Item {
         const mode = String(root.startupView.bootMode || "");
         return mode.length > 0 ? disk + " · " + mode : disk;
     }
+    readonly property string transferSummary: qsTr("Transfer data or reset settings")
 
     // Test surface (used by tst_settings_general.qml).
     property alias aboutRow: aboutRow
     property alias updateRow: updateRow
-    property alias updateDialog: updateDialog
-    property alias updateStatusText: updateStatusText
-    property alias updatesRepeater: updatesRepeater
-    property alias noProviderNote: noProviderNote
-    property alias checkButton: checkButton
-    property alias installButton: installButton
-    property alias restartButton: restartButton
-    property alias absenceNote: absenceNote
-    property alias autoCheckToggle: autoCheckToggle
-    property alias autoInstallToggle: autoInstallToggle
+    property alias passwordsRow: passwordsRow
     property alias storageRow: storageRow
     property alias loginRow: loginRow
     property alias languageRow: languageRow
@@ -164,7 +150,8 @@ Item {
 
     function openSubPane(id) {
         root.subPaneId = id;
-        if (id === "about") root.aboutPageOpened();
+        if (id === "about")
+            root.aboutPageOpened();
     }
 
     function closeSubPane() {
@@ -172,18 +159,12 @@ Item {
     }
 
     // Open the surface that renders a map row before the shell scrolls to it:
-    // the in-place sub-pane, or the Software Update dialog. Returns whether a
-    // surface was opened; the shell treats false as an unlandable row.
+    // the in-place sub-pane. Returns whether a surface was opened; the shell
+    // treats false as an unlandable row.
     function openRowSurface(rowId) {
         var subPane = SettingsMap.subPaneForRow("general", rowId);
         if (subPane.length > 0) {
             root.openSubPane(subPane);
-            return true;
-        }
-        var row = SettingsMap.rowFor("general", rowId);
-        if (row !== null && String(row.id).indexOf("updates.") === 0) {
-            root.closeSubPane();
-            updateDialog.show();
             return true;
         }
         return false;
@@ -192,6 +173,8 @@ Item {
     function subPaneComponent(id) {
         switch (id) {
         case "about": return aboutComponent;
+        case "software-update": return softwareUpdateComponent;
+        case "passwords": return passwordsComponent;
         case "login": return loginComponent;
         case "language": return languageComponent;
         case "date-time": return dateTimeComponent;
@@ -227,14 +210,13 @@ Item {
 
             SettingsGroup {
                 width: parent.width
-                visible: root.ready
 
                 SettingsRow {
                     id: aboutRow
                     objectName: "generalAboutRow"
                     width: parent.width
                     label: qsTr("About")
-                    description: root.deviceName
+                    description: root.aboutSummary
                     disclosure: true
                     onDisclosureClicked: root.openSubPane("about")
                 }
@@ -247,13 +229,12 @@ Item {
                     description: root.updateSummary
                     showSeparator: false
                     disclosure: true
-                    onDisclosureClicked: updateDialog.show()
+                    onDisclosureClicked: root.openSubPane("software-update")
                 }
             }
 
             SettingsGroup {
                 width: parent.width
-                visible: root.generalAvailable
 
                 SettingsRow {
                     id: storageRow
@@ -266,13 +247,23 @@ Item {
                 }
 
                 SettingsRow {
-                    id: loginRow
-                    objectName: "generalLoginRow"
+                    id: passwordsRow
+                    objectName: "generalPasswordsRow"
                     width: parent.width
-                    label: qsTr("Login Items")
-                    description: root.loginSummary
+                    label: qsTr("Autofill & Passwords")
+                    description: root.passwordsSummary
                     disclosure: true
-                    onDisclosureClicked: root.openSubPane("login")
+                    onDisclosureClicked: root.openSubPane("passwords")
+                }
+
+                SettingsRow {
+                    id: dateTimeRow
+                    objectName: "generalDateTimeRow"
+                    width: parent.width
+                    label: qsTr("Date & Time")
+                    description: root.dateTimeSummary
+                    disclosure: true
+                    onDisclosureClicked: root.openSubPane("date-time")
                 }
 
                 SettingsRow {
@@ -286,14 +277,19 @@ Item {
                 }
 
                 SettingsRow {
-                    id: dateTimeRow
-                    objectName: "generalDateTimeRow"
+                    id: loginRow
+                    objectName: "generalLoginRow"
                     width: parent.width
-                    label: qsTr("Date & Time")
-                    description: root.timeSummary
+                    label: qsTr("Login Items & Extensions")
+                    description: root.loginSummary
+                    showSeparator: false
                     disclosure: true
-                    onDisclosureClicked: root.openSubPane("date-time")
+                    onDisclosureClicked: root.openSubPane("login")
                 }
+            }
+
+            SettingsGroup {
+                width: parent.width
 
                 SettingsRow {
                     id: sharingRow
@@ -303,16 +299,6 @@ Item {
                     description: root.sharingSummary
                     disclosure: true
                     onDisclosureClicked: root.openSubPane("sharing")
-                }
-
-                SettingsRow {
-                    id: backupRow
-                    objectName: "generalBackupRow"
-                    width: parent.width
-                    label: qsTr("Backup")
-                    description: root.backupSummary
-                    disclosure: true
-                    onDisclosureClicked: root.openSubPane("backup")
                 }
 
                 SettingsRow {
@@ -326,31 +312,24 @@ Item {
                 }
 
                 SettingsRow {
+                    id: backupRow
+                    objectName: "generalBackupRow"
+                    width: parent.width
+                    label: qsTr("Backup")
+                    description: root.backupSummary
+                    disclosure: true
+                    onDisclosureClicked: root.openSubPane("backup")
+                }
+
+                SettingsRow {
                     id: resetRow
                     objectName: "generalResetRow"
                     width: parent.width
-                    label: qsTr("Reset")
-                    description: qsTr("Reset Dragonfruit settings")
+                    label: qsTr("Transfer or Reset")
+                    description: root.transferSummary
                     showSeparator: false
                     disclosure: true
                     onDisclosureClicked: root.openSubPane("reset")
-                }
-            }
-
-            // ── Absence ──────────────────────────────────────────────────
-            SettingsGroup {
-                width: parent.width
-                visible: !root.ready && !root.generalAvailable
-
-                Text {
-                    id: absenceNote
-                    objectName: "generalAbsenceNote"
-                    width: parent.width
-                    text: qsTr("The system information service is not running, "
-                               + "so system details and updates are unavailable.")
-                    color: Theme.color.textSecondary
-                    font.pixelSize: Theme.primitive.font.sizeSm
-                    wrapMode: Text.WordWrap
                 }
             }
         }
@@ -381,163 +360,11 @@ Item {
         id: aboutComponent
         AboutPage { onNavigateRequested: (paneId) => root.navigateRequested(paneId) }
     }
+    Component { id: softwareUpdateComponent; SoftwareUpdatePane { } }
+    Component { id: passwordsComponent; PasswordsPane { } }
     // T263: Storage is General -> Storage. The existing Storage pane body is
     // reused in place; the top-level `storage` id and deep link remain aliases.
     Component { id: storageComponent; StoragePane { } }
-    // ── The Software Update dialog ────────────────────────────────────────
-    Dialog {
-        id: updateDialog
-        objectName: "generalUpdateDialog"
-        title: qsTr("Software Update")
-        dismissible: true
-
-        contentData: Column {
-            width: 380
-            spacing: Theme.primitive.spacing.md
-
-            Text {
-                id: updateStatusText
-                objectName: "generalUpdateStatus"
-                width: parent.width
-                text: root.updateLabel
-                color: Theme.color.textPrimary
-                font.pixelSize: Theme.controls.button.fontSize
-                font.weight: Theme.primitive.font.weightMedium
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                objectName: "generalUpdateMessage"
-                width: parent.width
-                visible: root.updateMessage.length > 0
-                text: root.updateMessage
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                objectName: "generalUpdateProgress"
-                width: parent.width
-                visible: root.busy
-                text: qsTr("Working…")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-
-            Text {
-                id: noProviderNote
-                objectName: "generalUpdateNoProvider"
-                width: parent.width
-                visible: !root.providerAvailable
-                text: qsTr("No update provider is available on this system.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
-
-            SettingsGroup {
-                width: parent.width
-                reserveBottomMargin: false
-                visible: root.providerAvailable && root.updates.length > 0
-
-                Repeater {
-                    id: updatesRepeater
-                    model: root.updates
-                    delegate: SettingsRow {
-                        required property var modelData
-                        required property int index
-                        width: parent.width
-                        showSeparator: index < root.updates.length - 1
-                        label: modelData.name
-                        description: qsTr("%1 \u2192 %2 \u00b7 %3")
-                            .arg(modelData.currentVersion)
-                            .arg(modelData.availableVersion)
-                            .arg(modelData.severityLabel)
-                    }
-                }
-            }
-
-            SettingsGroup {
-                width: parent.width
-                title: qsTr("Automatic Updates")
-                reserveBottomMargin: false
-                visible: root.providerAvailable
-
-                SettingsRow {
-                    width: parent.width
-                    label: qsTr("Check for updates automatically")
-                    description: qsTr("Never enabled unless you turn it on here.")
-                    controlData: Toggle {
-                        id: autoCheckToggle
-                        objectName: "generalUpdateAutoCheck"
-                        checked: Settings.values["updates.auto"] === true
-                        accessibleName: qsTr("Check for updates automatically")
-                        onToggled: (checked) => {
-                            Settings.set("updates.auto", checked);
-                            Settings.applyUpdatePolicy(checked,
-                                Settings.values["updates.autoInstall"] === true);
-                        }
-                    }
-                }
-
-                SettingsRow {
-                    width: parent.width
-                    label: qsTr("Install automatically")
-                    description: qsTr("Requires automatic checks.")
-                    showSeparator: false
-                    controlData: Toggle {
-                        id: autoInstallToggle
-                        objectName: "generalUpdateAutoInstall"
-                        checked: Settings.values["updates.autoInstall"] === true
-                        enabled: Settings.values["updates.auto"] === true
-                        accessibleName: qsTr("Install updates automatically")
-                        onToggled: (checked) => {
-                            Settings.set("updates.autoInstall", checked);
-                            Settings.applyUpdatePolicy(
-                                Settings.values["updates.auto"] === true, checked);
-                        }
-                    }
-                }
-            }
-        }
-
-        buttonsData: Row {
-            spacing: Theme.controls.dialog.buttonGap
-
-            Button {
-                id: checkButton
-                objectName: "generalUpdateCheck"
-                text: qsTr("Check for Updates")
-                enabled: root.providerAvailable && !root.busy
-                onClicked: Settings.checkUpdates()
-            }
-
-            Button {
-                id: installButton
-                objectName: "generalUpdateInstall"
-                text: qsTr("Install")
-                variant: "primary"
-                enabled: root.providerAvailable && !root.busy
-                    && root.updateCount > 0
-                onClicked: Settings.installUpdates()
-            }
-
-            Button {
-                id: restartButton
-                objectName: "generalUpdateRestart"
-                text: qsTr("Restart")
-                variant: "primary"
-                visible: root.rebootRequired
-                onClicked: Settings.rebootUpdates()
-            }
-
-            Button {
-                text: qsTr("Done")
-                onClicked: updateDialog.accept()
-            }
-        }
-    }
 
     Component { id: loginComponent; LoginItemsPane { } }
     Component { id: languageComponent; LanguageRegionPane { } }

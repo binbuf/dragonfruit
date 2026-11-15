@@ -109,6 +109,11 @@ impl<S: GeneralSource> GeneralAdapter<S> {
     pub fn open_restore(&mut self) -> GeneralOutcome {
         self.source.open_restore()
     }
+
+    /// Open an installed password provider's application.
+    pub fn open_password_manager(&mut self, id: &str) -> GeneralOutcome {
+        self.source.open_password_manager(id)
+    }
 }
 
 impl<S: GeneralSource> Adapter for GeneralAdapter<S> {

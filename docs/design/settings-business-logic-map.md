@@ -372,9 +372,23 @@ shows the available provider or a note; it does not store secrets itself.
 restic/Pika/Timeshift detection, `df` usage, and `findmnt` startup-disk reads.
 The native/PackageKit update provider is attached to the bridge host; the
 Settings pane and the Control Center tile read the same `Updates` view. Each
-sub-pane carries its own state and absence note; Storage remains a first-class
-sidebar pane and the General row navigates to it. The About `More Info…` button
-is live; the regulatory link is the one delegated omission.
+sub-pane carries its own state and absence note; Storage was still a
+first-class sidebar pane at T226 and the General row navigated to it. The
+About `More Info…` button is live; the regulatory link is the one delegated
+omission.
+
+**T269 status.** The General list is complete and never collapses. About,
+Software Update, Storage, Autofill & Passwords, Date & Time, Language &
+Region, Login Items & Extensions, Sharing, Startup Disk, Backup, and Transfer
+or Reset are always rows; each summary says `Unavailable` only for its own
+absent half. Every row opens an in-place sub-pane, including Software Update
+(no dialog) and Storage (the `storage` id and deep link remain aliases).
+About shows model, processor, memory, graphics, serial, OS/kernel/
+architecture, the live screen name/resolution, and volume/free/total, with a
+real System Report sheet. Autofill & Passwords inventories installed providers
+and the Secret Service lock state; `defaults.passwordManager` records the
+delegate, and Settings stores no secret. Transfer or Reset is the last row;
+its content is T270.
 
 <a id="pane-appearance"></a>
 ### 5.6 Appearance

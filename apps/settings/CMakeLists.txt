@@ -83,6 +83,8 @@ qt_add_qml_module(dragonfruit-settings-ui
         AboutUtilityMaterial.qml
         AboutPanel.qml
         AboutPage.qml
+        SoftwareUpdatePane.qml
+        PasswordsPane.qml
         LoginItemsPane.qml
         LanguageRegionPane.qml
         DateTimePane.qml

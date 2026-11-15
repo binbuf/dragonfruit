@@ -91,14 +91,18 @@ class MockUpdatesClient : public UpdatesClient
 public:
     explicit MockUpdatesClient(QObject *parent = nullptr);
 
-    bool available() const override { return true; }
-    QVariantMap view() const override { return m_view; }
+    bool available() const override { return !m_absent; }
+    QVariantMap view() const override { return m_absent ? QVariantMap() : m_view; }
     void refresh() override;
     void check() override;
     void install() override;
     void reboot() override;
     void setAutoPolicy(bool autoCheck, bool autoInstall) override;
     void resetForTest() override;
+    // Test/capture seam: pretend the bridge host is absent/returned.
+    void setAbsentFixture(bool absent);
+    // Test/capture seam: keep the host identity but drop the update provider.
+    void setProviderAvailableFixture(bool available);
 
 private:
     void rebuild();
@@ -106,5 +110,7 @@ private:
     int m_updateCount = 1;
     bool m_autoCheck = false;
     bool m_autoInstall = false;
+    bool m_absent = false;
+    bool m_providerAvailable = true;
     QVariantMap m_view;
 };

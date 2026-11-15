@@ -1,6 +1,7 @@
 # 0235 — General group host adapters and the in-place sub-pane stack
 
-- **Status:** Accepted (T226)
+- **Status:** Accepted (T226); the dialog and top-level-Storage halves of
+  decision 4 are superseded by [ADR 0269](0269-general-list-independence-and-password-providers.md) (T269)
 - **Date:** 2026-11-08
 
 ## Context

@@ -97,6 +97,27 @@ Item {
             compare(pane.volumes[0].mounted, false);
         }
 
+        function test_usage_chart_summary_and_recommendations() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.usageAvailable, true);
+            compare(pane.usageChart.visible, true);
+            compare(pane.usageChartRepeater.count, 3);
+            verify(pane.usageSummaryText.text.indexOf("used of") >= 0);
+            compare(pane.recommendationsGroup.visible, true);
+            verify(pane.recommendationsRepeater.count > 0);
+            compare(pane.manageRow.visible, true);
+            compare(pane.manageButton.enabled, true);
+        }
+
+        function test_volume_row_shows_capacity_from_the_usage_read() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var detail = findChild(pane, "storageVolumeDetail");
+            verify(detail !== null);
+            verify(detail.text.length > 0);
+        }
+
         // The eject case runs last (the `zz` prefix sorts after every other case):
         // the fixture cannot restore an ejected drive, so it must not precede
         // the cases that still expect the volume.

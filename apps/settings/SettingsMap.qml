@@ -424,14 +424,16 @@ QtObject {
                          "UDisks2/bootloader adapter", "storage.boot", "read-only", "shipped"),
                 root.row("reset.reset", qsTr("Reset"), qsTr("Reset"), "button",
                          "settingsd", "reset.settings", "live-on-defaults", "shipped"),
-                root.row("passwords.disclosure", qsTr("Passwords & Autofill"), qsTr("Passwords & autofill"), "disclosure",
-                         "Secret Service/portal", "passwords.provider", "delegated"),
-                root.row("passwords.open", qsTr("Passwords & Autofill"), qsTr("Passwords..."), "button",
-                         "Secret Service", "passwords.open", "delegated"),
-                root.row("passwords.source", qsTr("Passwords & Autofill"), qsTr("Autofill source"), "popup",
-                         "settingsd", "defaults.passwordManager", "hidden"),
-                root.row("passwords.keyring", qsTr("Passwords & Autofill"), qsTr("Locked keyring"), "info",
-                         "Secret Service", "passwords.keyring", "delegated")
+                root.row("reset.transfer", qsTr("Transfer or Reset"), qsTr("Transfer or Reset"), "disclosure",
+                         "settingsd reset + delegates", "reset.settings", "live-on-defaults", "shipped"),
+                root.row("passwords.disclosure", qsTr("Autofill & Passwords"), qsTr("Autofill & Passwords"), "disclosure",
+                         "Secret Service/portal", "passwords.provider", "delegated", "shipped"),
+                root.row("passwords.open", qsTr("Autofill & Passwords"), qsTr("Open password manager"), "button",
+                         "Secret Service", "passwords.open", "delegated", "shipped"),
+                root.row("passwords.source", qsTr("Autofill & Passwords"), qsTr("Autofill source"), "popup",
+                         "settingsd", "defaults.passwordManager", "live-on-defaults", "shipped"),
+                root.row("passwords.keyring", qsTr("Autofill & Passwords"), qsTr("Keyring"), "info",
+                         "Secret Service", "passwords.keyring", "read-only", "shipped")
             ],
             "storage": [
                 root.row("categories", qsTr("Storage"), qsTr("Categories"), "chart/list",
@@ -1027,12 +1029,15 @@ QtObject {
     // localized section title.
     readonly property var generalRowSubPanes: ({
         "about": "about",
+        "updates": "software-update",
         "storage": "storage",
+        "passwords": "passwords",
         "login": "login",
         "language": "language",
         "time": "date-time",
         "sharing": "sharing",
-        "backup": "backup"
+        "backup": "backup",
+        "reset": "reset"
     })
 
     // The sub-pane id that renders a row, or "" when the row is not inside an
@@ -1062,8 +1067,6 @@ QtObject {
             return "";
         if (root.subPaneForRow(paneId, rowId).length > 0)
             return "subpane";
-        if (paneId === "general" && String(row.id).indexOf("updates.") === 0)
-            return "dialog";
         return "pane";
     }
 

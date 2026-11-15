@@ -1481,6 +1481,18 @@ void SettingsBridge::resetUpdatesFixture()
         m_updates->resetForTest();
 }
 
+void SettingsBridge::setUpdatesAbsentFixture(bool absent)
+{
+    if (auto *mock = qobject_cast<MockUpdatesClient *>(m_updates))
+        mock->setAbsentFixture(absent);
+}
+
+void SettingsBridge::setUpdatesProviderFixture(bool available)
+{
+    if (auto *mock = qobject_cast<MockUpdatesClient *>(m_updates))
+        mock->setProviderAvailableFixture(available);
+}
+
 void SettingsBridge::refreshGeneral()
 {
     if (m_general)
@@ -1541,6 +1553,12 @@ void SettingsBridge::openBackupRestore()
 {
     if (m_general)
         m_general->openRestore();
+}
+
+void SettingsBridge::openPasswordManager(const QString &id)
+{
+    if (m_general && !id.trimmed().isEmpty())
+        m_general->openPasswordManager(id.trimmed());
 }
 
 void SettingsBridge::applyUpdatePolicy(bool autoCheck, bool autoInstall)

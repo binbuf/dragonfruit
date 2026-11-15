@@ -14,8 +14,8 @@
 use dragonfruit_system_adapters::AdapterError;
 
 use crate::model::{
-    BackupData, GeneralSnapshot, LocaleData, LoginData, SharingData, StartupDiskData,
-    StorageUsageData, TimeData,
+    BackupData, GeneralSnapshot, LocaleData, LoginData, PasswordData, PasswordProvider,
+    SharingData, StartupDiskData, StorageUsageData, TimeData,
 };
 
 /// The result of one General write.
@@ -96,6 +96,12 @@ pub trait GeneralSource {
     fn open_restore(&mut self) -> GeneralOutcome {
         GeneralOutcome::Absent
     }
+
+    /// Open an installed password provider's own application. Settings stores
+    /// no secrets; the provider owns the credentials.
+    fn open_password_manager(&mut self, _id: &str) -> GeneralOutcome {
+        GeneralOutcome::Absent
+    }
 }
 
 /// A deterministic fixture source for CI, pane tests, and captures.
@@ -115,6 +121,8 @@ pub struct MockGeneral {
     last_sharing: Option<(String, bool)>,
     last_backup_destination: String,
     restores: u32,
+    last_password_manager: String,
+    password_opens: u32,
 }
 
 impl MockGeneral {
@@ -135,6 +143,8 @@ impl MockGeneral {
             last_sharing: None,
             last_backup_destination: String::new(),
             restores: 0,
+            last_password_manager: String::new(),
+            password_opens: 0,
         }
     }
 
@@ -155,6 +165,8 @@ impl MockGeneral {
             last_sharing: None,
             last_backup_destination: String::new(),
             restores: 0,
+            last_password_manager: String::new(),
+            password_opens: 0,
         }
     }
 
@@ -182,6 +194,8 @@ impl MockGeneral {
             last_sharing: None,
             last_backup_destination: String::new(),
             restores: 0,
+            last_password_manager: String::new(),
+            password_opens: 0,
         }
     }
 
@@ -261,6 +275,16 @@ impl MockGeneral {
     /// How many restore entries were opened.
     pub fn restores(&self) -> u32 {
         self.restores
+    }
+
+    /// The provider passed to the last password-manager open.
+    pub fn last_password_manager(&self) -> &str {
+        &self.last_password_manager
+    }
+
+    /// How many password-manager opens were requested.
+    pub fn password_opens(&self) -> u32 {
+        self.password_opens
     }
 
     fn outcome(&self) -> GeneralOutcome {
@@ -396,6 +420,16 @@ impl GeneralSource for MockGeneral {
         if outcome.is_applied() {
             self.writes += 1;
             self.restores += 1;
+        }
+        outcome
+    }
+
+    fn open_password_manager(&mut self, id: &str) -> GeneralOutcome {
+        let outcome = self.outcome();
+        if outcome.is_applied() {
+            self.writes += 1;
+            self.password_opens += 1;
+            self.last_password_manager = id.to_owned();
         }
         outcome
     }
@@ -585,6 +619,41 @@ pub fn fixture() -> GeneralSnapshot {
             secure_boot: "On".to_owned(),
             label: "fedora".to_owned(),
         }),
+        passwords: Some(PasswordData {
+            providers: vec![
+                PasswordProvider {
+                    id: "keyring".to_owned(),
+                    label: "Desktop Keyring".to_owned(),
+                    installed: true,
+                    active: true,
+                    command: "gnome-keyring-daemon".to_owned(), // df-allow-desktop-name: Secret Service executable
+                    launch: "seahorse".to_owned(),
+                    description: "The desktop keyring and Secret Service provider.".to_owned(),
+                },
+                PasswordProvider {
+                    id: "keepassxc".to_owned(),
+                    label: "KeePassXC".to_owned(),
+                    installed: true,
+                    active: false,
+                    command: "keepassxc".to_owned(),
+                    launch: "keepassxc".to_owned(),
+                    description: "A local password database with browser integration.".to_owned(),
+                },
+                PasswordProvider {
+                    id: "bitwarden".to_owned(),
+                    label: "Bitwarden".to_owned(),
+                    installed: false,
+                    active: false,
+                    command: "bitwarden".to_owned(),
+                    launch: "bitwarden".to_owned(),
+                    description: "A hosted password manager with a desktop client.".to_owned(),
+                },
+            ],
+            secret_service_available: true,
+            keyring_lock: Some(true),
+            keyring_label: "Locked".to_owned(),
+            message: String::new(),
+        }),
         errors: Default::default(),
     }
 }
@@ -604,6 +673,7 @@ mod tests {
         assert_eq!(data.backup.unwrap().backend, "timeshift");
         assert_eq!(data.storage.unwrap().categories.len(), 3);
         assert_eq!(data.startup.unwrap().boot_mode, "UEFI");
+        assert_eq!(data.passwords.unwrap().providers.len(), 3);
     }
 
     #[test]

@@ -72,18 +72,20 @@ Item {
             wait(250);
 
             // Software Update: check, then install and the restart state.
-            pane.updateDialog.show();
+            pane.openSubPane("software-update");
+            tryVerify(function() { return pane.subPaneLoader.status === Loader.Ready; });
             waitForRendering(stage);
+            var update = pane.subPaneLoader.item;
             grabImage(shell).save("docs/captures/t226-general-updates.png");
-            pane.checkButton.clicked();
-            tryVerify(function() { return pane.updateStatusText.text === "1 Update Available"; });
-            pane.installButton.clicked();
+            update.checkButton.clicked();
+            tryVerify(function() { return update.statusText.text === "1 Update Available"; });
+            update.installButton.clicked();
             tryVerify(function() { return pane.rebootRequired === true; });
             waitForRendering(stage);
             grabImage(shell).save("docs/captures/t226-general-updates-restart.png");
-            pane.restartButton.clicked();
-            tryVerify(function() { return pane.updateStatusText.text === "Up to Date"; });
-            pane.updateDialog.accept();
+            update.restartButton.clicked();
+            tryVerify(function() { return update.statusText.text === "Up to Date"; });
+            pane.closeSubPane();
             wait(250);
 
             // Date & Time: the default locale format, then 24-hour.
@@ -155,9 +157,9 @@ Item {
             reset.confirmDialog.reject();
             wait(250);
 
-            // The host-absent state: the General list keeps the About/Update
-            // rows and the sub-pane rows disappear; each sub-pane shows its
-            // own absence note.
+            // The partial-absence state: the General host is gone but the
+            // update host is present. Every row stays visible with its own
+            // summary.
             Settings.setGeneralAvailableFixture(false);
             pane.closeSubPane();
             wait(250);

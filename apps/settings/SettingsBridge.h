@@ -522,6 +522,11 @@ public:
     // initial state so a test starts on a known update phase. A no-op on the
     // live client, which has no fixture to reset.
     Q_INVOKABLE void resetUpdatesFixture();
+    // T269 test seam (`DF_UPDATES_FIXTURE` only): pretend the bridge host is
+    // absent/returned, or keep the host identity and drop only the update
+    // provider, while the General list is open.
+    Q_INVOKABLE void setUpdatesAbsentFixture(bool absent);
+    Q_INVOKABLE void setUpdatesProviderFixture(bool available);
 
     // T226: the General sub-panes seam. `refreshGeneral` re-reads every
     // sub-pane on open; the writes each call the host once and the host pushes
@@ -536,6 +541,9 @@ public:
     Q_INVOKABLE void setSharingEnabled(const QString &id, bool enabled);
     Q_INVOKABLE void runBackup(const QString &destination);
     Q_INVOKABLE void openBackupRestore();
+    // T269: open an installed password provider's application. A delegate
+    // request only; the Settings app never reads or stores a secret.
+    Q_INVOKABLE void openPasswordManager(const QString &id);
     // The update policy keys are settingsd's; the pane forwards them to the
     // running host so automatic checks/installs act immediately.
     Q_INVOKABLE void applyUpdatePolicy(bool autoCheck, bool autoInstall);

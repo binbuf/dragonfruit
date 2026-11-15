@@ -128,7 +128,8 @@ The General group is one sidebar pane with an in-place sub-pane stack. About
 has two surfaces after the 2026-11-08 structural review: a compact 280×503 pt
 utility panel with a blank 32 pt title bar, and the canonical 740×820 pt
 Settings page with 52 pt chrome and a scrolling 768 pt content area. Software
-Update stays a dialog. T230c replaced the two About dialogs with an original
+Update is an in-place sub-pane after T269 (it was a dialog through T226).
+T230c replaced the two About dialogs with an original
 Dragonfruit 280×503 utility panel and the canonical in-place About page. The
 system menu launches the Settings executable with `--about-system`; its blank
 32 pt chrome, 194 pt vector hero at 29 pt, five host rows, and More Info action
@@ -152,23 +153,37 @@ gitignored `docs/captures/`; the same surfaces are tested at 1×/1.5×/2×.
 Controlled material fit over the 21 reference backgrounds and a live localized
 host remain explicit `OPEN` rows. See
 [ADR 0246](adr/0246-about-two-surfaces.md).
-Storage is the existing top-level pane; Login Items, Language & Region,
-Date & Time, Sharing, Backup, Startup Disk, and Reset open in place with a
-`‹ General` back control. Every row is a live summary of the same bridge-host
-view the sub-pane renders, so the list never advertises a state the sub-pane
-contradicts. See
+Storage is an in-place General sub-pane; the top-level `storage` id and
+`settings://pane/storage` remain aliases. Login Items, Language & Region,
+Date & Time, Sharing, Backup, Startup Disk, and Transfer or Reset open in
+place with a `‹ General` back control. Every row is a live summary of the same
+bridge-host view the sub-pane renders, so the list never advertises a state
+the sub-pane contradicts. The list itself never hides a row because one
+adapter is absent. T269 adds the real System Report sheet, the display
+name/resolution from the live screen, the stacked Storage chart and
+recommendations, and the Autofill & Passwords provider inventory. See
 [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md).
 
 The host half is `services/general-adapter` + `services/system-status/src/general.rs`
 behind `org.dragonfruit.SystemStatus1.General`; the Settings client is
 `apps/settings/GeneralClient.*` and the QML files are
-`GeneralPane.qml`, `DateTimePane.qml`, `LanguageRegionPane.qml`,
+`GeneralPane.qml`, `SoftwareUpdatePane.qml`, `PasswordsPane.qml`,
+`DateTimePane.qml`, `LanguageRegionPane.qml`,
 `LoginItemsPane.qml`, `SharingPane.qml`, `BackupPane.qml`,
 `StartupDiskPane.qml`, and `ResetPane.qml`. The native/PackageKit update
 provider is attached to the `Updates` interface; the pane's automatic-update
 toggles write `updates.auto`/`updates.autoInstall` and forward them to the
 running provider. Both default off, so a fresh profile never silently enables
 automatic updates (ADR [0235](adr/0235-general-group-host-adapters.md)).
+
+Autofill & Passwords is a read-only provider inventory plus a delegate. The
+host probes installed manager executables and the Secret Service name owner;
+the keyring row reports the collections' lock state when the service answers.
+`defaults.passwordManager` stores only the chosen provider id (empty means the
+active provider), and the Open action asks the host to launch that provider's
+own application. Settings never opens a secret item, reads a credential, or
+stores one. An absent provider keeps the pane structured with an explanatory
+note (ADR [0269](adr/0269-general-list-independence-and-password-providers.md)).
 
 ## The T227 panes (Appearance, Quick Settings, Search, Screen Saver, Desktop & Stage, Displays advanced)
 
@@ -629,7 +644,7 @@ Two absence families appear, and a pane can mix them:
 | Network (VPN) | NetworkManager (bridge host) | note; connection list empty; `Connect`/`Deactivate` are no-ops; no plugin hides Add | **hides** |
 | Battery | UPower + power-profiles-daemon (bridge host) | note; no profile write; Options stay live on defaults | **hides** |
 | Storage | UDisks2/GIO (bridge host) | note; no mount/eject | **hides** |
-| General | settingsd + General/Updates host (bridge host) | About/Update rows stay live when only the General host is absent; each sub-pane shows its own absence note | **hides** (the update tile hides only when the host is absent) |
+| General | settingsd + General/Updates host (bridge host) | the list stays complete; each row says Unavailable only for its own absent half; About/Software Update keep the identity when the provider is gone | **hides** (the update tile hides only when the host is absent) |
 | Sound | PipeWire/WirePlumber (bridge host) + settingsd | routing half note; Test disabled; Sound Effects/Balance stay live on defaults | volume tile `enabled: audioAvailable` |
 | Keyboard | libinput (bridge host) + settingsd | inventory note; every preference row live on defaults; input sources/replacements live; Dictation disabled with its reason | **hides** |
 | Mouse | libinput (bridge host) + settingsd | inventory note; pointer settings live on defaults | — (shared Keyboard tile) |

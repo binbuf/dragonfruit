@@ -539,10 +539,9 @@ Item {
             compare(Settings.values["menu.control.wifi"], false);
         }
 
-        // The General/About/Updates view is a host-stack adapter read, so with
-        // no bridge host it is the absence state: the disclosure rows and the
-        // dialogs' controls are replaced by a one-line note. Nothing errors and
-        // no write is attempted.
+        // The General list never collapses. With no bridge host both halves are
+        // absent, so every row stays visible and its own summary says
+        // "Unavailable"; nothing errors and no write is attempted.
         function test_general_pane_degrades_cleanly_without_the_bridge_host() {
             var shell = make();
             compare(Settings.updatesAvailable, false,
@@ -550,10 +549,15 @@ Item {
             compare(Settings.updates.state, undefined);
 
             var pane = showPane(shell, "general");
-            compare(pane.ready, false);
-            compare(pane.absenceNote.visible, true,
-                    "the absence note explains the missing host-stack service");
-            verify(pane.absenceNote.text.length > 0);
+            compare(pane.identityReady, false);
+            compare(pane.aboutRow.visible, true);
+            compare(pane.updateRow.visible, true);
+            compare(pane.storageRow.visible, true);
+            compare(pane.passwordsRow.visible, true);
+            compare(pane.aboutSummary, "Unavailable");
+            compare(pane.updateSummary, "Unavailable");
+            compare(pane.storageSummary, "Unavailable");
+            compare(pane.passwordsSummary, "Unavailable");
 
             // A refresh and the update writes are safe no-ops with no host.
             Settings.refreshUpdates();

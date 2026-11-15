@@ -94,7 +94,7 @@ inset come from the in-repo structural measurements
 | Bluetooth | yes | Info button connects instead of showing info; no Forget; discovery does not start on power-on | T271 |
 | Network | yes | No status dots or per-service details; firewall disabled by NM; VPN group disappears | T272 |
 | Battery | yes | Two permanently empty charts; options incomplete; show-percentage has no consumer | T273 |
-| General | yes | Whole list hides when one adapter is absent; About/Software Update/Storage/Reset vanish | T269, T270 |
+| General | yes | Whole list hides when one adapter is absent; About/Software Update/Storage/Reset vanish | T269, T270 (T269 landed) |
 | Storage | yes | Dead Manage row; no chart/total/free; volumes have no capacity | T273 |
 | Appearance | yes | Missing icon/widget style, folder color, scroll-bar click; transparency slider active under override; seven one-row cards | T274 |
 | Accessibility | yes | Three settingsd rows against a five-section macOS IA; map claims rows that do not exist | T275 |
@@ -277,10 +277,11 @@ T264 makes every navigation path truthful:
   body (or the pane title). Focus is moved off the outgoing body before the
   `Loader` destroys it.
 - **Deep links land on a surface or are refused.** A General row resolves to
-  its in-place sub-pane (`about`, `date-time`, `language`, `login`, `sharing`,
-  `backup`, `startup`, `reset`); a Software Update row opens the dialog. A row
-  the resolver cannot open is not accepted, not indexed, and not guessed. A
-  rendered row with a stable `settingsId` is never matched by label.
+  its in-place sub-pane (`about`, `software-update`, `passwords`, `storage`,
+  `date-time`, `language`, `login`, `sharing`, `backup`, `startup`, `reset`).
+  A row the resolver cannot open is not accepted, not indexed, and not
+  guessed. A rendered row with a stable `settingsId` is never matched by
+  label.
 - **One Help action.** The bottom-right `?` and Help → Settings Help open
   `Settings.helpUrl("pane-<id>")`, i.e. the map's `#pane-<id>` anchor. Without
   the document the control disables and carries the reason.
@@ -624,6 +625,16 @@ own state; one absent half does not hide the list.
 | AppleCare & Warranty | — | Omit | — | omit: no service |
 | AirDrop & Handoff | — | Omit | — | omit: no permissive drop-in |
 
+**Landed (T269).** The list never collapses: About and Software Update read
+the host identity, the distribution provider is a second, independently
+optional half, and every row's summary says `Unavailable` only for its own
+missing owner. Every row opens an in-place sub-pane; Software Update is no
+longer a dialog, Storage keeps `settings://pane/storage` as an alias, and
+Autofill & Passwords inventories installed Secret Service providers without
+storing a secret. Transfer or Reset is the last row; its content is T270.
+About shows the model, processor, memory, graphics, serial, OS, real display
+name/resolution, and volume/free/total, with a real System Report sheet.
+
 #### 4.6.1 About — T269
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
@@ -644,10 +655,10 @@ own state; one absent half does not hide the list.
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Available updates | Available updates | List | PackageKit/native | ship |
-| Update Now / Tonight | Install / Update tonight | Button | provider | adapt |
+| Update Now / Tonight | Update Now | Button | provider | adapt; the provider offers no scheduled install, so “Tonight” is omitted |
 | Automatic updates | Automatic updates | Toggle | `updates.auto` | ship; provider consumer |
 | Install macOS updates | Install automatically | Toggle | `updates.autoInstall` | ship |
-| Security responses | Security updates | Toggle | provider | adapt |
+| Security responses | Security updates | Info | provider | adapt; the available security count, no separate provider key |
 | Beta updates | — | Omit | — | omit: no beta channel |
 | Last checked / progress | Last checked / progress | Info | provider | ship |
 
@@ -659,9 +670,9 @@ storage in Settings.
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Open Passwords | Open password manager | Button | Secret Service/portal | delegate |
-| Autofill passwords and passkeys | Autofill passwords | Toggle | `defaults.passwordManager` | adapt |
+| Autofill passwords and passkeys | Autofill passwords | Info | `defaults.passwordManager` | adapt; delegation only, no credential store |
 | Autofill from | Autofill source | Popup | `defaults.passwordManager` | ship |
-| Verification codes | Locked keyring | Info | Secret Service | adapt |
+| Verification codes | Keyring | Info | Secret Service | adapt; locked/unlocked when reported |
 | — | Provider list | List | Secret Service | ship; read-only inventory |
 
 #### 4.6.4 Date & Time — T270
@@ -1322,7 +1333,7 @@ from the first live T263 run; they are part of the same release bar.
 | P0-1 | Absent adapters collapse whole panes to one note or hide whole sections (General, Battery, Storage, Users, Printers, Game Controllers, Online Accounts) | `GeneralPane.qml`, `BatteryPane.qml`, `StoragePane.qml`, `UsersGroupsPane.qml`, `PrintersScannersPane.qml`, `GameControllersPane.qml` | T269–T280 |
 | P0-2 | Many shipped controls write keys with no consumer (sound, notifications, search, backup, locale, `power.showPercentage`, `input.*`, `idle.*`) | `services/settingsd/src/schema.rs`, pane QML | T282, pane tasks |
 | P0-3 | Adapter writes are fire-and-forget; failures invisible; dialogs close before the result | `*Client.cpp`, `WifiPane.qml`, `UsersGroupsPane.qml`, `BiometricsPane.qml`, `PrintersScannersPane.qml` | T282, T271, T279, T280 |
-| P0-4 | General hides About, Software Update, Storage, and Reset when one unrelated adapter is absent | `GeneralPane.qml` | T269 |
+| P0-4 | General hides About, Software Update, Storage, and Reset when one unrelated adapter is absent | `GeneralPane.qml` | T269 (landed) |
 | P0-5 | Accessibility is three settingsd rows against a five-section macOS IA; map claims rows that do not exist | `AccessibilityPane.qml`, `SettingsMap.qml` | T275 |
 | P0-6 | Focus mode rows are inert but styled/announced as radio controls; three duplicate state surfaces | `FocusPane.qml` | T278 |
 | P0-7 | Search is a no-op surface; shortcut is free text; indexing rows name nonexistent keys | `SearchPane.qml`, `schema.rs` | T265, T282 |
@@ -1342,7 +1353,7 @@ from the first live T263 run; they are part of the same release bar.
 | # | Finding | Evidence | Task |
 |---|---|---|---|
 | P1-1 | Appearance missing icon/widget style, folder color, scroll-bar click behavior; transparency slider stays active under Reduce Transparency; seven one-row cards | `AppearancePane.qml` | T274 |
-| P1-2 | About hardcodes “Display: Not available”, duplicates details, resizes the window permanently | `AboutPage.qml`, `SettingsWindow.qml` | T269 |
+| P1-2 | About hardcodes “Display: Not available”, duplicates details, resizes the window permanently | `AboutPage.qml`, `SettingsWindow.qml` | T269 (landed) |
 | P1-3 | Wallpaper hero is 160×100; Clock Appearance opens a pane with no clock appearance; file URLs by string concatenation | `WallpaperPane.qml` | T278 |
 | P1-4 | Screen Saver has no gallery; Start After blanks the display; None does not disable the saver | `ScreenSaverPane.qml` | T278 |
 | P1-5 | Lock Screen “Require password after the screen turns off” writes inactivity seconds; custom idle values display “Never” | `LockScreenPane.qml` | T278 |

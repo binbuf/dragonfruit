@@ -119,6 +119,12 @@ void DbusGeneralClient::openRestore()
     call(QStringLiteral("OpenRestore"), {});
 }
 
+void DbusGeneralClient::openPasswordManager(const QString &id)
+{
+    if (!id.isEmpty())
+        call(QStringLiteral("OpenPasswordManager"), {id});
+}
+
 void DbusGeneralClient::call(const QString &method, const QVariantList &arguments)
 {
     auto *iface = new QDBusInterface(m_service, m_path, m_interface,
@@ -302,6 +308,12 @@ void MockGeneralClient::openRestore()
     backup.insert(QStringLiteral("message"), QStringLiteral("Restore opened"));
     m_view.insert(QStringLiteral("backup"), backup);
     emit changed(m_view);
+}
+
+void MockGeneralClient::openPasswordManager(const QString &id)
+{
+    ++m_passwordOpens;
+    m_lastPasswordManager = id;
 }
 
 void MockGeneralClient::resetForTest()
@@ -548,6 +560,51 @@ void MockGeneralClient::rebuild()
     startup.insert(QStringLiteral("secureBoot"), QStringLiteral("On"));
     startup.insert(QStringLiteral("label"), QStringLiteral("fedora"));
     view.insert(QStringLiteral("startup"), startup);
+
+    // T269: the Autofill & Passwords provider inventory. The Settings app
+    // stores no secrets; this is a read-only projection of installed managers
+    // and the Secret Service lock state.
+    QVariantMap passwords;
+    passwords.insert(QStringLiteral("state"), QStringLiteral("available"));
+    passwords.insert(QStringLiteral("secretServiceAvailable"), true);
+    passwords.insert(QStringLiteral("keyringLocked"), true);
+    passwords.insert(QStringLiteral("keyringLabel"), QStringLiteral("Locked"));
+    passwords.insert(QStringLiteral("installedCount"), 2);
+    passwords.insert(QStringLiteral("message"), QString());
+    QVariantList providers;
+    providers.append(QVariantMap{
+        {QStringLiteral("id"), QStringLiteral("keyring")},
+        {QStringLiteral("label"), QStringLiteral("Desktop Keyring")},
+        {QStringLiteral("installed"), true},
+        {QStringLiteral("active"), true},
+        {QStringLiteral("command"), QStringLiteral("gnome-keyring-daemon")}, // df-allow-desktop-name: fixture executable
+        {QStringLiteral("launch"), QStringLiteral("seahorse")},
+        {QStringLiteral("description"),
+         QStringLiteral("The desktop keyring and Secret Service provider.")},
+    });
+    providers.append(QVariantMap{
+        {QStringLiteral("id"), QStringLiteral("keepassxc")},
+        {QStringLiteral("label"), QStringLiteral("KeePassXC")},
+        {QStringLiteral("installed"), true},
+        {QStringLiteral("active"), false},
+        {QStringLiteral("command"), QStringLiteral("keepassxc")},
+        {QStringLiteral("launch"), QStringLiteral("keepassxc")},
+        {QStringLiteral("description"),
+         QStringLiteral("A local password database with browser integration.")},
+    });
+    providers.append(QVariantMap{
+        {QStringLiteral("id"), QStringLiteral("bitwarden")},
+        {QStringLiteral("label"), QStringLiteral("Bitwarden")},
+        {QStringLiteral("installed"), false},
+        {QStringLiteral("active"), false},
+        {QStringLiteral("command"), QStringLiteral("bitwarden")},
+        {QStringLiteral("launch"), QStringLiteral("")},
+        {QStringLiteral("description"),
+         QStringLiteral("A hosted password manager with a desktop client.")},
+    });
+    passwords.insert(QStringLiteral("providers"), providers);
+    passwords.insert(QStringLiteral("label"), QStringLiteral("2 providers"));
+    view.insert(QStringLiteral("passwords"), passwords);
 
     view.insert(QStringLiteral("errors"), QVariantMap());
     m_view = view;
