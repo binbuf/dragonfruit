@@ -88,6 +88,9 @@ public:
     }
 
     QVariant value(const QString &key) const { return m_values.value(key); }
+    // T268: how many `Set` calls the client actually made. A slider drag must
+    // produce one per commit, not one per pixel.
+    int setCalls() const { return m_setCalls; }
 
     void setValue(const QString &key, const QVariant &value)
     {
@@ -103,6 +106,7 @@ public slots:
 
     void Set(const QString &key, const QDBusVariant &value)
     {
+        ++m_setCalls;
         setValue(key, value.variant());
     }
 
@@ -115,6 +119,42 @@ signals:
 
 private:
     QVariantMap m_values;
+    int m_setCalls = 0;
+};
+
+// T268: the General pane's update policy owner. `SetAutomaticPolicy` is the
+// write that opening General must not make.
+class FakeUpdatesService : public QObject
+{
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.dragonfruit.SystemStatus1.Updates")
+
+public:
+    int policyWrites() const { return m_policyWrites; }
+
+public slots:
+    QString State() const
+    {
+        return QStringLiteral(
+            "{\"kind\":\"updates\",\"state\":\"available\",\"phase\":\"available\","
+            "\"updatesAvailable\":true,\"busy\":false,\"updateCount\":1,"
+            "\"securityCount\":1,\"lastCheckedMs\":1,\"label\":\"1 Update Available\","
+            "\"updates\":[]}");
+    }
+    void SetAutomaticPolicy(bool autoCheck, bool autoInstall)
+    {
+        ++m_policyWrites;
+        m_autoCheck = autoCheck;
+        m_autoInstall = autoInstall;
+    }
+    void Check() {}
+    void Install() {}
+    void Reboot() {}
+
+private:
+    int m_policyWrites = 0;
+    bool m_autoCheck = false;
+    bool m_autoInstall = false;
 };
 
 // A QML control bound to one key through the `Settings` singleton: the exact
@@ -170,6 +210,21 @@ private:
         return root;
     }
 
+    QObject *loadModuleType(QQmlEngine &engine, const QString &type)
+    {
+        engine.addImportPath(QStringLiteral(DF_QML_IMPORT_DIR));
+        QQmlComponent component(&engine);
+        const QByteArray source = QByteArrayLiteral(
+            "import QtQuick\nimport Dragonfruit.Settings\n")
+            + type.toUtf8() + QByteArrayLiteral(" { }");
+        component.setData(source, QUrl(QStringLiteral("qrc:/") + type
+                                       + QStringLiteral(".qml")));
+        QObject *root = component.create();
+        if (!root)
+            qWarning() << type << "QML load failed:" << component.errorString();
+        return root;
+    }
+
     static QObject *toggleOf(QObject *root)
     {
         return root->property("toggle").value<QObject *>();
@@ -191,6 +246,23 @@ private slots:
 
         QMetaObject::invokeMethod(toggle, "toggle");
         QTRY_COMPARE(toggle->property("checked").toBool(), true);
+    }
+
+    // T268: constructing the bridge must not construct or refresh any adapter
+    // client. The old constructor made one read per adapter (~20 D-Bus calls)
+    // before the first pane painted.
+    void noAdapterClientsAreCreatedBeforeAPaneOpens()
+    {
+        QQmlEngine engine;
+        QScopedPointer<QObject> root(loadControl(engine, true));
+        QVERIFY(root);
+        QObject *settings = root->property("settings").value<QObject *>();
+        QVERIFY(settings);
+        QCOMPARE(settings->property("adapterClientCount").toInt(), 0);
+
+        // One pane's explicit refresh creates exactly its own client.
+        QMetaObject::invokeMethod(settings, "refreshBluetooth");
+        QTRY_COMPARE(settings->property("adapterClientCount").toInt(), 1);
     }
 
     void controlRoundTripsThroughASettingsService()
@@ -341,6 +413,79 @@ private slots:
 
         daemon.terminate();
         QVERIFY(daemon.waitForFinished(5000));
+    }
+
+    // T268: a slider drag writes once on commit, never on every moved() tick.
+    // The Dock size slider is the live reference control.
+    void sliderDragEmitsOneSetPerCommit()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            QSKIP("no session bus available (run under dbus-run-session)");
+
+        FakeSettingsService service;
+        QVERIFY(bus.registerService(kService));
+        QVERIFY(bus.registerObject(kPath, &service,
+                                   QDBusConnection::ExportAllSlots
+                                       | QDBusConnection::ExportAllSignals));
+
+        qunsetenv("DF_SETTINGS_FIXTURE");
+        QQmlEngine engine;
+        QScopedPointer<QObject> pane(loadModuleType(engine, QStringLiteral("DesktopDockPane")));
+        QVERIFY(pane);
+        QObject *slider = pane->property("sizeSlider").value<QObject *>();
+        QVERIFY(slider);
+
+        // A drag emits moved() per pixel; none of those may reach settingsd.
+        for (int i = 0; i < 24; ++i)
+            QMetaObject::invokeMethod(slider, "moved", Q_ARG(double, 0.2 + i * 0.02));
+        QTest::qWait(120);
+        QCOMPARE(service.setCalls(), 0);
+
+        // Releasing commits exactly one durable write.
+        QMetaObject::invokeMethod(slider, "committed", Q_ARG(double, 0.75));
+        QTRY_COMPARE(service.setCalls(), 1);
+        QTRY_VERIFY(qAbs(service.value(QStringLiteral("dock.size")).toDouble() - 0.75)
+                    < 0.001);
+
+        // A second commit is a second write, not a debounce that swallows it.
+        QMetaObject::invokeMethod(slider, "committed", Q_ARG(double, 0.85));
+        QTRY_COMPARE(service.setCalls(), 2);
+
+        bus.unregisterObject(kPath);
+        bus.unregisterService(kService);
+    }
+
+    // T268: opening General re-reads the host but never pushes the schema
+    // defaults as an update policy. Before this fix, the pane's
+    // Component.onCompleted called applyUpdatePolicy(false, false), silently
+    // turning automatic updates off just by visiting the pane.
+    void openingGeneralDoesNotForceTheUpdatePolicyOff()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            QSKIP("no session bus available (run under dbus-run-session)");
+
+        const QString statusService = QStringLiteral("org.dragonfruit.SystemStatus1");
+        const QString statusPath = QStringLiteral("/org/dragonfruit/SystemStatus1");
+        FakeUpdatesService updates;
+        QVERIFY(bus.registerService(statusService));
+        QVERIFY(bus.registerObject(statusPath, &updates,
+                                   QDBusConnection::ExportAllSlots));
+
+        qputenv("DF_SETTINGS_FIXTURE", "1");
+        qunsetenv("DF_UPDATES_FIXTURE");
+        QQmlEngine engine;
+        QScopedPointer<QObject> pane(loadModuleType(engine, QStringLiteral("GeneralPane")));
+        QVERIFY(pane);
+        QTRY_VERIFY(pane->property("providerAvailable").toBool());
+
+        // Opening the pane is a read, not a policy write.
+        QTest::qWait(120);
+        QCOMPARE(updates.policyWrites(), 0);
+
+        bus.unregisterObject(statusPath);
+        bus.unregisterService(statusService);
     }
 };
 

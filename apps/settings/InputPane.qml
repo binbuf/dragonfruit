@@ -400,7 +400,7 @@ Item {
                         accessibleName: qsTr("Key repeat rate")
                         minLabel: qsTr("Off")
                         maxLabel: qsTr("Fast")
-                        onMoved: (value) => Settings.set("input.repeatRate",
+                        onCommitted: (value) => Settings.set("input.repeatRate",
                                                          Math.round(value * 200.0))
                     }
                     Text {
@@ -442,7 +442,7 @@ Item {
                         accessibleName: qsTr("Delay until repeat")
                         minLabel: qsTr("Long")
                         maxLabel: qsTr("Short")
-                        onMoved: (value) => Settings.set("input.repeatDelay",
+                        onCommitted: (value) => Settings.set("input.repeatDelay",
                                                          Math.round((1.0 - value) * 5000.0))
                     }
                     Text {
@@ -506,7 +506,7 @@ Item {
                         accessibleName: qsTr("Keyboard brightness")
                         minLabel: qsTr("Dim")
                         maxLabel: qsTr("Bright")
-                        onMoved: (value) =>
+                        onCommitted: (value) =>
                             Settings.set("input.keyboardBrightness", value)
                     }
                     Text {
@@ -684,7 +684,7 @@ Item {
                         accessibleName: qsTr("Tracking speed")
                         minLabel: qsTr("Slow")
                         maxLabel: qsTr("Fast")
-                        onMoved: (value) => Settings.set("input.pointerSpeed", value)
+                        onCommitted: (value) => Settings.set("input.pointerSpeed", value)
                     }
                     Text {
                         width: parent.width
@@ -769,7 +769,7 @@ Item {
                         accessibleName: qsTr("Scroll speed")
                         minLabel: qsTr("Slow")
                         maxLabel: qsTr("Fast")
-                        onMoved: (value) => Settings.set("input.scrollSpeed", value)
+                        onCommitted: (value) => Settings.set("input.scrollSpeed", value)
                     }
                 }
             }
@@ -802,7 +802,7 @@ Item {
                         accessibleName: qsTr("Double-click speed")
                         minLabel: qsTr("Fast")
                         maxLabel: qsTr("Slow")
-                        onMoved: (value) => Settings.set("input.doubleClickSpeed",
+                        onCommitted: (value) => Settings.set("input.doubleClickSpeed",
                                                          Math.round(100 + value * 800))
                     }
                 }
@@ -896,7 +896,7 @@ Item {
                         accessibleName: qsTr("Tracking speed")
                         minLabel: qsTr("Slow")
                         maxLabel: qsTr("Fast")
-                        onMoved: (value) => Settings.set("input.pointerSpeed", value)
+                        onCommitted: (value) => Settings.set("input.pointerSpeed", value)
                     }
                     Text {
                         width: parent.width

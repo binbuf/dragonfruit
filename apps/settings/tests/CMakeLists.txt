@@ -720,6 +720,33 @@ set_tests_properties(tst_settings_live PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# T268: the startup / pane-switch performance budget. Loads the real
+# SettingsWindow with the deterministic fixtures, measures the cold open and
+# two cycles through five panes, and records p50/p95/p99 plus missed deadlines.
+# `make t268-settings-performance` runs it and writes the trace + budget note.
+qt_add_executable(tst_settings_performance
+    tst_settings_performance.cpp
+)
+target_compile_definitions(tst_settings_performance PRIVATE
+    DF_QML_IMPORT_DIR="${CMAKE_BINARY_DIR}/qml"
+)
+target_link_libraries(tst_settings_performance PRIVATE
+    Qt6::QuickTest Qt6::Quick Qt6::Qml
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_performance)
+
+add_test(
+    NAME tst_settings_performance
+    COMMAND tst_settings_performance
+)
+set_tests_properties(tst_settings_performance PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    TIMEOUT 300
+)
+
 # T224: the common apply path against a fake owner on a private bus —
 # validation, optimistic apply + revert, service disappearance, and restart
 # resync (including a write queued while the daemon was away).

@@ -133,7 +133,7 @@ Item {
                     minLabel: qsTr("Small")
                     maxLabel: qsTr("Large")
                     accessibleName: qsTr("Dock size")
-                    onMoved: (value) => Settings.set("dock.size", value)
+                    onCommitted: (value) => Settings.set("dock.size", value)
                 }
             }
 
@@ -152,7 +152,7 @@ Item {
                     midLabel: qsTr("Small")
                     maxLabel: qsTr("Large")
                     accessibleName: qsTr("Dock magnification")
-                    onMoved: (value) => Settings.set("dock.magnification", value)
+                    onCommitted: (value) => Settings.set("dock.magnification", value)
                 }
             }
 

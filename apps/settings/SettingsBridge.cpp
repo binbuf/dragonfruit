@@ -138,23 +138,39 @@ SettingsBridge::SettingsBridge(QObject *parent)
     else
         m_client = new DbusSettingsClient(this);
 
+    // T268: the one reactive surface is a per-key property map. A binding on
+    // `Settings.values["dock.size"]` is notified only when that key changes;
+    // the old `valuesChanged` full-map notification re-evaluated every pane
+    // binding on every settingsd event.
+    m_valuesMap = QQmlPropertyMap::create(this);
+    m_writeErrorsMap = QQmlPropertyMap::create(this);
+    m_writeStatesMap = QQmlPropertyMap::create(this);
+    const QVariantMap initial = m_client->values();
+    for (auto it = initial.constBegin(); it != initial.constEnd(); ++it)
+        m_valuesMap->insert(it.key(), it.value());
+
     connect(m_client, &SettingsClient::changed, this,
             [this](const QString &key, const QVariant &value) {
+                publishValue(key, value);
                 emit valuesChanged();
                 emit changed(key, value);
             });
     connect(m_client, &SettingsClient::availableChanged, this,
             [this](bool available) { emit availableChanged(available); });
     connect(m_client, &SettingsClient::writeStateChanged, this,
-            [this](const QString &) { emit writeStatesChanged(); });
+            [this](const QString &key) {
+                refreshWriteState(key);
+                emit writeStatesChanged();
+            });
     connect(m_client, &SettingsClient::writeFinished, this,
             [this](const QString &key, const QVariant &value, bool ok,
                    const QString &message) {
-                // A rejected write never emitted `changed`, so re-evaluate
-                // `Settings.values` bindings explicitly; a reverted write did
-                // emit one. Both paths must snap the control back.
+                // A rejected write never emitted `changed`, so re-publish the
+                // stored value to snap the control back; a reverted write did
+                // emit one. Both paths must leave the row honest.
                 if (!ok)
-                    emit valuesChanged();
+                    publishValue(key, m_client->value(key));
+                refreshWriteState(key);
                 emit writeStatesChanged();
                 emit writeFinished(key, value, ok, message);
             });
@@ -181,180 +197,9 @@ SettingsBridge::SettingsBridge(QObject *parent)
                 emit authorizationFinished(requestId, authorized, error);
             });
 
-    // T-15.1b: the Bluetooth seam. `DF_BLUETOOTH_FIXTURE` selects the
-    // deterministic in-process client for the headless pane tests; otherwise
-    // the live bridge-host client, whose absence is a normal state.
-    if (qEnvironmentVariableIsSet("DF_BLUETOOTH_FIXTURE"))
-        m_bluetooth = new MockBluetoothClient(this);
-    else
-        m_bluetooth = new DbusBluetoothClient(this);
-    connect(m_bluetooth, &BluetoothClient::changed, this,
-            [this](const QVariantMap &) { emit bluetoothChanged(); });
-    connect(m_bluetooth, &BluetoothClient::availableChanged, this,
-            [this](bool) { emit bluetoothChanged(); });
-
-    // T-15.2b: the storage seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_STORAGE_FIXTURE"))
-        m_storage = new MockStorageClient(this);
-    else
-        m_storage = new DbusStorageClient(this);
-    connect(m_storage, &StorageClient::changed, this,
-            [this](const QVariantMap &) { emit storageChanged(); });
-    connect(m_storage, &StorageClient::availableChanged, this,
-            [this](bool) { emit storageChanged(); });
-
-    // T-15.3b: the Sound seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_SOUND_FIXTURE"))
-        m_sound = new MockSoundClient(this);
-    else
-        m_sound = new DbusSoundClient(this);
-    connect(m_sound, &SoundClient::changed, this,
-            [this](const QVariantMap &) { emit soundChanged(); });
-    connect(m_sound, &SoundClient::availableChanged, this,
-            [this](bool) { emit soundChanged(); });
-
-    // T-15.4b: the input inventory seam, selected the same way. Read-only.
-    if (qEnvironmentVariableIsSet("DF_INPUT_FIXTURE"))
-        m_input = new MockInputClient(this);
-    else
-        m_input = new DbusInputClient(this);
-    connect(m_input, &InputClient::changed, this,
-            [this](const QVariantMap &) { emit inputChanged(); });
-    connect(m_input, &InputClient::availableChanged, this,
-            [this](bool) { emit inputChanged(); });
-    connect(m_input, &InputClient::controllerTested, this,
-            [this](const QVariantMap &report) {
-                m_controllerTest = report;
-                emit controllerTestChanged();
-            });
-
-    // T-15.6b: the battery / power-profiles seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_BATTERY_FIXTURE"))
-        m_battery = new MockBatteryClient(this);
-    else
-        m_battery = new DbusBatteryClient(this);
-    connect(m_battery, &BatteryClient::changed, this,
-            [this](const QVariantMap &) { emit batteryChanged(); });
-    connect(m_battery, &BatteryClient::availableChanged, this,
-            [this](bool) { emit batteryChanged(); });
-
-    // T-15.7b: the Notifications/Focus seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_NOTIFICATIONS_FIXTURE"))
-        m_notifications = new MockNotificationsClient(this);
-    else
-        m_notifications = new DbusNotificationsClient(this);
-    connect(m_notifications, &NotificationsClient::changed, this,
-            [this](const QVariantMap &) { emit notificationsChanged(); });
-    connect(m_notifications, &NotificationsClient::availableChanged, this,
-            [this](bool) { emit notificationsChanged(); });
-
-    // T-15.10b: the General/About/Updates seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_UPDATES_FIXTURE"))
-        m_updates = new MockUpdatesClient(this);
-    else
-        m_updates = new DbusUpdatesClient(this);
-    connect(m_updates, &UpdatesClient::changed, this,
-            [this](const QVariantMap &) { emit updatesChanged(); });
-    connect(m_updates, &UpdatesClient::availableChanged, this,
-            [this](bool) { emit updatesChanged(); });
-
-    // T226: the General sub-panes seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_GENERAL_FIXTURE"))
-        m_general = new MockGeneralClient(this);
-    else
-        m_general = new DbusGeneralClient(this);
-    connect(m_general, &GeneralClient::changed, this,
-            [this](const QVariantMap &) { emit generalChanged(); });
-    connect(m_general, &GeneralClient::availableChanged, this,
-            [this](bool) { emit generalChanged(); });
-
-    // T-15.11b: the Users & Groups seam, selected the same way. T228's
-    // biometrics/online-accounts fixtures use the same mock client.
-    if (qEnvironmentVariableIsSet("DF_ACCOUNTS_FIXTURE")
-        || qEnvironmentVariableIsSet("DF_BIOMETRICS_FIXTURE")
-        || qEnvironmentVariableIsSet("DF_ONLINE_ACCOUNTS_FIXTURE"))
-        m_accounts = new MockAccountsClient(this);
-    else
-        m_accounts = new DbusAccountsClient(this);
-    connect(m_accounts, &AccountsClient::changed, this,
-            [this](const QVariantMap &) { emit accountsChanged(); });
-    connect(m_accounts, &AccountsClient::availableChanged, this,
-            [this](bool) { emit accountsChanged(); });
-    connect(m_accounts, &AccountsClient::biometricsChanged, this,
-            [this](const QVariantMap &) { emit biometricsChanged(); });
-    connect(m_accounts, &AccountsClient::onlineAccountsChanged, this,
-            [this](const QVariantMap &) { emit onlineAccountsChanged(); });
-
-    // T-15.12b: the Printers & Scanners seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_PRINTERS_FIXTURE"))
-        m_printers = new MockPrintersClient(this);
-    else
-        m_printers = new DbusPrintersClient(this);
-    connect(m_printers, &PrintersClient::changed, this,
-            [this](const QVariantMap &) { emit printersChanged(); });
-    connect(m_printers, &PrintersClient::availableChanged, this,
-            [this](bool) { emit printersChanged(); });
-    connect(m_printers, &PrintersClient::discoveryChanged, this,
-            [this](const QVariantMap &report) {
-                m_printerDiscovery = report;
-                emit printerDiscoveryChanged();
-            });
-    connect(m_printers, &PrintersClient::optionsChanged, this,
-            [this](const QVariantMap &report) {
-                m_printerOptions = report;
-                emit printerOptionsChanged();
-            });
-
-    // T-15.13b: the Privacy & Security seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_PRIVACY_FIXTURE"))
-        m_privacy = new MockPrivacyClient(this);
-    else
-        m_privacy = new DbusPrivacyClient(this);
-    connect(m_privacy, &PrivacyClient::changed, this,
-            [this](const QVariantMap &) { emit privacyChanged(); });
-    connect(m_privacy, &PrivacyClient::securityChanged, this,
-            [this](const QVariantMap &) { emit securityChanged(); });
-    connect(m_privacy, &PrivacyClient::availableChanged, this,
-            [this](bool) { emit privacyChanged(); });
-
-    // T-15.14b: the Accessibility seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_ACCESSIBILITY_FIXTURE"))
-        m_accessibility = new MockAccessibilityClient(this);
-    else
-        m_accessibility = new DbusAccessibilityClient(this);
-    connect(m_accessibility, &AccessibilityClient::changed, this,
-            [this](const QVariantMap &) { emit accessibilityChanged(); });
-    connect(m_accessibility, &AccessibilityClient::availableChanged, this,
-            [this](bool) { emit accessibilityChanged(); });
-
-    // T-15.15b: the Network advanced (VPN) seam, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_VPN_FIXTURE"))
-        m_vpn = new MockVpnClient(this);
-    else
-        m_vpn = new DbusVpnClient(this);
-    connect(m_vpn, &VpnClient::changed, this,
-            [this](const QVariantMap &) { emit vpnChanged(); });
-    connect(m_vpn, &VpnClient::availableChanged, this,
-            [this](bool) { emit vpnChanged(); });
-
-    // T225: the Wi-Fi and Network/Firewall seams, selected the same way.
-    if (qEnvironmentVariableIsSet("DF_WIFI_FIXTURE"))
-        m_wifi = new MockWifiClient(this);
-    else
-        m_wifi = new DbusWifiClient(this);
-    connect(m_wifi, &WifiClient::changed, this,
-            [this](const QVariantMap &) { emit wifiChanged(); });
-    connect(m_wifi, &WifiClient::availableChanged, this,
-            [this](bool) { emit wifiChanged(); });
-
-    if (qEnvironmentVariableIsSet("DF_NETWORK_FIXTURE"))
-        m_network = new MockNetworkClient(this);
-    else
-        m_network = new DbusNetworkClient(this);
-    connect(m_network, &NetworkClient::changed, this,
-            [this](const QVariantMap &) { emit networkChanged(); });
-    connect(m_network, &NetworkClient::availableChanged, this,
-            [this](bool) { emit networkChanged(); });
+    // T268: no adapter client is constructed here. Each pane's `refreshX()`
+    // creates exactly its own client on first open (see `ensure*`), so a cold
+    // start no longer makes ~20 D-Bus calls before the first pane paints.
 
     buildWallpaperPresets();
     connectPortalWatcher();
@@ -375,6 +220,317 @@ SettingsBridge::~SettingsBridge()
 {
     if (!m_wallpaperFixtureDir.isEmpty())
         QDir(m_wallpaperFixtureDir).removeRecursively();
+}
+
+void SettingsBridge::publishValue(const QString &key, const QVariant &value)
+{
+    if (m_valuesMap->contains(key) && m_valuesMap->value(key) == value) {
+        // A rejected write leaves the stored value unchanged, but the control
+        // has already moved itself. Drop the key so the binding re-evaluates.
+        m_valuesMap->insert(key, QVariant());
+    }
+    m_valuesMap->insert(key, value);
+}
+
+void SettingsBridge::refreshWriteState(const QString &key)
+{
+    m_writeStatesMap->insert(key, m_client->writeState(key));
+    m_writeErrorsMap->insert(key, m_client->writeError(key));
+}
+
+BluetoothClient *SettingsBridge::ensureBluetooth()
+{
+    if (m_bluetooth)
+        return m_bluetooth;
+    if (qEnvironmentVariableIsSet("DF_BLUETOOTH_FIXTURE"))
+        m_bluetooth = new MockBluetoothClient(this);
+    else
+        m_bluetooth = new DbusBluetoothClient(this);
+    connect(m_bluetooth, &BluetoothClient::changed, this,
+            [this](const QVariantMap &) { emit bluetoothChanged(); });
+    connect(m_bluetooth, &BluetoothClient::availableChanged, this,
+            [this](bool) { emit bluetoothChanged(); });
+    // The mock built its view before the signal was connected; one refresh
+    // publishes it. The live client's constructor read is already in flight.
+    if (qobject_cast<MockBluetoothClient *>(m_bluetooth))
+        m_bluetooth->refresh();
+    noteAdapterCreated();
+    return m_bluetooth;
+}
+
+StorageClient *SettingsBridge::ensureStorage()
+{
+    if (m_storage)
+        return m_storage;
+    if (qEnvironmentVariableIsSet("DF_STORAGE_FIXTURE"))
+        m_storage = new MockStorageClient(this);
+    else
+        m_storage = new DbusStorageClient(this);
+    connect(m_storage, &StorageClient::changed, this,
+            [this](const QVariantMap &) { emit storageChanged(); });
+    connect(m_storage, &StorageClient::availableChanged, this,
+            [this](bool) { emit storageChanged(); });
+    if (qobject_cast<MockStorageClient *>(m_storage))
+        m_storage->refresh();
+    noteAdapterCreated();
+    return m_storage;
+}
+
+SoundClient *SettingsBridge::ensureSound()
+{
+    if (m_sound)
+        return m_sound;
+    if (qEnvironmentVariableIsSet("DF_SOUND_FIXTURE"))
+        m_sound = new MockSoundClient(this);
+    else
+        m_sound = new DbusSoundClient(this);
+    connect(m_sound, &SoundClient::changed, this,
+            [this](const QVariantMap &) { emit soundChanged(); });
+    connect(m_sound, &SoundClient::availableChanged, this,
+            [this](bool) { emit soundChanged(); });
+    if (qobject_cast<MockSoundClient *>(m_sound))
+        m_sound->refresh();
+    noteAdapterCreated();
+    return m_sound;
+}
+
+InputClient *SettingsBridge::ensureInput()
+{
+    if (m_input)
+        return m_input;
+    if (qEnvironmentVariableIsSet("DF_INPUT_FIXTURE"))
+        m_input = new MockInputClient(this);
+    else
+        m_input = new DbusInputClient(this);
+    connect(m_input, &InputClient::changed, this,
+            [this](const QVariantMap &) { emit inputChanged(); });
+    connect(m_input, &InputClient::availableChanged, this,
+            [this](bool) { emit inputChanged(); });
+    connect(m_input, &InputClient::controllerTested, this,
+            [this](const QVariantMap &report) {
+                m_controllerTest = report;
+                emit controllerTestChanged();
+            });
+    if (qobject_cast<MockInputClient *>(m_input))
+        m_input->refresh();
+    noteAdapterCreated();
+    return m_input;
+}
+
+BatteryClient *SettingsBridge::ensureBattery()
+{
+    if (m_battery)
+        return m_battery;
+    if (qEnvironmentVariableIsSet("DF_BATTERY_FIXTURE"))
+        m_battery = new MockBatteryClient(this);
+    else
+        m_battery = new DbusBatteryClient(this);
+    connect(m_battery, &BatteryClient::changed, this,
+            [this](const QVariantMap &) { emit batteryChanged(); });
+    connect(m_battery, &BatteryClient::availableChanged, this,
+            [this](bool) { emit batteryChanged(); });
+    if (qobject_cast<MockBatteryClient *>(m_battery))
+        m_battery->refresh();
+    noteAdapterCreated();
+    return m_battery;
+}
+
+NotificationsClient *SettingsBridge::ensureNotifications()
+{
+    if (m_notifications)
+        return m_notifications;
+    if (qEnvironmentVariableIsSet("DF_NOTIFICATIONS_FIXTURE"))
+        m_notifications = new MockNotificationsClient(this);
+    else
+        m_notifications = new DbusNotificationsClient(this);
+    connect(m_notifications, &NotificationsClient::changed, this,
+            [this](const QVariantMap &) { emit notificationsChanged(); });
+    connect(m_notifications, &NotificationsClient::availableChanged, this,
+            [this](bool) { emit notificationsChanged(); });
+    if (qobject_cast<MockNotificationsClient *>(m_notifications))
+        m_notifications->refresh();
+    noteAdapterCreated();
+    return m_notifications;
+}
+
+UpdatesClient *SettingsBridge::ensureUpdates()
+{
+    if (m_updates)
+        return m_updates;
+    if (qEnvironmentVariableIsSet("DF_UPDATES_FIXTURE"))
+        m_updates = new MockUpdatesClient(this);
+    else
+        m_updates = new DbusUpdatesClient(this);
+    connect(m_updates, &UpdatesClient::changed, this,
+            [this](const QVariantMap &) { emit updatesChanged(); });
+    connect(m_updates, &UpdatesClient::availableChanged, this,
+            [this](bool) { emit updatesChanged(); });
+    if (qobject_cast<MockUpdatesClient *>(m_updates))
+        m_updates->refresh();
+    noteAdapterCreated();
+    return m_updates;
+}
+
+GeneralClient *SettingsBridge::ensureGeneral()
+{
+    if (m_general)
+        return m_general;
+    if (qEnvironmentVariableIsSet("DF_GENERAL_FIXTURE"))
+        m_general = new MockGeneralClient(this);
+    else
+        m_general = new DbusGeneralClient(this);
+    connect(m_general, &GeneralClient::changed, this,
+            [this](const QVariantMap &) { emit generalChanged(); });
+    connect(m_general, &GeneralClient::availableChanged, this,
+            [this](bool) { emit generalChanged(); });
+    if (qobject_cast<MockGeneralClient *>(m_general))
+        m_general->refresh();
+    noteAdapterCreated();
+    return m_general;
+}
+
+AccountsClient *SettingsBridge::ensureAccounts()
+{
+    if (m_accounts)
+        return m_accounts;
+    if (qEnvironmentVariableIsSet("DF_ACCOUNTS_FIXTURE")
+        || qEnvironmentVariableIsSet("DF_BIOMETRICS_FIXTURE")
+        || qEnvironmentVariableIsSet("DF_ONLINE_ACCOUNTS_FIXTURE"))
+        m_accounts = new MockAccountsClient(this);
+    else
+        m_accounts = new DbusAccountsClient(this);
+    connect(m_accounts, &AccountsClient::changed, this,
+            [this](const QVariantMap &) { emit accountsChanged(); });
+    connect(m_accounts, &AccountsClient::availableChanged, this,
+            [this](bool) { emit accountsChanged(); });
+    connect(m_accounts, &AccountsClient::biometricsChanged, this,
+            [this](const QVariantMap &) { emit biometricsChanged(); });
+    connect(m_accounts, &AccountsClient::onlineAccountsChanged, this,
+            [this](const QVariantMap &) { emit onlineAccountsChanged(); });
+    if (qobject_cast<MockAccountsClient *>(m_accounts))
+        m_accounts->refresh();
+    noteAdapterCreated();
+    return m_accounts;
+}
+
+PrintersClient *SettingsBridge::ensurePrinters()
+{
+    if (m_printers)
+        return m_printers;
+    if (qEnvironmentVariableIsSet("DF_PRINTERS_FIXTURE"))
+        m_printers = new MockPrintersClient(this);
+    else
+        m_printers = new DbusPrintersClient(this);
+    connect(m_printers, &PrintersClient::changed, this,
+            [this](const QVariantMap &) { emit printersChanged(); });
+    connect(m_printers, &PrintersClient::availableChanged, this,
+            [this](bool) { emit printersChanged(); });
+    connect(m_printers, &PrintersClient::discoveryChanged, this,
+            [this](const QVariantMap &report) {
+                m_printerDiscovery = report;
+                emit printerDiscoveryChanged();
+            });
+    connect(m_printers, &PrintersClient::optionsChanged, this,
+            [this](const QVariantMap &report) {
+                m_printerOptions = report;
+                emit printerOptionsChanged();
+            });
+    if (qobject_cast<MockPrintersClient *>(m_printers))
+        m_printers->refresh();
+    noteAdapterCreated();
+    return m_printers;
+}
+
+PrivacyClient *SettingsBridge::ensurePrivacy()
+{
+    if (m_privacy)
+        return m_privacy;
+    if (qEnvironmentVariableIsSet("DF_PRIVACY_FIXTURE"))
+        m_privacy = new MockPrivacyClient(this);
+    else
+        m_privacy = new DbusPrivacyClient(this);
+    connect(m_privacy, &PrivacyClient::changed, this,
+            [this](const QVariantMap &) { emit privacyChanged(); });
+    connect(m_privacy, &PrivacyClient::securityChanged, this,
+            [this](const QVariantMap &) { emit securityChanged(); });
+    connect(m_privacy, &PrivacyClient::availableChanged, this,
+            [this](bool) { emit privacyChanged(); });
+    if (qobject_cast<MockPrivacyClient *>(m_privacy))
+        m_privacy->refresh();
+    noteAdapterCreated();
+    return m_privacy;
+}
+
+AccessibilityClient *SettingsBridge::ensureAccessibility()
+{
+    if (m_accessibility)
+        return m_accessibility;
+    if (qEnvironmentVariableIsSet("DF_ACCESSIBILITY_FIXTURE"))
+        m_accessibility = new MockAccessibilityClient(this);
+    else
+        m_accessibility = new DbusAccessibilityClient(this);
+    connect(m_accessibility, &AccessibilityClient::changed, this,
+            [this](const QVariantMap &) { emit accessibilityChanged(); });
+    connect(m_accessibility, &AccessibilityClient::availableChanged, this,
+            [this](bool) { emit accessibilityChanged(); });
+    if (qobject_cast<MockAccessibilityClient *>(m_accessibility))
+        m_accessibility->refresh();
+    noteAdapterCreated();
+    return m_accessibility;
+}
+
+VpnClient *SettingsBridge::ensureVpn()
+{
+    if (m_vpn)
+        return m_vpn;
+    if (qEnvironmentVariableIsSet("DF_VPN_FIXTURE"))
+        m_vpn = new MockVpnClient(this);
+    else
+        m_vpn = new DbusVpnClient(this);
+    connect(m_vpn, &VpnClient::changed, this,
+            [this](const QVariantMap &) { emit vpnChanged(); });
+    connect(m_vpn, &VpnClient::availableChanged, this,
+            [this](bool) { emit vpnChanged(); });
+    if (qobject_cast<MockVpnClient *>(m_vpn))
+        m_vpn->refresh();
+    noteAdapterCreated();
+    return m_vpn;
+}
+
+WifiClient *SettingsBridge::ensureWifi()
+{
+    if (m_wifi)
+        return m_wifi;
+    if (qEnvironmentVariableIsSet("DF_WIFI_FIXTURE"))
+        m_wifi = new MockWifiClient(this);
+    else
+        m_wifi = new DbusWifiClient(this);
+    connect(m_wifi, &WifiClient::changed, this,
+            [this](const QVariantMap &) { emit wifiChanged(); });
+    connect(m_wifi, &WifiClient::availableChanged, this,
+            [this](bool) { emit wifiChanged(); });
+    if (qobject_cast<MockWifiClient *>(m_wifi))
+        m_wifi->refresh();
+    noteAdapterCreated();
+    return m_wifi;
+}
+
+NetworkClient *SettingsBridge::ensureNetwork()
+{
+    if (m_network)
+        return m_network;
+    if (qEnvironmentVariableIsSet("DF_NETWORK_FIXTURE"))
+        m_network = new MockNetworkClient(this);
+    else
+        m_network = new DbusNetworkClient(this);
+    connect(m_network, &NetworkClient::changed, this,
+            [this](const QVariantMap &) { emit networkChanged(); });
+    connect(m_network, &NetworkClient::availableChanged, this,
+            [this](bool) { emit networkChanged(); });
+    if (qobject_cast<MockNetworkClient *>(m_network))
+        m_network->refresh();
+    noteAdapterCreated();
+    return m_network;
 }
 
 QVariantMap SettingsBridge::values() const
@@ -596,6 +752,35 @@ QVariantMap SettingsBridge::network() const
 bool SettingsBridge::networkAvailable() const
 {
     return m_network && m_network->available();
+}
+
+int SettingsBridge::adapterClientCount() const
+{
+    int count = 0;
+    for (const QObject *client : { static_cast<const QObject *>(m_bluetooth),
+                                   static_cast<const QObject *>(m_storage),
+                                   static_cast<const QObject *>(m_sound),
+                                   static_cast<const QObject *>(m_input),
+                                   static_cast<const QObject *>(m_battery),
+                                   static_cast<const QObject *>(m_notifications),
+                                   static_cast<const QObject *>(m_updates),
+                                   static_cast<const QObject *>(m_general),
+                                   static_cast<const QObject *>(m_accounts),
+                                   static_cast<const QObject *>(m_printers),
+                                   static_cast<const QObject *>(m_privacy),
+                                   static_cast<const QObject *>(m_accessibility),
+                                   static_cast<const QObject *>(m_vpn),
+                                   static_cast<const QObject *>(m_wifi),
+                                   static_cast<const QObject *>(m_network) }) {
+        if (client)
+            ++count;
+    }
+    return count;
+}
+
+void SettingsBridge::noteAdapterCreated()
+{
+    emit adapterClientCountChanged();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -908,26 +1093,56 @@ void SettingsBridge::connectWallpaperProvider()
 
 void SettingsBridge::refreshWallpaperProvider()
 {
+    // T268: one asynchronous `Properties.GetAll` instead of four blocking
+    // `Get` calls. The constructor no longer waits on a hung provider, and a
+    // burst of provider signals coalesces into one follow-up read.
+    if (m_providerRefreshPending) {
+        m_providerRefreshQueued = true;
+        return;
+    }
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected())
         return;
-    const auto readProperty = [&bus](const QString &name) -> QString {
-        QDBusMessage call = QDBusMessage::createMethodCall(
-            kWallpaperService, kWallpaperPath,
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        call << kWallpaperInterface << name;
-        const QDBusMessage reply = bus.call(call);
-        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-            return QString();
-        QVariant value = reply.arguments().constFirst();
-        if (value.userType() == qMetaTypeId<QDBusVariant>())
-            value = value.value<QDBusVariant>().variant();
-        return value.toString();
-    };
-    applyProviderItems(readProperty(QStringLiteral("Items")));
-    applyProviderStatus(readProperty(QStringLiteral("Status")));
-    applyProviderDefault(readProperty(QStringLiteral("DefaultSource")));
-    applyProviderBuiltin(readProperty(QStringLiteral("BuiltinDefaultSource")));
+    m_providerRefreshPending = true;
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        kWallpaperService, kWallpaperPath,
+        QStringLiteral("org.freedesktop.DBus.Properties"),
+        QStringLiteral("GetAll"));
+    call << kWallpaperInterface;
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this](QDBusPendingCallWatcher *pending) {
+                pending->deleteLater();
+                m_providerRefreshPending = false;
+                const QDBusPendingReply<QVariantMap> reply = *pending;
+                if (reply.isValid()) {
+                    const QVariantMap properties = reply.value();
+                    const auto text = [](const QVariant &raw) {
+                        QVariant value = raw;
+                        if (value.userType() == qMetaTypeId<QDBusVariant>())
+                            value = value.value<QDBusVariant>().variant();
+                        return value.toString();
+                    };
+                    if (properties.contains(QStringLiteral("Items")))
+                        applyProviderItems(
+                            text(properties.value(QStringLiteral("Items"))));
+                    if (properties.contains(QStringLiteral("Status")))
+                        applyProviderStatus(
+                            text(properties.value(QStringLiteral("Status"))));
+                    if (properties.contains(QStringLiteral("DefaultSource")))
+                        applyProviderDefault(
+                            text(properties.value(QStringLiteral("DefaultSource"))));
+                    if (properties.contains(QStringLiteral("BuiltinDefaultSource")))
+                        applyProviderBuiltin(text(properties.value(
+                            QStringLiteral("BuiltinDefaultSource"))));
+                }
+                // An absent provider is a normal state: the reply is an error
+                // and every property keeps its previous value.
+                if (m_providerRefreshQueued) {
+                    m_providerRefreshQueued = false;
+                    refreshWallpaperProvider();
+                }
+            });
 }
 
 void SettingsBridge::applyProviderItems(const QString &json)
@@ -1044,6 +1259,8 @@ void SettingsBridge::refreshBluetooth()
 {
     if (m_bluetooth)
         m_bluetooth->refresh();
+    else
+        ensureBluetooth();
 }
 
 void SettingsBridge::setBluetoothPowered(bool powered)
@@ -1074,6 +1291,8 @@ void SettingsBridge::refreshStorage()
 {
     if (m_storage)
         m_storage->refresh();
+    else
+        ensureStorage();
 }
 
 void SettingsBridge::mountStorage(const QString &volumePath)
@@ -1098,6 +1317,8 @@ void SettingsBridge::refreshSound()
 {
     if (m_sound)
         m_sound->refresh();
+    else
+        ensureSound();
 }
 
 void SettingsBridge::setSoundVolume(double volume)
@@ -1134,6 +1355,8 @@ void SettingsBridge::refreshInput()
 {
     if (m_input)
         m_input->refresh();
+    else
+        ensureInput();
 }
 
 void SettingsBridge::testController(const QString &path)
@@ -1146,6 +1369,8 @@ void SettingsBridge::refreshBattery()
 {
     if (m_battery)
         m_battery->refresh();
+    else
+        ensureBattery();
 }
 
 void SettingsBridge::setPowerProfile(const QString &profile)
@@ -1158,6 +1383,8 @@ void SettingsBridge::refreshNotifications()
 {
     if (m_notifications)
         m_notifications->refresh();
+    else
+        ensureNotifications();
 }
 
 void SettingsBridge::setFocusMode(const QString &mode)
@@ -1226,6 +1453,8 @@ void SettingsBridge::setNotificationAppPreference(const QString &app,
 void SettingsBridge::refreshUpdates(){
     if (m_updates)
         m_updates->refresh();
+    else
+        ensureUpdates();
 }
 
 void SettingsBridge::checkUpdates()
@@ -1256,6 +1485,8 @@ void SettingsBridge::refreshGeneral()
 {
     if (m_general)
         m_general->refresh();
+    else
+        ensureGeneral();
 }
 
 void SettingsBridge::setNtp(bool enabled)
@@ -1335,6 +1566,8 @@ void SettingsBridge::refreshAccounts()
     setAccountsError(QString());
     if (m_accounts)
         m_accounts->refresh();
+    else
+        ensureAccounts();
 }
 
 // All account/group writes are privileged. They are authorized by the host
@@ -1441,6 +1674,8 @@ void SettingsBridge::refreshPrinters()
 {
     if (m_printers)
         m_printers->refresh();
+    else
+        ensurePrinters();
 }
 
 void SettingsBridge::setDefaultPrinter(const QString &name)
@@ -1497,6 +1732,8 @@ void SettingsBridge::refreshPrivacy()
 {
     if (m_privacy)
         m_privacy->refresh();
+    else
+        ensurePrivacy();
 }
 
 void SettingsBridge::setPrivacyPermission(const QString &table, const QString &resourceId,
@@ -1523,6 +1760,8 @@ void SettingsBridge::refreshSecurity()
 {
     if (m_privacy)
         m_privacy->refreshSecurity();
+    else
+        ensurePrivacy()->refreshSecurity();
 }
 
 void SettingsBridge::setSecuritySourceEnabled(const QString &id, bool enabled)
@@ -1541,6 +1780,8 @@ void SettingsBridge::refreshBiometrics()
 {
     if (m_accounts)
         m_accounts->refreshBiometrics();
+    else
+        ensureAccounts()->refreshBiometrics();
 }
 
 void SettingsBridge::startFingerprintEnrollment(const QString &finger)
@@ -1577,6 +1818,8 @@ void SettingsBridge::refreshOnlineAccounts()
 {
     if (m_accounts)
         m_accounts->refreshOnlineAccounts();
+    else
+        ensureAccounts()->refreshOnlineAccounts();
 }
 
 void SettingsBridge::addOnlineAccount(const QString &provider, const QString &identity)
@@ -1608,6 +1851,8 @@ void SettingsBridge::refreshAccessibility()
 {
     if (m_accessibility)
         m_accessibility->refresh();
+    else
+        ensureAccessibility();
 }
 
 void SettingsBridge::resetAccessibilityFixture()
@@ -1620,6 +1865,8 @@ void SettingsBridge::refreshVpn()
 {
     if (m_vpn)
         m_vpn->refresh();
+    else
+        ensureVpn();
 }
 
 void SettingsBridge::connectVpn(const QString &uuid)
@@ -1663,6 +1910,8 @@ void SettingsBridge::refreshWifi()
 {
     if (m_wifi)
         m_wifi->refresh();
+    else
+        ensureWifi();
 }
 
 void SettingsBridge::setWifiEnabled(bool enabled)
@@ -1711,6 +1960,8 @@ void SettingsBridge::refreshNetwork()
 {
     if (m_network)
         m_network->refresh();
+    else
+        ensureNetwork();
 }
 
 void SettingsBridge::activateNetworkService(const QString &uuid)

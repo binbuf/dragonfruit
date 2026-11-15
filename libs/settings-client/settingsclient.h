@@ -135,7 +135,10 @@ private:
 // The `org.dragonfruit.Settings1` schema defaults, mirrored from
 // services/settingsd/src/schema.rs. Adding a key there means adding it here
 // (and to the consumers that read it); the values are the frozen v1 contract.
-QVariantMap settingsSchemaDefaults();
+//
+// T268: the table is built once and returned by reference. Validation and
+// every row's `schemaFor()` used to rebuild the 142-entry map per call.
+const QVariantMap &settingsSchemaDefaults();
 
 // T224: one key's declared type/default and its range/enum constraints, for
 // rows that want to configure a bounded control from the schema. Empty when

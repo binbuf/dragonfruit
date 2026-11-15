@@ -899,6 +899,9 @@ Item {
         // scripted check can inspect the current pane's row metadata.
         if (Settings.debugView && first.length > 0)
             root.showDebugView(first);
+        // T268: one startup marker. `make t268-settings-performance` correlates
+        // this with the per-pane `paneLoaded` lines.
+        root.trace("shellReady " + first);
     }
 
     onCurrentPaneIdChanged: {
@@ -1505,10 +1508,11 @@ Item {
                             }
                         }
 
-                        Loader {
+                        PaneLoader {
                             id: paneBody
                             width: parent.width
-                            sourceComponent: root.paneComponent(root.currentPaneId)
+                            paneId: root.currentPaneId
+                            componentFor: root.paneComponent
                             onLoaded: {
                                 root.loadedPaneId = root.currentPaneId;
                                 if (root.historyApplyEntry !== null
@@ -1534,7 +1538,9 @@ Item {
                                 // Panes no longer opt into a popup parent: a
                                 // Dialog or Select adopts the window overlay
                                 // layer itself (T266).
-                                root.trace("paneLoaded " + root.currentPaneId);
+                                root.trace("paneLoaded " + root.currentPaneId
+                                           + (paneBody.restoredFromCache
+                                              ? " cached" : " cold"));
                                 if (root.pendingPaneId === root.currentPaneId)
                                     Qt.callLater(root.revealPending);
                             }

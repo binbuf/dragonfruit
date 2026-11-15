@@ -197,7 +197,7 @@ Item {
                         accessibleName: qsTr("Alert volume")
                         minLabel: qsTr("Low")
                         maxLabel: qsTr("High")
-                        onMoved: (value) => Settings.set("sound.alertVolume", value)
+                        onCommitted: (value) => Settings.set("sound.alertVolume", value)
                     }
                 }
             }
@@ -372,7 +372,7 @@ Item {
                         accessibleName: qsTr("Output volume")
                         minLabel: qsTr("Low")
                         maxLabel: qsTr("High")
-                        onMoved: (value) => Settings.setSoundVolume(value)
+                        onCommitted: (value) => Settings.setSoundVolume(value)
                     }
                 }
             }
@@ -432,7 +432,7 @@ Item {
                         accessibleName: qsTr("Balance")
                         minLabel: qsTr("Left")
                         maxLabel: qsTr("Right")
-                        onMoved: (value) => Settings.set("sound.balance", value)
+                        onCommitted: (value) => Settings.set("sound.balance", value)
                     }
                 }
             }

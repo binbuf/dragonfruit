@@ -12,8 +12,8 @@ import Dragonfruit.Settings
 SettingsRow {
     id: root
 
-    // Read the map property (not the `errorFor()` helper) so this binding
-    // tracks `writeStatesChanged`; a method call alone would not re-evaluate.
+    // T268: `writeErrors` is a per-key property map, so this binding tracks
+    // exactly this row's key instead of re-evaluating on every write.
     errorText: settingsKey.length > 0
         ? String(Settings.writeErrors[settingsKey] || "") : ""
 }

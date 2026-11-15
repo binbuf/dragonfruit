@@ -57,6 +57,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         SettingsKeyRow.qml
         SettingsMenu.qml
         PaneHeader.qml
+        PaneLoader.qml
         AppearancePane.qml
         QuickSettingsPane.qml
         SearchPane.qml
@@ -149,6 +150,7 @@ df_qml_lint(app-settings
     SettingsKeyRow.qml
     SettingsMenu.qml
     PaneHeader.qml
+    PaneLoader.qml
     AppearancePane.qml
     WallpaperPane.qml
     DesktopDockPane.qml

@@ -79,7 +79,7 @@ QVariant coerceToSchema(const QString &key, const QVariant &value)
     // (`input.repeatRate`) writes a double. Coerce it back to the schema's
     // `x`/`d` type here, before the value is stored or sent over D-Bus, so the
     // daemon's type check accepts it and the reactive map keeps its type.
-    static const QVariantMap defaults = settingsSchemaDefaults();
+    static const QVariantMap &defaults = settingsSchemaDefaults();
     const auto it = defaults.constFind(key);
     if (it == defaults.constEnd())
         return value;
@@ -127,7 +127,9 @@ void SettingsClient::setAvailable(bool available)
     emit availableChanged(available);
 }
 
-QVariantMap settingsSchemaDefaults()
+namespace {
+
+QVariantMap buildSchemaDefaults()
 {
     // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 27). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
@@ -315,6 +317,17 @@ QVariantMap settingsSchemaDefaults()
     return values;
 }
 
+} // namespace
+
+const QVariantMap &settingsSchemaDefaults()
+{
+    // T268: one immutable table for the process lifetime. The previous
+    // implementation rebuilt the whole map on every validation, schema lookup,
+    // and client construction, which dominated pane-open cost.
+    static const QVariantMap values = buildSchemaDefaults();
+    return values;
+}
+
 namespace {
 
 // One constrained schema key. `allowed` is the exhaustive enum (empty for
@@ -429,13 +442,23 @@ const Constraint kConstraints[] = {
     { "desktop.showItems", kDesktopItems, 2, false, 0, false, 0 },
 };
 
+// T268: one keyed constraint table built once. The previous linear scan ran
+// for every validate() and every row's schemaFor() call.
+const QHash<QString, const Constraint *> &constraintTable()
+{
+    static const QHash<QString, const Constraint *> table = []() {
+        QHash<QString, const Constraint *> out;
+        out.reserve(int(sizeof(kConstraints) / sizeof(kConstraints[0])));
+        for (const Constraint &constraint : kConstraints)
+            out.insert(QString::fromLatin1(constraint.key), &constraint);
+        return out;
+    }();
+    return table;
+}
+
 const Constraint *constraintFor(const QString &key)
 {
-    for (const Constraint &constraint : kConstraints) {
-        if (key == QLatin1String(constraint.key))
-            return &constraint;
-    }
-    return nullptr;
+    return constraintTable().value(key, nullptr);
 }
 
 QString numberText(double value)
@@ -482,17 +505,14 @@ bool isNumeric(const QVariant &value)
 
 } // namespace
 
-QVariantMap settingsSchemaInfo(const QString &key)
-{
-    const QVariantMap defaults = settingsSchemaDefaults();
-    const auto it = defaults.constFind(key);
-    if (it == defaults.constEnd())
-        return {};
+namespace {
 
+QVariantMap buildSchemaInfo(const QString &key, const QVariant &declared)
+{
     QVariantMap out;
     out.insert(QStringLiteral("key"), key);
-    out.insert(QStringLiteral("default"), it.value());
-    out.insert(QStringLiteral("type"), schemaTypeName(it.value()));
+    out.insert(QStringLiteral("default"), declared);
+    out.insert(QStringLiteral("type"), schemaTypeName(declared));
     const Constraint *constraint = constraintFor(key);
     QStringList allowed;
     bool hasMin = false;
@@ -515,9 +535,32 @@ QVariantMap settingsSchemaInfo(const QString &key)
     return out;
 }
 
+// T268: the 142-key schema-info table, built once. `Settings.schemaFor` is
+// called by every row on pane load; rebuilding it per row was the largest
+// pane-open cost after the adapter fan-out.
+const QHash<QString, QVariantMap> &schemaInfoTable()
+{
+    static const QHash<QString, QVariantMap> table = []() {
+        QHash<QString, QVariantMap> out;
+        const QVariantMap &defaults = settingsSchemaDefaults();
+        out.reserve(defaults.size());
+        for (auto it = defaults.constBegin(); it != defaults.constEnd(); ++it)
+            out.insert(it.key(), buildSchemaInfo(it.key(), it.value()));
+        return out;
+    }();
+    return table;
+}
+
+} // namespace
+
+QVariantMap settingsSchemaInfo(const QString &key)
+{
+    return schemaInfoTable().value(key);
+}
+
 QString SettingsClient::validate(const QString &key, const QVariant &value) const
 {
-    const QVariantMap defaults = settingsSchemaDefaults();
+    const QVariantMap &defaults = settingsSchemaDefaults();
     const auto it = defaults.constFind(key);
     if (it == defaults.constEnd())
         return QStringLiteral("unknown settings key \"%1\"").arg(key);

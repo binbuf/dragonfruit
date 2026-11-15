@@ -477,6 +477,39 @@ Search is the fastest path to a setting and must never lie:
   A cross-language test compares the client mirror with the daemon schema;
   drift fails the build.
 
+**Landed (T268, [ADR 0268](adr/0268-settings-performance-lazy-clients-and-pane-cache.md)).**
+The bridge constructs no adapter client and makes no adapter read. Each pane's
+first `refresh*()` creates only its own client (`Settings.adapterClientCount`
+is the diagnostic; zero after construction). `Settings.values`,
+`Settings.writeErrors`, and `Settings.writeStates` are per-key property maps, so
+a settingsd event re-evaluates only the bindings on that key. The 142-key
+defaults/constraint/schema-info tables are built once. Sliders write on
+`committed` (the Appearance transparency slider keeps its 60 ms bounded
+debounce); the wallpaper provider is read with one asynchronous
+`Properties.GetAll` and concurrent reads coalesce. `PaneLoader` keeps each
+visited pane instantiated in a hidden holder, so returning to a pane does not
+re-run its `Component.onCompleted` refreshes; a pane that needs fresh host state
+asks for it explicitly.
+
+The budget is a harness floor, not a hardware claim. Measure it with:
+
+```sh
+make t268-settings-performance
+```
+
+It writes `docs/captures/t268-settings-performance.json` (raw samples and
+percentiles), `.log` (the full run), `-trace.txt` (the `DFTRACE` startup and
+`paneLoaded cold|cached` lines), and `.txt` (the note below). The offscreen
+software harness at 2026-11-15 recorded: cold open 729 ms; first pane visit
+p50 57 / p95 68 / p99 68 ms; cached pane switch p50 8 / p95 10 / p99 19 ms;
+0 missed deadlines.
+The test fails above 2500 ms cold open, 1500 ms first-visit p95, or 150 ms
+cached-switch p95. The reference-machine target for a cached switch remains two
+60 Hz frames (33.3 ms); the harness budget is wider because the software scene
+graph is slower than the GPU path. The live Wayland walk (open Settings, switch
+five panes, drag Dock size) remains the human confirmation.
+
+
 ## 4. Pane-by-pane target
 
 The tables below are the target row inventory. “Disposition” uses the
@@ -1299,7 +1332,7 @@ from the first live T263 run; they are part of the same release bar.
 | P0-11 | Sidebar cannot scroll to most panes; no groups; opens Appearance instead of General; window is 800×640 | `SettingsShell.qml`, `SettingsWindow.qml`, `Sidebar.qml` | T263 (landed) |
 | P0-12 | Back/forward ignore subpanes; deep links cannot land in General subpanes/dialogs; help anchor is wrong; menu actions are dead | `SettingsShell.qml`, `SettingsWindow.qml`, `SettingsMenu.qml` | T264 (landed) |
 | P0-13 | settingsd accepts NaN/Infinity (persist panic), loses concurrent updates, hides persistence failure, and the client schema mirror drifts | `schema.rs`, `persist.rs`, `dbus.rs`, `settingsclient.cpp` | T282 |
-| P0-14 | Adapter clients show the startup snapshot; no live refresh; ~20 D-Bus calls at startup; slider writes fsync per tick | `*Client.cpp`, `SettingsBridge.cpp` | T268, T282 |
+| P0-14 | Adapter clients show the startup snapshot; no live refresh; ~20 D-Bus calls at startup; slider writes fsync per tick | `*Client.cpp`, `SettingsBridge.cpp` | T268 (landed: lazy clients, per-key maps, cached schema tables, commit-on-release sliders, async provider read, cached pane loader), T282 (persistence hardening) |
 | P0-15 | Pane tests run at 900/1000 px; many panes have no dark/absence/scale capture; no golden diff; no real-host matrix | `apps/settings/tests/`, `scripts/capture-*settings*` | T283, T284 |
 | P0-16 | Wallpaper picks do not acknowledge the click reliably: a tile can look unselected, the spinner/preview state starts only after the provider round trip, a second pick during a pending apply is ignored, and the selected tile can disagree with the background | `apps/settings/WallpaperPane.qml`, `SettingsBridge.cpp`, `services/wallpaperd` | T278 |
 | P0-17 | A stationary click on a sidebar row or pane control is often dropped; moving the pointer or scrolling first makes it land. The activating press can be consumed by focus or routed through a stale cached pointer location, so the first click looks inert | `apps/settings/SettingsShell.qml`, `design-system/components/Sidebar.qml`, `compositor/src/input.rs` | T263 (live-position ray-test landed), T266 (row focus + stationary-click harness landed) |

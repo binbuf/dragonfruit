@@ -739,6 +739,51 @@ The deterministic visual check is `make t224-settings-apply-capture`
 through the real Settings shell offscreen. A host session can repeat the same
 four states with the same fixtures.
 
+## Startup and interaction performance (T268)
+
+The Settings app is a consumer of one settingsd client plus one adapter client
+per pane group. Both are now lazy: `SettingsBridge` constructs no adapter in
+its constructor and `Settings.adapterClientCount` is zero until a pane calls
+its own `refresh*()`. That removes the ~20-call startup fan-out (one read per
+adapter) that used to precede the first painted pane.
+
+Reactive state is per key. `Settings.values`, `Settings.writeErrors`, and
+`Settings.writeStates` are `QQmlPropertyMap` objects, so the existing bracket
+bindings (`Settings.values["dock.size"]`) keep working but a settingsd change
+notifies only that key's bindings. `settingsSchemaDefaults()` is one immutable
+process-wide table; `settingsSchemaInfo()` is a precomputed key table; the
+constraint lookup is a hash. A rejected write re-publishes the stored value so
+a control that already moved snaps back.
+
+Sliders write on `committed`, not on every `moved` tick. The Appearance
+transparency slider keeps its 60 ms bounded debounce because it also drives a
+live preview; every other settingsd slider and the Sound volume slider produce
+one write per release. The wallpaper provider is read with one asynchronous
+`Properties.GetAll`; overlapping requests coalesce, and a hung provider cannot
+block the window.
+
+`PaneLoader.qml` replaces the shell's plain `Loader`. It keeps each visited
+pane instantiated in a hidden holder and reparents it on return, so
+`Component.onCompleted` refreshes run once per process. A pane that needs fresh
+host state asks for it explicitly; the shell no longer re-runs adapter reads or
+policy pushes on every visit. General's `applyUpdatePolicy` call moved from
+`Component.onCompleted` to the two automatic-update toggles, so opening General
+cannot turn automatic updates off.
+
+`tst_settings_live` covers the three invariants: no adapter client exists before
+the first pane opens, a 24-tick slider drag produces zero `Set` calls and each
+`committed` produces exactly one, and opening General makes zero
+`SetAutomaticPolicy` calls. `make t268-settings-performance` runs the real
+window offscreen, switches five panes twice, and writes p50/p95/p99 plus missed
+deadlines to `docs/captures/t268-settings-performance.{json,txt}`, with the
+`DFTRACE` `paneLoaded cold|cached` lines in
+`docs/captures/t268-settings-performance-trace.txt`. The recorded 2026-11-15
+run: cold open 729 ms; first-visit p95 68 ms; cached-switch p95 10 ms (p99
+19 ms); zero missed deadlines. The harness budget is 2500/1500/150 ms
+against the reference 33.3 ms two-frame pane-switch target; the software scene
+graph is slower than the GPU path. The live Wayland walk remains the human
+confirmation.
+
 ## Distro provider interface
 
 Settings should say "check for updates," not "execute a `dnf5` command." The

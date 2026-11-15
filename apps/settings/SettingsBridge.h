@@ -2,11 +2,11 @@
 // The Settings app's live settings client, exposed to QML as the `Settings`
 // singleton (T-09.1b).
 //
-// Panes never touch D-Bus: `Settings.values` is a reactive map of every
-// `org.dragonfruit.Settings1` key, and `Settings.set(key, value)` writes one
-// through settingsd (optimistically local first, then mirrored). A control
-// binds to the map and writes on change, so the key and the consumer both
-// update without restart:
+// Panes never touch D-Bus: `Settings.values` is a reactive per-key property
+// map of every `org.dragonfruit.Settings1` key, and `Settings.set(key, value)`
+// writes one through settingsd (optimistically local first, then mirrored). A
+// control binds to one key and writes on change, so the key and the consumer
+// both update without restart:
 //
 //     Toggle {
 //         onToggled: (checked) => Settings.set("accessibility.reduceMotion", checked)
@@ -24,6 +24,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QQmlPropertyMap>
 #include <QString>
 #include <functional>
 #include <QStringList>
@@ -57,19 +58,21 @@ class SettingsBridge : public QObject
     Q_OBJECT
     QML_NAMED_ELEMENT(Settings)
     QML_SINGLETON
-    // Every key's current value. QML bindings such as
-    // `Settings.values["dock.size"]` re-evaluate when this changes; it is the
-    // one reactive surface, so no pane polls.
-    Q_PROPERTY(QVariantMap values READ values NOTIFY valuesChanged)
+    // Every key's current value. This is a `QQmlPropertyMap`, so a binding
+    // such as `Settings.values["dock.size"]` tracks exactly that key: one
+    // settingsd change no longer re-evaluates every pane binding in the app.
+    // The map is the compatibility facade for the T-09 bracket syntax; C++
+    // consumers keep `SettingsClient::values()`.
+    Q_PROPERTY(QQmlPropertyMap *values READ valuesMap CONSTANT)
     // Whether the daemon currently owns the bus name. False means defaults +
     // in-memory writes (the absent-provider state panes must degrade under).
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
     // T224: the common apply path's state. `writeErrors` maps a key to the
     // last failure message (empty when it succeeded); `writeStates` maps a key
-    // to `idle`/`pending`/`deferred`/`error`. Rows read these to show an
-    // inline error next to the control and to revert honestly.
-    Q_PROPERTY(QVariantMap writeErrors READ writeErrors NOTIFY writeStatesChanged)
-    Q_PROPERTY(QVariantMap writeStates READ writeStates NOTIFY writeStatesChanged)
+    // to `idle`/`pending`/`deferred`/`error`. Both are per-key property maps
+    // (T268), so a row only re-evaluates for its own key.
+    Q_PROPERTY(QQmlPropertyMap *writeErrors READ writeErrorsMap CONSTANT)
+    Q_PROPERTY(QQmlPropertyMap *writeStates READ writeStatesMap CONSTANT)
     // T224: a denied/cancelled privileged account action. The pane shows this
     // next to the control; there is no password field in the app.
     Q_PROPERTY(QString accountsError READ accountsError NOTIFY accountsErrorChanged)
@@ -265,6 +268,11 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Network
     // surface at all; the pane shows the absence note.
     Q_PROPERTY(bool networkAvailable READ networkAvailable NOTIFY networkChanged)
+    // T268: diagnostic — how many pane adapter clients have been constructed
+    // so far. Zero after the bridge is created; each pane's first `refresh*()`
+    // adds exactly one. The startup budget test asserts no constructor fan-out.
+    Q_PROPERTY(int adapterClientCount READ adapterClientCount NOTIFY
+                   adapterClientCountChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -302,8 +310,11 @@ public:
     explicit SettingsBridge(QObject *parent = nullptr);
     ~SettingsBridge() override;
 
-    QVariantMap values() const;
+    QQmlPropertyMap *valuesMap() const { return m_valuesMap; }
     bool available() const;
+    QQmlPropertyMap *writeErrorsMap() const { return m_writeErrorsMap; }
+    QQmlPropertyMap *writeStatesMap() const { return m_writeStatesMap; }
+    QVariantMap values() const;
     QVariantMap writeErrors() const;
     QVariantMap writeStates() const;
     QString accountsError() const { return m_accountsError; }
@@ -348,6 +359,7 @@ public:
     bool wifiAvailable() const;
     QVariantMap network() const;
     bool networkAvailable() const;
+    int adapterClientCount() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -740,13 +752,36 @@ signals:
     void wifiChanged();
     // The Network/firewall view or availability changed (T225).
     void networkChanged();
+    // T268: one more adapter client was created on first use.
+    void adapterClientCountChanged();
 
 private:
+    // T268: adapter clients are created on first use (the pane that owns them),
+    // not all fifteen in the constructor. Each ensure* wires the client's
+    // signals exactly once; absence stays a normal empty view.
+    BluetoothClient *ensureBluetooth();
+    StorageClient *ensureStorage();
+    SoundClient *ensureSound();
+    InputClient *ensureInput();
+    BatteryClient *ensureBattery();
+    NotificationsClient *ensureNotifications();
+    UpdatesClient *ensureUpdates();
+    GeneralClient *ensureGeneral();
+    AccountsClient *ensureAccounts();
+    PrintersClient *ensurePrinters();
+    PrivacyClient *ensurePrivacy();
+    AccessibilityClient *ensureAccessibility();
+    VpnClient *ensureVpn();
+    WifiClient *ensureWifi();
+    NetworkClient *ensureNetwork();
     // T224: authorize one privileged account write, then run it. A denial
     // leaves the view untouched and publishes `accountsError`.
     void authorizeAccountAction(const QString &actionId, const QString &message,
                                 const std::function<void()> &action);
     void setAccountsError(const QString &message);
+    void publishValue(const QString &key, const QVariant &value);
+    void refreshWriteState(const QString &key);
+    void noteAdapterCreated();
     void buildWallpaperPresets();
     void connectPortalWatcher();
     void setChooserAvailable(bool available);
@@ -776,6 +811,11 @@ private slots:
 
 private:
     SettingsClient *m_client = nullptr;
+    // T268: per-key reactive maps. `values` replaces the full-map property;
+    // the write-state maps replace the full-map error/state copies.
+    QQmlPropertyMap *m_valuesMap = nullptr;
+    QQmlPropertyMap *m_writeErrorsMap = nullptr;
+    QQmlPropertyMap *m_writeStatesMap = nullptr;
     SettingsAuthorizer *m_authorizer = nullptr;
     QHash<QString, std::function<void()>> m_pendingAuthActions;
     int m_authRequestCounter = 0;
@@ -791,6 +831,10 @@ private:
     QString m_providerDefault;
     QString m_providerBuiltin;
     int m_providerPreloads = 0;
+    // T268: the provider read is asynchronous and coalesced. A second request
+    // while a `GetAll` is in flight is folded into one follow-up read.
+    bool m_providerRefreshPending = false;
+    bool m_providerRefreshQueued = false;
     // T-18.2: true when `DF_WALLPAPER_FIXTURE` selected the in-process
     // catalogue, so `Preload` and fixture seeding stay deterministic.
     bool m_wallpaperFixture = false;

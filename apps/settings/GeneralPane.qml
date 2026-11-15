@@ -205,11 +205,12 @@ Item {
     }
 
     // Opening the pane asks the host for a re-read (a no-op when absent).
+    // T268: it must not push the update policy. Pushing the schema defaults
+    // here turned automatic updates off merely by opening General; the policy
+    // is forwarded only when the user changes a toggle.
     Component.onCompleted: {
         Settings.refreshUpdates();
         Settings.refreshGeneral();
-        Settings.applyUpdatePolicy(Settings.values["updates.auto"] === true,
-                                   Settings.values["updates.autoInstall"] === true);
     }
 
     Column {
@@ -491,8 +492,11 @@ Item {
                         checked: Settings.values["updates.autoInstall"] === true
                         enabled: Settings.values["updates.auto"] === true
                         accessibleName: qsTr("Install updates automatically")
-                        onToggled: (checked) => Settings.set(
-                            "updates.autoInstall", checked)
+                        onToggled: (checked) => {
+                            Settings.set("updates.autoInstall", checked);
+                            Settings.applyUpdatePolicy(
+                                Settings.values["updates.auto"] === true, checked);
+                        }
                     }
                 }
             }

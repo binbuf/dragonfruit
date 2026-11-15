@@ -184,7 +184,7 @@ Item {
                     minLabel: qsTr("Dim")
                     maxLabel: qsTr("Bright")
                     accessibleName: qsTr("Display brightness")
-                    onMoved: (value) => Settings.set("display.brightness", value)
+                    onCommitted: (value) => Settings.set("display.brightness", value)
                 }
             }
         }
@@ -324,7 +324,7 @@ Item {
             to: 1.0
             accessibleName: qsTr("Display brightness")
             value: root.brightnessValue
-            onMoved: (value) => Settings.set("display.brightness", value)
+            onCommitted: (value) => Settings.set("display.brightness", value)
         }
     }
 
