@@ -507,6 +507,14 @@ Rectangle {
     readonly property bool veilActive:
         menuBar.showBackground && menuBar.materialBlurActive
         && menuBar.veilResolution.renderMode === "no-blur-veil"
+    // T200 text treatment: while the compositor veil runs it is the bar's
+    // contrast mechanism, so the lettering and marks are flat. The reference
+    // measures plain near-black text on a white veil and records no outline
+    // or three-layer halo. The wallpaper contrast treatment returns only when
+    // the veil is not the background (`showBackground` off, or a no-veil
+    // fallback/first frame), where the items can be drawn over the wallpaper.
+    readonly property bool textTreatmentEnabled:
+        !menuBar.veilActive
     // The region the shell commits to the compositor. The legacy sampled rail
     // keeps the 28 pt bar panel; the veil declares its full 95 pt visual
     // extent while the input region and reservation stay the strip.
@@ -1045,6 +1053,7 @@ Rectangle {
                 glyph: modelData.kind === "system" ? menuBar.osGlyph : "dragonfruit"
                 emphasized: modelData.kind === "app"
                 foreground: menuBar.foreground
+                textTreatmentEnabled: menuBar.textTreatmentEnabled
                 title: modelData.title !== undefined ? modelData.title : ""
                 model: modelData.items !== undefined ? modelData.items : []
                 materialBlurActive: menuBar.popupMaterialBlurActive
@@ -1118,6 +1127,7 @@ Rectangle {
                 foreground: menuBar.foreground
                 secondaryForeground: menuBar.secondaryForeground
                 backgroundColor: menuBar.color
+                textTreatmentEnabled: menuBar.textTreatmentEnabled
 
                 onActivated: (id) => menuBar.activateStatusItem(id)
             }

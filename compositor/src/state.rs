@@ -1883,6 +1883,16 @@ fn refresh_override_from_env() -> Option<OutputRefresh> {
     }
 }
 
+/// The geometric centre of an output's logical rectangle. Login parks the
+/// pointer here instead of leaving it at the global origin (a corner, and on
+/// a multi-output layout often a secondary display).
+pub fn output_center(geometry: Rectangle<i32, Logical>) -> Point<f64, Logical> {
+    Point::from((
+        f64::from(geometry.loc.x) + f64::from(geometry.size.w) / 2.0,
+        f64::from(geometry.loc.y) + f64::from(geometry.size.h) / 2.0,
+    ))
+}
+
 impl DfState {
     /// Create all protocol globals. Runs for every backend (FR-1).
     pub fn new(
@@ -2218,6 +2228,20 @@ impl DfState {
             Some(output) => (Some(output.name()), self.space.output_geometry(output)),
             None => (None, None),
         }
+    }
+
+    /// Place the pointer at the centre of the primary output. The backend init
+    /// hook calls this after creating the outputs and seat at login; without
+    /// it the pointer starts at the global origin, which is a corner and can
+    /// be on a secondary display. No-op (and `None`) until both exist.
+    pub fn center_pointer_on_primary_output(&mut self) -> Option<Point<f64, Logical>> {
+        let (_, geometry) = self.primary_output();
+        let geometry = geometry?;
+        let pointer = self.seat.get_pointer()?;
+        let location = output_center(geometry);
+        pointer.set_location(location);
+        self.needs_redraw = true;
+        Some(location)
     }
 
     /// The logical geometry of the output named `name`.
@@ -7357,6 +7381,18 @@ mod tests {
             .split_whitespace()
             .find_map(|value| value.strip_prefix(&format!("{key}=")))
             .unwrap_or_else(|| panic!("missing {key} in {summary:?}"))
+    }
+
+    #[test]
+    fn login_pointer_center_is_the_primary_output_midpoint() {
+        // A primary at the origin.
+        let origin = Rectangle::new(Point::from((0, 0)), Size::from((1280, 720)));
+        assert_eq!(output_center(origin), Point::from((640.0, 360.0)));
+
+        // A primary offset in a multi-output layout (and a negative origin)
+        // must still centre on that display, not on the union.
+        let offset = Rectangle::new(Point::from((1920, -180)), Size::from((1280, 720)));
+        assert_eq!(output_center(offset), Point::from((2560.0, 180.0)));
     }
 
     #[test]

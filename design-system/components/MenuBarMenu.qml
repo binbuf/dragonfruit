@@ -21,6 +21,15 @@ Item {
     // T200: the menu-bar foreground chosen from the wallpaper behind the bar.
     // The default keeps the scheme colour for standalone/gallery use.
     property color foreground: Theme.color.textPrimary
+    // Whether the label and mark keep the wallpaper contrast treatment. The
+    // shell clears it while the compositor veil supplies an opaque-enough
+    // plate: the reference measures flat near-black lettering, not a halo.
+    // Standalone and no-veil uses keep it because the items are drawn on the
+    // wallpaper.
+    property bool textTreatmentEnabled: true
+    // Test/introspection seam: the resolved treatment on the actual label.
+    readonly property bool textShadowVisible: barLabel.shadowEnabled
+    readonly property real textOutlineOpacity: barLabel.outlineOpacity
     // The wallpaper text treatment follows the actual lettering: white text
     // takes the dark shadow pair, black text the light one. Computed from the
     // resolved colour so a gallery/standalone instance with the scheme's
@@ -430,8 +439,10 @@ Item {
         color: root.foreground
         // Keep the wallpaper contrast treatment stable across hover/open; the
         // neutral wash already supplies the plate. Toggling the shadow was a
-        // visible one-frame flash.
-        shadowColor: root.glyphShadowColor
+        // visible one-frame flash. On the veil the mark is flat, like the
+        // lettering.
+        shadowColor: root.textTreatmentEnabled ? root.glyphShadowColor
+                                                : "transparent"
         shadowOffset: Qt.point(0, Theme.controls.wallpaperText.shadowOffsetY)
     }
 
@@ -441,11 +452,13 @@ Item {
         anchors.centerIn: parent
         text: root.title
         color: root.foreground
-        // No shadow discontinuity on hover/open. The veil-aware treatment is
-        // a separate change; the title keeps one constant treatment here.
-        shadowEnabled: true
+        // One treatment per state: flat on the veil, the wallpaper contrast
+        // pair only when the bar has no plate. Hover/open never toggles it.
+        shadowEnabled: root.textTreatmentEnabled
         shadowColor: root.labelShadowColor
         shadowOpacity: root.labelShadowOpacity
+        outlineOpacity: root.textTreatmentEnabled
+                        ? Theme.controls.wallpaperText.outlineOpacity : 0
         font.pixelSize: Theme.controls.titlebar.fontSize
         font.weight: root.emphasized ? Theme.primitive.font.weightBold
                                      : Theme.primitive.font.weightMedium

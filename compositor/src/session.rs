@@ -119,6 +119,12 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     // Backend-specific setup (outputs, renderer, input devices).
     (hooks.init)(&mut state)?;
 
+    // Login starts from the middle of the primary display. The backend hook
+    // has now created the outputs and the seat pointer; the global origin
+    // would otherwise put the cursor in a corner (possibly on a secondary
+    // output). No-op on a session with no output.
+    state.center_pointer_on_primary_output();
+
     // Xwayland (T-06): spawned eagerly now that an output and seat exist.
     // A missing binary is non-fatal (Wayland-only session).
     if let Err(err) = crate::xwayland::start(&mut state) {

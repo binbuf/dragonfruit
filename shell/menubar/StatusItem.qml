@@ -38,6 +38,13 @@ Item {
     property real level: 0.8
     property color tint: Theme.color.textPrimary
     property color backgroundColor: Theme.color.chrome
+    // Whether the label, clock and mark keep the wallpaper contrast treatment.
+    // The bar clears it while its veil is the background plate; with the bar
+    // background off (or on a no-veil fallback) the items sit on the wallpaper
+    // and keep the treatment.
+    property bool textTreatmentEnabled: true
+    // Test/introspection seam: the resolved treatment on the actual label.
+    readonly property bool labelShadowVisible: labelText.shadowEnabled
     // The wallpaper text treatment follows the actual lettering: white text
     // takes the dark shadow pair, black text the light one.
     readonly property color labelColor:
@@ -128,8 +135,9 @@ Item {
             visible: root.icon.length > 0 && root.iconSource.toString().length === 0
             name: root.icon
             color: root.selected ? Theme.color.accent : root.tint
-            shadowColor: (root.selected || root.keyboardFocus)
-                         ? "transparent" : root.glyphShadowColor
+            shadowColor: (root.textTreatmentEnabled
+                          && !root.selected && !root.keyboardFocus)
+                         ? root.glyphShadowColor : "transparent"
             shadowOffset: Qt.point(0, Theme.controls.wallpaperText.shadowOffsetY)
             backgroundColor: root.backgroundColor
             size: Theme.controls.menuBar.iconSize
@@ -153,7 +161,8 @@ Item {
             visible: root.label.length > 0
             text: root.label
             color: root.labelColor
-            shadowEnabled: !root.selected && !root.keyboardFocus
+            shadowEnabled: root.textTreatmentEnabled
+                           && !root.selected && !root.keyboardFocus
             shadowColor: root.labelShadowColor
             shadowOpacity: root.labelShadowOpacity
             font.pixelSize: Theme.controls.menuBar.fontSize
@@ -174,7 +183,8 @@ Item {
                 use24Hour: root.use24Hour
                 foreground: root.foreground
                 secondaryForeground: root.secondaryForeground
-                shadowEnabled: !root.selected && !root.keyboardFocus
+                shadowEnabled: root.textTreatmentEnabled
+                               && !root.selected && !root.keyboardFocus
             }
         }
     }

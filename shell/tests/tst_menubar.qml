@@ -361,6 +361,57 @@ Item {
             Theme.dark = false;
         }
 
+        // F6: the reference measures flat dark lettering on the bar's veil;
+        // the wallpaper contrast shadow belongs only to a bar with no plate.
+        function test_menu_bar_text_is_flat_on_the_veil() {
+            Glass.rollout = "replacement";
+            Theme.dark = false;
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 600,
+                backgroundLuma: 1.0,
+                materialBlurActive: true,
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                statusItems: [
+                    { id: "wifi", icon: "wifi", label: "Wi-Fi",
+                      accessibleName: "Wi-Fi", available: true }
+                ]
+            });
+            compare(bar.veilActive, true);
+            compare(bar.textTreatmentEnabled, false,
+                    "the veil is the menu bar's contrast mechanism");
+
+            var app = bar.appMenuAt(1);
+            compare(app.textTreatmentEnabled, false);
+            compare(app.textShadowVisible, false,
+                    "menu titles are flat on the veil");
+            compare(app.textOutlineOpacity, 0,
+                    "menu titles have no outline on the veil");
+            var wifi = bar.statusItemFor("wifi");
+            verify(wifi !== null);
+            compare(wifi.textTreatmentEnabled, false);
+            compare(wifi.labelShadowVisible, false,
+                    "status labels are flat on the veil");
+
+            // Background off: there is no plate, so the labels sit directly
+            // on the wallpaper and the contrast treatment returns.
+            bar.showBackground = false;
+            waitForRendering(stage);
+            compare(bar.veilActive, false);
+            compare(bar.textTreatmentEnabled, true);
+            compare(app.textTreatmentEnabled, true);
+            compare(app.textShadowVisible, true);
+            verify(app.textOutlineOpacity > 0);
+            compare(wifi.labelShadowVisible, true);
+
+            bar.destroy();
+            Glass.rollout = "legacy";
+            Theme.dark = false;
+        }
+
         function test_menu_bar_foreground_follows_the_wallpaper() {
             // Wallpaper brightness selects the pair in both app appearances;
             // dark and mid-grey backgrounds prefer white glyphs.

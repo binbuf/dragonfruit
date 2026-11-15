@@ -67,9 +67,10 @@ Item {
     width: implicitWidth
     height: implicitHeight
 
-    // The soft part: a few copies stepped downward. Each copy is weaker than
-    // the one above it, so the shadow fades into the wallpaper instead of
-    // ending in a hard second edge.
+    // The soft part: offset copies stepped downward. The shipped token asks
+    // for one copy (a 1 px drop shadow); extra copies soften it, and each is
+    // weaker than the one above so the tail fades instead of ending in a
+    // hard second edge.
     Repeater {
         model: root.effectiveShadowOpacity > 0 ? Math.max(1, root.shadowLayers) : 0
         delegate: Text {

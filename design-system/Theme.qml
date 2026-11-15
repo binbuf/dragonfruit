@@ -1256,7 +1256,7 @@ QtObject {
             readonly property color shadowColorOnDark: "#000000"
             readonly property color shadowColorOnLight: "#ffffff"
             readonly property int shadowOffsetY: 1
-            readonly property int shadowLayers: 3
+            readonly property int shadowLayers: 1
             readonly property real shadowOpacityOnDark: 0.62
             readonly property real shadowOpacityOnLight: 0.7
             readonly property real outlineOpacity: 0.38

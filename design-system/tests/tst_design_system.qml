@@ -885,8 +885,10 @@ TestCase {
     // -- Wallpaper text (menu bar / desktop labels) -------------------------
 
     function test_wallpaper_label_paints_an_opposite_tone_shadow() {
-        // The tokens are the single source for the treatment.
+        // The tokens are the single source for the treatment: one crisp
+        // one-pixel drop shadow plus the edge outline, not a stacked halo.
         compare(Theme.controls.wallpaperText.shadowOffsetY, 1);
+        compare(Theme.controls.wallpaperText.shadowLayers, 1);
         verify(Theme.controls.wallpaperText.shadowOpacityOnDark >= 0.5);
         verify(Theme.controls.wallpaperText.shadowOpacityOnLight >= 0.5);
 

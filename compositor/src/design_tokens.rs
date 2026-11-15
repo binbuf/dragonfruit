@@ -383,7 +383,7 @@ pub mod component {
         pub const SHADOW_COLOR_ON_DARK: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
         pub const SHADOW_COLOR_ON_LIGHT: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
         pub const SHADOW_OFFSET_Y: f32 = 1.0_f32;
-        pub const SHADOW_LAYERS: f32 = 3.0_f32;
+        pub const SHADOW_LAYERS: f32 = 1.0_f32;
         pub const SHADOW_OPACITY_ON_DARK: f32 = 0.62_f32;
         pub const SHADOW_OPACITY_ON_LIGHT: f32 = 0.7_f32;
         pub const OUTLINE_OPACITY: f32 = 0.38_f32;

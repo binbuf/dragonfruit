@@ -4107,6 +4107,45 @@ fn malformed_private_traffic_never_crashes() {
     proc.shutdown();
 }
 
+/// Login starts the cursor in the middle of the primary display, not at the
+/// global origin (the top-left corner). The headless default output is
+/// 1280x720 at scale 1, so the expected position is (640, 360).
+#[test]
+fn pointer_starts_at_the_primary_output_center() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(runtime_dir).join(format!("df-login-pointer-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-login-pointer",
+        &["2b".repeat(32)],
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // The socket appears during the backend init hook; the compositor centres
+    // the pointer immediately after that hook, before the loop starts. Poll
+    // once so a slow startup cannot race the assertion.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut report = String::new();
+    while Instant::now() < deadline {
+        report = input.query("query pointer");
+        if report.contains("pointer") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        report.contains("pointer x=640 y=360"),
+        "login must centre the pointer on the primary output: {report}"
+    );
+
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// Sends synthetic-input commands to the compositor's T-03 harness socket
 /// (see `compositor/src/input/synthetic.rs` for the wire format). The reply
 /// socket is bound so `query` commands can read the compositor's answer.

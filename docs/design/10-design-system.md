@@ -294,6 +294,12 @@ or black glyphs with the light lift on very bright backgrounds, independently
 of app appearance (ADR 0243). The QML surface paints no fill on the
 replacement rail; the compositor veil sits below the foreground and popups.
 When the veil cannot run, QML keeps the scheme-appropriate milky fallback.
+Menu-bar lettering and marks are flat while that veil is running: the measured
+reference is plain `#111` 13 pt text, with no outline or layered halo. The
+wallpaper contrast treatment (`WallpaperLabel`) returns only when the bar has no
+plate — `showBackground=false`, or the no-veil fallback — where items sit
+directly on the wallpaper. Desktop icon labels keep the wallpaper treatment
+because the wallpaper is their background.
 
 Resolution precedence is: Reduce Transparency (opaque scheme plate, sampling
 and lensing off, slider ignored) → rollout look (`legacy` or `replacement`) →

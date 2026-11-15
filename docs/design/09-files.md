@@ -803,8 +803,8 @@ The macOS model: **the file manager owns the desktop.**
   wallpaper-polarity pair (`foregroundOnDark`/`foregroundOnLight` and the
   `component.wallpaperText.flipThreshold`) rather than the app scheme's text
   colour: almost white on ordinary wallpaper, black only on an extremely
-  bright scene. `WallpaperLabel` adds a layered opposite-tone shadow plus a
-  1 px edge outline, and the shadow turns off on the selection pill.
+  bright scene. `WallpaperLabel` adds a one-pixel opposite-tone drop shadow
+  plus a 1 px edge outline, and the shadow turns off on the selection pill.
   `FilesSettings.wallpaperLuminanceAt(x, y)` resolves the same effective
   wallpaper source the shell forwards to the compositor, samples a 64x64 luma
   grid through the active `wallpaper.fit`, and returns the luma under each

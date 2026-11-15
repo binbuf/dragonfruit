@@ -49,6 +49,7 @@
 //! query policy
 //! query menubar
 //! query lock
+//! query pointer
 //! query session
 //! query spaces
 //! query magnifier
@@ -768,6 +769,10 @@ pub enum SyntheticCommand {
     /// `locked` flag, the live lock-surface count, and whether a client
     /// currently holds keyboard focus, followed by `end`. Never unlocks.
     QueryLock,
+    /// Read-only pointer-location introspection: the global logical pointer
+    /// position, followed by `end`. Used to prove login starts centred on the
+    /// primary output.
+    QueryPointer,
     /// Quiesce the session for a simulated suspend (T-12.5a test plumbing):
     /// stop frames and input without tearing down outputs or clients.
     SuspendSession,
@@ -1033,11 +1038,12 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("policy") => SyntheticCommand::QueryPolicy,
             Some("menubar") => SyntheticCommand::QueryMenuBar,
             Some("lock") => SyntheticCommand::QueryLock,
+            Some("pointer") => SyntheticCommand::QueryPointer,
             Some("session") => SyntheticCommand::QuerySession,
             Some("magnifier") => SyntheticCommand::QueryMagnifier,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, scale, identity, focus, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, menubar, lock, session, magnifier)"
+                    "query requires a known subject (decorations, scale, identity, focus, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, menubar, lock, pointer, session, magnifier)"
                         .into(),
                 );
             }
@@ -1408,6 +1414,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryLock => {
                 unreachable!("query lock is handled by apply_datagram")
             }
+            SyntheticCommand::QueryPointer => {
+                unreachable!("query pointer is handled by apply_datagram")
+            }
             // A session-power command, not an input event.
             SyntheticCommand::SuspendSession => {
                 unreachable!("suspend is handled by apply_datagram")
@@ -1720,6 +1729,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryLock) => {
                 if let Some((socket, peer)) = &reply {
                     let report = lock_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryPointer) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = pointer_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -2727,6 +2745,19 @@ fn lock_report(state: &DfState) -> String {
     )
 }
 
+/// The `query pointer` report: the global logical pointer location.
+///
+/// `pointer x=<x> y=<y>` followed by `end`. Login centres the pointer on the
+/// primary output, so a regression to the global origin shows up here.
+fn pointer_report(state: &DfState) -> String {
+    let location = state
+        .seat
+        .get_pointer()
+        .map(|pointer| pointer.current_location())
+        .unwrap_or_default();
+    format!("pointer x={} y={}\nend\n", location.x, location.y)
+}
+
 /// The `query session` report (T-12.5a): the compositor's suspend/resume
 /// state, for the headless suspend cycle test.
 ///
@@ -3086,6 +3117,10 @@ mod tests {
         assert_eq!(
             parse_command("query frames").unwrap(),
             SyntheticCommand::QueryFrames
+        );
+        assert_eq!(
+            parse_command("query pointer").unwrap(),
+            SyntheticCommand::QueryPointer
         );
         assert_eq!(
             parse_command("set present-fault bad-surface").unwrap(),
