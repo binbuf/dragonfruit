@@ -3,18 +3,20 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Network pane (T225).
+// The Network pane (T225; T272 service list).
 //
-// One NetworkManager model serves the Wi-Fi disclosure, the service order,
-// the VPN list, and the firewall sheet. The pane never caches a connected
-// state: every write goes to the bridge host and its re-read pushes the new
-// view back. NetworkManager owns services, order (`autoconnect-priority`), and
-// VPN connections; the firewall adapter owns detection and the firewall
-// writes. A missing manager is an honest absence, never a fake Off.
+// One NetworkManager model serves the Wi-Fi disclosure, the service list and
+// order, the VPN list, and the firewall sheet. The pane never caches a
+// connected state: every write goes to the bridge host and its re-read pushes
+// the new view back. NetworkManager owns services, order
+// (`autoconnect-priority`), and VPN connections; the firewall adapter owns
+// detection and the firewall writes.
 //
-// The macOS reference's `?` help and `Learn more…` are omitted project-wide.
-// `Thunderbolt Bridge` is Apple-hardware-specific and appears only when the
-// host actually has such a bridge.
+// T272 keeps the sections independent: a missing NetworkManager does not hide
+// the firewall, and a read-only VPN adapter does not disable it. Every service
+// carries a status dot and a Details sheet (TCP/IP, DNS, search domains,
+// hardware, and the Linux-only rows). The single text-wall Advanced dialog is
+// gone.
 Item {
     id: root
 
@@ -23,8 +25,6 @@ Item {
     readonly property bool ready: root.available && root.view.state === "available"
     readonly property var services: root.view.services !== undefined
         ? root.view.services : []
-    readonly property var knownNetworks: root.view.knownNetworks !== undefined
-        ? root.view.knownNetworks : []
     readonly property var firewall: root.view.firewall !== undefined
         ? root.view.firewall : ({})
     readonly property var vpnView: Settings.vpn
@@ -35,22 +35,25 @@ Item {
     readonly property var vpnPlugins: root.vpnView.plugins !== undefined
         ? root.vpnView.plugins : []
     readonly property int connectionCount: root.vpnConnections.length
-    readonly property bool readOnly: root.view.readOnly === true
-        || root.vpnView.readOnly === true
-        || root.firewall.readOnly === true
-    readonly property string readOnlyMessage: {
-        if (root.vpnView.readOnly === true)
-            return String(root.vpnView.note || "");
-        if (root.firewall.readOnly === true)
-            return String(root.firewall.readOnlyNote || "");
-        return String(root.view.note || "");
-    }
+
+    // T272: the two halves degrade independently. A read-only NetworkManager
+    // never disables the firewall, and a read-only VPN adapter never disables
+    // it either.
+    readonly property bool networkReadOnly: root.view.readOnly === true
+    readonly property bool vpnReadOnly: root.vpnView.readOnly === true
+    readonly property bool firewallReadOnly: root.firewall.readOnly === true
+    readonly property string networkReadOnlyMessage: String(root.view.note || "")
+    readonly property string vpnReadOnlyMessage: String(root.vpnView.note || "")
+    readonly property string firewallReadOnlyMessage: String(
+        root.firewall.readOnlyNote || "")
     readonly property bool firewallDetected: root.firewall.detected === true
     readonly property bool firewallStatusKnown: root.firewall.statusKnown === true
     readonly property bool firewallEnabled: root.firewall.enabled === true
+    readonly property bool firewallWritable: root.firewallDetected
+        && root.firewallStatusKnown && !root.firewallReadOnly
 
-    // Other services: everything except Wi-Fi (its own pane) and VPN (its own
-    // group), matching the reference's Other Services list.
+    // Other services: everything except Wi-Fi (its own disclosure) and VPN (its
+    // own group), matching the reference's Other Services list.
     readonly property var otherServices: {
         var out = [];
         for (var i = 0; i < root.services.length; ++i) {
@@ -62,6 +65,16 @@ Item {
         }
         return out;
     }
+
+    // The service whose Details sheet or actions menu is open.
+    property var detailsService: null
+    property var menuService: null
+    readonly property var detailRows: root.detailsService !== null
+        ? root.buildDetailRows(root.detailsService) : []
+    readonly property string writeState: String(Settings.networkWriteState || "idle")
+    readonly property string writeError: String(Settings.networkWriteError || "")
+    readonly property bool writeFailed: root.writeState === "failed"
+        || root.writeState === "denied" || root.writeState === "absent"
 
     signal paneRequested(string paneId)
 
@@ -75,6 +88,7 @@ Item {
     property alias servicesRepeater: servicesRepeater
     property alias addServiceRow: addServiceRow
     property alias addServiceDialog: addServiceDialog
+    property alias addServiceResult: addServiceResult
     property alias vpnGroup: vpnGroup
     property alias vpnConnectionRepeater: vpnConnectionRepeater
     property alias connectionRepeater: vpnConnectionRepeater
@@ -83,10 +97,12 @@ Item {
     property alias absenceNote: absenceNote
     property alias readOnlyNote: readOnlyNoteItem
     property alias emptyNote: emptyNote
-    property alias advancedRow: advancedRow
-    property alias advancedDialog: advancedDialog
+    property alias vpnAbsenceNote: vpnAbsenceNote
+    property alias detailsDialog: detailsDialog
+    property alias serviceMenu: serviceMenu
     property alias firewallPortRepeater: firewallPortRepeater
     property alias firewallServiceRepeater: firewallServiceRepeater
+    property alias writeNote: writeNote
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -118,35 +134,194 @@ Item {
             Settings.disconnectVpn(String(uuid));
     }
 
+    function statusColor(status) {
+        if (status === "green")
+            return Theme.color.success;
+        if (status === "yellow")
+            return Theme.color.warning;
+        if (status === "red")
+            return Theme.color.danger;
+        return Theme.color.textTertiary;
+    }
+
+    // The live view carries `state`; the fixture also carries a precomputed
+    // `status`. Derive from `state` so a live NetworkManager read draws the
+    // same dot as the fixture.
+    function serviceStatus(service) {
+        var state = String((service || {}).state || "");
+        if (state === "connected")
+            return "green";
+        if (state === "connecting" || state === "disconnecting")
+            return "yellow";
+        if (state === "failed")
+            return "red";
+        return "gray";
+    }
+
+    function prefixMask(prefix) {
+        var bits = Number(prefix);
+        if (!isFinite(bits) || bits <= 0)
+            return "";
+        var mask = bits >= 32 ? 0xffffffff
+                              : (0xffffffff << (32 - bits)) >>> 0;
+        return [ (mask >>> 24) & 0xff, (mask >>> 16) & 0xff,
+                 (mask >>> 8) & 0xff, mask & 0xff ].join(".");
+    }
+
+    function meteredLabel(value) {
+        var code = Number(value);
+        if (code === 1)
+            return qsTr("Yes");
+        if (code === 2)
+            return qsTr("No");
+        if (code === 3)
+            return qsTr("Yes (automatic)");
+        if (code === 4)
+            return qsTr("No (automatic)");
+        return qsTr("Unknown");
+    }
+
+    function listLabel(list, empty) {
+        if (list === undefined || list === null || list.length === 0)
+            return empty;
+        return list.join(", ");
+    }
+
+    function buildDetailRows(service) {
+        var s = service || {};
+        var ipv6 = String(s.ipv6 || "");
+        var ipv6Addresses = root.listLabel(s.ipv6Addresses, "");
+        if (ipv6Addresses.length > 0)
+            ipv6 = ipv6.length > 0 ? ipv6 + " · " + ipv6Addresses
+                                   : ipv6Addresses;
+        return [
+            { label: qsTr("Status"), value: String(s.stateLabel || "") },
+            { label: qsTr("Interface"), value: String(s.interface || qsTr("None")) },
+            { label: qsTr("Hardware Address"),
+              value: String(s.hardware || qsTr("Unavailable")) },
+            { label: qsTr("IPv4 Address"),
+              value: String(s.address || qsTr("None")) },
+            { label: qsTr("Subnet Mask"),
+              value: root.prefixMask(s.prefix) || qsTr("None") },
+            { label: qsTr("Router"), value: String(s.gateway || qsTr("None")) },
+            { label: qsTr("DNS Servers"), value: root.listLabel(s.dns, qsTr("None")) },
+            { label: qsTr("Search Domains"),
+              value: root.listLabel(s.searchDomains, qsTr("None")) },
+            { label: qsTr("IPv6"), value: ipv6.length > 0 ? ipv6 : qsTr("None") },
+            { label: qsTr("Proxy"), value: String(s.proxy || qsTr("Off")) },
+            { label: qsTr("MAC Randomization"),
+              value: String(s.clonedMac || qsTr("Preserve")) },
+            { label: qsTr("Metered"), value: root.meteredLabel(s.metered) },
+            { label: qsTr("802.1X"),
+              value: String(s.keyMgmt || qsTr("Not configured")) },
+            { label: qsTr("Auto-connect"),
+              value: s.autoconnect === true ? qsTr("On") : qsTr("Off") },
+        ];
+    }
+
+    function openDetails(service) {
+        root.detailsService = service;
+        detailsDialog.show();
+    }
+
+    function buildServiceMenu(service) {
+        var s = service || {};
+        var connected = s.connected === true;
+        var order = Number(s.order || 0);
+        return [
+            { label: connected ? qsTr("Disconnect") : qsTr("Connect"),
+              action: connected ? "deactivate" : "activate", key: "toggle" },
+            { type: "separator" },
+            { label: qsTr("Move Up"), action: "up", enabled: order > 0 },
+            { label: qsTr("Move Down"), action: "down",
+              enabled: order < root.services.length - 1 },
+            { type: "separator" },
+            { label: qsTr("Make Inactive"), action: "inactive",
+              enabled: connected },
+            { label: qsTr("Delete Service"), action: "delete" },
+            { type: "separator" },
+            { label: qsTr("Add Service…"), action: "add" }
+        ];
+    }
+
+    function openServiceMenu(service, anchor) {
+        root.menuService = service;
+        serviceMenu.model = root.buildServiceMenu(service);
+        serviceMenu.anchorItem = anchor;
+        serviceMenu.show();
+    }
+
+    function runServiceAction(action) {
+        var service = root.menuService;
+        if (service === null || service === undefined)
+            return;
+        var uuid = String(service.uuid || "");
+        if (action === "activate")
+            Settings.activateNetworkService(uuid);
+        else if (action === "deactivate" || action === "inactive")
+            Settings.deactivateNetworkService(uuid);
+        else if (action === "up")
+            Settings.moveNetworkService(uuid, -1);
+        else if (action === "down")
+            Settings.moveNetworkService(uuid, 1);
+        else if (action === "delete")
+            Settings.forgetNetworkService(uuid);
+        else if (action === "add")
+            root.openAddService();
+        else if (action === "details")
+            root.openDetails(service);
+    }
+
     function toggleFirewall() {
-        if (!root.ready || !root.firewallStatusKnown || root.readOnly)
+        if (!root.firewallWritable)
             return;
         Settings.setFirewallEnabled(!root.firewallEnabled);
+    }
+
+    function openAddService() {
+        addServiceName.text = "";
+        addServiceInterface.text = "";
+        addServiceGateway.text = "";
+        addServiceResult.text = "";
+        addServiceDialog.show();
     }
 
     function addService() {
         var name = addServiceName.text.trim();
         var kind = addServiceKind.currentValue || "ethernet";
-        if (name.length === 0)
+        if (name.length === 0) {
+            addServiceResult.text = qsTr("A service name is required.");
             return;
-        if (kind === "vpn" && addServicePlugin.currentValue === undefined)
+        }
+        if (kind === "vpn" && addServicePlugin.currentValue === undefined) {
+            addServiceResult.text = qsTr("Choose a VPN plugin.");
             return;
+        }
+        if ((kind === "bridge" || kind === "bond" || kind === "vlan")
+                && addServiceInterface.text.trim().length === 0) {
+            addServiceResult.text = qsTr("An interface name is required.");
+            return;
+        }
         Settings.addNetworkService(name, kind,
                                    addServicePlugin.currentValue || "",
-                                   addServiceGateway.text);
-        addServiceName.text = "";
-        addServiceGateway.text = "";
-        addServiceDialog.hide();
+                                   addServiceGateway.text,
+                                   addServiceInterface.text);
+        addServiceResult.text = qsTr("Adding “%1”…").arg(name);
     }
 
     function addVpn() {
         var name = addVpnName.text.trim();
-        if (name.length === 0 || addVpnPlugin.currentValue === undefined)
+        if (name.length === 0) {
+            addVpnResult.text = qsTr("A VPN name is required.");
             return;
-        Settings.addVpn(String(addVpnPlugin.currentValue), name, addVpnGateway.text);
-        addVpnName.text = "";
-        addVpnGateway.text = "";
-        addVpnDialog.hide();
+        }
+        if (addVpnPlugin.currentValue === undefined) {
+            addVpnResult.text = qsTr("Choose a VPN plugin.");
+            return;
+        }
+        Settings.addVpn(String(addVpnPlugin.currentValue), name,
+                        addVpnGateway.text);
+        addVpnResult.text = qsTr("Adding “%1”…").arg(name);
     }
 
     function addPort() {
@@ -165,6 +340,33 @@ Item {
         addServiceField.text = "";
     }
 
+    // One write outcome line per pane, so a denial or failure is never silent.
+    Connections {
+        target: Settings
+        function onNetworkWriteChanged() {
+            var state = String(Settings.networkWriteState || "");
+            if (state === "applied" || state === "failed"
+                    || state === "denied" || state === "absent") {
+                if (String(Settings.networkWriteOperation || "") === "add") {
+                    addServiceResult.text = state === "applied"
+                        ? qsTr("Service added.")
+                        : String(Settings.networkWriteError || qsTr("The service was not added."));
+                }
+            }
+        }
+        function onVpnWriteChanged() {
+            var state = String(Settings.vpnWriteState || "");
+            if (state === "applied" || state === "failed"
+                    || state === "denied" || state === "absent") {
+                if (String(Settings.vpnWriteOperation || "") === "add") {
+                    addVpnResult.text = state === "applied"
+                        ? qsTr("VPN added.")
+                        : String(Settings.vpnWriteError || qsTr("The VPN was not added."));
+                }
+            }
+        }
+    }
+
     Column {
         id: content
         width: root.width
@@ -179,10 +381,10 @@ Item {
                 width: parent.width
                 label: qsTr("Wi-Fi")
                 description: {
-                    var ssid = root.view.activeSsid !== undefined
-                        ? String(root.view.activeSsid) : "";
                     if (!root.ready)
                         return qsTr("Unavailable");
+                    var ssid = root.view.activeSsid !== undefined
+                        ? String(root.view.activeSsid) : "";
                     if (ssid.length === 0)
                         return root.view.radioEnabled === true
                             ? qsTr("Not connected") : qsTr("Off");
@@ -192,6 +394,7 @@ Item {
                 owner: "NetworkManager"
                 settingsKey: "WirelessEnabled"
                 disclosure: true
+                enabled: root.ready && !root.networkReadOnly
                 showSeparator: false
                 onDisclosureClicked: root.paneRequested("wifi")
             }
@@ -208,23 +411,23 @@ Item {
                 description: {
                     if (!root.firewallDetected)
                         return qsTr("No firewall detected");
+                    var backend = String(root.firewall.backendLabel || "");
                     if (!root.firewallStatusKnown)
-                        return qsTr("%1 · Unavailable").arg(
-                            String(root.firewall.backendLabel || ""));
-                    return qsTr("%1 · %2").arg(String(root.firewall.backendLabel || ""))
+                        return qsTr("%1 · Unavailable").arg(backend);
+                    return qsTr("%1 · %2").arg(backend)
                                            .arg(root.firewallEnabled
                                                 ? qsTr("On") : qsTr("Off"));
                 }
                 settingsId: "firewall"
                 owner: "firewall adapter"
                 settingsKey: "firewall.status"
-                showSeparator: root.firewallDetected
+                showSeparator: true
                 controlData: Toggle {
                     id: firewallToggle
                     objectName: "networkFirewallToggle"
                     text: ""
                     accessibleName: qsTr("Firewall")
-                    enabled: root.ready && root.firewallStatusKnown && !root.readOnly
+                    enabled: root.firewallWritable
                     onToggled: (checked) => Settings.setFirewallEnabled(checked)
 
                     Binding {
@@ -238,13 +441,20 @@ Item {
             SettingsRow {
                 id: firewallOptionsRow
                 width: parent.width
-                visible: root.firewallDetected
                 label: qsTr("Firewall Options…")
-                description: root.firewallStatusKnown
-                    ? qsTr("%1 open ports, %2 services")
-                          .arg(Number(root.firewall.portCount || 0))
-                          .arg(Number(root.firewall.serviceCount || 0))
-                    : String(root.firewall.note || qsTr("Status unavailable"))
+                description: {
+                    if (!root.firewallStatusKnown)
+                        return String(root.firewall.note || qsTr("Status unavailable"));
+                    var zone = String(root.firewall.defaultZone || "");
+                    return zone.length > 0
+                        ? qsTr("%1 zone · %2 open ports, %3 services")
+                              .arg(zone)
+                              .arg(Number(root.firewall.portCount || 0))
+                              .arg(Number(root.firewall.serviceCount || 0))
+                        : qsTr("%1 open ports, %2 services")
+                              .arg(Number(root.firewall.portCount || 0))
+                              .arg(Number(root.firewall.serviceCount || 0));
+                }
                 settingsId: "firewallOptions"
                 owner: "firewall adapter"
                 settingsKey: "firewall.rules"
@@ -259,7 +469,6 @@ Item {
             id: servicesGroup
             width: parent.width
             title: qsTr("Other Services")
-            visible: root.ready
 
             Repeater {
                 id: servicesRepeater
@@ -274,7 +483,7 @@ Item {
                     description: qsTr("%1 · %2 · %3")
                         .arg(String(serviceRow.modelData.kindLabel))
                         .arg(String(serviceRow.modelData.stateLabel))
-                        .arg(String(serviceRow.modelData.address || ""))
+                        .arg(String(serviceRow.modelData.address || qsTr("No address")))
                     settingsId: "services"
                     owner: "NetworkManager"
                     settingsKey: "Devices"
@@ -282,79 +491,57 @@ Item {
                     controlData: Row {
                         spacing: Theme.primitive.spacing.xs
 
-                        Button {
-                            objectName: "networkServiceUp"
-                            text: qsTr("Up")
-                            variant: "ghost"
-                            enabled: Number(serviceRow.modelData.order) > 0
-                                     && !root.readOnly
-                            onClicked: Settings.moveNetworkService(
-                                String(serviceRow.modelData.uuid), -1)
-                        }
-                        Button {
-                            objectName: "networkServiceDown"
-                            text: qsTr("Down")
-                            variant: "ghost"
-                            enabled: Number(serviceRow.modelData.order)
-                                     < root.services.length - 1 && !root.readOnly
-                            onClicked: Settings.moveNetworkService(
-                                String(serviceRow.modelData.uuid), 1)
-                        }
-                        Text {
-                            text: qsTr("Auto")
-                            color: Theme.color.textTertiary
-                            font.pixelSize: Theme.primitive.font.sizeSm
+                        Rectangle {
+                            objectName: "networkServiceStatusDot"
+                            width: 8
+                            height: 8
+                            radius: 4
                             anchors.verticalCenter: parent.verticalCenter
-                        }
-                        Toggle {
-                            id: serviceAutoToggle
-                            objectName: "networkServiceAutoconnect"
-                            text: ""
-                            accessibleName: qsTr("Auto-connect %1")
-                                .arg(serviceRow.modelData.id)
-                            enabled: !root.readOnly
-                            onToggled: (checked) => Settings.setNetworkAutoconnect(
-                                String(serviceRow.modelData.uuid), checked)
-
-                            Binding {
-                                target: serviceAutoToggle
-                                property: "checked"
-                                value: serviceRow.modelData.autoconnect === true
-                            }
+                            color: root.statusColor(root.serviceStatus(
+                                serviceRow.modelData))
                         }
                         Button {
-                            objectName: "networkServiceConnect"
-                            text: serviceRow.modelData.connected === true
-                                ? qsTr("Disconnect") : qsTr("Connect")
-                            enabled: !root.readOnly
-                            onClicked: {
-                                if (serviceRow.modelData.connected === true)
-                                    Settings.deactivateNetworkService(
-                                        String(serviceRow.modelData.uuid));
-                                else
-                                    Settings.activateNetworkService(
-                                        String(serviceRow.modelData.uuid));
-                            }
+                            objectName: "networkServiceDetails"
+                            text: qsTr("Details…")
+                            variant: "ghost"
+                            enabled: root.ready
+                            onClicked: root.openDetails(serviceRow.modelData)
+                        }
+                        Button {
+                            objectName: "networkServiceActions"
+                            text: qsTr("⋯")
+                            variant: "ghost"
+                            enabled: root.ready && !root.networkReadOnly
+                            onClicked: root.openServiceMenu(
+                                serviceRow.modelData, serviceRow)
                         }
                     }
                 }
             }
 
             SettingsRow {
+                objectName: "networkServicesEmpty"
+                width: parent.width
+                visible: root.ready && root.otherServices.length === 0
+                label: qsTr("No other services.")
+                description: qsTr("Add a service below.")
+                showSeparator: true
+            }
+
+            SettingsRow {
                 id: addServiceRow
                 width: parent.width
                 label: qsTr("Add Service…")
-                description: qsTr("Create an Ethernet, Wi-Fi, or VPN service.")
+                description: root.ready
+                    ? qsTr("Create an Ethernet, Wi-Fi, VPN, bridge, bond, or VLAN service.")
+                    : qsTr("NetworkManager is not running.")
                 settingsId: "addService"
                 owner: "NetworkManager"
                 settingsKey: "AddConnection"
                 showSeparator: false
                 trailingAction: qsTr("Add…")
-                onTrailingActionClicked: {
-                    addServiceName.text = "";
-                    addServiceGateway.text = "";
-                    addServiceDialog.show();
-                }
+                enabled: root.ready && !root.networkReadOnly
+                onTrailingActionClicked: root.openAddService()
             }
         }
 
@@ -363,7 +550,6 @@ Item {
             id: vpnGroup
             width: parent.width
             title: qsTr("VPN")
-            visible: root.vpnReady
 
             Repeater {
                 id: vpnConnectionRepeater
@@ -383,13 +569,22 @@ Item {
                     controlData: Row {
                         spacing: Theme.primitive.spacing.xs
 
+                        Rectangle {
+                            objectName: "networkVpnStatusDot"
+                            width: 8
+                            height: 8
+                            radius: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: connectionRow.modelData.connected === true
+                                ? Theme.color.success : Theme.color.textTertiary
+                        }
                         Toggle {
                             id: connectionToggle
                             objectName: "networkVpnToggle"
                             text: ""
                             accessibleName: qsTr("Connect %1")
                                 .arg(connectionRow.modelData.id)
-                            enabled: !root.readOnly
+                            enabled: root.vpnReady && !root.vpnReadOnly
                             onToggled: (checked) =>
                                 root.setConnected(connectionRow.modelData.uuid, checked)
 
@@ -411,7 +606,7 @@ Item {
                             text: ""
                             accessibleName: qsTr("Auto-connect %1")
                                 .arg(connectionRow.modelData.id)
-                            enabled: !root.readOnly
+                            enabled: root.vpnReady && !root.vpnReadOnly
                             onToggled: (checked) => Settings.setVpnAutoconnect(
                                 String(connectionRow.modelData.uuid), checked)
 
@@ -426,10 +621,21 @@ Item {
             }
 
             SettingsRow {
+                id: vpnAbsenceNote
+                objectName: "networkVpnAbsenceNote"
+                width: parent.width
+                visible: !root.vpnReady
+                label: qsTr("VPN is unavailable.")
+                description: qsTr("NetworkManager is not running, so VPN connections "
+                                  + "cannot be read or changed.")
+                showSeparator: true
+            }
+
+            SettingsRow {
                 id: emptyNote
                 objectName: "networkEmptyNote"
                 width: parent.width
-                visible: root.vpnConnections.length === 0
+                visible: root.vpnReady && root.vpnConnections.length === 0
                 label: qsTr("No VPN connection is configured.")
                 description: qsTr("Add a VPN below to connect.")
                 showSeparator: root.vpnPlugins.length > 0
@@ -447,44 +653,47 @@ Item {
                 settingsKey: "Settings.Connection"
                 showSeparator: false
                 trailingAction: root.vpnPlugins.length > 0 ? qsTr("Add…") : ""
+                enabled: root.vpnReady && !root.vpnReadOnly
+                         && root.vpnPlugins.length > 0
                 onTrailingActionClicked: {
                     addVpnName.text = "";
                     addVpnGateway.text = "";
+                    addVpnResult.text = "";
                     addVpnDialog.show();
                 }
             }
         }
 
-        // ── Advanced ──────────────────────────────────────────────────────
+        // ── Write outcome ─────────────────────────────────────────────────
         SettingsGroup {
             width: parent.width
+            visible: root.writeFailed
 
-            SettingsRow {
-                id: advancedRow
+            Text {
+                id: writeNote
+                objectName: "networkWriteNote"
                 width: parent.width
-                label: qsTr("Advanced…")
-                description: qsTr("TCP/IP, hardware, and the active service.")
-                settingsId: "advanced"
-                owner: "NetworkManager"
-                settingsKey: "nm.connection"
-                showSeparator: false
-                trailingAction: qsTr("Open…")
-                onTrailingActionClicked: root.advancedDialog.show()
+                text: root.writeError.length > 0
+                    ? root.writeError
+                    : qsTr("The last network change did not apply.")
+                color: Theme.color.danger
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
             }
         }
 
-        // ── Read-only degradation ─────────────────────────────────────────
+        // ── Read-only degradation (NetworkManager only) ───────────────────
         SettingsGroup {
             width: parent.width
-            visible: root.ready && root.readOnly
+            visible: root.networkReadOnly
 
             Text {
                 id: readOnlyNoteItem
                 objectName: "networkReadOnlyNote"
                 width: parent.width
-                text: root.readOnlyMessage.length > 0
+                text: root.networkReadOnlyMessage.length > 0
                     ? qsTr("Connections can be viewed but not changed: %1")
-                          .arg(root.readOnlyMessage)
+                          .arg(root.networkReadOnlyMessage)
                     : qsTr("Connections can be viewed but not changed.")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
@@ -502,8 +711,82 @@ Item {
                 objectName: "networkAbsenceNote"
                 kind: "disabled-with-reason"
                 reason: qsTr("The network service (NetworkManager) is not running, "
-                             + "so services and VPN connections are unavailable.")
+                             + "so services and VPN connections are unavailable. "
+                             + "The firewall keeps its own state and stays usable.")
                 width: parent.width
+            }
+        }
+    }
+
+    // ── Service actions menu ──────────────────────────────────────────────
+    ContextMenu {
+        id: serviceMenu
+        objectName: "networkServiceMenu"
+        accessibleName: qsTr("Service actions")
+        onTriggered: (index, item) => root.runServiceAction(item.action)
+    }
+
+    // ── Service details ───────────────────────────────────────────────────
+    Dialog {
+        id: detailsDialog
+        objectName: "networkDetailsDialog"
+        title: root.detailsService !== null
+            ? qsTr("Details — %1").arg(String(root.detailsService.id || ""))
+            : qsTr("Details")
+        width: root.width
+        height: root.height
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.xs
+
+            Repeater {
+                model: root.detailRows
+                delegate: Row {
+                    required property var modelData
+                    width: parent.width
+                    height: Math.max(Theme.controls.settingsRow.height * 0.8,
+                                     detailValue.implicitHeight)
+                    spacing: Theme.primitive.spacing.sm
+
+                    Text {
+                        id: detailLabel
+                        width: Math.min(180, parent.width * 0.45)
+                        text: String(modelData.label)
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        anchors.verticalCenter: parent.verticalCenter
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        id: detailValue
+                        objectName: "networkDetailValue"
+                        width: parent.width - detailLabel.width - parent.spacing
+                        text: String(modelData.value)
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        anchors.verticalCenter: parent.verticalCenter
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("DNS, proxies, MAC randomization, metered, IPv6, and "
+                           + "802.1X are read live from NetworkManager. The full "
+                           + "connection editor owns the writes.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.primitive.spacing.sm
+            Button {
+                text: qsTr("Close")
+                onClicked: detailsDialog.hide()
             }
         }
     }
@@ -519,6 +802,19 @@ Item {
         contentData: Column {
             width: parent.width
             spacing: Theme.primitive.spacing.sm
+
+            Text {
+                width: parent.width
+                text: root.firewallDetected
+                    ? qsTr("Backend: %1 · Zone: %2")
+                          .arg(String(root.firewall.backendLabel || qsTr("Unknown")))
+                          .arg(String(root.firewall.defaultZone || qsTr("None")))
+                    : qsTr("No firewall detected. Install firewalld, ufw, or nftables "
+                           + "to manage rules.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
 
             Text {
                 width: parent.width
@@ -561,7 +857,7 @@ Item {
                             id: closePort
                             text: qsTr("Close")
                             variant: "ghost"
-                            enabled: root.firewallStatusKnown && !root.readOnly
+                            enabled: root.firewallWritable
                             onClicked: Settings.closeFirewallPort(
                                 Number(modelData.port), String(modelData.protocol))
                         }
@@ -580,18 +876,18 @@ Item {
                         verticalAlignment: TextInput.AlignVCenter
                         color: Theme.color.textPrimary
                         font.pixelSize: Theme.primitive.font.sizeSm
-                        enabled: root.firewallStatusKnown && !root.readOnly
+                        enabled: root.firewallWritable
                     }
                     Select {
                         id: addPortProtocol
                         objectName: "networkFirewallProtocol"
                         model: [ "tcp", "udp" ]
-                        enabled: root.firewallStatusKnown && !root.readOnly
+                        enabled: root.firewallWritable
                     }
                     Button {
                         objectName: "networkFirewallOpenPort"
                         text: qsTr("Open Port")
-                        enabled: root.firewallStatusKnown && !root.readOnly
+                        enabled: root.firewallWritable
                         onClicked: root.addPort()
                     }
                 }
@@ -630,7 +926,7 @@ Item {
                             id: closeService
                             text: qsTr("Close")
                             variant: "ghost"
-                            enabled: root.firewallStatusKnown && !root.readOnly
+                            enabled: root.firewallWritable
                             onClicked: Settings.closeFirewallService(String(modelData))
                         }
                     }
@@ -648,12 +944,12 @@ Item {
                         verticalAlignment: TextInput.AlignVCenter
                         color: Theme.color.textPrimary
                         font.pixelSize: Theme.primitive.font.sizeSm
-                        enabled: root.firewallStatusKnown && !root.readOnly
+                        enabled: root.firewallWritable
                     }
                     Button {
                         objectName: "networkFirewallOpenService"
                         text: qsTr("Open Service")
-                        enabled: root.firewallStatusKnown && !root.readOnly
+                        enabled: root.firewallWritable
                         onClicked: root.addFirewallService()
                     }
                 }
@@ -681,6 +977,12 @@ Item {
             width: parent.width
             spacing: Theme.primitive.spacing.sm
 
+            Text {
+                width: parent.width
+                text: qsTr("Name")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
             TextInput {
                 id: addServiceName
                 objectName: "networkAddServiceName"
@@ -690,15 +992,54 @@ Item {
                 color: Theme.color.textPrimary
                 font.pixelSize: Theme.primitive.font.sizeSm
             }
+
+            Text {
+                width: parent.width
+                text: qsTr("Type")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
             Select {
                 id: addServiceKind
                 objectName: "networkAddServiceKind"
-                model: root.vpnPlugins.length > 0
-                    ? [ { label: qsTr("Ethernet"), value: "ethernet" },
-                        { label: qsTr("Wi-Fi"), value: "wifi" },
-                        { label: qsTr("VPN"), value: "vpn" } ]
-                    : [ { label: qsTr("Ethernet"), value: "ethernet" },
-                        { label: qsTr("Wi-Fi"), value: "wifi" } ]
+                model: [
+                    { label: qsTr("Ethernet"), value: "ethernet" },
+                    { label: qsTr("Wi-Fi"), value: "wifi" },
+                    { label: qsTr("VPN"), value: "vpn" },
+                    { label: qsTr("Bridge"), value: "bridge" },
+                    { label: qsTr("Bond"), value: "bond" },
+                    { label: qsTr("VLAN"), value: "vlan" }
+                ]
+            }
+
+            Text {
+                width: parent.width
+                visible: addServiceKind.currentValue === "bridge"
+                         || addServiceKind.currentValue === "bond"
+                         || addServiceKind.currentValue === "vlan"
+                text: qsTr("Interface")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+            TextInput {
+                id: addServiceInterface
+                objectName: "networkAddServiceInterface"
+                visible: addServiceKind.currentValue === "bridge"
+                         || addServiceKind.currentValue === "bond"
+                         || addServiceKind.currentValue === "vlan"
+                width: parent.width
+                height: Theme.controls.button.height
+                verticalAlignment: TextInput.AlignVCenter
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            Text {
+                width: parent.width
+                visible: addServiceKind.currentValue === "vpn"
+                text: qsTr("VPN plugin")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
             }
             Select {
                 id: addServicePlugin
@@ -707,6 +1048,13 @@ Item {
                 model: root.vpnPlugins.map(function(plugin) {
                     return { label: String(plugin.label), value: String(plugin.serviceType) };
                 })
+            }
+            Text {
+                width: parent.width
+                visible: addServiceKind.currentValue === "vpn"
+                text: qsTr("Gateway")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
             }
             TextInput {
                 id: addServiceGateway
@@ -717,6 +1065,16 @@ Item {
                 verticalAlignment: TextInput.AlignVCenter
                 color: Theme.color.textPrimary
                 font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            Text {
+                id: addServiceResult
+                objectName: "networkAddServiceResult"
+                width: parent.width
+                color: root.writeFailed ? Theme.color.danger
+                                        : Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
             }
         }
 
@@ -747,12 +1105,24 @@ Item {
             width: parent.width
             spacing: Theme.primitive.spacing.sm
 
+            Text {
+                width: parent.width
+                text: qsTr("VPN plugin")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
             Select {
                 id: addVpnPlugin
                 objectName: "networkAddVpnPlugin"
                 model: root.vpnPlugins.map(function(plugin) {
                     return { label: String(plugin.label), value: String(plugin.serviceType) };
                 })
+            }
+            Text {
+                width: parent.width
+                text: qsTr("Name")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
             }
             TextInput {
                 id: addVpnName
@@ -761,6 +1131,12 @@ Item {
                 height: Theme.controls.button.height
                 verticalAlignment: TextInput.AlignVCenter
                 color: Theme.color.textPrimary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+            Text {
+                width: parent.width
+                text: qsTr("Gateway")
+                color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
             }
             TextInput {
@@ -773,6 +1149,8 @@ Item {
                 font.pixelSize: Theme.primitive.font.sizeSm
             }
             Text {
+                id: addVpnResult
+                objectName: "networkAddVpnResult"
                 width: parent.width
                 text: qsTr("Credentials are edited in the full connection editor.")
                 color: Theme.color.textTertiary
@@ -792,52 +1170,6 @@ Item {
                 text: qsTr("Add")
                 variant: "primary"
                 onClicked: root.addVpn()
-            }
-        }
-    }
-
-    // ── Advanced ──────────────────────────────────────────────────────────
-    Dialog {
-        id: advancedDialog
-        objectName: "networkAdvancedDialog"
-        title: qsTr("Network Advanced")
-        width: root.width
-        height: root.height
-
-        contentData: Column {
-            width: parent.width
-            spacing: Theme.primitive.spacing.xs
-
-            Repeater {
-                model: root.services
-                delegate: Text {
-                    required property var modelData
-                    width: parent.width
-                    text: qsTr("%1 — %2 · %3 · %4")
-                        .arg(String(modelData.id))
-                        .arg(String(modelData.kindLabel))
-                        .arg(String(modelData.address || qsTr("No address")))
-                        .arg(String(modelData.interface || qsTr("No interface")))
-                    color: Theme.color.textSecondary
-                    font.pixelSize: Theme.primitive.font.sizeSm
-                }
-            }
-            Text {
-                width: parent.width
-                text: qsTr("DNS, proxies, and MAC randomization are edited in the "
-                           + "full connection editor; this first pass shows the live "
-                           + "service state.")
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
-        }
-
-        buttonsData: Row {
-            spacing: Theme.primitive.spacing.sm
-            Button {
-                text: qsTr("Close")
-                onClicked: advancedDialog.hide()
             }
         }
     }

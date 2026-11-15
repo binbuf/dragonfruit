@@ -665,9 +665,9 @@ Two absence families appear, and a pane can mix them:
 | Displays | compositor output API + settingsd | live on defaults; shell applies the policy when an output appears | — (none) |
 | Wallpaper | settingsd + `wallpaperd` + FileChooser portal | built-in/toggle/fit live; Featured empty (never an error); the "Add Photo…" portal row **disabled** with its explanation | — (none) |
 | Wi-Fi | NetworkManager (bridge host) + settingsd prompt policy | note; every section stays (Current/Known/Other/Hotspot/Advanced); only radio/join/forget/scan/hotspot disable; the two `network.wifi.*` rows stay live on defaults and are marked stored-only | **hides** |
-| Network | NetworkManager + firewall adapter (bridge host) | note; service/VPN writes disabled; firewall "No firewall detected" or Unavailable (never a fake Off); settingsd policy rows stay live | **hides** |
+| Network | NetworkManager + firewall adapter (bridge host) | note; every section stays (Wi-Fi, Firewall, Other Services, VPN); only the NetworkManager rows disable; the firewall keeps its own state and stays usable when NM is absent; a read-only VPN never disables the firewall; "No firewall detected" or Unavailable (never a fake Off) | **hides** |
 | Bluetooth | BlueZ (bridge host) | note; every section stays (Discoverable/My Devices/Nearby/Advanced) with an empty state; only power/discovery disable; no write | **hides** |
-| Network (VPN) | NetworkManager (bridge host) | note; connection list empty; `Connect`/`Deactivate` are no-ops; no plugin hides Add | **hides** |
+| VPN | NetworkManager VPN (bridge host) | optional top-level pane; note; the section/list stays with an empty state; Connect/Deactivate/Add are no-ops; no plugin disables Add; every write reports its outcome | **hides** |
 | Battery | UPower + power-profiles-daemon (bridge host) | note; no profile write; Options stay live on defaults | **hides** |
 | Storage | UDisks2/GIO (bridge host) | note; no mount/eject | **hides** |
 | General | settingsd + General/Updates host (bridge host) | the list stays complete; each row says Unavailable only for its own absent half; About/Software Update keep the identity when the provider is gone | **hides** (the update tile hides only when the host is absent) |

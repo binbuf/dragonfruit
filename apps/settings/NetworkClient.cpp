@@ -77,58 +77,76 @@ void DbusNetworkClient::refresh()
 
 void DbusNetworkClient::activateService(const QString &uuid)
 {
-    call(m_networkInterface, QStringLiteral("ActivateService"), {uuid}, false);
+    call(m_networkInterface, QStringLiteral("ActivateService"), {uuid}, false,
+         QStringLiteral("activate"));
 }
 
 void DbusNetworkClient::deactivateService(const QString &uuid)
 {
-    call(m_networkInterface, QStringLiteral("DeactivateService"), {uuid}, false);
+    call(m_networkInterface, QStringLiteral("DeactivateService"), {uuid}, false,
+         QStringLiteral("deactivate"));
 }
 
 void DbusNetworkClient::moveService(const QString &uuid, int delta)
 {
-    call(m_networkInterface, QStringLiteral("MoveService"), {uuid, delta}, false);
+    call(m_networkInterface, QStringLiteral("MoveService"), {uuid, delta}, false,
+         QStringLiteral("move"));
 }
 
 void DbusNetworkClient::addService(const QString &name, const QString &kind,
-                                   const QString &plugin, const QString &gateway)
+                                   const QString &plugin, const QString &gateway,
+                                   const QString &interfaceName)
 {
     call(m_networkInterface, QStringLiteral("AddService"),
-         {name, kind, plugin, gateway}, false);
+         {name, kind, plugin, gateway, interfaceName}, false,
+         QStringLiteral("add"));
+}
+
+void DbusNetworkClient::forgetService(const QString &uuid)
+{
+    call(m_networkInterface, QStringLiteral("Forget"), {uuid}, false,
+         QStringLiteral("forget"));
 }
 
 void DbusNetworkClient::setAutoconnect(const QString &uuid, bool enabled)
 {
-    call(m_networkInterface, QStringLiteral("SetAutoconnect"), {uuid, enabled}, false);
+    call(m_networkInterface, QStringLiteral("SetAutoconnect"), {uuid, enabled}, false,
+         QStringLiteral("autoconnect"));
 }
 
 void DbusNetworkClient::setFirewallEnabled(bool enabled)
 {
-    call(m_firewallInterface, QStringLiteral("SetEnabled"), {enabled}, false);
+    call(m_firewallInterface, QStringLiteral("SetEnabled"), {enabled}, false,
+         QStringLiteral("firewall"));
 }
 
 void DbusNetworkClient::openPort(int port, const QString &protocol)
 {
-    call(m_firewallInterface, QStringLiteral("OpenPort"), {port, protocol}, false);
+    call(m_firewallInterface, QStringLiteral("OpenPort"), {port, protocol}, false,
+         QStringLiteral("port"));
 }
 
 void DbusNetworkClient::closePort(int port, const QString &protocol)
 {
-    call(m_firewallInterface, QStringLiteral("ClosePort"), {port, protocol}, false);
+    call(m_firewallInterface, QStringLiteral("ClosePort"), {port, protocol}, false,
+         QStringLiteral("port"));
 }
 
 void DbusNetworkClient::openService(const QString &service)
 {
-    call(m_firewallInterface, QStringLiteral("OpenService"), {service}, false);
+    call(m_firewallInterface, QStringLiteral("OpenService"), {service}, false,
+         QStringLiteral("service"));
 }
 
 void DbusNetworkClient::closeService(const QString &service)
 {
-    call(m_firewallInterface, QStringLiteral("CloseService"), {service}, false);
+    call(m_firewallInterface, QStringLiteral("CloseService"), {service}, false,
+         QStringLiteral("service"));
 }
 
 void DbusNetworkClient::call(const QString &interface, const QString &method,
-                             const QVariantList &arguments, bool isState)
+                             const QVariantList &arguments, bool isState,
+                             const QString &operation)
 {
     auto *iface = new QDBusInterface(m_service, m_path, interface,
                                      QDBusConnection::sessionBus(), this);
@@ -138,23 +156,46 @@ void DbusNetworkClient::call(const QString &interface, const QString &method,
             m_available = false;
             emit availableChanged(false);
         }
+        if (!isState && !operation.isEmpty())
+            emit writeFinished(operation, QStringLiteral("absent"), QString());
         return;
     }
     auto *watcher = new QDBusPendingCallWatcher(
         iface->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, isState, iface, watcher]() {
+            [this, isState, operation, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;
                 iface->deleteLater();
                 watcher->deleteLater();
-                if (!reply.isValid())
+                if (!reply.isValid()) {
+                    if (!isState && !operation.isEmpty())
+                        emit writeFinished(operation, QStringLiteral("failed"),
+                                           QString());
                     return;
-                if (isState)
+                }
+                if (isState) {
                     applyReply(reply.value().toUtf8());
-                else
-                    // The write reply is the outcome report; the new state is
-                    // the host's re-read, never invented here.
-                    refresh();
+                    return;
+                }
+                // The write reply is the outcome report; the new state is
+                // the host's re-read, never invented here.
+                const QJsonDocument document =
+                    QJsonDocument::fromJson(reply.value().toUtf8());
+                if (document.isObject()) {
+                    const QJsonObject object = document.object();
+                    QString message = object.value(QStringLiteral("error")).toString();
+                    if (message.isEmpty())
+                        message = object.value(QStringLiteral("note")).toString();
+                    const QString outcome =
+                        object.value(QStringLiteral("outcome")).toString();
+                    if (!operation.isEmpty())
+                        emit writeFinished(operation,
+                                           outcome.isEmpty()
+                                               ? QStringLiteral("applied")
+                                               : outcome,
+                                           message);
+                }
+                refresh();
             });
 }
 
@@ -183,6 +224,8 @@ MockNetworkClient::MockNetworkClient(QObject *parent)
         return;
     }
     resetForTest();
+    if (fixture == QLatin1String("nm-absent"))
+        m_networkPresent = false;
     if (fixture == QLatin1String("nftables")) {
         m_firewallBackend = QStringLiteral("nftables");
         m_firewallStatusKnown = false;
@@ -191,8 +234,8 @@ MockNetworkClient::MockNetworkClient(QObject *parent)
             "nftables has no service status; enable/disable is managed by the host.");
         m_ports.clear();
         m_servicesList.clear();
-        rebuild();
     }
+    rebuild();
 }
 
 void MockNetworkClient::setFixture(const QString &mode)
@@ -206,6 +249,8 @@ void MockNetworkClient::setFixture(const QString &mode)
     }
     m_available = true;
     resetForTest();
+    if (mode == QLatin1String("nm-absent"))
+        m_networkPresent = false;
     if (mode == QLatin1String("nftables")) {
         m_firewallBackend = QStringLiteral("nftables");
         m_firewallStatusKnown = false;
@@ -214,19 +259,22 @@ void MockNetworkClient::setFixture(const QString &mode)
             "nftables has no service status; enable/disable is managed by the host.");
         m_ports.clear();
         m_servicesList.clear();
-        rebuild();
     }
+    rebuild();
     emit availableChanged(true);
 }
 
 void MockNetworkClient::resetForTest()
 {
     m_available = true;
+    m_networkPresent = true;
     m_firewallDetected = true;
     m_firewallStatusKnown = true;
     m_firewallEnabled = false;
     m_firewallBackend = QStringLiteral("firewalld");
     m_firewallNote.clear();
+    m_failOperation.clear();
+    m_failMessage.clear();
     m_ports = {
         QVariantMap{ { QStringLiteral("port"), 22 },
                      { QStringLiteral("protocol"), QStringLiteral("tcp") },
@@ -242,16 +290,55 @@ void MockNetworkClient::resetForTest()
         { QStringLiteral("Wired"), QStringLiteral("mock-wired"),
           QStringLiteral("ethernet"), true, true, 10,
           QStringLiteral("enp1s0"), QStringLiteral("aa:bb:cc:dd:ee:02"),
-          QStringLiteral("192.168.1.20") },
+          QStringLiteral("192.168.1.20"), 24, QStringLiteral("192.168.1.1"),
+          { QStringLiteral("192.168.1.1"), QStringLiteral("1.1.1.1") },
+          { QStringLiteral("lan") },
+          { QStringLiteral("2001:db8::20") },
+          QStringLiteral("auto"), QStringLiteral("none"),
+          QStringLiteral("stable"), QStringLiteral(""),
+          1 },
         { QStringLiteral("Home Wi-Fi"), QStringLiteral("mock-wifi-dragonfruit"),
           QStringLiteral("wifi"), true, true, 5,
           QStringLiteral("wlan0"), QStringLiteral("aa:bb:cc:dd:ee:01"),
-          QStringLiteral("192.168.1.42") },
+          QStringLiteral("192.168.1.42"), 24, QStringLiteral("192.168.1.1"),
+          { QStringLiteral("192.168.1.1") },
+          { QStringLiteral("lan") },
+          { QStringLiteral("2001:db8::42") },
+          QStringLiteral("auto"), QStringLiteral("none"),
+          QStringLiteral("random"), QStringLiteral("wpa-psk"),
+          2 },
         { QStringLiteral("Thunderbolt Bridge"), QStringLiteral("mock-bridge"),
           QStringLiteral("bridge"), false, false, 0,
-          QStringLiteral("bridge0"), QStringLiteral("aa:bb:cc:dd:ee:03"), QString() },
+          QStringLiteral("bridge0"), QStringLiteral("aa:bb:cc:dd:ee:03"),
+          QString(), 0, QString(), {}, {}, {}, QString(), QString(),
+          QString(), QString(), 0 },
     };
     rebuild();
+}
+
+void MockNetworkClient::finishWrite(const QString &operation,
+                                    const QString &outcome,
+                                    const QString &message)
+{
+    emit writeFinished(operation, outcome, message);
+}
+
+bool MockNetworkClient::failWrite(const QString &operation)
+{
+    if (m_failOperation != operation)
+        return false;
+    const QString message = m_failMessage;
+    m_failOperation.clear();
+    m_failMessage.clear();
+    finishWrite(operation, QStringLiteral("failed"), message);
+    return true;
+}
+
+void MockNetworkClient::failNextWrite(const QString &operation,
+                                      const QString &message)
+{
+    m_failOperation = operation;
+    m_failMessage = message;
 }
 
 void MockNetworkClient::refresh()
@@ -261,22 +348,30 @@ void MockNetworkClient::refresh()
 
 void MockNetworkClient::activateService(const QString &uuid)
 {
+    if (failWrite(QStringLiteral("activate")))
+        return;
     for (Service &service : m_services)
         service.connected = service.uuid == uuid;
     rebuild();
+    finishWrite(QStringLiteral("activate"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::deactivateService(const QString &uuid)
 {
+    if (failWrite(QStringLiteral("deactivate")))
+        return;
     for (Service &service : m_services) {
         if (service.uuid == uuid)
             service.connected = false;
     }
     rebuild();
+    finishWrite(QStringLiteral("deactivate"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::moveService(const QString &uuid, int delta)
 {
+    if (failWrite(QStringLiteral("move")))
+        return;
     for (int i = 0; i < m_services.size(); ++i) {
         if (m_services[i].uuid != uuid)
             continue;
@@ -288,42 +383,86 @@ void MockNetworkClient::moveService(const QString &uuid, int delta)
         break;
     }
     rebuild();
+    finishWrite(QStringLiteral("move"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::addService(const QString &name, const QString &kind,
-                                   const QString &plugin, const QString &gateway)
+                                   const QString &plugin, const QString &gateway,
+                                   const QString &interfaceName)
 {
-    Q_UNUSED(plugin);
-    Q_UNUSED(gateway);
+    if (failWrite(QStringLiteral("add")))
+        return;
+    if (name.trimmed().isEmpty()) {
+        finishWrite(QStringLiteral("add"), QStringLiteral("failed"),
+                    QStringLiteral("A service name is required."));
+        return;
+    }
+    if (kind == QLatin1String("vpn") && plugin.isEmpty()) {
+        finishWrite(QStringLiteral("add"), QStringLiteral("failed"),
+                    QStringLiteral("Choose a VPN plugin."));
+        return;
+    }
     Service service;
     service.id = name;
     service.uuid = QStringLiteral("mock-added-") + QString::number(m_services.size() + 1);
     service.kind = kind;
     service.autoconnect = true;
     service.priority = 0;
+    service.interface = interfaceName;
+    service.gateway = gateway;
+    service.keyMgmt = plugin;
     m_services.append(service);
     rebuild();
+    finishWrite(QStringLiteral("add"), QStringLiteral("applied"));
+}
+
+void MockNetworkClient::forgetService(const QString &uuid)
+{
+    if (failWrite(QStringLiteral("forget")))
+        return;
+    const int before = m_services.size();
+    for (int i = 0; i < m_services.size(); ++i) {
+        if (m_services[i].uuid == uuid) {
+            m_services.removeAt(i);
+            break;
+        }
+    }
+    if (m_services.size() == before) {
+        finishWrite(QStringLiteral("forget"), QStringLiteral("failed"),
+                    QStringLiteral("The service no longer exists."));
+        return;
+    }
+    rebuild();
+    finishWrite(QStringLiteral("forget"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::setAutoconnect(const QString &uuid, bool enabled)
 {
+    if (failWrite(QStringLiteral("autoconnect")))
+        return;
     for (Service &service : m_services) {
         if (service.uuid == uuid)
             service.autoconnect = enabled;
     }
     rebuild();
+    finishWrite(QStringLiteral("autoconnect"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::setFirewallEnabled(bool enabled)
 {
+    if (failWrite(QStringLiteral("firewall")))
+        return;
     if (!m_firewallStatusKnown)
         return;
     m_firewallEnabled = enabled;
     rebuild();
+    finishWrite(QStringLiteral("firewall"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::openPort(int port, const QString &protocol)
 {
+    if (failWrite(QStringLiteral("port")))
+        return;
     if (!m_firewallStatusKnown)
         return;
     const QString id = QStringLiteral("%1/%2").arg(port).arg(protocol);
@@ -338,10 +477,13 @@ void MockNetworkClient::openPort(int port, const QString &protocol)
         { QStringLiteral("label"), id },
     });
     rebuild();
+    finishWrite(QStringLiteral("port"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::closePort(int port, const QString &protocol)
 {
+    if (failWrite(QStringLiteral("port")))
+        return;
     if (!m_firewallStatusKnown)
         return;
     const QString id = QStringLiteral("%1/%2").arg(port).arg(protocol);
@@ -352,23 +494,30 @@ void MockNetworkClient::closePort(int port, const QString &protocol)
         }
     }
     rebuild();
+    finishWrite(QStringLiteral("port"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::openService(const QString &service)
 {
+    if (failWrite(QStringLiteral("service")))
+        return;
     if (!m_firewallStatusKnown)
         return;
     if (!m_servicesList.contains(service))
         m_servicesList.append(service);
     rebuild();
+    finishWrite(QStringLiteral("service"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::closeService(const QString &service)
 {
+    if (failWrite(QStringLiteral("service")))
+        return;
     if (!m_firewallStatusKnown)
         return;
     m_servicesList.removeAll(service);
     rebuild();
+    finishWrite(QStringLiteral("service"), QStringLiteral("applied"));
 }
 
 void MockNetworkClient::rebuild()
@@ -376,54 +525,87 @@ void MockNetworkClient::rebuild()
     QVariantMap view;
     view.insert(QStringLiteral("kind"), QStringLiteral("network"));
     view.insert(QStringLiteral("state"),
-                m_available ? QStringLiteral("available")
-                            : QStringLiteral("unavailable"));
-    view.insert(QStringLiteral("radioEnabled"), true);
+                (m_available && m_networkPresent)
+                    ? QStringLiteral("available")
+                    : QStringLiteral("unavailable"));
+    view.insert(QStringLiteral("radioEnabled"), m_networkPresent);
     view.insert(QStringLiteral("readOnly"), false);
-    view.insert(QStringLiteral("note"), QString());
+    view.insert(QStringLiteral("note"), m_networkPresent
+                    ? QString()
+                    : QStringLiteral("NetworkManager is not running."));
     QString activeSsid;
     QString activeAddress;
-    for (const Service &service : m_services) {
-        if (service.connected && service.kind == QLatin1String("wifi")) {
-            activeSsid = QStringLiteral("dragonfruit");
-            activeAddress = service.address;
+    if (m_networkPresent) {
+        for (const Service &service : m_services) {
+            if (service.connected && service.kind == QLatin1String("wifi")) {
+                activeSsid = QStringLiteral("dragonfruit");
+                activeAddress = service.address;
+            }
         }
     }
     view.insert(QStringLiteral("activeSsid"), activeSsid);
     view.insert(QStringLiteral("activeAddress"), activeAddress);
 
-    std::sort(m_services.begin(), m_services.end(),
-              [](const Service &left, const Service &right) {
-                  if (left.priority != right.priority)
-                      return left.priority > right.priority;
-                  return left.id < right.id;
-              });
+    if (m_networkPresent) {
+        std::sort(m_services.begin(), m_services.end(),
+                  [](const Service &left, const Service &right) {
+                      if (left.priority != right.priority)
+                          return left.priority > right.priority;
+                      return left.id < right.id;
+                  });
+    }
     QVariantList services;
-    for (int i = 0; i < m_services.size(); ++i) {
-        const Service &service = m_services[i];
-        const QString kindLabel = service.kind == QLatin1String("ethernet")
-            ? QStringLiteral("Ethernet")
-            : (service.kind == QLatin1String("wifi") ? QStringLiteral("Wi-Fi")
-                                                     : QStringLiteral("Bridge"));
-        QVariantMap entry;
-        entry.insert(QStringLiteral("id"), service.id);
-        entry.insert(QStringLiteral("uuid"), service.uuid);
-        entry.insert(QStringLiteral("kind"), service.kind);
-        entry.insert(QStringLiteral("kindLabel"), kindLabel);
-        entry.insert(QStringLiteral("state"),
-                     service.connected ? QStringLiteral("connected")
-                                       : QStringLiteral("disconnected"));
-        entry.insert(QStringLiteral("stateLabel"),
-                     service.connected ? QStringLiteral("Connected")
-                                       : QStringLiteral("Not connected"));
-        entry.insert(QStringLiteral("connected"), service.connected);
-        entry.insert(QStringLiteral("autoconnect"), service.autoconnect);
-        entry.insert(QStringLiteral("priority"), service.priority);
-        entry.insert(QStringLiteral("order"), i);
-        entry.insert(QStringLiteral("interface"), service.interface);
-        entry.insert(QStringLiteral("hardware"), service.hardware);
-        entry.insert(QStringLiteral("address"), service.address);
-        services.append(entry);
+    if (m_networkPresent) {
+        for (int i = 0; i < m_services.size(); ++i) {
+            const Service &service = m_services[i];
+            QString kindLabel = QStringLiteral("Other");
+            if (service.kind == QLatin1String("ethernet"))
+                kindLabel = QStringLiteral("Ethernet");
+            else if (service.kind == QLatin1String("wifi"))
+                kindLabel = QStringLiteral("Wi-Fi");
+            else if (service.kind == QLatin1String("bridge"))
+                kindLabel = QStringLiteral("Bridge");
+            else if (service.kind == QLatin1String("bond"))
+                kindLabel = QStringLiteral("Bond");
+            else if (service.kind == QLatin1String("vlan"))
+                kindLabel = QStringLiteral("VLAN");
+            QVariantMap entry;
+            entry.insert(QStringLiteral("id"), service.id);
+            entry.insert(QStringLiteral("uuid"), service.uuid);
+            entry.insert(QStringLiteral("kind"), service.kind);
+            entry.insert(QStringLiteral("kindLabel"), kindLabel);
+            entry.insert(QStringLiteral("state"),
+                         service.connected ? QStringLiteral("connected")
+                                           : QStringLiteral("disconnected"));
+            entry.insert(QStringLiteral("stateLabel"),
+                         service.connected ? QStringLiteral("Connected")
+                                           : QStringLiteral("Not connected"));
+            entry.insert(QStringLiteral("status"),
+                         service.connected ? QStringLiteral("green")
+                                           : QStringLiteral("gray"));
+            entry.insert(QStringLiteral("connected"), service.connected);
+            entry.insert(QStringLiteral("autoconnect"), service.autoconnect);
+            entry.insert(QStringLiteral("priority"), service.priority);
+            entry.insert(QStringLiteral("order"), i);
+            entry.insert(QStringLiteral("interface"), service.interface);
+            entry.insert(QStringLiteral("hardware"), service.hardware);
+            entry.insert(QStringLiteral("address"), service.address);
+            entry.insert(QStringLiteral("prefix"), service.prefix);
+            entry.insert(QStringLiteral("gateway"), service.gateway);
+            entry.insert(QStringLiteral("dns"), service.dns);
+            entry.insert(QStringLiteral("searchDomains"), service.searchDomains);
+            entry.insert(QStringLiteral("ipv6Addresses"), service.ipv6Addresses);
+            entry.insert(QStringLiteral("ipv6"), service.ipv6Method);
+            entry.insert(QStringLiteral("proxy"), service.proxy);
+            entry.insert(QStringLiteral("clonedMac"), service.clonedMac);
+            entry.insert(QStringLiteral("keyMgmt"), service.keyMgmt);
+            entry.insert(QStringLiteral("metered"), service.metered);
+            entry.insert(QStringLiteral("wirelessMode"),
+                         service.kind == QLatin1String("wifi")
+                             ? QStringLiteral("infrastructure") : QString());
+            entry.insert(QStringLiteral("hotspot"), false);
+            services.append(entry);
+        }
     }
     view.insert(QStringLiteral("services"), services);
     view.insert(QStringLiteral("serviceCount"), services.size());
@@ -439,7 +621,10 @@ void MockNetworkClient::rebuild()
     firewall.insert(QStringLiteral("backend"), m_firewallBackend);
     firewall.insert(QStringLiteral("backendLabel"),
                     m_firewallBackend == QLatin1String("nftables")
-                        ? QStringLiteral("nftables") : QStringLiteral("firewalld"));
+                        ? QStringLiteral("nftables")
+                        : (m_firewallBackend == QLatin1String("ufw")
+                               ? QStringLiteral("ufw")
+                               : QStringLiteral("firewalld")));
     firewall.insert(QStringLiteral("statusKnown"), m_firewallStatusKnown);
     firewall.insert(QStringLiteral("enabled"),
                     m_firewallStatusKnown ? QVariant(m_firewallEnabled) : QVariant());

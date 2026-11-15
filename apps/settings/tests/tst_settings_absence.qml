@@ -798,9 +798,9 @@ Item {
 
         // The Network advanced (VPN) view is a host-stack adapter read, so with
         // no bridge host it is the absence state: the connection list is
-        // replaced by a one-line note and the two writes are safe no-ops. The
-        // pane owns no settingsd preference, because NetworkManager is the
-        // state (T-15.15b).
+        // replaced by a note and the two writes are safe no-ops. T272 keeps
+        // every section visible and leaves the firewall independent. The pane
+        // owns no settingsd preference, because NetworkManager is the state.
         function test_network_pane_degrades_cleanly_without_the_bridge_host() {
             var shell = make();
             compare(Settings.vpnAvailable, false,
@@ -812,8 +812,14 @@ Item {
             compare(pane.absenceNote.visible, true,
                     "the absence note explains the missing network service");
             verify(pane.absenceNote.text.length > 0);
-            compare(pane.vpnGroup.visible, false);
+            compare(pane.vpnGroup.visible, true,
+                    "the VPN section stays visible when its host is absent");
+            compare(pane.vpnAbsenceNote.visible, true);
             compare(pane.connectionRepeater.count, 0);
+            compare(pane.servicesGroup.visible, true);
+            compare(pane.addServiceRow.enabled, false);
+            compare(pane.firewallGroup.visible, true);
+            compare(pane.firewallToggle.enabled, false);
 
             // A refresh and the two writes are safe no-ops with no host.
             Settings.refreshVpn();

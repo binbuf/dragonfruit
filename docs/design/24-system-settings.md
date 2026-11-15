@@ -184,8 +184,8 @@ Decisions:
   “Mission Control”.
 - **VPN is optional.** It appears in Connectivity only when NetworkManager
   reports at least one VPN profile; otherwise the Network → VPN section is
-  the only entry point. T263 lands the gated `vpn` link (it targets Network
-  until T272 adds the real pane) and the `optionalVisible` rule.
+  the only entry point. T272 makes it a real pane with the same one VPN model
+  as Network → VPN.
 - **Online Accounts is visible even when the host service is absent.** The
   pane shows an explicit “Internet accounts are not installed” state with a
   delegate action. It does not vanish from the sidebar; a familiar macOS
@@ -563,15 +563,53 @@ Owner: NetworkManager + firewall adapter. Absence: per-service rows show
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Services | Services | List + status dot | NM `Devices`/`ActiveConnection` | ship |
-| VPN | VPN | Disclosure / top-level optional | NM VPN | ship |
-| Firewall | Firewall | Toggle + Options | firewall adapter | ship; firewalld/ufw, nftables unavailable |
+| Services | Services | List + status dot | NM `Devices`/`ActiveConnection` | ship; green/yellow/red/gray dot |
+| VPN | VPN | Disclosure / top-level optional | NM VPN | ship; the optional top-level pane appears when a profile exists, Network → VPN otherwise |
+| Firewall | Firewall | Toggle + Options | firewall adapter | ship; firewalld/ufw, nftables unavailable; independent of NM |
 | Other Services | Other services | List | NM devices | ship |
-| Options (⋯) | Service actions | Menu | NM | ship; activate/deactivate, priority, add |
-| Advanced… | Details… | Sheet | NM | ship; TCP/IP, DNS, proxies, hardware |
+| Options (⋯) | Service actions | Menu | NM | ship; activate/deactivate, priority, make inactive, delete, add |
+| Advanced… | Details… | Sheet | NM | ship; TCP/IP, DNS, search domains, proxies, hardware, IPv6, metered, MAC randomization, 802.1X |
 | Locations | Profiles | Popup/sheet | NM `Settings.Connection` | adapt |
-| — | Firewall options | Sheet | firewall adapter | ship; open ports, services, zones/rules |
+| — | Firewall options | Sheet | firewall adapter | ship; open ports, services, zones/rules, backend |
 | — | Add service… | Sheet | NM `AddConnection` | ship; Ethernet, Wi-Fi, VPN, bridge, bond, VLAN |
+
+**Landed (T272).** The Network pane is the Tahoe service list:
+
+- Each service row carries a status dot (green connected, yellow
+  connecting/disconnecting, red failed, gray idle/unavailable) and a
+  per-service **Details** sheet. The sheet reads the live TCP/IP address,
+  subnet mask, router, DNS servers, search domains, IPv6 method/addresses,
+  proxy, MAC randomization, metered state, 802.1X key management, hardware
+  address, interface, and auto-connect. The single text-wall Advanced dialog
+  is gone; DNS/proxy/MAC/metered/IPv6/802.1X remain read-only live rows
+  because the full connection editor owns their writes.
+- The service actions menu owns Connect/Disconnect, Move Up/Down, Make
+  Inactive, Delete Service, and Add Service. Service order is still
+  NetworkManager's `autoconnect-priority`; the host re-reads and pushes the
+  new order.
+- The firewall is independent. A missing NetworkManager leaves the Firewall
+  section live (its toggle, options, and rules work), and a read-only VPN
+  adapter never disables it. A missing firewall shows “No firewall detected”;
+  a manager that cannot report status (nftables) shows Unavailable, never a
+  fake Off.
+- The optional top-level **VPN** pane appears in Connectivity when
+  NetworkManager reports a profile. It lists connections, connects and
+  disconnects, toggles auto-connect, shows an Info sheet, and adds a
+  WireGuard/OpenVPN profile. When no profile exists the pane leaves the
+  sidebar and Network → VPN remains the entry point.
+- **Add Service** offers Ethernet, Wi-Fi, VPN, bridge, bond, and VLAN with
+  labelled fields and inline validation; a failed add reports its reason and
+  creates no row. Every Network/VPN write reports `applied`, `denied`,
+  `failed`, or `absent`; a failed write leaves the view untouched and shows
+  the reason.
+- The sections stay visible when NetworkManager, VPN, or the firewall is
+  absent. Only the affected controls disable, each with a reason.
+
+Tests: `tst_settings_network`, `tst_settings_vpn`, `tst_settings_absence`;
+`make t272-network-capture` writes the services/details/firewall/VPN/
+add-service/absence stills in light/dark. The live Wayland walk (details,
+reorder, firewall with NM stopped, add a VPN, stop each adapter) is T284's.
+
 
 ### 4.4 Battery — T273
 

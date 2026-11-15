@@ -394,6 +394,14 @@ pub struct NetworkService {
     pub hardware: Option<String>,
     /// The first IPv4 address, when connected.
     pub address: Option<String>,
+    /// The IPv4 prefix length (subnet mask), when connected.
+    pub prefix: Option<u8>,
+    /// The active IPv4 gateway, when connected.
+    pub gateway: Option<String>,
+    /// `ipv4.dns-search`, the configured search domains.
+    pub search_domains: Vec<String>,
+    /// The active IPv6 addresses, when connected.
+    pub ipv6_addresses: Vec<String>,
     /// `802-11-wireless.mode`; `ap` marks a personal hotspot.
     pub wireless_mode: Option<String>,
     /// `connection.metered` (`NM_METERED_*`).
@@ -637,7 +645,7 @@ fn device_for<'a>(
 ) -> Option<&'a ServiceData> {
     if let Some(active) = active {
         if let Some(device) = data.services.iter().find(|device| {
-            active.devices.iter().any(|path| *path == device.path)
+            active.devices.contains(&device.path)
                 || device.active_connection.as_deref() == Some(active.path.as_str())
         }) {
             return Some(device);
@@ -673,6 +681,14 @@ fn build_services(data: &NetworkManagerData) -> Vec<NetworkService> {
                     .filter(|s| !s.is_empty()),
                 hardware: device.and_then(|device| device.hw_address.clone()),
                 address: device.and_then(|device| device.ip4_address.clone()),
+                prefix: device.and_then(|device| device.ip4_prefix),
+                gateway: device
+                    .and_then(|device| device.ip4_gateway.clone())
+                    .or_else(|| connection.ipv4_gateway.clone()),
+                search_domains: connection.ipv4_search.clone(),
+                ipv6_addresses: device
+                    .map(|device| device.ip6_addresses.clone())
+                    .unwrap_or_default(),
                 wireless_mode: connection.wireless_mode.clone(),
                 metered: connection.metered,
                 ipv6_method: connection.ipv6_method.clone(),
@@ -1063,5 +1079,52 @@ mod tests {
         assert_eq!(service.cloned_mac.as_deref(), Some("random"));
         assert_eq!(service.key_mgmt.as_deref(), Some("wpa-psk"));
         assert!(!service.is_hotspot());
+    }
+
+    #[test]
+    fn services_carry_the_connection_details() {
+        use crate::source::{ActiveConnectionData, ConnectionData, ServiceData};
+        let data = NetworkManagerData {
+            connections: vec![ConnectionData {
+                id: "Wired".to_owned(),
+                uuid: "wired".to_owned(),
+                kind: "802-3-ethernet".to_owned(),
+                ipv4_gateway: Some("192.168.1.1".to_owned()),
+                ipv4_search: vec!["lan".to_owned(), "example.test".to_owned()],
+                ..ConnectionData::default()
+            }],
+            active: vec![ActiveConnectionData {
+                path: "/active/wired".to_owned(),
+                connection: "/conn/wired".to_owned(),
+                uuid: "wired".to_owned(),
+                state: 2,
+                devices: vec!["/dev/eth".to_owned()],
+                ..ActiveConnectionData::default()
+            }],
+            services: vec![ServiceData {
+                path: "/dev/eth".to_owned(),
+                kind: 1,
+                interface: "enp1s0".to_owned(),
+                state: 100,
+                managed: true,
+                hw_address: Some("aa:bb:cc:dd:ee:02".to_owned()),
+                ip4_address: Some("192.168.1.20".to_owned()),
+                ip4_prefix: Some(24),
+                ip4_gateway: Some("192.168.1.1".to_owned()),
+                ip6_addresses: vec!["2001:db8::20".to_owned()],
+                ..ServiceData::default()
+            }],
+            ..Default::default()
+        };
+        let snapshot = WifiSnapshot::from_data(&data);
+        let service = &snapshot.services[0];
+        assert_eq!(service.address.as_deref(), Some("192.168.1.20"));
+        assert_eq!(service.prefix, Some(24));
+        assert_eq!(service.gateway.as_deref(), Some("192.168.1.1"));
+        assert_eq!(
+            service.search_domains,
+            vec!["lan".to_owned(), "example.test".to_owned()]
+        );
+        assert_eq!(service.ipv6_addresses, vec!["2001:db8::20".to_owned()]);
     }
 }

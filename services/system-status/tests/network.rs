@@ -38,6 +38,8 @@ fn network_data() -> NetworkManagerData {
                 kind: "802-3-ethernet".to_owned(),
                 priority: 10,
                 autoconnect: true,
+                ipv4_gateway: Some("192.168.1.1".to_owned()),
+                ipv4_search: vec!["lan".to_owned()],
                 ..ConnectionData::default()
             },
             ConnectionData {
@@ -80,6 +82,9 @@ fn network_data() -> NetworkManagerData {
                 managed: true,
                 hw_address: Some("aa:bb:cc:dd:ee:02".to_owned()),
                 ip4_address: Some("192.168.1.20".to_owned()),
+                ip4_prefix: Some(24),
+                ip4_gateway: Some("192.168.1.1".to_owned()),
+                ip6_addresses: vec!["2001:db8::20".to_owned()],
                 ..ServiceData::default()
             },
             ServiceData {
@@ -121,6 +126,10 @@ fn the_network_view_carries_services_known_networks_and_the_firewall() {
     assert_eq!(view["serviceCount"], 2);
     assert_eq!(view["services"][0]["id"], "Wired");
     assert_eq!(view["services"][0]["address"], "192.168.1.20");
+    assert_eq!(view["services"][0]["prefix"], 24);
+    assert_eq!(view["services"][0]["gateway"], "192.168.1.1");
+    assert_eq!(view["services"][0]["searchDomains"][0], "lan");
+    assert_eq!(view["services"][0]["ipv6Addresses"][0], "2001:db8::20");
     assert_eq!(view["knownNetworkCount"], 1);
     assert_eq!(view["knownNetworks"][0]["ssid"], "home");
     assert_eq!(view["knownNetworks"][0]["connected"], true);

@@ -996,11 +996,19 @@ impl NetworkInterface {
     }
 
     /// Create a saved service or VPN connection. `kind` is
-    /// `ethernet`/`wifi`/`vpn`; `plugin` and `gateway` apply to VPN. Returns
-    /// the JSON report.
-    fn add_service(&self, name: &str, kind: &str, plugin: &str, gateway: &str) -> String {
+    /// `ethernet`/`wifi`/`vpn`/`bridge`/`bond`/`vlan`; `plugin` and `gateway`
+    /// apply to VPN, `interface` to a bridge/bond/VLAN. Returns the JSON
+    /// report.
+    fn add_service(
+        &self,
+        name: &str,
+        kind: &str,
+        plugin: &str,
+        gateway: &str,
+        interface: &str,
+    ) -> String {
         lock(&self.host)
-            .add_service(name, kind, plugin, gateway)
+            .add_service(name, kind, plugin, gateway, interface)
             .to_string()
     }
 }

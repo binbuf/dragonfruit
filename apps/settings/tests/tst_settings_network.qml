@@ -4,15 +4,14 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// Network advanced (VPN) pane tests (T-15.15b). Headless with
-// `DF_SETTINGS_FIXTURE` and `DF_VPN_FIXTURE` (see CMakeLists.txt), so the
+// Network and optional VPN pane tests (T225, T272). Headless with
+// `DF_SETTINGS_FIXTURE`, `DF_NETWORK_FIXTURE`, and `DF_VPN_FIXTURE`, so the
 // `Settings` singleton and the NetworkManager bridge client are deterministic
-// and in-process with no bus. The cases cover the live connection list, the
-// connect/disconnect round-trip, and the absence/empty gating.
+// and in-process with no bus.
 Item {
     id: stage
-    width: 900
-    height: 1200
+    width: 740
+    height: 820
 
     TestCase {
         id: testCase
@@ -22,11 +21,13 @@ Item {
         Component { id: shellComponent; SettingsShell { } }
 
         // The fixture is process-global; reset it before every case so each
-        // starts on the known OpenVPN-up / WireGuard-idle store.
+        // starts on the known wired/Wi-Fi/bridge + OpenVPN-up store.
         function init() {
             Settings.resetVpnFixture();
             Settings.resetNetworkFixture();
             Settings.resetWifiFixture();
+            Settings.setNetworkFixture("live");
+            Settings.setVpnFixture("live");
         }
 
         function make() {
@@ -45,6 +46,15 @@ Item {
             var pane = shell.paneBody.item;
             verify(pane);
             return pane;
+        }
+
+        function rowFor(pane, id) {
+            for (var i = 0; i < pane.servicesRepeater.count; ++i) {
+                var row = pane.servicesRepeater.itemAt(i);
+                if (row && String(row.modelData.id) === id)
+                    return row;
+            }
+            return null;
         }
 
         function test_pane_opens_with_the_live_connections() {
@@ -70,7 +80,6 @@ Item {
         function test_connect_and_disconnect_round_trip() {
             var shell = make();
             var pane = paneOf(shell);
-            // Work VPN starts connected; disconnect it.
             var first = pane.connectionRepeater.itemAt(0);
             var firstToggle = findChild(first, "networkVpnToggle");
             firstToggle.toggle();
@@ -78,7 +87,6 @@ Item {
             compare(Settings.vpn.label, "Not Connected");
             compare(Settings.vpn.glyph, "vpn-off");
 
-            // Connect the idle WireGuard link.
             var second = pane.connectionRepeater.itemAt(1);
             compare(second.label, "Home");
             var secondToggle = findChild(second, "networkVpnToggle");
@@ -93,9 +101,6 @@ Item {
             var second = pane.connectionRepeater.itemAt(1);
             var secondToggle = findChild(second, "networkVpnToggle");
             compare(secondToggle.checked, false);
-            // A change from elsewhere (the host's pushed state) converges. The
-            // Repeater rebuilds its delegates when the view changes, so re-fetch
-            // the live row rather than hold the old object.
             Settings.connectVpn("22222222-2222-2222-2222-222222222222");
             tryVerify(function() {
                 var row = pane.connectionRepeater.itemAt(1);
@@ -107,37 +112,76 @@ Item {
         function test_the_absence_and_empty_notes_are_gated() {
             var shell = make();
             var pane = paneOf(shell);
-            // The host answers, so the absence note is hidden.
             compare(pane.absenceNote.visible, false);
             compare(pane.vpnGroup.visible, true);
         }
 
-        function serviceRow(pane, id) {
-            for (var i = 0; i < pane.servicesRepeater.count; ++i) {
-                var row = pane.servicesRepeater.itemAt(i);
-                if (row && String(row.modelData.id) === id)
-                    return row;
-            }
-            return null;
-        }
-
-        function test_services_are_listed_and_reordered() {
+        // T272: each service row carries a status dot and a Details sheet with
+        // the TCP/IP, DNS, search-domain, hardware, and Linux-only rows.
+        function test_services_have_status_dots_and_details() {
             var shell = make();
             var pane = paneOf(shell);
-            compare(pane.ready, true);
-            // The fixture's Other Services: Wired and Thunderbolt Bridge
-            // (Wi-Fi and VPN have their own surfaces).
-            compare(pane.otherServices.length, 2);
-            var wired = serviceRow(pane, "Wired");
+            var wired = rowFor(pane, "Wired");
             verify(wired !== null);
-            compare(wired.modelData.connected, true);
-            findChild(wired, "networkServiceDown").clicked();
+            var dot = findChild(wired, "networkServiceStatusDot");
+            verify(dot !== null);
+            compare(dot.color, Theme.color.success);
+
+            findChild(wired, "networkServiceDetails").clicked();
+            tryVerify(function() { return pane.detailsDialog.open === true; });
+            compare(pane.detailsService.id, "Wired");
+            var labels = pane.detailRows.map(function(entry) { return entry.label; });
+            verify(labels.indexOf("Subnet Mask") >= 0);
+            verify(labels.indexOf("Router") >= 0);
+            verify(labels.indexOf("DNS Servers") >= 0);
+            verify(labels.indexOf("Search Domains") >= 0);
+            verify(labels.indexOf("IPv6") >= 0);
+            verify(labels.indexOf("MAC Randomization") >= 0);
+            verify(labels.indexOf("Metered") >= 0);
+            verify(labels.indexOf("802.1X") >= 0);
+            var values = pane.detailRows.map(function(entry) { return entry.value; });
+            verify(values.indexOf("255.255.255.0") >= 0);
+            verify(values.indexOf("192.168.1.1") >= 0);
+            pane.detailsDialog.hide();
+        }
+
+        // T272: the actions menu owns activate/deactivate, order, make
+        // inactive, delete, and add. The row no longer carries a pair of Up /
+        // Down buttons.
+        function test_the_service_actions_menu_reorders_and_deletes() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var wired = rowFor(pane, "Wired");
+            verify(wired !== null);
+            compare(findChild(wired, "networkServiceActions") !== null, true);
+            pane.openServiceMenu(wired.modelData, wired);
+            var actions = pane.serviceMenu.model.map(function(entry) {
+                return entry.action || entry.type;
+            });
+            verify(actions.indexOf("up") >= 0);
+            verify(actions.indexOf("down") >= 0);
+            verify(actions.indexOf("inactive") >= 0);
+            verify(actions.indexOf("delete") >= 0);
+            verify(actions.indexOf("add") >= 0);
+
+            pane.runServiceAction("down");
             tryVerify(function() {
                 var services = Settings.network.services;
                 for (var i = 0; i < services.length; ++i)
                     if (services[i].id === "Wired")
                         return services[i].order > 0;
                 return false;
+            });
+            pane.serviceMenu.hide();
+
+            var fresh = rowFor(pane, "Wired");
+            pane.openServiceMenu(fresh.modelData, fresh);
+            pane.runServiceAction("delete");
+            tryVerify(function() {
+                for (var i = 0; i < Settings.network.services.length; ++i)
+                    if (Settings.network.services[i].id === "Wired")
+                        return false;
+                return true;
             });
         }
 
@@ -154,6 +198,23 @@ Item {
                         return true;
                 return false;
             });
+        }
+
+        // T272: validation is visible and a failed add does not create a row.
+        function test_add_service_validation() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.addServiceRow.trailingButton.clicked();
+            tryVerify(function() { return pane.addServiceDialog.open === true; });
+            var before = Settings.network.services.length;
+            findChild(pane, "networkAddServiceConfirm").clicked();
+            tryVerify(function() {
+                return findChild(pane, "networkAddServiceResult").text.length > 0;
+            });
+            compare(Settings.network.services.length, before);
+            verify(findChild(pane, "networkAddServiceResult").text
+                   .indexOf("required") >= 0);
+            pane.addServiceDialog.hide();
         }
 
         function test_the_firewall_toggle_and_rules() {
@@ -204,6 +265,7 @@ Item {
             tryVerify(function() { return Settings.vpn.plugins.length === 0; });
             compare(pane.vpnPlugins.length, 0);
             compare(pane.addVpnRow.trailingAction, "");
+            compare(pane.vpnGroup.visible, true);
             Settings.setVpnFixture("live");
             tryVerify(function() { return Settings.vpn.plugins.length === 2; });
         }
@@ -224,6 +286,100 @@ Item {
 
             Settings.setNetworkFixture("live");
             tryVerify(function() { return pane.ready === true; });
+        }
+
+        // T272: a missing NetworkManager leaves the firewall usable; the pane
+        // keeps its sections and only disables the NetworkManager controls.
+        function test_the_firewall_is_independent_of_networkmanager() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setNetworkFixture("nm-absent");
+            tryVerify(function() { return pane.ready === false; });
+            compare(pane.absenceNote.visible, true);
+            compare(pane.firewallGroup.visible, true);
+            compare(pane.firewallDetected, true);
+            compare(pane.firewallToggle.enabled, true);
+            compare(pane.addServiceRow.enabled, false);
+            compare(pane.vpnGroup.visible, true);
+
+            pane.firewallToggle.toggle();
+            tryVerify(function() { return Settings.network.firewall.enabled === true; });
+            compare(pane.firewallToggle.checked, true);
+        }
+
+        // T272: a read-only VPN adapter does not disable the firewall.
+        function test_a_read_only_vpn_does_not_disable_the_firewall() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setVpnFixture("read-only");
+            tryVerify(function() { return Settings.vpn.readOnly === true; });
+            compare(pane.vpnReadOnly, true);
+            compare(pane.firewallReadOnly, false);
+            compare(pane.firewallToggle.enabled, true);
+            pane.firewallToggle.toggle();
+            tryVerify(function() { return Settings.network.firewall.enabled === true; });
+        }
+
+        // T272: every write reports its outcome; a denied write reverts the
+        // control and shows the reason.
+        function test_a_failed_write_is_reported() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var wired = rowFor(pane, "Wired");
+            Settings.failNextNetworkWrite("deactivate", "not authorized");
+            Settings.deactivateNetworkService(String(wired.modelData.uuid));
+            tryVerify(function() { return Settings.networkWriteState === "failed"; });
+            tryVerify(function() { return pane.writeNote.visible === true; });
+            verify(findChild(pane, "networkWriteNote").text
+                   .indexOf("not authorized") >= 0);
+            // The fixture did not change because the write failed.
+            compare(Settings.network.services[0].connected, true);
+        }
+
+        // T272: the optional VPN pane appears in Connectivity only when a
+        // profile exists; Network -> VPN stays available otherwise.
+        function test_the_optional_vpn_pane_follows_the_profiles() {
+            var shell = make();
+            var ids = shell.visiblePanes.map(function(entry) { return entry.id; });
+            verify(ids.indexOf("vpn") >= 0);
+            verify(ids.indexOf("network") >= 0);
+
+            shell.selectPane("vpn");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            var vpn = shell.paneBody.item;
+            compare(vpn.ready, true);
+            compare(vpn.connections.length, 2);
+            compare(vpn.connectionRepeater.count, 2);
+
+            // Info is a real sheet.
+            var row = vpn.connectionRepeater.itemAt(0);
+            findChild(row, "vpnInfoButton").clicked();
+            tryVerify(function() { return vpn.infoDialog.open === true; });
+            vpn.infoDialog.hide();
+
+            // With no profile the optional pane leaves the sidebar.
+            Settings.setVpnFixture("empty");
+            tryVerify(function() {
+                var visible = shell.visiblePanes.map(function(entry) { return entry.id; });
+                return visible.indexOf("vpn") < 0;
+            });
+            verify(SettingsPanes.optionalVisible(
+                       SettingsPanes.paneById("vpn"),
+                       { connections: [] }) === false);
+        }
+
+        // T272: the pane is measured at the 740x820 window and the service
+        // rows stay inside the detail column.
+        function test_the_pane_fits_the_measured_window() {
+            var shell = make();
+            compare(shell.width, 740);
+            compare(shell.height, 820);
+            var pane = paneOf(shell);
+            verify(pane.width > 0);
+            verify(pane.width <= shell.width);
+            var wired = rowFor(pane, "Wired");
+            verify(wired !== null);
+            verify(wired.width <= pane.width);
         }
     }
 }

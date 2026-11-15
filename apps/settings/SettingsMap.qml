@@ -41,8 +41,8 @@ QtObject {
     // grouped sidebar order: Connectivity, General, Personalization, Desktop,
     // Accounts & Devices, Input, System. `storage` stays a shipped pane body
     // but is hidden from the sidebar and aliased to General -> Storage;
-    // `vpn` is a navigation link to Network, present only when a VPN profile
-    // exists (T272 turns it into a real pane). New panes use the map names;
+    // `vpn` is an optional top-level pane, present only when a VPN profile
+    // exists (T272). New panes use the map names;
     // user-facing titles follow the T220 generic naming map.
     readonly property var panes: [
         { id: "wifi", title: qsTr("Wi-Fi"), icon: "wifi", group: "connectivity",
@@ -64,7 +64,7 @@ QtObject {
           absence: "disabled-with-reason",
           absenceNote: qsTr("Network services are unavailable because NetworkManager is not running.") },
         { id: "vpn", title: qsTr("VPN"), icon: "vpn", group: "connectivity",
-          shipped: false, optional: "vpn", linkTo: "network", anchor: "VPN",
+          shipped: true, optional: "vpn",
           owner: "NetworkManager VPN", disposition: "ship/adapt",
           deepLink: "settings://pane/vpn",
           absence: "disabled-with-reason",
@@ -316,8 +316,16 @@ QtObject {
                          "NetworkManager", "Settings.Connection", "disabled-with-reason", "shipped"),
                 root.row("actions", qsTr("Network"), qsTr("Service actions"), "menu",
                          "NetworkManager", "ActivateConnection", "disabled-with-reason", "shipped"),
-                root.row("advanced", qsTr("Network"), qsTr("Advanced..."), "sheet",
+                root.row("details", qsTr("Network"), qsTr("Details..."), "sheet",
                          "NetworkManager", "nm.connection", "disabled-with-reason", "shipped"),
+                root.row("metered", qsTr("Network"), qsTr("Metered"), "info",
+                         "NetworkManager", "connection.metered", "read-only", "shipped"),
+                root.row("mac", qsTr("Network"), qsTr("MAC randomization"), "info",
+                         "NetworkManager", "cloned-mac-address", "read-only", "shipped"),
+                root.row("ipv6", qsTr("Network"), qsTr("IPv6"), "info",
+                         "NetworkManager", "ipv6.method", "read-only", "shipped"),
+                root.row("8021x", qsTr("Network"), qsTr("802.1X"), "info",
+                         "NetworkManager", "802-11-wireless-security.key-mgmt", "read-only", "shipped"),
                 root.row("profiles", qsTr("Network"), qsTr("Profiles"), "popup",
                          "NetworkManager", "Settings.Connection", "disabled-with-reason"),
                 root.row("firewallOptions", qsTr("Network"), qsTr("Firewall options"), "sheet",
@@ -326,10 +334,12 @@ QtObject {
                          "NetworkManager", "AddConnection", "disabled-with-reason", "shipped")
             ],
             "vpn": [
-                root.row("vpn", qsTr("Network"), qsTr("VPN"), "disclosure",
-                         "NetworkManager", "Settings.Connection", "disabled-with-reason", "shipped"),
-                root.row("vpn.add", qsTr("Network"), qsTr("Add VPN configuration..."), "sheet",
-                         "NetworkManager", "AddConnection", "disabled-with-reason", "shipped")
+                root.row("vpn", qsTr("VPN"), qsTr("Connections"), "list",
+                         "NetworkManager VPN", "Settings.Connection", "disabled-with-reason", "shipped"),
+                root.row("vpn.wireguard", qsTr("VPN"), qsTr("WireGuard"), "info",
+                         "NetworkManager VPN", "wireguard", "read-only", "shipped"),
+                root.row("vpn.add", qsTr("VPN"), qsTr("Add VPN configuration..."), "sheet",
+                         "NetworkManager VPN", "AddConnection", "disabled-with-reason", "shipped")
             ],
             "battery": [
                 root.row("profile", qsTr("Battery"), qsTr("Power mode"), "popup",

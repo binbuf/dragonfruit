@@ -170,7 +170,7 @@ Item {
             var expected = SettingsMap.panes.filter(function(pane) {
                 if (pane.hidden === true)
                     return false;
-                if (pane.linkTo !== undefined)
+                if (pane.optional !== undefined)
                     return SettingsPanes.optionalVisible(pane, Settings.vpn);
                 return pane.shipped;
             }).map(function(pane) { return pane.id; });
@@ -217,10 +217,10 @@ Item {
             var vpn = SettingsMap.panes.filter(function(pane) {
                 return pane.id === "vpn";
             })[0];
-            compare(vpn.shipped, false);
+            compare(vpn.shipped, true);
             compare(vpn.optional, "vpn");
-            compare(vpn.linkTo, "network");
-            compare(SettingsPanes.resolve("vpn").paneId, "network");
+            compare(vpn.linkTo, undefined);
+            compare(SettingsPanes.resolve("vpn").paneId, "vpn");
         }
 
         // -- The debug view ----------------------------------------------------

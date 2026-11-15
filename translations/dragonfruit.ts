@@ -5347,6 +5347,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 zone · %2 open ports, %3 services</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 · %2</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5359,7 +5363,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 — %2 · %3 · %4</source>
+        <source>802.1X</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A VPN name is required.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A service name is required.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5387,11 +5399,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Add a service below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adding “%1”…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Add…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Advanced…</source>
+        <source>An interface name is required.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5399,11 +5419,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Auto-connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Auto-connect %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Backend: %1 · Zone: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bond</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bridge</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a VPN plugin.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5431,7 +5471,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Create an Ethernet, Wi-Fi, or VPN service.</source>
+        <source>Create an Ethernet, Wi-Fi, VPN, bridge, bond, or VLAN service.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5439,15 +5479,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DNS, proxies, and MAC randomization are edited in the full connection editor; this first pass shows the live service state.</source>
+        <source>DNS Servers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DNS, proxies, MAC randomization, metered, IPv6, and 802.1X are read live from NetworkManager. The full connection editor owns the writes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete Service</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details — %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Disconnect</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Down</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5467,7 +5523,63 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Network Advanced</source>
+        <source>Gateway</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardware Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IPv4 Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IPv6</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Interface</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MAC Randomization</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Make Inactive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Metered</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move Down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move Up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NetworkManager is not running, so VPN connections cannot be read or changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NetworkManager is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No (automatic)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5487,7 +5599,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No interface</source>
+        <source>No firewall detected. Install firewalld, ufw, or nftables to manage rules.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No other services.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not configured</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5527,15 +5651,55 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Preserve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Proxy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Router</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search Domains</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Service actions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Service added.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Status unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>TCP/IP, hardware, and the active service.</source>
+        <source>Subnet Mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The network service (NetworkManager) is not running, so services and VPN connections are unavailable.</source>
+        <source>The VPN was not added.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The last network change did not apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The network service (NetworkManager) is not running, so services and VPN connections are unavailable. The firewall keeps its own state and stays usable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The service was not added.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5543,11 +5707,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Up</source>
+        <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VLAN</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5555,7 +5727,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>VPN added.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN plugin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Wi-Fi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Yes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Yes (automatic)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>⋯</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -7162,6 +7358,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>802.1X</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>About</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7482,6 +7682,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Connections</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Contacts</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7547,6 +7751,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Destination</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7746,6 +7954,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>IPv6</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Indexing status</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7854,6 +8066,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>MAC randomization</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Magnification</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7891,6 +8107,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Menu-bar preferences stay live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Metered</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8687,6 +8907,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Windows</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WireGuard</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10166,6 +10390,165 @@ Provider: %2</source>
     </message>
     <message>
         <source>Unmute</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>VpnPane</name>
+    <message>
+        <source>%1 plugin(s) installed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A VPN name is required.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add VPN Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add VPN Configuration…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a VPN below to connect.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adding “%1”…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-connect %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a VPN plugin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connections</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gateway</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Info…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No NetworkManager VPN plugin is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No VPN connection is configured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>State</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The VPN service (NetworkManager) is not running, so VPN connections are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The VPN was not added.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The last VPN change did not apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UUID</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN added.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN connections can be viewed but not changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN connections can be viewed but not changed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN plugin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VPN — %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

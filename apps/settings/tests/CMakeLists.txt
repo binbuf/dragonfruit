@@ -632,6 +632,28 @@ set_tests_properties(tst_settings_network PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# The optional VPN pane (T272): connection list, connect/disconnect, info,
+# add validation, failed-write reporting, and the profile gate.
+qt_add_executable(tst_settings_vpn
+    tst_settings_vpn.cpp
+)
+target_link_libraries(tst_settings_vpn PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_vpn)
+
+add_test(
+    NAME tst_settings_vpn
+    COMMAND tst_settings_vpn
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_vpn.qml
+)
+set_tests_properties(tst_settings_vpn PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_VPN_FIXTURE=1;DF_NETWORK_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Wi-Fi-pane tests (T225): the live model, radio toggle, open/secured/hidden
 # joins, forget, details, the settingsd prompt policy, and the absence state.
 # `DF_WIFI_FIXTURE` is the deterministic in-process NetworkManager client.

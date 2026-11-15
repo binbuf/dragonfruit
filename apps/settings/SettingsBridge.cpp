@@ -509,6 +509,15 @@ VpnClient *SettingsBridge::ensureVpn()
             [this](const QVariantMap &) { emit vpnChanged(); });
     connect(m_vpn, &VpnClient::availableChanged, this,
             [this](bool) { emit vpnChanged(); });
+    connect(m_vpn, &VpnClient::writeFinished, this,
+            [this](const QString &operation, const QString &outcome,
+                   const QString &message) {
+                m_vpnWriteOperation = operation;
+                m_vpnWriteState = outcome.isEmpty()
+                    ? QStringLiteral("applied") : outcome;
+                m_vpnWriteError = message;
+                emit vpnWriteChanged();
+            });
     if (qobject_cast<MockVpnClient *>(m_vpn))
         m_vpn->refresh();
     noteAdapterCreated();
@@ -554,6 +563,15 @@ NetworkClient *SettingsBridge::ensureNetwork()
             [this](const QVariantMap &) { emit networkChanged(); });
     connect(m_network, &NetworkClient::availableChanged, this,
             [this](bool) { emit networkChanged(); });
+    connect(m_network, &NetworkClient::writeFinished, this,
+            [this](const QString &operation, const QString &outcome,
+                   const QString &message) {
+                m_networkWriteOperation = operation;
+                m_networkWriteState = outcome.isEmpty()
+                    ? QStringLiteral("applied") : outcome;
+                m_networkWriteError = message;
+                emit networkWriteChanged();
+            });
     if (qobject_cast<MockNetworkClient *>(m_network))
         m_network->refresh();
     noteAdapterCreated();
@@ -2017,39 +2035,66 @@ void SettingsBridge::refreshVpn()
 
 void SettingsBridge::connectVpn(const QString &uuid)
 {
-    if (m_vpn && !uuid.isEmpty())
+    if (m_vpn && !uuid.isEmpty()) {
+        beginVpnWrite(QStringLiteral("connect"));
         m_vpn->connectVpn(uuid);
+    }
 }
 
 void SettingsBridge::disconnectVpn(const QString &uuid)
 {
-    if (m_vpn && !uuid.isEmpty())
+    if (m_vpn && !uuid.isEmpty()) {
+        beginVpnWrite(QStringLiteral("disconnect"));
         m_vpn->disconnectVpn(uuid);
+    }
 }
 
 void SettingsBridge::addVpn(const QString &plugin, const QString &name,
                             const QString &gateway)
 {
-    if (m_vpn && !plugin.isEmpty() && !name.isEmpty())
+    if (m_vpn && !plugin.isEmpty() && !name.isEmpty()) {
+        beginVpnWrite(QStringLiteral("add"));
         m_vpn->addVpn(plugin, name, gateway);
+    }
 }
 
 void SettingsBridge::setVpnAutoconnect(const QString &uuid, bool enabled)
 {
-    if (m_vpn && !uuid.isEmpty())
+    if (m_vpn && !uuid.isEmpty()) {
+        beginVpnWrite(QStringLiteral("autoconnect"));
         m_vpn->setAutoconnect(uuid, enabled);
+    }
 }
 
 void SettingsBridge::resetVpnFixture()
 {
     if (m_vpn)
         m_vpn->resetForTest();
+    m_vpnWriteOperation.clear();
+    m_vpnWriteState = QStringLiteral("idle");
+    m_vpnWriteError.clear();
+    emit vpnWriteChanged();
 }
 
 void SettingsBridge::setVpnFixture(const QString &mode)
 {
     if (m_vpn)
         m_vpn->setFixture(mode);
+}
+
+void SettingsBridge::failNextVpnWrite(const QString &operation,
+                                      const QString &message)
+{
+    if (m_vpn)
+        m_vpn->failNextWrite(operation, message);
+}
+
+void SettingsBridge::beginVpnWrite(const QString &operation)
+{
+    m_vpnWriteOperation = operation;
+    m_vpnWriteState = QStringLiteral("busy");
+    m_vpnWriteError.clear();
+    emit vpnWriteChanged();
 }
 
 void SettingsBridge::refreshWifi()
@@ -2171,76 +2216,124 @@ void SettingsBridge::refreshNetwork()
 
 void SettingsBridge::activateNetworkService(const QString &uuid)
 {
-    if (m_network && !uuid.isEmpty())
+    if (m_network && !uuid.isEmpty()) {
+        beginNetworkWrite(QStringLiteral("activate"));
         m_network->activateService(uuid);
+    }
 }
 
 void SettingsBridge::deactivateNetworkService(const QString &uuid)
 {
-    if (m_network && !uuid.isEmpty())
+    if (m_network && !uuid.isEmpty()) {
+        beginNetworkWrite(QStringLiteral("deactivate"));
         m_network->deactivateService(uuid);
+    }
 }
 
 void SettingsBridge::moveNetworkService(const QString &uuid, int delta)
 {
-    if (m_network && !uuid.isEmpty() && delta != 0)
+    if (m_network && !uuid.isEmpty() && delta != 0) {
+        beginNetworkWrite(QStringLiteral("move"));
         m_network->moveService(uuid, delta);
+    }
 }
 
 void SettingsBridge::addNetworkService(const QString &name, const QString &kind,
                                        const QString &plugin,
-                                       const QString &gateway)
+                                       const QString &gateway,
+                                       const QString &interfaceName)
 {
-    if (m_network && !name.isEmpty())
-        m_network->addService(name, kind, plugin, gateway);
+    if (m_network && !name.isEmpty()) {
+        beginNetworkWrite(QStringLiteral("add"));
+        m_network->addService(name, kind, plugin, gateway, interfaceName);
+    }
+}
+
+void SettingsBridge::forgetNetworkService(const QString &uuid)
+{
+    if (m_network && !uuid.isEmpty()) {
+        beginNetworkWrite(QStringLiteral("forget"));
+        m_network->forgetService(uuid);
+    }
 }
 
 void SettingsBridge::setNetworkAutoconnect(const QString &uuid, bool enabled)
 {
-    if (m_network && !uuid.isEmpty())
+    if (m_network && !uuid.isEmpty()) {
+        beginNetworkWrite(QStringLiteral("autoconnect"));
         m_network->setAutoconnect(uuid, enabled);
+    }
 }
 
 void SettingsBridge::setFirewallEnabled(bool enabled)
 {
-    if (m_network)
+    if (m_network) {
+        beginNetworkWrite(QStringLiteral("firewall"));
         m_network->setFirewallEnabled(enabled);
+    }
 }
 
 void SettingsBridge::openFirewallPort(int port, const QString &protocol)
 {
-    if (m_network)
+    if (m_network) {
+        beginNetworkWrite(QStringLiteral("port"));
         m_network->openPort(port, protocol);
+    }
 }
 
 void SettingsBridge::closeFirewallPort(int port, const QString &protocol)
 {
-    if (m_network)
+    if (m_network) {
+        beginNetworkWrite(QStringLiteral("port"));
         m_network->closePort(port, protocol);
+    }
 }
 
 void SettingsBridge::openFirewallService(const QString &service)
 {
-    if (m_network && !service.isEmpty())
+    if (m_network && !service.isEmpty()) {
+        beginNetworkWrite(QStringLiteral("service"));
         m_network->openService(service);
+    }
 }
 
 void SettingsBridge::closeFirewallService(const QString &service)
 {
-    if (m_network && !service.isEmpty())
+    if (m_network && !service.isEmpty()) {
+        beginNetworkWrite(QStringLiteral("service"));
         m_network->closeService(service);
+    }
 }
 
 void SettingsBridge::resetNetworkFixture()
 {
     if (m_network)
         m_network->resetForTest();
+    m_networkWriteOperation.clear();
+    m_networkWriteState = QStringLiteral("idle");
+    m_networkWriteError.clear();
+    emit networkWriteChanged();
 }
 
 void SettingsBridge::setNetworkFixture(const QString &mode)
 {
     if (m_network)
         m_network->setFixture(mode);
+}
+
+void SettingsBridge::failNextNetworkWrite(const QString &operation,
+                                          const QString &message)
+{
+    if (auto *mock = qobject_cast<MockNetworkClient *>(m_network))
+        mock->failNextWrite(operation, message);
+}
+
+void SettingsBridge::beginNetworkWrite(const QString &operation)
+{
+    m_networkWriteOperation = operation;
+    m_networkWriteState = QStringLiteral("busy");
+    m_networkWriteError.clear();
+    emit networkWriteChanged();
 }
 
 void SettingsBridge::buildWallpaperFixtureImages()

@@ -853,6 +853,8 @@ Item {
             return wifiPaneComponent;
         case "network":
             return networkPaneComponent;
+        case "vpn":
+            return vpnPaneComponent;
         case "control-center":
             return quickSettingsPaneComponent;
         case "search":
@@ -865,6 +867,10 @@ Item {
     }
 
     Component.onCompleted: {
+        // T272: the optional VPN pane is gated on a live profile. One explicit
+        // read at startup lets the sidebar show it before the pane is opened;
+        // the read is coalesced and never polls.
+        Settings.refreshVpn();
         var first = "";
         // T263: restore the last visited pane on a normal launch. First launch
         // (no stored preference) opens General. The persistence seam is off
@@ -1221,6 +1227,11 @@ Item {
         NetworkPane {
             onPaneRequested: (paneId) => root.selectPane(paneId)
         }
+    }
+
+    Component {
+        id: vpnPaneComponent
+        VpnPane { }
     }
 
     AppWindow {

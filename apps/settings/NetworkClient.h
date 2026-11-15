@@ -39,7 +39,9 @@ public:
     virtual void deactivateService(const QString &uuid) = 0;
     virtual void moveService(const QString &uuid, int delta) = 0;
     virtual void addService(const QString &name, const QString &kind,
-                            const QString &plugin, const QString &gateway) = 0;
+                            const QString &plugin, const QString &gateway,
+                            const QString &interfaceName) = 0;
+    virtual void forgetService(const QString &uuid) = 0;
     virtual void setAutoconnect(const QString &uuid, bool enabled) = 0;
     // Firewall writes.
     virtual void setFirewallEnabled(bool enabled) = 0;
@@ -50,13 +52,25 @@ public:
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
-    // Test/capture seam: `live`, `nftables`, or `absent`. A no-op on the live
-    // client.
+    // Test/capture seam: `live`, `nm-absent`, `nftables`, or `absent`. A no-op
+    // on the live client.
     virtual void setFixture(const QString &mode) { Q_UNUSED(mode); }
+    // Test seam: make the next write of `operation` fail. A no-op on the live
+    // client.
+    virtual void failNextWrite(const QString &operation, const QString &message)
+    {
+        Q_UNUSED(operation);
+        Q_UNUSED(message);
+    }
 
 signals:
     void changed(const QVariantMap &view);
     void availableChanged(bool available);
+    // T272: the outcome of one write (`applied`, `absent`, `denied`, or
+    // `failed`) and the operation that produced it (`activate`, `deactivate`,
+    // `move`, `add`, `forget`, `autoconnect`, `firewall`, `port`, `service`).
+    void writeFinished(const QString &operation, const QString &outcome,
+                       const QString &message);
 };
 
 // The live client over the user session bus.
@@ -75,7 +89,9 @@ public:
     void deactivateService(const QString &uuid) override;
     void moveService(const QString &uuid, int delta) override;
     void addService(const QString &name, const QString &kind,
-                    const QString &plugin, const QString &gateway) override;
+                    const QString &plugin, const QString &gateway,
+                    const QString &interfaceName) override;
+    void forgetService(const QString &uuid) override;
     void setAutoconnect(const QString &uuid, bool enabled) override;
     void setFirewallEnabled(bool enabled) override;
     void openPort(int port, const QString &protocol) override;
@@ -85,7 +101,8 @@ public:
 
 private:
     void call(const QString &interface, const QString &method,
-              const QVariantList &arguments, bool isState);
+              const QVariantList &arguments, bool isState,
+              const QString &operation = QString());
     void applyReply(const QByteArray &json);
     QString m_service;
     QString m_path;
@@ -115,7 +132,9 @@ public:
     void deactivateService(const QString &uuid) override;
     void moveService(const QString &uuid, int delta) override;
     void addService(const QString &name, const QString &kind,
-                    const QString &plugin, const QString &gateway) override;
+                    const QString &plugin, const QString &gateway,
+                    const QString &interfaceName) override;
+    void forgetService(const QString &uuid) override;
     void setAutoconnect(const QString &uuid, bool enabled) override;
     void setFirewallEnabled(bool enabled) override;
     void openPort(int port, const QString &protocol) override;
@@ -124,9 +143,13 @@ public:
     void closeService(const QString &service) override;
     void resetForTest() override;
     void setFixture(const QString &mode) override;
+    void failNextWrite(const QString &operation, const QString &message) override;
 
 private:
     void rebuild();
+    bool failWrite(const QString &operation);
+    void finishWrite(const QString &operation, const QString &outcome,
+                     const QString &message = QString());
     struct Service {
         QString id;
         QString uuid;
@@ -137,9 +160,20 @@ private:
         QString interface;
         QString hardware;
         QString address;
+        int prefix = 0;
+        QString gateway;
+        QStringList dns;
+        QStringList searchDomains;
+        QStringList ipv6Addresses;
+        QString ipv6Method;
+        QString proxy;
+        QString clonedMac;
+        QString keyMgmt;
+        int metered = 0;
     };
     QVector<Service> m_services;
     bool m_available = true;
+    bool m_networkPresent = true;
     bool m_firewallDetected = true;
     bool m_firewallStatusKnown = true;
     bool m_firewallEnabled = false;
@@ -147,5 +181,7 @@ private:
     QString m_firewallNote;
     QVariantList m_ports;
     QStringList m_servicesList;
+    QString m_failOperation;
+    QString m_failMessage;
     QVariantMap m_view;
 };

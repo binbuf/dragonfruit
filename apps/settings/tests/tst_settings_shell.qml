@@ -534,8 +534,8 @@ Item {
             var ids = shell.visiblePanes.map(function(pane) { return pane.id; });
             compare(ids.indexOf("vpn"), -1,
                     "VPN is hidden without a NetworkManager profile");
-            verify(SettingsPanes.resolve("vpn").paneId === "network",
-                   "the VPN link targets the Network pane");
+            verify(SettingsPanes.resolve("vpn").paneId === "vpn",
+                   "the optional VPN pane resolves to itself");
         }
 
         function test_last_pane_restores_and_a_deep_link_wins() {

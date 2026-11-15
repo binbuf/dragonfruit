@@ -264,12 +264,20 @@ impl<N: NetworkManagerSource, A: AudioSource, P: PowerSource> StatusHost<N, A, P
     }
 
     /// Create a saved service or VPN connection. One explicit write.
-    pub fn add_service(&mut self, name: &str, kind: &str, plugin: &str, gateway: &str) -> Value {
+    pub fn add_service(
+        &mut self,
+        name: &str,
+        kind: &str,
+        plugin: &str,
+        gateway: &str,
+        interface: &str,
+    ) -> Value {
         let spec = AddConnectionSpec {
             name: name.to_owned(),
             kind: AddKind::from_id(kind),
             plugin: (!plugin.is_empty()).then(|| plugin.to_owned()),
             gateway: (!gateway.is_empty()).then(|| gateway.to_owned()),
+            interface_name: (!interface.is_empty()).then(|| interface.to_owned()),
             secret: None,
         };
         network_report(&self.wifi.add_connection(&spec))
@@ -443,6 +451,10 @@ pub fn wifi_view<N: NetworkManagerSource>(adapter: &NetworkManagerAdapter<N>) ->
                 "interface": service.interface.clone().unwrap_or_default(),
                 "hardware": service.hardware.clone().unwrap_or_default(),
                 "address": service.address.clone().unwrap_or_default(),
+                "prefix": service.prefix,
+                "gateway": service.gateway.clone().unwrap_or_default(),
+                "searchDomains": service.search_domains.clone(),
+                "ipv6Addresses": service.ipv6_addresses.clone(),
                 "label": service.label(),
                 // T271 Linux-only rows with a real NetworkManager owner.
                 "wirelessMode": service.wireless_mode.clone().unwrap_or_default(),

@@ -71,6 +71,8 @@ trait Device {
     fn hw_address(&self) -> zbus::Result<String>;
     #[zbus(property)]
     fn ip4_config(&self) -> zbus::Result<OwnedObjectPath>;
+    #[zbus(property)]
+    fn ip6_config(&self) -> zbus::Result<OwnedObjectPath>;
 }
 
 #[zbus::proxy(
@@ -78,6 +80,19 @@ trait Device {
     default_service = "org.freedesktop.NetworkManager"
 )]
 trait Ip4Config {
+    /// `AddressData`, an array of `{address, prefix}` maps.
+    #[zbus(property)]
+    fn address_data(&self) -> zbus::Result<Vec<HashMap<String, OwnedValue>>>;
+    /// `Gateway`, the active IPv4 gateway.
+    #[zbus(property)]
+    fn gateway(&self) -> zbus::Result<String>;
+}
+
+#[zbus::proxy(
+    interface = "org.freedesktop.NetworkManager.IP6Config",
+    default_service = "org.freedesktop.NetworkManager"
+)]
+trait Ip6Config {
     /// `AddressData`, an array of `{address, prefix}` maps.
     #[zbus(property)]
     fn address_data(&self) -> zbus::Result<Vec<HashMap<String, OwnedValue>>>;
@@ -162,11 +177,17 @@ impl NetworkManagerSource for DbusNetworkManager {
                 .ok()
                 .map(|path| path.as_str().to_owned())
                 .filter(|path| path != "/");
-            let ip4_address = device
+            let ip4 = device
                 .ip4_config()
                 .ok()
                 .filter(|path| path.as_str() != "/")
-                .and_then(|path| ip4_address_of(&connection, path.as_str()));
+                .and_then(|path| ip4_details_of(&connection, path.as_str()));
+            let ip6_addresses = device
+                .ip6_config()
+                .ok()
+                .filter(|path| path.as_str() != "/")
+                .and_then(|path| ip6_addresses_of(&connection, path.as_str()))
+                .unwrap_or_default();
             services.push(ServiceData {
                 path: path.to_owned(),
                 kind,
@@ -175,7 +196,10 @@ impl NetworkManagerSource for DbusNetworkManager {
                 managed,
                 active_connection,
                 hw_address,
-                ip4_address,
+                ip4_address: ip4.as_ref().and_then(|details| details.address.clone()),
+                ip4_prefix: ip4.as_ref().and_then(|details| details.prefix),
+                ip4_gateway: ip4.and_then(|details| details.gateway),
+                ip6_addresses,
             });
 
             if kind != NM_DEVICE_TYPE_WIFI {
@@ -495,13 +519,45 @@ fn write_failed(error: zbus::Error) -> WriteOutcome {
     WriteOutcome::Failed(AdapterError::new(format!("NetworkManager: {error}")))
 }
 
-/// The first IPv4 address of one `IP4Config` object.
-fn ip4_address_of(connection: &Connection, path: &str) -> Option<String> {
+/// The first IPv4 address, prefix, and gateway of one `IP4Config` object.
+struct Ip4Details {
+    address: Option<String>,
+    prefix: Option<u8>,
+    gateway: Option<String>,
+}
+
+fn ip4_details_of(connection: &Connection, path: &str) -> Option<Ip4Details> {
     let proxy = Ip4ConfigProxyBlocking::new(connection, path).ok()?;
     let addresses = proxy.address_data().ok()?;
-    addresses
+    let (address, prefix) = addresses
         .iter()
-        .find_map(|entry| entry.get("address").and_then(value_string))
+        .find_map(|entry| {
+            let address = entry.get("address").and_then(value_string)?;
+            let prefix = entry.get("prefix").and_then(value_u8);
+            Some((address, prefix))
+        })
+        .map_or((None, None), |(address, prefix)| (Some(address), prefix));
+    let gateway = proxy
+        .gateway()
+        .ok()
+        .filter(|gateway| !gateway.is_empty());
+    Some(Ip4Details {
+        address,
+        prefix,
+        gateway,
+    })
+}
+
+/// The active IPv6 addresses of one `IP6Config` object.
+fn ip6_addresses_of(connection: &Connection, path: &str) -> Option<Vec<String>> {
+    let proxy = Ip6ConfigProxyBlocking::new(connection, path).ok()?;
+    let addresses = proxy.address_data().ok()?;
+    Some(
+        addresses
+            .iter()
+            .filter_map(|entry| entry.get("address").and_then(value_string))
+            .collect(),
+    )
 }
 
 /// Decode one connection settings map into a [`ConnectionData`], or `None`
@@ -558,6 +614,16 @@ pub fn connection_from_settings(
             .and_then(|ipv4| ipv4.get("dns"))
             .and_then(value_string_list)
             .unwrap_or_default(),
+        ipv4_search: settings
+            .get("ipv4")
+            .and_then(|ipv4| ipv4.get("dns-search"))
+            .and_then(value_string_list)
+            .unwrap_or_default(),
+        ipv4_gateway: settings
+            .get("ipv4")
+            .and_then(|ipv4| ipv4.get("gateway"))
+            .and_then(value_string)
+            .filter(|gateway| !gateway.is_empty()),
         proxy_method: settings
             .get("proxy")
             .and_then(|proxy| proxy.get("method"))
@@ -587,11 +653,19 @@ fn add_connection_settings(
         AddKind::Ethernet => "802-3-ethernet",
         AddKind::Wifi | AddKind::Hotspot => "802-11-wireless",
         AddKind::Vpn => "vpn",
+        AddKind::Bridge => "bridge",
+        AddKind::Bond => "bond",
+        AddKind::Vlan => "vlan",
     };
     let mut connection: HashMap<String, Value<'static>> = HashMap::new();
     connection.insert("id".to_owned(), Value::from(spec.name.clone()));
     connection.insert("type".to_owned(), Value::from(kind));
     connection.insert("autoconnect".to_owned(), Value::from(true));
+    if let Some(interface) = &spec.interface_name {
+        if !interface.is_empty() {
+            connection.insert("interface-name".to_owned(), Value::from(interface.clone()));
+        }
+    }
     let mut settings: HashMap<String, HashMap<String, Value<'static>>> = HashMap::new();
     settings.insert("connection".to_owned(), connection);
 
@@ -629,6 +703,21 @@ fn add_connection_settings(
             }
             vpn.insert("data".to_owned(), Value::from(data));
             settings.insert("vpn".to_owned(), vpn);
+        }
+        AddKind::Bridge => {
+            let mut bridge: HashMap<String, Value<'static>> = HashMap::new();
+            bridge.insert("stp".to_owned(), Value::from(false));
+            settings.insert("bridge".to_owned(), bridge);
+        }
+        AddKind::Bond => {
+            let mut bond: HashMap<String, Value<'static>> = HashMap::new();
+            bond.insert("mode".to_owned(), Value::from("balance-rr"));
+            settings.insert("bond".to_owned(), bond);
+        }
+        AddKind::Vlan => {
+            let mut vlan: HashMap<String, Value<'static>> = HashMap::new();
+            vlan.insert("id".to_owned(), Value::from(0u32));
+            settings.insert("vlan".to_owned(), vlan);
         }
         AddKind::Ethernet => {}
     }
@@ -1202,6 +1291,14 @@ fn value_u32(value: &OwnedValue) -> Option<u32> {
     value.downcast_ref::<u32>().ok()
 }
 
+/// A `u8` out of one settings value (an `IP4Config` prefix is a byte).
+fn value_u8(value: &OwnedValue) -> Option<u8> {
+    value
+        .downcast_ref::<u8>()
+        .ok()
+        .or_else(|| value_u32(value).and_then(|value| u8::try_from(value).ok()))
+}
+
 /// A string array (`as`) out of one settings value.
 fn value_string_list(value: &OwnedValue) -> Option<Vec<String>> {
     Vec::<String>::try_from(value.clone()).ok()
@@ -1481,6 +1578,22 @@ mod tests {
             vpn["vpn"]["service-type"],
             Value::from("org.freedesktop.NetworkManager.openvpn")
         );
+
+        let bridge = add_connection_settings(&AddConnectionSpec {
+            name: "Lab bridge".to_owned(),
+            kind: AddKind::Bridge,
+            interface_name: Some("br0".to_owned()),
+            ..AddConnectionSpec::default()
+        });
+        assert_eq!(bridge["connection"]["type"], Value::from("bridge"));
+        assert_eq!(bridge["connection"]["interface-name"], Value::from("br0"));
+
+        let vlan = add_connection_settings(&AddConnectionSpec {
+            name: "Lab VLAN".to_owned(),
+            kind: AddKind::Vlan,
+            ..AddConnectionSpec::default()
+        });
+        assert_eq!(vlan["connection"]["type"], Value::from("vlan"));
     }
 
     #[test]

@@ -364,6 +364,7 @@ impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
             kind: crate::source::AddKind::Hotspot,
             plugin: None,
             gateway: None,
+            interface_name: None,
             secret: (!secret.is_empty()).then(|| secret.to_owned()),
         };
         self.write(|source| source.add_connection(&spec))

@@ -216,14 +216,14 @@ Owner: NetworkManager + firewall adapter. Absence: per-service rows show
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Wi-Fi | Wi-Fi | Disclosure | NM | Connected/off; opens Wi-Fi pane |
-| Firewall | Firewall | Disclosure | firewall adapter | On/off/options; `firewalld`/`ufw`/`nftables` backend |
-| Other Services | Other services | List | NM devices | Ethernet, USB, Thunderbolt, bridge, bond, VLAN |
-| VPN | VPN | Disclosure | NM VPN | Add/configure/connect |
-| … | Service actions | Menu | NM | Set service order, import/export, make inactive |
-| Advanced… | Advanced… | Sheet | NM | TCP/IP, DNS, proxies, hardware |
+| Firewall | Firewall | Toggle + Options | firewall adapter | On/off/options; `firewalld`/`ufw`/`nftables` backend; independent of NM |
+| Other Services | Other services | List + status dot | NM devices | Ethernet, bridge, bond, VLAN; green/yellow/red/gray dot |
+| VPN | VPN | Disclosure / optional top-level pane | NM VPN | Add/configure/connect; top-level pane when a profile exists |
+| … | Service actions | Menu | NM | Connect/Disconnect, service order, make inactive, delete, add |
+| Advanced… | Details… | Sheet | NM | TCP/IP, subnet, router, DNS, search domains, IPv6, proxy, hardware, metered, MAC randomization, 802.1X |
 | Locations | Profiles | Popup | NM | Saved connection profiles; adapt macOS Locations |
-| — | Firewall options | Sheet | firewall adapter | Open ports, services, zones/rules |
-| — | Add service… | Sheet | NM | Connection editor (limited first pass) |
+| — | Firewall options | Sheet | firewall adapter | Open ports, services, zones/rules, backend |
+| — | Add service… | Sheet | NM | Ethernet, Wi-Fi, VPN, bridge, bond, VLAN with validation |
 
 **T225 status.** The Wi-Fi and Network panes are shipped. Wi-Fi writes the
 radio, joins (visible/hidden), forgets, autoconnects, scans, disconnects, and
@@ -232,11 +232,14 @@ stored-only until the shell grows a prompt consumer. **T271 status.** Wi-Fi and
 Bluetooth complete the reference row set: current-network and device sheets,
 scanning/empty/error states, known-network disconnect, the AP-mode hotspot,
 BlueZ device info/battery/forget, power-on discovery, the computer name, and
-structural absence. Network writes service order through NM
-`autoconnect-priority`, activates/deactivates services, adds an
-Ethernet/Wi-Fi/VPN service, and connects/adds VPNs from the discovered plugin
-list. The firewall adapter detects firewalld/ufw/nftables; nftables is
-Unavailable, never a fake Off. `Profiles` remains planned (a future
+structural absence. **T272 status.** Network is the service list: status dots,
+per-service Details sheets, the actions menu (connect/disconnect, order, make
+inactive, delete, add), and the Add Service sheet for Ethernet/Wi-Fi/VPN/
+bridge/bond/VLAN. The firewall adapter detects firewalld/ufw/nftables; nftables
+is Unavailable, never a fake Off, and the firewall stays usable when NM is
+absent or the VPN adapter is read-only. The optional top-level VPN pane appears
+only when a profile exists; Network → VPN remains otherwise. Every Network/VPN
+write reports applied/denied/failed/absent. `Profiles` remains planned (a future
 location/profile editor).
 
 <a id="pane-battery"></a>

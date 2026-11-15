@@ -126,8 +126,8 @@ QtObject {
     // T263 corrections: the order is the grouped sidebar order; `storage` is
     // kept as a shipped General sub-pane but hidden from the sidebar and
     // aliased to `general`; `online-accounts` is always present; and `vpn` is
-    // a navigation link to Network that appears only when a VPN profile
-    // exists (T272 turns it into a real pane).
+    // an optional top-level pane that appears only when a VPN profile exists
+    // (T272).
     readonly property var catalog: [
         { id: "wifi", title: qsTr("Wi-Fi"), icon: "wifi", group: "connectivity",
           description: "", shipped: true,
@@ -143,8 +143,7 @@ QtObject {
           deepLink: "settings://pane/network",
           absence: "disabled-with-reason" },
         { id: "vpn", title: qsTr("VPN"), icon: "vpn", group: "connectivity",
-          description: "", shipped: false, optional: "vpn",
-          linkTo: "network", anchor: "VPN",
+          description: "", shipped: true, optional: "vpn",
           owner: "NetworkManager VPN", deepLink: "settings://pane/vpn",
           absence: "disabled-with-reason" },
         { id: "general", title: qsTr("General"), icon: "general", group: "general",
@@ -318,7 +317,7 @@ QtObject {
     })
 
     // Resolve a pane id or link id to the pane the shell opens. Storage opens
-    // General with its Storage sub-pane; VPN opens Network at its VPN group.
+    // General with its Storage sub-pane; VPN is a real optional pane (T272).
     function resolve(id) {
         var pane = root.paneById(id);
         if (pane === null)

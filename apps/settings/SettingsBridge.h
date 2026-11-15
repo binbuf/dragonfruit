@@ -295,6 +295,23 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Network
     // surface at all; the pane shows the absence note.
     Q_PROPERTY(bool networkAvailable READ networkAvailable NOTIFY networkChanged)
+    // T272: the last Network host write's operation (`activate`, `deactivate`,
+    // `move`, `add`, `forget`, `autoconnect`, `firewall`, `port`, `service`),
+    // state (`idle`, `busy`, `applied`, `absent`, `denied`, `failed`), and
+    // message. A failed write leaves the view untouched, so a bound control
+    // reverts and the pane shows the reason.
+    Q_PROPERTY(QString networkWriteOperation READ networkWriteOperation NOTIFY
+                   networkWriteChanged)
+    Q_PROPERTY(QString networkWriteState READ networkWriteState NOTIFY
+                   networkWriteChanged)
+    Q_PROPERTY(QString networkWriteError READ networkWriteError NOTIFY
+                   networkWriteChanged)
+    // T272: the last VPN host write's operation (`connect`, `disconnect`,
+    // `add`, `autoconnect`), state, and message.
+    Q_PROPERTY(QString vpnWriteOperation READ vpnWriteOperation NOTIFY
+                   vpnWriteChanged)
+    Q_PROPERTY(QString vpnWriteState READ vpnWriteState NOTIFY vpnWriteChanged)
+    Q_PROPERTY(QString vpnWriteError READ vpnWriteError NOTIFY vpnWriteChanged)
     // T268: diagnostic — how many pane adapter clients have been constructed
     // so far. Zero after the bridge is created; each pane's first `refresh*()`
     // adds exactly one. The startup budget test asserts no constructor fan-out.
@@ -395,6 +412,12 @@ public:
     QString wifiWriteError() const { return m_wifiWriteError; }
     QVariantMap network() const;
     bool networkAvailable() const;
+    QString networkWriteOperation() const { return m_networkWriteOperation; }
+    QString networkWriteState() const { return m_networkWriteState; }
+    QString networkWriteError() const { return m_networkWriteError; }
+    QString vpnWriteOperation() const { return m_vpnWriteOperation; }
+    QString vpnWriteState() const { return m_vpnWriteState; }
+    QString vpnWriteError() const { return m_vpnWriteError; }
     int adapterClientCount() const;
     QString providerStatus() const;
     QString providerDefault() const;
@@ -707,6 +730,8 @@ public:
     // no-op on the live client.
     Q_INVOKABLE void resetVpnFixture();
     Q_INVOKABLE void setVpnFixture(const QString &mode);
+    Q_INVOKABLE void failNextVpnWrite(const QString &operation,
+                                      const QString &message);
 
     // T225: the Wi-Fi pane's seam. `refreshWifi` re-reads the bridge host on
     // open; each write calls the adapter once and the host pushes the new view
@@ -735,7 +760,9 @@ public:
     Q_INVOKABLE void moveNetworkService(const QString &uuid, int delta);
     Q_INVOKABLE void addNetworkService(const QString &name, const QString &kind,
                                        const QString &plugin,
-                                       const QString &gateway);
+                                       const QString &gateway,
+                                       const QString &interfaceName);
+    Q_INVOKABLE void forgetNetworkService(const QString &uuid);
     Q_INVOKABLE void setNetworkAutoconnect(const QString &uuid, bool enabled);
     Q_INVOKABLE void setFirewallEnabled(bool enabled);
     Q_INVOKABLE void openFirewallPort(int port, const QString &protocol);
@@ -744,6 +771,8 @@ public:
     Q_INVOKABLE void closeFirewallService(const QString &service);
     Q_INVOKABLE void resetNetworkFixture();
     Q_INVOKABLE void setNetworkFixture(const QString &mode);
+    Q_INVOKABLE void failNextNetworkWrite(const QString &operation,
+                                          const QString &message);
 
     // T-18.2 / ADR 0240 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the
     // provider lifecycle. `ready`/`categories`/`many`/`deferred`/
@@ -827,6 +856,9 @@ signals:
     void bluetoothWriteChanged();
     // The Network/firewall view or availability changed (T225).
     void networkChanged();
+    // T272: the last Network/VPN host write's operation/state/message changed.
+    void networkWriteChanged();
+    void vpnWriteChanged();
     // T268: one more adapter client was created on first use.
     void adapterClientCountChanged();
 
@@ -838,6 +870,9 @@ private:
     // T271: publish the busy state before one Wi-Fi/Bluetooth write.
     void beginWifiWrite(const QString &operation);
     void beginBluetoothWrite(const QString &operation);
+    // T272: publish the busy state before one Network/VPN write.
+    void beginNetworkWrite(const QString &operation);
+    void beginVpnWrite(const QString &operation);
     StorageClient *ensureStorage();
     SoundClient *ensureSound();
     InputClient *ensureInput();
@@ -912,6 +947,12 @@ private:
     QString m_wifiWriteOperation;
     QString m_wifiWriteState = QStringLiteral("idle");
     QString m_wifiWriteError;
+    QString m_networkWriteOperation;
+    QString m_networkWriteState = QStringLiteral("idle");
+    QString m_networkWriteError;
+    QString m_vpnWriteOperation;
+    QString m_vpnWriteState = QStringLiteral("idle");
+    QString m_vpnWriteError;
     QString m_bluetoothWriteOperation;
     QString m_bluetoothWriteState = QStringLiteral("idle");
     QString m_bluetoothWriteError;

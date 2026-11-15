@@ -89,6 +89,12 @@ pub struct ConnectionData {
     /// `ipv4.dns`, as configured addresses.
     #[serde(default)]
     pub ipv4_dns: Vec<String>,
+    /// `ipv4.dns-search`, the configured search domains.
+    #[serde(default)]
+    pub ipv4_search: Vec<String>,
+    /// `ipv4.gateway`, when pinned on the connection.
+    #[serde(default)]
+    pub ipv4_gateway: Option<String>,
     /// `proxy.method`.
     #[serde(default)]
     pub proxy_method: Option<String>,
@@ -149,6 +155,15 @@ pub struct ServiceData {
     /// The first IPv4 address, when the device has one.
     #[serde(default)]
     pub ip4_address: Option<String>,
+    /// The IPv4 prefix length (subnet mask), when the device has one.
+    #[serde(default)]
+    pub ip4_prefix: Option<u8>,
+    /// The active IPv4 gateway, when the device has one.
+    #[serde(default)]
+    pub ip4_gateway: Option<String>,
+    /// The active IPv6 addresses, when the device has any.
+    #[serde(default)]
+    pub ip6_addresses: Vec<String>,
 }
 
 /// One NetworkManager device (`org.freedesktop.NetworkManager.Device` plus its
@@ -339,6 +354,12 @@ pub enum AddKind {
     Wifi,
     /// A `vpn` connection using `plugin`.
     Vpn,
+    /// A `bridge` connection.
+    Bridge,
+    /// A `bond` connection.
+    Bond,
+    /// A `vlan` connection.
+    Vlan,
     /// A personal hotspot: an AP-mode `802-11-wireless` connection.
     Hotspot,
 }
@@ -350,6 +371,9 @@ impl AddKind {
             AddKind::Ethernet => "ethernet",
             AddKind::Wifi => "wifi",
             AddKind::Vpn => "vpn",
+            AddKind::Bridge => "bridge",
+            AddKind::Bond => "bond",
+            AddKind::Vlan => "vlan",
             AddKind::Hotspot => "hotspot",
         }
     }
@@ -359,6 +383,9 @@ impl AddKind {
         match id {
             "wifi" => AddKind::Wifi,
             "vpn" => AddKind::Vpn,
+            "bridge" => AddKind::Bridge,
+            "bond" => AddKind::Bond,
+            "vlan" => AddKind::Vlan,
             "hotspot" => AddKind::Hotspot,
             _ => AddKind::Ethernet,
         }
@@ -377,6 +404,8 @@ pub struct AddConnectionSpec {
     pub plugin: Option<String>,
     /// The VPN gateway/remote, when the plugin takes one.
     pub gateway: Option<String>,
+    /// `connection.interface-name`, for a bridge/bond/VLAN service.
+    pub interface_name: Option<String>,
     /// The pre-shared key for a Wi-Fi connection.
     pub secret: Option<String>,
 }
@@ -388,6 +417,7 @@ impl std::fmt::Debug for AddConnectionSpec {
             .field("kind", &self.kind)
             .field("plugin", &self.plugin)
             .field("gateway", &self.gateway)
+            .field("interface_name", &self.interface_name)
             .field("secret", &self.secret.as_ref().map(|_| "[redacted]"))
             .finish()
     }
@@ -559,6 +589,8 @@ impl MockNetworkManager {
                 metered: None,
                 ipv6_method: None,
                 ipv4_dns: Vec::new(),
+                ipv4_search: Vec::new(),
+                ipv4_gateway: None,
                 proxy_method: None,
                 cloned_mac: None,
                 key_mgmt: None,
@@ -784,6 +816,9 @@ impl NetworkManagerSource for MockNetworkManager {
             AddKind::Ethernet => "802-3-ethernet",
             AddKind::Wifi | AddKind::Hotspot => "802-11-wireless",
             AddKind::Vpn => "vpn",
+            AddKind::Bridge => "bridge",
+            AddKind::Bond => "bond",
+            AddKind::Vlan => "vlan",
         };
         let hotspot = spec.kind == AddKind::Hotspot;
         data.connections.push(ConnectionData {
@@ -795,12 +830,14 @@ impl NetworkManagerSource for MockNetworkManager {
             autoconnect: true,
             priority: 0,
             timestamp: 0,
-            interface_name: None,
+            interface_name: spec.interface_name.clone(),
             ssid: matches!(spec.kind, AddKind::Wifi | AddKind::Hotspot).then(|| spec.name.clone()),
             wireless_mode: Some((if hotspot { "ap" } else { "infrastructure" }).to_owned()),
             metered: None,
             ipv6_method: None,
             ipv4_dns: Vec::new(),
+            ipv4_search: Vec::new(),
+            ipv4_gateway: None,
             proxy_method: None,
             cloned_mac: None,
             key_mgmt: spec.secret.is_some().then(|| "wpa-psk".to_owned()),

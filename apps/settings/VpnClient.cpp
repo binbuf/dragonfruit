@@ -72,26 +72,28 @@ void DbusVpnClient::refresh()
 
 void DbusVpnClient::connectVpn(const QString &uuid)
 {
-    call(QStringLiteral("Connect"), {uuid});
+    call(QStringLiteral("Connect"), {uuid}, QStringLiteral("connect"));
 }
 
 void DbusVpnClient::disconnectVpn(const QString &uuid)
 {
-    call(QStringLiteral("Deactivate"), {uuid});
+    call(QStringLiteral("Deactivate"), {uuid}, QStringLiteral("disconnect"));
 }
 
 void DbusVpnClient::addVpn(const QString &plugin, const QString &name,
                            const QString &gateway)
 {
-    call(QStringLiteral("Add"), {plugin, name, gateway});
+    call(QStringLiteral("Add"), {plugin, name, gateway}, QStringLiteral("add"));
 }
 
 void DbusVpnClient::setAutoconnect(const QString &uuid, bool enabled)
 {
-    call(QStringLiteral("SetAutoconnect"), {uuid, enabled});
+    call(QStringLiteral("SetAutoconnect"), {uuid, enabled},
+         QStringLiteral("autoconnect"));
 }
 
-void DbusVpnClient::call(const QString &method, const QVariantList &arguments)
+void DbusVpnClient::call(const QString &method, const QVariantList &arguments,
+                         const QString &operation)
 {
     auto *iface = new QDBusInterface(m_service, m_path, m_interface,
                                      QDBusConnection::sessionBus(), this);
@@ -101,6 +103,8 @@ void DbusVpnClient::call(const QString &method, const QVariantList &arguments)
             m_available = false;
             emit availableChanged(false);
         }
+        if (!operation.isEmpty())
+            emit writeFinished(operation, QStringLiteral("absent"), QString());
         return;
     }
     const bool isRead = method == QStringLiteral("State")
@@ -108,18 +112,39 @@ void DbusVpnClient::call(const QString &method, const QVariantList &arguments)
     auto *watcher = new QDBusPendingCallWatcher(
         iface->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, isRead, iface, watcher]() {
+            [this, isRead, operation, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;
                 iface->deleteLater();
                 watcher->deleteLater();
-                if (!reply.isValid())
+                if (!reply.isValid()) {
+                    if (!isRead && !operation.isEmpty())
+                        emit writeFinished(operation, QStringLiteral("failed"),
+                                           QString());
                     return;
-                if (isRead)
+                }
+                if (isRead) {
                     applyReply(reply.value().toUtf8());
-                else
-                    // The write reply is the outcome report; the new state is
-                    // the host's re-read, never invented here.
-                    refresh();
+                    return;
+                }
+                // The write reply is the outcome report; the new state is the
+                // host's re-read, never invented here.
+                const QJsonDocument document =
+                    QJsonDocument::fromJson(reply.value().toUtf8());
+                if (document.isObject()) {
+                    const QJsonObject object = document.object();
+                    QString message = object.value(QStringLiteral("error")).toString();
+                    if (message.isEmpty())
+                        message = object.value(QStringLiteral("note")).toString();
+                    const QString outcome =
+                        object.value(QStringLiteral("outcome")).toString();
+                    if (!operation.isEmpty())
+                        emit writeFinished(operation,
+                                           outcome.isEmpty()
+                                               ? QStringLiteral("applied")
+                                               : outcome,
+                                           message);
+                }
+                refresh();
             });
 }
 
@@ -150,11 +175,22 @@ void MockVpnClient::setFixture(const QString &mode)
     if (mode == QLatin1String("no-plugin")) {
         m_plugins.clear();
         rebuild();
+    } else if (mode == QLatin1String("empty")) {
+        m_connections.clear();
+        rebuild();
+    } else if (mode == QLatin1String("read-only")) {
+        m_readOnly = true;
+        m_readOnlyNote = QLatin1String("polkit denied VPN changes");
+        rebuild();
     }
 }
 
 void MockVpnClient::resetForTest()
 {
+    m_failOperation.clear();
+    m_failMessage.clear();
+    m_readOnly = false;
+    m_readOnlyNote.clear();
     m_connections = {
         { QStringLiteral("Work VPN"), QStringLiteral("11111111-1111-1111-1111-111111111111"),
           QStringLiteral("openvpn"), QStringLiteral("OpenVPN"), true, true },
@@ -176,9 +212,36 @@ void MockVpnClient::resetForTest()
     rebuild();
 }
 
+void MockVpnClient::finishWrite(const QString &operation,
+                                const QString &outcome,
+                                const QString &message)
+{
+    emit writeFinished(operation, outcome, message);
+}
+
+bool MockVpnClient::failWrite(const QString &operation)
+{
+    if (m_failOperation != operation)
+        return false;
+    const QString message = m_failMessage;
+    m_failOperation.clear();
+    m_failMessage.clear();
+    finishWrite(operation, QStringLiteral("failed"), message);
+    return true;
+}
+
+void MockVpnClient::failNextWrite(const QString &operation,
+                                  const QString &message)
+{
+    m_failOperation = operation;
+    m_failMessage = message;
+}
+
 void MockVpnClient::addVpn(const QString &plugin, const QString &name,
                            const QString &)
 {
+    if (failWrite(QStringLiteral("add")))
+        return;
     if (plugin.isEmpty() || name.isEmpty())
         return;
     const QString kind = plugin.endsWith(QLatin1String("wireguard"))
@@ -196,10 +259,13 @@ void MockVpnClient::addVpn(const QString &plugin, const QString &name,
         true,
     });
     rebuild();
+    finishWrite(QStringLiteral("add"), QStringLiteral("applied"));
 }
 
 void MockVpnClient::setAutoconnect(const QString &uuid, bool enabled)
 {
+    if (failWrite(QStringLiteral("autoconnect")))
+        return;
     for (Connection &connection : m_connections) {
         if (connection.uuid == uuid) {
             connection.autoconnect = enabled;
@@ -207,6 +273,7 @@ void MockVpnClient::setAutoconnect(const QString &uuid, bool enabled)
         }
     }
     rebuild();
+    finishWrite(QStringLiteral("autoconnect"), QStringLiteral("applied"));
 }
 
 void MockVpnClient::refresh()
@@ -216,6 +283,8 @@ void MockVpnClient::refresh()
 
 void MockVpnClient::connectVpn(const QString &uuid)
 {
+    if (failWrite(QStringLiteral("connect")))
+        return;
     for (Connection &connection : m_connections) {
         if (connection.uuid != uuid)
             continue;
@@ -224,16 +293,20 @@ void MockVpnClient::connectVpn(const QString &uuid)
         for (Connection &other : m_connections)
             other.connected = (&other == &connection);
         rebuild();
+        finishWrite(QStringLiteral("connect"), QStringLiteral("applied"));
         return;
     }
 }
 
 void MockVpnClient::disconnectVpn(const QString &uuid)
 {
+    if (failWrite(QStringLiteral("disconnect")))
+        return;
     for (Connection &connection : m_connections) {
         if (connection.uuid == uuid) {
             connection.connected = false;
             rebuild();
+            finishWrite(QStringLiteral("disconnect"), QStringLiteral("applied"));
             return;
         }
     }
@@ -294,8 +367,8 @@ void MockVpnClient::rebuild()
     view.insert(QStringLiteral("connectedCount"), connectedCount);
     view.insert(QStringLiteral("activeUuid"), activeUuid);
     view.insert(QStringLiteral("activeName"), activeName);
-    view.insert(QStringLiteral("readOnly"), false);
-    view.insert(QStringLiteral("note"), QString());
+    view.insert(QStringLiteral("readOnly"), m_readOnly);
+    view.insert(QStringLiteral("note"), m_readOnlyNote);
     view.insert(QStringLiteral("connections"), connections.toVariantList());
 
     QVariantList plugins;
